@@ -636,6 +636,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |
 | `diagnostics_lost` | WARN | Rule and cumulative diagnostic loss count; stderr failure uses stdout |
+| `backend_warning`, `backend_retry` | WARN | Sanitized rclone warnings and retries (`rule=backend_diagnostic`) |
 | `key_logging_enabled`, `keylog_failed` | INFO / WARN | Sensitive capture enabled; dropped-line count or creation warning |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys |

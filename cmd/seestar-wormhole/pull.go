@@ -242,9 +242,13 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 	}
 	startup := newStartupLogging(o, logs)
 	logger := startup.logger
-	// rclone logs contain unsanitized backend paths. The command reports handled
-	// errors through its existing diagnostic boundary and keeps stdout for results.
-	fs.SetLogger(slog.NewTextHandler(io.Discard, nil))
+	// Backend diagnostics cross a fixed-category privacy boundary. Rclone checks
+	// its global level even for context-configured operations.
+	fs.SetLogger(pull.BackendLogHandler(logger))
+	backendConfig := fs.GetConfig(context.Background())
+	oldLevel := backendConfig.LogLevel
+	backendConfig.LogLevel = fs.LogLevelDebug
+	defer func() { backendConfig.LogLevel = oldLevel }()
 	summary := pull.Result{Status: "error"}
 	failurePhase := "pull"
 	var cleanup error
