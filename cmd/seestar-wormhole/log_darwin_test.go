@@ -62,8 +62,8 @@ func TestDarwinStderrRestoresFlags(t *testing.T) {
 		t.Fatal("full stderr stalled exit")
 	}
 	after, err := unix.FcntlInt(write.Fd(), unix.F_GETFL, 0)
-	// The child Go runtime sets F_NOSIGPIPE on inherited stderr. Only
-	// O_NONBLOCK belongs to logWriterFD; unrelated descriptor bits may differ.
+	// Filling the pipe sets Darwin's FWASWRITTEN (0x10000) bookkeeping bit.
+	// Only O_NONBLOCK belongs to logWriterFD; the kernel's write history may differ.
 	if err != nil || after&unix.O_NONBLOCK != original&unix.O_NONBLOCK {
 		t.Fatalf("stderr O_NONBLOCK %#x, want %#x, err %v", after&unix.O_NONBLOCK, original&unix.O_NONBLOCK, err)
 	}
