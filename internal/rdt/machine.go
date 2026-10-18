@@ -134,6 +134,7 @@ type rxPacket struct {
 // Machine is a pure single-owner RDT core. Construct with New; it uses no I/O,
 // goroutines or wall clock. Timers and all elapsed intervals are monotonic.
 type Machine struct {
+	discards                                   [9]uint64 // cumulative R087-R095, independent of DEBUG telemetry
 	telemetry                                  *telemetry
 	controls                                   []Packet // at most one deferred unreliable control packet per type
 	sends                                      int
@@ -209,6 +210,9 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 	if e.Kind == SendComplete && m.sends > 0 {
 		m.sends--
 	}
+	if now < m.now {
+		m.discards[1]++
+	}
 	m.now = max(m.now, now)
 	m.actions = nil
 	if m.now == core.Instant(1<<63-1) && m.status != Stopped {
@@ -240,6 +244,8 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 	case Receive:
 		if m.status != Idle && m.status != Stopped {
 			m.receive(e.Packet)
+		} else {
+			m.discards[0]++
 		}
 	case Write, WriteUrgent:
 		m.write(e)
@@ -297,12 +303,53 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 	return out
 }
 func (m *Machine) emit(a Action) { m.actions = append(m.actions, a) }
+
+// omitsACK distinguishes lost receipt information from ordinary aggregation.
+// A newer cumulative watermark covers the old one; SACK ranges may cover an
+// old range together even when no single new range contains it.
+func omitsACK(old, next Packet) bool {
+	switch old.Type {
+	case DataACK, UrgentACK:
+		return old.Sequence != next.Sequence
+	case ACK2:
+		return next.Sequence.Less(old.Sequence)
+	case SACK2:
+		prior, _ := DecodeSACK(old.Payload)
+		current, _ := DecodeSACK(next.Payload)
+		for _, r := range prior.Entries[:prior.Count] {
+			start, covered := r.Start, false
+			for range current.Count {
+				for _, c := range current.Entries[:current.Count] {
+					if start.Less(c.Start) || c.End.Less(start) {
+						continue
+					}
+					if !c.End.Less(r.End) {
+						covered = true
+						break
+					}
+					start = c.End.Next()
+				}
+				if covered {
+					break
+				}
+			}
+			if !covered {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (m *Machine) send(p Packet) {
 	if !m.sendAvailable() {
 		// ACK/control retransmissions are unreliable and safely coalesce by type.
 		// DATA/FIN remain in tx: pump never calls send without a reserved slot.
 		for i, old := range m.controls {
 			if old.Type == p.Type {
+				if omitsACK(old, p) {
+					m.discards[1]++
+				}
 				m.controls[i] = p
 				return
 			}
@@ -372,9 +419,11 @@ func (m *Machine) refresh() {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/session.md#connection-identity
 func (m *Machine) receive(p Packet) {
 	if !receiveValid(p.Type, p.Payload) {
+		m.discards[2]++
 		return
 	}
 	if !known(p.Type) {
+		m.discards[3]++
 		m.emit(Action{Kind: ReceiveOddity, Type: p.Type})
 		return
 	}
@@ -385,10 +434,12 @@ func (m *Machine) receive(p Packet) {
 		if p.Version > 3 {
 			if m.remote == 0 {
 				if p.ID == 0 || p.ID == m.cfg.PreviousRemoteID {
+					m.discards[4]++
 					return
 				}
 				m.remote = p.ID
 			} else if p.ID != m.remote {
+				m.discards[4]++
 				return
 			}
 		}
@@ -400,6 +451,7 @@ func (m *Machine) receive(p Packet) {
 		return
 	}
 	if p.ID != 0 && p.ID != m.cfg.LocalID {
+		m.discards[4]++
 		return
 	}
 	switch p.Type {
@@ -411,20 +463,28 @@ func (m *Machine) receive(p Packet) {
 		if m.status == Established || m.status == Closing {
 			m.refresh()
 			m.data(p)
+		} else {
+			m.discards[0]++
 		}
 	case DataACK, UrgentACK, ACK2, SACK2:
 		if m.status == Established || m.status == Closing {
 			m.refresh()
 			m.acknowledged(p)
+		} else {
+			m.discards[0]++
 		}
 	case FIN:
 		if (m.status == Established || m.status == Closing) && p.Sequence == (Sequence{0xffffffff, 0xffffffff}) {
 			m.ack(p, FINACK)
 			m.stop("", true)
+		} else {
+			m.discards[0]++
 		}
 	case FINACK:
 		if m.status == Closing && p.Sequence == (Sequence{0xffffffff, 0xffffffff}) && len(m.tx) == 1 && m.tx[0].packet.Type == FIN && m.tx[0].sent {
 			m.stop("", true)
+		} else {
+			m.discards[0]++
 		}
 	case Quit:
 		// QUIT force-stops
@@ -540,6 +600,7 @@ func (m *Machine) data(p Packet) {
 	}
 
 	if p.Sequence.Low > 0xf0000000 {
+		m.discards[5]++
 		return
 	}
 	i, found := slices.BinarySearchFunc(m.rx, p.Sequence, func(p rxPacket, s Sequence) int {
@@ -559,6 +620,9 @@ func (m *Machine) data(p Packet) {
 			t.stats.RetransmittedObserved++
 		}
 	}
+	if found || p.Sequence.Less(m.nextRead) {
+		m.discards[6]++
+	}
 	if !found && !p.Sequence.Less(m.nextRead) {
 		bytes, slots := m.cfg.RXBytes-m.rxBytes, m.cfg.RXPackets-len(m.rx)
 		// Selectively ACKed later packets cannot be evicted. Reserve for
@@ -570,6 +634,7 @@ func (m *Machine) data(p Packet) {
 			slots--
 		}
 		if slots < 1 || len(p.Payload) > bytes {
+			m.discards[7]++
 			if t := m.telemetry; t != nil {
 				t.stats.CapacityRejects++
 			}
@@ -703,13 +768,48 @@ func (m *Machine) acknowledged(p Packet) {
 			t.stats.ACKReceived++
 		}
 	}
+	ignored, matched := false, false
+	if p.Type == SACK2 {
+		tail := p.Payload[8+16*len(ranges):]
+		ignored = len(tail)%16 != 0
+		for _, b := range tail {
+			if b != 0 {
+				ignored = true
+				break
+			}
+		}
+	}
+	var sentMax Sequence
+	hasSent := false
 	sample := false
 	var candidate txPacket
 	kept := m.tx[:0]
 	for i, node := range m.tx {
 		remove, boundary, force := false, false, false
 		s := node.packet.Sequence
+		if !node.sent || node.packet.Type == FIN {
+			switch p.Type {
+			case DataACK, UrgentACK:
+				if s == p.Sequence {
+					ignored = true
+				}
+			case ACK2:
+				if !p.Sequence.Less(s) {
+					ignored = true
+				}
+			case SACK2:
+				for _, r := range ranges {
+					if !s.Less(r.Start) && !r.End.Less(s) {
+						ignored = true
+					}
+				}
+			}
+		}
 		if node.sent && node.packet.Type != FIN {
+			if !hasSent || sentMax.Less(s) {
+				sentMax = s
+			}
+			hasSent = true
 			switch p.Type {
 			case DataACK, UrgentACK:
 				remove = s == p.Sequence
@@ -733,6 +833,7 @@ func (m *Machine) acknowledged(p Packet) {
 			}
 		}
 		if remove {
+			matched = true
 			m.txBytes -= len(node.packet.Payload)
 			if boundary {
 				candidate = node
@@ -758,6 +859,18 @@ func (m *Machine) acknowledged(p Packet) {
 		t.txAt = t.txAt[:len(kept)]
 		t.txForce = t.txForce[:len(kept)]
 	}
+	if p.Type == SACK2 {
+		for _, r := range ranges {
+			if !hasSent || sentMax.Less(r.End) {
+				ignored = true
+			}
+		}
+	} else if !hasSent || sentMax.Less(p.Sequence) {
+		ignored = true
+	}
+	if ignored || !matched {
+		m.discards[8]++
+	}
 	if sample {
 		m.sample(candidate)
 	}
@@ -770,6 +883,7 @@ func (m *Machine) acknowledged(p Packet) {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/reliability.md#rtt-and-rto
 func (m *Machine) sample(n txPacket) {
 	if n.retried || m.now < n.last {
+		m.discards[8]++
 		if t := m.telemetry; t != nil {
 			t.stats.RTTAmbiguous++
 		}
@@ -1022,3 +1136,7 @@ func (m *Machine) stop(reason string, orderly bool) {
 		m.emit(Action{Kind: Failed, Reason: reason})
 	}
 }
+
+// Discards returns cumulative per-rule counts for R087-R095. Protocol ACK and
+// suppression behavior is unchanged when these counters advance.
+func (m *Machine) Discards() [9]uint64 { return m.discards }

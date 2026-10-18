@@ -93,7 +93,9 @@ func TestMetamorphicUnknownBounds(t *testing.T) {
 		m := newMachine(t, nil)
 		ready(t, m)
 		before := *m
-		if a := m.Step(Event{Kind: Receive, Packet: p}, 0); len(metamorphicActions(t, a, 0)) != 0 || !reflect.DeepEqual(before, *m) {
+		a := m.Step(Event{Kind: Receive, Packet: p}, 0)
+		before.discards = m.discards
+		if len(metamorphicActions(t, a, 0)) != 0 || !reflect.DeepEqual(before, *m) {
 			t.Fatal("unknown changed state/actions")
 		}
 		if _, err = p.Encode(); err == nil {

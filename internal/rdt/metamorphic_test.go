@@ -126,6 +126,7 @@ func metamorphicRun(t *testing.T, wire, unknown []byte, observers ...func(Event,
 		}
 		before := *m
 		a := step(Event{Kind: Receive, Packet: q}, core.Instant(time.Second))
+		before.discards = m.discards
 		if len(metamorphicActions(t, a, 0)) != 0 || !reflect.DeepEqual(before, *m) {
 			t.Fatal("unknown changed protocol state/actions")
 		}
@@ -142,6 +143,7 @@ func metamorphicRun(t *testing.T, wire, unknown []byte, observers ...func(Event,
 	// (liveness, congestion, queues, timers) must be identical.
 	m.cumulativeHeader.Reserved = 0
 	m.selectiveHeader.Reserved = 0
+	m.discards = [9]uint64{}
 	return *m, actions
 }
 func checkMetamorphicReceive(t *testing.T, row metamorphicFixture, noise []byte) {
@@ -216,7 +218,9 @@ func TestMetamorphicReceive(t *testing.T) {
 				t.Fatal(err)
 			}
 			p.ID = 6
-			if a := m.Step(Event{Kind: Receive, Packet: p}, 0); len(a) != 0 || !reflect.DeepEqual(before, *m) {
+			a := m.Step(Event{Kind: Receive, Packet: p}, 0)
+			before.discards = m.discards
+			if len(a) != 0 || !reflect.DeepEqual(before, *m) {
 				t.Fatal("foreign ID accepted")
 			}
 		})
