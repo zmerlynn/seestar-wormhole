@@ -8,7 +8,7 @@ in the [README](../README.md#status).
 Daily-use testing was on one **Seestar S50 Pro, firmware 9.31**. The same
 telescope now runs **firmware 9.75**, with the narrower coverage below. Other
 Seestar models on the same cloud service are expected to work, since they
-share the connection, but no other model has been tested.
+share the connection, but operation on other models has not been observed.
 
 ### Firmware 9.75
 
