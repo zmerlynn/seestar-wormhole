@@ -37,12 +37,15 @@ worked on 9.31; they weren't part of the 9.75 run.
 
 ## Platforms
 
+Native macOS (arm64) and Windows CI jobs run build, vet and tests, then smoke
+test the command's version and help output.
+
 - **Linux** is where the proxy runs continuously, including overnight use.
   The phone setup hasn't been run from Linux, though it should work the
   same way.
 - **macOS** has run the phone-app setup.
 - **Windows** cross-builds, and a selection of tests pass under Wine. It
-  hasn't been run natively or against a real telescope, so its console
+  hasn't been run against a real telescope, so its console
   handling and file permissions are untested in practice. It has no LAN
   discovery. [rclone is the supported copying route](copying.md#windows).
 - **Containers** are checked for the image's user and startup. The phone setup
