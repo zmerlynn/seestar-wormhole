@@ -309,7 +309,7 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 	defer cancelWork()
 	p.config.CancelOnPanic = cancelWork
 	p.config.PlanLogger = logger
-	openDestination := pull.OpenDestination
+	openDestination := func(path string) (*pull.Destination, error) { return pull.OpenDestinationLogged(path, logger) }
 	if p.config.DryRun {
 		openDestination = pull.OpenReadOnlyDestination
 	}

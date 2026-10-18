@@ -10,6 +10,7 @@ import (
 	"github.com/go-json-experiment/json/jsontext"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -70,11 +71,17 @@ type Destination struct {
 	lock, directory *os.File
 	State           State
 	readOnly        bool
+	logger          *slog.Logger
 }
 
 // OpenDestination locks before cloud login or device acquisition. Data directory
 // creation respects umask; metadata uses private permissions or a private ACL.
 func OpenDestination(dest string) (*Destination, error) {
+	return OpenDestinationLogged(dest, slog.Default())
+}
+
+// OpenDestinationLogged reports each removed stale partial through logger.
+func OpenDestinationLogged(dest string, logger *slog.Logger) (*Destination, error) {
 	absolute, err := filepath.Abs(dest)
 	if err != nil {
 		return nil, err
@@ -85,7 +92,7 @@ func OpenDestination(dest string) (*Destination, error) {
 	if err = checkLocalPath(absolute); err != nil {
 		return nil, err
 	}
-	d := &Destination{path: absolute, dir: filepath.Join(absolute, metadata)}
+	d := &Destination{path: absolute, dir: filepath.Join(absolute, metadata), logger: logger}
 	d.directory, err = privateDirectory(d.dir)
 	if err != nil {
 		return nil, err
@@ -451,6 +458,21 @@ func (d *Destination) cleanPartials() error {
 		if !entry.Type().IsRegular() {
 			return failure(diagnostic.UnsafePath)
 		}
-		return os.Remove(path)
+		if err := os.Remove(path); err != nil {
+			return err
+		}
+		logger := d.logger
+		if logger == nil {
+			logger = slog.Default()
+		}
+		class := "partial"
+		if strings.HasPrefix(name, ".seestar-sums-") {
+			class = "checksums"
+		}
+		if filepath.Dir(path) == d.dir && strings.HasPrefix(name, ".tmp-") {
+			class = "metadata"
+		}
+		logger.Warn("stale_partial_removed", "rule", "stale_partial_removed", "class", class, "count", 1)
+		return nil
 	})
 }
