@@ -219,6 +219,7 @@ type operation struct {
 // Machine is single-owner and single-use. It contains fixed endpoint/operation
 // tables and no sockets, goroutines, clocks, random generators or crypto library.
 type Machine struct {
+	discards                                  [11]uint64 // cumulative counts for R039-R049, independent of DEBUG telemetry
 	resolveToken, materialToken               uint64
 	nat                                       NATTracker
 	relaySelected                             Link
@@ -285,7 +286,11 @@ func after(t core.Instant, d time.Duration) core.Instant {
 // do bounded catch-up for alive counters, never bursts of queued retries.
 func (m *Machine) Step(e Event, now core.Instant) []Action {
 	if e.Attempt != m.cfg.Attempt || m.state == Closed {
+		m.discards[0]++
 		return nil
+	}
+	if now < max(core.Instant(0), m.now) {
+		m.discards[0]++
 	}
 	if now < 0 {
 		now = 0
@@ -308,6 +313,7 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 		m.failConnecting(m.pathFailures() | ConnectionTimeout)
 	} else if e.Kind == Start {
 		if m.started {
+			m.discards[0]++
 			return nil
 		}
 		m.started = true
@@ -319,6 +325,7 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 		m.emit(Action{Kind: Generate, Token: m.materialToken})
 		m.emit(Action{Kind: Resolve, Token: m.resolveToken, Domain: m.domain})
 	} else if !m.started {
+		m.discards[0]++
 		return nil
 	} else {
 		m.expireDirectTasks()
@@ -363,6 +370,8 @@ func (m *Machine) handleEvent(e Event) {
 	case Wire:
 		if len(e.Data) <= MaxPacket {
 			m.wire(e)
+		} else {
+			m.discards[1]++
 		}
 	case Write:
 		if m.state == Established && len(e.Data) > 0 && len(e.Data) <= MaxData {
@@ -376,11 +385,16 @@ func (m *Machine) handleEvent(e Event) {
 	case Tick:
 		m.tick()
 	case CryptoRejected:
+		found := false
 		for i, p := range m.pending {
 			if p.token == e.Token && e.Token != 0 && p.kind == Open {
 				m.pending[i] = operation{}
+				found = true
 				break
 			}
+		}
+		if !found {
+			m.discards[0]++
 		}
 	case EffectFailed:
 		m.effectFailed(e)
@@ -393,6 +407,7 @@ func (m *Machine) resolved(e Event) {
 	if m.state == Connecting && e.Token != 0 && e.Token == m.resolveToken && !m.hasDNS && len(e.Addresses) > 0 && len(e.Addresses) <= 4 {
 		for _, ip := range e.Addresses {
 			if !ip.Is4() || ip.IsUnspecified() {
+				m.discards[0]++
 				continue
 			}
 			duplicate := false
@@ -404,6 +419,8 @@ func (m *Machine) resolved(e Event) {
 			if !duplicate {
 				m.masters[m.masterCount] = ip
 				m.masterCount++
+			} else {
+				m.discards[0]++
 			}
 		}
 		m.hasDNS = m.masterCount > 0
@@ -411,6 +428,8 @@ func (m *Machine) resolved(e Event) {
 			m.resolveToken = 0
 		}
 		m.begin()
+	} else {
+		m.discards[0]++
 	}
 }
 
@@ -421,6 +440,8 @@ func (m *Machine) materialReady(e Event) {
 		m.hasMaterial = true
 		m.materialToken = 0
 		m.begin()
+	} else {
+		m.discards[0]++
 	}
 }
 
@@ -434,7 +455,11 @@ func (m *Machine) connected(e Event) {
 			} else {
 				m.prepare(i)
 			}
+		} else {
+			m.discards[0]++
 		}
+	} else {
+		m.discards[0]++
 	}
 }
 
@@ -442,6 +467,7 @@ func (m *Machine) connected(e Event) {
 // owner. Tokens are attempt-unique; Link also binds connection generation.
 func (m *Machine) effectFailed(e Event) {
 	if e.Token == 0 {
+		m.discards[0]++
 		return
 	}
 	if e.Link == (Link{}) {
@@ -466,6 +492,7 @@ func (m *Machine) effectFailed(e Event) {
 			return
 		}
 	}
+	m.discards[0]++
 }
 
 func validMaterial(v Material) bool {
@@ -487,6 +514,7 @@ func (m *Machine) begin() {
 }
 func (m *Machine) add(v endpoint) int {
 	if m.count == len(m.endpoints) {
+		m.discards[7]++
 		return -1
 	}
 	i := m.count
@@ -522,9 +550,11 @@ func (m *Machine) linkFailed(l Link) {
 		m.close("transport failed", false)
 		return
 	}
+	candidateFound := false
 	if l.Transport == UDP && l.ID == 0 {
 		for j, addr := range m.candidates[:m.candidateCount] {
 			if addr == l.Address {
+				candidateFound = true
 				m.candidateFailed[j] = true
 				m.knockReply[j] = false
 			}
@@ -532,6 +562,9 @@ func (m *Machine) linkFailed(l Link) {
 	}
 	i := m.find(l)
 	if i < 0 {
+		if !candidateFound {
+			m.discards[0]++
+		}
 		return
 	}
 	v := &m.endpoints[i]
@@ -599,6 +632,7 @@ func (m *Machine) reserve(p operation) bool {
 			return true
 		}
 	}
+	m.discards[2]++
 	return false
 }
 func (m *Machine) clearPending(l Link) {
@@ -617,6 +651,7 @@ func (m *Machine) query(i int) {
 	}
 	v := &m.endpoints[i]
 	if m.pendingFor(v.link, Seal, 0x100b) {
+		m.discards[41-39]++
 		return
 	}
 	p := masterQuery(m.cfg.UID, m.cfg.License.Realm, m.material)
@@ -629,6 +664,7 @@ func (m *Machine) query(i int) {
 }
 func (m *Machine) seal(l Link, typ byte, op uint16, mode CryptoMode, key KeyRef, aad, plain []byte) {
 	if m.pendingFor(l, Seal, op) {
+		m.discards[41-39]++
 		return
 	}
 	p := operation{token: m.token(), kind: Seal, link: l, typ: typ, opcode: op, aadN: len(aad), size: len(plain)}
@@ -667,6 +703,7 @@ func (m *Machine) prepare(i int) {
 }
 func (m *Machine) derived(e Event) {
 	if m.state != Connecting {
+		m.discards[0]++
 		return
 	}
 	for i := 0; i < m.cache.Count; i++ {
@@ -689,11 +726,13 @@ func (m *Machine) derived(e Event) {
 			return
 		}
 	}
+	m.discards[0]++
 }
 func (m *Machine) control(i int, op uint16) {
 	v := &m.endpoints[i]
 	key, ok := m.cache.Lookup(v.cache)
 	if !ok {
+		m.discards[41-39]++
 		return
 	}
 	// Selected UDP/TCP info uses flag 1; eligible unselected UDP servers use flag 0.
@@ -719,6 +758,7 @@ func (m *Machine) hello(i int) {
 	// local attempt deadline.
 	if v.hello != 0 {
 		if v.helloCount == len(v.helloPrior) {
+			m.discards[41-39]++
 			return
 		}
 		v.helloPrior[v.helloCount] = v.hello
@@ -757,6 +797,8 @@ func (m *Machine) legacy(l Link, p Packet) {
 	b, e := EncodeLegacy(p, m.key)
 	if e == nil {
 		m.emit(Action{Kind: Send, Link: l, Data: b})
+	} else {
+		m.discards[2]++
 	}
 }
 func (m *Machine) wire(e Event) {
@@ -766,6 +808,7 @@ func (m *Machine) wire(e Event) {
 	}
 	p, err := DecodeLegacy(e.Data, m.key)
 	if err != nil {
+		m.discards[9]++
 		return
 	}
 	m.peer(e.Link, p)
@@ -777,14 +820,17 @@ func (m *Machine) wire(e Event) {
 func (m *Machine) openRecord(e Event) {
 	r, err := ParseRecord(e.Data)
 	if err != nil || r.SID != m.cfg.RecordSID {
+		m.discards[42-39]++
 		return
 	}
 	i := m.find(e.Link)
 	if i < 0 {
+		m.discards[42-39]++
 		return
 	}
 	v := m.endpoints[i]
 	if v.stage == endpointTerminal {
+		m.discards[42-39]++
 		return
 	}
 	if r.Unknown() || r.Type == 2 {
@@ -792,13 +838,16 @@ func (m *Machine) openRecord(e Event) {
 		return // Unknown types have no authenticated-body or liveness semantics.
 	}
 	if m.state == Established && (r.Type != 4 || !(m.direct && v.stage == punchRecovery || !m.direct && v.link == m.path)) {
+		m.discards[42-39]++
 		return
 	}
 	key, prefix, ok := m.recordContext(v, r)
 	if !ok {
+		m.discards[42-39]++
 		return
 	}
 	if len(e.Data) < prefix+16 || m.pendingFor(e.Link, Open, 0) {
+		m.discards[42-39]++
 		return
 	}
 	p := operation{token: m.token(), kind: Open, link: e.Link, typ: r.Type, size: len(e.Data) - prefix - 16, marker: e.Marker}
@@ -854,6 +903,7 @@ func (m *Machine) cryptoDone(e Event) {
 	for i, v := range m.pending {
 		if v.token == e.Token && e.Token != 0 {
 			if e.Kind == Encrypted && v.kind != Seal || e.Kind == Decrypted && v.kind != Open {
+				m.discards[0]++
 				return
 			}
 			p = v
@@ -863,6 +913,7 @@ func (m *Machine) cryptoDone(e Event) {
 		}
 	}
 	if !found {
+		m.discards[0]++
 		return
 	}
 	if e.Kind == Encrypted {
@@ -881,6 +932,7 @@ func (m *Machine) cryptoDone(e Event) {
 		return
 	}
 	if len(e.Data) != p.size {
+		m.discards[5]++
 		return
 	}
 	m.decrypted(p, e.Data)
@@ -891,15 +943,18 @@ func (m *Machine) cryptoDone(e Event) {
 func (m *Machine) decrypted(p operation, data []byte) {
 	i := m.find(p.link)
 	if i < 0 {
+		m.discards[44-39]++
 		return
 	}
 	v := &m.endpoints[i]
 	if p.typ == 4 && p.sid != v.sid {
+		m.discards[44-39]++
 		return
 	}
 	if p.typ == 14 {
 		a, err := ParseAlert(data)
 		if err != nil || a.Nonce != m.material.P2PNonce || v.sid != 0 && a.ServerSID != v.sid {
+			m.discards[44-39]++
 			return
 		}
 		if a.Trigger != 2 && a.Trigger != 4 {
@@ -919,6 +974,7 @@ func (m *Machine) decrypted(p operation, data []byte) {
 	}
 	packet, err := ParsePacket(data)
 	if err != nil {
+		m.discards[44-39]++
 		return
 	}
 	if p.typ == 1 && packet.Opcode != 0x100c {
@@ -927,6 +983,7 @@ func (m *Machine) decrypted(p operation, data []byte) {
 	}
 	c, err := ParseControl(packet)
 	if err != nil {
+		m.discards[44-39]++
 		return
 	}
 	if c.Unknown {
@@ -934,11 +991,13 @@ func (m *Machine) decrypted(p operation, data []byte) {
 		return
 	}
 	if c.UID != m.cfg.UID {
+		m.discards[44-39]++
 		return
 	}
 	switch packet.Opcode {
 	case 0x100c:
 		if p.typ != 1 || c.Nonce != m.material.MasterNonce || v.stage != endpointInitial || m.state != Connecting {
+			m.discards[44-39]++
 			return
 		}
 		m.layoutOddity(packet.Opcode, c.layoutOddity)
@@ -962,6 +1021,7 @@ func (m *Machine) decrypted(p operation, data []byte) {
 func (m *Machine) precheckResult(i int, p operation, c Control) {
 	v := &m.endpoints[i]
 	if p.typ != 3 || v.stage != precheckPending || c.Nonce != m.material.P2PNonce || c.ServerSID == 0 || m.state != Connecting {
+		m.discards[45-39]++
 		return
 	}
 	v.sid = c.ServerSID
@@ -982,15 +1042,19 @@ func (m *Machine) precheckResult(i int, p operation, c Control) {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/rendezvous-gcm.md#receive-processing
 func (m *Machine) punchResult(i int, p operation, c Control) {
 	if p.typ != 4 || c.Nonce != m.material.P2PNonce || c.RID != m.material.RID || !m.selection || m.selected != UDP {
+		m.discards[45-39]++
 		return
 	}
 	if m.state == Established {
 		if m.direct {
 			m.legacy(m.path, knock(0x0403, m.cfg.UID, m.material.RID))
+		} else {
+			m.discards[6]++
 		}
 		return
 	}
 	if m.endpoints[i].directExpired {
+		m.discards[45-39]++
 		return
 	}
 	until := m.endpoints[i].directUntil
@@ -1008,6 +1072,7 @@ func (m *Machine) punchResult(i int, p operation, c Control) {
 func (m *Machine) relayResult(i int, p operation, c Control) {
 	v := &m.endpoints[i]
 	if p.typ != 4 || c.RID != m.material.RID || v.stage < rendezvousPending || v.stage > relayRefused || m.state != Connecting {
+		m.discards[45-39]++
 		return
 	}
 	if c.Result != 0 && c.Result != -7 && relayFailure(c.Result) == 0 {
@@ -1016,10 +1081,12 @@ func (m *Machine) relayResult(i int, p operation, c Control) {
 	}
 	m.observeRelayResult(v, c.Result)
 	if v.stage != rendezvousPending {
+		m.discards[45-39]++
 		return
 	}
 	if c.Result == 0 {
 		if v.link.Transport == TCP && m.relaySelected.Address.IsValid() && m.relaySelected != v.link {
+			m.discards[45-39]++
 			return
 		}
 		if !m.relaySelected.Address.IsValid() {
@@ -1038,13 +1105,18 @@ func (m *Machine) relayResult(i int, p operation, c Control) {
 func (m *Machine) relayInfo(i int, p operation, c Control) {
 	v := &m.endpoints[i]
 	if p.typ != 4 || c.RID != m.material.RID || !m.selection || v.link.Transport != m.selected || v.stage != relayInfoPending && v.stage != relayInfoReady {
+		m.discards[45-39]++
 		return
 	}
 	if m.state == Established && (m.direct || v.link != m.path) {
+		m.discards[45-39]++
 		return
 	}
 	increment(&m.progress.InfoReceived)
 	m.relayPhase(RelayInfoReceived)
+	if c.RelayID > 0xffff {
+		m.discards[6]++
+	}
 	v.relayID = uint16(c.RelayID)
 	v.relayReady = true
 	if m.state == Established {
@@ -1060,6 +1132,7 @@ func (m *Machine) relayInfo(i int, p operation, c Control) {
 func (m *Machine) masterResult(i int, c Control, at Marker) {
 	v := &m.endpoints[i]
 	if len(c.Servers) == 0 {
+		m.discards[46-39]++
 		return
 	}
 	v.stage = masterAnswered
@@ -1069,11 +1142,13 @@ func (m *Machine) masterResult(i int, c Control, at Marker) {
 	for _, s := range c.Servers {
 		idx, err := m.cache.Install(s, at)
 		if err != nil {
+			m.discards[7]++
 			continue
 		}
 		if v.link.Transport == UDP {
 			l := Link{Address: s.Address}
 			if m.find(l) >= 0 {
+				m.discards[7]++
 				continue
 			}
 			j := m.add(endpoint{link: l, connected: true, cache: idx})
@@ -1090,6 +1165,8 @@ func (m *Machine) masterResult(i int, c Control, at Marker) {
 			}
 			if !exists {
 				m.openTCP(s.Address.Addr(), false, idx)
+			} else {
+				m.discards[7]++
 			}
 		}
 	}
@@ -1157,6 +1234,7 @@ func (m *Machine) chooseTCP() {
 // occupy their slot so a delayed authenticated punch cannot reauthorize them.
 func (m *Machine) addCandidate(a netip.AddrPort, until core.Instant) {
 	if !a.IsValid() {
+		m.discards[47-39]++
 		return
 	}
 	for i, old := range m.candidates[:m.candidateCount] {
@@ -1164,11 +1242,14 @@ func (m *Machine) addCandidate(a netip.AddrPort, until core.Instant) {
 			// A shared address remains eligible while any authorizing task lives.
 			if m.candidateUntil[i] != 0 && (until == 0 || until > m.candidateUntil[i]) {
 				m.candidateUntil[i] = until
+			} else {
+				m.discards[8]++
 			}
 			return
 		}
 	}
 	if m.candidateCount == len(m.candidates) {
+		m.discards[47-39]++
 		return
 	}
 	m.candidates[m.candidateCount] = a
@@ -1188,6 +1269,7 @@ func (m *Machine) hasLiveCandidates() bool {
 func (m *Machine) knocks() {
 	for i, a := range m.candidates[:m.candidateCount] {
 		if m.candidateFailed[i] {
+			m.discards[8]++
 			continue
 		}
 		m.legacy(Link{Address: a}, knock(0x0403, m.cfg.UID, m.material.RID))
@@ -1204,12 +1286,14 @@ func (m *Machine) peer(l Link, p Packet) {
 		return
 	}
 	if m.state != Established || l != m.path {
+		m.discards[48-39]++
 		return
 	}
 	dataOp, aliveOp, closeOp := uint16(0x0408), uint16(0x0428), uint16(0x0418)
 	if !m.direct {
 		dataOp, aliveOp, closeOp = 0x0503, 0x0523, 0x0513
 		if p.ID != m.relay {
+			m.discards[48-39]++
 			return
 		}
 	}
@@ -1219,6 +1303,7 @@ func (m *Machine) peer(l Link, p Packet) {
 	case dataOp:
 		rid, b, err := ParseData(p)
 		if err != nil || rid != m.material.RID || p.Channel != 0 || p.Type&3 != 1 {
+			m.discards[48-39]++
 			return
 		}
 		m.routeOddity(p)
@@ -1228,6 +1313,7 @@ func (m *Machine) peer(l Link, p Packet) {
 		// Only relay alive permits a tail after the extended RID prefix.
 		// Direct alive and both CLOSE forms retain their fixed layouts.
 		if len(p.Body) < 8 || (m.direct || p.Opcode == closeOp) && len(p.Body) != 8 || [8]byte(p.Body) != m.material.RID || p.Flags&8 == 0 {
+			m.discards[48-39]++
 			return
 		}
 		m.routeOddity(p)
@@ -1237,6 +1323,8 @@ func (m *Machine) peer(l Link, p Packet) {
 			m.layoutOddity(p.Opcode, len(p.Body) != 8)
 			m.alive = 0
 		}
+	default:
+		m.discards[9]++
 	}
 }
 
@@ -1249,6 +1337,7 @@ func (m *Machine) peer(l Link, p Packet) {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#nat-classification
 func (m *Machine) observeHello(l Link, p Packet) {
 	if m.state != Connecting || l.Transport != UDP || len(p.Body) < 24 {
+		m.discards[48-39]++
 		return
 	}
 	i := m.find(l)
@@ -1258,12 +1347,14 @@ func (m *Machine) observeHello(l Link, p Packet) {
 			known = known || e.Address == l.Address.Addr()
 		}
 		if !known {
+			m.discards[48-39]++
 			return
 		}
 		i = -1
 		for j, v := range m.endpoints[:m.count] {
 			if !v.master && v.link.Transport == UDP && v.stage < endpointTerminal && v.ownsHello(le32(p.Body[16:])) {
 				if i >= 0 {
+					m.discards[48-39]++
 					return
 				} // Ambiguous serials cannot authorize another source.
 				i = j
@@ -1271,17 +1362,21 @@ func (m *Machine) observeHello(l Link, p Packet) {
 		}
 	}
 	if i < 0 {
+		m.discards[48-39]++
 		return
 	}
 	v := &m.endpoints[i]
 	if v.master || v.hello == 0 || v.stage >= endpointTerminal {
+		m.discards[48-39]++
 		return
 	}
 	if !v.ownsHello(le32(p.Body[16:])) || le16(p.Body[20:]) != uint16(m.cfg.RecordSID) {
+		m.discards[48-39]++
 		return
 	}
 	observed, err := ParseAddress(p.Body[:16])
 	if err != nil {
+		m.discards[48-39]++
 		return
 	}
 	m.layoutOddity(p.Opcode, len(p.Body) != 24)
@@ -1301,6 +1396,7 @@ func (m *Machine) observeHello(l Link, p Packet) {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/framing.md#generated-control-packets
 func (m *Machine) peerKnock(l Link, p Packet) {
 	if l.Transport != UDP || !m.selection || m.selected != UDP || m.state == Established && (!m.direct || l != m.path) {
+		m.discards[48-39]++
 		return
 	}
 	candidate := -1
@@ -1311,10 +1407,12 @@ func (m *Machine) peerKnock(l Link, p Packet) {
 		}
 	}
 	if candidate < 0 {
+		m.discards[48-39]++
 		return
 	}
 	c, err := ParseControl(p)
 	if err != nil || c.UID != m.cfg.UID || c.RID != m.material.RID || p.Route&0x200 != 0 {
+		m.discards[48-39]++
 		return
 	}
 	m.layoutOddity(p.Opcode, c.layoutOddity)
@@ -1327,6 +1425,7 @@ func (m *Machine) peerKnock(l Link, p Packet) {
 		m.legacy(l, knock(0x0402, m.cfg.UID, m.material.RID))
 	case 0x0402, 0x0405:
 		if p.Opcode == 0x0405 && byte(c.Result) == 0 {
+			m.discards[48-39]++
 			return
 		}
 		q := knock(0x0404, m.cfg.UID, m.material.RID)
@@ -1337,11 +1436,14 @@ func (m *Machine) peerKnock(l Link, p Packet) {
 		}
 	case 0x0404, 0x0406:
 		if !m.knockReply[candidate] || p.Opcode == 0x0406 && c.Result == 0 {
+			m.discards[48-39]++
 			return
 		}
 		if m.state == Connecting {
 			m.establish(l, true)
 		}
+	default:
+		m.discards[9]++
 	}
 }
 
@@ -1464,6 +1566,9 @@ func (m *Machine) expireDirectTasks() {
 	// discovered addresses too, unless another live task authorizes them.
 	for i, until := range m.candidateUntil[:m.candidateCount] {
 		if until != 0 && m.now >= until {
+			if !m.candidateFailed[i] {
+				m.discards[8]++
+			}
 			m.candidateFailed[i] = true
 			m.knockReply[i] = false
 		}
@@ -1477,6 +1582,7 @@ func (m *Machine) expireDirectTasks() {
 		// Pending encryptions no longer authorize a direct request on this task.
 		for j, p := range m.pending {
 			if p.link == v.link && p.kind == Seal && p.opcode == 0x0240 {
+				m.discards[8]++
 				m.pending[j] = operation{}
 			}
 		}
@@ -1587,4 +1693,12 @@ func (m *Machine) close(reason string, send bool) {
 	m.key = [16]byte{}
 	m.candidates = [12]netip.AddrPort{}
 	m.candidateCount = 0
+}
+
+// Discards returns cumulative per-rule counts for R039-R049. Counts are always
+// collected, have no protocol effects, and contain no peer identity or payload.
+func (m *Machine) Discards() [11]uint64 {
+	counts := m.discards
+	counts[10] += m.nat.discards
+	return counts
 }

@@ -289,13 +289,17 @@ func checkMetamorphicReceive(t *testing.T, row metamorphicFixture, noise []byte,
 		unknown := append(unhex("51cc00000263000007000000"), noise...)
 		put16(unknown[6:], uint16(len(noise)))
 		before := *p1.h.m
-		if a := metamorphicIngress(t, p1, l1, unknown); !metamorphicOnlyTimer(a) || !reflect.DeepEqual(before, *p1.h.m) {
+		a := metamorphicIngress(t, p1, l1, unknown)
+		before.discards = p1.h.m.discards
+		if !metamorphicOnlyTimer(a) || !reflect.DeepEqual(before, *p1.h.m) {
 			t.Fatal("unknown envelope changed state/actions")
 		}
 	}
 	a0 := metamorphicIngress(t, p0, l0, metamorphicRecord(p0, row, base))
 	a1 := metamorphicIngress(t, p1, l1, metamorphicRecord(p1, row, changed))
-	if !reflect.DeepEqual(a0, a1) || !reflect.DeepEqual(*p0.h.m, *p1.h.m) {
+	state0, state1 := *p0.h.m, *p1.h.m
+	state0.discards = state1.discards
+	if !reflect.DeepEqual(a0, a1) || !reflect.DeepEqual(state0, state1) {
 		t.Fatalf("%s changed machine semantics/actions: %+v / %+v", row.Name, a0, a1)
 	}
 	if len(a0) == 0 && (row.Name == "100c" || row.Name == "0218" || row.Name == "030d" || row.Name == "020d" || row.Name == "030e" || row.Mode == "knock") {
@@ -383,7 +387,9 @@ func checkMetamorphicReceive(t *testing.T, row metamorphicFixture, noise []byte,
 			before := *p.h.m
 			a := metamorphicIngress(t, p, l, wire)
 			after := *p.h.m
+			before.discards = after.discards
 			before.serial = after.serial
+			before.discards = after.discards
 			if !metamorphicOnlyTimer(a) || !reflect.DeepEqual(before, after) {
 				t.Fatalf("%s/%s unsafe mutation acted: %+v", row.Name, bad, a)
 			}

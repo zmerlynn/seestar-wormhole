@@ -87,6 +87,7 @@ func TestMetamorphicLegacySafety(t *testing.T) {
 				before := *p.h.m
 				out := metamorphicIngress(t, p, l, metamorphicRecord(p, row, b))
 				after := *p.h.m
+				before.discards = after.discards
 				if !metamorphicOnlyTimer(out) || !reflect.DeepEqual(before, after) {
 					t.Fatalf("%s accepted unsafe %s: %+v", row.Name, bad, out)
 				}
@@ -117,6 +118,7 @@ func TestMetamorphicMasterExtents(t *testing.T) {
 		out := metamorphicIngress(t, p, l, metamorphicRecord(p, row, b))
 		after := *p.h.m
 		before.serial = after.serial
+		before.discards = after.discards
 		if !metamorphicOnlyTimer(out) || !reflect.DeepEqual(before, after) {
 			t.Fatalf("unsafe %s master acted", bad)
 		}
@@ -140,6 +142,7 @@ func TestMetamorphicUnknownBounds(t *testing.T) {
 		}
 		before := *p.h.m
 		out := metamorphicIngress(t, p, l, wire)
+		before.discards = p.h.m.discards
 		if !metamorphicOnlyTimer(out) || !reflect.DeepEqual(before, *p.h.m) {
 			t.Fatal("unknown changed authority")
 		}
@@ -154,6 +157,7 @@ func TestMetamorphicUnknownBounds(t *testing.T) {
 		out := metamorphicIngress(t, p, l, p.record(0xffff, plain))
 		after := *p.h.m
 		before.serial = after.serial
+		before.discards = after.discards
 		if !metamorphicOnlyTimer(out) || !reflect.DeepEqual(before, after) {
 			t.Fatal("unknown inner opcode changed authority")
 		}

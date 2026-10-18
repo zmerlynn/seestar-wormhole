@@ -31,6 +31,7 @@ func (p *matrixPeer) ignore(l Link, wire []byte) {
 	}
 	after := *p.h.m
 	before.serial = after.serial
+	before.discards = after.discards
 	if !reflect.DeepEqual(before, after) {
 		p.t.Fatal("old reply changed retained protocol state")
 	}
@@ -379,6 +380,7 @@ func TestAttemptStaleOpenAcrossRetry(t *testing.T) {
 				}
 			}
 			after := *p.h.m
+			before.discards = after.discards
 			for i, pending := range before.pending {
 				if pending.token == held.Token {
 					before.pending[i] = operation{}

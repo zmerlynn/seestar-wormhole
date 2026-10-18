@@ -51,6 +51,10 @@ func (m *Machine) layoutOddity(op uint16, unusual bool) {
 }
 
 func (m *Machine) receiveOddity(category Oddity, op uint16, typ byte) {
+	switch category {
+	case UnknownRecord, UnknownControl, UnknownAlert, UnknownRelayResult:
+		m.discards[4]++
+	}
 	m.emit(Action{Kind: ReceiveOddity, Oddity: category, Opcode: op, Type: typ})
 }
 

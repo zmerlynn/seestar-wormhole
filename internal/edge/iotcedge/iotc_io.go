@@ -59,9 +59,6 @@ func (x *IOTCIO) Run(ctx context.Context, actions <-chan iotc.Action, emit func(
 			if err != nil {
 				return
 			}
-			if n > iotc.MaxPacket {
-				continue
-			}
 			if !emit(iotc.Event{Kind: iotc.Wire, Link: iotc.Link{Address: addr}, Data: append([]byte(nil), b[:n]...), Marker: marker()}) {
 				return
 			}

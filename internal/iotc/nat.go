@@ -6,25 +6,28 @@ import "net/netip"
 // The integer is an observation code, not a claim of a complete RFC NAT taxonomy.
 // It is attempt-local; the device's multi-session 25-second refresh does not apply.
 type NATTracker struct {
-	records [8]struct{ server, observed netip.AddrPort }
-	count   int
-	other   bool
+	discards uint64 // R049; preserved when a changed mapping clears observations
+	records  [8]struct{ server, observed netip.AddrPort }
+	count    int
+	other    bool
 }
 
 // Observe records a correlated hello response, clearing observations if the same
 // server reports a changed mapping. The caller validates serial/instance/source.
 func (n *NATTracker) Observe(server, observed netip.AddrPort, other bool) {
 	if !server.IsValid() || !observed.IsValid() {
+		n.discards++
 		return
 	}
 	for i := 0; i < n.count; i++ {
 		r := n.records[i]
 		if r.server == server {
 			if r.observed == observed {
+				n.discards++
 				n.other = n.other || other
 				return
 			}
-			*n = NATTracker{}
+			*n = NATTracker{discards: n.discards + uint64(n.count)}
 			break
 		}
 	}
@@ -32,6 +35,8 @@ func (n *NATTracker) Observe(server, observed netip.AddrPort, other bool) {
 		n.records[n.count].server = server
 		n.records[n.count].observed = observed
 		n.count++
+	} else {
+		n.discards++
 	}
 	n.other = n.other || other
 }
@@ -56,3 +61,6 @@ func (n *NATTracker) Type() byte {
 	}
 	return 3
 }
+
+// Discards reports the cumulative R049 observation-loss count.
+func (n *NATTracker) Discards() uint64 { return n.discards }
