@@ -44,7 +44,7 @@ tag scheme join the contract from that release, with the image tagged by the bin
      old layout alone and the notes state the minimum binary that reads it.
    - The notes of a release that changes state give the schema it writes, the schemas it reads, and when it first
      writes.
-   - State is an interface between our own binaries. Third-party readers or editors of state.json are not supported.
+   - State is an interface between the project's binaries. Third-party readers or editors of state.json are not supported.
    - Lowering a hard limit (inventory entries, state size) so that a working destination is refused is breaking.
 9. **Proxy listeners and forwarding.** Port-mapping syntax and default mappings; bind behavior; byte-transparent
    forwarding including half-close; the documented forwarding and local-answer rules (the setter table); LAN discovery on
