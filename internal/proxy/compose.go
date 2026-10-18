@@ -58,6 +58,7 @@ func (x *stack) enqueue(e layerEvent) {
 	// datagrams are unreliable: bounded receive saturation is recoverable loss,
 	// including authenticated RDT packets, never failure of the shared session.
 	if len(x.queue) >= 256 && (e.i != nil && e.i.Kind == iotc.Wire || e.r != nil && e.r.Kind == rdt.Receive) {
+		x.ingressDiscards++
 		if x.telemetry != nil {
 			x.telemetry.ingressRejects++
 		}
@@ -101,6 +102,7 @@ func (x *stack) drive(e layerEvent, now core.Instant) {
 	x.now = now
 	x.expireOpenAdmissions(now)
 	x.initTelemetry(now)
+	x.initDiscardSummary(now)
 	if e.i != nil || e.r != nil || e.t != nil {
 		x.enqueue(e)
 	}
@@ -207,15 +209,18 @@ blocked:
 	if len(x.queue) == 0 {
 		x.queue = nil
 	}
+	x.discardSummary(now)
 	x.stats(now)
 	x.updateTimer(now)
 }
 
 func (x *stack) updateTimer(now core.Instant) {
 	x.openAdmissionTimer(now)
-	next := core.Instant(0)
+	next := x.discardNext
 	if x.telemetry != nil {
-		next = x.telemetry.next
+		if at := x.telemetry.next; at > 0 && (next == 0 || at < next) {
+			next = at
+		}
 	}
 	for layer, at := range x.deadlines {
 		if at > 0 && !(layer == 0 && len(x.effects) > 0 && at <= now) && (next == 0 || at < next) {
@@ -428,10 +433,16 @@ func (x *stack) applyTunnelAction(a p2ptunnel.Action, terminal *diagnostic.Termi
 			c.endOnce.Do(func() { close(c.readEnd) })
 		}
 	case p2ptunnel.CloseLocal:
+		if a.Rule != "" && x.f.s.logger != nil {
+			x.f.s.logger.Warn("tunnel_refused", "rule", a.Rule, "channel", int(a.Channel), "discarded_bytes", a.DiscardedBytes)
+		}
 		if c := x.channels[a.Channel]; c != nil {
 			cause := error(session.ErrTransport)
 			if terminal != nil {
 				cause = terminal
+			}
+			if a.Err != nil {
+				cause = a.Err
 			}
 			switch a.Reason {
 			case "peer close":

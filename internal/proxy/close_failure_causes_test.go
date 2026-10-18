@@ -65,7 +65,7 @@ func TestMixedPeerCloseAndTunnelFailure(t *testing.T) {
 				if result != 0 {
 					wantWarn = 1
 				}
-				if strings.Count(logs.String(), `"level":"ERROR"`) != 1 || strings.Count(logs.String(), `"level":"WARN"`) != wantWarn {
+				if strings.Count(logs.String(), `"level":"ERROR"`) != 1 || strings.Count(logs.String(), `"level":"WARN"`)-strings.Count(logs.String(), `"msg":"transport_discard_summary"`) != wantWarn {
 					t.Errorf("bad report counts: %s", &logs)
 				}
 			})

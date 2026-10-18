@@ -240,10 +240,12 @@ func (x *stack) ownerQueueAge(now core.Instant) time.Duration {
 	return oldest
 }
 
-// telemetryOnlyTick samples idle stats without inserting protocol events. The
+// telemetryOnlyTick reports idle stats and discards without protocol events. The
 // existing timer worker still dispatches actual due layer deadlines normally.
 func (x *stack) telemetryOnlyTick(now core.Instant) bool {
-	if x.telemetry == nil || x.telemetry.exhausted || now < x.telemetry.next {
+	discardDue := x.discardNext > 0 && now >= x.discardNext
+	statsDue := x.telemetry != nil && !x.telemetry.exhausted && now >= x.telemetry.next
+	if !discardDue && !statsDue {
 		return false
 	}
 	for _, at := range x.deadlines {
@@ -251,6 +253,7 @@ func (x *stack) telemetryOnlyTick(now core.Instant) bool {
 			return false
 		}
 	}
+	x.discardSummary(now)
 	x.stats(now)
 	x.updateTimer(now)
 	return true

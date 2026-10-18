@@ -110,7 +110,7 @@ func TestTelemetryReclaimValuesAndStages(t *testing.T) {
 	write = mustAction(t, d.step(local(Event{Kind: LocalWritten, Count: 123}, write)), WriteLocal)
 	check(rpc.Channel, stages{8192, 123, 0, 0, 8069, 8069, true})
 	d.step(local(Event{Kind: LocalWriteFailed}, write))
-	check(rpc.Channel, stages{8192, 123, 8069, 0, 0, 0, true})
+	check(rpc.Channel, stages{8192, 123, 8069, 0, 0, 0, false})
 	if got := d.m.Usage().RXBytes; got != 0 {
 		t.Fatalf("drained bytes=%d want 0", got)
 	}

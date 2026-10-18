@@ -10,6 +10,7 @@ import (
 	"math/rand/v2"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
@@ -56,6 +57,9 @@ type Config struct {
 // construct one per device, and always Close it, including after a failed dial.
 // Protocol state is owned by sessionedge.Run; mu protects only API registrations.
 type Session struct {
+	discardStack             atomic.Pointer[stack] // published by the attempt worker; drained by the owner after join
+	discardNext              core.Instant
+	discardLast              uint64
 	trace                    *tracerecord.Writer
 	traceID                  uint64
 	sourceID                 string       // immutable opaque selected-device identity
@@ -263,6 +267,20 @@ func (s *Session) forget(id uint64) {
 
 // Observe returns consumed command reservations and logs bounded lifecycle transitions.
 func (s *Session) Observe(e session.Event, before, after session.Snapshot, now core.Instant) {
+	s.sessionDiscardSummary(after.Discards, now)
+	// A normal release matches the releasing generation. Final cleanup uses
+	// identical snapshots and a zero attempt; stale Released events must not
+	// drain diagnostics belonging to the active generation.
+	released := e.Kind == session.Released && (e.Attempt == before.Attempt && before.State == session.Releasing || e.Attempt == 0 && before == after)
+	if released {
+		// Released is observed only after the attempt's workers have joined.
+		if x := s.discardStack.Swap(nil); x != nil {
+			x.flushDiscardSummary()
+		}
+	}
+	if released || after.State == session.Closed {
+		s.flushSessionDiscardSummary(after.Discards)
+	}
 	switch e.Kind {
 	case session.ClientGone:
 		s.mu.Lock()
@@ -391,11 +409,14 @@ func (s *Session) DeviceDetail() cloud.Detail { return s.deviceDetail }
 // SourceID returns the opaque selected-device identity without another cloud call.
 func (s *Session) SourceID() string { return s.sourceID }
 
-// ObservationDeadline requests the next unavailable reminder on the owner clock.
-// Readiness, intentional idle release and shutdown need no reporting wakeup.
+// ObservationDeadline requests the next unavailable or discard summary on the owner clock.
 func (s *Session) ObservationDeadline() core.Instant {
-	if s.logger == nil || !s.unavailable {
+	if s.logger == nil {
 		return 0
 	}
-	return s.warnAt
+	next := s.discardNext
+	if s.unavailable && (next == 0 || s.warnAt < next) {
+		next = s.warnAt
+	}
+	return next
 }

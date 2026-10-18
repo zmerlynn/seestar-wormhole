@@ -37,7 +37,7 @@ loopback or a trusted network behind a firewall.
 | `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
 | `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
 | `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
-| `--stats-interval` | `1s` | Nonnegative Go duration. Zero disables collection and periodic telemetry work. Stats records require debug logging. |
+| `--stats-interval` | `1s` | Nonnegative Go duration. Zero disables DEBUG collection and sampling. Discard summaries remain enabled. Stats records require debug logging. |
 | `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. Unsupported on Windows. |
 
 Proxy also accepts every [shared flag](#shared-flags).
@@ -602,8 +602,9 @@ Supply trusted parent directories.
 ## Logs
 
 Help, version, license text, and pull summaries go to stdout. Logs/errors go
-to stderr. Normal logging uses the selected format and level. Default INFO
-has no periodic stats. Use WARN for quieter long-running service logs.
+to stderr. Normal logging uses the selected format and level. The
+[transport telemetry rules](#transport-telemetry) cover periodic statistics
+and discard summaries. Use WARN for quieter long-running service logs.
 Rejected startup suppresses pending dependency records and reports their loss at WARN; diagnostic loss makes the final command result fail.
 A pull summary includes `diagnostics_lost` when nonzero.
 Most diagnostic records contain fixed classifications and numeric context,
@@ -713,7 +714,14 @@ With collection enabled, DEBUG includes `rdt_stats`, `transport_stats`,
 `tunnel_flow`, `iotc_receive_oddity`, `rdt_receive_oddity`,
 `rdt_receive_pressure`, and `tunnel_receive_oddity`. Counters reset per transport attempt.
 With collection disabled, pressure/oddity debug events have a fixed 64-record
-budget per attempt and no periodic timer.
+budget per attempt. Discard counters remain enabled and nonzero deltas produce one
+`transport_discard_summary` WARN per rule every 10 seconds, with `rule` (audit
+row ID) and `count`; release flushes the last, possibly shorter interval.
+These summaries use the existing owner timer even when
+DEBUG collection is off. Tunnel replacement and terminal local write failures
+emit `tunnel_refused` WARN with `rule`, `channel`, and `discarded_bytes`; the local
+error carries the discarded byte count. NUL-containing DTLS credentials are
+refused with an error and a `dtls_credentials_refused` WARN naming R024.
 
 - `rdt_stats`: admitted/delivered bytes, congestion window, queued/unsent/in-flight
   data, [ACK/SACK ranges, retransmission causes, reordering/gaps, and RTT quality.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/reliability.md#ack-processing-at-the-sender)

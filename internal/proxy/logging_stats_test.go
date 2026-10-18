@@ -44,14 +44,20 @@ func TestIdleLoggingLevels(t *testing.T) {
 					if err := json.Unmarshal(line, &record, json.MatchCaseInsensitiveNames(true)); err != nil {
 						t.Fatal(err)
 					}
+					if record.Message == "transport_discard_summary" {
+						if record.Level != "WARN" {
+							t.Errorf("discard summary level=%s want WARN", record.Level)
+						}
+						continue
+					}
 					counts[record.Message]++
 					if level == slog.LevelDebug && (record.Message == "transport_stats" || record.Message == "rdt_stats" || record.Message == "tunnel_stats") && record.Level != "DEBUG" {
 						t.Errorf("stats level=%s want DEBUG", record.Level)
 					}
 				}
 				if level == slog.LevelInfo {
-					if len(bytes.TrimSpace(data)) != 0 {
-						t.Fatalf("idle INFO wrote %d lines/minute; want 0: %s", len(lines), data)
+					if len(counts) != 0 {
+						t.Fatalf("idle INFO wrote non-summary records; want 0: %s", data)
 					}
 				} else {
 					for _, event := range []string{"transport_stats", "rdt_stats", "tunnel_stats"} {

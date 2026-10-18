@@ -126,6 +126,7 @@ func (f *factory) New(id uint64, b session.Budgets) (sessionedge.Layers, error) 
 	}
 	x := &stack{f: f, id: id, actions: make(chan iotc.Action, 1), secureTX: make(chan []byte, 16), timerUpdates: make(chan time.Duration, 1), streams: make(map[uint64]*stream)}
 	if f.s != nil {
+		f.s.discardStack.Store(x)
 		x.trace = f.s.trace
 	}
 	for i := range x.traceIDs {
@@ -220,6 +221,9 @@ func (h *layerHandle) TryClose(id uint64) {
 // stack state below is accessed only by the session owner, except explicitly
 // worker-owned resources (ctx/cancel/wg, secure, packet queues and phase channels).
 type stack struct {
+	ingressDiscards    uint64
+	discardNext        core.Instant
+	discardLast        [132]uint64
 	trace               *tracerecord.Writer
 	traceIDs            [4]uint64
 	debugDropped        atomic.Uint64
@@ -360,6 +364,7 @@ func (x *stack) Dial(ctx context.Context, l sessionedge.Lease) (result sessioned
 	if x.trace != nil {
 		x.packets.SetTrace(x.trace, x.traceIDs[3])
 	}
+	x.packets.Logger = x.f.s.logger
 	x.packets.EnableWriteCompletion()
 	x.post(func(now core.Instant) {
 		x.iotc = m

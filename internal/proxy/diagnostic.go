@@ -74,7 +74,7 @@ func layerReason(reason string) string {
 
 // Channel closes need their own record: they need not fail any session layer.
 func (x *stack) channelClosed(a p2ptunnel.Action, c *stream, cause error) {
-	if x.f.s.logger == nil {
+	if x.f.s.logger == nil || a.Rule != "" {
 		return
 	}
 	reason := layerReason(a.Reason)

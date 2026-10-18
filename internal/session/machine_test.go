@@ -108,6 +108,7 @@ func TestBusyStaleAndBackoff(t *testing.T) {
 	for _, k := range []Kind{Progress, Failed, Released, Usage, ClientGone} {
 		m.Step(Event{Kind: k, Attempt: 1, Bytes: -1}, now)
 	}
+	before.Discards += 5
 	if m.Snapshot() != before {
 		t.Fatal("stale event changed state")
 	}

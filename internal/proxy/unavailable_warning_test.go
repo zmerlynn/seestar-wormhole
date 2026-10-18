@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"testing"
 	"testing/synctest"
@@ -78,6 +79,7 @@ func TestBusyBlockedOutageWarnings(t *testing.T) {
 							synctest.Wait()
 							data := logs.take()
 							records := loggingRecords(t, bytes.NewBuffer(data))
+							records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] == "transport_discard_summary" })
 							if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["level"] != "WARN" || records[0]["unavailable_ms"] != float64(i*300000) {
 								t.Fatalf("at %dm records=%s, want one WARN with original outage elapsed", i*5, data)
 							}
@@ -133,6 +135,7 @@ func TestRecoveryWarningsResetOnReadiness(t *testing.T) {
 		<-time.After(5 * time.Minute)
 		synctest.Wait()
 		records := loggingRecords(t, bytes.NewBuffer(logs.take()))
+		records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] == "transport_discard_summary" })
 		if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["unavailable_ms"] != float64(300000) {
 			t.Fatalf("second outage records=%v, want reset five-minute warning", records)
 		}
@@ -203,6 +206,7 @@ func TestBusyWarningsAfterFailedIdleCleanup(t *testing.T) {
 		<-time.After(5 * time.Minute)
 		synctest.Wait()
 		records := loggingRecords(t, bytes.NewBuffer(logs.take()))
+		records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] == "transport_discard_summary" })
 		if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["level"] != "WARN" || records[0]["unavailable_ms"] != float64(300000) {
 			t.Fatalf("failed idle cleanup records=%v, want a five-minute WARN after ownership block", records)
 		}
