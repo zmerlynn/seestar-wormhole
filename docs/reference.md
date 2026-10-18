@@ -538,6 +538,9 @@ the phone's actual LAN broadcasts for discovery. See [always-on hosts](always-on
 
 ## Windows
 
+TCP forwarding requires Windows 10 version 1703 or later, or Windows Server
+2016 or later, for non-consuming reset detection (`SIO_TCP_INFO`).
+
 Image copying uses
 [rclone through the SMB listener](copying.md#windows).
 
