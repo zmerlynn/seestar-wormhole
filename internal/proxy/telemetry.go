@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
 	"github.com/zmerlynn/seestar-wormhole/internal/rdt"
@@ -10,6 +11,13 @@ import (
 )
 
 const debugRecordsPerInterval = 64
+
+// TelemetryLossError retains the final detail-cap loss count across attempts.
+type TelemetryLossError struct{ Count uint64 }
+
+func (e *TelemetryLossError) Error() string {
+	return fmt.Sprintf("proxy: %d telemetry diagnostics lost", e.Count)
+}
 
 type waitStats struct {
 	count      uint64

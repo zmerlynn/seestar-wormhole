@@ -24,6 +24,9 @@ func (x *stack) discardSummary(now core.Instant) {
 		x.discardNext = 0
 	}
 	x.flushDiscardSummary()
+	if x.telemetry == nil {
+		x.reportTelemetryLoss()
+	}
 }
 
 // A joined attempt ends its final, possibly short reporting interval.

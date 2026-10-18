@@ -60,6 +60,7 @@ type Session struct {
 	discardStack             atomic.Pointer[stack] // published by the attempt worker; drained by the owner after join
 	discardNext              core.Instant
 	discardLast              uint64
+	telemetryLost            uint64 // owner-only until done closes
 	trace                    *tracerecord.Writer
 	traceID                  uint64
 	sourceID                 string       // immutable opaque selected-device identity
@@ -238,11 +239,15 @@ func (s *Session) Close() error {
 	<-s.done
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	err := s.err
 	var terminal *diagnostic.Terminal
-	if errors.Is(s.err, context.Canceled) && !errors.Is(s.err, session.ErrStop) && !errors.As(s.err, &terminal) {
-		return nil
+	if errors.Is(err, context.Canceled) && !errors.Is(err, session.ErrStop) && !errors.As(err, &terminal) {
+		err = nil
 	}
-	return s.err
+	if s.telemetryLost > 0 {
+		err = errors.Join(err, &TelemetryLossError{Count: s.telemetryLost})
+	}
+	return err
 }
 
 // Done closes after local cleanup and the cloud stop attempt finish.
@@ -276,6 +281,7 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 		// Released is observed only after the attempt's workers have joined.
 		if x := s.discardStack.Swap(nil); x != nil {
 			x.flushDiscardSummary()
+			s.telemetryLost += x.debugDropped.Load()
 		}
 	}
 	if released || after.State == session.Closed {

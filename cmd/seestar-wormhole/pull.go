@@ -231,7 +231,7 @@ func runPullWithSource(ctx context.Context, args []string, out, logs io.Writer, 
 
 func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer, openKeys func(string, *slog.Logger) (*keylog.Writer, error), newSession func(context.Context, proxy.Config) (commandSession, error), openSource func(context.Context, func(context.Context, string, string) (net.Conn, error)) (context.Context, fs.Fs, error)) (result error) {
 	diagnosticOutput := logs
-	var traceLost uint64
+	var traceLost, telemetryLost uint64
 	started := time.Now().UTC()
 	p := o.pull
 	var progressOutput *pullProgressOutput
@@ -254,7 +254,7 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 	var cleanup error
 	defer func() {
 		stopProgress()
-		summary.DiagnosticsLost = startup.dropped() + traceLost
+		summary.DiagnosticsLost = startup.dropped() + traceLost + telemetryLost
 		if sink, ok := diagnosticOutput.(interface{ Dropped() uint64 }); ok {
 			summary.DiagnosticsLost += sink.Dropped()
 		}
@@ -361,6 +361,10 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 			}
 			released = true
 			outcome := s.Close()
+			var loss *proxy.TelemetryLossError
+			if errors.As(outcome, &loss) {
+				telemetryLost = loss.Count
+			}
 			cleanup = diagnostic.CleanupError(outcome)
 			if cleanup != nil {
 				// Cleanup status is independent of any primary retained by Close.
