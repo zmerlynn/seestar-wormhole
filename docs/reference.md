@@ -635,6 +635,8 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `site_reject` | WARN | Invalid frame; method and reason |
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
 | `lan_discovery_started` | INFO | UDP port |
+| `lan_discovery_refused` | WARN | Nonzero refusal counts per fixed `rule`, at most once per rule per five seconds, plus pending counts at shutdown; no peer data |
+| `lan_discovery_delivery_failed` | WARN | Local deadline/write failure or short write; fixed `rule`, error returned to the owner |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |
 | `diagnostics_lost` | WARN | Rule and cumulative loss count for startup, stderr, traces, or telemetry caps; stderr failure uses stdout |

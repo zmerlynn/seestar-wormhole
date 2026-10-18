@@ -260,6 +260,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, openKeys func
 			return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
 		}
 		discovery.Trace = trace
+		discovery.Logger = logger
 		defer discovery.Close()
 	}
 	phase = "session"

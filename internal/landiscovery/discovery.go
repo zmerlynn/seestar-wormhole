@@ -21,6 +21,7 @@ const MaxDatagram = 4096
 const ReplyBurst = 4
 
 var errInvalid = errors.New("LAN discovery: invalid request or device detail")
+var errUnknownMethod = errors.New("LAN discovery: unknown method")
 
 type request struct {
 	ID     jsontext.Value
@@ -58,7 +59,7 @@ func decodeRequest(b []byte) (request, error) {
 	case method == nil:
 		r.Code = 100
 	case r.Method != "scan_iscope":
-		return request{}, errInvalid // Unknown-method replies are suppressed.
+		return request{}, errUnknownMethod // Native unknown-method scans stay unanswered.
 	}
 	return r, nil
 }
@@ -87,9 +88,10 @@ type reply struct {
 // Machine owns immutable reply data and a constant-size global token bucket.
 // Step is called by one owner with monotonic elapsed time; it performs no I/O.
 type Machine struct {
-	result result
-	tokens int
-	last   time.Duration
+	result   result
+	tokens   int
+	last     time.Duration
+	refusals [refusalCount]uint64
 }
 
 // New synthesizes a discovery reply from cloud identity. Synthesized names may
@@ -158,6 +160,13 @@ func (m *Machine) Step(b []byte, now time.Duration) []byte {
 func (m *Machine) prepare(b []byte, now time.Duration) (request, bool) {
 	r, err := decodeRequest(b)
 	if err != nil {
+		rule := refusalMalformed
+		if len(b) > MaxDatagram {
+			rule = refusalOversize
+		} else if err == errUnknownMethod {
+			rule = refusalUnknownMethod
+		}
+		m.refuse(rule)
 		return request{}, false
 	}
 	now = max(now, m.last)
@@ -167,6 +176,7 @@ func (m *Machine) prepare(b []byte, now time.Duration) (request, bool) {
 		m.last = now - delta%time.Second
 	}
 	if m.tokens == 0 {
+		m.refuse(refusalRate)
 		return request{}, false
 	}
 	return r, true
@@ -175,5 +185,13 @@ func (m *Machine) prepare(b []byte, now time.Duration) (request, bool) {
 // reply commits a prepared request after admission; calls share one owner.
 func (m *Machine) reply(r request, now time.Duration) []byte {
 	m.tokens--
-	return m.encode(r, max(now, m.last))
+	b := m.encode(r, max(now, m.last))
+	if b == nil {
+		m.refuse(refusalOutput)
+	} else if r.Code == 200 {
+		m.refuse(refusalMissingID)
+	} else if r.Code == 100 {
+		m.refuse(refusalInvalidMethod)
+	}
+	return b
 }
