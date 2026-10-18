@@ -1,6 +1,7 @@
 # Copy images with rclone
 
-Recipe verified on firmware: pending
+Recipe verified 2026-10-18 through the v0.1.0 proxy; the device did
+not report its firmware version during the run (last observed: 9.75).
 
 [rclone](https://rclone.org/) is the supported copying route on Linux, macOS,
 and Windows. It connects to the proxy's SMB listener and shares the proxy's
@@ -55,6 +56,13 @@ A SHA-256 manifest of the local copy can be retained separately:
 
 ```sh
 rclone hashsum sha256 ./MyWorks > MyWorks.sha256
+```
+
+The manifest is written outside the copied directory, so it does not list
+itself. Its paths are relative to that directory:
+
+```sh
+(cd ./MyWorks && sha256sum -c ../MyWorks.sha256)
 ```
 
 ## Interactive SMB use
