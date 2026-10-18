@@ -7,16 +7,35 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
 )
 
+// lossLogs guards the log buffer the reporter goroutine writes while the test reads it.
+type lossLogs struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (l *lossLogs) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.Write(p)
+}
+
+func (l *lossLogs) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.buf.String()
+}
+
 func TestKeylogLossReceipt(t *testing.T) {
 	for _, mode := range []string{"closed", "queue", "storage", "timeout", "interval"} {
 		t.Run(mode, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				var logs bytes.Buffer
+				var logs lossLogs
 				sink := blockedSink{make(chan struct{}, 1), make(chan struct{})}
 				var storage io.WriteCloser = sink
 				if mode == "closed" || mode == "interval" {
