@@ -32,6 +32,46 @@ jobs:
           go test scripts/release.go scripts/release_test.go
           ./scripts/test-check.sh
 
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.2'
+          cache: false
+      - name: Build vendored source
+        run: go build ./...
+      - name: Vet vendored source
+        run: go vet ./...
+      - name: Test vendored source
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            go test -race ./...
+          else
+            go test ./...
+          fi
+      - name: Test release tooling
+        run: go test scripts/release.go scripts/release_test.go
+      - name: Build and smoke test native binary
+        run: |
+          binary=seestar-wormhole
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            binary+=.exe
+          fi
+          go build -o "$binary" ./cmd/seestar-wormhole
+          "./$binary" --version
+          "./$binary" proxy --help
+
   vendor:
     runs-on: ubuntu-24.04
     container: golang:1.27.2
