@@ -32,7 +32,7 @@ Export your credentials first:
 
 ## Images and dark sequences
 
-I use `--dir` for dark sequences in `Autorun/Dark` and the telescope's master
+Use `--dir` for dark sequences in `Autorun/Dark` and the telescope's master
 darks in `darklibrary`:
 
 ```sh
@@ -44,7 +44,7 @@ Each `--dir` selects a share-relative directory and keeps that path beneath the 
 
 The [temperature dark-library section](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/calibration-frames/dark-library.md#temperature-dark-library-firmware-975)
 describes the master files this command copies; `Autorun/Dark` holds separate
-individual frames. I saw `darklibrary` appear only after the telescope made its first master, so a pull before then
+individual frames. `darklibrary` appeared only after the telescope made its first master, so a pull before then
 can fail with `missing_directory` (exit 1).
 
 Without `--dir`, MyWorks contents go directly into the destination; with `--dir`, each directory is preserved beneath it. See [layouts](reference.md#pull).
@@ -72,7 +72,7 @@ Use `--dry-run --log-level debug` to plan without local writes; per-file plans g
 
 ## Pulling through the night
 
-The pattern I use: one proxy running all night, and a loop that pulls every
+One pattern is to run one proxy all night, with a loop that pulls every
 few minutes while the telescope works. Fix the start of the night with a real
 timestamp rather than `24h`, so the window doesn't slide as the night goes on:
 
@@ -109,16 +109,16 @@ have come back with nothing deferred.
 ## Downloading while you observe
 
 [Everything shares the telescope's one connection](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#backlog-after-pause), so a big download can slow
-down status replies to the app or seestar_alp. I measured this one evening,
-downloading with standalone rclone through the proxy rather than `pull`
-itself, so treat the numbers as rough. Typical status replies took about 0.2
+down status replies to the app or seestar_alp. One evening's measurement was
+taken while downloading with standalone rclone through the proxy rather than
+`pull` itself, so the numbers are rough. Typical status replies took about 0.2
 to 0.4 seconds on a direct connection while the download ran flat out, and
-0.5 to 1 second when the cloud relayed the connection. None of the replies I
-measured missed a three-second deadline.
+0.5 to 1 second when the cloud relayed the connection. None of the measured
+replies missed a three-second deadline.
 
 If responsiveness matters more than speed:
 
-- Use `--transfers 1`. The default is 4; in my tests four ran about twice as
+- Use `--transfers 1`. The default is 4; in testing, four ran about twice as
   fast as one.
 - `--bwlimit` can help on a direct connection, for example `--bwlimit 1MiB/s`.
   Halving the rate brought status replies down to about 0.15 to 0.2 seconds,
