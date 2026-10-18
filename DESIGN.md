@@ -477,11 +477,11 @@ No endpoint, identifier or payload appears in these fields. Relay progress is
 observable without changing timers, selection, or the 0241 flag.
 
 Transport telemetry is opt-in for the internal composition (`Config.StatsInterval`),
-and defaults to one second in the command. Zero skips collection, queue scans,
-extra clock samples, telemetry records, timestamp allocation and periodic
-scheduling. Existing pressure/oddity debug logging uses a fixed per-attempt
-64-record scalar budget when collection is off, with no timer or allocated
-collector; default info logging does not update that budget.
+and defaults to one second in the command. Zero disables DEBUG telemetry collection and sampling. Discard
+accounting and summaries remain enabled; see [transport telemetry](docs/reference.md#transport-telemetry).
+With collection off, optional queue scans and timestamp allocation are skipped.
+Existing pressure/oddity debug logging uses a fixed per-attempt 64-record scalar
+budget with no allocated collector; default info logging does not update that budget.
 RDT counters belong to its single owner and expose immutable `Counters` and
 `Stats` views; admission timestamps occupy preallocated parallel arrays only
 when enabled, bounded by configured packet ceilings. They do not enlarge the
