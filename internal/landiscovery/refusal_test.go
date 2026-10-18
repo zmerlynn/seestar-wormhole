@@ -2,6 +2,7 @@ package landiscovery
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -162,6 +163,76 @@ func (p *failedPacket) WriteTo(b []byte, _ *ipv4.ControlMessage, _ net.Addr) (in
 		return len(b) - 1, nil
 	}
 	return len(b), p.write
+}
+
+type receivePacket struct {
+	failedPacket
+	read func([]byte) (int, *ipv4.ControlMessage, net.Addr, error)
+}
+
+func (p *receivePacket) ReadFrom(b []byte) (int, *ipv4.ControlMessage, net.Addr, error) {
+	return p.read(b)
+}
+
+func TestServeRefusalFlush(t *testing.T) {
+	for _, name := range []string{"interval", "shutdown"} {
+		t.Run(name, func(t *testing.T) {
+			conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			var now time.Duration
+			var logs bytes.Buffer
+			checkSummary := func() {
+				t.Helper()
+				var record struct {
+					Level, Msg, Rule string
+					Count            uint64
+				}
+				if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
+					t.Fatalf("want exactly one refusal summary, got %q: %v", &logs, err)
+				}
+				if record.Level != "WARN" || record.Msg != "lan_discovery_refused" || record.Rule != "malformed_scan" || record.Count != 1 {
+					t.Fatalf("want malformed_scan WARN with count 1, got %s", &logs)
+				}
+			}
+			reads := 0
+			packet := &receivePacket{}
+			packet.read = func(b []byte) (int, *ipv4.ControlMessage, net.Addr, error) {
+				reads++
+				if reads == 1 {
+					return copy(b, "{"), &ipv4.ControlMessage{Dst: net.IPv4(192, 0, 2, 1), IfIndex: 1}, &net.UDPAddr{IP: net.IPv4(192, 0, 2, 2), Port: 1234}, nil
+				}
+				if reads == 2 {
+					if logs.Len() != 0 {
+						t.Errorf("want no WARN before interval or shutdown, got %s", &logs)
+					}
+					if name == "interval" {
+						now = refusalInterval
+						return 0, nil, nil, &net.DNSError{IsTimeout: true}
+					}
+				}
+				if name == "interval" {
+					// Check before cancellation so the final flush cannot hide a lost interval flush.
+					checkSummary()
+				}
+				cancel()
+				return 0, nil, nil, net.ErrClosed
+			}
+			s := &Socket{conn: conn, packet: packet, elapsed: func() time.Duration { return now }, Logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+			m, _, err := New("synthetic", "synthetic", "S50")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Serve(ctx, m); err != nil {
+				t.Fatalf("Serve cancellation returned %v, want nil", err)
+			}
+			checkSummary()
+		})
+	}
 }
 
 func TestDiscoveryDeliveryRefusals(t *testing.T) {
