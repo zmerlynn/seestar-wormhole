@@ -92,7 +92,7 @@ func TestTelemetryPauseChurnPartialSendAndPrivacy(t *testing.T) {
 		x.telemetryEvent("fixture", slog.Int("channel", int(ch)))
 	}
 	x.stats(core.Instant(4 * time.Second))
-	if x.telemetry.debugDropped == 0 {
+	if x.debugDropped.Load() == 0 {
 		t.Fatal("debug events not capped")
 	}
 	for _, line := range bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte{'\n'}) {
@@ -100,7 +100,7 @@ func TestTelemetryPauseChurnPartialSendAndPrivacy(t *testing.T) {
 		if err := json.Unmarshal(line, &fields, json.MatchCaseInsensitiveNames(true)); err != nil {
 			t.Fatal(err)
 		}
-		allowed := " time level msg scope channel event reason pause_delta resume_delta wake_delta decision_q decision_q_exact pause_sent resume_sent wake_sent pause_queued resume_queued wake_queued paused_ms rx_bytes rx_backlog_age_ms rx_progress_age_ms delivery_bytes delivery_age_ms admitted_bytes delivered_bytes discarded_bytes admitted_packets high_water low_water decision_q_max rx_peak_bytes paused accepted_paused wake_pending pending_control handoff_control handoff_accepted_bytes pressure_q attributed_rx_bytes pause_received resume_received wake_received local_read_state capacity_rejects capacity_reclaims debug_dropped owner_wait_count owner_wait_total_ms owner_wait_max_ms edge_send_wait_count edge_send_wait_total_ms edge_send_wait_max_ms edge_send_queue_wait_count edge_send_queue_wait_total_ms edge_send_queue_wait_max_ms edge_send_queue_bytes owner_queue_count layer_queue_bytes layer_queue_age_ms ingress_capacity_rejects "
+		allowed := " rule count time level msg scope channel event reason pause_delta resume_delta wake_delta decision_q decision_q_exact pause_sent resume_sent wake_sent pause_queued resume_queued wake_queued paused_ms rx_bytes rx_backlog_age_ms rx_progress_age_ms delivery_bytes delivery_age_ms admitted_bytes delivered_bytes discarded_bytes admitted_packets high_water low_water decision_q_max rx_peak_bytes paused accepted_paused wake_pending pending_control handoff_control handoff_accepted_bytes pressure_q attributed_rx_bytes pause_received resume_received wake_received local_read_state capacity_rejects capacity_reclaims debug_dropped owner_wait_count owner_wait_total_ms owner_wait_max_ms edge_send_wait_count edge_send_wait_total_ms edge_send_wait_max_ms edge_send_queue_wait_count edge_send_queue_wait_total_ms edge_send_queue_wait_max_ms edge_send_queue_bytes owner_queue_count layer_queue_bytes layer_queue_age_ms ingress_capacity_rejects "
 		for key := range fields {
 			if !strings.Contains(allowed, " "+key+" ") {
 				t.Fatalf("unapproved key %s", key)

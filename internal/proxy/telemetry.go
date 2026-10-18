@@ -39,7 +39,6 @@ type transportStats struct {
 	next                               core.Instant
 	exhausted                          bool
 	debugRecords                       int
-	debugDropped                       uint64
 	ownerWait, sendWait, sendQueueWait waitStats
 }
 
@@ -66,7 +65,7 @@ func (x *stack) telemetryEvent(event string, attrs ...slog.Attr) {
 		return
 	}
 	if s.debugRecords >= debugRecordsPerInterval {
-		s.debugDropped++
+		x.debugDropped.Add(1)
 		return
 	}
 	s.debugRecords++
@@ -83,11 +82,33 @@ func (x *stack) transportEvent(event string, attrs ...slog.Attr) {
 		x.telemetryEvent(event, attrs...)
 		return
 	}
-	if x.f == nil || x.f.s == nil || x.f.s.logger == nil || !x.f.s.logger.Enabled(context.Background(), slog.LevelDebug) || x.legacyDebugRecords >= debugRecordsPerInterval {
+	if x.f == nil || x.f.s == nil || x.f.s.logger == nil || !x.f.s.logger.Enabled(context.Background(), slog.LevelDebug) {
+		return
+	}
+	if x.legacyDebugRecords >= debugRecordsPerInterval {
+		x.debugDropped.Add(1)
+		// Without periodic stats, report at most once per second of owner time.
+		if x.now >= x.legacyDebugNextWarn {
+			x.reportTelemetryLoss()
+			x.legacyDebugNextWarn = statsDeadline(x.now, time.Second)
+		}
 		return
 	}
 	x.legacyDebugRecords++
 	x.f.s.logger.LogAttrs(context.Background(), slog.LevelDebug, event, attrs...)
+}
+
+// reportTelemetryLoss may run during owner cancellation. Only atomic loss
+// counters and the immutable logger cross that shutdown boundary.
+func (x *stack) reportTelemetryLoss() {
+	if x.f == nil || x.f.s == nil || x.f.s.logger == nil {
+		return
+	}
+	count, reported := x.debugDropped.Load(), x.debugReported.Load()
+	if count <= reported || !x.debugReported.CompareAndSwap(reported, count) {
+		return
+	}
+	x.f.s.logger.Warn("diagnostics_lost", "rule", "telemetry_detail_cap", "count", count)
 }
 
 func (x *stack) rdtAfter(e rdt.Event, before rdt.Stats, now core.Instant) {
@@ -100,7 +121,7 @@ func (x *stack) rdtAfter(e rdt.Event, before rdt.Stats, now core.Instant) {
 			return
 		}
 		if x.telemetry.debugRecords >= debugRecordsPerInterval {
-			x.telemetry.debugDropped++
+			x.debugDropped.Add(1)
 			return
 		}
 		s = x.reliable.Stats(now)
@@ -160,11 +181,12 @@ func (x *stack) stats(now core.Instant) {
 		s.exhausted = true
 	}
 	s.debugRecords = 0
+	x.reportTelemetryLoss()
 	logger := x.f.s.logger
 	if !logger.Enabled(context.Background(), slog.LevelDebug) {
 		return
 	}
-	logger.LogAttrs(context.Background(), slog.LevelDebug, "transport_stats", slog.String("scope", "session"), slog.Uint64("debug_dropped", s.debugDropped), slog.Uint64("owner_wait_count", s.ownerWait.count), slog.Float64("owner_wait_total_ms", milliseconds(s.ownerWait.total)), slog.Float64("owner_wait_max_ms", milliseconds(s.ownerWait.max)), slog.Uint64("edge_send_wait_count", s.sendWait.count), slog.Float64("edge_send_wait_total_ms", milliseconds(s.sendWait.total)), slog.Float64("edge_send_wait_max_ms", milliseconds(s.sendWait.max)), slog.Uint64("edge_send_queue_wait_count", s.sendQueueWait.count), slog.Float64("edge_send_queue_wait_total_ms", milliseconds(s.sendQueueWait.total)), slog.Float64("edge_send_queue_wait_max_ms", milliseconds(s.sendQueueWait.max)), slog.Int("edge_send_queue_bytes", s.secureQueueBytes), slog.Int("owner_queue_count", len(x.f.s.work)), slog.Int("layer_queue_bytes", x.ownerQueueBytes()), slog.Float64("layer_queue_age_ms", milliseconds(x.ownerQueueAge(now))), slog.Uint64("ingress_capacity_rejects", s.ingressRejects))
+	logger.LogAttrs(context.Background(), slog.LevelDebug, "transport_stats", slog.String("scope", "session"), slog.Uint64("debug_dropped", x.debugDropped.Load()), slog.Uint64("owner_wait_count", s.ownerWait.count), slog.Float64("owner_wait_total_ms", milliseconds(s.ownerWait.total)), slog.Float64("owner_wait_max_ms", milliseconds(s.ownerWait.max)), slog.Uint64("edge_send_wait_count", s.sendWait.count), slog.Float64("edge_send_wait_total_ms", milliseconds(s.sendWait.total)), slog.Float64("edge_send_wait_max_ms", milliseconds(s.sendWait.max)), slog.Uint64("edge_send_queue_wait_count", s.sendQueueWait.count), slog.Float64("edge_send_queue_wait_total_ms", milliseconds(s.sendQueueWait.total)), slog.Float64("edge_send_queue_wait_max_ms", milliseconds(s.sendQueueWait.max)), slog.Int("edge_send_queue_bytes", s.secureQueueBytes), slog.Int("owner_queue_count", len(x.f.s.work)), slog.Int("layer_queue_bytes", x.ownerQueueBytes()), slog.Float64("layer_queue_age_ms", milliseconds(x.ownerQueueAge(now))), slog.Uint64("ingress_capacity_rejects", s.ingressRejects))
 	if x.reliable != nil {
 		r := x.reliable.Stats(now)
 		logger.LogAttrs(context.Background(), slog.LevelDebug, "rdt_stats", slog.String("scope", "session"), slog.Int("cwnd_packets", r.CWND), slog.Int("rx_peak_bytes", r.RXPeak), slog.Int("tx_peak_bytes", r.TXPeak), slog.Float64("head_gap_age_max_ms", milliseconds(r.GapAgeMax)), slog.Int("tx_packets", r.TXPackets), slog.Int("unsent_packets", r.UnsentPackets), slog.Int("unsent_bytes", r.UnsentBytes), slog.Int("in_flight_packets", r.InFlightPackets), slog.Int("in_flight_bytes", r.InFlightBytes), slog.Uint64("retransmit_sack", r.RetransmitSACK), slog.Uint64("retransmit_ack", r.RetransmitACK), slog.Uint64("retransmit_rto", r.RetransmitRTO), slog.Uint64("retransmit_pacing", r.RetransmitPacing), slog.Uint64("ack_received", r.ACKReceived), slog.Uint64("sack_received", r.SACKReceived), slog.Uint64("sack_ranges_received", r.SACKRangesReceived), slog.Uint64("out_of_order_arrivals", r.OutOfOrderArrivals), slog.Uint64("reorder_distance_total", r.ReorderDistanceTotal), slog.Uint64("reorder_distance_max", r.ReorderDistanceMax), slog.Float64("feedback_age_ms", milliseconds(r.FeedbackAge)), slog.Uint64("admitted_packets", r.AdmittedPackets), slog.Uint64("admitted_bytes", r.AdmittedBytes), slog.Uint64("delivered_bytes", r.DeliveredBytes), slog.Uint64("tx_admitted_packets", r.TXAdmittedPackets), slog.Uint64("tx_admitted_bytes", r.TXAdmittedBytes), slog.Uint64("duplicates", r.Duplicates), slog.Uint64("retransmitted_observed", r.RetransmittedObserved), slog.Uint64("retransmitted_sent", r.RetransmittedSent), slog.Uint64("ack_sent", r.ACKSent), slog.Uint64("sack_sent", r.SACKSent), slog.Uint64("sack_ranges_sent", r.SACKRangesSent), slog.Float64("ack_age_ms", milliseconds(r.LastACKAge)), slog.Int("holes", r.Holes), slog.Int("out_of_order_bytes", r.OutOfOrderBytes), slog.Float64("head_gap_age_ms", milliseconds(r.GapAge)), slog.Float64("oldest_gap_age_ms", milliseconds(r.OldestGapAge)), slog.Uint64("rtt_samples", r.RTTSamples), slog.Uint64("rtt_ambiguous", r.RTTAmbiguous), slog.Float64("rtt_ms", milliseconds(r.RTT)), slog.Float64("rtt_age_ms", milliseconds(r.RTTAge)), slog.Float64("srtt_ms", milliseconds(r.SRTT)), slog.Float64("rttvar_ms", milliseconds(r.RTTVar)), slog.Float64("rto_ms", milliseconds(r.RTO)), slog.Int("rx_bytes", r.RXBytes), slog.Float64("rx_age_ms", milliseconds(r.RXAge)), slog.Int("tx_bytes", r.TXBytes), slog.Float64("tx_age_ms", milliseconds(r.TXAge)), slog.Uint64("capacity_rejects", r.CapacityRejects), slog.Uint64("admitted_next_low", uint64(r.AdmittedNext.Low)), slog.Uint64("admitted_next_high", uint64(r.AdmittedNext.High)), slog.Uint64("read_next_low", uint64(r.ReadNext.Low)), slog.Uint64("read_next_high", uint64(r.ReadNext.High)))

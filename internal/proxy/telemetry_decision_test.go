@@ -202,7 +202,7 @@ func TestTelemetryDecisionSummaryBudget(t *testing.T) {
 	if got := len(f.records(f.a)); got != 64 {
 		t.Fatalf("flow records=%d want 64", got)
 	}
-	if got := f.x.telemetry.debugDropped; got != 16 {
+	if got := f.x.debugDropped.Load(); got != 16 {
 		t.Fatalf("suppressed records=%d want 16", got)
 	}
 	// Suppression must still advance the edge baseline: the next interval's

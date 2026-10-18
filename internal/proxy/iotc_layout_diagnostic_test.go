@@ -26,10 +26,13 @@ func TestIOTCLayoutDebugBudget(t *testing.T) {
 			continue
 		}
 		lines := strings.Split(strings.TrimSpace(b.String()), "\n")
-		if len(lines) != 64 {
-			t.Fatalf("debug records=%d want=64", len(lines))
+		if len(lines) != 65 {
+			t.Fatalf("records=%d want64 DEBUG plus1 WARN", len(lines))
 		}
-		for _, line := range lines {
+		if !strings.Contains(lines[64], `"level":"WARN"`) || !strings.Contains(lines[64], `"rule":"telemetry_detail_cap"`) {
+			t.Fatalf("missing cap summary: %s", lines[64])
+		}
+		for _, line := range lines[:64] {
 			var event struct {
 				Message string `json:"msg"`
 				Level   string `json:"level"`

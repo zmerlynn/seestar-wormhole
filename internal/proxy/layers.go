@@ -216,39 +216,42 @@ func (h *layerHandle) TryClose(id uint64) {
 // stack state below is accessed only by the session owner, except explicitly
 // worker-owned resources (ctx/cancel/wg, secure, packet queues and phase channels).
 type stack struct {
-	trace              *tracerecord.Writer
-	traceIDs           [4]uint64
-	legacyDebugRecords int            // owner-only fixed log budget when collection is off
-	sendMarks          chan time.Time // immutable channel, installed before secure workers; enabled telemetry only
-	f                  *factory
-	id                 uint64
-	ctx                context.Context
-	cancel             context.CancelFunc
-	wg                 sync.WaitGroup
-	once               sync.Once
-	handles            [4]*layerHandle
-	phases             [3]chan error
-	actions            chan iotc.Action
-	packets            *edge.DTLSPackets
-	secure             *edge.SecureDTLS
-	username, password []byte
-	secureTX           chan []byte
-	timerUpdates       chan time.Duration
-	iotc               *iotc.Machine
-	reliable           *rdt.Machine
-	tunnel             *p2ptunnel.Machine
-	deadlines          [4]core.Instant
-	pending            []uint64
-	openAdmissions     map[uint64]core.Instant // owner-only, absolute deadlines for not-yet-open clients
-	now                core.Instant
-	queue              []layerEvent
-	effects            []iotc.Action
-	driving, failed    bool
-	terminal           atomic.Pointer[diagnostic.Terminal] // owner publishes once; constructor workers only load
-	streams            map[uint64]*stream
-	channels           [256]*stream
-	wantRead           [256]bool
-	telemetry          *transportStats
+	trace               *tracerecord.Writer
+	traceIDs            [4]uint64
+	debugDropped        atomic.Uint64
+	debugReported       atomic.Uint64
+	legacyDebugNextWarn core.Instant
+	legacyDebugRecords  int            // owner-only fixed log budget when collection is off
+	sendMarks           chan time.Time // immutable channel, installed before secure workers; enabled telemetry only
+	f                   *factory
+	id                  uint64
+	ctx                 context.Context
+	cancel              context.CancelFunc
+	wg                  sync.WaitGroup
+	once                sync.Once
+	handles             [4]*layerHandle
+	phases              [3]chan error
+	actions             chan iotc.Action
+	packets             *edge.DTLSPackets
+	secure              *edge.SecureDTLS
+	username, password  []byte
+	secureTX            chan []byte
+	timerUpdates        chan time.Duration
+	iotc                *iotc.Machine
+	reliable            *rdt.Machine
+	tunnel              *p2ptunnel.Machine
+	deadlines           [4]core.Instant
+	pending             []uint64
+	openAdmissions      map[uint64]core.Instant // owner-only, absolute deadlines for not-yet-open clients
+	now                 core.Instant
+	queue               []layerEvent
+	effects             []iotc.Action
+	driving, failed     bool
+	terminal            atomic.Pointer[diagnostic.Terminal] // owner publishes once; constructor workers only load
+	streams             map[uint64]*stream
+	channels            [256]*stream
+	wantRead            [256]bool
+	telemetry           *transportStats
 }
 
 func (x *stack) post(fn func(core.Instant)) bool {
@@ -304,6 +307,7 @@ func (x *stack) close() error {
 			x.secure.Close()
 		}
 		x.wg.Wait()
+		x.reportTelemetryLoss()
 		if x.f.s.logger != nil {
 			for _, phase := range []string{"tunnel", "rdt", "dtls", "rendezvous"} {
 				x.f.s.logger.Debug("phase_transition", "phase", phase, "state", "closed")

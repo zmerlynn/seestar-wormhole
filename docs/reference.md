@@ -635,7 +635,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `lan_discovery_started` | INFO | UDP port |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |
-| `diagnostics_lost` | WARN | Rule and cumulative diagnostic loss count; stderr failure uses stdout |
+| `diagnostics_lost` | WARN | Rule and cumulative loss count for startup, stderr, traces, or telemetry caps; stderr failure uses stdout |
 | `backend_warning`, `backend_retry` | WARN | Sanitized rclone warnings and retries (`rule=backend_diagnostic`) |
 | `stale_partial_removed` | WARN | Each deleted leftover, with rule and safe file class |
 | `key_logging_enabled`, `keylog_failed` | INFO / WARN | Sensitive capture enabled; dropped-line count or creation warning |
@@ -705,7 +705,7 @@ messages and hints can change.
 
 With collection enabled, DEBUG includes `rdt_stats`, `transport_stats`,
 `tunnel_stats`, and at most 64 transport event records per interval.
-`debug_dropped` counts suppressed records. Event names are `rdt_event`,
+`debug_dropped` counts records suppressed by the detail cap; nonzero losses also produce a WARN `telemetry_detail_cap` summary, including when periodic stats are off. Event names are `rdt_event`,
 `tunnel_flow`, `iotc_receive_oddity`, `rdt_receive_oddity`,
 `rdt_receive_pressure`, and `tunnel_receive_oddity`. Counters reset per transport attempt.
 With collection disabled, pressure/oddity debug events have a fixed 64-record

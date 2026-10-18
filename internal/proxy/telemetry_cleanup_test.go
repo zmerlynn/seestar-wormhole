@@ -43,8 +43,8 @@ func TestTelemetryOdditiesShareBudget(t *testing.T) {
 		x.rdtAction(rdt.Action{Kind: rdt.ReceiveOddity})
 		x.tunnelAction(p2ptunnel.Action{Kind: p2ptunnel.ReceiveOddity})
 	}
-	if got := bytes.Count(logs.Bytes(), []byte{'\n'}); got != debugRecordsPerInterval || x.telemetry.debugDropped != 2000-debugRecordsPerInterval {
-		t.Fatalf("records=%d dropped=%d", got, x.telemetry.debugDropped)
+	if got := bytes.Count(logs.Bytes(), []byte{'\n'}); got != debugRecordsPerInterval || x.debugDropped.Load() != 2000-debugRecordsPerInterval {
+		t.Fatalf("records=%d dropped=%d", got, x.debugDropped.Load())
 	}
 }
 
@@ -67,8 +67,8 @@ func TestTelemetryOffKeepsBoundedLegacyOddities(t *testing.T) {
 	for range 1000 {
 		x.rdtAction(rdt.Action{Kind: rdt.ReceiveOddity})
 	}
-	if got := bytes.Count(logs.Bytes(), []byte{'\n'}); got != debugRecordsPerInterval {
-		t.Fatalf("off legacy records=%d want %d", got, debugRecordsPerInterval)
+	if got := bytes.Count(logs.Bytes(), []byte{'\n'}); got != debugRecordsPerInterval+1 || !bytes.Contains(logs.Bytes(), []byte(`"rule":"telemetry_detail_cap"`)) {
+		t.Fatalf("off legacy records=%d want %d including cap WARN", got, debugRecordsPerInterval+1)
 	}
 	if x.telemetry != nil || x.sendMarks != nil || logs.Len() == 0 {
 		t.Fatal("off collection allocated state or lost legacy oddity logs")
