@@ -28,7 +28,7 @@ Audited every Go `go` statement in vendored `dtls/v3` and `transport/v5`:
 | --- | --- |
 | `dtls/v3/conn.go`, handshake FSM and reader (2) | Conn `workerLoops`; public Close waits after handshake creation completes. |
 | `dtls/v3/conn.go`, `contextWithClose` (1) | Write's deferred cancel waits on watcher `done`, including repeated/concurrent cancellation. |
-| `dtls/v3/internal/net/udp/packet_conn.go`, listener read loop and socket closer (2) | Listener `readWG` counts both; listener/last PacketConn Close waits after listener acceptance and all connections retire. These belong to a shared listener, not an individual Conn; `ClientWithOptions` over our supplied packet path does not start them. |
+| `dtls/v3/internal/net/udp/packet_conn.go`, listener read loop and socket closer (2) | Listener `readWG` counts both; listener/last PacketConn Close waits after listener acceptance and all connections retire. These belong to a shared listener, not an individual Conn; `ClientWithOptions` over the proxy-supplied packet path does not start them. |
 | `transport/v5/netctx/packetconn.go`, read and write cancellation helpers (2) | Each operation closes its local `done` and waits on its local WaitGroup before returning. PacketConn Close closes underlying I/O before acquiring read/write locks. |
 | `transport/v5/netctx/conn.go`, read and write cancellation helpers (2) | Same local WaitGroup contract; this stream wrapper is not used by the DTLS packet path. |
 
