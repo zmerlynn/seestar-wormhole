@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/synctest"
 
@@ -27,8 +28,15 @@ import (
 // Compare the complete record, allowing only slog's timestamp to vary.
 func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string) {
 	t.Helper()
+	lines := bytes.Split(bytes.TrimSpace(logs), []byte("\n"))
+	for _, line := range lines[:len(lines)-1] {
+		var warning map[string]any
+		if err := json.Unmarshal(line, &warning); err != nil || warning["level"] != "WARN" || (warning["rule"] != "startup_diagnostics_lost" && warning["rule"] != "keylog_loss") {
+			t.Fatalf("unexpected startup diagnostic: %s", line)
+		}
+	}
 	var got map[string]any
-	if err := json.Unmarshal(logs, &got, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if err := json.Unmarshal(lines[len(lines)-1], &got, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatalf("want exactly one JSON diagnostic: %s: %v", logs, err)
 	}
 	if _, ok := got["time"].(string); !ok {
@@ -117,7 +125,11 @@ func TestCLIConfigAttribution(t *testing.T) {
 									assertJSONSummary(t, out.String(), 2, "error", "invalid_option", "none")
 								} else {
 									const want = "status=error copied=0 verified=0 deferred=0 bytes=0 first_scan=false lower=0001-01-01T00:00:00Z upper=0001-01-01T00:00:00Z reason=invalid_option cleanup_reason=none\n"
-									if out.String() != want {
+									summaryText := out.String()
+									if i := strings.Index(summaryText, " diagnostics_lost="); i >= 0 {
+										summaryText = summaryText[:i] + "\n"
+									}
+									if summaryText != want {
 										t.Fatalf("text summary=%q want=%q", out.String(), want)
 									}
 								}

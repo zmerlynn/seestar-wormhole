@@ -56,17 +56,39 @@ func (s *startupLogging) acceptKeys() {
 // finish runs after owned resources close and before the final failure record.
 // Closing the key writer first includes its one-shot shutdown warning in the
 // configuration decision, including when it could not write any key material.
-func (s *startupLogging) finish(result error) {
+func (s *startupLogging) finish(result error) error {
+	var loss error
 	if s.keys != nil {
 		s.keys.Close()
 	}
 	var detail *argumentError
 	accepted := !errors.As(result, &detail)
 	if s.handler != nil {
-		s.handler.resolve(accepted)
+		loss = errors.Join(loss, s.handler.resolve(accepted))
+		s.handler.mu.Lock()
+		lost := s.handler.lost
+		s.handler.mu.Unlock()
+		if lost > 0 {
+			s.output.mu.Lock()
+			s.output.lost += lost
+			s.output.err = io.ErrShortWrite
+			s.output.mu.Unlock()
+		}
 	}
 	if !s.keylogReady && accepted && s.keylogFailed {
 		s.warnKeylogFailure()
 	}
-	s.output.resolve(accepted)
+	loss = errors.Join(loss, s.output.resolve(accepted))
+	s.output.report(true)
+	return loss
+}
+
+func (s *startupLogging) dropped() uint64 {
+	s.output.mu.Lock()
+	n := s.output.lost
+	s.output.mu.Unlock()
+	if s.keys != nil {
+		n += s.keys.Dropped()
+	}
+	return n
 }

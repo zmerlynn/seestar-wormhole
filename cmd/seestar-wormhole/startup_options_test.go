@@ -58,7 +58,14 @@ func TestAttackStateDirectoryReturnedError(t *testing.T) {
 func assertStartupOptionFailure(t *testing.T, err error, out, logs *bytes.Buffer, option, rule string, secrets ...string) {
 	t.Helper()
 	var record map[string]any
-	if e := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); e != nil {
+	lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
+	for _, line := range lines[:len(lines)-1] {
+		var warning map[string]any
+		if e := json.Unmarshal(line, &warning); e != nil || warning["level"] != "WARN" || warning["rule"] != "startup_diagnostics_lost" {
+			t.Fatalf("unexpected startup diagnostic: %s", line)
+		}
+	}
+	if e := json.Unmarshal(lines[len(lines)-1], &record, json.MatchCaseInsensitiveNames(true)); e != nil {
 		t.Fatalf("want one JSON diagnostic, got %q: %v", logs.String(), e)
 	}
 	if record["option"] != option || record["rule"] != rule || record["phase"] != "arguments" || record["reason"] != "invalid_option" || record["help"] != "seestar-wormhole proxy --help" {

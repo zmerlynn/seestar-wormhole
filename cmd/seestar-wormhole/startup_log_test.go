@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 )
 
@@ -11,8 +12,10 @@ func TestStartupLogOutputDecisionAndBound(t *testing.T) {
 		w := &startupLogOutput{output: &output}
 		initial := []byte("dependency startup\n")
 		w.Write(initial)
-		w.Write(bytes.Repeat([]byte("x"), startupLogLimit))
-		if len(w.pending) > startupLogLimit || output.Len() != 0 {
+		if _, err := w.Write(bytes.Repeat([]byte("x"), startupLogLimit)); err == nil {
+			t.Fatal("overflow succeeded")
+		}
+		if len(w.pending) > startupLogLimit {
 			t.Fatal("startup output escaped its bound or decision")
 		}
 		w.resolve(accepted)
@@ -22,7 +25,7 @@ func TestStartupLogOutputDecisionAndBound(t *testing.T) {
 		if accepted {
 			want = "dependency startup\nlater\n"
 		}
-		if output.String() != want || w.pending != nil {
+		if !strings.HasSuffix(output.String(), want) || w.pending != nil {
 			t.Fatalf("output=%q pending=%d want=%q", output.String(), len(w.pending), want)
 		}
 	}

@@ -40,6 +40,12 @@ func assertJSONSummary(t *testing.T, output string, code int, status, reason, cl
 	if got["exit_code"] != float64(code) || got["status"] != status || got["reason"] != reason || got["cleanup_reason"] != cleanup {
 		t.Fatalf("summary=%v want exit=%d status=%s reason=%s cleanup=%s", got, code, status, reason, cleanup)
 	}
+	if loss, ok := got["diagnostics_lost"]; ok {
+		if n, ok := loss.(float64); !ok || n <= 0 || code == 0 {
+			t.Fatalf("invalid diagnostic loss receipt: %v", got)
+		}
+		delete(got, "diagnostics_lost")
+	}
 	for _, name := range []string{"lower", "upper"} {
 		if _, ok := got[name].(string); !ok {
 			t.Fatalf("%s not string: %v", name, got)

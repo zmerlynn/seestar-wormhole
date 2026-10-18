@@ -31,6 +31,7 @@ import (
 // Result describes a handled pull outcome. Planned counts files requiring
 // copy or download comparison; Bytes is their listed size total in dry-run.
 type Result struct {
+	DiagnosticsLost            uint64
 	Status                     string
 	Reason, CleanupReason      string
 	Copied, Verified, Deferred int

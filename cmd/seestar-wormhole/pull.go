@@ -248,6 +248,7 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 	var cleanup error
 	defer func() {
 		stopProgress()
+		summary.DiagnosticsLost = startup.dropped()
 		result = pull.Failure(result)
 		code := pullCode(result)
 		switch code {
@@ -286,7 +287,7 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 			result = &pullOutcome{1, errors.Join(result, err)}
 		}
 	}()
-	defer func() { startup.finish(result) }()
+	defer func() { result = errors.Join(result, startup.finish(result)) }()
 	if p.timeout > 0 {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, p.timeout)
@@ -433,18 +434,19 @@ func logPullArgumentError(logs io.Writer, err error) { logConfigurationError(log
 // Keep the public stdout schema separate from the engine and its checkpoint
 // types. Zero bounds use the same unbounded/unknown spelling as text output.
 type pullSummary struct {
-	Planned       int    `json:"planned"`
-	Status        string `json:"status"`
-	Copied        int    `json:"copied"`
-	Verified      int    `json:"verified"`
-	Deferred      int    `json:"deferred"`
-	Bytes         int64  `json:"bytes"`
-	FirstScan     bool   `json:"first_scan"`
-	Lower         string `json:"lower"`
-	Upper         string `json:"upper"`
-	Reason        string `json:"reason"`
-	CleanupReason string `json:"cleanup_reason"`
-	ExitCode      int    `json:"exit_code"`
+	DiagnosticsLost uint64 `json:"diagnostics_lost,omitzero"`
+	Planned         int    `json:"planned"`
+	Status          string `json:"status"`
+	Copied          int    `json:"copied"`
+	Verified        int    `json:"verified"`
+	Deferred        int    `json:"deferred"`
+	Bytes           int64  `json:"bytes"`
+	FirstScan       bool   `json:"first_scan"`
+	Lower           string `json:"lower"`
+	Upper           string `json:"upper"`
+	Reason          string `json:"reason"`
+	CleanupReason   string `json:"cleanup_reason"`
+	ExitCode        int    `json:"exit_code"`
 }
 
 func writePullSummary(out io.Writer, format string, s pull.Result, code int) error {
@@ -452,15 +454,19 @@ func writePullSummary(out io.Writer, format string, s pull.Result, code int) err
 	if format == "json" {
 		// Streaming encoding retains the summary newline and prior HTML/JS escapes.
 		return json.MarshalEncode(jsontext.NewEncoder(out, jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true)), pullSummary{
-			Status: s.Status, Planned: s.Planned, Copied: s.Copied, Verified: s.Verified, Deferred: s.Deferred,
+			DiagnosticsLost: s.DiagnosticsLost, Status: s.Status, Planned: s.Planned, Copied: s.Copied, Verified: s.Verified, Deferred: s.Deferred,
 			Bytes: s.Bytes, FirstScan: s.FirstScan, Lower: lower, Upper: upper,
 			Reason: s.Reason, CleanupReason: s.CleanupReason, ExitCode: code,
 		})
 	}
+	suffix := ""
+	if s.DiagnosticsLost > 0 {
+		suffix = fmt.Sprintf(" diagnostics_lost=%d", s.DiagnosticsLost)
+	}
 	if s.Status == "planned" {
-		_, err := fmt.Fprintf(out, "status=planned planned=%d copied=0 verified=0 deferred=%d bytes=%d first_scan=%t lower=%s upper=%s reason=%s cleanup_reason=%s\n", s.Planned, s.Deferred, s.Bytes, s.FirstScan, lower, upper, s.Reason, s.CleanupReason)
+		_, err := fmt.Fprintf(out, "status=planned planned=%d copied=0 verified=0 deferred=%d bytes=%d first_scan=%t lower=%s upper=%s reason=%s cleanup_reason=%s%s\n", s.Planned, s.Deferred, s.Bytes, s.FirstScan, lower, upper, s.Reason, s.CleanupReason, suffix)
 		return err
 	}
-	_, err := fmt.Fprintf(out, "status=%s copied=%d verified=%d deferred=%d bytes=%d first_scan=%t lower=%s upper=%s reason=%s cleanup_reason=%s\n", s.Status, s.Copied, s.Verified, s.Deferred, s.Bytes, s.FirstScan, lower, upper, s.Reason, s.CleanupReason)
+	_, err := fmt.Fprintf(out, "status=%s copied=%d verified=%d deferred=%d bytes=%d first_scan=%t lower=%s upper=%s reason=%s cleanup_reason=%s%s\n", s.Status, s.Copied, s.Verified, s.Deferred, s.Bytes, s.FirstScan, lower, upper, s.Reason, s.CleanupReason, suffix)
 	return err
 }

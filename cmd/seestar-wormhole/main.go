@@ -217,7 +217,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, openKeys func
 	}()
 	startup := newStartupLogging(o, logOutput)
 	logger := startup.logger
-	defer func() { startup.finish(result) }()
+	defer func() { result = errors.Join(result, startup.finish(result)) }()
 	var trace *tracerecord.Writer
 	if o.trace != "" {
 		phase = "trace"

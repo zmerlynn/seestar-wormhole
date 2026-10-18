@@ -604,7 +604,8 @@ Supply trusted parent directories.
 Help, version, license text, and pull summaries go to stdout. Logs/errors go
 to stderr. Normal logging uses the selected format and level. Default INFO
 has no periodic stats. Use WARN for quieter long-running service logs.
-Rejected startup discards pending dependency records.
+Rejected startup suppresses pending dependency records and reports their loss at WARN; diagnostic loss makes the final command result fail.
+A pull summary includes `diagnostics_lost` when nonzero.
 Most diagnostic records contain fixed classifications and numeric context,
 not dependency error text, forwarded payloads, or session secrets. Device
 selection masks serials. Dry-run debug plans intentionally include filenames;
@@ -634,6 +635,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `lan_discovery_started` | INFO | UDP port |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |
+| `diagnostics_lost` | WARN | Rule and cumulative diagnostic loss count |
 | `key_logging_enabled`, `keylog_failed` | INFO / WARN | Sensitive capture enabled; dropped-line count or creation warning |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys |
