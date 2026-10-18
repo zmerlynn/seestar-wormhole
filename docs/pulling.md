@@ -44,7 +44,7 @@ Each `--dir` selects a share-relative directory and keeps that path beneath the 
 
 The [temperature dark-library section](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/calibration-frames/dark-library.md#temperature-dark-library-firmware-975)
 describes the master files this command copies; `Autorun/Dark` holds separate
-individual frames. `darklibrary` appeared only after the telescope made its first master, so a pull before then
+individual frames. `darklibrary` was first observed after the telescope made its first master, so a pull before then
 can fail with `missing_directory` (exit 1).
 
 Without `--dir`, MyWorks contents go directly into the destination; with `--dir`, each directory is preserved beneath it. See [layouts](reference.md#pull).
