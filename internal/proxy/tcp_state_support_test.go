@@ -55,9 +55,16 @@ func TestTCPStateSupportLoopbackFailure(t *testing.T) {
 	if phase != "tcp_state_loopback" || reason != "loopback_unavailable" {
 		t.Fatalf("loopback failure: phase=%s reason=%s err=%v", phase, reason, err)
 	}
+	err = CheckTCPStateSupport(ctx)
 	if runtime.GOOS != "windows" {
-		if err := CheckTCPStateSupport(ctx); err != nil {
+		if err != nil {
 			t.Fatalf("non-Windows check must be a no-op: %v", err)
 		}
+	} else {
+		phase, reason := diagnostic.Fields(err, "")
+		if phase != "tcp_state_loopback" || reason != "loopback_unavailable" {
+			t.Fatalf("Windows public check must refuse canceled loopback setup: phase=%s reason=%s err=%v", phase, reason, err)
+		}
+		t.Logf("Windows public check refused canceled loopback setup: phase=%s reason=%s", phase, reason)
 	}
 }
