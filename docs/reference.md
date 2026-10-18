@@ -541,9 +541,10 @@ the phone's actual LAN broadcasts for discovery. See [always-on hosts](always-on
 
 TCP forwarding requires Windows 10 version 1703 or later, or Windows Server
 2016 or later, for non-consuming reset detection (`SIO_TCP_INFO`).
-Before opening forwarding listeners, the proxy queries a connected loopback TCP
-pair and refuses startup with exit 1 and a final ERROR if the query fails,
-returns a short result, or loopback setup is unavailable.
+Before opening forwarding listeners, the proxy queries a connected IPv4 loopback
+TCP pair at `127.0.0.1`, independently of `--bind`, and refuses startup with exit 1
+and a final ERROR if the query fails, returns a short result, or loopback setup is
+unavailable.
 
 Image copying uses
 [rclone through the SMB listener](copying.md#windows).
