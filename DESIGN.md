@@ -47,7 +47,7 @@ by the RDT machine, never by the tunnel parser.
 The concrete runtime is in `internal/proxy`, `internal/session/sessionedge`, `internal/edge/iotcedge` and
 `edge.SecureDTLS`. The session owner serializes Step calls, bounds its inbox and
 workers, replaces timers and joins cleanup before replacement. `SecureDTLS`
-owns the maintained library's handshake deadline, workers and authenticated
+owns the maintained library's handshake deadline and authenticated
 profile check. Independent crypto/interop and loss/MTU tests exercise that edge.
 [No fallback to plaintext is permitted.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/session.md#secure-channel)
 
@@ -518,8 +518,8 @@ IOTC, RDT and tunnel through a bounded FIFO of completions, with iterative layer
 feedback and one replaceable timer worker per attempt. `internal/edge/iotcedge` owns the
 shared UDP socket, up to 32 TCP alternatives, framing, DNS and attempt-scoped
 crypto. Pion is confined to `edge.SecureDTLS`; authenticated version and suite are
-logged. An attempt cancels and joins all edge workers before cloud stop and any
-replacement attempt. The cloud adapter maps busy explicitly, treats failed
+logged. Attempt teardown follows the [shutdown invariant](#end-to-end-composition-invariants).
+The cloud adapter maps busy explicitly, treats failed
 internal cloud stop as bounded `ErrReleaseAbandoned` (preserving refusal),
 retries network interruptions with fresh detail/online-link, and treats malformed
 or unknown allocation outcomes as `ErrUncertain`, blocking reacquisition.
@@ -653,13 +653,13 @@ device coverage is listed separately in [status](docs/status.md).
   Admission deadlines never extend, and cancellation retires verification.
   Local output fullness defers the open without failing the session. Session
   failure and release still end all pending opens. Wire quarantine is unchanged.
-- **Shutdown joins every session goroutine.** The attempt closes packet paths, joins
-  the maintained DTLS library reader and handshake FSM, joins composition and
-  socket workers (whose Write returns only after its context watcher exits),
-  then completes cloud release before permitting replacement.
-  `internal/edge/PION-PATCH.md` documents the narrow vendored lifecycle integration and
-  update procedure. Identity-specific tests inspect the production connection
-  immediately after Session.Close; they do not rely on a later scheduler wait.
+- **Shutdown joins first-party workers.** The attempt closes packet paths, joins
+  the SecureDTLS lifetime watcher and composition and socket workers, then
+  completes cloud release before permitting replacement. Upstream Pion Close
+  cancels its reader, handshake FSM and per-Write watchers; these exit promptly
+  without a synchronous join. The packet transport returns on its closed done
+  channel without freeing resources, and the Pion logger is a no-op. Tests check
+  Pion goroutine exit after Close and `synctest.Wait()`.
 - **Clean EOF occurs only after every delivered byte is read and the peer ended
   cleanly.** Terminal publication follows delivery. A reader selecting END/CLOSE
   rechecks the delivery slot after observing closure, including partial reads.

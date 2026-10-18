@@ -11,6 +11,5 @@ this version; `@v/list` returned no tags. The proxy's
 The dependency was fetched with `go get` through the default GOPROXY with
 GOSUMDB enabled, then `go mod tidy` and `go mod vendor`, in Go 1.27. Production
 uses the vendored implementation without `GOEXPERIMENT=jsonv2`. No duplicate
-name allowance is enabled. Existing Pion, rclone, and go-smb2 vendor patches
-were restored unchanged after vendoring. See [development](docs/development/README.md#vendoring-and-patches)
-for their contracts and [NOTICE](NOTICE) for attribution.
+name allowance is enabled. See [vendoring](docs/development/README.md#vendoring)
+and [NOTICE](NOTICE) for attribution.

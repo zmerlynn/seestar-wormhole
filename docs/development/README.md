@@ -12,7 +12,7 @@ simulator within this module; there is no Go API for external consumers.
 - [Build and run](#build-and-run)
 - [Offline validation](#offline-validation)
 - [Test layout and evidence](#test-layout-and-evidence)
-- [Vendoring and patches](#vendoring-and-patches)
+- [Vendoring](#vendoring)
 - [Licenses and generated notices](#licenses-and-generated-notices)
 - [Project rules](#project-rules)
 - [Reviewing a change](#reviewing-a-change)
@@ -105,9 +105,6 @@ outside the checkout. Those are script controls, not runtime application options
   with network access; compilation and namespace checks use no network.
   Podman must support privileged network namespaces. Host interfaces are
   untouched. Put evidence outside the checkout.
-- `./scripts/test-pion-join.sh` exercises the patched Pion cancellation watcher
-  using a temporary package copy. Run it inside the prescribed Go container;
-  [Pion lifecycle integration](../../internal/edge/PION-PATCH.md) gives the invocation.
 
 ## Test layout and evidence
 
@@ -134,14 +131,11 @@ Keep protocol behavior and local policy distinct when adding tests.
 
 For current device/platform coverage, use [status](../status.md).
 
-## Vendoring and patches
+## Vendoring
 
 Build from the checked-in vendor tree with `-mod=vendor`. The vendor tree is
 exactly what `go mod tidy` and `go mod vendor` produce; CI regenerates it and
-fails on any difference, so vendored files are never edited by hand. Patched
-dependencies come from a `replace` to a tagged fork:
-
-See [Pion lifecycle integration](../../internal/edge/PION-PATCH.md).
+fails on any difference, so vendored files are never edited by hand.
 
 ## Licenses and generated notices
 

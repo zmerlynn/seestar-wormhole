@@ -1,7 +1,7 @@
 seestar-wormhole NOTICE
 ======================
 
-The project's own code is released under the Unlicense. Files under vendor/ and the vendored Pion DTLS patch retain their upstream licenses; the local Pion adapter attribution and patch details are in internal/edge/PION-LICENSE and internal/edge/PION-PATCH.md.
+The project's own code is released under the Unlicense. Files under vendor/ retain their upstream licenses.
 
 One exception outside vendor/: internal/edge/dtls_suite.go adapts MIT-licensed Pion suite code. That
 adapted portion remains under the MIT license reproduced in internal/edge/PION-LICENSE.

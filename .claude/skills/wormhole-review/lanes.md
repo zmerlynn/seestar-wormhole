@@ -238,13 +238,13 @@ everything else.
    - GPL, AGPL, SSPL, or an unknown or absent license is a Must fix.
 2. Verify that `vendor/modules.txt` is consistent with `go.mod`, that no
    `replace` directive points at a local path, and that every `replace` to a
-   fork names a tag whose diff from upstream is documented, as in
-   [Vendoring and patches](../../../docs/development/README.md#vendoring-and-patches).
+   fork names a tag whose diff from upstream is documented. See
+   [Vendoring](../../../docs/development/README.md#vendoring) for reproducibility.
 3. `go run ./scripts/generate-licenses.go --check` passes. The built
    binary's `licenses` command includes every linked module.
 4. `NOTICE` is accurate for the change. That covers new third-party code,
    adapted code (the Pion suite adapter is the model: upstream license kept,
-   patch documented) and any LGPL component's obligations.
+   adaptation identified) and any LGPL component's obligations.
 5. New code that looks lifted carries a license and attribution. Signs are a
    break in style, a foreign copyright line, or a comment naming another
    project.

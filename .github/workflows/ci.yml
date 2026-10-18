@@ -31,8 +31,6 @@ jobs:
           go test ./...
           go test scripts/release.go scripts/release_test.go
           ./scripts/test-check.sh
-      - name: Pion close-join test
-        run: sh scripts/test-pion-join.sh
 
   vendor:
     runs-on: ubuntu-24.04
