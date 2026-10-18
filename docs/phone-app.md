@@ -9,8 +9,9 @@ Phone use requires LAN discovery; the tested phone platforms and paths are liste
 
 ## What you need
 
-- A computer on the same Wi-Fi network as your phone. I use a Mac. Linux or a
-  Raspberry Pi should work the same way, though I haven't tried them. Windows
+- A computer on the same Wi-Fi network as your phone. The tested computer was
+  a Mac. Linux or a Raspberry Pi should work the same way, though neither has
+  been tested. Windows
   doesn't support LAN discovery.
 - Your Seestar account email and password.
 - A correct site stored on the telescope. The device keeps that site and its
