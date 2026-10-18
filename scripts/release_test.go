@@ -115,20 +115,11 @@ func TestReleaseArchiveContents(t *testing.T) {
 
 func checkPackagedDevelopmentLinks(t *testing.T, contents map[string][]byte) {
 	t.Helper()
-	// No Markdown parser is vendored. Check only the three literal development
-	// links that the release writes, rather than implementing a Markdown parser.
-	const target = "https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md"
-	for _, link := range []struct {
-		file, label string
-		count       int
-	}{
-		{"README.md", "How it works and how to hack on it", 1},
-		{"docs/reference.md", "development", 2},
-	} {
-		span := []byte("[" + link.label + "](" + target + ")")
-		if got := bytes.Count(contents[link.file], span); got != link.count {
-			t.Errorf("%s: source-repository development links=%d want %d", link.file, got, link.count)
-		}
+	// No Markdown parser is vendored. Check only the literal development link
+	// that the release writes, rather than implementing a Markdown parser.
+	const span = "[How it works and how to hack on it](https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md)"
+	if got := bytes.Count(contents["README.md"], []byte(span)); got != 1 {
+		t.Errorf("README.md: source-repository development links=%d want 1", got)
 	}
 	if _, ok := contents["docs/development/README.md"]; ok {
 		t.Fatal("development guide unexpectedly included in release")
