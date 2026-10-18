@@ -47,7 +47,7 @@ tag scheme join the contract from that release, with the image tagged by the bin
    - State is an interface between our own binaries. Third-party readers or editors of state.json are not supported.
    - Lowering a hard limit (inventory entries, state size) so that a working destination is refused is breaking.
 9. **Proxy listeners and forwarding.** Port-mapping syntax and default mappings; bind behavior; byte-transparent
-   forwarding including half-close; the documented rewrite and local-answer rules (the setter table); LAN discovery on
+   forwarding including half-close; the documented forwarding and local-answer rules (the setter table); LAN discovery on
    UDP 4720 as an app-facing protocol; session ownership, release and recovery behavior.
 10. **What the proxy does to the device by default.** A new default that writes device state, or a default that stops
     protecting something it used to (a pin, a setter drop), is breaking. A new read-only request or a new startup

@@ -3,6 +3,7 @@ package proxy
 import (
 	"bytes"
 	"errors"
+	"github.com/go-json-experiment/json"
 	"io"
 	"strings"
 	"testing"
@@ -101,6 +102,11 @@ func FuzzSiteProtection(f *testing.F) {
 		`{"method":"pi_set_time","params":{"time_zone":"America/Los_Angeles","year":2001}}`,
 		`{"method":"set_user_location","params":[{"lat":"10","lon":"20"},null]}`,
 		`{"method":"set_setting","params":{"lat":"10","time_zone":"America/Los_Angeles"}}`,
+		`{"method":"set_setting","params":[{"year":null,"lon":{},"gain":80},false]}`,
+		`{"method":"set_setting","params":[null]}`,
+		`{"method":"set_setting"}`,
+		`{"method":"scope_set_location","params":null}`,
+		`{"method":"scope_set_time","params":42}`,
 		`{"method":"pi_set_time","params":null}`,
 		`{"method":"pi_set_time","method":null}`,
 		`{"method":"get_setting","future":{"x":1,"x":2}}`,
@@ -112,6 +118,22 @@ func FuzzSiteProtection(f *testing.F) {
 	f.Fuzz(func(t *testing.T, b []byte, chunk uint16) {
 		if len(b) > 4*MaxSiteLine {
 			t.Skip()
+		}
+		var request struct {
+			Method string `json:"method"`
+		}
+		if len(b) <= MaxSiteLine && bytes.HasSuffix(b, []byte("\r\n")) && json.Unmarshal(b, &request) == nil {
+			out, event := protectSite(b)
+			switch request.Method {
+			case "set_setting":
+				if !bytes.Equal(out, b) || event != nil {
+					t.Fatalf("set_setting changed: got=%q want=%q event=%+v", out, b, event)
+				}
+			case "set_user_location", "pi_set_time", "scope_set_location", "scope_set_time":
+				if len(out) != 0 || event == nil || event.reason != "site_protected" || len(event.rejection) == 0 {
+					t.Fatalf("setter forwarded: got=%q event=%+v", out, event)
+				}
+			}
 		}
 		var a, c, ra, rc bytes.Buffer
 		if err := copySite(&a, bytes.NewReader(b), nil, &ra); err != nil {

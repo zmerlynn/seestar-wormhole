@@ -2,8 +2,6 @@ package proxy
 
 import (
 	"bytes"
-	"github.com/go-json-experiment/json"
-	"reflect"
 	"strings"
 	"testing"
 )
@@ -77,13 +75,5 @@ func TestControlAndroidSiteProtection(t *testing.T) {
 			}
 
 		}
-	}
-	// Even when mixed with protected fields, language and client identity survive.
-	const mixed = `{"id":9,"method":"set_setting","params":{"lang":"en","cli_name":"synthetic phone","cli_uuid":"synthetic-client","lat":1,"lon":2}}`
-	got, event := protectSite([]byte(mixed + "\r\n"))
-	const wantMixed = `{"id":9,"method":"set_setting","params":{"lang":"en","cli_name":"synthetic phone","cli_uuid":"synthetic-client"}}`
-	var actual, expected any
-	if event == nil || json.Unmarshal(got, &actual, json.MatchCaseInsensitiveNames(true)) != nil || json.Unmarshal([]byte(wantMixed), &expected, json.MatchCaseInsensitiveNames(true)) != nil || !reflect.DeepEqual(actual, expected) {
-		t.Fatalf("mixed settings changed outside site fields: %s", got)
 	}
 }

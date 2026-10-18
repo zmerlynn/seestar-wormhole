@@ -34,7 +34,7 @@ func copySite(dst io.Writer, src io.Reader, logger *slog.Logger, reply io.Writer
 		}
 		if event != nil && logger != nil {
 			if event.reason == "site_protected" {
-				logger.Info("site_protected", "method", event.method, "id", event.id, "fields", event.fields, "reason", event.reason)
+				logger.Info("site_protected", "method", event.method, "id", event.id, "reason", event.reason)
 			} else {
 				logger.Warn("site_reject", "method", event.method, "reason", event.reason)
 			}

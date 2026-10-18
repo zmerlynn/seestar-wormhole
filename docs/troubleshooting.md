@@ -21,7 +21,7 @@ Waiting won't fix it. Stop the proxy, wait for it to exit, give the
 cloud a few minutes, then start it again. File an issue if it keeps
 happening.
 
-A `site_protected` event means the proxy dropped a site or time setter, or removed those fields from `set_setting`; see [site protection](reference.md#site-protection).
+A `site_protected` event means the proxy dropped a site or time setter; see [site protection](reference.md#site-protection).
 
 A `cloud_license_missing` event means allocation returned no SDK license key; retries stop. See [the log reference](reference.md#logs).
 

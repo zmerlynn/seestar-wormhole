@@ -500,20 +500,7 @@ See [the site and host-clock setters](https://github.com/zmerlynn/seestar-spec/b
 | Method | Behavior |
 |---|---|
 | `set_user_location`, `pi_set_time`, `scope_set_location`, `scope_set_time` | Drop the whole request and answer locally with JSON-RPC `-32602`, message/reason `site_protected`, regardless of params. |
-| `set_setting` | Remove `lat`, `lon`, `time_zone`, `year`, `mon`, `day`, `hour`, `min`, `sec`. Forward the remaining settings, or drop and answer locally with `-32602` and `site_protected` if no settings remain. |
-
-For `set_setting`, params can be an object or an array whose first element is
-an object. Unknown fields, `force`, envelope members, and extra array elements
-survive stripping. Site keys match exact spelling and are removed regardless
-of their value or type. Calendar fields are protected even without `time_zone`.
-A request with no protected fields stays byte-identical. When stripping a field,
-the current implementation reserializes the request and sorts remaining setting
-names. That can change which settings run before an error or early return,
-because the device processes them in document order (R14–R16 in the linked
-chapter; see also the [method catalog](https://github.com/zmerlynn/seestar-spec/blob/v1/catalog/control/methods/set_setting.yaml)).
-Rewritten objects use compact JSON and CRLF.
-This `set_setting` rule is a precaution; the recovered setting inventory has
-no top-level site keys.
+| `set_setting` | Pass unchanged. |
 
 Unsafe frames are dropped and answered locally. These error objects differ from
 the [device error envelope](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/errors.md#errors-on-the-wire):
@@ -522,8 +509,7 @@ the [device error envelope](https://github.com/zmerlynn/seestar-spec/blob/v1/spe
 |---|---|
 | Malformed JSON, duplicate member names anywhere, JSON batch arrays, null/nonobject envelopes | `-32700` |
 | Missing method, wrong nonnull method type, control-character method, non-CRLF frame, incomplete EOF fragment, frame over 16 KiB including CRLF | `-32600` |
-| Protected setter, or invalid `set_setting` parameters | `-32602` |
-| Encoding failure while rewriting an inspected request | `-32603` |
+| Protected setter | `-32602` |
 
 Empty-string and null methods pass through unchanged because they match no
 protected setter. Whitespace-only separators also pass through. Oversized
@@ -531,19 +517,17 @@ frames are discarded through the terminator without forwarding a prefix.
 Errors echo a recoverable string or numeric ID; otherwise ID is null. Local
 errors wait for a device frame boundary.
 
-Inspected requests with duplicate member names are rejected before forwarding
-or rewriting, including nested names and escaped spellings. This is a deliberate
+Inspected requests with duplicate member names are rejected before forwarding,
+including nested names and escaped spellings. This is a deliberate
 fail-closed deviation from device dispatch; [R12 prohibits clients from sending
 duplicate members](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/session-handshake.md#request-envelope).
 Unknown members remain allowed. The local answer uses `-32700`, a null ID, and
 message `request rejected by site protection`; no ambiguous request fields are
 echoed. Device replies stay byte-transparent and are never decoded for this check.
 
-One INFO `site_protected` record replaces the former rewrite record for each
-dropped or stripped setter. It contains `method`, integer request `id` or
-`unavailable`, recognized removed site `fields`, and `reason=site_protected`.
-String IDs are echoed to the client but omitted from logs. A dropped setter
-with no recognized site fields logs an empty field list. Coordinates, clock
+One INFO `site_protected` record is emitted for each dropped setter. It contains
+`method`, integer request `id` or `unavailable`, and `reason=site_protected`.
+String IDs are echoed to the client but omitted from logs. Coordinates, clock
 values, zone values, and unknown parameter names are omitted. Invalid frames
 use WARN `site_reject` with fixed method/reason labels. There is no startup
 site record.
@@ -641,7 +625,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `channel_closed` | INFO for a closed local writer; WARN for abnormal failures; DEBUG otherwise | Tunnel/bridge detail, direction or channel, reason and classified cause |
 | `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason |
 | `client_canceled` | INFO | Admission canceled before forwarding; ports/client class |
-| `site_protected` | INFO | Dropped or stripped setter; method, integer ID or `unavailable`, removed site field names, reason |
+| `site_protected` | INFO | Dropped setter; method, integer ID or `unavailable`, reason |
 | `site_reject` | WARN | Invalid frame; method and reason |
 | `lan_discovery_started` | INFO | UDP port |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
@@ -674,7 +658,7 @@ selected log format and sink; a stalled sink can drop it.
 
 Client class is `loopback`, `LAN` for private/link-local IPs, or `other`;
 client addresses are omitted. Channel byte counts include successful partial
-writes and site stripping; duration ends when both forwarding workers finish.
+writes; duration ends when both forwarding workers finish.
 Outage reminders continue without clients and during an in-flight dial or
 blocked cleanup. Readiness resets the outage; intentional idle release does
 not start one.
@@ -787,7 +771,6 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `dns_not_found` | 1 | DNS lookup found no address. |
 | `reason` | `drain_opportunity` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `dtls_required` | 1 | Peer requires DTLS. |
-| `reason` | `encode_failed` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `ended` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `frame_too_large` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `future_mtime` | 1 | Check the device and host clocks, then retry. |
@@ -805,7 +788,6 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `invalid_metadata` | 1 | Check source timestamps and file sizes, then retry. |
 | `reason` | `invalid_method` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `invalid_option` | 2 | Option, environment, state-directory, or catalog-selection refusal. Underlying filesystem, DNS, and timeout classes are replaced by this value. |
-| `reason` | `invalid_params` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `invalid_request` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `invalid_response` | 1 | Invalid response. |
 | `reason` | `inventory_limit` | 1 | Over 200,000 entries per side (folders included), or over 64 MiB of source path text before filtering. SMB reads pages of 256 entries; `--only` cannot reduce this budget. |

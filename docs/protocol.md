@@ -78,6 +78,5 @@ JSON decoding uses case-sensitive field names from the linked cloud, license,
 and discovery schemas. Unknown members remain allowed. Invalid UTF-8 and
 invalid Unicode escapes are rejected as local fail-closed policy. For site
 inspection they receive the same `-32700` answer as malformed JSON; opaque
-device replies are unaffected. Settings rewrites preserve the existing compact
-bytes, sorted map keys, raw number spellings and escapes, and HTML/JavaScript
-escaping. A nonduplicate request requiring no rewrite stays byte-identical.
+device replies are unaffected. See [site protection](reference.md#site-protection)
+for forwarding and local-answer rules.

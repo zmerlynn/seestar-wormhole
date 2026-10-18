@@ -33,16 +33,15 @@ func (s *siteWireSession) DialPort(ctx context.Context, port uint16) (net.Conn, 
 }
 
 type siteWireFrame struct {
-	raw                     string
-	method                  string
-	location, clock, reject bool
+	raw    string
+	reject bool
 }
 
 // Synthetic shapes plus the review's exact object-time reproduction. The oracle
 // below checks the wire independently of the production filter.
 func siteWireFrames() []siteWireFrame {
 	frames := []siteWireFrame{}
-	for _, method := range []string{"set_user_location", "pi_set_time", "set_setting"} {
+	for _, method := range []string{"set_user_location", "pi_set_time"} {
 		for _, object := range []string{
 			`{"lat":-71.23456,"lon":81.98765,"time_zone":"America/Los_Angeles","year":2001,"mon":2,"day":3,"hour":4,"min":5,"sec":6,"force":false,"extra":{"n":9007199254740993}}`,
 			`{"lat":"-71.23456","lon":"81.98765","time_zone":"America/Los_Angeles","year":"2001","mon":"2","day":"3","hour":"4","min":"5","sec":"6","force":true,"extra":{"n":9007199254740993}}`,
@@ -52,7 +51,7 @@ func siteWireFrames() []siteWireFrame {
 				if wrap {
 					params = "[" + object + `,null,{"tail":9007199254740993}]`
 				}
-				frames = append(frames, siteWireFrame{raw: fmt.Sprintf(`{"id":%d,"method":%q,"params":%s,"envelope_extra":9007199254740993}`+"\r\n", 100+len(frames), method, params), method: method, location: method == "set_setting", clock: method == "set_setting", reject: method != "set_setting"})
+				frames = append(frames, siteWireFrame{raw: fmt.Sprintf(`{"id":%d,"method":%q,"params":%s,"envelope_extra":9007199254740993}`+"\r\n", 100+len(frames), method, params), reject: true})
 			}
 		}
 		for _, params := range []string{"null", "[]", "[null]", "[1]", `"private-params"`, "7", "[[{}]]"} {
@@ -61,13 +60,9 @@ func siteWireFrames() []siteWireFrame {
 		frames = append(frames, siteWireFrame{raw: fmt.Sprintf(`{"id":%d,"method":%q}`+"\r\n", 100+len(frames), method), reject: true})
 	}
 	frames = append(frames,
-		siteWireFrame{raw: `{"id":32,"method":"pi_set_time","params":{"time_zone":"America/Los_Angeles","year":2001,"mon":2,"day":3,"hour":4,"min":5,"sec":6}}` + "\r\n", method: "pi_set_time", reject: true},
-		siteWireFrame{raw: `{"id":33,"method":"set_user_location","params":{}}` + "\r\n", method: "set_user_location", reject: true},
-		siteWireFrame{raw: `{"id":34,"method":"pi_set_time","params":[{}]}` + "\r\n", method: "pi_set_time", reject: true},
-		siteWireFrame{raw: `{"id":35,"method":"set_setting","params":{"lat":"10","lang":"en"}}` + "\r\n", method: "set_setting", location: true},
-		siteWireFrame{raw: `{"id":36,"method":"set_setting","params":[{"lon":20,"lang":"en"},false]}` + "\r\n", method: "set_setting", location: true},
-		siteWireFrame{raw: `{"id":37,"method":"set_setting","params":{"time_zone":"America/Los_Angeles"}}` + "\r\n", method: "set_setting", reject: true},
-		siteWireFrame{raw: `{"id":38,"method":"set_setting","params":[{"lang":"en","force":true},null]}` + "\r\n"},
+		siteWireFrame{raw: `{"id":32,"method":"pi_set_time","params":{"time_zone":"America/Los_Angeles","year":2001,"mon":2,"day":3,"hour":4,"min":5,"sec":6}}` + "\r\n", reject: true},
+		siteWireFrame{raw: `{"id":33,"method":"set_user_location","params":{}}` + "\r\n", reject: true},
+		siteWireFrame{raw: `{"id":34,"method":"pi_set_time","params":[{}]}` + "\r\n", reject: true},
 		siteWireFrame{raw: `{"id":39,"method":"get_device_state","params":{"keys":["location_lon_lat"]}}` + "\r\n"},
 		siteWireFrame{raw: `{"id":40,"method":"pi_set_time","params":{broken}}` + "\r\n", reject: true},
 		siteWireFrame{raw: `{"id":41,"method":"set_user_location","params":{}} {}` + "\r\n", reject: true},
@@ -145,7 +140,7 @@ func TestSiteCLIToFakeDevice(t *testing.T) {
 						}
 						want := 0
 						for _, f := range siteWireFrames() {
-							if f.reject || f.location || f.clock {
+							if f.reject {
 								want++
 							}
 						}
@@ -217,7 +212,9 @@ func TestSiteCLIToFakeDevice(t *testing.T) {
 						if index >= len(lines) {
 							t.Fatal("missing forwarded frame")
 						}
-						assertSiteWireFrame(t, f, lines[index])
+						if string(lines[index])+"\r\n" != f.raw {
+							t.Fatalf("forwarded frame=%q want=%q", lines[index], f.raw)
+						}
 						index++
 					}
 					if index != len(lines) {
@@ -286,54 +283,6 @@ func TestSiteCLIToFakeDevice(t *testing.T) {
 					t.Fatalf("extra local errors=%d", len(replies)-index)
 				}
 			})
-		}
-	}
-}
-
-func assertSiteWireFrame(t *testing.T, f siteWireFrame, line []byte) {
-	t.Helper()
-	if f.method == "" {
-		if string(line)+"\r\n" != f.raw {
-			t.Fatal("nonsetter changed")
-		}
-		return
-	}
-	var a, b map[string]jsontext.Value
-	if json.Unmarshal([]byte(f.raw), &a, json.MatchCaseInsensitiveNames(true)) != nil || json.Unmarshal(line, &b, json.MatchCaseInsensitiveNames(true)) != nil {
-		t.Fatal("invalid forwarded JSON")
-	}
-	if !bytes.Equal(a["id"], b["id"]) || !bytes.Equal(a["method"], b["method"]) || !bytes.Equal(a["envelope_extra"], b["envelope_extra"]) {
-		t.Fatal("envelope changed")
-	}
-	old, rewritten := a["params"], b["params"]
-	if old[0] == '[' {
-		var x, y []jsontext.Value
-		if json.Unmarshal(old, &x, json.MatchCaseInsensitiveNames(true)) != nil || json.Unmarshal(rewritten, &y, json.MatchCaseInsensitiveNames(true)) != nil || len(x) != len(y) {
-			t.Fatal("array shape changed")
-		}
-		for i := 1; i < len(x); i++ {
-			if !bytes.Equal(x[i], y[i]) {
-				t.Fatal("extra array element changed")
-			}
-		}
-		old, rewritten = x[0], y[0]
-	} else if rewritten[0] != '{' {
-		t.Fatal("object shape changed")
-	}
-	var x, y map[string]jsontext.Value
-	json.Unmarshal(old, &x, json.MatchCaseInsensitiveNames(true))
-	json.Unmarshal(rewritten, &y, json.MatchCaseInsensitiveNames(true))
-	for key, value := range x {
-		if f.location && (key == "lat" || key == "lon") || f.clock && (key == "time_zone" || key == "year" || key == "mon" || key == "day" || key == "hour" || key == "min" || key == "sec") {
-			continue
-		}
-		if !bytes.Equal(value, y[key]) {
-			t.Errorf("unconsumed field %s changed", key)
-		}
-	}
-	for _, key := range []string{"lat", "lon", "time_zone", "year", "mon", "day", "hour", "min", "sec"} {
-		if _, ok := y[key]; ok {
-			t.Errorf("protected field %s reached device", key)
 		}
 	}
 }

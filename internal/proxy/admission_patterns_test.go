@@ -19,15 +19,14 @@ func TestPendingPatternsAndSiteHandoff(t *testing.T) {
 	// A line boundary plus setter spans the 8 KiB staging boundary. CRLF remains intact.
 	prefix := append(bytes.Repeat([]byte{' '}, 8179), '\r', '\n')
 	cases := []struct {
-		name     string
-		port     uint16
-		data     []byte
-		stripped bool
+		name string
+		port uint16
+		data []byte
 	}{
-		{"smb-client-first", 445, smb, false},
-		{"app-client-first", 4700, rpc, false},
-		{"app-site", 4700, append(append(bytes.Clone(prefix), setter...), rpc...), true},
-		{"smb-byte-transparent", 445, setter, true},
+		{"smb-client-first", 445, smb},
+		{"app-client-first", 4700, rpc},
+		{"app-site", 4700, append(append(bytes.Clone(prefix), setter...), rpc...)},
+		{"smb-byte-transparent", 445, setter},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -72,16 +71,7 @@ func TestPendingPatternsAndSiteHandoff(t *testing.T) {
 				<-end
 				device.SetReadDeadline(time.Now())
 				got := <-gotDone
-				if tc.stripped && tc.port == 4700 {
-					if !bytes.HasPrefix(got, prefix) || !bytes.HasSuffix(got, rpc) {
-						t.Fatalf("boundary or following RPC changed: %d bytes", len(got))
-					}
-					line := got[len(prefix) : len(got)-len(rpc)]
-					if string(line) != `{"id":2,"method":"set_setting","params":{"force":true}}`+"\r\n" {
-						t.Fatalf("stripped settings=%s", line)
-					}
-
-				} else if !bytes.Equal(got, tc.data) {
+				if !bytes.Equal(got, tc.data) {
 					t.Fatalf("got %d bytes want %d, stream changed", len(got), len(tc.data))
 				}
 				response := []byte("device-reply-after-client-FIN")

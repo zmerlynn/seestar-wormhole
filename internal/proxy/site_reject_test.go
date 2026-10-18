@@ -14,7 +14,7 @@ import (
 
 func TestSiteRejectedStreamSplitsAndLog(t *testing.T) {
 	valid := `{"id":1,"method":"set_setting","params":[{"lat":"10","lon":"20","force":false},null]}` + "\r\n"
-	want := `{"id":1,"method":"set_setting","params":[{"force":false},null]}` + "\r\n"
+	want := valid
 	bad := `{"id":"private id","method":"pi_set_time","params":null}` + "\r\n"
 	input := valid + bad + strings.Repeat(" ", MaxSiteLine) + bad + valid + bad[:len(bad)-2]
 	for _, chunk := range []int{1, 2, 7, 4096, MaxSiteLine + 1, len(input)} {

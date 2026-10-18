@@ -40,8 +40,8 @@ type bridgeResult struct {
 	reason                       string
 }
 
-// countingWriter counts successful forwarded bytes, including partial writes
-// and rewritten control lines. Each copy worker owns its own counter.
+// countingWriter counts successful forwarded bytes, including partial writes.
+// Each copy worker owns its own counter.
 type countingWriter struct {
 	io.Writer
 	bytes int64
