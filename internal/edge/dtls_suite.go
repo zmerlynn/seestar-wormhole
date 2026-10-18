@@ -1,7 +1,7 @@
 package edge
 
-// Adapted from Pion v3.1.10's suite implementation; see NOTICE for the
-// vendored upstream license.
+// Adapted from Pion's suite implementation, verified against v3.1.14;
+// see NOTICE for the upstream license.
 // Pion owns ECDHE, PSK premaster, EMS, PRF and record AEAD;
 // this adapter supplies only RFC 7905's suite metadata and 32/12-byte key sizes.
 import (

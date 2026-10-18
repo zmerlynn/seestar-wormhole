@@ -71,15 +71,14 @@ func (p *DTLSPackets) Deliver(datatype byte, b []byte) (result error) {
 	if p.closed {
 		return net.ErrClosed
 	}
-	// Pion bounds fragment storage, but its transcript cache has no exposed cap.
-	// Bound all lifetime control input, including post-handshake messages, before
-	// it enters the library. Policy permits ample retransmissions of this PSK profile.
+	// Pion v3.1.14 bounds fragment and transcript caches. This adapter also bounds
+	// all lifetime control input, including post-handshake messages, before it
+	// enters the library. Policy permits ample retransmissions of this PSK profile.
 	if n > 0 && (p.controlCount >= 512 || n > 256*1024-p.controlBytes) {
 		return ErrDTLSBudget
 	}
-	// Pion's receive worker can block on its decrypted application queue before
-	// it processes Finished. Drop early application records, preserving every
-	// control record in order, using the same Pion decode as accounting above.
+	// Local policy drops application records until authenticated readiness,
+	// preserving every control record in order with the Pion decode used above.
 	// The queued payload is owned; never edit or retain the caller's buffer.
 	var owned []byte
 	if !p.applicationReady && n != len(b) {
