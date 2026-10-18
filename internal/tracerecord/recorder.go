@@ -5,10 +5,12 @@ package tracerecord
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"io"
+	"log/slog"
 	"os"
 	"reflect"
 	"sync"
@@ -91,6 +93,15 @@ type Writer struct {
 	ports        map[uint16]string
 	servicePorts map[uint16]bool
 	now          func() time.Time
+	logger       atomic.Pointer[slog.Logger]
+	failed       chan struct{}
+	reported     chan struct{}
+	stop         chan struct{}
+	stopOnce     sync.Once
+	pending      atomic.Uint64
+	timedOut     atomic.Bool
+	nextWarn     atomic.Int64
+	lastCount    atomic.Uint64
 }
 
 // Open creates a new 0600 file and refuses existing paths, including symlinks.
@@ -105,7 +116,26 @@ func Open(path string) (*Writer, error) {
 // New takes ownership of a sink. now is an injected UTC clock for simulators.
 // capBytes must leave room for a trailer. Invalid caps discard all records.
 func New(sink io.WriteCloser, capBytes int, now func() time.Time) *Writer {
-	w := &Writer{origin: time.Now(), queue: make(chan []byte, queueCapacity), done: make(chan struct{}), peers: make(map[string]string), ports: make(map[uint16]string), servicePorts: make(map[uint16]bool), now: now}
+	w := &Writer{origin: time.Now(), queue: make(chan []byte, queueCapacity), done: make(chan struct{}), peers: make(map[string]string), ports: make(map[uint16]string), servicePorts: make(map[uint16]bool), now: now, failed: make(chan struct{}, 1), reported: make(chan struct{}), stop: make(chan struct{})}
+	go func() {
+		defer close(w.reported)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-w.failed:
+				w.report(false)
+			case <-ticker.C:
+				w.report(false)
+			case <-w.done:
+				w.report(true)
+				return
+			case <-w.stop:
+				w.report(true)
+				return
+			}
+		}
+	}()
 	go func() {
 		defer close(w.done)
 		defer func() {
@@ -116,22 +146,25 @@ func New(sink io.WriteCloser, capBytes int, now func() time.Time) *Writer {
 		written := 0
 		sinkFailed := false
 		for line := range w.queue {
-			if sinkFailed {
-				w.drop(&w.causes.storage)
-				continue
-			}
-			if capBytes < trailerReserve || len(line) > capBytes-trailerReserve-written {
-				w.drop(&w.causes.fileCap)
-				continue
-			}
-			n, err := sink.Write(line)
-			written += n
-			if err != nil || n != len(line) {
-				w.drop(&w.causes.storage)
-				// A failed write may have left a partial JSON object. Never append
-				// another record (including the trailer) to that sink.
-				sinkFailed = true
-			}
+			func() {
+				defer w.pending.Add(^uint64(0))
+				if sinkFailed {
+					w.drop(&w.causes.storage)
+					return
+				}
+				if capBytes < trailerReserve || len(line) > capBytes-trailerReserve-written {
+					w.drop(&w.causes.fileCap)
+					return
+				}
+				n, err := sink.Write(line)
+				written += n
+				if err != nil || n != len(line) {
+					w.drop(&w.causes.storage)
+					// A failed write may have left a partial JSON object. Never append
+					// another record (including the trailer) to that sink.
+					sinkFailed = true
+				}
+			}()
 		}
 		if !sinkFailed && capBytes >= trailerReserve {
 			b, _ := json.Marshal(Record{Version: 1, Record: "end", Sequence: w.sequence + 1, UTC: w.now().UTC().Format(time.RFC3339Nano), Dropped: w.dropped.Load(), DropCauses: w.causes.snapshot()}, jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
@@ -144,6 +177,34 @@ func New(sink io.WriteCloser, capBytes int, now func() time.Time) *Writer {
 	return w
 }
 
+// SetLogger attaches the command's existing diagnostic sink before recording.
+func (w *Writer) SetLogger(logger *slog.Logger) {
+	if w != nil {
+		w.logger.Store(logger)
+	}
+}
+
+func (w *Writer) report(final bool) {
+	logger := w.logger.Load()
+	if logger == nil {
+		return
+	}
+	n := w.Dropped()
+	previous := w.lastCount.Load()
+	now := time.Now().UnixNano()
+	next := w.nextWarn.Load()
+	if n == previous {
+		return
+	}
+	if !final && (now < next || !w.nextWarn.CompareAndSwap(next, now+int64(time.Second))) {
+		return
+	}
+	if !w.lastCount.CompareAndSwap(previous, n) {
+		return
+	}
+	logger.Warn("diagnostics_lost", "rule", "trace_loss", "count", n, "causes", w.causes.snapshot())
+}
+
 // Now returns the trace edge monotonic elapsed clock. Pure cores still receive their owner clock.
 func (w *Writer) Now() core.Instant { return core.Instant(time.Since(w.origin)) }
 
@@ -151,21 +212,32 @@ func (w *Writer) Now() core.Instant { return core.Instant(time.Since(w.origin)) 
 // Call once before any recordings. Local listener, client and transport ports
 // are never service ports, even when their number matches a mapped destination.
 // At most 128 mappings are accepted by the proxy; excess entries remain aliased.
-func (w *Writer) SetServicePorts(ports []uint16) {
+func (w *Writer) SetServicePorts(ports []uint16) error {
 	if w == nil {
-		return
+		return nil
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	defer func() { w.mu.Unlock(); w.report(false) }()
 	if w.sequence != 0 || w.closed {
-		return
+		w.drop(&w.causes.invalid)
+		return errors.New("trace: service ports configured after recording or close")
+	}
+	var err error
+	if len(ports) > 128 {
+		w.drop(&w.causes.invalid)
+		err = errors.New("trace: service port limit exceeded")
 	}
 	w.servicePorts = make(map[uint16]bool)
 	for _, port := range ports[:min(len(ports), 128)] {
+		if port == 0 {
+			w.drop(&w.causes.invalid)
+			err = errors.New("trace: zero service port omitted")
+		}
 		if port != 0 {
 			w.servicePorts[port] = true
 		}
 	}
+	return err
 }
 
 // Instance allocates an identity shared by all steps of one machine.
@@ -179,6 +251,10 @@ func (w *Writer) Instance() uint64 {
 func (w *Writer) drop(cause *atomic.Uint64) {
 	cause.Add(1)
 	w.dropped.Add(1)
+	select {
+	case w.failed <- struct{}{}:
+	default:
+	}
 }
 
 // Record copies only allowlisted summaries before buffers return to the owner.
@@ -189,7 +265,13 @@ func (w *Writer) Record(machine string, instance uint64, now core.Instant, input
 		return
 	}
 	w.mu.Lock()
-	defer w.mu.Unlock()
+	defer func() {
+		closed := w.closed
+		w.mu.Unlock()
+		if closed {
+			w.report(false)
+		}
+	}()
 	if w.closed {
 		w.drop(&w.causes.closed)
 		return
@@ -229,9 +311,11 @@ func (w *Writer) Record(machine string, instance uint64, now core.Instant, input
 		w.drop(&w.causes.transactionLimit)
 		return
 	}
+	w.pending.Add(1)
 	select {
 	case w.queue <- append(b, '\n'):
 	default:
+		w.pending.Add(^uint64(0))
 		w.drop(&w.causes.queueFull)
 	}
 }
@@ -263,6 +347,22 @@ func (w *Writer) Close() error {
 	select {
 	case <-w.done:
 	case <-timer.C:
+		if w.timedOut.CompareAndSwap(false, true) {
+			n := max(1, w.pending.Load())
+			w.dropped.Add(n)
+			w.causes.storage.Add(n)
+		}
+		w.stopOnce.Do(func() { close(w.stop) })
+		return errors.New("trace: drain timeout")
+	}
+	select {
+	case <-w.reported:
+	case <-timer.C:
+		return errors.New("trace: diagnostic drain timeout")
+	}
+	w.report(true)
+	if n := w.Dropped(); n > 0 {
+		return fmt.Errorf("trace: %d diagnostics lost", n)
 	}
 	return nil
 }

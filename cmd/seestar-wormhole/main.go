@@ -226,7 +226,14 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, openKeys func
 		if err != nil {
 			return &argumentError{Option: "--trace", Rule: "use a new writable trace file"}
 		}
-		defer trace.Close()
+		trace.SetLogger(logger)
+		defer func() {
+			err := trace.Close()
+			if err != nil {
+				newLogger("json", logOutput).Warn("diagnostics_lost", "rule", "trace_loss", "count", trace.Dropped())
+			}
+			result = errors.Join(result, err)
+		}()
 	}
 	keys := startup.openKeys(o.keylog, openKeys)
 	phase = "listener"
@@ -438,6 +445,9 @@ func openTrace(path string, ports mappings) (*tracerecord.Writer, error) {
 	for _, p := range ports {
 		servicePorts = append(servicePorts, p.device)
 	}
-	w.SetServicePorts(servicePorts)
+	if err := w.SetServicePorts(servicePorts); err != nil {
+		w.Close()
+		return nil, err
+	}
 	return w, nil
 }

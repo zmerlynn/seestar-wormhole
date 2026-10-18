@@ -877,7 +877,7 @@ in library-owned goroutines. See [development](https://github.com/zmerlynn/seest
 Both are off by default and require a new path. Existing files and symlinks
 are refused. New files use `0600` on Unix or protected Windows ACLs.
 `--trace` creation failure stops startup; `--keylog` creation failure warns and
-disables capture. Recording after startup is bounded and best effort.
+disables capture. Recording after startup is bounded; record loss produces counted WARN summaries and a failed final command result.
 
 ### Redacted trace
 

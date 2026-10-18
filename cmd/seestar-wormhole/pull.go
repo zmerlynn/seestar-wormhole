@@ -231,6 +231,7 @@ func runPullWithSource(ctx context.Context, args []string, out, logs io.Writer, 
 
 func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer, openKeys func(string, *slog.Logger) (*keylog.Writer, error), newSession func(context.Context, proxy.Config) (commandSession, error), openSource func(context.Context, func(context.Context, string, string) (net.Conn, error)) (context.Context, fs.Fs, error)) (result error) {
 	diagnosticOutput := logs
+	var traceLost uint64
 	started := time.Now().UTC()
 	p := o.pull
 	var progressOutput *pullProgressOutput
@@ -249,7 +250,7 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 	var cleanup error
 	defer func() {
 		stopProgress()
-		summary.DiagnosticsLost = startup.dropped()
+		summary.DiagnosticsLost = startup.dropped() + traceLost
 		if sink, ok := diagnosticOutput.(interface{ Dropped() uint64 }); ok {
 			summary.DiagnosticsLost += sink.Dropped()
 		}
@@ -334,7 +335,15 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 			}
 		}
 		if trace != nil {
-			defer trace.Close()
+			trace.SetLogger(logger)
+			defer func() {
+				err := trace.Close()
+				traceLost = trace.Dropped()
+				if err != nil {
+					newLogger("json", logs).Warn("diagnostics_lost", "rule", "trace_loss", "count", traceLost)
+				}
+				result = errors.Join(result, err)
+			}()
 		}
 		keys := startup.openKeys(o.keylog, openKeys)
 		s, err := newSession(ctx, proxy.Config{Serial: o.serial, Model: o.model, StateDir: o.stateDir, HoldOnDemand: true, BusyWait: p.busyWait, Logger: logger, Trace: trace, KeyLog: keys})
