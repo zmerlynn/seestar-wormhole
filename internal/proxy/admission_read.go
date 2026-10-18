@@ -6,6 +6,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 const admissionReadSize = 8 << 10
@@ -27,6 +29,7 @@ type admissionReader struct {
 	pending      admissionReadResult // bridge reader only
 	watchCancel  context.CancelFunc
 	watchDone    chan struct{}
+	queryFailure error      // watcher writes; read only after stopWatching joins
 	failureMu    sync.Mutex // protects the first preread/socket failure
 	firstFailure error
 }
@@ -49,6 +52,10 @@ func (r *admissionReader) watchErrors(source socketErrorSource, cancel context.C
 		defer ticker.Stop()
 		for {
 			if err := source.socketError(); err != nil {
+				if phase, _ := diagnostic.Fields(err, ""); phase == "tcp_state_query" {
+					// A concurrent byte-read failure must not hide this refusal.
+					r.queryFailure = err
+				}
 				r.setFailure(err)
 				cancel()
 				return

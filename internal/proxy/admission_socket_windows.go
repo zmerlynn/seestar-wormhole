@@ -4,9 +4,11 @@ package proxy
 
 import (
 	"encoding/binary"
+	"io"
 	"net"
 	"syscall"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"golang.org/x/sys/windows"
 )
 
@@ -51,12 +53,12 @@ func (s tcpSocketErrors) socketError() error {
 			var returned uint32
 			queryErr = windows.WSAIoctl(windows.Handle(fd), sioTCPInfo,
 				&version[0], uint32(len(version)), &info[0], uint32(len(info)), &returned, nil, 0)
-			if queryErr == nil {
-				if returned != uint32(len(info)) {
-					queryErr = windows.WSAEINVAL
-				} else if binary.LittleEndian.Uint32(info[:4]) == tcpStateClosed {
-					queryErr = windows.WSAECONNRESET
-				}
+			if queryErr != nil {
+				queryErr = diagnostic.Wrap("tcp_state_query", "", queryErr)
+			} else if returned != uint32(len(info)) {
+				queryErr = diagnostic.Wrap("tcp_state_query", "", io.ErrUnexpectedEOF)
+			} else if binary.LittleEndian.Uint32(info[:4]) == tcpStateClosed {
+				queryErr = windows.WSAECONNRESET
 			}
 		}
 	})

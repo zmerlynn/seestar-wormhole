@@ -112,6 +112,18 @@ func Serve(parentCtx context.Context, dialer Dialer, forwards []Forward, maxClie
 					defer func() { reader.close(); remove(local); <-slots }()
 					remote, err := dialer.DialPort(admission, f.Port)
 					reader.stopWatching()
+					if reader.queryFailure != nil {
+						// Inspectability is required even if the dial completed as
+						// cancellation arrived. Report this refusal exactly once.
+						if remote != nil {
+							remote.Close()
+						}
+						if acceptLogger != nil {
+							_, reason := diagnostic.Fields(reader.queryFailure, "")
+							acceptLogger.Warn("client_rejected", "rule", "SIO_TCP_INFO_required", "reason", reason)
+						}
+						return
+					}
 					if err != nil {
 						// The real session logs availability at lifecycle transitions.
 						// Reconnecting local clients must not repeat that diagnosis.
