@@ -1,8 +1,9 @@
 # How the proxy speaks the protocol
 
 The [v1 specification](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/00-overview.md#protocol-stack)
-serves as the wire reference. This page describes the proxy's part in that stack;
-the linked sections carry the layouts and method details. The spec distinguishes
+serves as the wire reference. This page describes the proxy's part in that
+stack; the linked sections carry the layouts and method details. The spec
+distinguishes
 [READ, OBSERVED, INFERRED and unresolved claims](https://github.com/zmerlynn/seestar-spec/blob/v1/CONVENTIONS.md).
 Local limits below are choices made here, not device promises. Tested coverage
 is in [status](status.md); command mechanics are in the [reference](reference.md).
