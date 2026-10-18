@@ -43,7 +43,9 @@ test the command's version and help output.
 - **Linux** is where the proxy runs continuously, including overnight use.
   The phone setup hasn't been run from Linux, though it should work the
   same way.
-- **macOS** has run the phone-app setup.
+- **macOS** has run the phone-app setup. Discovery has native loopback unicast
+  and admission/response tests; LAN broadcast discovery has not been verified
+  on macOS. The loopback broadcast socket fixture runs only on Linux.
 - **Windows** cross-builds, and a selection of tests pass under Wine. It
   hasn't been run against a real telescope, so its console
   handling and file permissions are untested in practice. It has no LAN
