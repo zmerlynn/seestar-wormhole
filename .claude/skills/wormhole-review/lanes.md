@@ -240,7 +240,6 @@ everything else.
    `replace` directive points at a local path, and that every `replace` to a
    fork names a tag whose diff from upstream is documented, as in
    [Vendoring and patches](../../../docs/development/README.md#vendoring-and-patches).
-   CI's vendor job regenerates the tree; nothing under `vendor/` is hand-edited.
 3. `go run ./scripts/generate-licenses.go --check` passes. The built
    binary's `licenses` command includes every linked module.
 4. `NOTICE` is accurate for the change. That covers new third-party code,
