@@ -71,8 +71,8 @@ The following local policies cover shutdown, receive pressure and retransmission
   QUIT, clears memory and reports `local close timeout`. RTO retries run inside
   that bound. This is configurable local shutdown policy, never `4 × RTO`.
 - Receive capacity is checked before acknowledging new bytes. Saturation rejects
-  the datagram without ACK and emits `ReceivePressure`; the sender retains it for
-  retry. The next missing contiguous packet reserves one slot and up to 1280 bytes,
+  the datagram without ACK; the sender retains it for retry. The next missing
+  contiguous packet reserves one slot and up to 1280 bytes,
   even behind a short/partially consumed readable prefix. Later selectively ACKed
   packets cannot consume the room needed after that prefix drains. A packet must
   still fit the configured RXBytes to be receivable.

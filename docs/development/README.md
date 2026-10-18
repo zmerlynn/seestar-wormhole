@@ -156,8 +156,8 @@ These apply to every change, whoever writes it.
   before use, no allocation from unchecked fields, authentication before
   interpretation. Merely unexpected input is tolerated: unknown JSON fields,
   unknown enum values (carried as unknown), nonzero reserved bytes, unknown
-  records skipped by length, missing optional fields. Log tolerated oddities at
-  debug.
+  records skipped by length, missing optional fields. Receive diagnostics follow
+  the [log contract](../reference.md#logs).
 - **Standard formats use standard libraries.** Don't hand-write a parser,
   walker or tokenizer for a format that has a well-known library: JSON, HTTP,
   SMB, TLS and DTLS, Markdown. JSON goes through vendored `github.com/go-json-experiment/json` (v2) into typed
