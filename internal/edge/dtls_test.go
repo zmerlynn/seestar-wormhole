@@ -435,6 +435,11 @@ func TestDTLSTamperAndShutdown(t *testing.T) {
 				t.Fatal("blocked reader survived parent cancellation")
 			}
 			c.Close()
+			select {
+			case <-c.joined:
+			default:
+				t.Fatal("SecureDTLS lifetime watcher outlived Close")
+			}
 			c.Close()
 		}
 	})
