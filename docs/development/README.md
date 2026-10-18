@@ -136,9 +136,10 @@ For current device/platform coverage, use [status](../status.md).
 
 ## Vendoring and patches
 
-Build from the checked-in vendor tree with `-mod=vendor`. Re-vendoring replaces
-local patches. Preserve and review the patch set before accepting a dependency
-upgrade:
+Build from the checked-in vendor tree with `-mod=vendor`. The vendor tree is
+exactly what `go mod tidy` and `go mod vendor` produce; CI regenerates it and
+fails on any difference, so vendored files are never edited by hand. Patched
+dependencies come from a `replace` to a tagged fork:
 
 See [Pion lifecycle integration](../../internal/edge/PION-PATCH.md).
 

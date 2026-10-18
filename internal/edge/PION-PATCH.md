@@ -1,7 +1,9 @@
 # Pion lifecycle integration
 
-The generated vendor tree pins public dependencies from go.mod. Only
-`vendor/github.com/pion/dtls/v3/conn.go` differs from Pion v3.1.10:
+go.mod replaces Pion v3.1.10 with the fork tag
+[`github.com/zmerlynn/dtls` `v3.1.10-wormhole.1`](https://github.com/zmerlynn/dtls/tree/v3.1.10-wormhole.1),
+which changes only `conn.go` and adds its join test. `go mod vendor` reproduces
+the patched file. The changes are:
 
 - Add `workerLoops sync.WaitGroup` to Conn and use it in place of the existing
   handshake-local WaitGroup for the two handshake workers.
@@ -15,10 +17,9 @@ The generated vendor tree pins public dependencies from go.mod. Only
 
 Internal workers still call `close(false)`, never public Close: they cannot join
 themselves. No cryptographic, packet, handshake or wire behavior changes. The
-context watcher extension is three lines; keep this one-file patch for eventual
-upstream submission. `go mod vendor` overwrites it. Preserve/review all four
-changes on upgrade, or remove them when upstream supplies the same completion
-contracts. Builds use the checked-in vendor tree, not `-mod=mod`.
+fork's `wormhole-close-join` branch carries the same commit for upstream
+submission. On a Pion upgrade, rebase the commit onto the new tag and retag the
+fork, or drop the `replace` once upstream supplies the same completion contracts.
 
 ## Goroutine audit
 

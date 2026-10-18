@@ -52,6 +52,9 @@ func generate(check bool) error {
 	}
 	// modules.txt is Go's vendor manifest: '# path version' starts a module,
 	// followed by metadata comments and zero or more package import paths.
+	// A replaced module's header appends '=> path version'; a trailing
+	// '# path => path version' line records the replace and lists no packages.
+	// Vendored files keep the original module path either way.
 	modules := map[string]bool{}
 	var current string
 	scanner := bufio.NewScanner(bytes.NewReader(data))
@@ -59,11 +62,16 @@ func generate(check bool) error {
 		line := scanner.Text()
 		if strings.HasPrefix(line, "# ") {
 			fields := strings.Fields(line)
-			if len(fields) != 3 || !strings.HasPrefix(fields[2], "v") {
+			switch {
+			case len(fields) == 3 && strings.HasPrefix(fields[2], "v"),
+				len(fields) == 6 && strings.HasPrefix(fields[2], "v") && fields[3] == "=>" && strings.HasPrefix(fields[5], "v"):
+				current = fields[1]
+				modules[current] = false
+			case len(fields) == 5 && fields[2] == "=>" && strings.HasPrefix(fields[4], "v"):
+				current = ""
+			default:
 				return fmt.Errorf("unsupported vendor module header: %s", line)
 			}
-			current = fields[1]
-			modules[current] = false
 		} else if line != "" && !strings.HasPrefix(line, "#") {
 			if current == "" {
 				return errors.New("vendor package without a module header")

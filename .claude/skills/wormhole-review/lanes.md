@@ -236,11 +236,11 @@ everything else.
    - MPL-2.0 is file-level;
    - LGPL needs the relinking path `NOTICE` describes;
    - GPL, AGPL, SSPL, or an unknown or absent license is a Must fix.
-2. Verify that `vendor/modules.txt` is consistent with `go.mod` and that no
-   `replace` directive points at a local path. If re-vendoring is needed, use
-   a scratch copy: `go mod vendor` overwrites the patches documented in
+2. Verify that `vendor/modules.txt` is consistent with `go.mod`, that no
+   `replace` directive points at a local path, and that every `replace` to a
+   fork names a tag whose diff from upstream is documented, as in
    [Vendoring and patches](../../../docs/development/README.md#vendoring-and-patches).
-   Restore and review those patches before comparing the generated tree.
+   CI's vendor job regenerates the tree; nothing under `vendor/` is hand-edited.
 3. `go run ./scripts/generate-licenses.go --check` passes. The built
    binary's `licenses` command includes every linked module.
 4. `NOTICE` is accurate for the change. That covers new third-party code,

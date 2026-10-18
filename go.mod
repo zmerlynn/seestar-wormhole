@@ -15,3 +15,5 @@ require (
 )
 
 require github.com/inconshreveable/mousetrap v1.1.0 // indirect
+
+replace github.com/pion/dtls/v3 => github.com/zmerlynn/dtls/v3 v3.1.10-wormhole.1
