@@ -88,7 +88,7 @@ the process clears history and restores the budget. Restarts have no shared
 history and random collisions across processes remain possible.
 
 This process-lifetime RID reservation is local policy beyond the
-[native RID generation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/session.md#identity) and [recent-RID guidance](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#attempt-and-cache-lifetimes). We have no receive
+[native RID generation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/session.md#identity) and [recent-RID guidance](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#attempt-and-cache-lifetimes). The edge has no receive
 filter based on closed RID history: current attempt, crypto, UID/RID, source and
 state correlation govern acceptance. LAN-search prechecks remain outside this
 profile.
