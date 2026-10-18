@@ -3,14 +3,19 @@
 package proxy
 
 import (
+	"encoding/binary"
 	"net"
 	"syscall"
 
 	"golang.org/x/sys/windows"
 )
 
-// Winsock SO_ERROR (winsock2.h); x/sys/windows does not export this option.
-const soError = 0x1007
+// Winsock constants from winsock2.h and mstcpip.h, absent from x/sys/windows.
+const (
+	soError        = 0x1007
+	sioTCPInfo     = 0xd8000027
+	tcpStateClosed = 0
+)
 
 type tcpSocketErrors struct{ raw syscall.RawConn }
 
@@ -32,13 +37,27 @@ func admissionSocketErrors(conn net.Conn) (socketErrorSource, error) {
 func (s tcpSocketErrors) socketError() error {
 	var pending int
 	var queryErr error
-	// Winsock can leave SO_ERROR clear after an abort with unread bytes. Also
-	// query whether this established socket is still connected. A valid FIN
-	// leaves the reverse stream connected; neither query consumes queued bytes.
+	// Winsock leaves SO_ERROR clear and retains Getpeername after a reset with
+	// unread bytes. TCP_INFO_v0 exposes CLOSED after RST and CLOSE_WAIT after
+	// FIN without consuming bytes. These accepted sockets were established;
+	// CLOSED is terminal, while FIN must preserve the queued stream and reply.
 	err := s.raw.Control(func(fd uintptr) {
 		pending, queryErr = windows.GetsockoptInt(windows.Handle(fd), windows.SOL_SOCKET, soError)
 		if queryErr == nil && pending == 0 {
-			_, queryErr = windows.Getpeername(windows.Handle(fd))
+			// SIO_TCP_INFO takes a DWORD version (zero) and an 88-byte v0
+			// structure. Only its first DWORD, TCPSTATE, is needed here.
+			var version [4]byte
+			var info [88]byte
+			var returned uint32
+			queryErr = windows.WSAIoctl(windows.Handle(fd), sioTCPInfo,
+				&version[0], uint32(len(version)), &info[0], uint32(len(info)), &returned, nil, 0)
+			if queryErr == nil {
+				if returned != uint32(len(info)) {
+					queryErr = windows.WSAEINVAL
+				} else if binary.LittleEndian.Uint32(info[:4]) == tcpStateClosed {
+					queryErr = windows.WSAECONNRESET
+				}
+			}
 		}
 	})
 	if err != nil {
