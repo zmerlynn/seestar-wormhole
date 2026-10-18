@@ -230,7 +230,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, openKeys func
 		defer func() {
 			err := trace.Close()
 			if err != nil {
-				newLogger("json", logOutput).Warn("diagnostics_lost", "rule", "trace_loss", "count", trace.Dropped())
+				trace.ReportLoss(newLogger("json", logOutput))
 			}
 			result = errors.Join(result, err)
 		}()

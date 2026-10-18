@@ -61,7 +61,7 @@ func (s *startupLogging) finish(result error) error {
 	if s.keys != nil {
 		loss = s.keys.Close()
 		if loss != nil {
-			newLogger("json", s.output.output).Warn("keylog_failed", "option", "--keylog", "rule", "keylog_loss", "count", s.keys.Dropped())
+			s.keys.ReportLoss(newLogger("json", s.output.output).With("option", "--keylog"))
 		}
 	}
 	var detail *argumentError

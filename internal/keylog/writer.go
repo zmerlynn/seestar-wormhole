@@ -94,8 +94,14 @@ func New(sink io.WriteCloser, logger *slog.Logger) *Writer {
 	return w
 }
 
-func (w *Writer) report(final bool) {
-	if w.logger == nil {
+// ReportLoss emits a final loss summary through the fallback logger only when
+// the writer has not already reported that count. Call after bounded Close.
+func (w *Writer) ReportLoss(logger *slog.Logger) { w.reportTo(logger, true) }
+
+func (w *Writer) report(final bool) { w.reportTo(w.logger, final) }
+
+func (w *Writer) reportTo(logger *slog.Logger, final bool) {
+	if logger == nil {
 		return
 	}
 	n := w.dropped.Load()
@@ -111,7 +117,7 @@ func (w *Writer) report(final bool) {
 	if !w.lastCount.CompareAndSwap(previous, n) {
 		return
 	}
-	w.logger.Warn("keylog_failed", "rule", "keylog_loss", "count", n)
+	logger.Warn("keylog_failed", "rule", "keylog_loss", "count", n)
 }
 
 func (w *Writer) drop() {

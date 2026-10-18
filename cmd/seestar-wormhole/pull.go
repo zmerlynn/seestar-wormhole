@@ -344,7 +344,7 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 				err := trace.Close()
 				traceLost = trace.Dropped()
 				if err != nil {
-					newLogger("json", logs).Warn("diagnostics_lost", "rule", "trace_loss", "count", traceLost)
+					trace.ReportLoss(newLogger("json", logs))
 				}
 				result = errors.Join(result, err)
 			}()

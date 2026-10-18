@@ -184,8 +184,13 @@ func (w *Writer) SetLogger(logger *slog.Logger) {
 	}
 }
 
-func (w *Writer) report(final bool) {
-	logger := w.logger.Load()
+// ReportLoss emits a final loss summary through the fallback logger only when
+// the writer has not already reported that count. Call after bounded Close.
+func (w *Writer) ReportLoss(logger *slog.Logger) { w.reportTo(logger, true) }
+
+func (w *Writer) report(final bool) { w.reportTo(w.logger.Load(), final) }
+
+func (w *Writer) reportTo(logger *slog.Logger, final bool) {
 	if logger == nil {
 		return
 	}
