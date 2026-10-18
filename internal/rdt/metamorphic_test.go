@@ -53,12 +53,6 @@ func metamorphicActions(t *testing.T, in []Action, reserved uint16) []Action {
 	t.Helper()
 	var out []Action
 	for _, a := range in {
-		if a.Kind == ReceiveOddity {
-			if !reflect.DeepEqual(a, Action{Kind: ReceiveOddity, Type: a.Type}) {
-				t.Fatal("diagnostic leaked fields")
-			}
-			continue
-		}
 		if a.Kind == Send {
 			a.Data = bytes.Clone(a.Data)
 			p, err := Decode(a.Data)

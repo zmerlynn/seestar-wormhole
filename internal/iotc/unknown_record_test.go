@@ -2,8 +2,7 @@ package iotc
 
 import "testing"
 
-// Unknown records and type-1
-// opcodes are dropped after their lengths are checked, with a diagnostic only.
+// Unknown records and type-1 opcodes are counted after length validation.
 func TestUnknownRecordLengthValidation(t *testing.T) {
 	for _, literal := range []string{"51cc00000206000007000000", "51cc000002ff010007000000aa", "51cc00000202000007000000"} {
 		m, l := layoutHelloMachine(t)
@@ -12,12 +11,12 @@ func TestUnknownRecordLengthValidation(t *testing.T) {
 		if m.endpoints != before || m.state != Connecting || m.alive != 0 {
 			t.Fatal("unknown record changed state")
 		}
-		if len(nonTimerEffects(out)) != 1 {
-			t.Errorf("unknown record %s: expected diagnostic only, got %+v", literal, out)
+		if len(nonTimerEffects(out)) != 0 {
+			t.Errorf("unknown record %s: unexpected effect, got %+v", literal, out)
 		}
 		bad := append(unhex(literal), 0)
 		if out := m.Step(Event{Kind: Wire, Attempt: 1, Link: l, Data: bad}, 0); len(nonTimerEffects(out)) != 0 {
-			t.Errorf("bad envelope length logged or acted: %+v", out)
+			t.Errorf("bad envelope length produced an effect: %+v", out)
 		}
 	}
 	for _, literal := range []string{"04021d0000000000efbe180000000000", "04021d00000000001802180000000000"} {
@@ -27,8 +26,8 @@ func TestUnknownRecordLengthValidation(t *testing.T) {
 		if m.endpoints != before || m.state != Connecting {
 			t.Fatal("unknown type-1 opcode changed state")
 		}
-		if len(nonTimerEffects(out)) != 1 {
-			t.Errorf("unknown type-1 opcode needs diagnostic only: %+v", out)
+		if len(nonTimerEffects(out)) != 0 {
+			t.Errorf("unknown type-1 opcode produced an effect: %+v", out)
 		}
 	}
 }

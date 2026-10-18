@@ -144,26 +144,6 @@ func (f Frame) receiveValidate(phase Phase) error {
 	return f.validateBody(phase)
 }
 
-// oddity is called only after receive validation, so consumed fields are safe.
-// It records receive-only extensions without copying or exposing peer values.
-func (f Frame) oddity(phase Phase) bool {
-	if phase != Established {
-		return f.Channel != 0 || phase == LoginResponse && len(f.Payload) != 8
-	}
-	switch f.Command {
-	case SetupCommand:
-		return len(f.Payload) > 52 || binary.LittleEndian.Uint16(f.Payload) != 2
-	case CloseCommand:
-		return len(f.Payload) > 1
-	case ServiceResponse:
-		return true // No outstanding service feature in this profile.
-	case PortRequest, PortResponse, ServiceRequest:
-		return f.Channel != 0
-	default:
-		return !knownCommand(f.Command)
-	}
-}
-
 // Validate applies strict send policy; Decode uses the separate receive policy.
 func (f Frame) Validate(phase Phase) error {
 	if !headerValid(f.Command, f.Channel, len(f.Payload), phase) {

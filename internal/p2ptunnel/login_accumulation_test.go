@@ -41,7 +41,7 @@ func TestLoginFrameAccumulation(t *testing.T) {
 }
 
 // One delivery contains PASS and an unknown established frame. Leave
-// the next frame for the established dispatcher, which logs/drops its opcode.
+// the next frame for the established dispatcher, which skips it.
 func TestLoginCoalescedFrames(t *testing.T) {
 	raw := unhex(t, "0800080000000000000000000a010300616263")
 	var decoder Decoder
@@ -52,8 +52,7 @@ func TestLoginCoalescedFrames(t *testing.T) {
 	d := newDriver(t, DefaultConfig())
 	d.step(Event{Kind: Start})
 	a := d.step(Event{Kind: Stream, Data: raw})
-	oddity, seen := find(a, ReceiveOddity)
-	if d.m.Status() != Active || d.m.Usage().ParserBytes != 0 || !seen || oddity.Command != 10 {
+	if d.m.Status() != Active || d.m.Usage().ParserBytes != 0 {
 		t.Fatalf("next frame was lost or misread: status=%v usage=%+v actions=%+v", d.m.Status(), d.m.Usage(), a)
 	}
 }

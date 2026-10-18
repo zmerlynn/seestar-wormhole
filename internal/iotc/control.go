@@ -23,8 +23,6 @@ type Control struct {
 	WANCount              int
 	LAN                   [4]netip.AddrPort
 	Servers               []Server
-	layoutOddity          bool
-	unknownUnit           bool
 }
 
 // ParseControl checks Complete modern control layouts and acceptance lengths.
@@ -69,7 +67,6 @@ func ParseControl(p Packet) (c Control, err error) {
 			case 9:
 				// Each server-list unit replaces the preceding list.
 				c.Servers = nil
-				c.layoutOddity = c.layoutOddity || size%108 != 0
 				// Entry count is the declared extent divided by 108; a
 				// partial trailing slot has no fields we can consume.
 				for j := 0; j+108 <= size; j += 108 {
@@ -94,11 +91,8 @@ func ParseControl(p Packet) (c Control, err error) {
 						c.Servers = append(c.Servers, s)
 					}
 				}
-			default:
-				c.unknownUnit = true
 			}
 		}
-		c.layoutOddity = c.layoutOddity || off != n
 		// The declared TDU count delimits the consumed fields. Remaining
 		// bytes are opaque within the already bounded, complete frame.
 	case 0x0218:
@@ -217,7 +211,6 @@ func ParseControl(p Packet) (c Control, err error) {
 		if n < minimum {
 			return c, ErrPacket
 		}
-		c.layoutOddity = n != 36
 		uid(0)
 		rid(20)
 		if p.Opcode == 0x0405 {

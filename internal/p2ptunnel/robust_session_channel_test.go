@@ -32,13 +32,6 @@ func TestC20UnusedSessionChannel(t *testing.T) {
 				wire := bytes.Clone(b)
 				wire[1] = ch
 				a := d.step(Event{Kind: Stream, Data: wire})
-				filtered := a[:0]
-				for _, x := range a {
-					if x.Kind != ReceiveOddity {
-						filtered = append(filtered, x)
-					}
-				}
-				a = filtered
 				if d.m.Channel(7).Active {
 					t.Fatal("session header allocated channel 7")
 				}

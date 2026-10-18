@@ -129,12 +129,6 @@ func metamorphicIngress(t *testing.T, p *matrixPeer, l Link, wire []byte) []Acti
 			queue = append(queue, p.step(p.open(a))...)
 			continue
 		}
-		if a.Kind == ReceiveOddity {
-			if !reflect.DeepEqual(a, Action{Kind: ReceiveOddity, Attempt: p.h.m.cfg.Attempt, Oddity: a.Oddity, Opcode: a.Opcode, Type: a.Type}) {
-				t.Fatal("diagnostic leaked fields")
-			}
-			continue
-		}
 		out = append(out, a)
 	}
 	return out
@@ -181,8 +175,6 @@ func metamorphicMeaning(t *testing.T, row metamorphicFixture, b []byte) any {
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.layoutOddity = false
-	c.unknownUnit = false
 	return c
 }
 

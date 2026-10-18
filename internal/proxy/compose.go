@@ -205,8 +205,6 @@ func (x *stack) updateTimer(now core.Instant) {
 }
 func (x *stack) iotcAction(a iotc.Action) {
 	switch a.Kind {
-	case iotc.ReceiveOddity:
-		// The diagnostic action has no protocol effect.
 	case iotc.RelayProgressChanged:
 		x.relayDiagnostic("relay_progress", a.Progress, 0)
 	case iotc.Ready:
@@ -253,8 +251,6 @@ func (x *stack) iotcAction(a iotc.Action) {
 }
 func (x *stack) rdtAction(a rdt.Action) {
 	switch a.Kind {
-	case rdt.ReceiveOddity, rdt.ReceivePressure:
-		// Discards are reported by rule on the owner deadline.
 	case rdt.Send:
 		select {
 		case x.secureTX <- a.Data:
@@ -317,8 +313,6 @@ func (x *stack) tunnelAction(a p2ptunnel.Action) { x.tunnelActions([]p2ptunnel.A
 
 func (x *stack) applyTunnelAction(a p2ptunnel.Action, terminal *diagnostic.Terminal) {
 	switch a.Kind {
-	case p2ptunnel.ReceiveOddity:
-		// The diagnostic action has no protocol effect.
 	case p2ptunnel.Send:
 		x.enqueue(layerEvent{r: &rdt.Event{Kind: rdt.Write, Data: a.Data, Token: a.Token}})
 	case p2ptunnel.SessionReady:

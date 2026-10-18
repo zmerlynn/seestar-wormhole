@@ -2,8 +2,8 @@ package iotc
 
 import "testing"
 
-// Unknown alerts are logged
-// only after nonce checking, without even installing an empty server SID (SHOULD).
+// Unknown alerts are counted only after nonce checking, without installing
+// even an empty server SID (SHOULD).
 func TestUnknownAlertNonceCheck(t *testing.T) {
 	for _, sid := range []uint32{0, 0x55} {
 		for _, literal := range []string{"55000000341203041d", "55000000351203041d", "550000003412ff041d"} {
@@ -19,8 +19,8 @@ func TestUnknownAlertNonceCheck(t *testing.T) {
 			if literal != "55000000351203041d" {
 				want = 1
 			}
-			if len(m.out) != want {
-				t.Errorf("alert %s: diagnostics=%d want %d", literal, len(m.out), want)
+			if m.Discards()[4] != uint64(want) || len(m.out) != 0 {
+				t.Errorf("alert %s: discard count=%d want %d; actions=%v", literal, m.Discards()[4], want, m.out)
 			}
 		}
 	}

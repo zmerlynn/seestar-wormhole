@@ -15,7 +15,6 @@ type delivery struct {
 	event Event
 }
 type pair struct {
-	observe  func(int, Event, []Action, core.Instant)
 	t        testing.TB
 	owners   [2]*Machine
 	clock    *sim.Scheduler[delivery]
@@ -53,9 +52,6 @@ func newPair(t testing.TB, seed uint64, l sim.Link, edit func(*Config)) *pair {
 func (p *pair) step(i int, e Event, now core.Instant) {
 	p.t.Helper()
 	aa := p.owners[i].Step(e, now)
-	if p.observe != nil {
-		p.observe(i, e, aa, now)
-	}
 	for _, a := range aa {
 		switch a.Kind {
 		case Send:

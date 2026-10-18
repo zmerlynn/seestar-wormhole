@@ -13,8 +13,7 @@ import (
 // IOTCVersion selects the creation receipt rule in the Creation state
 // machine. Start is valid only after the authenticated packet transport is ready.
 type Config struct {
-	Telemetry                                          bool // enable fixed-size diagnostic counters; false skips collection
-	SendCapacity                                       int  // zero: immediate handoff; positive: outstanding Send actions until SendComplete
+	SendCapacity                                       int // zero: immediate handoff; positive: outstanding Send actions until SendComplete
 	LocalID, PreviousRemoteID, IOTCVersion             byte
 	MaxPayload, TXBytes, TXPackets, RXBytes, RXPackets int
 	InitialWindow, MinimumWindow                       int
@@ -92,10 +91,6 @@ const (
 	Failed
 	ArmTimer
 	CancelTimer
-	// ReceiveOddity reports a tolerated receive form using only its type.
-	ReceiveOddity
-	// ReceivePressure reports a datagram rejected before acknowledgement.
-	ReceivePressure
 )
 
 // Action owns Data. Count is accepted/delivered bytes or current write credit;
@@ -110,7 +105,6 @@ type Action struct {
 	At     core.Instant
 	Usage  Usage
 	Reason string
-	Type   Type // ReceiveOddity only; never includes payload or identity
 }
 
 // Usage measures live payload storage, including partially consumed packets.
@@ -134,9 +128,8 @@ type rxPacket struct {
 // Machine is a pure single-owner RDT core. Construct with New; it uses no I/O,
 // goroutines or wall clock. Timers and all elapsed intervals are monotonic.
 type Machine struct {
-	discards                                   [9]uint64 // cumulative R087-R095, independent of DEBUG telemetry
-	telemetry                                  *telemetry
-	controls                                   []Packet // at most one deferred unreliable control packet per type
+	discards                                   [9]uint64 // cumulative R087-R095
+	controls                                   []Packet  // at most one deferred unreliable control packet per type
 	sends                                      int
 	cfg                                        Config
 	status                                     Status
@@ -169,9 +162,6 @@ func New(c Config) (*Machine, error) {
 		return nil, errors.New("invalid RDT configuration")
 	}
 	m := &Machine{cfg: c, rto: 500 * time.Millisecond, window: c.InitialWindow}
-	if c.Telemetry {
-		m.telemetry = &telemetry{rxAt: make([]core.Instant, 0, c.RXPackets), txAt: make([]core.Instant, 0, c.TXPackets+1), txForce: make([]Type, 0, c.TXPackets+1)}
-	}
 	return m, nil
 }
 
@@ -200,9 +190,6 @@ func (m *Machine) Credit() int {
 
 // RTO reports the current retransmission interval for diagnostics.
 func (m *Machine) RTO() time.Duration { return m.rto }
-
-// Window reports the current local congestion window in packets.
-func (m *Machine) Window() int { return m.window }
 
 // Step consumes one event, clamps regressing time and returns owned effects.
 // Resource work is bounded by the configured queues and one bounded read/write.
@@ -258,10 +245,6 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 			m.closeAt = after(m.now, m.cfg.CloseTimeout)
 			// FIN occupies one extra fixed control slot, never payload budget.
 			m.tx = append(m.tx, txPacket{packet: Packet{Type: FIN, Version: Version, ID: m.remote, Sequence: Sequence{0xffffffff, 0xffffffff}}})
-			if t := m.telemetry; t != nil {
-				t.txAt = append(t.txAt, m.now)
-				t.txForce = append(t.txForce, 0)
-			}
 		} else if m.status == Creating {
 			m.control(Exit)
 			m.stop("creation canceled", false)
@@ -364,20 +347,6 @@ func (m *Machine) send(p Packet) {
 	if err != nil {
 		panic("invalid internally constructed RDT packet")
 	}
-	if t := m.telemetry; t != nil {
-		switch p.Type {
-		case DataACK, UrgentACK, ACK2:
-			t.stats.ACKSent++
-			t.ackAt = m.now
-			t.hasACK = true
-		case SACK2:
-			t.stats.SACKSent++
-			sack, _ := DecodeSACK(p.Payload)
-			t.stats.SACKRangesSent += uint64(sack.Count)
-			t.ackAt = m.now
-			t.hasACK = true
-		}
-	}
 	m.emit(Action{Kind: Send, Data: b})
 }
 func (m *Machine) sendAvailable() bool {
@@ -424,11 +393,7 @@ func (m *Machine) receive(p Packet) {
 	}
 	if !known(p.Type) {
 		m.discards[3]++
-		m.emit(Action{Kind: ReceiveOddity, Type: p.Type})
 		return
-	}
-	if p.Type == SACK2 && len(p.Payload) != SACKSize {
-		m.emit(Action{Kind: ReceiveOddity, Type: p.Type})
 	}
 	if p.Type == Heartbeat {
 		if p.Version > 3 {
@@ -535,17 +500,8 @@ func (m *Machine) write(e Event) {
 		}
 		m.nextTX = m.nextTX.Next()
 		node := txPacket{packet: p}
-		if t := m.telemetry; t != nil {
-			t.txAt = append(t.txAt, m.now)
-			t.txForce = append(t.txForce, 0)
-			t.stats.TXAdmittedPackets++
-			t.stats.TXAdmittedBytes += uint64(size)
-		}
 		m.tx = append(m.tx, node)
 		m.txBytes += size
-		if t := m.telemetry; t != nil {
-			t.stats.TXPeak = max(t.stats.TXPeak, m.txBytes)
-		}
 		offset += size
 	}
 	m.emit(Action{Kind: Accepted, Token: e.Token, Count: n})
@@ -565,17 +521,11 @@ func (m *Machine) read(e Event) {
 		if n == len(p.data) {
 			m.nextRead = m.nextRead.Next()
 			m.rx = slices.Delete(m.rx, 0, 1)
-			if t := m.telemetry; t != nil {
-				t.rxAt = slices.Delete(t.rxAt, 0, 1)
-			}
 		} else {
 			p.data = bytesCopy(p.data[n:])
 		}
 	}
 	if len(out) > 0 {
-		if t := m.telemetry; t != nil {
-			t.stats.DeliveredBytes += uint64(len(out))
-		}
 		m.emit(Action{Kind: Bytes, Token: e.Token, Count: len(out), Data: out})
 	}
 }
@@ -592,13 +542,6 @@ func (m *Machine) emitEnd() {
 // Capacity is checked before ACK; unacknowledged loss and missing-head reserve are local policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/reliability.md#receiving-and-reading
 func (m *Machine) data(p Packet) {
-	if t := m.telemetry; t != nil && m.ackNext.Less(p.Sequence) {
-		distance := reorderDistance(m.ackNext, p.Sequence)
-		t.stats.OutOfOrderArrivals++
-		t.stats.ReorderDistanceTotal += distance
-		t.stats.ReorderDistanceMax = max(t.stats.ReorderDistanceMax, distance)
-	}
-
 	if p.Sequence.Low > 0xf0000000 {
 		m.discards[5]++
 		return
@@ -612,14 +555,6 @@ func (m *Machine) data(p Packet) {
 		}
 		return 1
 	})
-	if t := m.telemetry; t != nil {
-		if found || p.Sequence.Less(m.nextRead) {
-			t.stats.Duplicates++
-		}
-		if p.Transmissions > 1 {
-			t.stats.RetransmittedObserved++
-		}
-	}
 	if found || p.Sequence.Less(m.nextRead) {
 		m.discards[6]++
 	}
@@ -635,23 +570,11 @@ func (m *Machine) data(p Packet) {
 		}
 		if slots < 1 || len(p.Payload) > bytes {
 			m.discards[7]++
-			if t := m.telemetry; t != nil {
-				t.stats.CapacityRejects++
-			}
-			m.emit(Action{Kind: ReceivePressure, Usage: m.Usage()})
 			return // No aggregate/single ACK may claim receipt of this packet.
 		}
 		node := rxPacket{sequence: p.Sequence, data: bytesCopy(p.Payload)}
-		if t := m.telemetry; t != nil {
-			t.rxAt = slices.Insert(t.rxAt, i, m.now)
-			t.stats.AdmittedPackets++
-			t.stats.AdmittedBytes += uint64(len(p.Payload))
-		}
 		m.rx = slices.Insert(m.rx, i, node)
 		m.rxBytes += len(p.Payload)
-		if t := m.telemetry; t != nil {
-			t.stats.RXPeak = max(t.stats.RXPeak, m.rxBytes)
-		}
 	}
 	old := m.ackNext
 	if p.Sequence == m.ackNext {
@@ -664,7 +587,6 @@ func (m *Machine) data(p Packet) {
 			}
 		}
 	}
-	m.telemetryGap()
 	if p.Type == Urgent {
 		m.ack(p, UrgentACK)
 		return
@@ -759,15 +681,6 @@ func (m *Machine) acknowledged(p Packet) {
 		s, _ := DecodeSACK(p.Payload)
 		ranges = s.Entries[:s.Count]
 	}
-	if t := m.telemetry; t != nil {
-		t.feedbackAt, t.hasFeedback = m.now, true
-		if p.Type == SACK2 {
-			t.stats.SACKReceived++
-			t.stats.SACKRangesReceived += uint64(len(ranges))
-		} else {
-			t.stats.ACKReceived++
-		}
-	}
 	ignored, matched := false, false
 	if p.Type == SACK2 {
 		tail := p.Payload[8+16*len(ranges):]
@@ -784,7 +697,7 @@ func (m *Machine) acknowledged(p Packet) {
 	sample := false
 	var candidate txPacket
 	kept := m.tx[:0]
-	for i, node := range m.tx {
+	for _, node := range m.tx {
 		remove, boundary, force := false, false, false
 		s := node.packet.Sequence
 		if !node.sent || node.packet.Type == FIN {
@@ -842,23 +755,12 @@ func (m *Machine) acknowledged(p Packet) {
 		} else {
 			if force && node.force == 0 {
 				node.force = 1
-				if t := m.telemetry; t != nil {
-					t.txForce[i] = p.Type
-				}
 			}
 			kept = append(kept, node)
-			if t := m.telemetry; t != nil {
-				t.txAt[len(kept)-1] = t.txAt[i]
-				t.txForce[len(kept)-1] = t.txForce[i]
-			}
 		}
 	}
 	clear(m.tx[len(kept):])
 	m.tx = kept
-	if t := m.telemetry; t != nil {
-		t.txAt = t.txAt[:len(kept)]
-		t.txForce = t.txForce[:len(kept)]
-	}
 	if p.Type == SACK2 {
 		for _, r := range ranges {
 			if !hasSent || sentMax.Less(r.End) {
@@ -884,15 +786,7 @@ func (m *Machine) acknowledged(p Packet) {
 func (m *Machine) sample(n txPacket) {
 	if n.retried || m.now < n.last {
 		m.discards[8]++
-		if t := m.telemetry; t != nil {
-			t.stats.RTTAmbiguous++
-		}
 		return
-	}
-	if t := m.telemetry; t != nil {
-		t.stats.RTTSamples++
-		t.stats.RTT = m.now.Sub(n.last)
-		t.rttAt = m.now
 	}
 	r := m.now.Sub(n.last) / time.Microsecond
 	old := m.srtt / time.Microsecond
@@ -943,19 +837,6 @@ func (m *Machine) pump() {
 			continue
 		}
 		if n.sent {
-			if t := m.telemetry; t != nil && n.packet.Type != FIN {
-				t.stats.RetransmittedSent++
-				switch {
-				case n.force == 1 && t.txForce[i] == SACK2:
-					t.stats.RetransmitSACK++
-				case n.force == 1:
-					t.stats.RetransmitACK++
-				case m.now.Sub(n.last) >= m.rto:
-					t.stats.RetransmitRTO++
-				default:
-					t.stats.RetransmitPacing++
-				}
-			}
 			n.retried = true
 			if !lost {
 				m.lossWindow = n.window
@@ -1087,12 +968,6 @@ func (m *Machine) arm() {
 // Preserving ordered EOF and rejecting standalone QUIT are explicit local safety policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/session.md#close-abort-and-failure
 func (m *Machine) stop(reason string, orderly bool) {
-	if t := m.telemetry; t != nil {
-		if t.hasGap {
-			t.stats.GapAgeMax = max(t.stats.GapAgeMax, m.now.Sub(t.gapAt))
-		}
-		t.hasGap = false
-	}
 	if m.status == Stopped {
 		return
 	}
@@ -1103,10 +978,6 @@ func (m *Machine) stop(reason string, orderly bool) {
 	m.control(Quit)
 	m.status = Stopped
 	m.tx = nil
-	if t := m.telemetry; t != nil {
-		t.txAt = t.txAt[:0]
-		t.txForce = t.txForce[:0]
-	}
 	m.txBytes = 0
 	m.cumulative = false
 	m.selective = false
@@ -1129,9 +1000,6 @@ func (m *Machine) stop(reason string, orderly bool) {
 		m.emit(Action{Kind: Closed})
 	} else {
 		m.rx = nil
-		if t := m.telemetry; t != nil {
-			t.rxAt = t.rxAt[:0]
-		}
 		m.rxBytes = 0
 		m.emit(Action{Kind: Failed, Reason: reason})
 	}

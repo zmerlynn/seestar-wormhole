@@ -106,8 +106,6 @@ const (
 	SessionClosed
 	ArmTimer
 	CancelTimer
-	// ReceiveOddity reports a tolerated receive form using only its command.
-	ReceiveOddity
 )
 
 // Actions own their Data. Send and WriteLocal require a matching completion,
@@ -135,7 +133,6 @@ type Action struct {
 	Reason                     string
 	PeerClose                  *CloseOutcome // non-nil only for a received CLOSE
 	Temporary                  bool          // OpenFailed: local capacity may become available without redial
-	Command                    Command       // ReceiveOddity only
 }
 
 const MaxInput = HeaderSize + MaxData
@@ -166,7 +163,6 @@ type pendingOpen struct {
 // Machine owns every channel, queue, parser and deadline. No field is shared with
 // edge workers. Construct with New; call Step from exactly one owner.
 type Machine struct {
-	telemetry                                                *tunnelTelemetry
 	cfg                                                      Config
 	status                                                   Status
 	now, epoch, loginUntil, timer                            core.Instant
@@ -286,18 +282,11 @@ func (m *Machine) control(cmd Command, id byte) {
 			m.flowWakeSuperseded = true
 		}
 		m.channels[id].wakePending = false
-		if m.telemetry != nil {
-			m.telemetryFlow(cmd, id, m.flowQueue(id))
-		}
 		return
 	}
 	if cmd == WakeCommand {
 		c := &m.channels[id]
-		retained := c.sentPause && !c.wakePending
 		c.wakePending = c.sentPause
-		if retained && m.telemetry != nil {
-			m.telemetryFlow(cmd, id, m.flowQueue(id))
-		}
 		return
 	}
 	m.queue(Frame{Command: cmd, Channel: id}, Established)
@@ -316,13 +305,6 @@ func (m *Machine) releaseOutcome(id byte, why string, outcome *CloseOutcome) {
 	c := &m.channels[id]
 	if !c.active {
 		return
-	}
-	m.telemetryEndPause(id)
-	if m.telemetry != nil {
-		m.telemetry.channels[id].DiscardedBytes += uint64(c.queue.size)
-	}
-	if m.telemetry != nil && why == "receive budget exceeded" && c.queue.size > 0 {
-		m.telemetry.channels[id].Reclaims++
 	}
 	a := m.local(CloseLocal, id)
 	a.Reason = why
@@ -458,10 +440,6 @@ func (m *Machine) pumpLocal(id byte) {
 	if c.queue.size > 0 {
 		c.writeCount = min(c.queue.size, MaxData)
 		c.writeToken = m.next()
-		if m.telemetry != nil {
-			m.telemetry.channels[id].writeAt = m.now
-			m.telemetryChanged(id)
-		}
 		a := m.local(WriteLocal, id)
 		a.Token = c.writeToken
 		a.Data = c.queue.front()
@@ -524,7 +502,6 @@ func (m *Machine) allowed(port uint16) bool {
 func (m *Machine) activate(id byte, request uint64, connecting bool) {
 	m.channels[id] = channel{active: true, generation: m.next(), request: request, connecting: connecting}
 	m.active++
-	m.telemetryChanged(id)
 }
 
 // openRoom treats local output fullness as backpressure, before queue's fatal
@@ -573,9 +550,6 @@ func (m *Machine) open(request uint64, mapping byte, port uint16) {
 // Phase dispatch, login outcomes, verification and channel operations:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/framing.md#message-catalogue
 func (m *Machine) onFrame(f Frame) {
-	if f.oddity(m.phase()) {
-		m.emit(Action{Kind: ReceiveOddity, Command: f.Command})
-	}
 	if m.status == LoggingIn {
 		if m.cfg.Role == Agent {
 			if f.Command != PassCommand {
@@ -663,13 +637,11 @@ func (m *Machine) onFrame(f Frame) {
 			return
 		}
 		if len(f.Payload) > m.cfg.ChannelBytes-c.queue.size {
-			m.telemetryReject(f.Channel)
 			m.closeFrame(f.Channel, 1)
 			m.release(f.Channel, "receive budget exceeded")
 			return
 		}
 		if !m.receiveRoom(f.Channel, len(f.Payload)) {
-			m.telemetryReject(f.Channel)
 			return
 		}
 		if c.queue.size == 0 && len(f.Payload) > 0 {
@@ -680,7 +652,6 @@ func (m *Machine) onFrame(f Frame) {
 		c.queue.push(f.Payload)
 		m.rxBytes += len(f.Payload)
 		m.flowDirty = true
-		m.telemetryAdmission(f.Channel, len(f.Payload))
 		m.flow(f.Channel)
 		m.pumpLocal(f.Channel)
 	case EndCommand:
@@ -698,26 +669,14 @@ func (m *Machine) onFrame(f Frame) {
 	case PauseCommand:
 		if c.active {
 			c.readState += 2
-			if m.telemetry != nil {
-				m.telemetry.channels[f.Channel].PauseReceived++
-				m.telemetryChanged(f.Channel)
-			}
 		}
 	case ResumeCommand:
 		if c.active {
 			c.readState = 0
-			if m.telemetry != nil {
-				m.telemetry.channels[f.Channel].ResumeReceived++
-				m.telemetryChanged(f.Channel)
-			}
 		}
 	case WakeCommand:
 		if c.active {
 			c.readState = 2
-			if m.telemetry != nil {
-				m.telemetry.channels[f.Channel].WakeReceived++
-				m.telemetryChanged(f.Channel)
-			}
 		}
 	}
 }
@@ -876,9 +835,6 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 			if m.sendFlow {
 				m.flowTX.offset += e.Count
 				if m.flowTX.offset == len(m.flowTX.data) {
-					// Count the immutable frame even if release or slot reuse has
-					// invalidated its effect on the current channel generation.
-					m.telemetrySent(m.flowCommand, m.flowID, 0)
 					c := &m.channels[m.flowID]
 					if c.active && c.generation == m.flowGeneration {
 						if m.flowCommand == PauseCommand {
@@ -898,7 +854,6 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 				// Retain and charge the whole frame until completely accepted.
 				if t.offset == len(t.data) {
 					m.preferTX = false
-					m.telemetrySent(Command(t.data[0]), t.data[1], len(t.data)-HeaderSize)
 					m.txBytes -= len(t.data)
 					m.tx[0] = outbound{}
 					m.tx = m.tx[1:]
@@ -996,13 +951,9 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 			}
 			c.writeToken = 0
 			c.writeCount = 0
-			m.telemetryChanged(e.Channel)
 			if e.Count > 0 {
 				c.lastWrite = m.now
 				c.queue.consume(e.Count)
-				if m.telemetry != nil {
-					m.telemetry.channels[e.Channel].DeliveredBytes += uint64(e.Count)
-				}
 				m.rxBytes -= e.Count
 				m.flowDirty = true
 				m.wakeBytes = min(m.wakeBytes+e.Count, 8197)
@@ -1025,7 +976,6 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 			}
 			c.writeToken = 0
 			c.writeCount = 0
-			m.telemetryChanged(e.Channel)
 			m.closeFrame(e.Channel, 1)
 			m.release(e.Channel, "local write failed")
 		case LocalClose:

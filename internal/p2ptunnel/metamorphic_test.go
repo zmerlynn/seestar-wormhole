@@ -74,18 +74,12 @@ func metamorphicDriver(t *testing.T, row metamorphicFixture, observers ...func(E
 	return d
 }
 
-// Retain every action field; only the separate, privacy-checked diagnostic is
-// removed. Reserved receive bytes never become a local effect or sender byte.
+// Retain every action field. Reserved receive bytes never become a local effect
+// or sender byte.
 func metamorphicActions(t *testing.T, in []Action) []Action {
 	t.Helper()
 	var out []Action
 	for _, a := range in {
-		if a.Kind == ReceiveOddity {
-			if !reflect.DeepEqual(a, Action{Kind: ReceiveOddity, Command: a.Command}) {
-				t.Fatal("diagnostic leaked fields")
-			}
-			continue
-		}
 		out = append(out, a)
 	}
 	return out

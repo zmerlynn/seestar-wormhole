@@ -167,7 +167,7 @@ func TestBoundedOwnershipAndSlowReader(t *testing.T) {
 		t.Fatal(m.Usage())
 	}
 	a = m.Step(incoming(Data, 2, "f"), 0)
-	if !has(a, ReceivePressure) || m.Status() != Established || m.Usage().RXBytes != 4 {
+	if m.Discards()[7] != 1 || m.Status() != Established || m.Usage().RXBytes != 4 {
 		t.Fatal("overflow", a, m.Usage())
 	}
 	m = newMachine(t, nil)
@@ -381,7 +381,6 @@ func FuzzMachine(f *testing.F) {
 			b = b[:4096]
 		}
 		m := newMachine(t, func(c *Config) {
-			c.Telemetry = true
 			c.TXBytes = 512
 			c.RXBytes = 2000
 			c.TXPackets = 8
@@ -418,13 +417,6 @@ func FuzzMachine(f *testing.F) {
 				e = Event{Kind: LocalAbort}
 			}
 			a := m.Step(e, now)
-			if len(m.telemetry.rxAt) != len(m.rx) || len(m.telemetry.txAt) != len(m.tx) || len(m.telemetry.txForce) != len(m.tx) {
-				t.Fatal("timestamp/cause alignment")
-			}
-			ss := m.Stats(now)
-			if ss.RXBytes != m.Usage().RXBytes || ss.TXBytes != m.Usage().TXBytes || ss.RTO != m.RTO() || ss.CWND != m.Window() || ss.UnsentBytes+ss.InFlightBytes != ss.TXBytes || ss.RetransmittedSent != ss.RetransmitSACK+ss.RetransmitACK+ss.RetransmitRTO+ss.RetransmitPacing {
-				t.Fatal("snapshot conservation", ss)
-			}
 			for _, p := range packets(t, a) {
 				if len(p.Payload) > MaxData {
 					t.Fatal("oversize output")
@@ -488,7 +480,7 @@ func TestPacketCountBudgetAndTerminalGap(t *testing.T) {
 	m := newMachine(t, func(c *Config) { c.RXPackets = 1 })
 	ready(t, m)
 	m.Step(incoming(Data, 0, "a"), 0)
-	if a := m.Step(incoming(Data, 1, "b"), 0); !has(a, ReceivePressure) || m.Status() != Established {
+	if a := m.Step(incoming(Data, 1, "b"), 0); m.Discards()[7] != 1 || m.Status() != Established {
 		t.Fatal("packet count overflow", a)
 	}
 	m = newMachine(t, nil)

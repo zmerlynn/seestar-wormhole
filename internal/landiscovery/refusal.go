@@ -2,7 +2,7 @@ package landiscovery
 
 import "time"
 
-// Fixed labels and uint64 counters follow the transport telemetry convention.
+// Refusal counts use fixed labels and cumulative uint64 counters.
 // They retain no peer addresses, request IDs, methods or device identity.
 const (
 	refusalMalformed = iota

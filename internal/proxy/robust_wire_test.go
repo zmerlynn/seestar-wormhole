@@ -1,11 +1,8 @@
 package proxy
 
 import (
-	"bytes"
 	"context"
 	"encoding/hex"
-	"log/slog"
-	"strings"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -22,8 +19,7 @@ func TestC14AuthenticatedUnknownThenRPC(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		var logs bytes.Buffer
-		s, _, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.rdtPrefix = literal }, Config{Logger: slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))})
+		s, _, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.rdtPrefix = literal }, Config{})
 		defer s.Close()
 		c, err := s.DialPort(ctx, 4700)
 		if err != nil {
@@ -38,8 +34,6 @@ func TestC14AuthenticatedUnknownThenRPC(t *testing.T) {
 		if cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
 			t.Fatalf("unexpected redial: allocations=%d stops=%d", cloud.allocs.Load(), cloud.stops.Load())
 		}
-		if !strings.Contains(logs.String(), `"msg":"rdt_receive_oddity","type":68`) {
-			t.Fatalf("missing debug type: %s", logs.String())
-		}
+
 	})
 }

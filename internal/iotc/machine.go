@@ -76,7 +76,6 @@ const (
 	CancelTimer
 	WriteRejected
 	RelayProgressChanged // secret-free snapshot, emitted once per relay milestone
-	ReceiveOddity        // bounded category/opcode/type; no payload or identity
 )
 
 // CryptoMode specifies maintained-library edge operations. RSA is the protocol's
@@ -150,9 +149,6 @@ type Action struct {
 	Reason         string
 	Failures       FailureReason
 	Progress       RelayProgress
-	Opcode         uint16 // ReceiveOddity only
-	Oddity         Oddity // ReceiveOddity only
-	Type           byte   // ReceiveOddity only; record or alert trigger type
 }
 
 // endpointStage is local state, never a vendor wire value. Per-role paths:
@@ -219,7 +215,7 @@ type operation struct {
 // Machine is single-owner and single-use. It contains fixed endpoint/operation
 // tables and no sockets, goroutines, clocks, random generators or crypto library.
 type Machine struct {
-	discards                                  [11]uint64 // cumulative counts for R039-R049, independent of DEBUG telemetry
+	discards                                  [11]uint64 // cumulative counts for R039-R049
 	resolveToken, materialToken               uint64
 	nat                                       NATTracker
 	relaySelected                             Link
@@ -834,7 +830,7 @@ func (m *Machine) openRecord(e Event) {
 		return
 	}
 	if r.Unknown() || r.Type == 2 {
-		m.receiveOddity(UnknownRecord, 0, r.Type)
+		m.discards[4]++
 		return // Unknown types have no authenticated-body or liveness semantics.
 	}
 	if m.state == Established && (r.Type != 4 || !(m.direct && v.stage == punchRecovery || !m.direct && v.link == m.path)) {
@@ -957,9 +953,6 @@ func (m *Machine) decrypted(p operation, data []byte) {
 			m.discards[44-39]++
 			return
 		}
-		if a.Trigger != 2 && a.Trigger != 4 {
-			m.receiveOddity(AlertTrigger, 0, a.Trigger)
-		}
 		if a.Code == 1 || a.Code == 2 {
 			v.sid = a.ServerSID
 			reason := DeviceOffline
@@ -968,7 +961,7 @@ func (m *Machine) decrypted(p operation, data []byte) {
 			}
 			m.terminalEndpoint(i, reason)
 		} else {
-			m.receiveOddity(UnknownAlert, 0, 14)
+			m.discards[4]++
 		}
 		return
 	}
@@ -978,7 +971,7 @@ func (m *Machine) decrypted(p operation, data []byte) {
 		return
 	}
 	if p.typ == 1 && packet.Opcode != 0x100c {
-		m.receiveOddity(UnknownControl, packet.Opcode, p.typ)
+		m.discards[4]++
 		return
 	}
 	c, err := ParseControl(packet)
@@ -987,7 +980,7 @@ func (m *Machine) decrypted(p operation, data []byte) {
 		return
 	}
 	if c.Unknown {
-		m.receiveOddity(UnknownControl, packet.Opcode, p.typ)
+		m.discards[4]++
 		return
 	}
 	if c.UID != m.cfg.UID {
@@ -999,10 +992,6 @@ func (m *Machine) decrypted(p operation, data []byte) {
 		if p.typ != 1 || c.Nonce != m.material.MasterNonce || v.stage != endpointInitial || m.state != Connecting {
 			m.discards[44-39]++
 			return
-		}
-		m.layoutOddity(packet.Opcode, c.layoutOddity)
-		if c.unknownUnit {
-			m.receiveOddity(UnknownMasterUnit, packet.Opcode, p.typ)
 		}
 		m.masterResult(i, c, p.marker)
 	case 0x0218:
@@ -1076,7 +1065,7 @@ func (m *Machine) relayResult(i int, p operation, c Control) {
 		return
 	}
 	if c.Result != 0 && c.Result != -7 && relayFailure(c.Result) == 0 {
-		m.receiveOddity(UnknownRelayResult, 0x020d, p.typ)
+		m.discards[4]++
 		return
 	}
 	m.observeRelayResult(v, c.Result)
@@ -1306,7 +1295,6 @@ func (m *Machine) peer(l Link, p Packet) {
 			m.discards[48-39]++
 			return
 		}
-		m.routeOddity(p)
 		m.alive = 0
 		m.emit(Action{Kind: Received, Data: append([]byte(nil), b...)})
 	case aliveOp, closeOp:
@@ -1316,11 +1304,9 @@ func (m *Machine) peer(l Link, p Packet) {
 			m.discards[48-39]++
 			return
 		}
-		m.routeOddity(p)
 		if p.Opcode == closeOp {
 			m.close("remote close", false)
 		} else {
-			m.layoutOddity(p.Opcode, len(p.Body) != 8)
 			m.alive = 0
 		}
 	default:
@@ -1379,7 +1365,6 @@ func (m *Machine) observeHello(l Link, p Packet) {
 		m.discards[48-39]++
 		return
 	}
-	m.layoutOddity(p.Opcode, len(p.Body) != 24)
 	m.nat.Observe(v.link.Address, observed, p.Opcode == 0x8005)
 	if nat := m.nat.Type(); nat != 0 {
 		m.cfg.LocalNAT = nat
@@ -1414,10 +1399,6 @@ func (m *Machine) peerKnock(l Link, p Packet) {
 	if err != nil || c.UID != m.cfg.UID || c.RID != m.material.RID || p.Route&0x200 != 0 {
 		m.discards[48-39]++
 		return
-	}
-	m.layoutOddity(p.Opcode, c.layoutOddity)
-	if p.Route != 0x33 {
-		m.receiveOddity(OpaqueRoute, p.Opcode, 0)
 	}
 	switch p.Opcode {
 	case 0x0401:

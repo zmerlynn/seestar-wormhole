@@ -88,18 +88,12 @@ func TestUnknownModernSafety(t *testing.T) {
 				if m.State() != Connecting || m.endpoints[0].stage != rendezvousPending || m.RelayProgress() != (RelayProgress{}) {
 					t.Fatal("untrusted completion changed outcome")
 				}
-				count := 0
-				for _, a := range out {
-					if a.Kind == ReceiveOddity {
-						count++
-					}
-				}
 				want := 0
 				if bad == "" {
 					want = 1
 				}
-				if count != want {
-					t.Fatalf("oddities=%d want=%d", count, want)
+				if m.Discards()[4] != uint64(want) {
+					t.Fatalf("R043 count=%d want=%d", m.Discards()[4], want)
 				}
 			})
 		}
@@ -222,8 +216,8 @@ func TestUnknownOpaqueRouteSafety(t *testing.T) {
 					t.Fatal("unsafe route input advanced path")
 				}
 				for _, a := range out {
-					if a.Kind == Received || a.Kind == Ready || a.Kind == ReceiveOddity {
-						t.Fatal("unsafe route input delivered/observed")
+					if a.Kind == Received || a.Kind == Ready {
+						t.Fatal("unsafe route input delivered")
 					}
 				}
 			})

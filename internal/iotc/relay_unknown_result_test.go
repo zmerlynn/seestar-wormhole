@@ -27,8 +27,8 @@ func TestUnknownRelayResultRetries(t *testing.T) {
 		if m.state != Connecting || m.endpoints[0].stage != rendezvousPending || m.progress != (RelayProgress{}) || m.endpoints[0].failure != 0 {
 			t.Fatalf("unknown result changed relay state: %v %+v %+v", m.state, m.endpoints[0], m.progress)
 		}
-		if effects := nonTimerEffects(out); len(effects) != 1 || effects[0].Kind != ReceiveOddity {
-			t.Errorf("expected diagnostic only: %+v", out)
+		if effects := nonTimerEffects(out); len(effects) != 0 {
+			t.Errorf("unexpected non-timer effect: %+v", out)
 		}
 		for _, at := range []time.Duration{499 * time.Millisecond, 500 * time.Millisecond, 59999 * time.Millisecond} {
 			out = m.Step(Event{Kind: Tick, Attempt: 1}, core.Instant(at))
