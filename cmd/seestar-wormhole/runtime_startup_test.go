@@ -6,11 +6,8 @@ import (
 	"errors"
 	"github.com/go-json-experiment/json"
 	"net"
-	"os"
-	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
@@ -37,19 +34,12 @@ func TestOSBindForms(t *testing.T) {
 	}
 }
 func TestRuntimeFailures(t *testing.T) {
-	for _, kind := range []string{"trace-existing", "trace-symlink", "trace-dir", "occupied-tcp", "occupied-udp"} {
+	for _, kind := range []string{"occupied-tcp", "occupied-udp"} {
 		t.Run(kind, func(t *testing.T) {
 			setValidCommandEnvironment(t)
-			path := filepath.Join(t.TempDir(), "PRIVATE_FILE_PATH")
 			args := []string{"--bind", "0.0.0.0", "--port", availableCommandPort(t) + ":13459", "--log-format=text", "--log-level=error"}
-			option := "--trace"
+			option := "--bind"
 			switch kind {
-			case "trace-existing":
-				os.WriteFile(path, nil, 0600)
-			case "trace-symlink":
-				os.Symlink("PRIVATE_TARGET", path)
-			case "trace-dir":
-				os.Mkdir(path, 0700)
 			case "occupied-tcp":
 				l, e := net.Listen("tcp", "0.0.0.0:0")
 				if e != nil {
@@ -71,9 +61,6 @@ func TestRuntimeFailures(t *testing.T) {
 				defer l.Close()
 				args = append(args, "--lan-discovery")
 				option = "--bind"
-			}
-			if strings.HasPrefix(kind, "trace-") {
-				args = append(args, "--trace", path)
 			}
 			var out, logs bytes.Buffer
 			err := run(context.Background(), append([]string{"proxy"}, args...), &out, &logs)

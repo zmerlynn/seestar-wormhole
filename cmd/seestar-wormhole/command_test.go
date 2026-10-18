@@ -43,7 +43,7 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {
 		t.Fatal("root version or flag scope changed")
 	}
-	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "stats-interval", "log-format", "log-level", "trace", "lan-discovery"} {
+	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "stats-interval", "log-format", "log-level", "lan-discovery"} {
 		if root.Flags().Lookup(name) != nil || root.PersistentFlags().Lookup(name) != nil || commands[1].Flags().Lookup(name) == nil {
 			t.Errorf("%s must be proxy-local", name)
 		}
@@ -93,7 +93,7 @@ func TestWindowsPreflightOrdering(t *testing.T) {
 	unsupported := func() error { return errors.New("unsupported platform") }
 	for _, args := range [][]string{
 		{"proxy", "--lan-discovery"},
-		{"proxy", "--lan-discovery", "--bind=0.0.0.0", "--trace=PRIVATE_CAPTURE"},
+		{"proxy", "--lan-discovery", "--bind=0.0.0.0"},
 		{"proxy", "--version", "--lan-discovery", "--bind=0.0.0.0"},
 	} {
 		var out, logs bytes.Buffer

@@ -2,7 +2,6 @@ package edge
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io"
 	"log/slog"
@@ -22,13 +21,6 @@ var ErrDTLSQueueFull = errors.New("dtls: packet queue full")
 // ErrDTLSBudget means lifetime control traffic exhausted the local storage budget.
 var ErrDTLSBudget = errors.New("dtls: control traffic budget exhausted")
 
-// DTLSTrace observes adapter decisions without a dependency on higher protocol
-// layers. Callbacks receive only lengths, datatype and a fixed outcome category;
-// no caller buffer or error object crosses this optional hook. Return promptly.
-type DTLSTrace interface {
-	RecordDTLS(instance uint64, kind uint8, inputLength, outputLength int, datatype uint16, outcome string)
-}
-
 // DTLSPackets connects Pion to IOTC datatype-1 datagrams without a UDP socket.
 // The owner calls Deliver and drains Outgoing. Queues hold at most 32*1388 bytes
 // each. There is one Pion reader/writer. Close unblocks reads and is idempotent.
@@ -38,8 +30,6 @@ type DTLSPackets struct {
 	Logger   *slog.Logger
 	discards [3]uint64 // R027, R028, R131; protected by mu
 
-	trace                       DTLSTrace // immutable after worker startup
-	traceID                     uint64
 	mu                          sync.Mutex
 	writeMu                     sync.Mutex
 	receipts                    chan error
@@ -61,32 +51,6 @@ func NewDTLSPackets(mtu int) (*DTLSPackets, error) {
 	return &DTLSPackets{mtu: mtu, rx: make(chan []byte, 32), tx: make(chan []byte, 32), done: make(chan struct{}), readDeadline: deadline.New(), writeDeadline: deadline.New()}, nil
 }
 
-// SetTrace installs the optional recorder before starting Pion or packet workers.
-func (p *DTLSPackets) SetTrace(w DTLSTrace, id uint64) { p.trace = w; p.traceID = id }
-
-// traceResult records existing adapter completions, outside its mutexes.
-func (p *DTLSPackets) traceResult(kind uint8, inputLength, outputLength int, err error) {
-	p.trace.RecordDTLS(p.traceID, kind, inputLength, outputLength, 0, dtlsOutcome(err))
-}
-
-// dtlsOutcome preserves the adapter's existing sanitized failure vocabulary.
-func dtlsOutcome(err error) string {
-	if err == nil {
-		return "none"
-	}
-	var ne net.Error
-	if errors.As(err, &ne) && ne.Timeout() {
-		return "timeout"
-	}
-	if errors.Is(err, context.Canceled) {
-		return "canceled"
-	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		return "timeout"
-	}
-	return "operation_failed"
-}
-
 // Deliver copies one complete IOTC payload. The caller must fail the attempt on
 // error. Before authenticated handshake completion, application records are
 // discarded, including those coalesced with control records (RFC 6347 section 4.2.4).
@@ -95,12 +59,6 @@ func dtlsOutcome(err error) string {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#encapsulation-and-role
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/session.md#secure-channel
 func (p *DTLSPackets) Deliver(datatype byte, b []byte) (result error) {
-	if p.trace != nil {
-		inputLength := len(b)
-		defer func() {
-			p.trace.RecordDTLS(p.traceID, 0, inputLength, 0, uint16(datatype), dtlsOutcome(result))
-		}()
-	}
 	if datatype != 1 {
 		return errors.New("dtls: plaintext or unsupported datatype")
 	}
@@ -151,9 +109,6 @@ func (p *DTLSPackets) Deliver(datatype byte, b []byte) (result error) {
 
 // allowApplication is called only after the library authenticates the handshake.
 func (p *DTLSPackets) allowApplication() {
-	if p.trace != nil {
-		defer p.traceResult(10, 0, 0, nil)
-	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	p.applicationReady = true
@@ -167,10 +122,6 @@ func (p *DTLSPackets) Outgoing() <-chan []byte { return p.tx }
 // Done closes when the adapter is closed.
 func (p *DTLSPackets) Done() <-chan struct{} { return p.done }
 func (p *DTLSPackets) ReadFrom(b []byte) (n int, addr net.Addr, result error) {
-	if p.trace != nil {
-		inputLength := len(b)
-		defer func() { p.traceResult(6, inputLength, n, result) }()
-	}
 	select {
 	case <-p.done:
 		return 0, nil, net.ErrClosed
@@ -194,10 +145,6 @@ func (p *DTLSPackets) ReadFrom(b []byte) (n int, addr net.Addr, result error) {
 	}
 }
 func (p *DTLSPackets) WriteTo(b []byte, _ net.Addr) (n int, result error) {
-	if p.trace != nil {
-		inputLength := len(b)
-		defer func() { p.traceResult(4, inputLength, n, result) }()
-	}
 	if len(b) == 0 || len(b) > p.mtu {
 		return 0, errors.New("dtls: packet exceeds MTU")
 	}
@@ -234,9 +181,6 @@ func (p *DTLSPackets) WriteTo(b []byte, _ net.Addr) (n int, result error) {
 // Configure before starting Pion. CompleteWrite is called by the nonblocking owner.
 func (p *DTLSPackets) EnableWriteCompletion() { p.receipts = make(chan error, 1) }
 func (p *DTLSPackets) CompleteWrite(err error) {
-	if p.trace != nil {
-		defer p.traceResult(8, 0, 0, err)
-	}
 	select {
 	case p.receipts <- err:
 	default:
@@ -244,9 +188,6 @@ func (p *DTLSPackets) CompleteWrite(err error) {
 }
 
 func (p *DTLSPackets) Close() error {
-	if p.trace != nil {
-		defer p.traceResult(12, 0, 0, nil)
-	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if !p.closed {
@@ -264,9 +205,6 @@ func (p *DTLSPackets) SetDeadline(t time.Time) error      { return p.setDeadline
 func (p *DTLSPackets) SetReadDeadline(t time.Time) error  { return p.setDeadlines(t, true, false) }
 func (p *DTLSPackets) SetWriteDeadline(t time.Time) error { return p.setDeadlines(t, false, true) }
 func (p *DTLSPackets) setDeadlines(t time.Time, read, write bool) error {
-	if p.trace != nil {
-		defer p.traceResult(14, 0, 0, nil)
-	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed {

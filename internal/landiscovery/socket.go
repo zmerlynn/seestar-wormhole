@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/zmerlynn/seestar-wormhole/internal/core"
-	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -20,10 +18,7 @@ import (
 // Reachable unicast source addresses are required; wildcard binding is our local edge choice:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#stand-in-responders
 type Socket struct {
-	Logger *slog.Logger
-	// Trace is configured before Serve, and closed by the command after Serve joins.
-	Trace      *tracerecord.Writer
-	traceID    uint64
+	Logger     *slog.Logger
 	conn       *net.UDPConn
 	packet     packetConn
 	interfaces map[int][]netip.Prefix
@@ -279,14 +274,6 @@ func (s *Socket) deliver(response []byte, local netip.Addr, index int, source ne
 // Live-prefix filtering, rate limits and source disambiguation are local policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#reply
 func (s *Socket) response(m *Machine, b []byte, now time.Duration, index int, requester, destination netip.Addr) (response []byte, source netip.Addr) {
-	if s.Trace != nil {
-		if s.traceID == 0 {
-			s.traceID = s.Trace.Instance()
-		}
-		defer func() {
-			s.Trace.Record("lan", s.traceID, core.Instant(now), tracerecord.EdgeEvent{Kind: 0, Length: len(b), Type: 1, Peer: netip.AddrPortFrom(requester, 0)}, []tracerecord.EdgeEvent{{Kind: 1, Length: len(response), Type: 1, Present: response != nil}})
-		}()
-	}
 	r, ok := m.prepare(b, now)
 	if !ok {
 		return nil, netip.Addr{}

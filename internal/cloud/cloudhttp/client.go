@@ -15,7 +15,6 @@ import (
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/oserror"
-	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 	"io"
 	"log/slog"
 	"net"
@@ -44,8 +43,6 @@ type Transport interface {
 // Timeouts are local policy;
 // zero selects 30 s / 5 s respectively.
 type Config struct {
-	// Trace records redacted account and allocation adapter operations.
-	Trace                    *tracerecord.Writer
 	Logger                   *slog.Logger // Optional secret-safe phase diagnostics.
 	BaseURL                  string
 	AccountBaseURL, StateDir string
@@ -84,8 +81,6 @@ func (Device) Format(s fmt.State, verb rune) { io.WriteString(s, "[cloud device 
 
 // Client contains ephemeral environment credentials; do not copy after use.
 type Client struct {
-	trace                *tracerecord.Writer
-	traceID              uint64
 	logger               *slog.Logger
 	oddityRecords        *atomic.Uint32 // shared bounded diagnostics, safe across client snapshots
 	base                 *url.URL
@@ -135,7 +130,7 @@ func NewFromEnvironment(cfg Config) (*Client, error) {
 	if cfg.Transport == nil {
 		cfg.Transport = &http.Transport{DisableKeepAlives: true, MaxConnsPerHost: 2, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: cfg.Timeout, MaxResponseHeaderBytes: 16 << 10, DisableCompression: true}
 	}
-	c := &Client{trace: cfg.Trace, logger: cfg.Logger, oddityRecords: new(atomic.Uint32), base: u, transport: cfg.Transport, timeout: cfg.Timeout, stopTimeout: cfg.StopTimeout}
+	c := &Client{logger: cfg.Logger, oddityRecords: new(atomic.Uint32), base: u, transport: cfg.Transport, timeout: cfg.Timeout, stopTimeout: cfg.StopTimeout}
 	accountURL, err := accountOrigin(cfg.AccountBaseURL)
 	if err != nil {
 		return nil, err
@@ -323,12 +318,6 @@ func (c *Client) DetailForLAN(ctx context.Context, d Device) (cloud.Detail, erro
 }
 
 func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud.Detail, error)) (result cloud.Detail, err error) {
-	if c.trace != nil {
-		id := c.trace.Instance()
-		defer func() {
-			c.trace.Record("allocation", id, c.trace.Now(), tracerecord.EdgeEvent{Kind: 0}, []tracerecord.EdgeEvent{{Kind: 1, Err: err}})
-		}()
-	}
 	finish := diagnostic.Operation(c.logger, "device_detail")
 	defer func() { finish(err) }()
 	if !validInput(d.Serial) {
@@ -407,12 +396,6 @@ func (c *Client) stop(id cloud.Identifier) error {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#allocation-online-link
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#reports-and-stop
 func (c *Client) Acquire(ctx context.Context, d Device) (lease *Lease, err error) {
-	if c.trace != nil {
-		id := c.trace.Instance()
-		defer func() {
-			c.trace.Record("allocation", id, c.trace.Now(), tracerecord.EdgeEvent{Kind: 2}, []tracerecord.EdgeEvent{{Kind: 3, Err: err, Present: lease != nil}})
-		}()
-	}
 	defer func() { err = cloud.JoinOutcomes(err) }()
 	finish := diagnostic.Operation(c.logger, "allocation")
 	defer func() { finish(err) }()
@@ -460,12 +443,6 @@ func (c *Client) Acquire(ctx context.Context, d Device) (lease *Lease, err error
 	return &Lease{client: c, allocation: a, done: make(chan struct{})}, nil
 }
 func (c *Client) stopWithContext(ctx context.Context, id cloud.Identifier) (err error) {
-	if c.trace != nil {
-		instance := c.trace.Instance()
-		defer func() {
-			c.trace.Record("allocation", instance, c.trace.Now(), tracerecord.EdgeEvent{Kind: 4}, []tracerecord.EdgeEvent{{Kind: 5, Err: err}})
-		}()
-	}
 	finish := diagnostic.Operation(c.logger, "release")
 	defer func() { finish(err) }()
 	// Preserve the stop body's existing HTML/JS escaping.
@@ -485,7 +462,7 @@ func (c *Client) stopWithContext(ctx context.Context, id cloud.Identifier) (err 
 			}
 			return cloud.ErrReauthentication
 		}
-		request = &Client{trace: c.trace, logger: c.logger, base: c.base, transport: c.transport, token: token}
+		request = &Client{logger: c.logger, base: c.base, transport: c.transport, token: token}
 	}
 	info, body, e := request.exchangeRaw(ctx, "/v1/device-p2p/stop", nil, b, nil, false, false)
 	e = cloud.JoinOutcomes(e, c.remoteStatus(info.status, request.token))

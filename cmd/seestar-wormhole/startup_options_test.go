@@ -20,7 +20,6 @@ func TestAttackRuntimeOptions(t *testing.T) {
 		args                       []string
 	}{
 		{"invalid bind", "--bind", "use an OS-supported bind address with available local ports", "HOST_PRIVATE_MARKER", []string{"--bind", "HOST_PRIVATE_MARKER/invalid", "--port", "12347:13459"}},
-		{"trace path", "--trace", "use a new writable trace file", "PATH_PRIVATE_MARKER", []string{"--trace", "/nonexistent/PATH_PRIVATE_MARKER/trace"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, suffix := range [][]string{nil, {"--log-format=text", "--log-level=debug"}} {

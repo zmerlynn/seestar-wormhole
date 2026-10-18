@@ -70,7 +70,6 @@ func TestEveryStateEveryEvent(t *testing.T) {
 }
 
 type harness struct {
-	observe                      func(Event, []Action, core.Instant)
 	t                            *testing.T
 	m                            *Machine
 	q                            *sim.Scheduler[Event]
@@ -102,9 +101,6 @@ func (h *harness) step(e Event, now core.Instant) error {
 		h.releasing = false
 	}
 	actions := h.m.Step(e, now)
-	if h.observe != nil {
-		h.observe(e, actions, now)
-	}
 	for _, a := range actions {
 		switch a.Kind {
 		case Dial:

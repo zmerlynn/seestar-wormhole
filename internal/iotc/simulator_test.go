@@ -16,7 +16,6 @@ import (
 )
 
 type harness struct {
-	observe                      func(Event, []Action, core.Instant)
 	allowTCP                     bool
 	udpMasterAt, udpPrecheckAt   core.Instant
 	mat                          Material
@@ -104,9 +103,6 @@ func (h *harness) step(e Event) {
 	e.Attempt = h.m.cfg.Attempt
 	now := h.net.Scheduler.Now()
 	actions := h.m.Step(e, now)
-	if h.observe != nil {
-		h.observe(e, actions, now)
-	}
 	h.actions(actions)
 }
 func (h *harness) seal(a Action) {

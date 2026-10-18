@@ -3,7 +3,6 @@ package proxy
 import (
 	"context"
 	"errors"
-	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 	"io"
 	"log/slog"
 	"math/rand/v2"
@@ -26,8 +25,6 @@ const MaxPauseThreshold = 8 << 20
 // Config is local session policy. Zero Idle holds a session eagerly; a positive
 // Idle allocates on first demand and releases after the last client leaves.
 type Config struct {
-	// Trace is opt-in; the caller closes it after Session.Close.
-	Trace *tracerecord.Writer
 	// LANDiscovery loads selected cloud identity before starting the owner.
 	// This requests detail only; even in lazy mode it makes no allocation.
 	LANDiscovery bool
@@ -49,9 +46,7 @@ type Session struct {
 	discardStack             atomic.Pointer[stack] // published by the attempt worker; drained by the owner after join
 	discardNext              core.Instant
 	discardLast              uint64
-	telemetryLost            uint64 // owner-only until done closes
-	trace                    *tracerecord.Writer
-	traceID                  uint64
+	telemetryLost            uint64       // owner-only until done closes
 	deviceDetail             cloud.Detail // immutable after construction, before publication
 	tunnelConfig             p2ptunnel.Config
 	statsInterval            time.Duration
@@ -87,7 +82,7 @@ func startWithRNG(ctx context.Context, cfg Config, factory func(*Session) sessio
 	if cfg.PauseThreshold < 0 || cfg.PauseThreshold == 1 || cfg.PauseThreshold > MaxPauseThreshold {
 		return nil, &diagnostic.OptionError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608 (zero selects default)"}
 	}
-	s := &Session{lazy: cfg.Idle > 0, trace: cfg.Trace, traceID: cfg.Trace.Instance(), statsInterval: cfg.StatsInterval, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
+	s := &Session{lazy: cfg.Idle > 0, statsInterval: cfg.StatsInterval, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
 	ctx, s.cancel = context.WithCancel(ctx)
 	c := session.DefaultConfig()
 	c.Idle = cfg.Idle
@@ -122,9 +117,6 @@ func startWithRNG(ctx context.Context, cfg Config, factory func(*Session) sessio
 	}()
 	return s, nil
 }
-
-// TraceRecorder supplies the existing owner with its optional recorder.
-func (s *Session) TraceRecorder() (*tracerecord.Writer, uint64) { return s.trace, s.traceID }
 
 // Work implements the session owner's bounded completion driver.
 func (s *Session) Work() <-chan func(core.Instant) { return s.work }

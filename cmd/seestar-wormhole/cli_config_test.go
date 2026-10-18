@@ -50,7 +50,7 @@ func TestCLIConfigAttribution(t *testing.T) {
 	for _, command := range []string{"proxy"} {
 		for _, format := range []string{"text", "json"} {
 			{
-				for _, problem := range []string{"email", "password", "state", "selection", "trace"} {
+				for _, problem := range []string{"email", "password", "state", "selection"} {
 					t.Run(command+"/"+format+"/"+problem, func(t *testing.T) {
 						synctest.Test(t, func(t *testing.T) {
 							t.Setenv("SEESTAR_EMAIL", "test@example.invalid")
@@ -72,9 +72,6 @@ func TestCLIConfigAttribution(t *testing.T) {
 								option, rule = "--state-dir", "use a private writable state directory and installation identity file"
 							case "selection":
 								option, rule = "--serial", "select an existing device from the account catalog"
-							case "trace":
-								args = append(args, "--trace="+t.TempDir())
-								option, rule = "--trace", "use a new writable trace file"
 							}
 							var out, logs bytes.Buffer
 							factory := func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
@@ -164,8 +161,8 @@ func TestCLISharedSerialPreflight(t *testing.T) {
 		for _, version := range []bool{false, true} {
 			t.Run(command+map[bool]string{true: "/version", false: "/run"}[version], func(t *testing.T) {
 				base := t.TempDir()
-				trace := filepath.Join(base, "trace")
-				args := []string{command, "--serial=\n", "--trace=" + trace + filepath.Join(base, "keys")}
+				trace := filepath.Join(base)
+				args := []string{command, "--serial=\n"}
 				if version {
 					args = append(args, "--version")
 				}

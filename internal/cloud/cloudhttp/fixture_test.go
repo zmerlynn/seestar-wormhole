@@ -27,5 +27,5 @@ func newAuthenticatedFixture(t *testing.T, cfg Config) (*Client, error) {
 	if cfg.Transport == nil {
 		cfg.Transport = &http.Transport{DisableKeepAlives: true}
 	}
-	return &Client{trace: cfg.Trace, logger: cfg.Logger, base: u, transport: cfg.Transport, token: "token-secret", source: "source-secret", timeout: cfg.Timeout, stopTimeout: cfg.StopTimeout}, nil
+	return &Client{logger: cfg.Logger, base: u, transport: cfg.Transport, token: "token-secret", source: "source-secret", timeout: cfg.Timeout, stopTimeout: cfg.StopTimeout}, nil
 }

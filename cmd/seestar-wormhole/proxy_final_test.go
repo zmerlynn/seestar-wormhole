@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -44,7 +43,7 @@ func (s *finalFailureSession) Close() error { return s.outcome }
 
 func TestProxyFinalFailureRecord(t *testing.T) {
 	for _, format := range []string{"json", "text"} {
-		for _, path := range []string{"parse", "trace", "bind", "configuration", "construction", "accept", "owner", "joined", "cleanup", "canceled", "orderly"} {
+		for _, path := range []string{"parse", "bind", "configuration", "construction", "accept", "owner", "joined", "cleanup", "canceled", "orderly"} {
 			t.Run(format+"/"+path, func(t *testing.T) {
 				args := []string{"proxy", "--log-format=" + format, "--log-level=error"}
 				wantReason, wantCleanup, wantCode := "timeout", "none", 1
@@ -52,9 +51,6 @@ func TestProxyFinalFailureRecord(t *testing.T) {
 				switch path {
 				case "parse":
 					args = append(args, "--port=bad")
-					wantReason, wantCode = "invalid_option", 2
-				case "trace":
-					args = append(args, "--trace="+filepath.Join(t.TempDir(), "missing", "file"))
 					wantReason, wantCode = "invalid_option", 2
 				case "bind", "configuration":
 					wantReason, wantCode = "invalid_option", 2

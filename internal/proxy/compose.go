@@ -165,9 +165,6 @@ func (x *stack) drive(e layerEvent, now core.Instant) {
 		case e.i != nil && x.iotc != nil:
 			before := x.iotc.State()
 			actions := x.iotc.Step(*e.i, now)
-			if x.trace != nil {
-				x.trace.Record("iotc", x.traceIDs[0], now, *e.i, actions)
-			}
 			states := [...]string{"idle", "connecting", "established", "closed"}
 			x.transition("rendezvous", states[before], states[x.iotc.State()])
 			for _, a := range actions {
@@ -185,9 +182,6 @@ func (x *stack) drive(e layerEvent, now core.Instant) {
 				counters = x.reliable.Counters()
 			}
 			actions := x.reliable.Step(*e.r, now)
-			if x.trace != nil {
-				x.trace.Record("rdt", x.traceIDs[1], now, *e.r, actions)
-			}
 			x.rdtAfter(*e.r, counters, now)
 			states := [...]string{"idle", "creating", "established", "closing", "stopped"}
 			x.transition("rdt", states[before], states[x.reliable.Status()])
@@ -197,9 +191,6 @@ func (x *stack) drive(e layerEvent, now core.Instant) {
 		case e.t != nil && x.tunnel != nil:
 			before := x.tunnel.Status()
 			actions := x.tunnelStep(*e.t, now)
-			if x.trace != nil {
-				x.trace.Record("tunnel", x.traceIDs[2], now, *e.t, actions)
-			}
 			states := [...]string{"idle", "logging_in", "active", "stopped"}
 			x.transition("tunnel", states[before], states[x.tunnel.Status()])
 			x.tunnelActions(actions)

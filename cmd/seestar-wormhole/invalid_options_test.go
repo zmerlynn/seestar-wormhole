@@ -43,7 +43,7 @@ func TestInvalidOptions(t *testing.T) {
 	for _, name := range []string{"lan-discovery", "version"} {
 		tests = append(tests, test{name + "bool", "--" + name, "use a boolean value", []string{"--" + name + "=PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}})
 	}
-	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "trace", "serial", "state-dir"} {
+	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "serial", "state-dir"} {
 		for _, prefix := range []string{"--"} {
 			tests = append(tests, test{prefix + name + "missing", "--" + name, "requires a value", []string{prefix + name}, nil})
 		}
@@ -100,7 +100,7 @@ func TestInvalidOptions(t *testing.T) {
 
 func TestHelpOutput(t *testing.T) {
 	for _, help := range []string{"-h", "--help"} {
-		for _, prefix := range [][]string{nil, {"--bind=HOST_PRIVATE_MARKER", "--trace=/private/PATH_MARKER", "--pause-threshold=1234567", "--idle=1234h"}} {
+		for _, prefix := range [][]string{nil, {"--bind=HOST_PRIVATE_MARKER", "--pause-threshold=1234567", "--idle=1234h"}} {
 			var out, logs bytes.Buffer
 			err := run(context.Background(), append([]string{"proxy"}, append(prefix, help)...), &out, &logs)
 			if !errors.Is(err, errHelp) || logs.Len() != 0 {

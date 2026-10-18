@@ -22,7 +22,6 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/licenses"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
-	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 )
 
 var revision = "development"
@@ -71,7 +70,6 @@ type options struct {
 	command                 commandKind
 	outcome                 commandOutcome
 	bind, format            string
-	trace                   string
 	level                   string
 	ports                   mappings
 	idle                    time.Duration
@@ -208,22 +206,6 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	startup := newStartupLogging(o, logOutput)
 	logger := startup.logger
 	defer func() { result = errors.Join(result, startup.finish(result)) }()
-	var trace *tracerecord.Writer
-	if o.trace != "" {
-		phase = "trace"
-		trace, err = openTrace(o.trace, o.ports)
-		if err != nil {
-			return &argumentError{Option: "--trace", Rule: "use a new writable trace file"}
-		}
-		trace.SetLogger(logger)
-		defer func() {
-			err := trace.Close()
-			if err != nil {
-				trace.ReportLoss(newLogger("json", logOutput))
-			}
-			result = errors.Join(result, err)
-		}()
-	}
 	phase = "listener"
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -247,12 +229,11 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		if err != nil {
 			return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
 		}
-		discovery.Trace = trace
 		discovery.Logger = logger
 		defer discovery.Close()
 	}
 	phase = "session"
-	s, err := newSession(ctx, proxy.Config{Trace: trace, LANDiscovery: o.lanDiscovery, Serial: o.serial, Model: o.model, StateDir: o.stateDir, StatsInterval: o.statsInterval, PauseThreshold: o.pauseThreshold, Idle: o.idle, Logger: logger})
+	s, err := newSession(ctx, proxy.Config{LANDiscovery: o.lanDiscovery, Serial: o.serial, Model: o.model, StateDir: o.stateDir, StatsInterval: o.statsInterval, PauseThreshold: o.pauseThreshold, Idle: o.idle, Logger: logger})
 	if err != nil {
 		return err
 	}
@@ -415,22 +396,4 @@ func commandExitCode(o options, err error) int {
 		return 2
 	}
 	return 1
-}
-
-// openTrace records mapped device destinations as protocol facts. Only the
-// destination side is configured; a remapped local listener stays private.
-func openTrace(path string, ports mappings) (*tracerecord.Writer, error) {
-	w, err := tracerecord.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	servicePorts := make([]uint16, 0, len(ports))
-	for _, p := range ports {
-		servicePorts = append(servicePorts, p.device)
-	}
-	if err := w.SetServicePorts(servicePorts); err != nil {
-		w.Close()
-		return nil, err
-	}
-	return w, nil
 }

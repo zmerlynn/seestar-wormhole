@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
-	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
@@ -56,7 +55,7 @@ type accountOwner struct {
 func newAccountOwner(c *Client, base *url.URL, credentials cloud.Credentials) *accountOwner {
 	life, cancel := context.WithCancel(context.Background())
 	o := &accountOwner{jobs: make(chan accountJob), expired: make(chan struct{}, 1), done: make(chan struct{}), cancel: cancel}
-	edge := &Client{account: o, trace: c.trace, traceID: c.trace.Instance(), logger: c.logger, base: base, transport: c.transport, timeout: c.timeout}
+	edge := &Client{account: o, logger: c.logger, base: base, transport: c.transport, timeout: c.timeout}
 	go func() {
 		defer close(o.done)
 		m := cloud.NewAccountMachine(credentials)
@@ -209,11 +208,8 @@ func canceledAccountReply(reply *accountCompletion, interrupted error) accountRe
 	}
 }
 func (c *Client) accountStep(m *cloud.AccountMachine, e cloud.AccountEvent) cloud.AccountAction {
-	var now core.Instant
-	if c.trace != nil {
-		now = c.trace.Now()
-	}
-	a := m.Step(e, now)
+
+	a := m.Step(e, 0)
 	if c.account != nil {
 		// Publish authorization at installation/retirement, even while profile
 		// I/O is pending. Cleanup only borrows it; it never admits account work.
@@ -226,9 +222,6 @@ func (c *Client) accountStep(m *cloud.AccountMachine, e cloud.AccountEvent) clou
 			c.account.correlationToken, c.account.pendingExpiry, c.account.expiryTaken = token, false, false
 		}
 		c.account.expiryMu.Unlock()
-	}
-	if c.trace != nil {
-		c.trace.Record("account", c.traceID, now, e, []cloud.AccountAction{a})
 	}
 	return a
 }
@@ -331,7 +324,7 @@ func (c *Client) authorized(ctx context.Context) (*Client, error) {
 		return nil, r.err
 	}
 	// Ordinary remote operations borrow an immutable per-request snapshot.
-	return &Client{trace: c.trace, logger: c.logger, base: c.base, transport: c.transport, token: r.token.Value(), source: c.source, timeout: c.timeout, stopTimeout: c.stopTimeout}, nil
+	return &Client{logger: c.logger, base: c.base, transport: c.transport, token: r.token.Value(), source: c.source, timeout: c.timeout, stopTimeout: c.stopTimeout}, nil
 }
 
 // Remote 401 is not account replay; matching token bytes fence stale responses locally:

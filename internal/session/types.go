@@ -49,7 +49,7 @@ const (
 	Releasing
 	Backoff
 	Busy
-	Closed State = 7 // Preserve the existing noncontrol trace tag.
+	Closed State = 7
 )
 
 // Layer is the ordered attempt pipeline. These are internal tags, not wire IDs.
@@ -76,7 +76,7 @@ const (
 	Released // All workers joined, transports closed and cloud stop attempted.
 	Usage    // Absolute retained byte/count usage for one layer.
 	Tick
-	Shutdown Kind = 10 // Preserve the existing noncontrol trace tag.
+	Shutdown Kind = 10
 )
 
 // Event carries no wire payload or secret. Client IDs must be unique while live.

@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
-	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 	mathrand "math/rand/v2"
 	"slices"
 	"sync"
@@ -34,7 +33,7 @@ import (
 // device-session allocation.
 func New(ctx context.Context, cfg Config) (*Session, error) {
 	d := cloudhttp.Device{Serial: cfg.Serial, Model: cfg.Model}
-	c, err := cloudhttp.NewFromEnvironment(cloudhttp.Config{Logger: diagnostic.Lifecycle(cfg.Logger), Trace: cfg.Trace, StateDir: cfg.StateDir})
+	c, err := cloudhttp.NewFromEnvironment(cloudhttp.Config{Logger: diagnostic.Lifecycle(cfg.Logger), StateDir: cfg.StateDir})
 	if err != nil {
 		return nil, err
 	}
@@ -118,10 +117,6 @@ func (f *factory) New(id uint64, b session.Budgets) (sessionedge.Layers, error) 
 	x := &stack{f: f, id: id, actions: make(chan iotc.Action, 1), secureTX: make(chan []byte, 16), timerUpdates: make(chan time.Duration, 1), streams: make(map[uint64]*stream)}
 	if f.s != nil {
 		f.s.discardStack.Store(x)
-		x.trace = f.s.trace
-	}
-	for i := range x.traceIDs {
-		x.traceIDs[i] = x.trace.Instance()
 	}
 	for i := range x.phases {
 		x.phases[i] = make(chan error, 1)
@@ -215,8 +210,6 @@ type stack struct {
 	ingressDiscards     uint64
 	discardNext         core.Instant
 	discardLast         [132]uint64
-	trace               *tracerecord.Writer
-	traceIDs            [4]uint64
 	debugDropped        atomic.Uint64
 	debugReported       atomic.Uint64
 	legacyDebugNextWarn core.Instant
@@ -352,9 +345,6 @@ func (x *stack) Dial(ctx context.Context, l sessionedge.Lease) (result sessioned
 	if err != nil {
 		return x.handles[0], err
 	}
-	if x.trace != nil {
-		x.packets.SetTrace(x.trace, x.traceIDs[3])
-	}
 	x.packets.Logger = x.f.s.logger
 	x.packets.EnableWriteCompletion()
 	x.post(func(now core.Instant) {
@@ -414,13 +404,6 @@ func (x *stack) Handshake(ctx context.Context, _ sessionedge.Transport) (result 
 	finish := diagnostic.Operation(diagnostic.Lifecycle(x.f.s.logger), "dtls")
 	defer func() {
 		finish(err)
-		if x.trace != nil {
-			var typ uint16
-			if x.secure != nil {
-				typ = x.secure.Profile().Suite
-			}
-			x.trace.Record("dtls", x.traceIDs[3], x.trace.Now(), tracerecord.EdgeEvent{Kind: 2}, []tracerecord.EdgeEvent{{Kind: 3, Type: typ, Err: err}})
-		}
 	}()
 	// The lease is retained by the attempt worker; obtain credentials there via
 	// Dial's short-lived copy, cleared immediately after this handshake.

@@ -10,7 +10,6 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
-	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 )
 
 // Observer receives fixed-size lifecycle transitions on the protocol owner.
@@ -28,8 +27,6 @@ type TimedObserver interface {
 }
 
 type owner struct {
-	trace            *tracerecord.Writer
-	traceID          uint64
 	cleanupErr       error
 	failureErr       error // bounded diagnostic outcome of the current attempt
 	cfg              session.Config
@@ -79,11 +76,7 @@ func Run(ctx context.Context, cfg session.Config, rng session.RNG, f Factory, in
 		return session.ErrBudget
 	}
 	o := &owner{cfg: cfg, machine: m, factory: f, sink: sink, origin: time.Now()}
-	if source, ok := sink.(interface {
-		TraceRecorder() (*tracerecord.Writer, uint64)
-	}); ok {
-		o.trace, o.traceID = source.TraceRecorder()
-	}
+
 	defer func() {
 		if recover() != nil {
 			err = ErrPanic
@@ -309,9 +302,6 @@ func (o *owner) recordCleanup(err error) {
 
 func (o *owner) machineStep(e session.Event, now core.Instant) []session.Action {
 	actions := o.machine.Step(e, now)
-	if o.trace != nil {
-		o.trace.Record("session", o.traceID, now, e, actions)
-	}
 	return actions
 }
 

@@ -135,10 +135,6 @@ func (s *SecureDTLS) Close() error { s.once.Do(func() { close(s.stop) }); <-s.jo
 // Read receives one authenticated application packet. Callers provide at least
 // MaxApplication bytes. DTLS preserves packets and does not repair application loss.
 func (s *SecureDTLS) Read(b []byte) (n int, result error) {
-	if s.packets.trace != nil {
-		inputLength := len(b)
-		defer func() { s.packets.traceResult(16, inputLength, n, result) }()
-	}
 	if len(b) < profile.MaxApplication {
 		return 0, io.ErrShortBuffer
 	}
@@ -152,10 +148,6 @@ func (s *SecureDTLS) Read(b []byte) (n int, result error) {
 // Write sends exactly one complete RDT packet per application record. Oversized
 // packets are rejected before writing, never fragmented into separate RDT packets.
 func (s *SecureDTLS) Write(b []byte) (n int, result error) {
-	if s.packets.trace != nil {
-		inputLength := len(b)
-		defer func() { s.packets.traceResult(18, inputLength, n, result) }()
-	}
 	overhead := 29
 	if s.profile.Suite == profile.PSKAES128GCM {
 		overhead = 37

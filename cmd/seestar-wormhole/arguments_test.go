@@ -95,7 +95,7 @@ func TestArgumentHelpAndMissingValues(t *testing.T) {
 			t.Fatalf("%s: want clean help, got err=%v output=%q logs=%q", help, err, out.String(), logs.String())
 		}
 	}
-	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "trace", "serial", "state-dir"} {
+	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "serial", "state-dir"} {
 		var logs bytes.Buffer
 		err := run(context.Background(), append([]string{"proxy"}, []string{"--" + name}...), io.Discard, &logs)
 		if err == nil || !strings.Contains(logs.String(), `"option":"--`+name+`"`) || !strings.Contains(logs.String(), `"rule":"requires a value"`) {

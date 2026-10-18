@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-func TestSimulatorPairedLifecycle(t *testing.T) { runPairedLifecycle(t, nil) }
+func TestSimulatorPairedLifecycle(t *testing.T) { runPairedLifecycle(t) }
 
-func runPairedLifecycle(t *testing.T, observe func(int, Event, []Action, core.Instant)) {
+func runPairedLifecycle(t *testing.T) {
 	// The tunnel sees RDT's ordered stream; loss/duplication/reordering are tested
 	// on sim.Network separately until the RDT machine can supply reliability.
 	type delivery struct {
@@ -29,9 +29,6 @@ func runPairedLifecycle(t *testing.T, observe func(int, Event, []Action, core.In
 	machines := []*Machine{agent, server}
 	step := func(side int, e Event, now core.Instant) []Action {
 		aa := machines[side].Step(e, now)
-		if observe != nil {
-			observe(side, e, aa, now)
-		}
 		return aa
 	}
 	timers := []*sim.Timer[delivery]{sim.NewTimer(scheduler), sim.NewTimer(scheduler)}
