@@ -102,21 +102,22 @@ See [tested coverage](docs/status.md) for the devices, firmware and paths exerci
 
 ## AI use
 
-seestar-wormhole was written by AI, guided by a human maintainer. AI models (Anthropic's
-Claude and OpenAI's GPT models) wrote the code, tests and documentation and
-reviewed the changes. A human maintainer set the scope and the clean-room rules, made the design
-decisions, provided the maintainer's telescope for testing and approves what is
-published. [Tested coverage](docs/status.md) says what has been exercised on a
-real device. Please report errors as issues.
+seestar-wormhole was written by AI, guided by a human maintainer. AI models
+(Anthropic's Claude and OpenAI's GPT models) wrote the code, tests and
+documentation and reviewed the changes. A human maintainer set the scope and
+the clean-room rules, made the design decisions, provided the telescope it
+was tested against and approves what is published.
+[Tested coverage](docs/status.md) says what has been exercised on a real
+device. Please report errors as issues.
 
 ## Affiliation and warranty
 
 seestar-wormhole isn't affiliated with, endorsed by or supported by ZWO or
 ThroughTek. Seestar, ZWO, Kalay and other names are trademarks of their owners
 and are used only to identify what this software works with. It's built from
-observed behavior of the maintainer's telescope and from public information, and it
-signs in with your own account through the same cloud service the official
-app uses.
+observed behavior of the maintainer's telescope and from public information,
+and it signs in with your own account through the same cloud service the
+official app uses.
 
 It's provided as is, without warranty of any kind (see [LICENSE](LICENSE)). It
 has been tested only on the devices and firmware listed in
