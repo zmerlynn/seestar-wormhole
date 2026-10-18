@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
@@ -229,5 +230,32 @@ func TestStaleReleaseKeepsDiscardSummary(t *testing.T) {
 	s.Observe(session.Event{Kind: session.Released}, final, final, 1)
 	if s.discardStack.Load() != nil || !strings.Contains(logs.String(), `"rule":"R072"`) {
 		t.Fatalf("final cleanup did not report loss: %s", &logs)
+	}
+}
+
+func TestDriveArmsDiscardSummary(t *testing.T) {
+	var logs bytes.Buffer
+	x := &stack{f: &factory{s: &Session{logger: slog.New(slog.NewJSONHandler(&logs, nil))}}, ctx: context.Background(), timerUpdates: make(chan time.Duration, 1)}
+	x.drive(layerEvent{}, 0)
+	if x.discardNext != core.Instant(discardInterval) {
+		t.Fatalf("discard deadline=%d, want %d", x.discardNext, discardInterval)
+	}
+	select {
+	case delay := <-x.timerUpdates:
+		if delay != discardInterval {
+			t.Fatalf("timer delay=%v, want %v", delay, discardInterval)
+		}
+	default:
+		t.Fatal("drive did not arm the owner timer")
+	}
+	x.ingressDiscards = 3
+	if x.telemetryOnlyTick(core.Instant(discardInterval)-1) || logs.Len() != 0 {
+		t.Fatal("early summary")
+	}
+	if !x.telemetryOnlyTick(core.Instant(discardInterval)) {
+		t.Fatal("discard interval not consumed")
+	}
+	if strings.Count(logs.String(), `"level":"WARN"`) != 1 || !strings.Contains(logs.String(), `"rule":"R072","count":3`) {
+		t.Fatalf("missing interval WARN before release: %s", &logs)
 	}
 }
