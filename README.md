@@ -100,12 +100,30 @@ The proxy listens on local interfaces and has no authentication; use it only on 
 
 See [tested coverage](docs/status.md) for the devices, firmware and paths exercised.
 
-## About this project
+## AI use
 
-seestar-wormhole isn't affiliated with or endorsed by ZWO. It's built from
+seestar-wormhole was written by AI, guided by a human. AI models (Anthropic's
+Claude and OpenAI's GPT models) wrote the code, tests and documentation and
+reviewed the changes. I set the scope and the clean-room rules, made the design
+decisions, provided the telescope it was tested against and approve what is
+published. [Tested coverage](docs/status.md) says what has been exercised on a
+real device. Please report errors as issues.
+
+## Affiliation and warranty
+
+seestar-wormhole isn't affiliated with, endorsed by or supported by ZWO or
+ThroughTek. Seestar, ZWO, Kalay and other names are trademarks of their owners
+and are used only to identify what this software works with. It's built from
 observed behavior of my own telescope and from public information, and it
 signs in with your own account through the same cloud service the official
 app uses.
+
+It's provided as is, without warranty of any kind (see [LICENSE](LICENSE)). It
+has been tested only on the devices and firmware listed in
+[tested coverage](docs/status.md); others may differ. Using it is at your own
+risk: the proxy forwards what your app or client sends, including commands
+that move the mount, change settings or delete files, and use of the vendor's
+cloud service is subject to its terms.
 
 ## More
 
