@@ -5,14 +5,14 @@ in the [README](../README.md#status).
 
 ## Telescopes
 
-My daily-use testing was on one **Seestar S50 Pro, firmware 9.31**. The same
-telescope now runs **firmware 9.75**, with the narrower coverage below. I
-expect other Seestar models on the same cloud service to work, since they
-share the connection, but I haven't seen it.
+Daily-use testing was on one **Seestar S50 Pro, firmware 9.31**. The same
+telescope now runs **firmware 9.75**, with the narrower coverage below. Other
+Seestar models on the same cloud service are expected to work, since they
+share the connection, but no other model has been tested.
 
 ### Firmware 9.75
 
-In my October 16, 2026 acceptance run, I checked:
+The October 16, 2026 acceptance run checked:
 
 - JSON-RPC control reads through the proxy: 40 of 40 replies correlated.
 - Several concurrent control clients, with no cross-talk or drops.
@@ -23,14 +23,14 @@ In my October 16, 2026 acceptance run, I checked:
   drops app setters and is covered by offline tests; it has no device-run
   coverage yet.
 
-On the night of October 16/17, I kept the proxy up all night and repeatedly
-pulled MyWorks and `--dir Autorun/Dark` through `--via`. Files copied and
+On the night of October 16/17, the proxy ran all night while MyWorks and
+`--dir Autorun/Dark` were repeatedly pulled through `--via`. Files copied and
 verified.
 
-I also verified pulling `--dir darklibrary` through `--via` on firmware 9.75.
+Pulling `--dir darklibrary` through `--via` was also verified on firmware 9.75.
 
-I haven't tried the phone app through the proxy, LAN discovery from the
-phone, or always-on idle release/redial over days on 9.75. Camera-info reads
+The phone app through the proxy, LAN discovery from the phone, and always-on
+idle release/redial over days have not been tested on 9.75. Camera-info reads
 worked on 9.31; they weren't part of the 9.75 run.
 
 ## Phone app
