@@ -77,6 +77,9 @@ func verifyLicense(s string, k *rsa.PublicKey) (iotc.License, error) {
 	}
 	plain, err := iotc.UnmaskLicense(payload, [128]byte(recovered))
 	if err != nil {
+		if errors.Is(err, iotc.ErrLicenseNUL) {
+			return iotc.License{}, errors.Join(ErrIOTCCrypto, err)
+		}
 		return iotc.License{}, ErrIOTCCrypto
 	}
 	digest := sha256.Sum256(plain)

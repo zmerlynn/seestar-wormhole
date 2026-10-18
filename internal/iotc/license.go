@@ -3,6 +3,7 @@ package iotc
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"github.com/go-json-experiment/json"
 	"github.com/go-json-experiment/json/jsontext"
 	"sort"
@@ -151,8 +152,13 @@ func ParseLicenseEnvelope(s string) (block [128]byte, payload []byte, err error)
 	return block, b[132:], nil
 }
 
-// UnmaskLicense recovers bytes to hash at the edge with SHA256, up to the first
-// NUL. Replace digest byte zero by 0x11 and constant-time compare all 32 bytes
+// ErrLicenseNUL refuses a payload that would otherwise be truncated before
+// hashing and parsing. It contains no license material.
+var ErrLicenseNUL = errors.New("iotc: license contains NUL")
+
+// UnmaskLicense recovers bytes to hash at the edge with SHA256. NUL is refused
+// as local policy rather than silently truncating the license.
+// Replace digest byte zero by 0x11 and constant-time compare all 32 bytes
 // against recovered[:32] BEFORE ParseLicenseJSON. No unchecked wire allocation.
 // The envelope digest covers the unmasked bytes before the first NUL:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/sdk-licence.md#licence-envelope
@@ -164,8 +170,8 @@ func UnmaskLicense(payload []byte, recovered [128]byte) ([]byte, error) {
 	for i, v := range payload {
 		b[i] = v ^ recovered[i%32]
 	}
-	if i := bytes.IndexByte(b, 0); i >= 0 {
-		b = b[:i]
+	if bytes.IndexByte(b, 0) >= 0 {
+		return nil, ErrLicenseNUL
 	}
 	return b, nil
 }

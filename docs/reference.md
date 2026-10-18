@@ -544,7 +544,7 @@ their command details.
 | Work | Limits and mechanics |
 |---|---|
 | Cloud HTTP | 30-second request deadline, 64 KiB bodies, 16 KiB headers, two connections per host; no redirects or automatic transport retries. TLS certificate verification remains enabled. |
-| License parsing | 16 KiB JSON cap. Standalone-name selection has the ordering incompatibility described in [deviations](protocol.md#deliberate-deviations). |
+| License parsing | 16 KiB JSON cap; decoded NUL refuses the whole license. Standalone-name selection has the ordering incompatibility described in [deviations](protocol.md#deliberate-deviations). |
 | IOTC acquisition | 60-second total deadline, monotonic selector gates, direct preference within one selector interval, bounded endpoint/candidate tombstones. |
 | Hello correlation | At least the 24-byte serial/instance form, tolerating trailing bytes; random serial origin and retained echo history across the attempt. |
 | Attempt identity | Fresh cryptographic material and nonzero random RID per attempt; process-lifetime RID reservation with a 16,777,216-entry ceiling. |
@@ -624,6 +624,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `release_not_attempted` | WARN | Release needs reauthentication |
 | `dtls_ready` | INFO | Negotiated version and suite |
 | `iotc_rid_history_exhausted` | ERROR | Process-lifetime rendezvous identifier reservation budget is full; fixed `error` includes restart guidance |
+| `iotc_license_refused` | WARN | `rule=license_nul`; decoded license contains NUL, with no license material logged |
 | `relay_progress`, `relay_summary`, `relay_failure_summary` | INFO | Relay phase, request/result/refusal counters, selection; fixed failure reason in the failure summary |
 | `channel_open` | INFO | Device `port`, `local_port`, `channel`, `client_class` |
 | `channel_close` | INFO | Same context, `duration_ms`, successful `local_to_device_bytes`, `device_to_local_bytes`, classified reason |

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
+	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
 	"math/big"
 	"testing"
@@ -32,6 +33,12 @@ func TestLicenseSignatureAndTamper(t *testing.T) {
 	l, err := verifyLicense(base64.StdEncoding.EncodeToString(b), &k.PublicKey)
 	if err != nil || l.Realm != "test" {
 		t.Fatalf("license %v", err)
+	}
+	// The signed prefix is valid, but a decoded NUL suffix must not be silently
+	// truncated. Preserve the classification for the owner's WARN projection.
+	withNUL := append(bytes.Clone(b), d[len(plain)%32])
+	if _, err := verifyLicense(base64.StdEncoding.EncodeToString(withNUL), &k.PublicKey); !errors.Is(err, iotc.ErrLicenseNUL) || !errors.Is(err, ErrIOTCCrypto) {
+		t.Fatalf("missing NUL refusal classification: %v", err)
 	}
 	// Keep the decoded JSON valid so only signature verification can reject it.
 	pos := 132 + bytes.Index(plain, []byte("test"))

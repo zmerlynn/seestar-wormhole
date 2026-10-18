@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 	mathrand "math/rand/v2"
@@ -97,6 +98,9 @@ type factory struct {
 
 func (f *factory) license(s string) (iotc.License, error) {
 	l, err := f.verify(s)
+	if errors.Is(err, iotc.ErrLicenseNUL) && f.s.logger != nil {
+		f.s.logger.Warn("iotc_license_refused", "rule", "license_nul")
+	}
 	if err == nil && l.StandaloneOmitted > 0 && f.s.logger != nil {
 		f.s.logger.Debug("iotc license standalone entries omitted", "count", l.StandaloneOmitted)
 	}
