@@ -103,11 +103,21 @@ func TestSiteProtectedLogsAndIDs(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			var record struct {
-				Msg, Method, Reason string
-				ID                  jsontext.Value
+			var request struct {
+				ID jsontext.Value `json:"id"`
 			}
-			if bytes.Count(logs.Bytes(), []byte("\n")) != 1 || json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_protected" || record.Reason != "site_protected" || record.Method != tc.method || string(record.ID) != tc.id || bytes.Contains(logs.Bytes(), []byte(`"fields"`)) {
+			if err := json.Unmarshal([]byte(tc.request), &request); err != nil {
+				t.Fatal(err)
+			}
+			want := fmt.Sprintf(`{"jsonrpc":"2.0","id":%s,"error":{"code":-32602,"message":"site_protected"}}`+"\r\n", request.ID)
+			if out.Len() != 0 || reply.String() != want {
+				t.Fatalf("forwarded=%q reply=%q want=%q", out.Bytes(), reply.Bytes(), want)
+			}
+			var record struct {
+				Msg, Level, Method, Reason string
+				ID                         jsontext.Value
+			}
+			if bytes.Count(logs.Bytes(), []byte("\n")) != 1 || json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_protected" || record.Level != "WARN" || record.Reason != "site_protected" || record.Method != tc.method || string(record.ID) != tc.id || bytes.Contains(logs.Bytes(), []byte(`"fields"`)) {
 				t.Fatalf("log=%s want method=%s id=%s", logs.Bytes(), tc.method, tc.id)
 			}
 			for _, secret := range []string{"12.345", "67.891", "2001", "private-"} {

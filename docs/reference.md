@@ -525,7 +525,7 @@ Unknown members remain allowed. The local answer uses `-32700`, a null ID, and
 message `request rejected by site protection`; no ambiguous request fields are
 echoed. Device replies stay byte-transparent and are never decoded for this check.
 
-One INFO `site_protected` record is emitted for each dropped setter. It contains
+One WARN `site_protected` record is emitted for each dropped setter. It contains
 `method`, integer request `id` or `unavailable`, and `reason=site_protected`.
 String IDs are echoed to the client but omitted from logs. Coordinates, clock
 values, zone values, and unknown parameter names are omitted. Invalid frames
@@ -626,7 +626,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `channel_closed` | INFO for a closed local writer; WARN for abnormal failures; DEBUG otherwise | Tunnel/bridge detail, direction or channel, reason and classified cause |
 | `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason |
 | `client_canceled` | INFO | Admission canceled before forwarding; ports/client class |
-| `site_protected` | INFO | Dropped setter; method, integer ID or `unavailable`, reason |
+| `site_protected` | WARN | Dropped setter; method, integer ID or `unavailable`, reason |
 | `site_reject` | WARN | Invalid frame; method and reason |
 | `lan_discovery_started` | INFO | UDP port |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
