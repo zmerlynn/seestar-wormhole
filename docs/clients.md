@@ -28,7 +28,7 @@ an issue.
 ## Your own scripts
 
 [The control port speaks the telescope's line-based JSON-RPC](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/session-handshake.md), exactly as it
-does on the local network. With the proxy's defaults, that's `127.0.0.1:4700`:
+does on the local network. The example uses the [default proxy listener](reference.md#proxy-flags).
 
 See [pi_get_time](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#reading-the-time-pi_get_time) for the wire rules.
 
