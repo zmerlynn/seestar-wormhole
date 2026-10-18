@@ -15,6 +15,7 @@ type clientSlot struct {
 
 // Snapshot exposes bounded accounting, never mutable machine storage.
 type Snapshot struct {
+	Discards        uint64 // cumulative R097 stale/irrelevant event count
 	State           State
 	Attempt         uint64
 	Clients, Queued int
@@ -25,6 +26,7 @@ type Snapshot struct {
 // Machine is owned by one caller. Allocate one per device and do not copy it.
 // Each Dial requires fresh layer machines and an independent context at the edge.
 type Machine struct {
+	discards                         uint64
 	cfg                              Config
 	rng                              RNG
 	state, after                     State
@@ -79,7 +81,7 @@ func (m *Machine) Snapshot() Snapshot {
 	for _, l := range m.usage {
 		u, _ = addLimit(u, l)
 	}
-	return Snapshot{m.state, m.attempt, m.count, m.queued, u, m.deadline}
+	return Snapshot{State: m.state, Attempt: m.attempt, Clients: m.count, Queued: m.queued, Usage: u, Deadline: m.deadline, Discards: m.discards}
 }
 func (m *Machine) action(k Effect) Action { return Action{Kind: k, Attempt: m.attempt} }
 func (m *Machine) clientAction(k Effect, id uint64, err error) Action {
@@ -307,15 +309,20 @@ func (m *Machine) timer(out []Action) []Action {
 // attempt completions cannot mutate clients, timers or accounting. Local commands
 // are owner inputs. ClientGone may omit Attempt only for lifetime-unique IDs.
 func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
+	if now < m.last {
+		m.discards++
+	}
 	now = max(now, m.last)
 	m.last = now
 	switch e.Kind {
 	case Progress, Failed, Released, Usage:
 		if e.Attempt != m.attempt {
+			m.discards++
 			return nil
 		}
 	case ClientGone:
 		if e.Attempt != 0 && e.Attempt != m.attempt {
+			m.discards++
 			return nil
 		}
 	}
@@ -323,6 +330,7 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 		if e.Kind == Client {
 			return []Action{m.clientAction(Reject, e.Client, ErrClosed)}
 		}
+		m.discards++
 		return nil
 	}
 	// Demand expires independently of the worker's cleanup target or failure.
@@ -368,6 +376,8 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 		if !m.started {
 			m.started = true
 			out = m.settle(now)
+		} else {
+			m.discards++
 		}
 	case Client:
 		if !m.started {
@@ -403,6 +413,7 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 		}
 		for _, c := range m.clients {
 			if c.used && c.id == e.Client {
+				m.discards++
 				return nil
 			}
 		}
@@ -426,8 +437,10 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 			}
 		}
 	case ClientGone:
+		found := false
 		for i, c := range m.clients {
 			if c.used && c.id == e.Client {
+				found = true
 				m.clients[i] = clientSlot{}
 				m.count--
 				if c.admitted {
@@ -437,6 +450,9 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 				}
 				break
 			}
+		}
+		if !found {
+			m.discards++
 		}
 		if m.count == 0 && m.lazyBusyEnabled() && (m.lazyUntil != 0 || m.state == Dialing) {
 			m.resetLazyOpen()
@@ -456,6 +472,7 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 		}
 	case Progress:
 		if m.state != Dialing || e.Layer != m.next {
+			m.discards++
 			break
 		}
 		m.next++
@@ -502,6 +519,9 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 			m.refusalRetry = false
 		}
 		blocked := uncertain || (errors.Is(e.Err, ErrBusy) && !recentRefusal)
+		if m.state != Dialing && m.state != Ready && m.state != Releasing && !blocked {
+			m.discards++
+		}
 		if blocked && m.attempt != 0 {
 			// A terminal answer for this generation wins even if cleanup or a
 			// timeout was processed first. Uncertainty takes priority over busy.
@@ -539,6 +559,7 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 		}
 	case Released:
 		if m.state != Releasing {
+			m.discards++
 			break
 		}
 		if e.Err == nil && e.ReleasedAllocation {
@@ -577,9 +598,11 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 		out = append(out, m.settle(now)...)
 	case Usage:
 		if m.state != Dialing && m.state != Ready {
+			m.discards++
 			break
 		}
 		if e.Layer >= LayerCount {
+			m.discards++
 			break
 		}
 		l := m.cfg.Budgets.Layers[e.Layer]
