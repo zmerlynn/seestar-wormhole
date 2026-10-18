@@ -113,8 +113,8 @@ func TestE2EComposedDTLSHandshakeAdmission(t *testing.T) {
 				if cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
 					t.Fatalf("allocation/stop = %d/%d, want 1/1", cloud.allocs.Load(), cloud.stops.Load())
 				}
-				assertDTLSWorkersExited(t, x)
 				assertStackWorkersExited(t, x)
+				assertDTLSWorkersExited(t, x)
 			})
 		})
 	}

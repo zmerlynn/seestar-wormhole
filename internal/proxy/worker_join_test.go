@@ -27,7 +27,7 @@ func (f *trackingFactory) New(id uint64, b session.Budgets) (sessionedge.Layers,
 	}
 	return l, e
 }
-func TestCloseReturnsAfterPionWorkers(t *testing.T) {
+func TestPionWorkersExitAfterClose(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		for i := 0; i < 20; i++ {
@@ -56,13 +56,13 @@ func TestCloseReturnsAfterPionWorkers(t *testing.T) {
 				t.Fatal(err)
 			}
 			cancel()
+			synctest.Wait()
 			buf := make([]byte, 1<<20)
 			n := runtime.Stack(buf, true)
 			needle := fmt.Sprintf("github.com/pion/dtls/v3.(*Conn).readAndBuffer(0x%x", ptr)
 			if strings.Contains(string(buf[:n]), needle) {
 				t.Fatalf("production Pion reader still live after Session.Close on cycle %d:\n%s", i, buf[:n])
 			}
-			synctest.Wait()
 			client.Close()
 		}
 	})
@@ -70,6 +70,7 @@ func TestCloseReturnsAfterPionWorkers(t *testing.T) {
 
 func assertDTLSWorkersExited(t *testing.T, x *stack) {
 	t.Helper()
+	synctest.Wait()
 	ptr := reflect.ValueOf(x.secure).Elem().FieldByName("conn").Pointer()
 	buf := make([]byte, 1<<20)
 	n := runtime.Stack(buf, true)

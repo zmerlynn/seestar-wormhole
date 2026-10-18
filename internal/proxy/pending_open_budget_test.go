@@ -85,8 +85,8 @@ func TestPendingOpenCountAndCancel(t *testing.T) {
 			t.Fatal("short outage replaced session")
 		}
 		s.Close()
-		assertDTLSWorkersExited(t, x)
 		assertStackWorkersExited(t, x)
+		assertDTLSWorkersExited(t, x)
 	})
 }
 
@@ -246,8 +246,8 @@ func TestPendingOpenRetryCadence(t *testing.T) {
 			t.Fatalf("cancel=%v, want %v", err, context.Canceled)
 		}
 		s.Close()
-		assertDTLSWorkersExited(t, x)
 		assertStackWorkersExited(t, x)
+		assertDTLSWorkersExited(t, x)
 	})
 }
 
@@ -302,8 +302,8 @@ func TestPendingOpenSessionEnd(t *testing.T) {
 					t.Fatalf("session end waited for admission timeout: %v", time.Since(start))
 				}
 				s.Close()
-				assertDTLSWorkersExited(t, x)
 				assertStackWorkersExited(t, x)
+				assertDTLSWorkersExited(t, x)
 			})
 		})
 	}

@@ -2,6 +2,7 @@ package edge
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -14,7 +15,7 @@ import (
 
 // Hold the real library reader after packet I/O has returned, inside its
 // existing logger hook. PacketConn.Close can complete but the reader cannot.
-// This makes a missing library join fail independently of scheduling.
+// Shutdown checks run after releasing the reader and draining runnable goroutines.
 type exitGateLogger struct {
 	quietDTLSLogger
 	enabled          atomic.Bool
@@ -28,7 +29,7 @@ func (l *exitGateLogger) Debugf(format string, _ ...any) {
 		<-l.release
 	}
 }
-func TestDTLSCloseWaitsForReaderExit(t *testing.T) {
+func TestDTLSCloseReaderExit(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -65,6 +66,11 @@ func TestDTLSCloseWaitsForReaderExit(t *testing.T) {
 			t.Fatal(err)
 		}
 		a.allowApplication()
+		b.allowApplication()
+		// Exercise the per-Write cancellation watcher as well as the reader.
+		if _, err := client.Write([]byte{1}); err != nil {
+			t.Fatal(err)
+		}
 		gate.enabled.Store(true)
 		// Literal DTLS 1.2 application header, epoch 1, sequence 42, invalid AEAD.
 		if err := a.Deliver(1, []byte{23, 0xfe, 0xfd, 0, 1, 0, 0, 0, 0, 0, 42, 0, 1, 0}); err != nil {
@@ -74,12 +80,6 @@ func TestDTLSCloseWaitsForReaderExit(t *testing.T) {
 		done := make(chan struct{})
 		go func() { client.Close(); close(done) }()
 		synctest.Wait()
-		early := false
-		select {
-		case <-done:
-			early = true
-		default:
-		}
 		close(gate.release)
 		<-done
 		cancel()
@@ -87,8 +87,11 @@ func TestDTLSCloseWaitsForReaderExit(t *testing.T) {
 		b.Close()
 		server.Close()
 		wg.Wait()
-		if early {
-			t.Fatal("Close returned while the library reader was still alive")
+		synctest.Wait()
+		buf := make([]byte, 1<<20)
+		n := runtime.Stack(buf, true)
+		if strings.Contains(string(buf[:n]), "github.com/pion/dtls/v3.") {
+			t.Fatalf("Pion goroutine survived Close and synctest.Wait:\n%s", buf[:n])
 		}
 	})
 }

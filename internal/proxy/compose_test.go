@@ -171,8 +171,8 @@ func TestComposedRepeatedStartStopJoinsWorkers(t *testing.T) {
 			if cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
 				t.Fatal("lease not released exactly once")
 			}
-			assertDTLSWorkersExited(t, x)
 			assertStackWorkersExited(t, x)
+			assertDTLSWorkersExited(t, x)
 		}
 	})
 }
