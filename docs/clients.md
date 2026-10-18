@@ -47,4 +47,4 @@ Map each client port with `-p local:device`; the default mappings include the co
 
 ## Things to know
 
-The proxy holds one shared session, so stop it before returning to the app’s remote mode; downloads can slow status replies. See [handover](reference.md#availability-and-busy-devices) and [download responsiveness](pulling.md#downloading-while-you-observe). Video transport coverage is listed [here](status.md#phone-app). Keep it on a [trusted network](reference.md#proxy).
+The proxy holds one shared session, so stop it before returning to the app’s remote mode; downloads can slow status replies. See [handover](reference.md#availability-and-busy-devices) and [download responsiveness](copying.md). Video transport coverage is listed [here](status.md#phone-app). Keep it on a [trusted network](reference.md#proxy).

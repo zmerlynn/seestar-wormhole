@@ -393,7 +393,7 @@ Runtime tests additionally check actual lease/transport identities and exit erro
 | `internal/iotc` | Discovery, rendezvous and direct/relay selection produce a bounded packet path to DTLS. The edge owns UDP/TCP, DNS and cryptographic effects. |
 | `internal/dtls`, `internal/edge` | The vendored Pion adapter preserves packets and reports handshake readiness/failure and the negotiated profile. Authentication inputs remain ephemeral; plaintext fallback is forbidden. |
 | `internal/cloud`, `internal/cloud/cloudhttp` | Bounded typed JSON decoding and the HTTPS edge supply allocation results and stop completion. The edge owns environment credentials and sanitizes errors/logs. |
-| `internal/session` | The sole device-session owner routes attempt-stamped events, reserves layer budgets and joins cleanup before replacement. Eager cloud busy retries indefinitely; lazy mode retries on demand. Direct pull defaults to fail-fast busy with an optional bounded busy window. |
+| `internal/session` | The sole device-session owner routes attempt-stamped events, reserves layer budgets and joins cleanup before replacement. Eager cloud busy retries indefinitely; lazy mode retries on demand. |
 | `internal/proxy`, `cmd/seestar-wormhole`, `internal/edge` | Each client owns a tunnel channel through the stream/half-close adapter. Workers and inboxes are bounded; blocked local sockets cannot block the owner or siblings. |
 
 Simulator, parser-fuzzing and independent-library checks do not establish
@@ -767,91 +767,6 @@ podman build --platform linux/amd64 --build-arg BUILDPLATFORM=linux/arm64 --buil
 
 See [container runtime contract](docs/reference.md#containers). The platform smoke test uses network isolation and synthetic environment strings; no cloud or device contact is needed.
 
-Opt-in key capture belongs to the command, outside session ownership. See [keylog buffering and shutdown](docs/reference.md#sensitive-keylog).
-
-## Redacted decision recordings
-
-`--trace PATH` installs one `internal/tracerecord.Writer` for the command's lifetime.
-Existing transport owners record immediately after each IOTC/RDT/tunnel Step,
-including iterative feedback; the session and account owners record their own
-Steps, including expiry/logout and rejected-admission feedback. The existing RDT
-simulator wire observer also receives injected time, rather than maintaining a
-second packet observer. All protocol cores remain free of recording dependencies.
-
-The cloud account machine records its Steps; allocation has no separate pure
-preparation machine. The runtime allocator drives Detail/Acquire imperatively,
-and the lease owns stop cleanup. Those HTTP operation boundaries are recorded
-as allocation transactions. DTLS likewise uses Pion plus the existing DTLSPackets edge,
-not a pure negotiation core. A small consumer-defined DTLSTrace interface records
-its admission, packet/application I/O, completion, deadline and closure decisions.
-Its callback carries only scalar lengths, datatype and a sanitized outcome;
-caller byte buffers and error objects never cross an optional observer interface.
-Pion's internal flights and randomness are outside this format. LAN records the
-existing prepare/admission/reply transaction, including rejected scans.
-
-See [trace encoding](docs/reference.md#json-file-compatibility). One line is a complete Step
-transaction: `machine`, local `instance`, trace-wide `sequence`, `mono_ns` (the
-injected owner-clock argument), edge UTC time, redacted `input`, ordered `outputs`,
-and cumulative `dropped`. All actions share the Step capture timestamp and use
-their array ordinal with the transaction sequence. The clocks of different owners
-have separate origins; compare relative times within an instance. Deliberately
-regressing injected simulator clocks remain visible, while cores apply their
-existing clamps. Numeric kinds use each layer's event/action enum ordering;
-changes to that vocabulary require a schema version change.
-
-A central deny-by-default projection retains only kinds, lengths, available
-opcodes, RDT header sequence/version/retry metadata and local counters. Tunnel
-Send opcodes come from the original frame's typed command metadata, including
-all continuation sends; a stream suffix is never interpreted as a header.
-Numeric `port` is reserved for device destination/service ports in the proxy's
-configured mapping (for example 4700 and 4801). Every other observed port uses
-`port_alias`, a stable per-trace alias across machines, attempts and addresses:
-client-side, ephemeral, NAT-mapped, local listener and unmapped destination ports.
-The source of the port matters: a client or transport port matching a configured
-service number still gets an alias. Zero means unavailable and emits neither
-field. A separate 128-port table uses `portOverflow` after capacity; replay
-rejects either alias overflow because equality distinctions have been lost.
-Replay takes synthetic aliased port values from its resolver, preserves their
-equality relationships, and uses retained raw service values as protocol facts.
-It never serializes an original event/action, opaque resource, identity or error
-string. Address aliases are stable across machines and attempts, with a fixed
-128-address table; further addresses use `peerOverflow`. Such aliases preserve
-privacy but lose distinct-peer information past that bound. No serialized payload
-or cryptographic material can be recovered by replay. Test resolvers use public
-synthetic fixtures and explicitly seeded randomness, and compare their input
-projection before driving a fresh core with the recorded clock.
-
-Producers serialize bounded projection and encoding under the closure/alias
-mutex, then enqueue without waiting for queue space or storage. The queue holds
-64 transactions; queued and worker-owned encoded content is at most 16.25 MiB,
-plus bounded encoding scratch and overhead. Each transaction is bounded to
-256 KiB/2048 actions; the file is capped
-at 16 MiB with reserved trailer space. An admission or cap drop loses the entire
-transaction. A short or failed sink write can leave one torn final record;
-the worker stops appending to that sink and counts each remaining queued step
-as lost. `end` reports losses known before its write. A failed trailer write or
-sink Close each increments `Dropped()`; inspect this status after Close, since
-those final losses cannot be reflected in an already written trailer. The sole storage worker may remain in a
-stalled syscall with its bounded queue; Close waits at most two seconds after
-all producers join. Replay rejects a missing trailer, any loss, sequence gaps,
-unsupported projections and unequal ordered actions. It compares retained fields,
-not erased payload contents. Default-off branches allocate no trace state, sample
-no extra clocks and perform no summary/queue/file work.
-
-`internal/tracediff.Compare` compares retained projections offline, identifying
-inputs and actions by instance, transaction sequence and action ordinal. It maps
-local counters and peer/port aliases by equality relationships, ignores UTC and
-uses each instance's monotonic origin. Missing or dropped transactions make the
-comparison inconclusive; they do not establish protocol behavior. See the
-[comparison contract](internal/tracediff/README.md) for alignment and scope limits.
-
-`internal/capturetrace.Decode` supplies a limited wire-observation projection to
-that comparator. It does not reconstruct internal events or actions; those
-observations remain unavailable. See the [capture projection contract](internal/capturetrace/README.md)
-for the supported input path. Redacted recordings still need a synthetic
-resolver or external sensitive capture to reconstruct secret/payload-dependent
-inputs.
-
 ## Not implemented
 
 - Legacy tunnel authentication: normal `_Ex` LOGIN is sent, and nonempty legacy
@@ -859,5 +774,3 @@ inputs.
 - Optional service mapping and LAN-direct socket bypass in the outbound profile.
   Codecs support service layouts.
 - DTLS session resumption.
-- Arbitrary Pion/device replay. Synthetic replay fixtures and the limited capture
-  projection do not establish that capability.

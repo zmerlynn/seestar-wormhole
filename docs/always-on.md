@@ -1,8 +1,8 @@
 # Keeping it running
 
 The proxy runs all the time on a small Linux server. It holds the telescope's
-connection, and everything else (the phone, seestar_alp, the morning image
-pull) comes and goes through it. This page covers setting that up.
+connection, and everything else (the phone, seestar_alp, SMB clients) comes and
+goes through it. This page covers setting that up.
 
 ## How it behaves on its own
 
@@ -124,7 +124,7 @@ $env:SEESTAR_PASSWORD = [System.Net.NetworkCredential]::new("", $password).Passw
 
 Afterwards, clear the credentials with `Remove-Item Env:SEESTAR_EMAIL, Env:SEESTAR_PASSWORD`.
 
-Stop the Windows process with Ctrl+C and use a separate SMB client for downloads; see [Windows shutdown and SMB limits](reference.md#windows).
+Stop the Windows process with Ctrl+C and use a separate SMB client for downloads; see [Windows shutdown](reference.md#windows) and [image copying](copying.md#windows).
 
 ## Keep it private
 

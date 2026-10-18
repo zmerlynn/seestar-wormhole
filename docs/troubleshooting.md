@@ -36,7 +36,7 @@ If the album is empty, start the proxy with `-p 80:80`; see [HTTP port mappings]
 To correct the stored site, connect the app directly to the device and set it there; see [site protection](reference.md#site-protection).
 
 **Status replies are slow.** A large download is probably sharing the
-connection. See [downloading while you observe](pulling.md#downloading-while-you-observe).
+connection. See [downloading while you observe](copying.md).
 
 A `local_closed` poller event is often a client that closed after one reply; device-side failures still warrant investigation. See [logs](reference.md#logs).
 
@@ -45,17 +45,10 @@ to the phone app with the same values. Type them at the `read` prompt from the
 [README](../README.md#before-you-start-your-account-and-your-site) rather than
 pasting them into a command line.
 
-## pull
-
-Start with `reason` and `cleanup_reason` in the pull summary; finished files keep receipts, while a source or layout mismatch needs its original binding or a new destination. See [recovery details](reference.md#summary-and-progress).
-
 ## Filing an issue
 
 Include the version (`seestar-wormhole --version`), your platform, the
 telescope model and firmware, and the log lines around the problem. The logs
 leave out your credentials, and errors leave out file paths, but some lines
-include a partly masked serial number or your network addresses, and debug
-dry-run output lists file names. Read them over and remove anything you'd
+include a partly masked serial number or your network addresses. Read them over and remove anything you'd
 rather keep before posting.
-
-A key log and packet capture can expose session contents; keep both private and never attach them to an issue. See [sensitive capture handling](reference.md#sensitive-keylog).

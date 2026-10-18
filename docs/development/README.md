@@ -117,9 +117,8 @@ outside the checkout. Those are script controls, not runtime application options
 | `internal/iotc/`, `internal/rdt/`, `internal/p2ptunnel/`, `internal/session/` | Codecs, virtual-clock machines, bounds, loss/reordering, retry/flow policy, stale completions |
 | `internal/edge/`, `internal/edge/iotcedge/`, `internal/dtls/` | Crypto/profile checks, library integration, datagram boundaries, worker cleanup |
 | `internal/proxy/` | Composed sessions, listeners, forwarding, busy/idle recovery, site protection, telemetry and cleanup |
-| `internal/pull/`, `cmd/seestar-wormhole/` | Receipts/checkpoints, safe paths, SMB, verification, CLI output/exits, progress and cancellation |
+| `cmd/seestar-wormhole/` | CLI output/exits, startup, diagnostics and cancellation |
 | `internal/landiscovery/` | Scan decoding, synthesized replies, source/interface policy and rate bounds |
-| `internal/tracerecord/`, `internal/tracediff/`, `internal/capturetrace/` | Redaction, replay, comparison and authenticated capture projection |
 
 The [tunnel contract](../../DESIGN.md#tunnel-contract) describes the retained stream behavior.
 
@@ -133,21 +132,15 @@ agree on the same wrong layout. Synthetic fixtures establish behavior under
 the conditions they model, not acceptance by every backend or firmware.
 Keep protocol behavior and local policy distinct when adding tests.
 
-See [trace comparison limits](../../internal/tracediff/README.md).
-
-The [trace comparison notes](../../internal/tracediff/README.md) explain those
-limits. The [capture projection notes](../../internal/capturetrace/README.md)
-cover the narrower authenticated observations you can derive from captures;
-the decoder tests generate synthetic capture bytes/keys in memory.
 For current device/platform coverage, use [status](../status.md).
 
 ## Vendoring and patches
 
 Build from the checked-in vendor tree with `-mod=vendor`. Re-vendoring replaces
-local patches. Preserve and review both patch sets before accepting a dependency
+local patches. Preserve and review the patch set before accepting a dependency
 upgrade:
 
-See [Pion lifecycle integration](../../internal/edge/PION-PATCH.md) and [embedded SMB transport patch](../../internal/pull/RCLONE-PATCH.md).
+See [Pion lifecycle integration](../../internal/edge/PION-PATCH.md).
 
 ## Licenses and generated notices
 
@@ -180,7 +173,7 @@ These apply to every change, whoever writes it.
 - **Every public flag, format, exit code and log record is a promise.** Add
   one only for a current need, and document it in the
   [reference](../reference.md) in the same change.
-- **Keep work product out of the tree.** Captures, keylogs, traces, logs and
+- **Keep work product out of the tree.** Captures, logs and
   review notes stay outside the checkout; `.gitignore` blocks the common
   names.
 - **Documentation:** American spelling. The reference owns mechanics; guides

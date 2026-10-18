@@ -18,55 +18,40 @@ tag scheme join the contract from that release, with the image tagged by the bin
 
 ## The contract
 
-1. **Commands and flags.** `proxy`, `pull`, `licenses`; flag names, meanings and grammar; defaults that change what is
+1. **Commands and flags.** `proxy`, `licenses`; flag names, meanings and grammar; defaults that change what is
    written or sent; and the rules about which combinations are refused.
-2. **Runtime inputs.** `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` and how they are interpreted; credential-free `--via`
-   operation. The binary discovers no config or credential file (a systemd EnvironmentFile is the service manager's,
+2. **Runtime inputs.** `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` and how they are interpreted. The binary discovers no config or credential file (a systemd EnvironmentFile is the service manager's,
    not ours). Adding opt-in config discovery later is additive and must not override explicit flags or variables.
 3. **Installation identity.** Memory-only unless `--state-dir` is given; with it, the identity at
    `<state-dir>/InterProcessKV/device_uuid` is kept, or migrated compatibly.
-4. **Exit codes.** 0-4 and 130, as in docs/reference.md "Exit codes", and which outcome maps to which code.
-5. **Machine-readable output.** The final `pull --output json` object: one object, its fields, their types and
-   meanings. Readers must ignore unknown fields. Field order is not promised.
-6. **Reasons.** One authoritative table of every `status`, `reason` and `cleanup_reason` value with its mapping to exit
-   codes. Readers must treat an unknown reason as an unspecified failure and use `exit_code`. A new reason for a new
+4. **Exit codes.** 0, 1 and 2, as in docs/reference.md "Exit codes", and which outcome maps to which code.
+5. **Reasons.** One authoritative table of every `reason` and `cleanup_reason` value with its mapping to exit
+   codes. Readers must treat an unknown reason as an unspecified failure and use the process exit code. A new reason for a new
    case is additive; reclassifying an already-documented case follows the fix-versus-break rule below. Hint text is
    prose and not promised.
-7. **The proxy's final-failure record.** One documented JSON stderr record when the proxy exits on a classified
+6. **The proxy's final-failure record.** One documented JSON stderr record when the proxy exits on a classified
    failure, with a stable record name and stable `reason` and `cleanup_reason` keys. It is the only log record in the
    contract.
-8. **Destinations.** The destination layout; `<dest>/.seestar-wormhole/state.json` and its receipts; the pull
-   `SHA256SUMS` format; the destination lock; no deletion on the device or the destination; interrupted-copy recovery.
-   - A release keeps operating on destinations its predecessors in the same major accepted.
-   - Automatically rewriting an existing, previously usable destination so that older supported binaries can no longer
-     read it is **breaking**, even if the data files are intact or a backup would recover it.
-   - A new opt-in layout in a separate destination (as explicit `--dir` with schema 5 was) is a feature. It leaves the
-     old layout alone and the notes state the minimum binary that reads it.
-   - The notes of a release that changes state give the schema it writes, the schemas it reads, and when it first
-     writes.
-   - State is an interface between the project's binaries. Third-party readers or editors of state.json are not supported.
-   - Lowering a hard limit (inventory entries, state size) so that a working destination is refused is breaking.
-9. **Proxy listeners and forwarding.** Port-mapping syntax and default mappings; bind behavior; byte-transparent
+7. **Proxy listeners and forwarding.** Port-mapping syntax and default mappings; bind behavior; byte-transparent
    forwarding including half-close; the documented forwarding and local-answer rules (the setter table); LAN discovery on
    UDP 4720 as an app-facing protocol; session ownership, release and recovery behavior.
-10. **What the proxy does to the device by default.** A new default that writes device state, or a default that stops
+8. **What the proxy does to the device by default.** A new default that writes device state, or a default that stops
     protecting something it used to (a pin, a setter drop), is breaking. A new read-only request or a new startup
     refusal is minor and is listed in the notes, including its side effects on the device where known.
-11. **Distribution.** Archive names `seestar-wormhole_<version>_<os>_<arch>` (`.tar.gz`, `.zip` on Windows), the
+9. **Distribution.** Archive names `seestar-wormhole_<version>_<os>_<arch>` (`.tar.gz`, `.zip` on Windows), the
     executable at the archive root, the release `SHA256SUMS` syntax, and the six targets. Removing a target is breaking;
     adding one, or adding documents to the archive, is not.
-12. **`--version`.** An extractable version, revision and platform; the exact surrounding text is not promised.
+10. **`--version`.** An extractable version, revision and platform; the exact surrounding text is not promised.
 
 ## Not in the contract
 
-- Log text and log record names, text or JSON, except the final-failure record (item 7).
-- Human-readable output: help text, the text pull summary, progress rendering and cadence. Scripts use item 5.
+- Log text and log record names, text or JSON, except the final-failure record (item 6).
+- Human-readable output: help text and license display formatting.
 - Go packages. Every package other than the command is under `internal/`; there is no Go API.
-- Trace and keylog file formats. Their safety rules (off by default, created exclusively and privately) stay.
 - The simulator, scripts/, docs/development/, and the Containerfile (see "The release unit").
-- Timing, throughput, retry delays and jitter, telemetry cadence. The qualitative guarantees in items 8-10 (no
-  deletion, no `--via` fallback, exclusive ownership, bounded cleanup) are not timing and stay protected.
-- Wire details towards the vendor. A vendor handshake can change in a patch if items 1-12 hold.
+- Timing, throughput, retry delays and jitter, telemetry cadence. The qualitative guarantees in items 7-8 (exclusive
+  ownership and bounded cleanup) are not timing and stay protected.
+- Wire details towards the vendor. A vendor handshake can change in a patch if items 1-10 hold.
 
 ## Bumps
 
@@ -84,7 +69,7 @@ From 1.0:
 
 - **Major**: a contract break.
 - **Minor**: new features and new contract items; a change to the compatibility record that adds or drops a firmware
-  line, forced by the vendor or by choice, with a notes entry; a new opt-in destination layout.
+  line, forced by the vendor or by choice, with a notes entry.
 - **Patch**: fixes, including vendor-change fixes that change no contract item.
 
 A security or safety fix ships on the latest line at whatever bump its contract impact requires; the label does not

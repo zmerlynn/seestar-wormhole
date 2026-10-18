@@ -12,7 +12,7 @@ if the telescope were sitting on your desk. The phone app finds it on your home
 Wi-Fi. seestar_alp connects to it. Images download from it. Everything shares
 one connection.
 
-Daily-use coverage is on firmware 9.31, with control and verified-pull testing on 9.75; see [device and firmware coverage](docs/status.md#telescopes).
+Daily-use coverage is on firmware 9.31, with control testing on 9.75; see [device and firmware coverage](docs/status.md#telescopes).
 
 ## Install
 
@@ -74,23 +74,11 @@ By default the proxy connects at startup and holds the session until stopped; st
 The [always-on guide](docs/always-on.md) covers running it as a service, in a
 container, and on Windows.
 
-## Pull images while you keep observing
+## Copy images while you keep observing
 
-With the proxy running, use `pull --via` to copy images in the background while clients share the session. For example, configure ports for seestar_alp and SMB:
-
-```sh
-./seestar-wormhole proxy --bind 127.0.0.1 -p 4700:4700 -p 4800:4800
-```
-
-Point seestar_alp at `127.0.0.1`, port `4700` for control and `4800` for imaging. In another terminal, pull the last day's images:
-
-```sh
-./seestar-wormhole pull --via 127.0.0.1:4445 --since 24h --verify ./MyWorks
-```
-
-See [pulling through an existing proxy](docs/pulling.md#the-everyday-case).
-
-A large download shares the telescope connection and can delay status replies; see [download responsiveness](docs/pulling.md#downloading-while-you-observe).
+rclone copies images through the proxy's SMB listener while control clients
+share the session. See [Copy images with rclone](docs/copying.md) for setup,
+transfer settings, and byte verification on Linux, macOS, and Windows.
 
 ## Keep it on your own network
 
@@ -133,7 +121,7 @@ See [internal package boundary](docs/development/README.md).
 
 - [Phone app guide](docs/phone-app.md)
 - [Always-on guide](docs/always-on.md)
-- [Pulling images](docs/pulling.md)
+- [Copy images with rclone](docs/copying.md)
 - [seestar_alp and other clients](docs/clients.md)
 - [Command reference](docs/reference.md): every flag, exit code and log message
 - [How the proxy speaks the protocol](docs/protocol.md)

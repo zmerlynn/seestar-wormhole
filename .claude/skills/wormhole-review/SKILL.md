@@ -21,7 +21,7 @@ those, not names that can move.
   alters (a caller, a doc, a format that now behaves differently).
 - A problem the change neither introduces nor worsens goes under "Out of
   scope": at most three per lane, never Must fix.
-- A wider review is a deliberate choice: name the areas (for example "pull
+- A wider review is a deliberate choice: name the areas (for example "proxy
   and cli") and review the current state of their files instead of the diff.
 
 Commit messages are not reviewed; history is squashed before publishing.
@@ -37,7 +37,7 @@ judgment call; the table is a starting point.
 | concurrency | goroutines, channels, locks, atomics, contexts or timers; anything in `internal/edge/` or `internal/proxy/` |
 | tests | any Go, including tests alone |
 | simplicity | any non-test Go, or a new flag, option or file format |
-| operability-security | logging, secrets, crypto, file writes, budgets; `internal/cloud/`, `internal/edge/`, `internal/proxy/`, `internal/pull/`, diagnostics, protocol packages |
+| operability-security | logging, secrets, crypto, file writes, budgets; `internal/cloud/`, `internal/edge/`, `internal/proxy/`, diagnostics, protocol packages |
 | provenance | protocol packages (`internal/core/`, `internal/iotc/`, `internal/rdt/`, `internal/p2ptunnel/`, `internal/dtls/`, `internal/session/`), `internal/edge/`, `internal/cloud/` |
 | cli-contract | `cmd/`, `docs/reference.md`, help text, exit codes, log records |
 | licensing | `go.mod`, `go.sum`, `vendor/`, `LICENSE`, `NOTICE`, `internal/licenses/`, new imports, new data files, copied code |

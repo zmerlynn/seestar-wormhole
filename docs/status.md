@@ -16,18 +16,9 @@ The October 16, 2026 acceptance run checked:
 
 - JSON-RPC control reads through the proxy: 40 of 40 replies correlated.
 - Several concurrent control clients, with no cross-talk or drops.
-- A full pull with verification: 108 files, with hashes matching the same
-  files from a firmware 9.31 run.
-- Ctrl-C cancellation of a pull: exit 130, status `canceled`.
 - The previous site-pin behavior worked in that run. Current site protection
   drops app setters and is covered by offline tests; it has no device-run
   coverage yet.
-
-On the night of October 16/17, the proxy ran all night while MyWorks and
-`--dir Autorun/Dark` were repeatedly pulled through `--via`. Files copied and
-verified.
-
-Pulling `--dir darklibrary` through `--via` was also verified on firmware 9.75.
 
 The phone app through the proxy, LAN discovery from the phone, and always-on
 idle release/redial over days have not been tested on 9.75. Camera-info reads
@@ -46,20 +37,18 @@ worked on 9.31; they weren't part of the 9.75 run.
 
 ## Platforms
 
-- **Linux** is where the proxy runs continuously, including overnight pulls.
+- **Linux** is where the proxy runs continuously, including overnight use.
   The phone setup hasn't been run from Linux, though it should work the
   same way.
-- **macOS** has run the phone-app setup. `pull` hasn't been run there against
-  the telescope.
+- **macOS** has run the phone-app setup.
 - **Windows** cross-builds, and a selection of tests pass under Wine. It
   hasn't been run natively or against a real telescope, so its console
   handling and file permissions are untested in practice. It has no LAN
-  discovery, and Explorer can't reach SMB on a port other than 445, so use
-  `pull` for images.
+  discovery. [rclone is the supported copying route](copying.md#windows).
 - **Containers** are checked for the image's user and startup. The phone setup
   hasn't been run in one.
 
-## pull
+## SMB copying
 
-See [pull behavior limits](reference.md#pull).
+See [Copy images with rclone](copying.md) for the recipe and its verification status.
 With public SMB clients through this proxy, the device selects SMB 3.1.1 when offered; it also accepts SMB 3.0.2 and 2.1 when each is the highest dialect offered. These observations establish the tested proxy interoperability.
