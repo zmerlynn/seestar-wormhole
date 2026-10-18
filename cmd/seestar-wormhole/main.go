@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -368,12 +369,36 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	// is best effort there; Ctrl+C lets the normal bounded release finish.
 	ctx, stop := notify(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	w, closeLog := newLog()
+	// Acquire stdout first so Darwin restores shared stdout/stderr flags in
+	// reverse acquisition order, including launches using 2>&1.
+	var fallback io.Writer = out
+	if out == os.Stdout {
+		var closeFallback func()
+		fallback, closeFallback = logWriterFD(1)
+		defer closeFallback()
+	}
+	sink, closeLog := newLog()
+	closeLog = sync.OnceFunc(closeLog)
 	defer closeLog()
+	w, ok := sink.(*logLossWriter)
+	if !ok {
+		w = &logLossWriter{output: sink}
+	}
+	w.fallback = fallback
+	if q, ok := w.output.(interface{ setLogReporter(*logLossWriter) }); ok {
+		q.setLogReporter(w)
+	}
 	if err != nil {
 		logCommandArgumentError(o, w, err)
 	} else {
 		err = execute(ctx, o, out, w)
+	}
+	closeLog()
+	if loss := w.Err(); loss != nil {
+		newLogger("json", w.fallback).Warn("diagnostics_lost", "rule", "log_sink_loss", "count", w.Dropped(), "bytes", w.bytes.Load())
+		if err == nil {
+			return 1
+		}
 	}
 	return commandExitCode(o, err)
 }

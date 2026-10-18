@@ -230,6 +230,7 @@ func runPullWithSource(ctx context.Context, args []string, out, logs io.Writer, 
 }
 
 func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer, openKeys func(string, *slog.Logger) (*keylog.Writer, error), newSession func(context.Context, proxy.Config) (commandSession, error), openSource func(context.Context, func(context.Context, string, string) (net.Conn, error)) (context.Context, fs.Fs, error)) (result error) {
+	diagnosticOutput := logs
 	started := time.Now().UTC()
 	p := o.pull
 	var progressOutput *pullProgressOutput
@@ -249,6 +250,12 @@ func runParsedPullWithSource(ctx context.Context, o options, out, logs io.Writer
 	defer func() {
 		stopProgress()
 		summary.DiagnosticsLost = startup.dropped()
+		if sink, ok := diagnosticOutput.(interface{ Dropped() uint64 }); ok {
+			summary.DiagnosticsLost += sink.Dropped()
+		}
+		if summary.DiagnosticsLost > 0 && result == nil {
+			result = io.ErrShortWrite
+		}
 		result = pull.Failure(result)
 		code := pullCode(result)
 		switch code {

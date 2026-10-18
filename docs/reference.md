@@ -635,7 +635,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `lan_discovery_started` | INFO | UDP port |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |
-| `diagnostics_lost` | WARN | Rule and cumulative diagnostic loss count |
+| `diagnostics_lost` | WARN | Rule and cumulative diagnostic loss count; stderr failure uses stdout |
 | `key_logging_enabled`, `keylog_failed` | INFO / WARN | Sensitive capture enabled; dropped-line count or creation warning |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys |
@@ -981,7 +981,7 @@ Unsupported private storage fails closed.
 
 Ctrl+C or Ctrl+Break requests cleanup; wait for exit. Console close, logoff,
 and shutdown allow only best-effort cleanup before OS termination. Windows
-stderr logging uses a bounded queue and drops lines when the sink stalls.
+stderr logging uses a bounded queue; lost lines are counted, reported on recovery or stdout, and cause a failed command result.
 `--lan-discovery` fails validation because packet metadata needed for safe
 interface/source selection is unavailable; TCP forwarding remains available.
 For build/runtime coverage, see [status](status.md).

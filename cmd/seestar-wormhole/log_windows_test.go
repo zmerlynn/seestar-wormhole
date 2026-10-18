@@ -29,9 +29,7 @@ func TestWindowsBlockedLogDoesNotBlockShutdown(t *testing.T) {
 	w.Write([]byte("first\n"))
 	<-sink.entered
 	for range 2 * logQueueSize {
-		if _, err := w.Write([]byte("line\n")); err != nil {
-			t.Fatal(err)
-		}
+		w.Write([]byte("line\n"))
 	}
 	start := time.Now()
 	w.close()

@@ -41,7 +41,8 @@ func TestProxyStderrDescriptors(t *testing.T) {
 			defer cancel()
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestProxyLogHelper$")
 			cmd.Env = append(os.Environ(), "PROXY_LOG_HELPER=1")
-			var buf bytes.Buffer
+			var buf, stdout bytes.Buffer
+			cmd.Stdout = &stdout
 			var reader, writer *os.File
 			switch sink {
 			case "pipe":
@@ -70,6 +71,9 @@ func TestProxyStderrDescriptors(t *testing.T) {
 			}
 			if err := cmd.Run(); err == nil {
 				t.Fatal("invalid arguments succeeded")
+			}
+			if sink == "full socket" && !strings.Contains(stdout.String(), `"rule":"log_sink_loss"`) {
+				t.Fatalf("lost stderr lacked final WARN: %s", &stdout)
 			}
 			if ctx.Err() != nil {
 				t.Fatal("stderr blocked process exit")
