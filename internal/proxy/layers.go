@@ -221,9 +221,9 @@ func (h *layerHandle) TryClose(id uint64) {
 // stack state below is accessed only by the session owner, except explicitly
 // worker-owned resources (ctx/cancel/wg, secure, packet queues and phase channels).
 type stack struct {
-	ingressDiscards    uint64
-	discardNext        core.Instant
-	discardLast        [132]uint64
+	ingressDiscards     uint64
+	discardNext         core.Instant
+	discardLast         [132]uint64
 	trace               *tracerecord.Writer
 	traceIDs            [4]uint64
 	debugDropped        atomic.Uint64
