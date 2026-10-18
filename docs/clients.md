@@ -21,7 +21,7 @@ instructions for where that goes.
 
 The proxy forwards ordinary client traffic and inspects selected control requests for site protection; see [the protocol boundary](reference.md#proxy).
 
-I haven't put seestar_alp through every feature this way. If something
+Not every seestar_alp feature has been tested this way. If something
 doesn't work through the proxy that works on the local network, please file
 an issue.
 
