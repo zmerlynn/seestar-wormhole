@@ -3,6 +3,7 @@ package p2ptunnel
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"time"
 )
@@ -122,6 +123,9 @@ type CloseOutcome struct {
 }
 
 type Action struct {
+	Rule                       string // fixed refusal rule on CloseLocal
+	DiscardedBytes             int
+	Err                        error // correlated local refusal; never contains payloads
 	Kind                       ActionKind
 	Channel                    byte
 	Generation, Token, Request uint64
@@ -323,6 +327,16 @@ func (m *Machine) releaseOutcome(id byte, why string, outcome *CloseOutcome) {
 	}
 	a := m.local(CloseLocal, id)
 	a.Reason = why
+	switch why {
+	case "peer replaced setup":
+		a.Rule = "R065"
+	case "local write failed":
+		a.Rule = "R069"
+	}
+	if a.Rule != "" {
+		a.DiscardedBytes = c.queue.size
+		a.Err = fmt.Errorf("%s: %s; discarded %d bytes", a.Rule, why, c.queue.size)
+	}
 	a.PeerClose = outcome
 	m.emit(a)
 	m.rxBytes -= c.queue.size
@@ -1016,19 +1030,8 @@ func (m *Machine) Step(e Event, now core.Instant) []Action {
 			c.writeToken = 0
 			c.writeCount = 0
 			m.telemetryChanged(e.Channel)
-			if c.readEnd {
-				m.closeFrame(e.Channel, 1)
-				m.release(e.Channel, "local write failed")
-			} else {
-				c.writeEnd = true
-				if m.telemetry != nil {
-					m.telemetry.channels[e.Channel].DiscardedBytes += uint64(c.queue.size)
-				}
-				m.rxBytes -= c.queue.size
-				m.flowDirty = true
-				c.queue = receiveQueue{}
-				m.flow(e.Channel)
-			}
+			m.closeFrame(e.Channel, 1)
+			m.release(e.Channel, "local write failed")
 		case LocalClose:
 			m.closeFrame(e.Channel, 1)
 			m.release(e.Channel, "local close")

@@ -249,15 +249,14 @@ func TestCloseDropsQueueAndTemporaryPressure(t *testing.T) {
 	if d.m.Usage().RXBytes != 0 {
 		t.Fatal("close did not free")
 	}
-	// A terminal write error leaves reverse reads possible, drops later data.
+	// A terminal write error closes the failed channel before later DATA.
 	ch = d.open(80)
 	w = mustAction(t, d.frame(Frame{DataCommand, ch.Channel, []byte("x")}), WriteLocal)
 	d.step(local(Event{Kind: LocalWriteFailed}, w))
 	d.frame(Frame{DataCommand, ch.Channel, []byte("ignored")})
-	if d.m.Usage().RXBytes != 0 || !d.m.Channel(ch.Channel).WriteEnd {
+	if d.m.Usage().RXBytes != 0 || d.m.Channel(ch.Channel).Active {
 		t.Fatal("write failure")
 	}
-	d.eof(ch)
 }
 func TestPauseResumeWakeCounter(t *testing.T) {
 	d := activeDriver(t, DefaultConfig(), false)
