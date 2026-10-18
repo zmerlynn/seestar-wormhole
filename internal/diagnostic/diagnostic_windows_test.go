@@ -3,10 +3,20 @@
 package diagnostic
 
 import (
+	"errors"
 	"fmt"
 	"golang.org/x/sys/windows"
 	"testing"
 )
+
+func TestWindowsWinsockPermissionDiagnostic(t *testing.T) {
+	err := Wrap("tcp_state_query", "", fmt.Errorf("private sentinel: %w", windows.WSAEACCES))
+	phase, reason := Fields(err, "")
+	if phase != "tcp_state_query" || reason != "permission_denied" || !errors.Is(err, windows.WSAEACCES) {
+		t.Fatalf("native WSAEACCES (10013): phase=%s reason=%s err=%v", phase, reason, err)
+	}
+	t.Logf("native WSAEACCES (10013): phase=%s reason=%s", phase, reason)
+}
 
 func TestWindowsNativeDiagnostic(t *testing.T) {
 	for _, tc := range []struct {
