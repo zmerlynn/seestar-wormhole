@@ -32,7 +32,7 @@ loopback or a trusted network behind a firewall.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--bind` | `127.0.0.2` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
+| `--bind` | `127.0.0.1` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
 | `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
 | `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
 | `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
@@ -538,7 +538,7 @@ the phone's actual LAN broadcasts for discovery. See [always-on hosts](always-on
 
 ## Windows
 
-The bind default is also `127.0.0.2` on Windows. Image copying uses
+Image copying uses
 [rclone through the SMB listener](copying.md#windows).
 
 Installation identity files must be owned by the current user and have a

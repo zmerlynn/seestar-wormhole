@@ -21,7 +21,7 @@ func TestWindowsLANRefusalBeforeResources(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reserved.Close()
-	for _, bind := range []string{"0.0.0.0", "127.0.0.2"} {
+	for _, bind := range []string{"0.0.0.0", defaultBind} {
 		t.Run(bind, func(t *testing.T) {
 			args := []string{"--lan-discovery", "--bind", bind}
 			for _, port := range []int{4700, 445, 80, 4350, 4554, 4555, 4801, 4800, 4804, 4361} {

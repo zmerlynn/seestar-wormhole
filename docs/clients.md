@@ -28,12 +28,12 @@ an issue.
 ## Your own scripts
 
 [The control port speaks the telescope's line-based JSON-RPC](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/session-handshake.md), exactly as it
-does on the local network. With the proxy's defaults, that's `127.0.0.2:4700`:
+does on the local network. With the proxy's defaults, that's `127.0.0.1:4700`:
 
 See [pi_get_time](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#reading-the-time-pi_get_time) for the wire rules.
 
 ```sh
-printf '%s\r\n' '{"id":1,"method":"pi_get_time"}' | nc -w 2 127.0.0.2 4700
+printf '%s\r\n' '{"id":1,"method":"pi_get_time"}' | nc -w 2 127.0.0.1 4700
 ```
 
 If you started the proxy with `--bind 127.0.0.1` as above, use that address

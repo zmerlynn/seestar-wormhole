@@ -15,7 +15,7 @@ The remote uses `smb host <bind> port 4445 user guest`, with an empty password.
 default loopback bind, configuration and listing look like this:
 
 ```sh
-rclone --config seestar-rclone.conf config create seestar smb host 127.0.0.2 port 4445 user guest
+rclone --config seestar-rclone.conf config create seestar smb host 127.0.0.1 port 4445 user guest
 rclone --config seestar-rclone.conf lsf "seestar:EMMC Images/MyWorks" --recursive --files-only
 ```
 
@@ -68,7 +68,7 @@ rclone hashsum sha256 ./MyWorks --checkfile MyWorks.sha256
 `smbclient` also accepts the alternate port and empty guest password:
 
 ```sh
-smbclient '//127.0.0.2/EMMC Images' -p 4445 -U guest%
+smbclient '//127.0.0.1/EMMC Images' -p 4445 -U guest%
 ```
 
 ## Windows
