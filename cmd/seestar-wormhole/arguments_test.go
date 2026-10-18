@@ -43,8 +43,6 @@ func TestArgumentRulesAndRedaction(t *testing.T) {
 		{"app conflict", "--port", "local ports must be unique", []string{"--port", "4700:8080"}, nil},
 		{"duration syntax", "--idle", "use a duration such as 2m or 0", []string{"--idle", "secret-duration"}, []string{"secret-duration"}},
 		{"idle range", "--idle", "duration must be nonnegative", []string{"--idle", "-1s"}, nil},
-		{"stats syntax", "--stats-interval", "use a duration such as 2m or 0", []string{"--stats-interval", "secret-duration"}, []string{"secret-duration"}},
-		{"stats range", "--stats-interval", "duration must be nonnegative", []string{"--stats-interval", "-1s"}, nil},
 		{"integer syntax", "--pause-threshold", "use an integer byte count", []string{"--pause-threshold", "secret-count"}, []string{"secret-count"}},
 		{"pressure range", "--pause-threshold", "byte count must be 2..8388608", []string{"--pause-threshold", "8388609"}, nil},
 		{"format", "--log-format", "choose json or text", []string{"--log-format", "secret-format"}, []string{"secret-format"}},
@@ -95,7 +93,7 @@ func TestArgumentHelpAndMissingValues(t *testing.T) {
 			t.Fatalf("%s: want clean help, got err=%v output=%q logs=%q", help, err, out.String(), logs.String())
 		}
 	}
-	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "serial", "state-dir"} {
+	for _, name := range []string{"bind", "port", "idle", "pause-threshold", "log-format", "log-level", "serial", "state-dir"} {
 		var logs bytes.Buffer
 		err := run(context.Background(), append([]string{"proxy"}, []string{"--" + name}...), io.Discard, &logs)
 		if err == nil || !strings.Contains(logs.String(), `"option":"--`+name+`"`) || !strings.Contains(logs.String(), `"rule":"requires a value"`) {

@@ -28,7 +28,7 @@ func TestInvalidOptions(t *testing.T) {
 		{"device-overflow", "--port", "device port must be 1..65535", []string{"--port=14561:987654321"}, []string{"987654321", "14561"}},
 		{"bad-bind-discovery", "--bind", "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0", []string{"--lan-discovery", "--bind=HOST_PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}},
 	}
-	for _, name := range []string{"idle", "stats-interval"} {
+	for _, name := range []string{"idle"} {
 		for _, value := range []string{"PRIVATE_MARKER", "99999999999999999999999h", "\"PRIVATE_MARKER\""} {
 			tests = append(tests, test{name + value, "--" + name, "use a duration such as 2m or 0", []string{"--" + name + "=" + value}, []string{value}})
 		}
@@ -43,7 +43,7 @@ func TestInvalidOptions(t *testing.T) {
 	for _, name := range []string{"lan-discovery", "version"} {
 		tests = append(tests, test{name + "bool", "--" + name, "use a boolean value", []string{"--" + name + "=PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}})
 	}
-	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "serial", "state-dir"} {
+	for _, name := range []string{"bind", "port", "idle", "pause-threshold", "log-format", "log-level", "serial", "state-dir"} {
 		for _, prefix := range []string{"--"} {
 			tests = append(tests, test{prefix + name + "missing", "--" + name, "requires a value", []string{prefix + name}, nil})
 		}
@@ -127,7 +127,7 @@ func FuzzConfiguration(f *testing.F) {
 			t.Skip()
 		}
 		private := "FUZZ_SECRET_MARKER:" + value
-		for _, name := range []string{"port", "idle", "stats-interval", "pause-threshold", "lan-discovery", "version", "log-format", "log-level", "unknown"} {
+		for _, name := range []string{"port", "idle", "pause-threshold", "lan-discovery", "version", "log-format", "log-level", "unknown"} {
 			var out, logs bytes.Buffer
 			err := run(context.Background(), append([]string{"proxy"}, []string{"--" + name + "=" + private}...), &out, &logs)
 			if err == nil {

@@ -74,7 +74,6 @@ type options struct {
 	ports                   mappings
 	idle                    time.Duration
 	pauseThreshold          int
-	statsInterval           time.Duration
 	version                 bool
 	lanDiscovery            bool
 	serial, model, stateDir string
@@ -83,9 +82,6 @@ type options struct {
 func validateOptions(o *options, supported func() error) error {
 	if o.idle < 0 {
 		return &argumentError{Option: "--idle", Rule: "duration must be nonnegative"}
-	}
-	if o.statsInterval < 0 {
-		return &argumentError{Option: "--stats-interval", Rule: "duration must be nonnegative"}
 	}
 	if o.pauseThreshold < 2 || o.pauseThreshold > proxy.MaxPauseThreshold {
 		return &argumentError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608"}
@@ -233,7 +229,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		defer discovery.Close()
 	}
 	phase = "session"
-	s, err := newSession(ctx, proxy.Config{LANDiscovery: o.lanDiscovery, Serial: o.serial, Model: o.model, StateDir: o.stateDir, StatsInterval: o.statsInterval, PauseThreshold: o.pauseThreshold, Idle: o.idle, Logger: logger})
+	s, err := newSession(ctx, proxy.Config{LANDiscovery: o.lanDiscovery, Serial: o.serial, Model: o.model, StateDir: o.stateDir, PauseThreshold: o.pauseThreshold, Idle: o.idle, Logger: logger})
 	if err != nil {
 		return err
 	}

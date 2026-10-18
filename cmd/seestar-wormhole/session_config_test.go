@@ -14,7 +14,6 @@ func TestSessionConfigFlagDiagnostics(t *testing.T) {
 		name, command, flag, value, rule, want string
 	}{
 		{"idle", "proxy", "--idle", "-17ns", "duration must be nonnegative", "--idle: duration must be nonnegative"},
-		{"stats", "proxy", "--stats-interval", "-19ns", "duration must be nonnegative", "--stats-interval: duration must be nonnegative"},
 		{"pause negative", "proxy", "--pause-threshold", "-29", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
 		{"pause zero", "proxy", "--pause-threshold", "0", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
 		{"pause one", "proxy", "--pause-threshold", "1", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},

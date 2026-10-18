@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"runtime"
-	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
@@ -87,7 +86,6 @@ or 1 on runtime errors including failed release.`,
 	f.StringVar(&o.bind, "bind", "127.0.0.2", "local bind address (use 0.0.0.0 for a container)")
 	f.VarP(&o.ports, "port", "p", "override a device listener with local:device; local 0 disables; repeatable (defaults 4700:4700, SMB 4445:445, HTTP 8080:80; 4350:4350,4554:4554,4555:4555,4801:4801,4800:4800,4804:4804,4361:4361)")
 	f.IntVar(&o.pauseThreshold, "pause-threshold", p2ptunnel.DefaultConfig().HighWater, "per-channel PAUSE pressure in bytes (2..8388608; RESUME below 80%)")
-	f.DurationVar(&o.statsInterval, "stats-interval", time.Second, "transport stats interval; zero disables counters and debug telemetry")
 	f.DurationVar(&o.idle, "idle", 0, "release after this idle duration; zero holds eagerly")
 	f.BoolVar(&o.lanDiscovery, "lan-discovery", false, "answer UDP 4720 discovery on the bind address LAN (off by default)")
 	root.AddCommand(proxyCommand, &cobra.Command{
