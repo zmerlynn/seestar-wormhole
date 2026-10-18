@@ -32,11 +32,14 @@ func admissionSocketErrors(conn net.Conn) (socketErrorSource, error) {
 func (s tcpSocketErrors) socketError() error {
 	var pending int
 	var queryErr error
-	// Control pins the descriptor only for this nonblocking query. SO_ERROR
-	// gets and clears errors (Winsock SO_ERROR); it consumes no queued data. A valid
-	// FIN has no socket error, including with an unread prefix.
+	// Winsock can leave SO_ERROR clear after an abort with unread bytes. Also
+	// query whether this established socket is still connected. A valid FIN
+	// leaves the reverse stream connected; neither query consumes queued bytes.
 	err := s.raw.Control(func(fd uintptr) {
 		pending, queryErr = windows.GetsockoptInt(windows.Handle(fd), windows.SOL_SOCKET, soError)
+		if queryErr == nil && pending == 0 {
+			_, queryErr = windows.Getpeername(windows.Handle(fd))
+		}
 	})
 	if err != nil {
 		return err
