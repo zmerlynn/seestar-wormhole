@@ -72,6 +72,9 @@ func DialDTLSWithKeyLog(ctx context.Context, packets *DTLSPackets, username, pas
 	}
 	identity, key, err := profile.Credentials(username, password)
 	if err != nil {
+		if errors.Is(err, profile.ErrCredentialNUL) && packets.Logger != nil {
+			packets.Logger.Warn("dtls_credentials_refused", "rule", "R024")
+		}
 		packets.Close()
 		return nil, err
 	}

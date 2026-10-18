@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"sync"
@@ -33,6 +34,10 @@ type DTLSTrace interface {
 // each. There is one Pion reader/writer. Close unblocks reads and is idempotent.
 // The mutex protects closure, application admission and control accounting; never held over I/O.
 type DTLSPackets struct {
+	// Logger is installed by the owner before starting workers.
+	Logger   *slog.Logger
+	discards [3]uint64 // R027, R028, R131; protected by mu
+
 	trace                       DTLSTrace // immutable after worker startup
 	traceID                     uint64
 	mu                          sync.Mutex
@@ -120,6 +125,7 @@ func (p *DTLSPackets) Deliver(datatype byte, b []byte) (result error) {
 	// The queued payload is owned; never edit or retain the caller's buffer.
 	var owned []byte
 	if !p.applicationReady && n != len(b) {
+		p.discards[0]++
 		if n == 0 {
 			return nil
 		}
@@ -138,6 +144,7 @@ func (p *DTLSPackets) Deliver(datatype byte, b []byte) (result error) {
 		}
 		return nil
 	default:
+		p.discards[1]++
 		return ErrDTLSQueueFull
 	}
 }
@@ -178,6 +185,9 @@ func (p *DTLSPackets) ReadFrom(b []byte) (n int, addr net.Addr, result error) {
 		return 0, nil, os.ErrDeadlineExceeded
 	case d := <-p.rx:
 		if len(b) < len(d) {
+			p.mu.Lock()
+			p.discards[2]++
+			p.mu.Unlock()
 			return 0, nil, io.ErrShortBuffer
 		}
 		return copy(b, d), dtlsAddr{}, nil
@@ -275,3 +285,10 @@ type dtlsAddr struct{}
 
 func (dtlsAddr) Network() string { return "iotc" }
 func (dtlsAddr) String() string  { return "iotc-dtls" }
+
+// Discards returns cumulative datagram-loss counters for R027, R028 and R131.
+func (p *DTLSPackets) Discards() [3]uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.discards
+}

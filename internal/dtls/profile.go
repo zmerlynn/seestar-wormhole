@@ -31,7 +31,10 @@ func (p Profile) Valid() bool {
 	return p.Version == Version12 && (p.Suite == CCAC || p.Suite == PSKAES128GCM)
 }
 
-// Credentials applies the native C-string boundary to already encoded JNI bytes.
+// ErrCredentialNUL refuses credentials that native C strings cannot represent.
+var ErrCredentialNUL = errors.New("dtls: R024 credentials contain NUL")
+
+// Credentials validates already encoded JNI bytes without truncating them.
 // Callers supply bytes, not Go strings: this function does not invent a JNI encoding.
 // The 255-byte identity leaves a NUL slot in the native 256-byte callback;
 // the 32-byte password limit conservatively matches the firmware callback.
@@ -39,11 +42,8 @@ func (p Profile) Valid() bool {
 // Identity bytes and raw SHA-256 password PSK:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#identity-and-psk
 func Credentials(username, password []byte) ([]byte, [32]byte, error) {
-	if i := bytes.IndexByte(username, 0); i >= 0 {
-		username = username[:i]
-	}
-	if i := bytes.IndexByte(password, 0); i >= 0 {
-		password = password[:i]
+	if bytes.IndexByte(username, 0) >= 0 || bytes.IndexByte(password, 0) >= 0 {
+		return nil, [32]byte{}, ErrCredentialNUL
 	}
 	if len(username) == 0 || len(username) > 255 || len(password) == 0 || len(password) > 32 {
 		return nil, [32]byte{}, errors.New("dtls: invalid credential length")

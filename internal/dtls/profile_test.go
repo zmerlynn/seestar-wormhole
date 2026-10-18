@@ -7,7 +7,7 @@ import (
 )
 
 func TestCredentialsLiteral(t *testing.T) {
-	id, key, err := Credentials([]byte("user\x00ignored"), []byte("password\x00ignored"))
+	id, key, err := Credentials([]byte("user"), []byte("password"))
 	want, _ := hex.DecodeString("5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8")
 	if err != nil || string(id) != "user" || !bytes.Equal(key[:], want) {
 		t.Fatalf("credential derivation mismatch: %v", err)
