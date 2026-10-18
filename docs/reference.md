@@ -531,7 +531,8 @@ One WARN `site_protected` record is emitted for each dropped setter. It contains
 String IDs are echoed to the client but omitted from logs. Coordinates, clock
 values, zone values, and unknown parameter names are omitted. Invalid frames
 use WARN `site_reject` with fixed method/reason labels. There is no startup
-site record.
+site record. If device EOF prevents a local error from being delivered, WARN
+`site_reply_failed` names the refusal rule in `reason` with `cause=device_closed`.
 
 ## Protocol resource policies
 
@@ -629,6 +630,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `client_canceled` | INFO | Admission canceled before forwarding; ports/client class |
 | `site_protected` | WARN | Dropped setter; method, integer ID or `unavailable`, reason |
 | `site_reject` | WARN | Invalid frame; method and reason |
+| `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
 | `lan_discovery_started` | INFO | UDP port |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |

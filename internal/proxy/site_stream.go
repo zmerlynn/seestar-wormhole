@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"sync"
@@ -40,7 +41,14 @@ func copySite(dst io.Writer, src io.Reader, logger *slog.Logger, reply io.Writer
 			}
 		}
 		if event != nil && event.rejection != nil {
-			return writeSite(reply, event.rejection)
+			err := writeSite(reply, event.rejection)
+			if errors.Is(err, errSiteReplyRetired) {
+				if logger != nil {
+					logger.Warn("site_reply_failed", "method", event.method, "reason", event.reason, "cause", "device_closed")
+				}
+				return nil // Preserve the independent upload after device FIN.
+			}
+			return err
 		}
 		if err := writeSite(dst, output); err != nil {
 			return err
@@ -92,11 +100,13 @@ type siteClientWriter struct {
 	closed bool // protected by mu, including termination within a partial frame
 }
 
+var errSiteReplyRetired = fmt.Errorf("site: device stream closed: %w", io.ErrClosedPipe)
+
 func (w *siteClientWriter) Write(b []byte) (int, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if w.closed {
-		return len(b), nil
+		return 0, errSiteReplyRetired
 	}
 	return w.writer.Write(b)
 }

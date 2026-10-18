@@ -68,12 +68,30 @@ func TestSiteLocalReplyAfterDeviceEOF(t *testing.T) {
 			if err := writer.copyDevice(strings.NewReader(device)); err != nil {
 				t.Fatal(err)
 			}
-			reply := []byte("local-error\r\n")
-			if n, err := writer.Write(reply); n != len(reply) || err != nil {
-				t.Fatalf("retired local reply: n=%d err=%v want n=%d err=nil", n, err, len(reply))
+			if n, err := writer.Write([]byte("local-error\r\n")); n != 0 || !errors.Is(err, io.ErrClosedPipe) {
+				t.Fatalf("retired local reply: n=%d err=%v want n=0 err=ErrClosedPipe", n, err)
 			}
-			if out.String() != device {
-				t.Fatalf("downstream=%q want=%q", out.String(), device)
+			for _, tc := range []struct{ frame, rule string }{
+				{`{"id":"private-id","method":"pi_set_time"}` + "\r\n", "site_protected"},
+				{`{"id":"private-id","method":"foo"}` + "\n", "incomplete_frame"},
+			} {
+				var forwarded, logs bytes.Buffer
+				const ordinary = "{\"method\":\"get_setting\"}\r\n"
+				logger := slog.New(slog.NewJSONHandler(&logs, nil))
+				if err := copySite(&forwarded, strings.NewReader(tc.frame+ordinary), logger, writer); err != nil {
+					t.Fatal(err)
+				}
+				if forwarded.String() != ordinary || out.String() != device {
+					t.Fatalf("forwarded=%q downstream=%q", forwarded.String(), out.String())
+				}
+				records := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
+				var record struct{ Msg, Level, Reason, Cause string }
+				if len(records) != 2 || json.Unmarshal(records[len(records)-1], &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_reply_failed" || record.Level != "WARN" || record.Reason != tc.rule || record.Cause != "device_closed" {
+					t.Fatalf("log=%s want unsent WARN rule=%s", logs.Bytes(), tc.rule)
+				}
+				if strings.Contains(logs.String(), "private-id") {
+					t.Fatalf("ID leaked: %s", logs.Bytes())
+				}
 			}
 		})
 	}
