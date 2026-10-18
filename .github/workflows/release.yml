@@ -15,33 +15,28 @@ env:
 
 jobs:
   verify:
+    uses: ./.github/workflows/ci.yml
+
+  validate:
     runs-on: ubuntu-24.04
     container: golang:1.27.2
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Validate release version
         env:
           RELEASE_VERSION: ${{ github.ref_name }}
         run: ./scripts/release.sh --validate-only "$RELEASE_VERSION"
-      - name: Build, vet and test vendored source
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          go build ./...
-          go vet ./...
-          go test ./...
-          go test scripts/release.go scripts/release_test.go
-          ./scripts/test-check.sh
 
   release:
-    needs: verify
+    needs: [validate, verify]
     runs-on: ubuntu-24.04
     container: golang:1.27.2
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - name: Build release archives
@@ -53,7 +48,7 @@ jobs:
           cd dist
           sha256sum --check SHA256SUMS
       - name: Create release and upload archives and checksums
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         with:
           script: |
             const fs = require('node:fs');
