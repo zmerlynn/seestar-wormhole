@@ -39,7 +39,7 @@ func (s *recoveringSink) Write(p []byte) (int, error) {
 func (*recoveringSink) Close() error { return nil }
 
 func TestWriterRecoversAndReportsOnce(t *testing.T) {
-	var logs bytes.Buffer
+	var logs lossLogs
 	sink := new(recoveringSink)
 	w := New(sink, slog.New(slog.NewJSONHandler(&logs, nil)))
 	for range 3 {
@@ -71,7 +71,7 @@ func (blockedSink) Close() error { return nil }
 
 func TestQueueFullAndShutdownBound(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var logs bytes.Buffer
+		var logs lossLogs
 		sink := blockedSink{make(chan struct{}, 1), make(chan struct{})}
 		w := New(sink, slog.New(slog.NewJSONHandler(&logs, nil)))
 		defer func() { close(sink.release); <-w.done }()
