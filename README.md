@@ -1,18 +1,18 @@
 # seestar-wormhole
 
-I keep my Seestar at a remote observatory thousands of miles away. The phone
-app can reach it from anywhere through ZWO's cloud. Nothing else can: not
-[seestar_alp](https://github.com/smart-underworld/seestar_alp), not my
-scripts, not a plain file copy of last night's images. They all expect to be
-on the telescope's own Wi-Fi.
+A Seestar kept at a remote site is reachable from the phone app through ZWO's
+cloud, but nothing else can reach it: not
+[seestar_alp](https://github.com/smart-underworld/seestar_alp), not scripts,
+not a plain file copy of last night's images. They all expect to be on the
+telescope's own Wi-Fi.
 
-seestar-wormhole fixes that. It opens [the same Telescope Network cloud
+seestar-wormhole opens [the same Telescope Network cloud
 connection the app uses](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#allocation-online-link), then hands the telescope's ports to your computer as
 if the telescope were sitting on your desk. The phone app finds it on your home
 Wi-Fi. seestar_alp connects to it. Images download from it. Everything shares
 one connection.
 
-I have daily-use coverage on firmware 9.31 and control and verified-pull testing on 9.75; see [device and firmware coverage](docs/status.md#telescopes).
+Daily-use coverage is on firmware 9.31, with control and verified-pull testing on 9.75; see [device and firmware coverage](docs/status.md#telescopes).
 
 ## Install
 
@@ -102,10 +102,10 @@ See [tested coverage](docs/status.md) for the devices, firmware and paths exerci
 
 ## AI use
 
-seestar-wormhole was written by AI, guided by a human. AI models (Anthropic's
+seestar-wormhole was written by AI, guided by a human maintainer. AI models (Anthropic's
 Claude and OpenAI's GPT models) wrote the code, tests and documentation and
-reviewed the changes. I set the scope and the clean-room rules, made the design
-decisions, provided the telescope it was tested against and approve what is
+reviewed the changes. A human maintainer set the scope and the clean-room rules, made the design
+decisions, provided the maintainer's telescope for testing and approves what is
 published. [Tested coverage](docs/status.md) says what has been exercised on a
 real device. Please report errors as issues.
 
@@ -114,7 +114,7 @@ real device. Please report errors as issues.
 seestar-wormhole isn't affiliated with, endorsed by or supported by ZWO or
 ThroughTek. Seestar, ZWO, Kalay and other names are trademarks of their owners
 and are used only to identify what this software works with. It's built from
-observed behavior of my own telescope and from public information, and it
+observed behavior of the maintainer's telescope and from public information, and it
 signs in with your own account through the same cloud service the official
 app uses.
 
