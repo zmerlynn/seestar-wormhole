@@ -22,7 +22,7 @@ func TestBusyBlockedOutageWarnings(t *testing.T) {
 			for _, stopErr := range []error{session.ErrStop, session.ErrUncertain} {
 				t.Run(fmt.Sprintf("lazy=%v/partial_busy=%v/%v", lazy, partialBusy, stopErr), func(t *testing.T) {
 					synctest.Test(t, func(t *testing.T) {
-						var logs statsLogBuffer
+						var logs logBuffer
 						attempts := 0
 						f := &busyFactory{channels: make(chan *busyChannels, 8)}
 						f.allocate = func(context.Context) (sessionedge.Lease, error) {
@@ -107,7 +107,7 @@ func TestBusyBlockedOutageWarnings(t *testing.T) {
 
 func TestRecoveryWarningsResetOnReadiness(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var logs statsLogBuffer
+		var logs logBuffer
 		f := &busyFactory{channels: make(chan *busyChannels, 8)}
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return f, nil }
 		s, err := startWithRNG(t.Context(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
@@ -146,7 +146,7 @@ func TestLazyBusyWarningsRequireUnintentionalLossAfterReadiness(t *testing.T) {
 	for _, idleRelease := range []bool{false, true} {
 		t.Run(fmt.Sprint(idleRelease), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				var logs statsLogBuffer
+				var logs logBuffer
 				f := &busyFactory{channels: make(chan *busyChannels, 32)}
 				f.allocate = func(context.Context) (sessionedge.Lease, error) {
 					if idleRelease {
@@ -187,7 +187,7 @@ func TestLazyBusyWarningsRequireUnintentionalLossAfterReadiness(t *testing.T) {
 
 func TestBusyWarningsAfterFailedIdleCleanup(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var logs statsLogBuffer
+		var logs logBuffer
 		f := &busyFactory{channels: make(chan *busyChannels, 8), stopError: session.ErrStop}
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return f, nil }
 		s, err := startWithRNG(t.Context(), Config{Idle: time.Second, Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})

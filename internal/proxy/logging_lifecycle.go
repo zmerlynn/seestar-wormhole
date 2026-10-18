@@ -58,3 +58,5 @@ func logChannelClose(logger *slog.Logger, start time.Time, result bridgeResult) 
 		logger.Info("channel_close", "duration_ms", milliseconds(time.Since(start)), "local_to_device_bytes", result.localToDevice, "device_to_local_bytes", result.deviceToLocal, "reason", result.reason)
 	}
 }
+
+func milliseconds(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) }

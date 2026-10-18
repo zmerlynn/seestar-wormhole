@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-// Loss reporting is always on when a logger exists, independently of DEBUG stats.
+// Discard reporting is always on when a logger exists.
 const discardInterval = 10 * time.Second
 
 func (x *stack) initDiscardSummary(now core.Instant) {
 	if x.discardNext == 0 && x.f != nil && x.f.s != nil && x.f.s.logger != nil && now < core.Instant(1<<63-1) {
-		x.discardNext = statsDeadline(now, discardInterval)
+		x.discardNext = discardDeadline(now, discardInterval)
 	}
 }
 
@@ -19,14 +19,11 @@ func (x *stack) discardSummary(now core.Instant) {
 	if x.discardNext == 0 || now < x.discardNext {
 		return
 	}
-	x.discardNext = statsDeadline(now, discardInterval)
+	x.discardNext = discardDeadline(now, discardInterval)
 	if now == core.Instant(1<<63-1) {
 		x.discardNext = 0
 	}
 	x.flushDiscardSummary()
-	if x.telemetry == nil {
-		x.reportTelemetryLoss()
-	}
 }
 
 // A joined attempt ends its final, possibly short reporting interval.
@@ -68,7 +65,7 @@ func (s *Session) sessionDiscardSummary(total uint64, now core.Instant) {
 		if total == s.discardLast || now == core.Instant(1<<63-1) {
 			return
 		}
-		s.discardNext = statsDeadline(now, discardInterval)
+		s.discardNext = discardDeadline(now, discardInterval)
 	}
 	if now < s.discardNext {
 		return
@@ -86,4 +83,29 @@ func (s *Session) flushSessionDiscardSummary(total uint64) {
 	if count != 0 {
 		s.logger.Warn("transport_discard_summary", "rule", "R097", "count", count)
 	}
+}
+
+// discardDeadline saturates rather than wrapping the owner epoch.
+func discardDeadline(now core.Instant, d time.Duration) core.Instant {
+	if core.Instant(d) > core.Instant(1<<63-1)-now {
+		return core.Instant(1<<63 - 1)
+	}
+	return now.Add(d)
+}
+
+// discardOnlyTick reports discards without injecting protocol events. Due layer
+// deadlines still dispatch through the timer worker.
+func (x *stack) discardOnlyTick(now core.Instant) bool {
+	discardDue := x.discardNext > 0 && now >= x.discardNext
+	if !discardDue {
+		return false
+	}
+	for _, at := range x.deadlines {
+		if at > 0 && at <= now {
+			return false
+		}
+	}
+	x.discardSummary(now)
+	x.updateTimer(now)
+	return true
 }

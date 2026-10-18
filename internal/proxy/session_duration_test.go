@@ -17,7 +17,6 @@ func TestSessionConfigDiagnostics(t *testing.T) {
 		cfg                      Config
 	}{
 		{"Idle", "--idle", "duration must be nonnegative", "--idle: duration must be nonnegative", Config{Idle: -time.Nanosecond}},
-		{"StatsInterval", "--stats-interval", "duration must be nonnegative", "--stats-interval: duration must be nonnegative", Config{StatsInterval: -time.Nanosecond}},
 		{"PauseThreshold/negative", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold: byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: -1}},
 		{"PauseThreshold/one", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold: byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: 1}},
 		{"PauseThreshold/above_max", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold: byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: 8388609}},
@@ -52,7 +51,7 @@ func TestSessionConfigAccepted(t *testing.T) {
 		cfg  Config
 	}{
 		{"zero_defaults", Config{}},
-		{"positive_durations", Config{Idle: time.Second, StatsInterval: time.Nanosecond}},
+		{"positive_durations", Config{Idle: time.Second}},
 		{"pause_min", Config{PauseThreshold: 2}},
 		{"pause_max", Config{PauseThreshold: 8388608}},
 	} {

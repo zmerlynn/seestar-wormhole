@@ -27,7 +27,7 @@ func TestCloudLicenseMissingStopsWithoutRedial(t *testing.T) {
 		for _, lazy := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/lazy=%v", tc.name, lazy), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					var logs statsLogBuffer
+					var logs logBuffer
 					logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 					peer := &r3Cloud{faultPath: "/v1/device-p2p/online-link", faultStatus: 200,
 						faultBody: `{"code":200,"data":{"conId":"r3-1","deviceUid":"PRIVATE_UID",` + tc.member + `"username":"PRIVATE_USER","password":"PRIVATE_PASSWORD"},"msg":"PRIVATE_MESSAGE"}`}
@@ -84,7 +84,7 @@ func TestCloudLicenseMissingStopsWithoutRedial(t *testing.T) {
 func TestLicenseMissingOutageReason(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		_, _, raw := cloud.ParseOnline([]byte(`{"data":{"conId":"id","deviceUid":"uid","username":"user","password":"pass"}}`))
-		var logs statsLogBuffer
+		var logs logBuffer
 		f := &busyFactory{channels: make(chan *busyChannels, 8)}
 		attempts := 0
 		f.allocate = func(context.Context) (sessionedge.Lease, error) {

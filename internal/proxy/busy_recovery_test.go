@@ -33,7 +33,7 @@ func TestBusyListenerLogsOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		var logs statsLogBuffer
+		var logs logBuffer
 		logger := slog.New(slog.NewJSONHandler(&logs, nil))
 		s := simulatedSession(t, ctx, Config{Logger: logger}, &simulatedCloud{busy: true})
 		defer s.Close()
@@ -135,7 +135,7 @@ func TestAmbientBusyRecovery(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				tr := &recoveryBusyCloud{lazyBusyCloud: lazyBusyCloud{route: route}}
 				tr.unblocked.Store(true)
-				var logs statsLogBuffer
+				var logs logBuffer
 				var s *Session
 				label := "busy_recovery_test"
 				pprof.Do(t.Context(), pprof.Labels(label, t.Name()), func(ctx context.Context) {
@@ -223,7 +223,7 @@ func TestAmbientFirstBusyThenReady(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				began := time.Now()
 				tr := &recoveryBusyCloud{lazyBusyCloud: lazyBusyCloud{route: route, ready: began.Add(20 * time.Minute)}}
-				var logs statsLogBuffer
+				var logs logBuffer
 				s := recoveryBusySession(t, t.Context(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, tr)
 				defer s.Close()
 				synctest.Wait()

@@ -5,7 +5,6 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/edge"
 	"io"
-	"log/slog"
 	"net"
 	"time"
 
@@ -59,9 +58,6 @@ func (x *stack) enqueue(e layerEvent) {
 	// including authenticated RDT packets, never failure of the shared session.
 	if len(x.queue) >= 256 && (e.i != nil && e.i.Kind == iotc.Wire || e.r != nil && e.r.Kind == rdt.Receive) {
 		x.ingressDiscards++
-		if x.telemetry != nil {
-			x.telemetry.ingressRejects++
-		}
 		return
 	}
 	// A blocked edge must not accumulate stale timer work or spin a zero timer.
@@ -87,9 +83,6 @@ func (x *stack) enqueue(e layerEvent) {
 		x.failAt("stack", "inbox_capacity")
 		return
 	}
-	if x.telemetry != nil {
-		x.telemetry.queueTimes[len(x.queue)] = x.now
-	}
 	x.queue = append(x.queue, e)
 }
 
@@ -101,7 +94,6 @@ func (x *stack) drive(e layerEvent, now core.Instant) {
 	}
 	x.now = now
 	x.expireOpenAdmissions(now)
-	x.initTelemetry(now)
 	x.initDiscardSummary(now)
 	if e.i != nil || e.r != nil || e.t != nil {
 		x.enqueue(e)
@@ -154,10 +146,6 @@ func (x *stack) drive(e layerEvent, now core.Instant) {
 			}
 		}
 		e := x.queue[index]
-		if x.telemetry != nil {
-			copy(x.telemetry.queueTimes[index:], x.telemetry.queueTimes[index+1:len(x.queue)])
-			x.telemetry.queueTimes[len(x.queue)-1] = 0
-		}
 		copy(x.queue[index:], x.queue[index+1:])
 		x.queue[len(x.queue)-1] = layerEvent{}
 		x.queue = x.queue[:len(x.queue)-1]
@@ -171,18 +159,8 @@ func (x *stack) drive(e layerEvent, now core.Instant) {
 				x.iotcAction(a)
 			}
 		case e.r != nil && x.reliable != nil:
-			if x.telemetry != nil && e.r.Kind == rdt.SendComplete && x.telemetry.secureQueueCount > 0 {
-				x.telemetry.secureQueueBytes -= x.telemetry.secureQueueSizes[x.telemetry.secureQueueHead]
-				x.telemetry.secureQueueHead = (x.telemetry.secureQueueHead + 1) % len(x.telemetry.secureQueueSizes)
-				x.telemetry.secureQueueCount--
-			}
 			before := x.reliable.Status()
-			var counters rdt.Stats
-			if x.telemetry != nil {
-				counters = x.reliable.Counters()
-			}
 			actions := x.reliable.Step(*e.r, now)
-			x.rdtAfter(*e.r, counters, now)
 			states := [...]string{"idle", "creating", "established", "closing", "stopped"}
 			x.transition("rdt", states[before], states[x.reliable.Status()])
 			for _, a := range actions {
@@ -190,7 +168,7 @@ func (x *stack) drive(e layerEvent, now core.Instant) {
 			}
 		case e.t != nil && x.tunnel != nil:
 			before := x.tunnel.Status()
-			actions := x.tunnelStep(*e.t, now)
+			actions := x.tunnel.Step(*e.t, now)
 			states := [...]string{"idle", "logging_in", "active", "stopped"}
 			x.transition("tunnel", states[before], states[x.tunnel.Status()])
 			x.tunnelActions(actions)
@@ -201,18 +179,12 @@ blocked:
 		x.queue = nil
 	}
 	x.discardSummary(now)
-	x.stats(now)
 	x.updateTimer(now)
 }
 
 func (x *stack) updateTimer(now core.Instant) {
 	x.openAdmissionTimer(now)
 	next := x.discardNext
-	if x.telemetry != nil {
-		if at := x.telemetry.next; at > 0 && (next == 0 || at < next) {
-			next = at
-		}
-	}
 	for layer, at := range x.deadlines {
 		if at > 0 && !(layer == 0 && len(x.effects) > 0 && at <= now) && (next == 0 || at < next) {
 			next = at
@@ -234,7 +206,7 @@ func (x *stack) updateTimer(now core.Instant) {
 func (x *stack) iotcAction(a iotc.Action) {
 	switch a.Kind {
 	case iotc.ReceiveOddity:
-		x.transportEvent("iotc_receive_oddity", slog.String("category", a.Oddity.String()), slog.Int("opcode", int(a.Opcode)), slog.Int("type", int(a.Type)))
+		// The diagnostic action has no protocol effect.
 	case iotc.RelayProgressChanged:
 		x.relayDiagnostic("relay_progress", a.Progress, 0)
 	case iotc.Ready:
@@ -281,24 +253,11 @@ func (x *stack) iotcAction(a iotc.Action) {
 }
 func (x *stack) rdtAction(a rdt.Action) {
 	switch a.Kind {
-	case rdt.ReceiveOddity:
-		x.transportEvent("rdt_receive_oddity", slog.Int("type", int(a.Type)))
-	case rdt.ReceivePressure:
-		x.transportEvent("rdt_receive_pressure", slog.String("reason", "capacity"), slog.Int("bytes", a.Usage.RXBytes), slog.Int("packets", a.Usage.RXPackets))
+	case rdt.ReceiveOddity, rdt.ReceivePressure:
+		// Discards are reported by rule on the owner deadline.
 	case rdt.Send:
-		var queuedAt time.Time
-		if x.telemetry != nil {
-			queuedAt = time.Now()
-		}
 		select {
 		case x.secureTX <- a.Data:
-			if x.telemetry != nil {
-				x.sendMarks <- queuedAt // same 16-handoff bound as secureTX; never waits for I/O
-				n := (x.telemetry.secureQueueHead + x.telemetry.secureQueueCount) % len(x.telemetry.secureQueueSizes)
-				x.telemetry.secureQueueSizes[n] = len(a.Data)
-				x.telemetry.secureQueueCount++
-				x.telemetry.secureQueueBytes += len(a.Data)
-			}
 		default:
 			x.failAt("dtls", "send_capacity")
 		}
@@ -359,7 +318,7 @@ func (x *stack) tunnelAction(a p2ptunnel.Action) { x.tunnelActions([]p2ptunnel.A
 func (x *stack) applyTunnelAction(a p2ptunnel.Action, terminal *diagnostic.Terminal) {
 	switch a.Kind {
 	case p2ptunnel.ReceiveOddity:
-		x.transportEvent("tunnel_receive_oddity", slog.Int("type", int(a.Command)))
+		// The diagnostic action has no protocol effect.
 	case p2ptunnel.Send:
 		x.enqueue(layerEvent{r: &rdt.Event{Kind: rdt.Write, Data: a.Data, Token: a.Token}})
 	case p2ptunnel.SessionReady:
@@ -478,7 +437,7 @@ func (x *stack) timers() {
 		case <-tick:
 			tick = nil
 			if !x.post(func(now core.Instant) {
-				if x.telemetryOnlyTick(now) {
+				if x.discardOnlyTick(now) {
 					return
 				}
 				x.drive(layerEvent{i: &iotc.Event{Kind: iotc.Tick, Attempt: x.id}}, now)
@@ -533,30 +492,11 @@ func (x *stack) secureWrite() {
 		case <-x.ctx.Done():
 			return
 		case b := <-x.secureTX:
-			var started time.Time
-			var queueWait time.Duration
-			if x.sendMarks != nil {
-				select {
-				case queuedAt := <-x.sendMarks:
-					queueWait = time.Since(queuedAt)
-					started = time.Now()
-				case <-x.ctx.Done():
-					return
-				}
-			}
 			if n, err := x.secure.Write(b); err != nil || n != len(b) {
 				x.post(func(core.Instant) { x.failAt("dtls", "write_failed") })
 				return
 			}
-			var sendWait time.Duration
-			if !started.IsZero() {
-				sendWait = time.Since(started)
-			}
 			if !x.post(func(now core.Instant) {
-				if x.telemetry != nil {
-					x.telemetry.sendWait.add(sendWait)
-					x.telemetry.sendQueueWait.add(queueWait)
-				}
 				x.drive(layerEvent{r: &rdt.Event{Kind: rdt.SendComplete}}, now)
 			}) {
 				return

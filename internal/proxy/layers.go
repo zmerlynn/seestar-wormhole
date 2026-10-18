@@ -200,49 +200,40 @@ func (h *layerHandle) TryClose(id uint64) {
 // stack state below is accessed only by the session owner, except explicitly
 // worker-owned resources (ctx/cancel/wg, secure, packet queues and phase channels).
 type stack struct {
-	ingressDiscards     uint64
-	discardNext         core.Instant
-	discardLast         [132]uint64
-	debugDropped        atomic.Uint64
-	debugReported       atomic.Uint64
-	legacyDebugNextWarn core.Instant
-	legacyDebugRecords  int            // owner-only fixed log budget when collection is off
-	sendMarks           chan time.Time // immutable channel, installed before secure workers; enabled telemetry only
-	f                   *factory
-	id                  uint64
-	ctx                 context.Context
-	cancel              context.CancelFunc
-	wg                  sync.WaitGroup
-	once                sync.Once
-	handles             [4]*layerHandle
-	phases              [3]chan error
-	actions             chan iotc.Action
-	packets             *edge.DTLSPackets
-	secure              *edge.SecureDTLS
-	username, password  []byte
-	secureTX            chan []byte
-	timerUpdates        chan time.Duration
-	iotc                *iotc.Machine
-	reliable            *rdt.Machine
-	tunnel              *p2ptunnel.Machine
-	deadlines           [4]core.Instant
-	pending             []uint64
-	openAdmissions      map[uint64]core.Instant // owner-only, absolute deadlines for not-yet-open clients
-	now                 core.Instant
-	queue               []layerEvent
-	effects             []iotc.Action
-	driving, failed     bool
-	terminal            atomic.Pointer[diagnostic.Terminal] // owner publishes once; constructor workers only load
-	streams             map[uint64]*stream
-	channels            [256]*stream
-	wantRead            [256]bool
-	telemetry           *transportStats
+	ingressDiscards    uint64
+	discardNext        core.Instant
+	discardLast        [132]uint64
+	f                  *factory
+	id                 uint64
+	ctx                context.Context
+	cancel             context.CancelFunc
+	wg                 sync.WaitGroup
+	once               sync.Once
+	handles            [4]*layerHandle
+	phases             [3]chan error
+	actions            chan iotc.Action
+	packets            *edge.DTLSPackets
+	secure             *edge.SecureDTLS
+	username, password []byte
+	secureTX           chan []byte
+	timerUpdates       chan time.Duration
+	iotc               *iotc.Machine
+	reliable           *rdt.Machine
+	tunnel             *p2ptunnel.Machine
+	deadlines          [4]core.Instant
+	pending            []uint64
+	openAdmissions     map[uint64]core.Instant // owner-only, absolute deadlines for not-yet-open clients
+	now                core.Instant
+	queue              []layerEvent
+	effects            []iotc.Action
+	driving, failed    bool
+	terminal           atomic.Pointer[diagnostic.Terminal] // owner publishes once; constructor workers only load
+	streams            map[uint64]*stream
+	channels           [256]*stream
+	wantRead           [256]bool
 }
 
 func (x *stack) post(fn func(core.Instant)) bool {
-	if x.f != nil && x.f.s != nil && x.f.s.statsInterval > 0 && x.f.s.logger != nil {
-		return x.postObserved(fn)
-	}
 	select {
 	case <-x.ctx.Done():
 		return false
@@ -292,7 +283,6 @@ func (x *stack) close() error {
 			x.secure.Close()
 		}
 		x.wg.Wait()
-		x.reportTelemetryLoss()
 		if x.f.s.logger != nil {
 			for _, phase := range []string{"tunnel", "rdt", "dtls", "rendezvous"} {
 				x.f.s.logger.Debug("phase_transition", "phase", phase, "state", "closed")
@@ -440,7 +430,6 @@ func (x *stack) Create(ctx context.Context, _ sessionedge.Transport) (result ses
 	finish := diagnostic.Operation(diagnostic.Lifecycle(x.f.s.logger), "rdt")
 	defer func() { finish(err) }()
 	cfg := runtimeRDTConfig()
-	cfg.Telemetry = x.f.s.statsInterval > 0 && x.f.s.logger != nil
 	m, err := rdt.New(cfg)
 	if err != nil {
 		return nil, err
@@ -478,22 +467,4 @@ func runtimeTunnelConfig(threshold int) p2ptunnel.Config {
 		cfg.HighWater = threshold
 	}
 	return cfg
-}
-
-// postObserved measures submission backpressure plus owner scheduling. Only the
-// callback touches counters, and cancellation retains the original exit path.
-func (x *stack) postObserved(fn func(core.Instant)) bool {
-	started := time.Now()
-	select {
-	case <-x.ctx.Done():
-		return false
-	case x.f.s.work <- func(now core.Instant) {
-		if x.ctx.Err() == nil {
-			x.initTelemetry(now)
-			x.telemetry.ownerWait.add(time.Since(started))
-			fn(now)
-		}
-	}:
-		return true
-	}
 }

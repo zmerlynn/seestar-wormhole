@@ -35,8 +35,6 @@ type Config struct {
 	PauseThreshold int
 	Idle           time.Duration
 	Logger         *slog.Logger
-	// StatsInterval enables transport telemetry; zero disables it. The command defaults to one second.
-	StatsInterval time.Duration
 }
 
 // Session owns one device allocation and its bounded stream clients. Use New to
@@ -46,14 +44,12 @@ type Session struct {
 	discardStack             atomic.Pointer[stack] // published by the attempt worker; drained by the owner after join
 	discardNext              core.Instant
 	discardLast              uint64
-	telemetryLost            uint64       // owner-only until done closes
 	deviceDetail             cloud.Detail // immutable after construction, before publication
 	tunnelConfig             p2ptunnel.Config
-	statsInterval            time.Duration
 	lazy                     bool
 	logger                   *slog.Logger
 	lifecycleReason          string // owner-only fixed vocabulary
-	wasReady                 bool   // owner-only availability telemetry
+	wasReady                 bool   // owner-only availability diagnostics
 	unavailable              bool
 	unavailableSince, warnAt core.Instant
 	busyAnswers              uint64
@@ -76,13 +72,10 @@ func startWithRNG(ctx context.Context, cfg Config, factory func(*Session) sessio
 	if cfg.Idle < 0 {
 		return nil, &diagnostic.OptionError{Option: "--idle", Rule: "duration must be nonnegative"}
 	}
-	if cfg.StatsInterval < 0 {
-		return nil, &diagnostic.OptionError{Option: "--stats-interval", Rule: "duration must be nonnegative"}
-	}
 	if cfg.PauseThreshold < 0 || cfg.PauseThreshold == 1 || cfg.PauseThreshold > MaxPauseThreshold {
 		return nil, &diagnostic.OptionError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608 (zero selects default)"}
 	}
-	s := &Session{lazy: cfg.Idle > 0, statsInterval: cfg.StatsInterval, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
+	s := &Session{lazy: cfg.Idle > 0, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
 	ctx, s.cancel = context.WithCancel(ctx)
 	c := session.DefaultConfig()
 	c.Idle = cfg.Idle
@@ -213,9 +206,6 @@ func (s *Session) Close() error {
 	if errors.Is(err, context.Canceled) && !errors.Is(err, session.ErrStop) && !errors.As(err, &terminal) {
 		err = nil
 	}
-	if s.telemetryLost > 0 {
-		err = errors.Join(err, &TelemetryLossError{Count: s.telemetryLost})
-	}
 	return err
 }
 
@@ -250,7 +240,6 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 		// Released is observed only after the attempt's workers have joined.
 		if x := s.discardStack.Swap(nil); x != nil {
 			x.flushDiscardSummary()
-			s.telemetryLost += x.debugDropped.Load()
 		}
 	}
 	if released || after.State == session.Closed {
