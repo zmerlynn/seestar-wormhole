@@ -69,7 +69,7 @@ proxy provides no privileged helper or launchd socket activation.
 
 ### Flow control
 
-I apply the [PAUSE/RESUME thresholds](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#pause-resume-and-wake)
+The proxy applies the [PAUSE/RESUME thresholds](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#pause-resume-and-wake)
 to each channel's retained bytes plus its proportional share of shared RDT
 receive bytes; empty channels receive no shared charge. This local accounting
 is not negotiated peer credit. Pending controls coalesce when RDT is blocked.
@@ -93,11 +93,11 @@ seestar-wormhole pull --busy-wait 90s --timeout 30m --verify ./MyWorks
 ```
 
 Supply exactly one local destination. The destination contains paths relative
-to `EMMC Images/MyWorks` when I leave out `--dir`; pull adds no night or
+to `EMMC Images/MyWorks` when `--dir` is omitted; pull adds no night or
 `MyWorks` directory. With one or more `--dir PATH` flags, each selected directory
 lands in `DEST/PATH`. `--dir MyWorks` therefore adds `DEST/MyWorks`.
 
-For images and dark sequences together, I use a separate archive destination:
+For images and dark sequences together, use a separate archive destination:
 
 ```sh
 seestar-wormhole pull --via 127.0.0.2:4445 --dir MyWorks --dir Autorun/Dark --dir darklibrary ./archive
@@ -248,7 +248,7 @@ Switching modes, endpoints, or adding `--model` requires another destination
 or deliberate `--rebind`, even for the same telescope. Mismatch exits 2 and
 reports only existing/requested source kinds.
 
-I keep the default flattened layout and the explicit-directory layout in
+The default flattened layout and the explicit-directory layout are kept in
 separate destinations. Once state binds a destination to either layout, switching
 fails with `layout_mismatch` (exit 2), including dry runs and `--rebind`. An
 explicit-directory run saves its binding after every requested directory passes
@@ -257,7 +257,7 @@ before that point leave saved state unchanged; later failures reserve the layout
 Changing the directory list within explicit mode is allowed; receipts and
 checkpoints from earlier selections remain. `--rebind` changes the source,
 not the layout. Destinations with no saved state have no recorded layout;
-I use an empty directory when starting an archive.
+an empty directory is used when starting an archive.
 
 `--rebind` saves a fresh generation and clears all selection checkpoints. Default
 mode saves immediately, even if later work fails. Explicit-directory mode stages
@@ -568,7 +568,7 @@ one matching entry in a complete catalog, its catalog model wins even if you
 supply `--model`. Unmatched serials or multiple pairs without a serial identify
 `--serial` in diagnostics without exposing catalog labels or serials.
 
-I request 100 items per page (local policy), at most 16 pages and 256 distinct
+The proxy requests 100 items per page (local policy), at most 16 pages and 256 distinct
 pairs, with one 30-second per-catalog-operation timeout, following the
 [paging and completion guidance](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#device-selection) without a past-the-end request.
 
@@ -647,7 +647,7 @@ local configuration cannot supply the missing key. Error records include a fixed
 reports `reason=cloud_license_missing`, and its exit code is 1. Malformed or
 oversized licenses retain their existing validation failures.
 
-I keep every reserved rendezvous identifier (RID) for the life of the process,
+Every reserved rendezvous identifier (RID) is kept for the life of the process,
 including failed attempts, so a later attempt cannot reuse it. The local safety
 ceiling is 16,777,216 reservations. `iotc_rid_history_exhausted` means that
 history is full: new session setup fails and ordinary cleanup still runs.
@@ -1013,7 +1013,7 @@ reply. Prefix changes for an existing selected address apply immediately.
 New/replacement addresses require a restart, including wildcard mode. A reply
 write has a 250 ms deadline. This bounded responder is not a flood defense.
 
-I synthesize discovery from cloud detail; this differs from the
+Discovery is synthesized from cloud detail; this differs from the
 [recommendation to forward the real result](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#stand-in-responders).
 The reply includes cloud serial/name, a `product_model` synthesized from the
 cloud label, and inferred `is_verified:true`. Empty `ssid` falls back to model;
