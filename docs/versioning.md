@@ -49,7 +49,7 @@ tag scheme join the contract from that release, with the image tagged by the bin
 - Human-readable output: help text and license display formatting.
 - Go packages. Every package other than the command is under `internal/`; there is no Go API.
 - The simulator, scripts/, docs/development/, and the Containerfile (see "The release unit").
-- Timing, throughput, retry delays and jitter, telemetry cadence. The qualitative guarantees in items 7-8 (exclusive
+- Timing, throughput, retry delays and jitter. The qualitative guarantees in items 7-8 (exclusive
   ownership and bounded cleanup) are not timing and stay protected.
 - Wire details towards the vendor. A vendor handshake can change in a patch if items 1-10 hold.
 

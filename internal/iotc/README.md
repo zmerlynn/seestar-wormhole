@@ -65,11 +65,11 @@ inner controls explicitly, following the [unknown-record policy](https://github.
 and [relay admission rules](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/relay.md#relay-result-codes). Unsupported device-role
 and integrity-only modes remain disabled. Unknown relay results leave the local
 60-second attempt deadline in force. Authenticated unknown controls never
-authorize a path or refresh liveness. [Alert triggering types](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/relay.md#server-alerts) remain diagnostic.
+authorize a path or refresh liveness. [Alert triggering types](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/relay.md#server-alerts) do not authorize a path.
 Receive routes remain opaque except for the knock refusal bit; send builders retain canonical bytes under the
 [legacy-header policy](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/framing.md#revision-and-flag-bits-on-receive).
 
-See [receive diagnostics](../../docs/reference.md#transport-telemetry) and [JSON input policy](../../docs/reference.md#json-file-compatibility).
+See [JSON input policy](../../docs/reference.md#json-file-compatibility).
 
 ## Scope and local policy
 
@@ -125,7 +125,7 @@ with bounded catch-up on clock jumps and disposes immediately after the
 Deferred optional paths: short RID/historical peer profiles, legacy master and
 precheck exchange, device registration/sleep/server role, raw device NAT keepalive,
 LAN broadcast search and unauthenticated LAN-direct bypass, requested IOTC ports
-and optional eight-byte IOTC authentication, telemetry, type5 registration
+and optional eight-byte IOTC authentication, type5 registration
 keepalive and unsupported HMAC types16–23. [Try-port traversal](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#try-port-traversal) is also deferred; ordinary candidate punching and
 relay/TCP fallback provide the minimal path. IPv6/NAT64 has no established wire
 interpretation. Deferred traversal means some networks that could be direct

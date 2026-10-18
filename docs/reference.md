@@ -36,7 +36,6 @@ loopback or a trusted network behind a firewall.
 | `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
 | `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
 | `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
-| `--stats-interval` | `1s` | Nonnegative Go duration. Zero disables DEBUG collection and sampling. Discard summaries remain enabled. Stats records require debug logging. |
 | `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. Unsupported on Windows. |
 
 See also [identity and logging flags](#identity-and-logging-flags).
@@ -311,9 +310,8 @@ Supply trusted parent directories.
 ## Logs
 
 Help, version, and license text go to stdout. Logs/errors go
-to stderr. Normal logging uses the selected format and level. The
-[transport telemetry rules](#transport-telemetry) cover periodic statistics
-and discard summaries. Use WARN for quieter long-running service logs.
+to stderr. Normal logging uses the selected format and level.
+Use WARN for quieter long-running service logs.
 Rejected startup suppresses pending dependency records and reports their loss at WARN; diagnostic loss makes the final command result fail.
 Most diagnostic records contain fixed classifications and numeric context,
 not dependency error text, forwarded payloads, or session secrets. Device
@@ -348,7 +346,10 @@ selection masks serials.
 | `lan_discovery_delivery_failed` | WARN | Local deadline/write failure or short write; fixed `rule`, error returned to the owner |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |
-| `diagnostics_lost` | WARN | Rule and cumulative loss count for startup, stderr, or telemetry caps; stderr failure uses stdout |
+| `transport_discard_summary` | WARN | Nonzero discard deltas per `rule` (audit row ID) and `count`, every ten seconds on the owner timer; release flushes the final interval |
+| `tunnel_refused` | WARN | Replacement or terminal local write failure; `rule`, `channel`, `discarded_bytes`; the local error carries the discarded byte count |
+| `dtls_credentials_refused` | WARN | NUL-containing credentials refused with an error; `rule=R024` |
+| `diagnostics_lost` | WARN | Rule and cumulative loss count for startup or stderr rules; stderr failure uses stdout |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
@@ -409,37 +410,6 @@ broken sink can prevent delivery. Readers must ignore added fields and use
 record name and those two keys are the only log record contract; lifecycle
 messages and hints can change.
 
-### Transport telemetry
-
-With collection enabled, DEBUG includes `rdt_stats`, `transport_stats`,
-`tunnel_stats`, and at most 64 transport event records per interval.
-`debug_dropped` counts records suppressed by the detail cap; nonzero losses also produce a WARN `telemetry_detail_cap` summary, including when periodic stats are off. Event names are `rdt_event`,
-`tunnel_flow`, `iotc_receive_oddity`, `rdt_receive_oddity`,
-`rdt_receive_pressure`, and `tunnel_receive_oddity`. Counters reset per transport attempt.
-With collection disabled, pressure/oddity debug events have a fixed 64-record
-budget per attempt. Discard counters remain enabled and nonzero deltas produce one
-`transport_discard_summary` WARN per rule every 10 seconds, with `rule` (audit
-row ID) and `count`; release flushes the last, possibly shorter interval.
-These summaries use the existing owner timer even when
-DEBUG collection is off. Tunnel replacement and terminal local write failures
-emit `tunnel_refused` WARN with `rule`, `channel`, and `discarded_bytes`; the local
-error carries the discarded byte count. NUL-containing DTLS credentials are
-refused with an error and a `dtls_credentials_refused` WARN naming R024.
-
-- `rdt_stats`: admitted/delivered bytes, congestion window, queued/unsent/in-flight
-  data, [ACK/SACK ranges, retransmission causes, reordering/gaps, and RTT quality.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/reliability.md#ack-processing-at-the-sender)
-- `transport_stats`: secure-send queue residence, blocking writes, and owner
-  submission/dispatch wait.
-- `tunnel_stats`: data admissions, consumption/discards, PAUSE/RESUME/WAKE
-  decisions, pressure/high/low water, desired/accepted pause state, pending
-  controls, accepted handoff prefix, queue peaks, paused time, delivery age.
-
-Queued controls count retained decisions that may later cancel; sent controls
-count complete RDT acceptance. Backlog age covers the current nonempty period.
-Telemetry uses numeric counts/durations/channel numbers, without payloads or
-session identities. Extremely large positive intervals saturate at the owner
-clock's final instant and retire sampling after one batch.
-
 ### Status and reason values
 
 This is the vocabulary table for logged `reason` and `cleanup_reason` fields.
@@ -485,12 +455,10 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `device unknown` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `device_offline` | 1 | Device offline. |
 | `reason` | `dns_not_found` | 1 | DNS lookup found no address. |
-| `reason` | `drain_opportunity` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `dtls_required` | 1 | Peer requires DTLS. |
 | `reason` | `ended` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `frame_too_large` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `handshake_failed` | 1 | Handshake failed. |
-| `reason` | `high_water` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `idle` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `inbox_capacity` | 1 | The session event inbox is full. |
 | `reason` | `incomplete_frame` | — | Diagnostic context; does not itself exit the process. |
@@ -510,8 +478,6 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `local_queue_capacity` | 1 | The tunnel send queue is full. |
 | `reason` | `local_write_failed` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `login_rejected` | 1 | Login rejected. |
-| `reason` | `low_water` | — | Diagnostic context; does not itself exit the process. |
-| `reason` | `mixed_decisions` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `multiple device logins` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `no_space` | 1 | No space. |
 | `reason` | `none` | 0 | No primary failure. |
