@@ -245,7 +245,7 @@ everything else.
    binary's `licenses` command includes every linked module.
 4. `NOTICE` is accurate for the change. That covers new third-party code,
    adapted code (the Pion suite adapter is the model: upstream license kept,
-   patch documented) and the LGPL component's obligations.
+   patch documented) and any LGPL component's obligations.
 5. New code that looks lifted carries a license and attribution. Signs are a
    break in style, a foreign copyright line, or a comment naming another
    project.

@@ -14,8 +14,4 @@ The catalog includes all source-carrying vendored modules so cross-builds work
 without regeneration. At runtime, `debug.ReadBuildInfo` selects the modules
 linked into that binary. Module order and file order are deterministic.
 
-`internal/edge/PION-LICENSE` accompanies the Pion DTLS entry. The sddl entry also carries
-`supplemental/GPL-3.0.txt`, fetched verbatim from
-https://www.gnu.org/licenses/gpl-3.0.txt, SHA-256
-`3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986`.
-LGPL-3.0 incorporates this GPL-3.0 text by reference.
+`internal/edge/PION-LICENSE` accompanies the Pion DTLS entry.

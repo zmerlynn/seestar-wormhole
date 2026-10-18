@@ -166,9 +166,6 @@ func generate(check bool) error {
 			return fmt.Errorf("vendored module %s has no license file", path)
 		}
 		sort.Strings(entry.Files)
-		if path == "github.com/cloudsoda/sddl" {
-			entry.Files = append(entry.Files, "internal/licenses/supplemental/GPL-3.0.txt")
-		}
 		if path == "github.com/pion/dtls/v3" {
 			entry.Files = append(entry.Files, "internal/edge/PION-LICENSE")
 		}
