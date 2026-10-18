@@ -257,7 +257,7 @@ before that point leave saved state unchanged; later failures reserve the layout
 Changing the directory list within explicit mode is allowed; receipts and
 checkpoints from earlier selections remain. `--rebind` changes the source,
 not the layout. Destinations with no saved state have no recorded layout;
-an empty directory is used when starting an archive.
+the example archive setup starts with an empty directory.
 
 `--rebind` saves a fresh generation and clears all selection checkpoints. Default
 mode saves immediately, even if later work fails. Explicit-directory mode stages
@@ -568,8 +568,9 @@ one matching entry in a complete catalog, its catalog model wins even if you
 supply `--model`. Unmatched serials or multiple pairs without a serial identify
 `--serial` in diagnostics without exposing catalog labels or serials.
 
-The proxy requests 100 items per page (local policy), at most 16 pages and 256 distinct
-pairs, with one 30-second per-catalog-operation timeout, following the
+The proxy requests 100 items per page (local policy), at most 16 pages and
+256 distinct pairs, with one 30-second per-catalog-operation timeout,
+following the
 [paging and completion guidance](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#device-selection) without a past-the-end request.
 
 Completeness requires a positive total exactly equal to the received count.
