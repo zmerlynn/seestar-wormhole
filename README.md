@@ -121,9 +121,10 @@ app uses.
 It's provided as is, without warranty of any kind (see [LICENSE](LICENSE)). It
 has been tested only on the devices and firmware listed in
 [tested coverage](docs/status.md); others may differ. Using it is at your own
-risk: the proxy forwards what your app or client sends, including commands
-that move the mount, change settings or delete files, and use of the vendor's
-cloud service is subject to its terms.
+risk: apart from [site protection](docs/reference.md#site-protection), the
+proxy forwards what your app or client sends, including commands that move the
+mount, change settings or delete files, and use of the vendor's cloud service
+is subject to its terms.
 
 ## More
 
