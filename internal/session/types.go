@@ -149,14 +149,9 @@ type Config struct {
 	RecentReleaseWindow            time.Duration // Local policy; zero disables refusal retries.
 	LazyBusyWindow                 time.Duration // Client-triggered busy budget; zero retains the own-session retry policy.
 	RetryBusy                      bool          // Eager cloud refusal retries, including first acquisition.
-	// SingleBusyWindow retains one LazyBusyWindow deadline from the first dial
-	// across initial demand/retries and all occupancy waits. After Ready, transport
-	// recovery may outlive it; a busy answer cannot renew it. With a zero window,
-	// busy always fails fast, including after release.
-	SingleBusyWindow       bool
-	BackoffMin, BackoffMax time.Duration
-	MaxClients, MaxQueued  int
-	Budgets                Budgets
+	BackoffMin, BackoffMax         time.Duration
+	MaxClients, MaxQueued          int
+	Budgets                        Budgets
 }
 
 // DefaultConfig returns bounded local policy: 30s dial, 5s stop, 0.5–30s retry.

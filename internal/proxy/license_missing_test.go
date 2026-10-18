@@ -85,7 +85,7 @@ func TestLicenseMissingOutageReason(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		_, _, raw := cloud.ParseOnline([]byte(`{"data":{"conId":"id","deviceUid":"uid","username":"user","password":"pass"}}`))
 		var logs statsLogBuffer
-		f := &pullBusyFactory{channels: make(chan *pullBusyChannels, 8)}
+		f := &busyFactory{channels: make(chan *busyChannels, 8)}
 		attempts := 0
 		f.allocate = func(context.Context) (sessionedge.Lease, error) {
 			attempts++

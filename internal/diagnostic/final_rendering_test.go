@@ -17,7 +17,7 @@ import (
 )
 
 func TestFinalCompactRendering(t *testing.T) {
-	for _, message := range []string{"pull failed", "proxy failed"} {
+	for _, message := range []string{"proxy failed", "proxy failed"} {
 		for _, format := range []string{"json", "text"} {
 			for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {
 				t.Run(fmt.Sprintf("%s/%s/%s", message, format, level), func(t *testing.T) {
@@ -26,7 +26,7 @@ func TestFinalCompactRendering(t *testing.T) {
 					for range 16 {
 						err = fmt.Errorf("PRIVATE_PATH: %w", err)
 					}
-					LogFinal(Logger(format, &logs, level), message, "pull", err, nil)
+					LogFinal(Logger(format, &logs, level), message, "session", err, nil)
 					lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
 					want := 1
 					if level == slog.LevelDebug {

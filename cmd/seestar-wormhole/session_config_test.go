@@ -15,7 +15,6 @@ func TestSessionConfigFlagDiagnostics(t *testing.T) {
 	}{
 		{"idle", "proxy", "--idle", "-17ns", "duration must be nonnegative", "--idle: duration must be nonnegative"},
 		{"stats", "proxy", "--stats-interval", "-19ns", "duration must be nonnegative", "--stats-interval: duration must be nonnegative"},
-		{"busy", "pull", "--busy-wait", "-23ns", "use a nonnegative Go duration", "--busy-wait: use a nonnegative Go duration"},
 		{"pause negative", "proxy", "--pause-threshold", "-29", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
 		{"pause zero", "proxy", "--pause-threshold", "0", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
 		{"pause one", "proxy", "--pause-threshold", "1", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
@@ -23,16 +22,13 @@ func TestSessionConfigFlagDiagnostics(t *testing.T) {
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			args := []string{tt.command, tt.flag + "=" + tt.value}
-			if tt.command == "pull" {
-				args = append(args, "PRIVATE_DEST")
-			}
 			var out, logs bytes.Buffer
 			err := run(context.Background(), args, &out, &logs)
 			var detail *diagnostic.OptionError
 			if !errors.As(err, &detail) || detail.Error() != tt.want {
 				t.Fatalf("error=%v want OptionError %q", err, tt.want)
 			}
-			if got := pullCode(err); got != 2 {
+			if got := commandExitCode(options{command: commandProxy}, err); got != 2 {
 				t.Fatalf("exit=%d want 2", got)
 			}
 			assertConfigRecord(t, logs.Bytes(), tt.command, tt.flag, tt.rule)

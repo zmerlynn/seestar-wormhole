@@ -3,10 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
-	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
-	"io"
 	"log/slog"
 	"strings"
 	"testing"
@@ -59,19 +55,5 @@ func TestStartupDiagnosticLoss(t *testing.T) {
 				t.Fatalf("missing loss WARN: %s", &logs)
 			}
 		})
-	}
-}
-
-func TestPullTelemetryLossSummary(t *testing.T) {
-	var out, logs bytes.Buffer
-	receipt := &proxy.TelemetryLossError{Count: 7}
-	s := &pullSessionFixture{dialErr: io.ErrUnexpectedEOF, closeErr: receipt}
-	err := runWithSession(t.Context(), []string{"pull", "--output=json", t.TempDir()}, &out, &logs, keylog.Open,
-		func(context.Context, proxy.Config) (commandSession, error) { return s, nil })
-	if !errors.As(err, new(*proxy.TelemetryLossError)) || pullCode(err) != 1 {
-		t.Fatalf("telemetry loss did not fail command: %v", err)
-	}
-	if !strings.Contains(out.String(), `"diagnostics_lost":7`) {
-		t.Fatalf("missing final telemetry loss count: %s", &out)
 	}
 }

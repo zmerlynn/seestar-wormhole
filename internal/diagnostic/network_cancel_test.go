@@ -24,7 +24,7 @@ func TestDialContextCancellationLeafAndSiblings(t *testing.T) {
 		{errors.Join(err, session.ErrStop), "release_failed"},
 		{errors.Join(err, context.DeadlineExceeded), "timeout"},
 	} {
-		if _, got := Fields(test.err, "pull"); got != test.want {
+		if _, got := Fields(test.err, "session"); got != test.want {
 			t.Errorf("%v: reason=%s want %s", test.err, got, test.want)
 		}
 	}

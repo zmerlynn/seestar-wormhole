@@ -19,7 +19,6 @@ type commandKind uint8
 const (
 	commandRoot commandKind = iota
 	commandProxy
-	commandPull
 	commandLicenses
 )
 
@@ -91,7 +90,7 @@ or 1 on runtime errors including failed release.`,
 	f.DurationVar(&o.statsInterval, "stats-interval", time.Second, "transport stats interval; zero disables counters and debug telemetry")
 	f.DurationVar(&o.idle, "idle", 0, "release after this idle duration; zero holds eagerly")
 	f.BoolVar(&o.lanDiscovery, "lan-discovery", false, "answer UDP 4720 discovery on the bind address LAN (off by default)")
-	root.AddCommand(proxyCommand, newPullCommand(o), &cobra.Command{
+	root.AddCommand(proxyCommand, &cobra.Command{
 		Use:   "licenses",
 		Short: "View license information for third-party libraries used in this build",
 		Args:  noArguments,
@@ -122,8 +121,6 @@ func parseWithSupport(args []string, out io.Writer, supported func() error) (opt
 	switch executed.Name() {
 	case "proxy":
 		o.command = commandProxy
-	case "pull":
-		o.command = commandPull
 	case "licenses":
 		o.command = commandLicenses
 	}

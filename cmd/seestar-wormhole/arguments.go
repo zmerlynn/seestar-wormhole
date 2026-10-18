@@ -30,9 +30,6 @@ func flagParseError(err error) error {
 			rule = "use a duration such as 2m or 0"
 		case "int":
 			rule = "use an integer byte count"
-			if invalid.GetFlag().Name == "transfers" {
-				rule = "use an integer from 1 through 8"
-			}
 		case "bool":
 			rule = "use a boolean value"
 		}

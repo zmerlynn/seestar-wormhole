@@ -40,8 +40,8 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	var o options
 	root := newCommand(&o, io.Discard, func() error { return nil })
 	commands := root.Commands()
-	if len(commands) != 3 || commands[0].Name() != "licenses" || commands[1].Name() != "proxy" || commands[2].Name() != "pull" || len(commands[1].Aliases) != 0 {
-		t.Fatalf("commands = %v, want licenses, proxy and pull with no aliases", commands)
+	if len(commands) != 2 || commands[0].Name() != "licenses" || commands[1].Name() != "proxy" || len(commands[1].Aliases) != 0 {
+		t.Fatalf("commands = %v, want licenses and proxy with no aliases", commands)
 	}
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {
 		t.Fatal("root version or flag scope changed")

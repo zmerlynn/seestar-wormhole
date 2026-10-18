@@ -17,7 +17,7 @@ func TestDiagnosticTruncationRequirement(t *testing.T) {
 	}
 	errs[63] = errors.ErrUnsupported
 	var logs bytes.Buffer
-	LogFinal(Logger("json", &logs, slog.LevelInfo), "pull failed", "pull", errors.Join(errs...), nil)
+	LogFinal(Logger("json", &logs, slog.LevelInfo), "proxy failed", "session", errors.Join(errs...), nil)
 	var record struct {
 		Leaves []string `json:"leaf_causes"`
 	}

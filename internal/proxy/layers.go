@@ -3,10 +3,8 @@ package proxy
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/binary"
 	"errors"
-	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 	mathrand "math/rand/v2"
 	"slices"
@@ -53,13 +51,6 @@ func New(ctx context.Context, cfg Config) (*Session, error) {
 	}
 	s, err := startSelected(ctx, cfg, detail, func(s *Session) sessionedge.Factory {
 		s.deviceDetail = detail
-		s.sourceID = fmt.Sprintf("direct:%x", sha256.Sum256([]byte(d.Serial)))
-		if cfg.Model != "" {
-			// Explicit pair selection must not reuse another model's pull
-			// checkpoints. Keep legacy serial-only bindings for existing pulls.
-			// Catalog identity fields cannot contain NUL, so this is unambiguous.
-			s.sourceID = fmt.Sprintf("direct:pair:%x", sha256.Sum256([]byte(d.Serial+"\x00"+d.Model)))
-		}
 		return &factory{s: s, cloud: c, device: d, verify: iotcedge.VerifyIOTCLicense, wire: defaultWireFactory(cfg)}
 	})
 	if err != nil {

@@ -17,7 +17,7 @@ func TestAmbientFirstBusyPartialLeaseCleanup(t *testing.T) {
 		t.Run(fmt.Sprint(stopErr), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				attempts := 0
-				f := &pullBusyFactory{stopError: stopErr, channels: make(chan *pullBusyChannels, 8)}
+				f := &busyFactory{stopError: stopErr, channels: make(chan *busyChannels, 8)}
 				f.allocate = func(context.Context) (sessionedge.Lease, error) {
 					if int(f.stops.Load()) != attempts {
 						t.Errorf("replacement before previous stop: attempts/stops=%d/%d", attempts, f.stops.Load())

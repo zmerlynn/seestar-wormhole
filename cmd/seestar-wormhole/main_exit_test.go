@@ -82,10 +82,9 @@ func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 
 func TestUsageExitAcrossCommands(t *testing.T) {
 	for _, args := range [][]string{
-		{}, {"--help"}, {"proxy", "--help"}, {"pull", "--help"},
+		{}, {"--help"}, {"proxy", "--help"},
 		{"unknown"}, {"--unknown"}, {"proxy", "--unknown"}, {"proxy", "--idle=bad"},
-		{"proxy", "--idle=-1s"}, {"proxy", "extra"}, {"pull", "--unknown", "dest"},
-		{"pull", "--settle=bad", "dest"}, {"pull", "--transfers=0", "dest"}, {"pull"}, {"pull", "a", "b"},
+		{"proxy", "--idle=-1s"}, {"proxy", "extra"},
 	} {
 		for _, unsupported := range []bool{false, true} {
 			var out, logs bytes.Buffer

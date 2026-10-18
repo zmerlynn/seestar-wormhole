@@ -49,8 +49,6 @@ type Machine struct {
 	releasedAttempt                  uint64
 	lazyUntil                        core.Instant
 	lazyRetry                        time.Duration
-	acquisitionUntil                 core.Instant // SingleBusyWindow: never renewed or cleared.
-	acquired                         bool         // A successful session permits later transport recovery.
 
 	releaseOverdue bool
 	releaseRefusal bool // Retryable refusal cleanup still owns its release obligation.
@@ -101,10 +99,6 @@ func (m *Machine) ambientRecovery() bool {
 	return m.cfg.Idle == 0 && m.cfg.RetryBusy
 }
 
-func (m *Machine) acquisitionLimited() bool {
-	return m.acquisitionUntil != 0 && (!m.acquired || m.refusalRetry)
-}
-
 func (m *Machine) resetLazyOpen() {
 	m.lazyUntil = 0
 	m.lazyRetry = 0
@@ -114,16 +108,6 @@ func (m *Machine) resetLazyOpen() {
 }
 
 func (m *Machine) dial(now core.Instant) []Action {
-	if m.cfg.SingleBusyWindow && m.cfg.LazyBusyWindow > 0 {
-		if m.acquisitionUntil == 0 {
-			m.acquisitionUntil = after(now, m.cfg.LazyBusyWindow)
-		}
-		if m.acquisitionLimited() && now >= m.acquisitionUntil {
-			m.state = Busy
-			m.blockErr = ErrBusy
-			return m.drop(ErrBusy)
-		}
-	}
 	// A queued refusal retry retains its authorization deadline across timers,
 	// canceled demand. Every dial path must recheck it.
 	if m.refusalRetry && !m.lazyBusyEnabled() && !m.ambientRecovery() && now >= m.recentUntil {
@@ -148,12 +132,9 @@ func (m *Machine) dial(now core.Instant) []Action {
 	m.state = Dialing
 	m.next = Cloud
 	m.until = after(now, m.cfg.DialTimeout)
-	if m.lazyBusyEnabled() && m.count > 0 && (!m.cfg.SingleBusyWindow || !m.acquired || m.refusalRetry) {
+	if m.lazyBusyEnabled() && m.count > 0 {
 		if m.lazyUntil == 0 {
 			m.lazyUntil = after(now, m.cfg.LazyBusyWindow)
-		}
-		if m.acquisitionUntil != 0 {
-			m.lazyUntil = m.acquisitionUntil
 		}
 		m.until = min(m.until, m.lazyUntil)
 	}
@@ -286,9 +267,6 @@ func (m *Machine) timer(out []Action) []Action {
 		if m.lazyUntil != 0 {
 			d = min(d, m.lazyUntil)
 		}
-		if m.acquisitionLimited() && m.blockErr == nil {
-			d = min(d, m.acquisitionUntil)
-		}
 	case Ready:
 		d = m.idleUntil
 	}
@@ -336,25 +314,6 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 	// Demand expires independently of the worker's cleanup target or failure.
 	// Process it before progress/release can admit clients or start a successor.
 	var expired []Action
-	// Pull bounds initial acquisition and occupancy with one original deadline.
-	// After success, ordinary transport recovery is independent of that deadline.
-	// Keep the release worker owned after expiry; cleanup failures still win.
-	if m.acquisitionLimited() && now >= m.acquisitionUntil && m.state != Ready && m.blockErr == nil && e.Kind != Shutdown {
-		m.blockErr = ErrBusy
-		switch m.state {
-		case Dialing:
-			expired = m.release(Busy, ErrBusy, now)
-		case Releasing:
-			if m.after != Closed {
-				m.after = Busy
-			}
-			expired = m.drop(ErrBusy)
-		case Dormant, Backoff:
-			m.state = Busy
-			expired = m.drop(ErrBusy)
-		}
-		m.resetLazyOpen()
-	}
 	if m.lazyUntil != 0 && now >= m.lazyUntil {
 		expired = m.drop(ErrBusy)
 		switch m.state {
@@ -384,17 +343,15 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 			return []Action{m.clientAction(Reject, e.Client, ErrClosed)}
 		}
 		if m.state == Busy {
-			if m.cfg.SingleBusyWindow || !m.lazyBusyEnabled() || m.blockErr != ErrBusy || !m.busyCloud {
+			if !m.lazyBusyEnabled() || m.blockErr != ErrBusy || !m.busyCloud {
 				return []Action{m.clientAction(Reject, e.Client, m.blockErr)}
 			}
 			m.blockErr = nil
 			m.busyCloud = false
 			m.state = Dormant
 		}
-		// Pull's next SMB retry may arrive before transport cleanup completes.
-		// Queue that demand; Released still owns replacement and backoff, and
-		// the original acquisition deadline still bounds pre-success retries.
-		if m.state == Releasing && !((m.lazyBusyEnabled() || m.cfg.SingleBusyWindow) && m.blockErr == nil && (m.after == Dormant || (m.after == Backoff && (m.refusalRetry || m.cfg.SingleBusyWindow)))) {
+		// Queue lazy demand during refusal cleanup; Released owns replacement and backoff.
+		if m.state == Releasing && !(m.lazyBusyEnabled() && m.blockErr == nil && (m.after == Dormant || (m.after == Backoff && m.refusalRetry))) {
 			err := ErrTransport
 			switch {
 			case m.after == Closed:
@@ -478,7 +435,6 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 		m.next++
 		if m.next == LayerCount {
 			m.state = Ready
-			m.acquired = true
 			m.wasReady = true
 			m.resetLazyOpen()
 			m.retry = firstBackoff(m.cfg)
@@ -504,15 +460,11 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 			m.releaseRefusal = true
 			return nil
 		}
-		lazyRefusal := m.lazyBusyEnabled() && m.state == Dialing && e.Layer == Cloud && errors.Is(e.Err, ErrBusy) && !uncertain && m.blockErr == nil && (!m.cfg.SingleBusyWindow || now < m.acquisitionUntil)
+		lazyRefusal := m.lazyBusyEnabled() && m.state == Dialing && e.Layer == Cloud && errors.Is(e.Err, ErrBusy) && !uncertain && m.blockErr == nil
 		ambientRefusal := m.ambientRecovery() && e.Layer == Cloud && errors.Is(e.Err, ErrBusy) && !uncertain && m.blockErr == nil
-		recentRefusal := ambientRefusal || lazyRefusal || (!m.cfg.SingleBusyWindow && !m.lazyBusyEnabled() && errors.Is(e.Err, ErrBusy) && m.releasedAttempt != 0 && m.releasedAttempt < e.Attempt && now < m.recentUntil && m.blockErr == nil)
+		recentRefusal := ambientRefusal || lazyRefusal || (!m.lazyBusyEnabled() && errors.Is(e.Err, ErrBusy) && m.releasedAttempt != 0 && m.releasedAttempt < e.Attempt && now < m.recentUntil && m.blockErr == nil)
 		if recentRefusal {
 			m.refusalRetry = true
-			if m.cfg.SingleBusyWindow {
-				// Recovery occupancy can use only the original remainder.
-				m.lazyUntil = m.acquisitionUntil
-			}
 		} else if (m.lazyBusyEnabled() || m.ambientRecovery()) && m.state == Dialing && !uncertain && !errors.Is(e.Err, ErrBusy) {
 			// This dial is transport recovery, not refusal cleanup. The shared
 			// drop below retires its demand budget without erasing retry history.

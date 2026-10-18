@@ -3,11 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
-	"io"
 	"log/slog"
 	"net"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"testing/synctest"
 
@@ -64,7 +64,7 @@ func TestFinalKeylogSummary(t *testing.T) {
 }
 
 func TestFinalTraceSummary(t *testing.T) {
-	for _, command := range []string{"proxy", "pull"} {
+	for _, command := range []string{"proxy"} {
 		t.Run(command, func(t *testing.T) {
 			var logs, out bytes.Buffer
 			factory := func(_ context.Context, cfg proxy.Config) (commandSession, error) {
@@ -74,17 +74,11 @@ func TestFinalTraceSummary(t *testing.T) {
 				cfg.Trace.SetLogger(nil)
 				cfg.Trace.Record("dtls", 1, 0, tracerecord.EdgeEvent{}, []tracerecord.EdgeEvent{})
 				cfg.Trace.SetLogger(cfg.Logger)
-				if command == "pull" {
-					return &pullSessionFixture{dialErr: io.ErrUnexpectedEOF}, nil
-				}
 				done := make(chan struct{})
 				close(done)
 				return &finalFailureSession{idleCommandSession: idleCommandSession{done}}, nil
 			}
 			args := []string{command, "--trace=" + filepath.Join(t.TempDir(), "trace"), "--log-format=json"}
-			if command == "pull" {
-				args = append(args, t.TempDir())
-			}
 			err := runWithListener(t.Context(), args, &out, &logs, keylog.Open, factory,
 				func(string, string) (net.Listener, error) {
 					return &finalFailureListener{done: make(chan struct{})}, nil
@@ -98,3 +92,15 @@ func TestFinalTraceSummary(t *testing.T) {
 		})
 	}
 }
+
+type progressBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (b *progressBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.b.Write(p)
+}
+func (b *progressBuffer) String() string { b.mu.Lock(); defer b.mu.Unlock(); return b.b.String() }

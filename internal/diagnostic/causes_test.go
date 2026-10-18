@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	smb2 "github.com/cloudsoda/go-smb2"
 	"github.com/go-json-experiment/json"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"io"
+	"net"
 	"strings"
 	"testing"
 )
@@ -15,10 +15,10 @@ import (
 type privateCause struct{}
 
 func (privateCause) Error() string { panic("private backend error formatted") }
-func TestPullCauseDiagnostics(t *testing.T) {
-	err := errors.Join(Wrap("smb_shutdown", "", &smb2.TransportError{Err: io.EOF}), fmt.Errorf("PRIVATE_PATH: %w", context.DeadlineExceeded), privateCause{})
+func TestCauseDiagnostics(t *testing.T) {
+	err := errors.Join(Wrap("transport", "", &net.OpError{Op: "read", Net: "tcp", Err: io.EOF}), fmt.Errorf("PRIVATE_PATH: %w", context.DeadlineExceeded), privateCause{})
 	causes := Causes(err)
-	if len(causes) != 7 || causes[2].Type != "*smb2.TransportError" || causes[3].Reason != "peer_closed" || causes[5].Reason != "timeout" || causes[6].Parent != 0 {
+	if len(causes) != 7 || causes[2].Type != "*net.OpError" || causes[3].Reason != "peer_closed" || causes[5].Reason != "timeout" || causes[6].Parent != 0 {
 		t.Fatalf("causes=%+v", causes)
 	}
 	data, err := json.Marshal(causes)
@@ -27,7 +27,7 @@ func TestPullCauseDiagnostics(t *testing.T) {
 	}
 }
 
-func TestPullKnownCauseNames(t *testing.T) {
+func TestKnownCauseNames(t *testing.T) {
 	for _, test := range []struct {
 		err    error
 		reason string

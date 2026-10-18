@@ -23,7 +23,6 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/licenses"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
-	"github.com/zmerlynn/seestar-wormhole/internal/pull"
 	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 )
 
@@ -72,7 +71,6 @@ func (m *mappings) Set(s string) error {
 type options struct {
 	command                 commandKind
 	outcome                 commandOutcome
-	pull                    *pullOptions
 	bind, format            string
 	keylog                  string
 	trace                   string
@@ -189,9 +187,6 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 	}
 	if o.command == commandLicenses {
 		return licenses.Write(out)
-	}
-	if o.command == commandPull {
-		return runParsedPullWithSource(ctx, o, out, logs, openKeys, newSession, pull.OpenSMB)
 	}
 	return runProxy(ctx, o, logs, openKeys, newSession, listen)
 }
@@ -412,9 +407,7 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 }
 
 func logCommandArgumentError(o options, out io.Writer, err error) {
-	if o.command == commandPull {
-		logPullArgumentError(out, err)
-	} else if o.command == commandLicenses {
+	if o.command == commandLicenses {
 		logConfigurationError(out, "licenses", err)
 	} else {
 		logArgumentError(out, err)
@@ -424,9 +417,6 @@ func logCommandArgumentError(o options, out io.Writer, err error) {
 func commandExitCode(o options, err error) int {
 	if err == nil || errors.Is(err, errHelp) {
 		return 0
-	}
-	if o.command == commandPull {
-		return pullCode(err)
 	}
 	var detail *argumentError
 	if errors.As(err, &detail) || errors.Is(err, cloud.ErrConfig) {

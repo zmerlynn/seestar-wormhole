@@ -65,7 +65,7 @@ func TestFinalDiagnosticCutoff(t *testing.T) {
 			}
 			for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {
 				var logs bytes.Buffer
-				LogFinal(Logger("json", &logs, level), "pull failed", "pull", tt.err, nil)
+				LogFinal(Logger("json", &logs, level), "proxy failed", "session", tt.err, nil)
 				lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
 				wantLines := 1
 				if level == slog.LevelDebug {

@@ -14,7 +14,7 @@ import (
 )
 
 func TestModelOption(t *testing.T) {
-	for _, command := range []string{"proxy", "pull"} {
+	for _, command := range []string{"proxy"} {
 		for _, value := range []string{"S30", "S50 Pro", "unknown synthetic model", strings.Repeat("m", 4096)} {
 			_, err := parse([]string{command, "--serial=synthetic-a", "--model=" + value, "--version"}, io.Discard)
 			if err != nil {
@@ -40,14 +40,12 @@ func TestModelOption(t *testing.T) {
 }
 
 func TestModelOptionStartupWiring(t *testing.T) {
-	for _, command := range []string{"proxy", "pull"} {
+	for _, command := range []string{"proxy"} {
 		called := false
 		var out, logs bytes.Buffer
 		args := []string{command, "--serial=PRIVATE_SERIAL", "--model=PRIVATE_MODEL"}
 		if command == "proxy" {
 			args = append(args, "--bind=127.0.0.1", "--port", availableCommandPort(t)+":13459", "--idle=2m")
-		} else {
-			args = append(args, t.TempDir())
 		}
 		err := runWithSession(t.Context(), args, &out, &logs, keylog.Open, func(_ context.Context, cfg proxy.Config) (commandSession, error) {
 			called = true
@@ -61,16 +59,6 @@ func TestModelOptionStartupWiring(t *testing.T) {
 		}
 		if strings.Contains(logs.String()+out.String(), "PRIVATE_") {
 			t.Fatal("input pair escaped diagnostics")
-		}
-	}
-}
-
-func TestModelOptionViaBoundary(t *testing.T) {
-	for _, value := range []string{"", "S30"} {
-		_, err := parse([]string{"pull", "--via=127.0.0.1:4445", "--model=" + value, "--version"}, io.Discard)
-		var option *diagnostic.OptionError
-		if !errors.As(err, &option) || option.Option != "--model" || option.Rule != "cannot be used with --via" {
-			t.Fatalf("error=%v, want --model/--via exclusion", err)
 		}
 	}
 }

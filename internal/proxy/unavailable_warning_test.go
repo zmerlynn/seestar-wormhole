@@ -24,7 +24,7 @@ func TestBusyBlockedOutageWarnings(t *testing.T) {
 					synctest.Test(t, func(t *testing.T) {
 						var logs statsLogBuffer
 						attempts := 0
-						f := &pullBusyFactory{channels: make(chan *pullBusyChannels, 8)}
+						f := &busyFactory{channels: make(chan *busyChannels, 8)}
 						f.allocate = func(context.Context) (sessionedge.Lease, error) {
 							attempts++
 							if partialBusy && attempts == 1 {
@@ -108,7 +108,7 @@ func TestBusyBlockedOutageWarnings(t *testing.T) {
 func TestRecoveryWarningsResetOnReadiness(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var logs statsLogBuffer
-		f := &pullBusyFactory{channels: make(chan *pullBusyChannels, 8)}
+		f := &busyFactory{channels: make(chan *busyChannels, 8)}
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return f, nil }
 		s, err := startWithRNG(t.Context(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
 		if err != nil {
@@ -147,7 +147,7 @@ func TestLazyBusyWarningsRequireUnintentionalLossAfterReadiness(t *testing.T) {
 		t.Run(fmt.Sprint(idleRelease), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				var logs statsLogBuffer
-				f := &pullBusyFactory{channels: make(chan *pullBusyChannels, 32)}
+				f := &busyFactory{channels: make(chan *busyChannels, 32)}
 				f.allocate = func(context.Context) (sessionedge.Lease, error) {
 					if idleRelease {
 						return f, nil
@@ -188,7 +188,7 @@ func TestLazyBusyWarningsRequireUnintentionalLossAfterReadiness(t *testing.T) {
 func TestBusyWarningsAfterFailedIdleCleanup(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var logs statsLogBuffer
-		f := &pullBusyFactory{channels: make(chan *pullBusyChannels, 8), stopError: session.ErrStop}
+		f := &busyFactory{channels: make(chan *busyChannels, 8), stopError: session.ErrStop}
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return f, nil }
 		s, err := startWithRNG(t.Context(), Config{Idle: time.Second, Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
 		if err != nil {

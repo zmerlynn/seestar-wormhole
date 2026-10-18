@@ -26,7 +26,6 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
-	"github.com/zmerlynn/seestar-wormhole/internal/pull"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
@@ -175,52 +174,4 @@ func TestCatalogBoundary(t *testing.T) {
 		t.Fatalf("config pair wiring: error=%v detail count=%d model=%v", err, detailRequests.Load(), requestedModel.Load())
 	}
 
-	// Source binding must distinguish pairs before any SMB connection. Literal
-	// digests are independent SHA-256 oracles, with NUL separating pair fields.
-	destination, err := pull.OpenDestination(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer destination.Close()
-	for _, tc := range []struct{ model, source string }{
-		{"S50 Pro", "direct:pair:2374d048c57bdffbe9ce790124cc58e7a0212243628dec3d33cfa982b80f3763"},
-		{"S30", "direct:pair:29133ac330b314a81bb8d4597b7ade72824f7f5379a122c47669de3b9b95cd13"},
-	} {
-		s, err := proxy.New(ctx, proxy.Config{Serial: "SYNTHETIC_SN", Model: tc.model, HoldOnDemand: true})
-		if err != nil {
-			t.Fatal(err)
-		}
-		identity := s.SourceID()
-		if err := s.Close(); err != nil {
-			t.Fatal(err)
-		}
-		if identity != tc.source {
-			t.Fatal("selected pair lacks its independent literal source binding")
-		}
-		err = destination.BindSource(identity)
-		if tc.model == "S50 Pro" && err != nil {
-			t.Fatal(err)
-		}
-		if tc.model == "S30" {
-			var mismatch *pull.SourceMismatchError
-			if !errors.As(err, &mismatch) || mismatch.ExistingKind != "direct" || mismatch.RequestedKind != "direct" {
-				t.Fatalf("second model source binding=%v, want redacted source mismatch", err)
-			}
-		}
-	}
-	// Existing serial-only pulls retain their persistent destination identity.
-	catalog.Store(`{"data":{"total":1,"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"first"}]}}`)
-	s, err = proxy.New(ctx, proxy.Config{Serial: "SYNTHETIC_SN", HoldOnDemand: true})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if s.SourceID() != "direct:4efb7b00c86f1151c5a84041f6920f63dae1541b1ecf7e840dc4b3d6dd511583" {
-		t.Error("serial-only source binding changed")
-	}
-	if err := s.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if detailRequests.Load() != 1 {
-		t.Fatal("source identity allocated or queried device detail")
-	}
 }

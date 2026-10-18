@@ -55,9 +55,6 @@ func Fields(err error, phase string) (string, string) {
 // selectedCause uses the complete outcome for attribution; callers project
 // policy separately and consume only the selected received terminal's receipt.
 func selectedCause(err error, phase string) (string, string, *Terminal) {
-	if errors.Is(err, ErrPullPanic) {
-		return phase, "operation_panic", nil
-	}
 	terminal, attached := receivedCause(err)
 	if terminal != nil {
 		return terminal.Phase(), terminalReason(terminal), terminal
@@ -96,9 +93,6 @@ func selectedCause(err error, phase string) (string, string, *Terminal) {
 
 // Class never calls Error, String or LogValue on an untrusted value.
 func Class(err error) string {
-	if errors.Is(err, ErrPullPanic) {
-		return "operation_panic"
-	}
 	// A complete cloud reply is a received cause even when release I/O or
 	// cancellation also appears in its outcome. This precedence used to live
 	// only in the cloud adapter; normalization now applies it at every boundary.
@@ -115,10 +109,6 @@ func Class(err error) string {
 		if errors.Is(err, known.cause) {
 			return known.reason
 		}
-	}
-
-	if reason := typedPullClass(err); reason != "" {
-		return reason
 	}
 
 	var ne net.Error

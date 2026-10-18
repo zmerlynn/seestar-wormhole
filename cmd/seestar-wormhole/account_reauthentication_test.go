@@ -32,7 +32,7 @@ func TestReplayReauthenticationCommandProjection(t *testing.T) {
 			a = m.Step(cloud.AccountEvent{Kind: cloud.AccountBegin}, 0)
 			// The cloud edge projects denied disposition to uncertain session ownership.
 			err := diagnostic.AtLayer(a.Err, session.Cloud, session.ErrUncertain)
-			for _, command := range []commandKind{commandProxy, commandPull} {
+			for _, command := range []commandKind{commandProxy} {
 				if code := commandExitCode(options{command: command}, err); code != 1 {
 					t.Errorf("command=%v exit=%d, want 1", command, code)
 				}

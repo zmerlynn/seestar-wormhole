@@ -6,7 +6,6 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/tracerecord"
 	"io"
 	"log/slog"
-	"math"
 	"math/rand/v2"
 	"net"
 	"sync"
@@ -36,13 +35,6 @@ type Config struct {
 	// Serial optionally selects a device; Model disambiguates a serial with several
 	// catalog models. StateDir opts into installation UUID persistence.
 	Serial, Model, StateDir string
-	// HoldOnDemand defers acquisition until DialPort and holds until Close. Pull
-	// uses this to bind destination identity before acquiring the device.
-	HoldOnDemand bool
-	// BusyWait bounds initial acquisition and occupancy for HoldOnDemand, shared
-	// across backend retries. After acquisition, transport recovery may outlive
-	// this budget; recovery busy answers never renew it. Zero fails fast on busy.
-	BusyWait time.Duration
 	// KeyLog is opt-in; the caller closes it after Session.Close.
 	KeyLog *keylog.Writer
 	// PauseThreshold is bytes of attributed receive pressure; zero uses the default.
@@ -63,7 +55,6 @@ type Session struct {
 	telemetryLost            uint64 // owner-only until done closes
 	trace                    *tracerecord.Writer
 	traceID                  uint64
-	sourceID                 string       // immutable opaque selected-device identity
 	deviceDetail             cloud.Detail // immutable after construction, before publication
 	tunnelConfig             p2ptunnel.Config
 	statsInterval            time.Duration
@@ -97,25 +88,15 @@ func startWithRNG(ctx context.Context, cfg Config, factory func(*Session) sessio
 	if cfg.StatsInterval < 0 {
 		return nil, &diagnostic.OptionError{Option: "--stats-interval", Rule: "duration must be nonnegative"}
 	}
-	if cfg.BusyWait < 0 {
-		return nil, &diagnostic.OptionError{Option: "--busy-wait", Rule: "use a nonnegative Go duration"}
-	}
 	if cfg.PauseThreshold < 0 || cfg.PauseThreshold == 1 || cfg.PauseThreshold > MaxPauseThreshold {
 		return nil, &diagnostic.OptionError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608 (zero selects default)"}
-	}
-	if cfg.HoldOnDemand {
-		cfg.Idle = time.Duration(math.MaxInt64)
 	}
 	s := &Session{lazy: cfg.Idle > 0, trace: cfg.Trace, traceID: cfg.Trace.Instance(), statsInterval: cfg.StatsInterval, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), keylog: cfg.KeyLog, logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
 	ctx, s.cancel = context.WithCancel(ctx)
 	c := session.DefaultConfig()
 	c.Idle = cfg.Idle
 	c.LazyBusyWindow = session.LazyBusyWindow
-	c.RetryBusy = !cfg.HoldOnDemand
-	if cfg.HoldOnDemand {
-		c.LazyBusyWindow = cfg.BusyWait
-		c.SingleBusyWindow = true
-	}
+	c.RetryBusy = true
 	c.MaxClients = 128
 	c.DialTimeout = 120 * time.Second
 	// The work queue can hold 128 byte completions of at most 8192 bytes, in
@@ -411,9 +392,6 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 // DeviceDetail returns selected cloud identity when LANDiscovery was enabled.
 // Values are for the discovery wire, never logs; Detail redacts formatting.
 func (s *Session) DeviceDetail() cloud.Detail { return s.deviceDetail }
-
-// SourceID returns the opaque selected-device identity without another cloud call.
-func (s *Session) SourceID() string { return s.sourceID }
 
 // ObservationDeadline requests the next unavailable or discard summary on the owner clock.
 func (s *Session) ObservationDeadline() core.Instant {

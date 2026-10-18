@@ -11,18 +11,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 	"testing/synctest"
 
-	"github.com/go-json-experiment/json/jsontext"
-	"github.com/rclone/rclone/fs"
 	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
-	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
 // Compare the complete record, allowing only slog's timestamp to vary.
@@ -53,7 +49,7 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 }
 
 func TestCLIConfigAttribution(t *testing.T) {
-	for _, command := range []string{"proxy", "pull"} {
+	for _, command := range []string{"proxy"} {
 		for _, format := range []string{"text", "json"} {
 			for _, capture := range []string{"none", "open-failure", "worker-failure"} {
 				for _, problem := range []string{"email", "password", "state", "selection", "trace"} {
@@ -62,9 +58,6 @@ func TestCLIConfigAttribution(t *testing.T) {
 							t.Setenv("SEESTAR_EMAIL", "test@example.invalid")
 							t.Setenv("SEESTAR_PASSWORD", "PRIVATE_PASSWORD")
 							args := []string{command, "--log-format=" + format, "--log-level=debug"}
-							if command == "pull" {
-								args = append(args, "--output="+format)
-							}
 							if capture != "none" {
 								args = append(args, "--keylog=PRIVATE_KEYLOG_PATH")
 							}
@@ -87,9 +80,6 @@ func TestCLIConfigAttribution(t *testing.T) {
 							case "trace":
 								args = append(args, "--trace="+t.TempDir())
 								option, rule = "--trace", "use a new writable trace file"
-							}
-							if command == "pull" {
-								args = append(args, t.TempDir())
 							}
 							var out, logs bytes.Buffer
 							open := keylog.Open
@@ -115,25 +105,12 @@ func TestCLIConfigAttribution(t *testing.T) {
 							// Ephemeral loopback listeners avoid collisions and never reach a device:
 							// each real construction fails local credential/state validation.
 							err := runWithListener(t.Context(), args, &out, &logs, open, factory, func(_, _ string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") })
-							if got := pullCode(err); got != 2 {
+							if got := commandExitCode(options{command: commandProxy}, err); got != 2 {
 								t.Fatalf("exit=%d want=2 err=%v logs=%s", got, err, &logs)
 							}
 							assertConfigRecord(t, logs.Bytes(), command, option, rule)
 							assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_STATE_PATH", "PRIVATE_KEYLOG_PATH", "PRIVATE_PAYLOAD")
-							if command == "pull" {
-								if format == "json" {
-									assertJSONSummary(t, out.String(), 2, "error", "invalid_option", "none")
-								} else {
-									const want = "status=error copied=0 verified=0 deferred=0 bytes=0 first_scan=false lower=0001-01-01T00:00:00Z upper=0001-01-01T00:00:00Z reason=invalid_option cleanup_reason=none\n"
-									summaryText := out.String()
-									if i := strings.Index(summaryText, " diagnostics_lost="); i >= 0 {
-										summaryText = summaryText[:i] + "\n"
-									}
-									if summaryText != want {
-										t.Fatalf("text summary=%q want=%q", out.String(), want)
-									}
-								}
-							} else if out.Len() != 0 {
+							if out.Len() != 0 {
 								t.Fatalf("proxy stdout=%s", &out)
 							}
 						})
@@ -174,9 +151,6 @@ func TestCLIParserRules(t *testing.T) {
 				rule = "use a duration such as 2m or 0"
 			case "int":
 				rule = "use an integer byte count"
-				if flag.Name == "transfers" {
-					rule = "use an integer from 1 through 8"
-				}
 			case "local:device":
 				rule = "use local:device ports"
 			case "string", "stringArray":
@@ -188,8 +162,8 @@ func TestCLIParserRules(t *testing.T) {
 				args := append(append([]string{}, prefix...), "--"+flag.Name+"=PRIVATE_VALUE")
 				var out, logs bytes.Buffer
 				err := run(t.Context(), args, &out, &logs)
-				if pullCode(err) != 2 || out.Len() != 0 {
-					t.Fatalf("exit=%d stdout=%s", pullCode(err), &out)
+				if commandExitCode(options{command: commandProxy}, err) != 2 || out.Len() != 0 {
+					t.Fatalf("exit=%d stdout=%s", commandExitCode(options{command: commandProxy}, err), &out)
 				}
 				name := cmd.Name()
 				if cmd == root {
@@ -203,98 +177,28 @@ func TestCLIParserRules(t *testing.T) {
 }
 
 func TestCLISharedSerialPreflight(t *testing.T) {
-	for _, command := range []string{"proxy", "pull"} {
+	for _, command := range []string{"proxy"} {
 		for _, version := range []bool{false, true} {
 			t.Run(command+map[bool]string{true: "/version", false: "/run"}[version], func(t *testing.T) {
 				base := t.TempDir()
-				dest, trace := filepath.Join(base, "destination"), filepath.Join(base, "trace")
+				trace := filepath.Join(base, "trace")
 				args := []string{command, "--serial=\n", "--trace=" + trace, "--keylog=" + filepath.Join(base, "keys")}
 				if version {
 					args = append(args, "--version")
-				} else if command == "pull" {
-					args = append(args, "--output=json", dest)
 				}
 				var out, logs bytes.Buffer
 				err := runWithSession(t.Context(), args, &out, &logs, func(string, *slog.Logger) (*keylog.Writer, error) { t.Fatal("preflight opened keys"); return nil, nil }, func(context.Context, proxy.Config) (commandSession, error) {
 					t.Fatal("preflight opened session")
 					return nil, nil
 				})
-				if pullCode(err) != 2 || out.Len() != 0 {
-					t.Fatalf("exit=%d stdout=%s", pullCode(err), &out)
+				if commandExitCode(options{command: commandProxy}, err) != 2 || out.Len() != 0 {
+					t.Fatalf("exit=%d stdout=%s", commandExitCode(options{command: commandProxy}, err), &out)
 				}
 				assertConfigRecord(t, logs.Bytes(), command, "--serial", "use a nonblank device serial of at most 4096 bytes without NUL, CR or LF")
 				entries, e := os.ReadDir(base)
 				if e != nil || len(entries) != 0 {
 					t.Fatalf("preflight created resources: %v %v", entries, e)
 				}
-			})
-		}
-	}
-}
-
-func TestCLIPullStartupWarnings(t *testing.T) {
-	for _, capture := range []string{"open-failure", "worker-failure"} {
-		for _, accepted := range []bool{false, true} {
-			t.Run(capture+map[bool]string{false: "/runtime-refusal", true: "/accepted"}[accepted], func(t *testing.T) {
-				synctest.Test(t, func(t *testing.T) {
-					var out, logs bytes.Buffer
-					open := func(string, *slog.Logger) (*keylog.Writer, error) { return nil, errors.New("PRIVATE_KEYLOG_PATH") }
-					if capture == "worker-failure" {
-						open = func(_ string, logger *slog.Logger) (*keylog.Writer, error) {
-							keys := keylog.New(failedStartupKeys{}, logger)
-							keys.Write([]byte("PRIVATE_PAYLOAD\n"))
-							synctest.Wait()
-							return keys, nil
-						}
-					}
-					s := &pullSessionFixture{}
-					err := runPullWithSource(t.Context(), []string{"pull", "--output=json", "--keylog=PRIVATE_KEYLOG_PATH", t.TempDir()}, &out, &logs, open,
-						func(_ context.Context, cfg proxy.Config) (commandSession, error) {
-							cfg.Logger.Info("dependency_startup", "count", 1)
-							if !accepted {
-								return nil, session.ErrBusy
-							}
-							return s, nil
-						}, func(ctx context.Context, _ func(context.Context, string, string) (net.Conn, error)) (context.Context, fs.Fs, error) {
-							return ctx, nil, session.ErrBusy
-						})
-					if pullCode(err) != 3 || s.closed != map[bool]int{true: 1, false: 0}[accepted] {
-						t.Fatalf("exit=%d closed=%d logs=%s", pullCode(err), s.closed, &logs)
-					}
-					assertJSONSummary(t, out.String(), 3, "busy", "busy", "none")
-					var records []map[string]any
-					dec := jsontext.NewDecoder(&logs)
-					for {
-						var record map[string]any
-						err := json.UnmarshalDecode(dec, &record, json.MatchCaseInsensitiveNames(true))
-						if err == io.EOF {
-							break
-						}
-						if err != nil {
-							t.Fatal(err)
-						}
-						records = append(records, record)
-					}
-					warnings, dependencies := 0, 0
-					for _, record := range records {
-						if record["msg"] == "dependency_startup" {
-							dependencies++
-						}
-						if record["msg"] == "keylog_failed" {
-							warnings++
-							rule := "use a new writable private key file"
-							if capture == "worker-failure" {
-								rule = "keylog_loss"
-							}
-							if record["option"] != "--keylog" || record["rule"] != rule {
-								t.Fatalf("capture attribution=%v", record)
-							}
-						}
-					}
-					if warnings < 1 || dependencies != 1 {
-						t.Fatalf("warnings=%d dependencies=%d records=%v", warnings, dependencies, records)
-					}
-				})
 			})
 		}
 	}
