@@ -30,7 +30,7 @@ func (s *startupLogging) openKeys(path string, open func(string, *slog.Logger) (
 	if path == "" {
 		return nil
 	}
-	s.handler = &startupKeylogHandler{Handler: s.logger.With("option", "--keylog", "rule", "use a writable private key file").Handler()}
+	s.handler = &startupKeylogHandler{Handler: s.logger.With("option", "--keylog").Handler()}
 	var err error
 	s.keys, err = open(path, slog.New(s.handler))
 	s.keylogFailed = err != nil
@@ -54,12 +54,15 @@ func (s *startupLogging) acceptKeys() {
 }
 
 // finish runs after owned resources close and before the final failure record.
-// Closing the key writer first includes its one-shot shutdown warning in the
+// Closing the key writer first includes its final loss summary in the
 // configuration decision, including when it could not write any key material.
 func (s *startupLogging) finish(result error) error {
 	var loss error
 	if s.keys != nil {
-		s.keys.Close()
+		loss = s.keys.Close()
+		if loss != nil {
+			newLogger("json", s.output.output).Warn("keylog_failed", "option", "--keylog", "rule", "keylog_loss", "count", s.keys.Dropped())
+		}
 	}
 	var detail *argumentError
 	accepted := !errors.As(result, &detail)

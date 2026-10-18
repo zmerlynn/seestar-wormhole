@@ -61,7 +61,7 @@ func assertStartupOptionFailure(t *testing.T, err error, out, logs *bytes.Buffer
 	lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
 	for _, line := range lines[:len(lines)-1] {
 		var warning map[string]any
-		if e := json.Unmarshal(line, &warning); e != nil || warning["level"] != "WARN" || warning["rule"] != "startup_diagnostics_lost" {
+		if e := json.Unmarshal(line, &warning); e != nil || warning["level"] != "WARN" || (warning["rule"] != "startup_diagnostics_lost" && warning["rule"] != "keylog_loss") {
 			t.Fatalf("unexpected startup diagnostic: %s", line)
 		}
 	}

@@ -429,7 +429,7 @@ listeners. Configuration errors emit one JSON error with fixed `option`,
 values, paths, coordinates, and unknown option names are omitted. Unknown
 flags/positional arguments use `option=arguments`. Startup bind, trace-creation,
 and identity-storage errors identify `--bind`, `--trace`, and `--state-dir`.
-Keylog warnings identify `--keylog` and remain best effort.
+Keylog warnings identify `--keylog`; lost records are counted and fail the final command result.
 
 ### Exit codes
 
@@ -934,9 +934,8 @@ including metadata refreshes; cached reused pairs are not repeated.
 
 The nonblocking queue holds 32 lines of at most 256 bytes. One worker writes
 without userspace buffering or per-line fsync. Full queues/write failures
-drop lines and warn once with the count observed then; later writes keep
-trying. Capture failures never affect handshakes, retries, or session state.
-Final drain allows two seconds after session/cloud cleanup. A stalled worker
+drop lines and report cumulative counts at WARN at most once per second, plus a final summary; later writes keep trying. Capture failures never affect handshakes, retries, or session state.
+Final drain allows two seconds after session/cloud cleanup; loss or drain timeout makes the command result fail. A stalled worker
 can survive until storage recovers or process exit.
 
 A key log plus a packet capture can decrypt everything that session carried,

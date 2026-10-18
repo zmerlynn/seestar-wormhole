@@ -8,9 +8,9 @@ import (
 	"time"
 )
 
-// startupKeylogHandler holds only the keylog worker's one-shot failure record.
-// It avoids buffering general startup logs or losing a warning emitted before
-// startup is accepted. The worker uses this logger directly, without With calls.
+// startupKeylogHandler holds the keylog worker's latest startup warning and
+// counts any replaced or suppressed records. General dependency output uses
+// the byte-bounded startupLogOutput instead.
 type startupKeylogHandler struct {
 	slog.Handler
 	// mu protects resolution and the single pending record; output happens unlocked.

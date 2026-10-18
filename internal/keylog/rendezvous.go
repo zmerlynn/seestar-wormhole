@@ -1,6 +1,9 @@
 package keylog
 
-import "fmt"
+import (
+	"fmt"
+	"io"
+)
 
 // Rendezvous enqueues an attempt's AES-128-GCM pair before use. RID identifies
 // the attempt on wire;
@@ -14,7 +17,7 @@ func (w *Writer) Rendezvous(attempt uint64, rid [8]byte, ref uint64, key []byte,
 	}
 	if len(key) != 16 {
 		w.drop()
-		return nil
+		return io.ErrShortWrite
 	}
 	_, err := fmt.Fprintf(w, "# IOTC_KEY %d %x %d %x %x\n", attempt, rid, ref, key, iv)
 	return err

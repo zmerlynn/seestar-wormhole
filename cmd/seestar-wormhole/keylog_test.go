@@ -120,11 +120,11 @@ func TestKeylogWorkerAcceptedStartupAttribution(t *testing.T) {
 		return keys, nil
 	}
 	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--idle=2m", "--keylog", "PRIVATE_KEYLOG_PATH", "--bind=127.0.0.1", "--port", availableCommandPort(t) + ":80"}...), io.Discard, logs, open, idleCommandFixture)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil {
+		t.Fatal("keylog loss returned command success")
 	}
 	data := logs.b.String()
-	if strings.Count(data, `"msg":"keylog_failed"`) != 1 || !strings.Contains(data, `"option":"--keylog","rule":"use a writable private key file"`) || !strings.Contains(data, "proxy_started") {
+	if strings.Count(data, `"msg":"keylog_failed"`) < 1 || !strings.Contains(data, `"rule":"keylog_loss"`) || !strings.Contains(data, "proxy_started") {
 		t.Fatalf("missing accepted worker attribution: %s", data)
 	}
 	for _, value := range []string{"PRIVATE_PAYLOAD", "PRIVATE_KEYLOG_PATH"} {
