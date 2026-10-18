@@ -273,6 +273,7 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 	}
 	var workflow struct {
 		Jobs map[string]struct {
+			Needs []string
 			Steps []struct {
 				Uses, Run string
 				Env       map[string]string
@@ -282,13 +283,18 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 	if err := yaml.Unmarshal(data, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	steps := workflow.Jobs["verify"].Steps
-	if len(steps) < 3 || !strings.HasPrefix(steps[0].Uses, "actions/checkout@") {
-		t.Fatal("verify must start with checkout")
+	validate := workflow.Jobs["validate"].Steps
+	if len(validate) != 2 || !strings.HasPrefix(validate[0].Uses, "actions/checkout@") {
+		t.Fatal("validate must be checkout followed by validation")
 	}
-	if steps[1].Env["RELEASE_VERSION"] != "${{ github.ref_name }}" {
+	if validate[1].Env["RELEASE_VERSION"] != "${{ github.ref_name }}" {
 		t.Fatal("validation must receive ref_name through environment immediately after checkout")
 	}
+	if !slices.Contains(workflow.Jobs["release"].Needs, "validate") {
+		t.Fatal("release must need validate")
+	}
+	// The release job runs only after validate succeeds, so run their steps as one sequence.
+	steps := append(validate, workflow.Jobs["release"].Steps...)
 	bin := t.TempDir()
 	marker := filepath.Join(bin, "build-called")
 	if err := os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\ntouch \"$BUILD_MARKER\"\nexit 97\n"), 0700); err != nil {
