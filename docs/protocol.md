@@ -1,7 +1,7 @@
 # How the proxy speaks the protocol
 
-I use the [v1 specification](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/00-overview.md#protocol-stack)
-as the wire reference. This page describes the proxy's part in that stack;
+The [v1 specification](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/00-overview.md#protocol-stack)
+serves as the wire reference. This page describes the proxy's part in that stack;
 the linked sections carry the layouts and method details. The spec distinguishes
 [READ, OBSERVED, INFERRED and unresolved claims](https://github.com/zmerlynn/seestar-spec/blob/v1/CONVENTIONS.md).
 Local limits below are choices made here, not device promises. Tested coverage
@@ -21,25 +21,25 @@ limits, deadlines and admission mechanics.
 | Area and spec boundary | Local choice and reason |
 |---|---|
 | [Cloud HTTP bounds](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#host-transport-and-headers) | [Local choice](reference.md#protocol-resource-policies). |
-| [Cloud JSON](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#response-envelope) | V1 describes the plain Gson converter but specifies no duplicate-member rule for HTTP responses. I reject duplicate names anywhere as local fail-closed policy. Operators see the existing invalid-response validation failure (account failures retain HTTP status); ambiguous data is never installed. |
-| [License JSON](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/sdk-licence.md#licence-json) | V1 specifies first-position/last-value duplicates in standalone overrides. I reject all duplicate names as local fail-closed policy. License installation fails through the existing invalid-license path, before session establishment. |
+| [Cloud JSON](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#response-envelope) | V1 describes the plain Gson converter but specifies no duplicate-member rule for HTTP responses. Duplicate names anywhere are rejected as local fail-closed policy. Operators see the existing invalid-response validation failure (account failures retain HTTP status); ambiguous data is never installed. |
+| [License JSON](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/sdk-licence.md#licence-json) | V1 specifies first-position/last-value duplicates in standalone overrides. All duplicate names are rejected as local fail-closed policy. License installation fails through the existing invalid-license path, before session establishment. |
 | [Discovery requests](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#device-side-responder) | Duplicate names and invalid UTF-8 cause a silent drop. Decoded names match the specified case exactly; case variants remain unknown members. |
 | [Catalog selection](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#device-selection) | [Local choice](reference.md#device-selection). |
-| [Login input](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/login.md#input-preparation) | R19 permits my choice to send explicit credentials without app UI trimming. |
-| [Credential storage](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#storage-startup-and-source-identifier) | I retain credentials in memory and persist only the installation UUID when requested. |
-| [Profile and failed renewal](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/login.md#installation-and-profile-fetch) | R27 requires a usability decision: I keep tokens after pure profile I/O failure and block authorization after malformed or denied outcomes. |
-| [Old-token expiry](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#remote-client-token-expired-event) | I retire matching current token bytes on remote 401; server-wide expiry scope remains unresolved. |
+| [Login input](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/login.md#input-preparation) | R19 permits sending explicit credentials without app UI trimming. |
+| [Credential storage](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#storage-startup-and-source-identifier) | Credentials are retained in memory, and only the installation UUID is persisted when requested. |
+| [Profile and failed renewal](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/login.md#installation-and-profile-fetch) | R27 requires a usability decision: tokens are kept after pure profile I/O failure and authorization is blocked after malformed or denied outcomes. |
+| [Old-token expiry](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#remote-client-token-expired-event) | Matching current token bytes are retired on remote 401; server-wide expiry scope remains unresolved. |
 | [Stop and uncertain ownership](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#reports-and-stop) | [Local choice](../DESIGN.md#session-ownership-implementation). |
 | [Busy and recovery](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/state-timers.md#timers) | See [Local choice](reference.md#availability-and-busy-devices). Service limits remain unknown, distinct from the observed retry guidance. |
 | [Installation identity](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#storage-startup-and-source-identifier) | [Local choice](reference.md#installation-identity). |
-| [Hello correlation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/framing.md#receive-catalogue) | See [Local choice](../DESIGN.md#iotc-path-ownership-invariant). Trailing bytes are tolerated. I require an echo match; whether servers send short replies remains open. |
+| [Hello correlation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/framing.md#receive-catalogue) | See [Local choice](../DESIGN.md#iotc-path-ownership-invariant). Trailing bytes are tolerated. An echo match is required; whether servers send short replies remains open. |
 | [Alternate-source NAT observations](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#nat-classification) | [Local choice](../internal/iotc/README.md#scope-and-local-policy). |
 | [Attempt identity](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#attempt-and-cache-lifetimes) | [Local choice](../internal/iotc/README.md#scope-and-local-policy). |
 | [Path selection and bounds](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#udptcp-race) | See [Local choice](../internal/iotc/README.md#scope-and-local-policy). Native close winners depend on scheduling. |
 | [TCP framing failure](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/framing.md#tcp-reception) | [Local choice](../internal/iotc/README.md#edge-contract). Replacement-client permission remains unspecified. |
 | [Optional paths and migration](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/session.md#path-migration) | [Local choice](../DESIGN.md#composed-runtime-and-daemon). |
-| [DTLS profile](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#version-and-cipher-suite) | I offer only DTLS 1.2 ccac or 00a8; the full native offer and unresolved runtime configuration leave a compatibility boundary. |
-| [DTLS bounds](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#timers-and-shutdown) | Pion schedules flight retries; I bound handshake time and lifetime control traffic without a specified valid-peer traffic maximum. |
+| [DTLS profile](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#version-and-cipher-suite) | The proxy offers only DTLS 1.2 ccac or 00a8; the full native offer and unresolved runtime configuration leave a compatibility boundary. |
+| [DTLS bounds](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#timers-and-shutdown) | Pion schedules flight retries; handshake time and lifetime control traffic are bounded without a specified valid-peer traffic maximum. |
 | [RDT identity](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/session.md#connection-identity) | See [Local choice](../internal/rdt/README.md#wire-behavior-and-deliberate-local-policy). Arbitrarily late zero-ID traffic after reuse has no wire generation to distinguish it. |
 | [RDT receive pressure](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/reliability.md#receiving-and-reading) | See [Local choice](../internal/rdt/README.md#wire-behavior-and-deliberate-local-policy). V1 supplies no receive-credit or byte-cap contract. |
 | [RDT send scheduling](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/reliability.md#window-and-pacing) | [Local choice](../internal/rdt/README.md#wire-behavior-and-deliberate-local-policy). |
@@ -51,10 +51,10 @@ limits, deadlines and admission mechanics.
 | [Tunnel pressure and scheduling](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#pause-resume-and-wake) | See [Local choice](../DESIGN.md#tunnel-contract). V1 does not guarantee equivalence to native shared charging and failed-write bookkeeping. |
 | [Tunnel backlog and reclamation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#backlog-after-pause) | [Local choice](../DESIGN.md#tunnel-contract). |
 | [Discovery synthesis](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#stand-in-responders) | [Local choice](reference.md#lan-discovery). |
-| [SMB pull assumptions](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/media/smb.md#open-questions) | I use guest SMB with bounded inventory and copy work; upper dialect, signing and stable metadata guarantees remain open. |
+| [SMB pull assumptions](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/media/smb.md#open-questions) | Pull uses guest SMB with bounded inventory and copy work; upper dialect, signing and stable metadata guarantees remain open. |
 | [Runtime admission and reservations](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/seestar-profile.md#minimal-outbound-proxy-profile) | [Local choice](../DESIGN.md#composed-runtime-and-daemon). |
 | [Tunnel channel reuse](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#channel-allocation-and-reuse) | [Local choice](../DESIGN.md#tunnel-contract). |
-| [Opaque alert metadata](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/relay.md#server-alerts) | I require complete alerts and matching SID/nonce; unfamiliar triggering record types are diagnostic and do not prevent a recognized alert from changing endpoint state. The alert protocol-version byte remains opaque. |
+| [Opaque alert metadata](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/relay.md#server-alerts) | Complete alerts and matching SID/nonce are required; unfamiliar triggering record types are diagnostic and do not prevent a recognized alert from changing endpoint state. The alert protocol-version byte remains opaque. |
 
 See [IOTC scope](../internal/iotc/README.md#scope-and-local-policy) and [unimplemented tunnel paths](../DESIGN.md#not-implemented).
 
