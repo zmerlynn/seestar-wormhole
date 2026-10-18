@@ -184,6 +184,11 @@ func TestDiscardOnlyWakeup(t *testing.T) {
 	x := &stack{f: &factory{s: &Session{logger: slog.New(slog.NewJSONHandler(&logs, nil))}}, timerUpdates: make(chan time.Duration, 1)}
 	x.initDiscardSummary(0)
 	x.ingressDiscards = 1
+	x.deadlines[1] = core.Instant(discardInterval)
+	if x.discardOnlyTick(core.Instant(discardInterval)) {
+		t.Fatal("discard reporting swallowed a due protocol deadline")
+	}
+	x.deadlines[1] = 0
 	if !x.discardOnlyTick(core.Instant(discardInterval)) {
 		t.Fatal("discard-only wakeup injected protocol ticks")
 	}

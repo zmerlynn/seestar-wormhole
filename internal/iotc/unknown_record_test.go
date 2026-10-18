@@ -8,6 +8,9 @@ func TestUnknownRecordLengthValidation(t *testing.T) {
 		m, l := layoutHelloMachine(t)
 		before := m.endpoints
 		out := m.Step(Event{Kind: Wire, Attempt: 1, Link: l, Data: unhex(literal)}, 0)
+		if got := m.Discards()[4]; got != 1 {
+			t.Fatalf("unknown record %s: R043 = %d, want 1", literal, got)
+		}
 		if m.endpoints != before || m.state != Connecting || m.alive != 0 {
 			t.Fatal("unknown record changed state")
 		}
@@ -18,11 +21,17 @@ func TestUnknownRecordLengthValidation(t *testing.T) {
 		if out := m.Step(Event{Kind: Wire, Attempt: 1, Link: l, Data: bad}, 0); len(nonTimerEffects(out)) != 0 {
 			t.Errorf("bad envelope length produced an effect: %+v", out)
 		}
+		if got := m.Discards()[4]; got != 1 {
+			t.Fatalf("bad envelope %s: R043 = %d, want 1", literal, got)
+		}
 	}
 	for _, literal := range []string{"04021d0000000000efbe180000000000", "04021d00000000001802180000000000"} {
 		m, l := layoutMasterMachine(t, UDP)
 		before := m.endpoints
 		out := layoutMasterIngress(t, m, l, unhex(literal), 7)
+		if got := m.Discards()[4]; got != 1 {
+			t.Fatalf("unknown type-1 %s: R043 = %d, want 1", literal, got)
+		}
 		if m.endpoints != before || m.state != Connecting {
 			t.Fatal("unknown type-1 opcode changed state")
 		}
