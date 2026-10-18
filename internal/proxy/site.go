@@ -43,6 +43,54 @@ func rejectSite(envelope map[string]jsontext.Value, method, reason string, code 
 	return nil, &siteEvent{method: method, id: siteLogID(envelope), reason: reason, rejection: append(response, '\r', '\n')}
 }
 
+// siteRecoveredID lets the JSON decoder collect a complete scalar even when a
+// later member is malformed. Repeated IDs are ambiguous, including escaped names.
+type siteRecoveredID struct {
+	raw  jsontext.Value
+	seen bool
+	end  int64
+}
+
+func (id *siteRecoveredID) UnmarshalJSONFrom(dec *jsontext.Decoder) error {
+	repeated := id.seen
+	id.seen = true
+	if repeated {
+		id.raw = nil
+	}
+	raw, err := dec.ReadValue()
+	if err == nil && !repeated && (raw.Kind() == '"' || raw.Kind() == '0') {
+		id.raw = raw.Clone()
+		id.end = dec.InputOffset()
+	}
+	return err
+}
+
+// Recovery is only for a refusal's correlation, never for forwarding. The
+// library handles all JSON traversal; allowing duplicates here lets an ID after
+// unrelated duplicate members survive without relaxing the protection decoder.
+func recoverSiteEnvelope(line []byte) map[string]jsontext.Value {
+	line = line[:min(len(line), MaxSiteLine)]
+	type envelope struct {
+		ID siteRecoveredID `json:"id"`
+	}
+	var request envelope
+	if trimmed := bytes.TrimSpace(line); len(trimmed) > 0 && trimmed[0] == '[' {
+		var batch []envelope
+		_ = json.Unmarshal(line, &batch, jsontext.AllowDuplicateNames(true))
+		if len(batch) != 1 {
+			return nil // Multiple requests have no single correlation ID.
+		}
+		request = batch[0]
+	} else {
+		_ = json.Unmarshal(line, &request, jsontext.AllowDuplicateNames(true))
+	}
+	id := request.ID
+	if id.raw.Kind() == '0' && len(line) == MaxSiteLine && id.end == int64(len(line)) {
+		return nil // The inspection bound may have cut a numeric ID in two.
+	}
+	return map[string]jsontext.Value{"id": id.raw}
+}
+
 // CRLF-only, object-only and 16-KiB limits are stricter local inspection policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/ports.md#framing-per-port-family
 func protectSite(line []byte) ([]byte, *siteEvent) {
@@ -52,10 +100,10 @@ func protectSite(line []byte) ([]byte, *siteEvent) {
 		return line, nil
 	}
 	if len(line) > MaxSiteLine {
-		return rejectSite(nil, "", "frame_too_large", -32600)
+		return rejectSite(recoverSiteEnvelope(line), "", "frame_too_large", -32600)
 	}
 	if !bytes.HasSuffix(line, []byte("\r\n")) {
-		return rejectSite(nil, "", "incomplete_frame", -32600)
+		return rejectSite(recoverSiteEnvelope(line), "", "incomplete_frame", -32600)
 	}
 	// Exact keys match device dispatch. RawMessage maps retain unknown members,
 	// including case variants, without rounding their numbers through float64.
@@ -65,7 +113,7 @@ func protectSite(line []byte) ([]byte, *siteEvent) {
 	// before any forwarding. R12 prohibits duplicate request members:
 	// https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/session-handshake.md#request-envelope
 	if json.Unmarshal(line, &envelope) != nil || envelope == nil {
-		return rejectSite(nil, "", "invalid_request", -32700)
+		return rejectSite(recoverSiteEnvelope(line), "", "invalid_request", -32700)
 	}
 	if json.Unmarshal(envelope["method"], &method) != nil || strings.ContainsFunc(method, unicode.IsControl) {
 		return rejectSite(envelope, "", "invalid_method", -32600)

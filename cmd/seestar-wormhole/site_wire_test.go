@@ -33,8 +33,9 @@ func (s *siteWireSession) DialPort(ctx context.Context, port uint16) (net.Conn, 
 }
 
 type siteWireFrame struct {
-	raw    string
-	reject bool
+	raw     string
+	reject  bool
+	replyID string // Literal correlation for frames rejected before full decoding.
 }
 
 // Synthetic shapes plus the review's exact object-time reproduction. The oracle
@@ -64,12 +65,12 @@ func siteWireFrames() []siteWireFrame {
 		siteWireFrame{raw: `{"id":33,"method":"set_user_location","params":{}}` + "\r\n", reject: true},
 		siteWireFrame{raw: `{"id":34,"method":"pi_set_time","params":[{}]}` + "\r\n", reject: true},
 		siteWireFrame{raw: `{"id":39,"method":"get_device_state","params":{"keys":["location_lon_lat"]}}` + "\r\n"},
-		siteWireFrame{raw: `{"id":40,"method":"pi_set_time","params":{broken}}` + "\r\n", reject: true},
-		siteWireFrame{raw: `{"id":41,"method":"set_user_location","params":{}} {}` + "\r\n", reject: true},
+		siteWireFrame{raw: `{"id":40,"method":"pi_set_time","params":{broken}}` + "\r\n", reject: true, replyID: "40"},
+		siteWireFrame{raw: `{"id":41,"method":"set_user_location","params":{}} {}` + "\r\n", reject: true, replyID: "41"},
 		siteWireFrame{raw: `[{"id":42,"method":"pi_set_time","params":{}},{"id":43,"method":"set_user_location","params":{}}]` + "\r\n", reject: true},
 		siteWireFrame{raw: strings.Repeat(" ", proxy.MaxSiteLine) + `{"method":"pi_set_time","params":{}}` + "\r\n", reject: true},
-		siteWireFrame{raw: `{"id":44,"method":"set_user_location","params":{}}` + "\n", reject: true},
-		siteWireFrame{raw: `{"id":45,"method":"pi_set_time","params":{}}`, reject: true},
+		siteWireFrame{raw: `{"id":44,"method":"set_user_location","params":{}}` + "\n", reject: true, replyID: "44"},
+		siteWireFrame{raw: `{"id":45,"method":"pi_set_time","params":{}}`, reject: true, replyID: "45"},
 	)
 	return frames
 }
@@ -270,7 +271,11 @@ func TestSiteCLIToFakeDevice(t *testing.T) {
 						t.Fatalf("invalid JSON-RPC error: %s", replies[index])
 					}
 					var original map[string]jsontext.Value
-					if json.Unmarshal([]byte(f.raw), &original, json.MatchCaseInsensitiveNames(true)) == nil && strings.HasSuffix(f.raw, "\r\n") && len(f.raw) <= proxy.MaxSiteLine {
+					if f.replyID != "" {
+						if string(response.ID) != f.replyID {
+							t.Errorf("error ID=%s want=%s", response.ID, f.replyID)
+						}
+					} else if json.Unmarshal([]byte(f.raw), &original, json.MatchCaseInsensitiveNames(true)) == nil && strings.HasSuffix(f.raw, "\r\n") && len(f.raw) <= proxy.MaxSiteLine {
 						if string(response.ID) != string(original["id"]) {
 							t.Errorf("error ID=%s want=%s", response.ID, original["id"])
 						}

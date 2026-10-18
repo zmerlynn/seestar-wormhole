@@ -521,9 +521,10 @@ Inspected requests with duplicate member names are rejected before forwarding,
 including nested names and escaped spellings. This is a deliberate
 fail-closed deviation from device dispatch; [R12 prohibits clients from sending
 duplicate members](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/session-handshake.md#request-envelope).
-Unknown members remain allowed. The local answer uses `-32700`, a null ID, and
-message `request rejected by site protection`; no ambiguous request fields are
-echoed. Device replies stay byte-transparent and are never decoded for this check.
+Unknown members remain allowed. The local answer uses `-32700`, a recoverable
+string or numeric ID (null when unavailable or ambiguous), and message
+`request rejected by site protection`; recovery inspects at most the first 16 KiB.
+Device replies stay byte-transparent and are never decoded for this check.
 
 One WARN `site_protected` record is emitted for each dropped setter. It contains
 `method`, integer request `id` or `unavailable`, and `reason=site_protected`.

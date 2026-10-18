@@ -28,7 +28,7 @@ func copySite(dst io.Writer, src io.Reader, logger *slog.Logger, reply io.Writer
 		var output []byte
 		var event *siteEvent
 		if overlong {
-			output, event = rejectSite(nil, "", "frame_too_large", -32600)
+			output, event = rejectSite(recoverSiteEnvelope(line), "", "frame_too_large", -32600)
 		} else {
 			output, event = protectSite(line)
 		}
@@ -72,12 +72,9 @@ func readSiteFrame(r *bufio.Reader) (line []byte, overlong bool, err error) {
 		part, readErr := r.ReadSlice('\n')
 		terminated := len(part) > 0 && part[len(part)-1] == '\n'
 		size := len(line) + len(part)
-		if !overlong && (size > MaxSiteLine || size == MaxSiteLine && !terminated) {
-			line = nil
-			overlong = true
-		}
 		if !overlong {
-			line = append(line, part...)
+			line = append(line, part[:min(len(part), MaxSiteLine-len(line))]...)
+			overlong = size > MaxSiteLine || size == MaxSiteLine && !terminated
 		}
 		if terminated || !errors.Is(readErr, bufio.ErrBufferFull) {
 			return line, overlong, readErr
