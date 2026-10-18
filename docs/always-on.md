@@ -1,6 +1,6 @@
 # Keeping it running
 
-My proxy runs all the time on a small Linux server. It holds the telescope's
+The proxy runs all the time on a small Linux server. It holds the telescope's
 connection, and everything else (the phone, seestar_alp, the morning image
 pull) comes and goes through it. This page covers setting that up.
 
@@ -107,9 +107,9 @@ password with quotes in it.) The image starts the proxy with a wildcard bind and
 
 For the phone, add `--lan-discovery -p 80:80` to the end, and give the
 container permission to use port 80. Host networking is what lets it hear the
-phone's broadcasts. I haven't run the phone setup in a container; my own
-always-on proxy runs the binary directly. Docker takes the same flags, but I
-haven't tried it.
+phone's broadcasts. The phone setup has not been run in a container; the
+always-on proxy runs the binary directly. Docker takes the same flags, but it
+has not been tested.
 
 ## On Windows
 
