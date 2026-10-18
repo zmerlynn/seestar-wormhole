@@ -95,7 +95,7 @@ license/NOTICE texts for third-party libraries linked into this binary.
 It includes `internal/edge/PION-LICENSE`.
 It needs no credentials, network, or source checkout. It takes no flags except
 `--help`/`-h` and no positional arguments. Usage errors exit 2; output failure
-exits 1. See [NOTICE](../NOTICE) for attribution and relinking instructions.
+exits 1. See [NOTICE](../NOTICE) for attribution.
 
 ## Global command behavior
 

@@ -30,8 +30,7 @@ This example copies files modified within the last day. `--min-age 2m` skips
 recent files that may still be written by the telescope.
 
 ```sh
-rclone --config seestar-rclone.conf copy "seestar:EMMC Images/MyWorks" ./MyWorks \
-  --max-age 24h --min-age 2m --transfers 4 --multi-thread-streams 0 --low-level-retries 3
+rclone --config seestar-rclone.conf copy "seestar:EMMC Images/MyWorks" ./MyWorks --max-age 24h --min-age 2m --transfers 4 --multi-thread-streams 0 --low-level-retries 3
 ```
 
 `--max-age` selects the lookback window. `--transfers 4` limits concurrent file
@@ -48,21 +47,20 @@ A download check rereads the selected source and destination files to confirm
 bytes, rather than only comparing sizes:
 
 ```sh
-rclone --config seestar-rclone.conf check --download "seestar:EMMC Images/MyWorks" ./MyWorks \
-  --max-age 24h --min-age 2m --transfers 4 --multi-thread-streams 0 --low-level-retries 3
+rclone --config seestar-rclone.conf check --download "seestar:EMMC Images/MyWorks" ./MyWorks --max-age 24h --min-age 2m --transfers 4 --multi-thread-streams 0 --low-level-retries 3
 ```
 
 A SHA-256 manifest of the local copy can be retained separately:
 
 ```sh
-rclone hashsum sha256 ./MyWorks > MyWorks.sha256
+rclone hashsum sha256 ./MyWorks --output-file MyWorks.sha256
 ```
 
 The manifest is written outside the copied directory, so it does not list
-itself. Its paths are relative to that directory:
+itself. rclone checks the manifest against that directory:
 
 ```sh
-(cd ./MyWorks && sha256sum -c ../MyWorks.sha256)
+rclone hashsum sha256 ./MyWorks --checkfile MyWorks.sha256
 ```
 
 ## Interactive SMB use

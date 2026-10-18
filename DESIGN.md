@@ -630,8 +630,6 @@ See [device selection](docs/reference.md#device-selection) and [installation ide
 
 See [port mapping syntax and defaults](docs/reference.md#port-mappings).
 
-See [metadata permission refusal](docs/reference.md#destination-state-and-safe-paths).
-
 Account lifecycle invariants (replacement safety policy):
 
 - **A credential rejection is terminal.** Classify the received login status at
