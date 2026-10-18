@@ -6,7 +6,12 @@ Open an issue with the seestar-wormhole version (`seestar-wormhole --version`), 
 
 ## What never goes in
 
-Do not put passwords, tokens, keys, account names or email addresses; device identifiers such as serial numbers, UIDs or MAC addresses; real IP addresses (use RFC 5737 documentation addresses); site coordinates; packet captures; or logs that have not been reduced in an issue, pull request or attachment.
+Do not put any of these in an issue, a pull request or an attachment:
+
+- passwords, tokens, keys, account names or email addresses;
+- device identifiers such as serial numbers, UIDs or MAC addresses;
+- real IP addresses (use the RFC 5737 documentation ranges) or site coordinates;
+- packet captures, or logs that have not been reduced to the fields that matter.
 
 ## Reporting a security problem or published sensitive data
 
@@ -14,7 +19,7 @@ Do not report security problems or published sensitive data in a public issue. U
 
 ## Clean-room rule
 
-This project describes its basis as observed behavior of the developer's own telescope and public information. Protocol work follows the project's existing clean-room inputs: the public protocol spec and its linked binary-derived evidence, repository material, and public library documentation and source. Do not read existing implementations of these protocols or fill gaps from memory of another implementation.
+This project is built from observation of the developer's own telescope and from public information. Protocol work uses only these inputs: the public protocol spec and its linked binary-derived evidence, repository material, and public library documentation and source. Do not read existing implementations of these protocols or fill gaps from memory of another implementation.
 
 ## Pull requests
 
