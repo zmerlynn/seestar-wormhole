@@ -59,7 +59,7 @@ func newCommand(o *options, out io.Writer, supported func() error) *cobra.Comman
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		defaultHelp(cmd, args)
 		if cmd == root {
-			fmt.Fprintln(cmd.OutOrStdout(), "Third-party license information (including LGPL-3.0-only sddl): seestar-wormhole licenses")
+			fmt.Fprintln(cmd.OutOrStdout(), "Third-party license information: seestar-wormhole licenses")
 		}
 	})
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return flagParseError(err) })

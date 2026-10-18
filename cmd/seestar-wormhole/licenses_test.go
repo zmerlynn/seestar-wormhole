@@ -39,9 +39,7 @@ func TestLicensesBinary(t *testing.T) {
 	text := stdout.String()
 	for _, want := range []string{
 		"seestar-wormhole NOTICE\n",
-		"Module: github.com/cloudsoda/sddl\nSPDX: LGPL-3.0-only\n",
-		"GNU LESSER GENERAL PUBLIC LICENSE",
-		"GNU GENERAL PUBLIC LICENSE",
+		"Module: github.com/pion/dtls/v3\nSPDX: MIT\n",
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("licenses output missing %q", want)
@@ -49,10 +47,9 @@ func TestLicensesBinary(t *testing.T) {
 	}
 	for _, path := range []string{
 		"NOTICE",
-		"vendor/github.com/cloudsoda/sddl/LICENSE",
-		"internal/licenses/supplemental/GPL-3.0.txt",
+		"vendor/github.com/pion/dtls/v3/LICENSE",
 		"internal/edge/PION-LICENSE",
-		"vendor/github.com/prometheus/client_golang/NOTICE",
+		"vendor/github.com/spf13/cobra/LICENSE.txt",
 	} {
 		want, err := os.ReadFile(filepath.Join("../..", path))
 		if err != nil {
@@ -94,7 +91,7 @@ func TestLicensesHelpAndArguments(t *testing.T) {
 		if _, err := parse(args, &out); !errors.Is(err, errHelp) {
 			t.Fatalf("root help: %v", err)
 		}
-		if !strings.HasSuffix(out.String(), "Third-party license information (including LGPL-3.0-only sddl): seestar-wormhole licenses\n") {
+		if !strings.HasSuffix(out.String(), "Third-party license information: seestar-wormhole licenses\n") {
 			t.Fatalf("root help lacks final license notice: %s", &out)
 		}
 	}
