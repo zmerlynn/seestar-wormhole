@@ -736,9 +736,9 @@ device coverage is listed separately in [status](docs/status.md).
 - **Any rejection or failure surfaces as an error with its cause.** Each stream
   publishes one terminal cause. Peer CLOSE retains payload presence, result and
   local END context. Result 2 is ErrSetupRejected with an inspectable
-  PeerCloseError.Result; result 1 before our END and unknown nonzero results are
+  PeerCloseError.Result; result 1 before the proxy's END and unknown nonzero results are
   PeerCloseError wrapping ErrTransport. Empty/zero CLOSE is ordinary closure.
-  Result 1 after our END is treated as ordinary termination because the peer
+  Result 1 after the proxy's END is treated as ordinary termination because the peer
   uses that same value for EOF in this state; the wire cannot distinguish
   that path from terminal peer I/O failure. No positive SETUP ACK is invented.
   Transport failure produces ErrTransport and local Close produces net.ErrClosed.
