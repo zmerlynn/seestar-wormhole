@@ -46,10 +46,12 @@ test the command's version and help output.
 - **macOS** has run the phone-app setup. Discovery has native loopback unicast
   and admission/response tests; LAN broadcast discovery has not been verified
   on macOS. The loopback broadcast socket fixture runs only on Linux.
-- **Windows** cross-builds, and a selection of tests pass under Wine. It
-  hasn't been run against a real telescope, so its console
-  handling and file permissions are untested in practice. It has no LAN
-  discovery. [rclone is the supported copying route](copying.md#windows).
+- **Windows** has native CI coverage of DTLS interop and loopback TCP
+  admission, including resets with full staging and byte preservation after FIN.
+  See the [Windows requirements](reference.md#windows). It hasn't been run
+  against a real telescope, so console handling and file permissions are
+  untested in practice. It has no LAN discovery.
+  [rclone is the supported copying route](copying.md#windows).
 - **Containers** are checked for the image's user and startup. The phone setup
   hasn't been run in one.
 
