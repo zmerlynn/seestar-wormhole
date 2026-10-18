@@ -261,8 +261,14 @@ func TestReleaseVersions(t *testing.T) {
 	}
 }
 
-// Execute the workflow's actual run steps in order, stopping at the first Go
-// invocation. This tests the shell boundary too: ref_name is data, never code.
+type workflowStep struct {
+	Uses, Run string
+	Env       map[string]string
+}
+
+// Execute the workflow's actual run steps: validate alone, then release for each
+// accepted version up to its first Go invocation. This tests the shell boundary
+// too: ref_name is data, never code.
 func TestWorkflowVerifyOrdering(t *testing.T) {
 	if _, err := os.Stat(".github/workflows/release.yml"); os.IsNotExist(err) {
 		t.Chdir("..")
@@ -274,10 +280,7 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 	var workflow struct {
 		Jobs map[string]struct {
 			Needs []string
-			Steps []struct {
-				Uses, Run string
-				Env       map[string]string
-			}
+			Steps []workflowStep
 		}
 	}
 	if err := yaml.Unmarshal(data, &workflow); err != nil {
@@ -293,55 +296,63 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 	if !slices.Contains(workflow.Jobs["release"].Needs, "validate") {
 		t.Fatal("release must need validate")
 	}
-	// The release job runs only after validate succeeds, so run their steps as one sequence.
-	steps := append(validate, workflow.Jobs["release"].Steps...)
+	release := workflow.Jobs["release"].Steps
 	bin := t.TempDir()
 	marker := filepath.Join(bin, "build-called")
 	if err := os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\ntouch \"$BUILD_MARKER\"\nexit 97\n"), 0700); err != nil {
 		t.Fatal(err)
 	}
+	// run executes a job's run steps in order, stopping at the first failure.
+	run := func(t *testing.T, steps []workflowStep, version string) (int, []byte) {
+		for _, step := range steps {
+			if step.Run == "" {
+				continue
+			}
+			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", step.Run)
+			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "BUILD_MARKER="+marker)
+			for key, value := range step.Env {
+				if value == "${{ github.ref_name }}" {
+					value = version
+				}
+				cmd.Env = append(cmd.Env, key+"="+value)
+			}
+			output, err := cmd.CombinedOutput()
+			if err != nil {
+				var exit *exec.ExitError
+				if !errors.As(err, &exit) {
+					t.Fatal(err)
+				}
+				return exit.ExitCode(), output
+			}
+		}
+		return 0, nil
+	}
 	versions := []string{"v0.1.0", "v1.0.0-rc.1", "v0.0.0", "v1.2.3-rc.0", "v123.456.789-rc.123", "v01.0.0", "v1.01.0", "v1.0.01", "v1.0.0-rc.01", "1.0.0", "v1.0", "v1.0.0.0", "v1.0.0-beta", "v1.0.0-rc", "v1.0.0-rc.1.2", "v1.0.0+meta", "v1.0.0-rc.1+meta", "", " ", "\tv1.0.0", "v1.0.0\n", "v1.0.0 ", "v1.0.0;false", "v1.0.0$(false)", "v1.0.0`false`", "v1.0.0|false"}
 	for i, version := range versions {
 		t.Run(fmt.Sprintf("%q", version), func(t *testing.T) {
 			_ = os.Remove(marker)
-			code := 0
-			var output []byte
-			for _, step := range steps {
-				if step.Run == "" {
-					continue
-				}
-				cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", step.Run)
-				cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "BUILD_MARKER="+marker)
-				for key, value := range step.Env {
-					if value == "${{ github.ref_name }}" {
-						value = version
-					}
-					cmd.Env = append(cmd.Env, key+"="+value)
-				}
-				var err error
-				output, err = cmd.CombinedOutput()
-				if err != nil {
-					var exit *exec.ExitError
-					if !errors.As(err, &exit) {
-						t.Fatal(err)
-					}
-					code = exit.ExitCode()
-					break
-				}
-			}
-			_, markerErr := os.Stat(marker)
 			valid := i < 5
+			// validate alone must accept or refuse the version without running Go.
+			code, output := run(t, validate, version)
+			_, markerErr := os.Stat(marker)
 			want := 2
 			if valid {
-				want = 97
+				want = 0
 			}
-			if code != want || (markerErr == nil) != valid {
-				t.Fatalf("exit=%d build=%t want exit=%d build=%t: %s", code, markerErr == nil, want, valid, output)
+			if code != want || markerErr == nil {
+				t.Fatalf("validate exit=%d build=%t want exit=%d build=false: %s", code, markerErr == nil, want, output)
 			}
-			if !valid && strings.Count(string(output), "\n") != 1 {
-				t.Fatalf("want one refusal line: %q", output)
+			if !valid {
+				if strings.Count(string(output), "\n") != 1 {
+					t.Fatalf("want one refusal line: %q", output)
+				}
+				return
 			}
-			t.Logf("version=%q valid=%t exit=%d build=%t", version, valid, code, markerErr == nil)
+			// release runs only after validate succeeds and must reach the Go build.
+			code, output = run(t, release, version)
+			if _, err := os.Stat(marker); code != 97 || err != nil {
+				t.Fatalf("release exit=%d build=%t want exit=97 build=true: %s", code, err == nil, output)
+			}
 		})
 	}
 }
