@@ -25,7 +25,7 @@ func TestMetamorphicVerificationSafety(t *testing.T) {
 		case "denied":
 			b[8] = 0
 		}
-		a := metamorphicActions(t, d.step(Event{Kind: Stream, Data: b}))
+		a := d.step(Event{Kind: Stream, Data: b})
 		for _, x := range a {
 			if x.Kind == Opened || x.Kind == ConnectLocal || x.Kind == Send {
 				t.Fatalf("%s acquired channel authority: %+v", bad, x)
@@ -67,7 +67,7 @@ func TestMetamorphicReceiveBoundaries(t *testing.T) {
 			before.actions = nil
 			before.decoder = Decoder{}
 			unknown := append(unhex(t, "feff0020"), bytes.Repeat([]byte{0xa5}, MaxData)...)
-			a := metamorphicActions(t, d.step(Event{Kind: Stream, Data: unknown}))
+			a := d.step(Event{Kind: Stream, Data: unknown})
 			after := *d.m
 			after.actions = nil
 			after.decoder = Decoder{}

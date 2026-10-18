@@ -74,16 +74,6 @@ func metamorphicDriver(t *testing.T, row metamorphicFixture, observers ...func(E
 	return d
 }
 
-// Retain every action field. Reserved receive bytes never become a local effect
-// or sender byte.
-func metamorphicActions(t *testing.T, in []Action) []Action {
-	t.Helper()
-	var out []Action
-	for _, a := range in {
-		out = append(out, a)
-	}
-	return out
-}
 func metamorphicMeaning(t *testing.T, row metamorphicFixture, wire []byte) any {
 	t.Helper()
 	f, err := Decode(wire, row.Phase)
@@ -249,7 +239,7 @@ func metamorphicRun(t *testing.T, row metamorphicFixture, wire, unknown []byte, 
 	var actions []Action
 	for _, part := range [][]byte{stream[:split], stream[split:]} {
 		if len(part) > 0 {
-			actions = append(actions, metamorphicActions(t, d.step(Event{Kind: Stream, Data: part}))...)
+			actions = append(actions, d.step(Event{Kind: Stream, Data: part})...)
 		}
 	}
 	return d, actions
