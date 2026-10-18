@@ -29,7 +29,7 @@ func TestEnvironmentBoundaries(t *testing.T) {
 		t.Run(fmt.Sprintf("%s/%d", tc.key, len(tc.value)), func(t *testing.T) {
 			if runtime.GOOS == "windows" && !utf8.ValidString(tc.value) {
 				// Windows stores environment values as UTF-16, replacing invalid UTF-8
-				// before run can read it. TestEmailCredentialValidation in internal/cloud
+				// before run can read it. TestCredentialFailureSetting in internal/cloud
 				// tests rejection of the original bytes directly on every platform.
 				t.Skip("Windows UTF-16 environment cannot represent invalid UTF-8; direct credential validation covers these bytes")
 			}
