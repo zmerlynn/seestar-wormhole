@@ -9,7 +9,7 @@ github.com/go-json-experiment/json/jsontext
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
-# github.com/pion/dtls/v3 v3.1.10 => github.com/zmerlynn/dtls/v3 v3.1.10-wormhole.1
+# github.com/pion/dtls/v3 v3.1.14
 ## explicit; go 1.24.0
 github.com/pion/dtls/v3
 github.com/pion/dtls/v3/internal/ciphersuite
@@ -68,4 +68,3 @@ golang.org/x/sys/windows
 # gopkg.in/yaml.v3 v3.0.1
 ## explicit
 gopkg.in/yaml.v3
-# github.com/pion/dtls/v3 => github.com/zmerlynn/dtls/v3 v3.1.10-wormhole.1

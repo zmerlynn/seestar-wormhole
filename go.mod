@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3
-	github.com/pion/dtls/v3 v3.1.10
+	github.com/pion/dtls/v3 v3.1.14
 	github.com/pion/logging v0.2.4
 	github.com/pion/transport/v5 v5.0.0
 	github.com/spf13/cobra v1.10.2
@@ -16,5 +16,3 @@ require (
 )
 
 require github.com/inconshreveable/mousetrap v1.1.0 // indirect
-
-replace github.com/pion/dtls/v3 => github.com/zmerlynn/dtls/v3 v3.1.10-wormhole.1
