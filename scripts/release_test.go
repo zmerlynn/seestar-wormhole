@@ -300,7 +300,7 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 				continue
 			}
 			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", step.Run)
-			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "BUILD_MARKER="+marker)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "BUILD_MARKER="+marker)
 			for key, value := range step.Env {
 				if value == "${{ github.ref_name }}" {
 					value = version
