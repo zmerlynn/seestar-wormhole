@@ -406,7 +406,7 @@ These are available separately on proxy and pull, subject to pull's mode rules.
 | Flag | Default | Meaning |
 |---|---|---|
 | `--serial` | Empty | Select an account device serial; required for multiple distinct catalog pairs. |
-| `--model` | Empty | Exact catalog model when a serial is ambiguous or completeness is unproven. |
+| `--model` | Empty | Exact catalog model; a supplied value must match the selected pair. |
 | `--state-dir` | Empty; memory only | Persist installation UUID at `<path>/InterProcessKV/device_uuid`. Explicit empty selects memory-only operation. |
 | `--log-format` | `json` | `json` or `text` stderr records, UTC millisecond timestamps. |
 | `--log-level` | `info` | `debug`, `info`, `warn`, or `error`. |
@@ -566,8 +566,8 @@ not disambiguate several pairs. Exact duplicate pairs retain the first record.
 List status does not determine availability; detail is authoritative.
 
 A serial shared by models requires an exact `--serial`/`--model` pair. With
-one matching entry in a complete catalog, its catalog model wins even if you
-supply `--model`. Unmatched serials or multiple pairs without a serial identify
+one matching entry in a complete catalog, a differing explicit `--model` fails
+with `model_mismatch`. Unmatched serials or multiple pairs without a serial identify
 `--serial` in diagnostics without exposing catalog labels or serials.
 
 The proxy requests 100 items per page (local policy), at most 16 pages and
@@ -620,6 +620,7 @@ selection masks serials. Dry-run debug plans intentionally include filenames;
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |
 | `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy or recovery after ready |
 | `cloud_retry` | WARN | Catalog transport retry and delay |
+| `device_selection_refused` | WARN | `rule=model_mismatch`; requested and catalog public model labels (unknown labels redacted) |
 | `release_not_attempted` | WARN | Release needs reauthentication |
 | `dtls_ready` | INFO | Negotiated version and suite |
 | `iotc_rid_history_exhausted` | ERROR | Process-lifetime rendezvous identifier reservation budget is full; fixed `error` includes restart guidance |

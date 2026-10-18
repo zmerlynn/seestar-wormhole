@@ -3,6 +3,7 @@ package cloudhttp
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math"
 	"net/url"
 	"strconv"
@@ -14,7 +15,7 @@ import (
 // SelectDevice resolves serial and model from the account catalog. With no
 // serial, exactly one pair must exist. Local client policy
 // requires a model to disambiguate multiple models for one serial. For a single
-// matching entry, preserve the existing catalog-supplied model behavior.
+// matching entry, an explicit model must agree with the catalog.
 func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, err error) {
 	finish := diagnostic.Operation(c.logger, "device_selection")
 	defer func() { finish(err) }()
@@ -39,6 +40,15 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 		if d.Serial == "" || d.Serial == v.Serial() {
 			matches = append(matches, v)
 		}
+	}
+	if len(matches) == 1 && d.Model != "" && d.Model != matches[0].Model() {
+		v := matches[0]
+		if c.logger != nil {
+			c.logger.WarnContext(ctx, "device_selection_refused", "rule", "model_mismatch", "requested_model", displayModel(d.Model), "catalog_model", displayModel(v.Model()))
+		}
+		// Keep this catalog refusal outside OptionError: startup discards its
+		// pending dependency logs for option-validation errors.
+		return Device{}, fmt.Errorf("model_mismatch: --model %q differs from catalog model %q: %w", d.Model, v.Model(), cloud.ErrConfig)
 	}
 	if len(matches) > 1 || (!complete && len(matches) == 1) {
 		if d.Model == "" {

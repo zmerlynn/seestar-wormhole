@@ -83,7 +83,7 @@ func TestCatalogPageSelection(t *testing.T) {
 	}{
 		{"duplicate blocks automatic selection", []string{pageA3, pageAB3}, Device{}, Device{}, "incomplete catalog"},
 		{"model cannot disambiguate", []string{pageA3, pageAB3}, Device{Model: "S50 Pro"}, Device{}, "multiple devices on account"},
-		{"explicit first still reads all pages", []string{pageA3, pageAB3}, Device{Serial: "private-a", Model: "S30"}, Device{"private-a", "S50 Pro"}, ""},
+		{"explicit first still reads all pages", []string{pageA3, pageAB3}, Device{Serial: "private-a", Model: "S50 Pro"}, Device{"private-a", "S50 Pro"}, ""},
 		{"explicit later", []string{pageA3, pageAB3}, Device{Serial: "private-b", Model: "S30"}, Device{"private-b", "S30"}, ""},
 		{"explicit absent", []string{pageA3, pageAB3}, Device{Serial: "private-missing", Model: "S30"}, Device{}, "--serial not found on account"},
 		{"unique exact total", []string{pageA1}, Device{}, Device{"private-a", "S50 Pro"}, ""},

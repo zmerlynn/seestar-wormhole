@@ -87,11 +87,11 @@ func TestDeviceSelection(t *testing.T) {
 		{name: "nullable empty list", body: `{"code":200,"msg":"ok","data":{"items":null,"total":0}}`, reason: "incomplete catalog", listed: true},
 		{name: "ambiguous", body: twoDevices, reason: "multiple devices on account", listed: true},
 		{name: "model alone cannot disambiguate", body: twoDevices, input: Device{Model: "S50 Pro"}, reason: "multiple devices on account", listed: true},
-		{name: "default ignores stale model", body: oneDevice, input: Device{Model: "S30"}, want: Device{"serial-sentinel-secret-1234", "S50 Pro"}, listed: true},
+		{name: "default matching model", body: oneDevice, input: Device{Model: "S50 Pro"}, want: Device{"serial-sentinel-secret-1234", "S50 Pro"}, listed: true},
 		{name: "serial model lookup", body: twoDevices, input: Device{Serial: "other-serial-sentinel-5678"}, want: Device{"other-serial-sentinel-5678", "S30"}, listed: true},
 		{name: "serial not found", body: oneDevice, input: Device{Serial: "absent-serial"}, reason: "--serial not found on account", listed: true},
 		{name: "serial empty account", body: emptyDevices, input: Device{Serial: "absent-serial"}, reason: "incomplete catalog", listed: true},
-		{name: "catalog replaces supplied model", body: oneDevice, input: Device{"serial-sentinel-secret-1234", "S30"}, want: Device{"serial-sentinel-secret-1234", "S50 Pro"}, listed: true},
+		{name: "catalog matches supplied model", body: oneDevice, input: Device{"serial-sentinel-secret-1234", "S50 Pro"}, want: Device{"serial-sentinel-secret-1234", "S50 Pro"}, listed: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {

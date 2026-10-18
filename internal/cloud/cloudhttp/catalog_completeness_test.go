@@ -130,15 +130,8 @@ func TestCatalogMissingExplicitPair(t *testing.T) {
 		f := &selectionCloud{bodies: []string{first}}
 		c := selectionClient(t, f, &logs, slog.LevelDebug)
 		got, err := c.SelectDevice(t.Context(), Device{"private-a", "S30"})
-		if first == pageA1 {
-			if err != nil || got != (Device{"private-a", "S50 Pro"}) {
-				t.Fatalf("complete unique selection=%v error=%v, want existing behavior", got, err)
-			}
-		} else {
-			assertCatalogModelRequired(t, got, err)
-			if !strings.Contains(err.Error(), "pair not found") {
-				t.Fatalf("error=%v, want missing pair", err)
-			}
+		if !errors.Is(err, cloud.ErrConfig) || got != (Device{}) || !strings.Contains(err.Error(), "model_mismatch") {
+			t.Fatalf("unique selection=%v error=%v, want model mismatch", got, err)
 		}
 		assertCatalogPageRequests(t, f, 1)
 	}

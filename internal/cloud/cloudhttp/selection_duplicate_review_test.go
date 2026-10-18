@@ -42,10 +42,12 @@ func TestCatalogDuplicateRequiresModel(t *testing.T) {
 					if tc.serial == "private-b" {
 						want = Device{"private-b", "S30"}
 					}
-					// Preserve the existing catalog model for a unique serial, even with
-					// a stale supplied model, when the total itself proves completeness.
-					if err != nil || got != want {
-						t.Fatalf("selection=%v error=%v, want existing explicit-model behavior", got, err)
+					if model != want.Model {
+						if err == nil || !strings.Contains(err.Error(), "--model") || got != (Device{}) {
+							t.Fatalf("mismatched model selection=%v error=%v", got, err)
+						}
+					} else if err != nil || got != want {
+						t.Fatalf("selection=%v error=%v, want received pair", got, err)
 					}
 				}
 				if !strings.Contains(logs.String(), `"duplicate_items":1`) {
