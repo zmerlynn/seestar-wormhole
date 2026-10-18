@@ -351,7 +351,7 @@ selection masks serials.
 | `dtls_credentials_refused` | WARN | NUL-containing credentials refused with an error; `rule=R024` |
 | `diagnostics_lost` | WARN | Rule and cumulative loss count for startup or stderr rules; stderr failure uses stdout |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
-| `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys |
+| `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
 | `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions; direct/relay and UDP/TCP path |
 | `cloud_catalog_pagination_oddities`, `cloud_receive_oddity`, `cloud_response_rejected` | DEBUG | Bounded cloud parsing/catalog diagnostics |
@@ -478,6 +478,7 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `local_queue_capacity` | 1 | The tunnel send queue is full. |
 | `reason` | `local_write_failed` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `login_rejected` | 1 | Login rejected. |
+| `reason` | `loopback_unavailable` | 1 | The startup TCP-state check could not establish its loopback connection; check local networking. |
 | `reason` | `multiple device logins` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `no_space` | 1 | No space. |
 | `reason` | `none` | 0 | No primary failure. |
@@ -541,6 +542,9 @@ the phone's actual LAN broadcasts for discovery. See [always-on hosts](always-on
 
 TCP forwarding requires Windows 10 version 1703 or later, or Windows Server
 2016 or later, for non-consuming reset detection (`SIO_TCP_INFO`).
+Before opening forwarding listeners, the proxy queries a connected loopback TCP
+pair and refuses startup with exit 1 and a final ERROR if the query fails,
+returns a short result, or loopback setup is unavailable.
 
 Image copying uses
 [rclone through the SMB listener](copying.md#windows).
