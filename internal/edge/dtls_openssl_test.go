@@ -9,6 +9,7 @@ import (
 	"net"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,11 @@ func TestDTLSOpenSSL(t *testing.T) {
 	if _, e := exec.LookPath("openssl"); e != nil {
 		t.Fatal("OpenSSL is required for independent DTLS interop")
 	}
+	version, e := exec.Command("openssl", "version").CombinedOutput()
+	if e != nil {
+		t.Fatalf("OpenSSL version: %v: %s", e, version)
+	}
+	t.Logf("%s", version)
 	for _, tc := range []struct {
 		name, ciphers string
 		suite         uint16
@@ -36,7 +42,9 @@ func TestDTLSOpenSSL(t *testing.T) {
 			addr := reservation.LocalAddr().String()
 			reservation.Close()
 			key := sha256.Sum256([]byte("password"))
-			cmd := exec.CommandContext(ctx, "openssl", "s_server", "-accept", addr, "-dtls1_2", "-nocert", "-psk", hex.EncodeToString(key[:]), "-psk_identity", "test", "-cipher", tc.ciphers, "-quiet", "-no_ticket")
+			// Use OpenSSL's explicit DTLS cookie listener before its interactive
+			// application loop. Both suites must still complete and exchange records.
+			cmd := exec.CommandContext(ctx, "openssl", "s_server", "-accept", addr, "-dtls1_2", "-listen", "-nocert", "-psk", hex.EncodeToString(key[:]), "-psk_identity", "test", "-cipher", tc.ciphers, "-quiet", "-state", "-no_ticket")
 			stdin, e := cmd.StdinPipe()
 			if e != nil {
 				t.Fatal(e)
@@ -50,7 +58,13 @@ func TestDTLSOpenSSL(t *testing.T) {
 			if e = cmd.Start(); e != nil {
 				t.Fatal(e)
 			}
-			defer func() { cancel(); cmd.Wait() }()
+			defer func() {
+				cancel()
+				err := cmd.Wait()
+				if t.Failed() {
+					t.Logf("OpenSSL exit: %v; stderr: %s", err, &stderr)
+				}
+			}()
 			udp, e := net.ListenPacket("udp4", "127.0.0.1:0")
 			if e != nil {
 				t.Fatal(e)
@@ -60,6 +74,7 @@ func TestDTLSOpenSSL(t *testing.T) {
 				t.Fatal(e)
 			}
 			p := packetPath(t, 1388)
+			var sent, received atomic.Uint32
 			var wg sync.WaitGroup
 			wg.Add(2)
 			go func() {
@@ -72,6 +87,7 @@ func TestDTLSOpenSSL(t *testing.T) {
 						if _, e := udp.WriteTo(d, remote); e != nil {
 							return
 						}
+						sent.Add(1)
 					}
 				}
 			}()
@@ -83,6 +99,7 @@ func TestDTLSOpenSSL(t *testing.T) {
 					if e != nil {
 						return
 					}
+					received.Add(1)
 					if p.Deliver(1, b[:n]) != nil {
 						return
 					}
@@ -91,7 +108,7 @@ func TestDTLSOpenSSL(t *testing.T) {
 			defer func() { cancel(); udp.Close(); p.Close(); wg.Wait() }()
 			c, e := DialDTLS(ctx, p, []byte("test"), []byte("password"))
 			if e != nil {
-				t.Fatalf("OpenSSL handshake: %v", e)
+				t.Fatalf("OpenSSL handshake: %v (UDP datagrams sent=%d received=%d)", e, sent.Load(), received.Load())
 			}
 			defer c.Close()
 			if c.Profile() != (profile.Profile{Version: 0xfefd, Suite: tc.suite}) {
