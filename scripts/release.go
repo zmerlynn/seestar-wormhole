@@ -1,4 +1,4 @@
-//go:build ignore
+//go:build release
 
 // Release builds and deterministic archives using only Go's standard library.
 // Invoke through release.sh from any directory.
