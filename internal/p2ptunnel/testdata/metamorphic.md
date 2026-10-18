@@ -18,8 +18,8 @@ ignored signed result/direct/reserved bytes and suffix. Complete short PASS stay
 short because length selects capability semantics. Unknown established records
 precede known frames and are skipped by bounded length; unknown login is rejected.
 Each split-read test compares all actions and retained machine state, excluding
-consumed decoder scratch, separately checked diagnostics and repeated scheduling
-of the same timer deadline. Sender catalog goldens are independent and unchanged.
+consumed decoder scratch and repeated scheduling of the same timer deadline.
+Sender catalog goldens are independent and unchanged.
 
 No tolerance is inferred for END/PAUSE/RESUME/WAKE or fixed verification-body
 suffixes. Receive padding, service tails and validity have explicit tolerance

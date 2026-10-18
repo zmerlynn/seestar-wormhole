@@ -37,7 +37,7 @@ remain opaque DTLS payloads at the IOTC boundary.
 
 Tolerances are limited to explicitly opaque fields, sockaddr family/padding,
 master unknown-unit extents and suffix, knock consumed prefixes, relay-alive and
-hello suffixes, alert minimum-length suffix/diagnostic trigger, and the masked
+hello suffixes, alert minimum-length suffix/trigger, and the masked
 upper datatype bits. No fixed-size modern control receives an invented extension.
 Type 5 has no admitted client machine operation; record2 types are not negotiated.
 
