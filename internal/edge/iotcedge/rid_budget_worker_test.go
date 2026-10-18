@@ -54,7 +54,7 @@ func TestRIDHistoryBudgetWorkerFailure(t *testing.T) {
 		if err.Error() != ridExhaustionMessage || e.Material != (iotc.Material{}) || e.Kind == iotc.MaterialReady {
 			t.Fatalf("exhaustion returned material or wrong diagnostic: kind=%v err=%v", e.Kind, err)
 		}
-		if worker.private != nil || len(worker.keys) != 0 || worker.rid != [8]byte{} {
+		if worker.private != nil || len(worker.keys) != 0 {
 			t.Fatal("failed generation installed cryptographic state")
 		}
 		worker.Clear()

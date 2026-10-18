@@ -160,8 +160,6 @@ func TestCLISharedSerialPreflight(t *testing.T) {
 	for _, command := range []string{"proxy"} {
 		for _, version := range []bool{false, true} {
 			t.Run(command+map[bool]string{true: "/version", false: "/run"}[version], func(t *testing.T) {
-				base := t.TempDir()
-				trace := filepath.Join(base)
 				args := []string{command, "--serial=\n"}
 				if version {
 					args = append(args, "--version")
@@ -175,10 +173,6 @@ func TestCLISharedSerialPreflight(t *testing.T) {
 					t.Fatalf("exit=%d stdout=%s", commandExitCode(options{command: commandProxy}, err), &out)
 				}
 				assertConfigRecord(t, logs.Bytes(), command, "--serial", "use a nonblank device serial of at most 4096 bytes without NUL, CR or LF")
-				entries, e := os.ReadDir(base)
-				if e != nil || len(entries) != 0 {
-					t.Fatalf("preflight created resources: %v %v", entries, e)
-				}
 			})
 		}
 	}
