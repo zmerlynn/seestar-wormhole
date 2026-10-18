@@ -5,10 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
-	"io"
 	"net"
 	"os"
 	"strconv"
@@ -80,44 +76,4 @@ func (w *cancelOnLogWrite) Write(p []byte) (int, error) {
 		w.cancel()
 	}
 	return n, e
-}
-func TestKeylogAttribution(t *testing.T) {
-	setValidCommandEnvironment(t)
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	logs := &cancelOnLogWrite{cancel: cancel}
-	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--idle=2m", "--bind=127.0.0.1", "--port", availableCommandPort(t) + ":445", "--keylog=/nonexistent/PRIVATE_KEYLOG_PATH"}...), io.Discard, logs, keylog.Open, idleCommandFixture)
-	logs.mu.Lock()
-	data := append([]byte(nil), logs.b.Bytes()...)
-	logs.mu.Unlock()
-	t.Logf("return=%v log=%s", err, data)
-	dec := jsontext.NewDecoder(bytes.NewReader(data))
-	seen := false
-	for {
-		var r map[string]any
-		e := json.UnmarshalDecode(dec, &r, json.MatchCaseInsensitiveNames(true))
-		if e == io.EOF {
-			break
-		}
-		if e != nil {
-			t.Fatal(e)
-		}
-		if r["msg"] == "keylog_failed" {
-			seen = true
-			if r["option"] != "--keylog" || r["rule"] == nil {
-				t.Errorf("startup keylog failure lacks option/rule: %v", r)
-			}
-		}
-	}
-	if !seen {
-		t.Error("best-effort creation failure lost warning")
-	}
-	if !bytes.Contains(data, []byte("proxy_started")) {
-		t.Error("best-effort failure rejected previously accepted startup")
-	}
-	if bytes.Contains(data, []byte("PRIVATE_KEYLOG_PATH")) {
-		t.Error("keylog path leaked")
-	}
-	assertNoSensitiveErrorDetails(t, err, "PRIVATE_KEYLOG_PATH")
 }

@@ -10,7 +10,6 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"github.com/go-json-experiment/json"
 	"io"
 	"math/big"
@@ -127,22 +126,19 @@ func TestCatalogBoundary(t *testing.T) {
 				wantOption, wantRule = "--model", "serial is ambiguous; name --model to select a catalog pair"
 			}
 
-			for _, capture := range []bool{false, true} {
+			{
 				for _, format := range []string{"json", "text"} {
-					t.Run(fmt.Sprintf("%s/capture=%t", format, capture), func(t *testing.T) {
+					t.Run(format, func(t *testing.T) {
 						var out, logs bytes.Buffer
 						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 						defer cancel()
 						args := []string{"--idle=2m", "--bind=127.0.0.1", "--port", availableCommandPort(t) + ":445", "--log-format", format, "--log-level=debug", "--serial", tc.serial}
-						if capture {
-							args = append(args, "--keylog=/nonexistent/PRIVATE_KEYLOG_PATH")
-						}
 						err := run(ctx, append([]string{"proxy"}, args...), &out, &logs)
 						t.Logf("error=%v stdout=%q log=%s", err, out.String(), &logs)
 						if !errors.Is(err, cloud.ErrConfig) {
 							t.Fatalf("want config error, got %v", err)
 						}
-						assertNoSensitiveErrorDetails(t, err, "PRIVATE_WRONG_SERIAL", "PRIVATE_KEYLOG_PATH", "SYNTHETIC_TOKEN", "SYNTHETIC_SOURCE")
+						assertNoSensitiveErrorDetails(t, err, "PRIVATE_WRONG_SERIAL", "SYNTHETIC_TOKEN", "SYNTHETIC_SOURCE")
 						var detail *diagnostic.OptionError
 						if !errors.As(err, &detail) || detail.Option != wantOption || detail.Rule != wantRule {
 							t.Errorf("catalog-dependent configuration failure lacks option/rule: %v", err)

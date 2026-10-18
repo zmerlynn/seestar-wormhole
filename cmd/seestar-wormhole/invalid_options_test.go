@@ -43,7 +43,7 @@ func TestInvalidOptions(t *testing.T) {
 	for _, name := range []string{"lan-discovery", "version"} {
 		tests = append(tests, test{name + "bool", "--" + name, "use a boolean value", []string{"--" + name + "=PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}})
 	}
-	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "keylog", "trace", "serial", "state-dir"} {
+	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "trace", "serial", "state-dir"} {
 		for _, prefix := range []string{"--"} {
 			tests = append(tests, test{prefix + name + "missing", "--" + name, "requires a value", []string{prefix + name}, nil})
 		}

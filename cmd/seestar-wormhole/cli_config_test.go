@@ -6,7 +6,6 @@ import (
 	"errors"
 	"github.com/go-json-experiment/json"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -17,7 +16,6 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
@@ -27,7 +25,7 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 	lines := bytes.Split(bytes.TrimSpace(logs), []byte("\n"))
 	for _, line := range lines[:len(lines)-1] {
 		var warning map[string]any
-		if err := json.Unmarshal(line, &warning); err != nil || warning["level"] != "WARN" || (warning["rule"] != "startup_diagnostics_lost" && warning["rule"] != "keylog_loss") {
+		if err := json.Unmarshal(line, &warning); err != nil || warning["level"] != "WARN" || (warning["rule"] != "startup_diagnostics_lost") {
 			t.Fatalf("unexpected startup diagnostic: %s", line)
 		}
 	}
@@ -51,16 +49,13 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 func TestCLIConfigAttribution(t *testing.T) {
 	for _, command := range []string{"proxy"} {
 		for _, format := range []string{"text", "json"} {
-			for _, capture := range []string{"none", "open-failure", "worker-failure"} {
+			{
 				for _, problem := range []string{"email", "password", "state", "selection", "trace"} {
-					t.Run(command+"/"+format+"/"+capture+"/"+problem, func(t *testing.T) {
+					t.Run(command+"/"+format+"/"+problem, func(t *testing.T) {
 						synctest.Test(t, func(t *testing.T) {
 							t.Setenv("SEESTAR_EMAIL", "test@example.invalid")
 							t.Setenv("SEESTAR_PASSWORD", "PRIVATE_PASSWORD")
 							args := []string{command, "--log-format=" + format, "--log-level=debug"}
-							if capture != "none" {
-								args = append(args, "--keylog=PRIVATE_KEYLOG_PATH")
-							}
 							option, rule := "SEESTAR_EMAIL", "use a valid UTF-8 email of at most 4096 bytes matching the supported account format"
 							switch problem {
 							case "email":
@@ -82,18 +77,6 @@ func TestCLIConfigAttribution(t *testing.T) {
 								option, rule = "--trace", "use a new writable trace file"
 							}
 							var out, logs bytes.Buffer
-							open := keylog.Open
-							if capture == "open-failure" {
-								open = func(string, *slog.Logger) (*keylog.Writer, error) { return nil, errors.New("PRIVATE_KEYLOG_PATH") }
-							}
-							if capture == "worker-failure" {
-								open = func(_ string, logger *slog.Logger) (*keylog.Writer, error) {
-									keys := keylog.New(failedStartupKeys{}, logger)
-									keys.Write([]byte("PRIVATE_PAYLOAD\n"))
-									synctest.Wait()
-									return keys, nil
-								}
-							}
 							factory := func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
 								if problem == "selection" {
 									// A preliminary dependency record must not survive a typed refusal.
@@ -104,12 +87,12 @@ func TestCLIConfigAttribution(t *testing.T) {
 							}
 							// Ephemeral loopback listeners avoid collisions and never reach a device:
 							// each real construction fails local credential/state validation.
-							err := runWithListener(t.Context(), args, &out, &logs, open, factory, func(_, _ string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") })
+							err := runWithListener(t.Context(), args, &out, &logs, factory, func(_, _ string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") })
 							if got := commandExitCode(options{command: commandProxy}, err); got != 2 {
 								t.Fatalf("exit=%d want=2 err=%v logs=%s", got, err, &logs)
 							}
 							assertConfigRecord(t, logs.Bytes(), command, option, rule)
-							assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_STATE_PATH", "PRIVATE_KEYLOG_PATH", "PRIVATE_PAYLOAD")
+							assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_STATE_PATH", "PRIVATE_PAYLOAD")
 							if out.Len() != 0 {
 								t.Fatalf("proxy stdout=%s", &out)
 							}
@@ -182,12 +165,12 @@ func TestCLISharedSerialPreflight(t *testing.T) {
 			t.Run(command+map[bool]string{true: "/version", false: "/run"}[version], func(t *testing.T) {
 				base := t.TempDir()
 				trace := filepath.Join(base, "trace")
-				args := []string{command, "--serial=\n", "--trace=" + trace, "--keylog=" + filepath.Join(base, "keys")}
+				args := []string{command, "--serial=\n", "--trace=" + trace + filepath.Join(base, "keys")}
 				if version {
 					args = append(args, "--version")
 				}
 				var out, logs bytes.Buffer
-				err := runWithSession(t.Context(), args, &out, &logs, func(string, *slog.Logger) (*keylog.Writer, error) { t.Fatal("preflight opened keys"); return nil, nil }, func(context.Context, proxy.Config) (commandSession, error) {
+				err := runWithSession(t.Context(), args, &out, &logs, func(context.Context, proxy.Config) (commandSession, error) {
 					t.Fatal("preflight opened session")
 					return nil, nil
 				})

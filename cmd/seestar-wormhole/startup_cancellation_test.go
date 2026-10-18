@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"io"
 	"strings"
@@ -20,7 +19,7 @@ func TestStartupOperatorCancelFinalRecord(t *testing.T) {
 		<-c.Done()
 		return nil, c.Err()
 	}
-	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--bind", "127.0.0.1", "--port", "14779:445"}...), io.Discard, &logs, keylog.Open, newSession)
+	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--bind", "127.0.0.1", "--port", "14779:445"}...), io.Discard, &logs, newSession)
 	if err != nil && !errors.Is(err, context.Canceled) {
 		t.Errorf("unexpected result=%v", err)
 	}

@@ -8,19 +8,16 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"io"
-	"log/slog"
 	"net"
 	"os"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 )
 
 func TestBareInvocationHelp(t *testing.T) {
 	var out, logs bytes.Buffer
-	err := runWithListener(context.Background(), nil, &out, &logs, keylog.Open, idleCommandFixture, func(string, string) (net.Listener, error) {
+	err := runWithListener(context.Background(), nil, &out, &logs, idleCommandFixture, func(string, string) (net.Listener, error) {
 		t.Error("bare invocation opened a listener")
 		return nil, errors.New("unexpected listener")
 	})
@@ -46,7 +43,7 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {
 		t.Fatal("root version or flag scope changed")
 	}
-	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "stats-interval", "log-format", "log-level", "trace", "keylog", "lan-discovery"} {
+	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "stats-interval", "log-format", "log-level", "trace", "lan-discovery"} {
 		if root.Flags().Lookup(name) != nil || root.PersistentFlags().Lookup(name) != nil || commands[1].Flags().Lookup(name) == nil {
 			t.Errorf("%s must be proxy-local", name)
 		}
@@ -67,10 +64,7 @@ func TestShellRefusalsWithoutResources(t *testing.T) {
 	} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var out, logs bytes.Buffer
-			err := runWithListener(context.Background(), args, &out, &logs, func(string, *slog.Logger) (*keylog.Writer, error) {
-				t.Fatal("invalid invocation opened keys")
-				return nil, nil
-			}, func(context.Context, proxy.Config) (commandSession, error) {
+			err := runWithListener(context.Background(), args, &out, &logs, func(context.Context, proxy.Config) (commandSession, error) {
 				t.Fatal("invalid invocation created a session")
 				return nil, nil
 			}, func(string, string) (net.Listener, error) {
@@ -99,7 +93,7 @@ func TestWindowsPreflightOrdering(t *testing.T) {
 	unsupported := func() error { return errors.New("unsupported platform") }
 	for _, args := range [][]string{
 		{"proxy", "--lan-discovery"},
-		{"proxy", "--lan-discovery", "--bind=0.0.0.0", "--trace=PRIVATE_CAPTURE", "--keylog=PRIVATE_CAPTURE"},
+		{"proxy", "--lan-discovery", "--bind=0.0.0.0", "--trace=PRIVATE_CAPTURE"},
 		{"proxy", "--version", "--lan-discovery", "--bind=0.0.0.0"},
 	} {
 		var out, logs bytes.Buffer

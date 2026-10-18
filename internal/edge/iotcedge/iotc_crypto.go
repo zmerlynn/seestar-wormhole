@@ -18,7 +18,6 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/edge"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 )
 
 // ErrIOTCCrypto is sanitized; crypto errors must never expose connection material.
@@ -102,9 +101,6 @@ type iotcKey struct {
 // IOTCCrypto belongs to one attempt's serialized effect worker, never shared
 // across retries. Its 64-key lifetime cap bounds malicious metadata churn.
 type IOTCCrypto struct {
-	// KeyLog optionally enqueues each new pair without affecting the session.
-	KeyLog  *keylog.Writer
-	rid     [8]byte
 	private *ecdh.PrivateKey
 	keys    map[iotc.KeyRef]iotcKey
 	next    iotc.KeyRef
@@ -174,10 +170,6 @@ func (c *IOTCCrypto) Execute(a iotc.Action) (iotc.Event, error) {
 		copy(m.Public[:], der)
 		m.PrivateRef = 1
 		m.MasterRef, err = c.install(m.MasterKey[:], m.MasterIV)
-		c.rid = m.RID
-		if err == nil {
-			_ = c.KeyLog.Rendezvous(a.Attempt, c.rid, uint64(m.MasterRef), m.MasterKey[:], m.MasterIV)
-		}
 		e.Kind = iotc.MaterialReady
 		e.Material = m
 		return e, err
@@ -205,9 +197,6 @@ func (c *IOTCCrypto) Execute(a iotc.Action) (iotc.Event, error) {
 			return e, ErrIOTCCrypto
 		}
 		e.Key, err = c.install(secret[:16], e.IV)
-		if err == nil {
-			_ = c.KeyLog.Rendezvous(a.Attempt, c.rid, uint64(e.Key), secret[:16], e.IV)
-		}
 		clear(secret)
 		e.Kind = iotc.Derived
 		return e, err

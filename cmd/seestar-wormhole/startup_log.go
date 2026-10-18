@@ -1,85 +1,10 @@
 package main
 
 import (
-	"context"
 	"io"
-	"log/slog"
 	"sync"
 	"time"
 )
-
-// startupKeylogHandler holds the keylog worker's latest startup warning and
-// counts any replaced or suppressed records. General dependency output uses
-// the byte-bounded startupLogOutput instead.
-type startupKeylogHandler struct {
-	slog.Handler
-	// mu protects resolution and the single pending record; output happens unlocked.
-	mu                 sync.Mutex
-	resolved, accepted bool
-	pending            *slog.Record
-	lost               uint64
-	err                error
-}
-
-func (h *startupKeylogHandler) Handle(ctx context.Context, r slog.Record) error {
-	h.mu.Lock()
-	if !h.resolved {
-		if h.pending != nil {
-			h.lost++
-			h.err = io.ErrShortWrite
-		}
-		record := r.Clone()
-		h.pending = &record
-		err := h.err
-		h.mu.Unlock()
-		return err
-	}
-	accepted := h.accepted
-	if !accepted {
-		h.lost++
-		h.err = io.ErrClosedPipe
-	}
-	h.mu.Unlock()
-	if accepted {
-		err := h.Handler.Handle(ctx, r)
-		if err != nil {
-			h.mu.Lock()
-			h.lost++
-			h.err = io.ErrShortWrite
-			h.mu.Unlock()
-		}
-		return err
-	}
-	return io.ErrClosedPipe
-}
-
-func (h *startupKeylogHandler) resolve(accepted bool) error {
-	h.mu.Lock()
-	if h.resolved {
-		err := h.err
-		h.mu.Unlock()
-		return err
-	}
-	h.resolved, h.accepted = true, accepted
-	pending := h.pending
-	h.pending = nil
-	h.mu.Unlock()
-	var err error
-	if pending != nil {
-		if accepted {
-			err = h.Handler.Handle(context.Background(), *pending)
-		} else {
-			err = io.ErrClosedPipe
-		}
-	}
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	if err != nil {
-		h.lost++
-		h.err = io.ErrShortWrite
-	}
-	return h.err
-}
 
 // startupLogOutput holds dependency output through the final configuration
 // decision. Encoding remains owned by slog, and storage is capped even while

@@ -23,14 +23,14 @@ func TestAttackRuntimeOptions(t *testing.T) {
 		{"trace path", "--trace", "use a new writable trace file", "PATH_PRIVATE_MARKER", []string{"--trace", "/nonexistent/PATH_PRIVATE_MARKER/trace"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			for _, suffix := range [][]string{nil, {"--log-format=text", "--log-level=debug", "--keylog=/nonexistent/PRIVATE_KEYLOG_PATH"}} {
+			for _, suffix := range [][]string{nil, {"--log-format=text", "--log-level=debug"}} {
 				var out, logs bytes.Buffer
 				args := append(append([]string(nil), tc.args...), suffix...)
 				err := run(context.Background(), append([]string{"proxy"}, args...), &out, &logs)
 				if err == nil {
 					t.Fatal("invalid runtime configuration accepted")
 				}
-				assertStartupOptionFailure(t, err, &out, &logs, tc.option, tc.rule, tc.secret, "12347", "13459", "PRIVATE_KEYLOG_PATH")
+				assertStartupOptionFailure(t, err, &out, &logs, tc.option, tc.rule, tc.secret, "12347", "13459")
 			}
 		})
 	}
@@ -45,11 +45,11 @@ func TestAttackStateDirectoryReturnedError(t *testing.T) {
 	t.Setenv("SEESTAR_PASSWORD", "PRIVATE_PASSWORD")
 
 	var out, logs bytes.Buffer
-	err := run(context.Background(), append([]string{"proxy"}, []string{"--state-dir", privatePath, "--port=14387:445", "--log-format=text", "--log-level=debug", "--keylog=/nonexistent/PRIVATE_KEYLOG_PATH"}...), &out, &logs)
+	err := run(context.Background(), append([]string{"proxy"}, []string{"--state-dir", privatePath, "--port=14387:445", "--log-format=text", "--log-level=debug"}...), &out, &logs)
 	if err == nil {
 		t.Fatal("invalid credential state directory accepted")
 	}
-	assertStartupOptionFailure(t, err, &out, &logs, "--state-dir", "use a private writable state directory and installation identity file", privatePath, "PRIVATE_PASSWORD", "PRIVATE_KEYLOG_PATH", "14387", "file blocks directory")
+	assertStartupOptionFailure(t, err, &out, &logs, "--state-dir", "use a private writable state directory and installation identity file", privatePath, "PRIVATE_PASSWORD", "14387", "file blocks directory")
 	if !errors.Is(err, cloud.ErrConfig) {
 		t.Fatal("state failure lost ErrConfig")
 	}
@@ -61,7 +61,7 @@ func assertStartupOptionFailure(t *testing.T, err error, out, logs *bytes.Buffer
 	lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
 	for _, line := range lines[:len(lines)-1] {
 		var warning map[string]any
-		if e := json.Unmarshal(line, &warning); e != nil || warning["level"] != "WARN" || (warning["rule"] != "startup_diagnostics_lost" && warning["rule"] != "keylog_loss") {
+		if e := json.Unmarshal(line, &warning); e != nil || warning["level"] != "WARN" || (warning["rule"] != "startup_diagnostics_lost") {
 			t.Fatalf("unexpected startup diagnostic: %s", line)
 		}
 	}

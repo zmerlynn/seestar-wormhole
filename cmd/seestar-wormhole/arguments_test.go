@@ -51,7 +51,7 @@ func TestArgumentRulesAndRedaction(t *testing.T) {
 		{"level", "--log-level", "choose debug, info, warn or error", []string{"--log-level", "secret-level"}, []string{"secret-level"}},
 		{"discovery bind", "--bind", "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0", []string{"--lan-discovery", "--bind", "private-host"}, []string{"private-host"}},
 		{"boolean", "--lan-discovery", "use a boolean value", []string{"--lan-discovery=secret-boolean"}, []string{"secret-boolean"}},
-		{"missing value", "--keylog", "requires a value", []string{"--keylog"}, nil},
+		{"missing value", "--serial", "requires a value", []string{"--serial"}, nil},
 		{"unknown option", "arguments", "use only supported options", []string{"--private-secret=/private/path"}, []string{"private-secret", "/private/path"}},
 		{"positional", "arguments", "positional arguments are not allowed", []string{"private-password"}, []string{"private-password"}},
 	} {
@@ -95,7 +95,7 @@ func TestArgumentHelpAndMissingValues(t *testing.T) {
 			t.Fatalf("%s: want clean help, got err=%v output=%q logs=%q", help, err, out.String(), logs.String())
 		}
 	}
-	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "keylog", "trace", "serial", "state-dir"} {
+	for _, name := range []string{"bind", "port", "idle", "stats-interval", "pause-threshold", "log-format", "log-level", "trace", "serial", "state-dir"} {
 		var logs bytes.Buffer
 		err := run(context.Background(), append([]string{"proxy"}, []string{"--" + name}...), io.Discard, &logs)
 		if err == nil || !strings.Contains(logs.String(), `"option":"--`+name+`"`) || !strings.Contains(logs.String(), `"rule":"requires a value"`) {

@@ -13,7 +13,6 @@ import (
 
 	"github.com/go-json-experiment/json"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
@@ -106,7 +105,7 @@ func TestProxyFinalFailureRecord(t *testing.T) {
 					}
 					return l, nil
 				}
-				err := runWithListener(t.Context(), args, io.Discard, &logs, keylog.Open, factory, listen)
+				err := runWithListener(t.Context(), args, io.Discard, &logs, factory, listen)
 				if got := commandExitCode(options{command: commandProxy}, err); got != wantCode {
 					t.Fatalf("exit=%d want %d: %v", got, wantCode, err)
 				}

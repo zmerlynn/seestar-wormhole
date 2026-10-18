@@ -35,7 +35,7 @@ func TestEnvironmentBoundaries(t *testing.T) {
 				t.Setenv(tc.key, tc.value)
 			}
 			var out, logs bytes.Buffer
-			args := []string{"--idle=2m", "--bind=0.0.0.0", "--port", availableCommandPort(t) + ":13459", "--log-format=text", "--log-level=debug", "--keylog=/nonexistent/PRIVATE_KEYLOG_PATH"}
+			args := []string{"--idle=2m", "--bind=0.0.0.0", "--port", availableCommandPort(t) + ":13459", "--log-format=text", "--log-level=debug"}
 			if tc.key == "--serial" {
 				args = append(args, "--serial", tc.value)
 			}

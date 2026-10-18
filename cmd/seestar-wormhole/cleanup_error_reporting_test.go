@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"io"
@@ -34,7 +33,7 @@ func TestCommandPrimaryIsNotCleanupFailure(t *testing.T) {
 		cancel()
 		return s, nil
 	}
-	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--bind", "127.0.0.1", "--port", "14778:445"}...), io.Discard, &logs, keylog.Open, newSession)
+	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--bind", "127.0.0.1", "--port", "14778:445"}...), io.Discard, &logs, newSession)
 	if p, r := diagnostic.Fields(err, ""); p != "rdt" || r != "timeout" {
 		t.Errorf("primary outcome=%s/%s", p, r)
 	}
@@ -63,7 +62,7 @@ func TestCommandPrimaryAndStopFailureAreReported(t *testing.T) {
 		cancel()
 		return s, nil
 	}
-	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--bind", "127.0.0.1", "--port", "14778:445"}...), io.Discard, &logs, keylog.Open, newSession)
+	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--bind", "127.0.0.1", "--port", "14778:445"}...), io.Discard, &logs, newSession)
 	if p, r := diagnostic.Fields(err, ""); p != "rdt" || r != "timeout" || !errors.Is(err, session.ErrStop) {
 		t.Errorf("final owner outcome=%s/%s (%v), want retained primary and failed stop", p, r, err)
 	}

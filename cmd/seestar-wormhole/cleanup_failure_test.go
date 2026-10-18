@@ -14,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
@@ -121,7 +120,7 @@ func TestEarlyDiscoveryFailureRetainsFinalCleanup(t *testing.T) {
 			}()
 			return s, nil
 		}
-		err := runWithSession(context.Background(), append([]string{"proxy"}, []string{"--bind", "0.0.0.0", "--port", "14773:445", "--lan-discovery"}...), io.Discard, &logs, keylog.Open, newSession)
+		err := runWithSession(context.Background(), append([]string{"proxy"}, []string{"--bind", "0.0.0.0", "--port", "14773:445", "--lan-discovery"}...), io.Discard, &logs, newSession)
 		if s == nil {
 			t.Fatalf("session fixture was not constructed: %v", err)
 		}
@@ -184,7 +183,7 @@ func TestCommandExitJoinsCleanupOnce(t *testing.T) {
 				if mode == "discovery" {
 					args = append(args, "--lan-discovery")
 				}
-				err := runWithSession(ctx, append([]string{"proxy"}, args...), io.Discard, &logs, keylog.Open, newSession)
+				err := runWithSession(ctx, append([]string{"proxy"}, args...), io.Discard, &logs, newSession)
 				if s == nil {
 					t.Fatalf("session fixture was not constructed: %v", err)
 				}

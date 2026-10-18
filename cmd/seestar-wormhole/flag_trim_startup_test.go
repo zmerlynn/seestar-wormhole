@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
@@ -31,7 +30,7 @@ func TestNewOptionStartupWiring(t *testing.T) {
 		}
 		return idleCommandFixture(ctx, cfg)
 	}
-	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--serial", "PRIVATE_SERIAL_SENTINEL", "--state-dir", "PRIVATE_PATH_SENTINEL", "--idle=2m"}...), io.Discard, logs, keylog.Open, newSession)
+	err := runWithSession(ctx, append([]string{"proxy"}, []string{"--serial", "PRIVATE_SERIAL_SENTINEL", "--state-dir", "PRIVATE_PATH_SENTINEL", "--idle=2m"}...), io.Discard, logs, newSession)
 	if err != nil || !called {
 		t.Fatalf("startup err=%v called=%v", err, called)
 	}
@@ -68,7 +67,7 @@ func TestLANHTTPStartupWarning(t *testing.T) {
 			return &discoveryCommandFixture{&idleCommandSession{done: make(chan struct{})}, d}, nil
 		}
 		args := append([]string{"--bind=0.0.0.0", "--lan-discovery", "--idle=2m"}, tc.args...)
-		err := runWithSession(ctx, append([]string{"proxy"}, args...), io.Discard, logs, keylog.Open, newSession)
+		err := runWithSession(ctx, append([]string{"proxy"}, args...), io.Discard, logs, newSession)
 		cancel()
 		if err != nil {
 			t.Fatal(err)

@@ -13,7 +13,6 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
@@ -104,8 +103,7 @@ func TestSiteCLIToFakeDevice(t *testing.T) {
 				var logs bytes.Buffer
 				done := make(chan error, 1)
 				go func() {
-					done <- runWithListener(ctx, args, io.Discard, &logs, keylog.Open,
-						func(context.Context, proxy.Config) (commandSession, error) { ready <- listeners; return s, nil },
+					done <- runWithListener(ctx, args, io.Discard, &logs, func(context.Context, proxy.Config) (commandSession, error) { ready <- listeners; return s, nil },
 						func(_, address string) (net.Listener, error) {
 							_, port, err := net.SplitHostPort(address)
 							if err != nil {

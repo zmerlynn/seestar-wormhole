@@ -11,7 +11,6 @@ import (
 	"github.com/pion/dtls/v3/pkg/crypto/elliptic"
 	"github.com/pion/logging"
 	profile "github.com/zmerlynn/seestar-wormhole/internal/dtls"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 )
 
 // ErrDTLSHandshake is deliberately sanitized: library errors may include peer
@@ -61,12 +60,6 @@ func dtlsOptions(identity []byte, key [32]byte, mtu int) []pion.Option {
 // phase, or an earlier parent deadline. Errors never cause plaintext fallback.
 // This call takes ownership of packets, including on failure.
 func DialDTLS(ctx context.Context, packets *DTLSPackets, username, password []byte) (*SecureDTLS, error) {
-	return DialDTLSWithKeyLog(ctx, packets, username, password, nil)
-}
-
-// DialDTLSWithKeyLog enables Pion's Config.KeyLogWriter hook for capture decryption.
-// The caller owns the writer and closes it after all attempts have joined.
-func DialDTLSWithKeyLog(ctx context.Context, packets *DTLSPackets, username, password []byte, keys *keylog.Writer) (*SecureDTLS, error) {
 	if packets == nil {
 		return nil, ErrDTLSHandshake
 	}
@@ -81,9 +74,6 @@ func DialDTLSWithKeyLog(ctx context.Context, packets *DTLSPackets, username, pas
 	var opts []pion.ClientOption
 	for _, o := range dtlsOptions(identity, key, packets.mtu) {
 		opts = append(opts, o)
-	}
-	if keys != nil {
-		opts = append(opts, pion.WithKeyLogWriter(keys))
 	}
 	conn, err := pion.ClientWithOptions(packets, dtlsAddr{}, opts...)
 	if err != nil {

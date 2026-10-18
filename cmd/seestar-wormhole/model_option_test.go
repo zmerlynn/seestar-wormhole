@@ -9,7 +9,6 @@ import (
 
 	"context"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
@@ -47,7 +46,7 @@ func TestModelOptionStartupWiring(t *testing.T) {
 		if command == "proxy" {
 			args = append(args, "--bind=127.0.0.1", "--port", availableCommandPort(t)+":13459", "--idle=2m")
 		}
-		err := runWithSession(t.Context(), args, &out, &logs, keylog.Open, func(_ context.Context, cfg proxy.Config) (commandSession, error) {
+		err := runWithSession(t.Context(), args, &out, &logs, func(_ context.Context, cfg proxy.Config) (commandSession, error) {
 			called = true
 			if cfg.Serial != "PRIVATE_SERIAL" || cfg.Model != "PRIVATE_MODEL" {
 				t.Fatal("selected pair not forwarded to session configuration")

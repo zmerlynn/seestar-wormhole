@@ -12,7 +12,6 @@ import (
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
@@ -23,7 +22,7 @@ func TestE2EHelpDoesNotOpenSession(t *testing.T) {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			var out, logs bytes.Buffer
 			opened := 0
-			err := runWithSession(t.Context(), args, &out, &logs, keylog.Open, func(context.Context, proxy.Config) (commandSession, error) {
+			err := runWithSession(t.Context(), args, &out, &logs, func(context.Context, proxy.Config) (commandSession, error) {
 				opened++
 				return nil, errors.New("blocked informational session")
 			})
@@ -71,8 +70,7 @@ func TestDispatchRuntimeAndExitPolicy(t *testing.T) {
 				func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} },
 				func() (io.Writer, func()) { return &logs, func() {} }, func() error { return nil },
 				func(ctx context.Context, o options, stdout, stderr io.Writer) error {
-					return runParsedWithListener(ctx, o, stdout, stderr, keylog.Open,
-						func(context.Context, proxy.Config) (commandSession, error) { opened++; return nil, cause },
+					return runParsedWithListener(ctx, o, stdout, stderr, func(context.Context, proxy.Config) (commandSession, error) { opened++; return nil, cause },
 						func(string, string) (net.Listener, error) { t.Fatal("unexpected listener"); return nil, nil })
 				})
 			want := 1
@@ -96,7 +94,6 @@ func TestDispatchInvalidPortRefusesBeforeOwnerStarts(t *testing.T) {
 		func(ctx context.Context, o options, stdout, stderr io.Writer) error {
 			runtimeCalls++
 			return runParsedWithListener(ctx, o, stdout, stderr,
-				keylog.Open,
 				func(context.Context, proxy.Config) (commandSession, error) {
 					ownerStarts++
 					return nil, errors.New("unexpected owner start")

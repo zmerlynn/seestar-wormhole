@@ -19,7 +19,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/licenses"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
@@ -72,7 +71,6 @@ type options struct {
 	command                 commandKind
 	outcome                 commandOutcome
 	bind, format            string
-	keylog                  string
 	trace                   string
 	level                   string
 	ports                   mappings
@@ -142,7 +140,7 @@ func validateOptions(o *options, supported func() error) error {
 	return nil
 }
 func run(ctx context.Context, args []string, out io.Writer, logOutput io.Writer) error {
-	return runWithKeyLog(ctx, args, out, logOutput, keylog.Open)
+	return runWithSession(ctx, args, out, logOutput, func(ctx context.Context, cfg proxy.Config) (commandSession, error) { return proxy.New(ctx, cfg) })
 }
 
 // commandSession is the owned lifetime used by the command. The seam permits
@@ -154,15 +152,11 @@ type commandSession interface {
 	DeviceDetail() cloud.Detail
 }
 
-func runWithKeyLog(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, openKeys func(string, *slog.Logger) (*keylog.Writer, error)) error {
-	return runWithSession(ctx, args, out, logOutput, openKeys, func(ctx context.Context, cfg proxy.Config) (commandSession, error) { return proxy.New(ctx, cfg) })
+func runWithSession(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error)) error {
+	return runWithListener(ctx, args, out, logOutput, newSession, net.Listen)
 }
 
-func runWithSession(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, openKeys func(string, *slog.Logger) (*keylog.Writer, error), newSession func(context.Context, proxy.Config) (commandSession, error)) error {
-	return runWithListener(ctx, args, out, logOutput, openKeys, newSession, net.Listen)
-}
-
-func runWithListener(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, openKeys func(string, *slog.Logger) (*keylog.Writer, error), newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) error {
+func runWithListener(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) error {
 	o, err := parse(args, out)
 	if err != nil {
 		if !errors.Is(err, errHelp) {
@@ -170,14 +164,14 @@ func runWithListener(ctx context.Context, args []string, out io.Writer, logOutpu
 		}
 		return err
 	}
-	return runParsedWithListener(ctx, o, out, logOutput, openKeys, newSession, listen)
+	return runParsedWithListener(ctx, o, out, logOutput, newSession, listen)
 }
 
 func runParsed(ctx context.Context, o options, out, logs io.Writer) error {
-	return runParsedWithListener(ctx, o, out, logs, keylog.Open, func(ctx context.Context, cfg proxy.Config) (commandSession, error) { return proxy.New(ctx, cfg) }, net.Listen)
+	return runParsedWithListener(ctx, o, out, logs, func(ctx context.Context, cfg proxy.Config) (commandSession, error) { return proxy.New(ctx, cfg) }, net.Listen)
 }
 
-func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, openKeys func(string, *slog.Logger) (*keylog.Writer, error), newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) error {
+func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) error {
 	if o.outcome == commandHelp || o.outcome == commandCompletion {
 		return errHelp
 	}
@@ -188,10 +182,10 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 	if o.command == commandLicenses {
 		return licenses.Write(out)
 	}
-	return runProxy(ctx, o, logs, openKeys, newSession, listen)
+	return runProxy(ctx, o, logs, newSession, listen)
 }
 
-func runProxy(ctx context.Context, o options, logOutput io.Writer, openKeys func(string, *slog.Logger) (*keylog.Writer, error), newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) (result error) {
+func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) (result error) {
 	var err error
 	phase := "arguments"
 	var cleanupErr error
@@ -230,7 +224,6 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, openKeys func
 			result = errors.Join(result, err)
 		}()
 	}
-	keys := startup.openKeys(o.keylog, openKeys)
 	phase = "listener"
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -259,7 +252,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, openKeys func
 		defer discovery.Close()
 	}
 	phase = "session"
-	s, err := newSession(ctx, proxy.Config{Trace: trace, LANDiscovery: o.lanDiscovery, Serial: o.serial, Model: o.model, StateDir: o.stateDir, StatsInterval: o.statsInterval, PauseThreshold: o.pauseThreshold, Idle: o.idle, Logger: logger, KeyLog: keys})
+	s, err := newSession(ctx, proxy.Config{Trace: trace, LANDiscovery: o.lanDiscovery, Serial: o.serial, Model: o.model, StateDir: o.stateDir, StatsInterval: o.statsInterval, PauseThreshold: o.pauseThreshold, Idle: o.idle, Logger: logger})
 	if err != nil {
 		return err
 	}
@@ -292,7 +285,6 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, openKeys func
 	// a long time retrying busy. Keep those lifecycle diagnostics visible.
 	startup.output.resolve(true)
 	warnWildcardBind(logger, forwards, systemInterfaces())
-	startup.acceptKeys()
 	done := make(chan error, 1)
 	go func() { done <- proxy.Serve(ctx, s, forwards, 128, logger) }()
 	logger.Info("proxy_started", "revision", revision, "listeners", len(forwards), "lazy", o.idle > 0, "pause_threshold", o.pauseThreshold)

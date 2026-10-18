@@ -25,7 +25,7 @@ func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 		accepted           bool
 	}{
 		{"default bind", discoveryOption, discoveryRule, []string{"--lan-discovery"}, false},
-		{"private bind and captures", discoveryOption, discoveryRule, []string{"--lan-discovery", "--bind=PRIVATE_MARKER", "--trace=PRIVATE_MARKER", "--keylog=PRIVATE_MARKER"}, false},
+		{"private bind and captures", discoveryOption, discoveryRule, []string{"--lan-discovery", "--bind=PRIVATE_MARKER", "--trace=PRIVATE_MARKER"}, false},
 		{"earlier validation", "--idle", "duration must be nonnegative", []string{"--lan-discovery", "--idle=-1s"}, false},
 		{"earlier syntax", "--idle", "use a duration such as 2m or 0", []string{"--lan-discovery", "--idle=PRIVATE_MARKER"}, false},
 		{"positional", "arguments", "positional arguments are not allowed", []string{"--lan-discovery", "PRIVATE_MARKER"}, false},
@@ -33,7 +33,7 @@ func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 		{"version", "", "", []string{"--version"}, true},
 		{"false boolean", "", "", []string{"--version", "--lan-discovery=false"}, true},
 		{"last boolean wins", "", "", []string{"--version", "--lan-discovery", "--lan-discovery=false"}, true},
-		{"wildcard bind and version", "--lan-discovery", "LAN discovery is unsupported on Windows", []string{"--version", "--lan-discovery", "--bind=0.0.0.0", "--trace=PRIVATE_MARKER", "--keylog=PRIVATE_MARKER"}, !windows},
+		{"wildcard bind and version", "--lan-discovery", "LAN discovery is unsupported on Windows", []string{"--version", "--lan-discovery", "--bind=0.0.0.0", "--trace=PRIVATE_MARKER"}, !windows},
 		{"help", "", "", []string{"--lan-discovery", "--help"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

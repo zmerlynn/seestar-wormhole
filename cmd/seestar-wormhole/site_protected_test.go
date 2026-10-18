@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
@@ -29,8 +28,7 @@ func TestSiteProtectionStartupNoRequests(t *testing.T) {
 			s := &siteCommandSession{idleCommandSession: &idleCommandSession{make(chan struct{})}, finished: make(chan struct{})}
 			close(s.finished)
 			var logs bytes.Buffer
-			err := runWithListener(t.Context(), append([]string{"proxy"}, flags...), io.Discard, &logs, keylog.Open,
-				func(context.Context, proxy.Config) (commandSession, error) { return s, nil },
+			err := runWithListener(t.Context(), append([]string{"proxy"}, flags...), io.Discard, &logs, func(context.Context, proxy.Config) (commandSession, error) { return s, nil },
 				func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") })
 			if err != nil || s.calls.Load() != 0 {
 				t.Fatalf("startup err=%v dials=%d logs=%s; want no device dials", err, s.calls.Load(), &logs)

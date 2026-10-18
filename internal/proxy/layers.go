@@ -60,10 +60,10 @@ func New(ctx context.Context, cfg Config) (*Session, error) {
 	return s, nil
 }
 
-// defaultWireFactory binds command-owned capture and logging to each executor.
+// defaultWireFactory binds logging to each executor.
 func defaultWireFactory(cfg Config) func(iotc.License) wireRunner {
 	return func(l iotc.License) wireRunner {
-		return &iotcedge.IOTCIO{Mask: l.Mask, KeyLog: cfg.KeyLog, Logger: cfg.Logger}
+		return &iotcedge.IOTCIO{Mask: l.Mask, Logger: cfg.Logger}
 	}
 }
 
@@ -424,7 +424,7 @@ func (x *stack) Handshake(ctx context.Context, _ sessionedge.Transport) (result 
 	}()
 	// The lease is retained by the attempt worker; obtain credentials there via
 	// Dial's short-lived copy, cleared immediately after this handshake.
-	s, err := edge.DialDTLSWithKeyLog(ctx, x.packets, x.username, x.password, x.f.s.keylog)
+	s, err := edge.DialDTLS(ctx, x.packets, x.username, x.password)
 	clear(x.username)
 	clear(x.password)
 	x.username = nil

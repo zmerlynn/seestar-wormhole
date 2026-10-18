@@ -2,11 +2,8 @@ package main
 
 import (
 	"bytes"
-	"context"
-	"log/slog"
 	"strings"
 	"testing"
-	"time"
 )
 
 type shortStartupSink struct{}
@@ -14,7 +11,7 @@ type shortStartupSink struct{}
 func (shortStartupSink) Write(p []byte) (int, error) { return len(p) / 2, nil }
 
 func TestStartupDiagnosticLoss(t *testing.T) {
-	for _, name := range []string{"cap", "denied", "flush", "keylog_replaced", "keylog_denied", "keylog_flush"} {
+	for _, name := range []string{"cap", "denied", "flush"} {
 		t.Run(name, func(t *testing.T) {
 			var logs bytes.Buffer
 			s := newStartupLogging(options{format: "json", level: "info"}, &logs)
@@ -31,21 +28,6 @@ func TestStartupDiagnosticLoss(t *testing.T) {
 				s.output.Write([]byte("lost"))
 				receipt = s.output.resolve(true)
 				s.output.output = &logs
-			default:
-				h := &startupKeylogHandler{Handler: slog.NewJSONHandler(&logs, nil)}
-				r := slog.NewRecord(time.Time{}, slog.LevelWarn, "keylog_failed", 0)
-				h.Handle(context.Background(), r)
-				if name == "keylog_replaced" {
-					receipt = h.Handle(context.Background(), r)
-				}
-				if name == "keylog_flush" {
-					h.Handler = slog.NewJSONHandler(&startupLogOutput{output: shortStartupSink{}, resolved: true, accepted: true}, nil)
-				}
-				receipt2 := h.resolve(name != "keylog_denied")
-				if receipt == nil {
-					receipt = receipt2
-				}
-				s.handler = h
 			}
 			err := s.finish(nil)
 			if receipt == nil || err == nil {

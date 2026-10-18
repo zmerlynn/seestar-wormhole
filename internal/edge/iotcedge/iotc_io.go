@@ -10,15 +10,13 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 )
 
 // IOTCIO is the production socket/DNS/crypto executor. Run owns all resources;
 // inputs and emitted completions are bounded by its caller. It never calls Step.
 // Every child joins before Run returns. One instance serves one attempt only.
 type IOTCIO struct {
-	Mask   [16]byte
-	KeyLog *keylog.Writer
+	Mask [16]byte
 	// Logger is the caller-owned sink; nil disables diagnostics. Its handler
 	// must not block, just as for the enclosing session owner.
 	Logger *slog.Logger
@@ -34,7 +32,7 @@ type tcpPath struct {
 func (x *IOTCIO) Run(ctx context.Context, actions <-chan iotc.Action, emit func(iotc.Event) bool) {
 	ctx, cancel := context.WithCancel(ctx)
 	var wg sync.WaitGroup
-	crypt := IOTCCrypto{KeyLog: x.KeyLog}
+	crypt := IOTCCrypto{}
 	paths := make(map[iotc.Link]*tcpPath)
 	udp, err := net.ListenUDP("udp4", &net.UDPAddr{})
 	if err != nil {

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"reflect"
-	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -91,27 +90,6 @@ func TestContainerArgumentsRetainBind(t *testing.T) {
 	o, err = parse(append([]string{"proxy"}, args...), io.Discard)
 	if err != nil || o.bind != "127.0.0.1" || o.stateDir != "" {
 		t.Fatal("explicit override ignored")
-	}
-}
-
-func TestKeylogFlagAndFailedStartup(t *testing.T) {
-	o, err := parse(append([]string{"proxy"}, nil...), io.Discard)
-	if err != nil || o.keylog != "" {
-		t.Fatal("key logging enabled by default")
-	}
-	path := t.TempDir() + "/keys"
-	var out, logs bytes.Buffer
-	// Deliberately invalid bind stops before cloud access, after keylog setup.
-	_ = run(context.Background(), append([]string{"proxy"}, []string{"--keylog", path, "--bind", "invalid address", "--port", "12345:80"}...), &out, &logs)
-	if strings.Contains(logs.String(), "key_logging_enabled") {
-		t.Fatal("configuration failure emitted incidental capture notice")
-	}
-	if strings.Contains(logs.String(), path) || out.Len() != 0 {
-		t.Fatal("keylog details leaked")
-	}
-	st, err := os.Stat(path)
-	if err != nil || (runtime.GOOS != "windows" && st.Mode().Perm() != 0600) {
-		t.Fatal("keylog not private", err)
 	}
 }
 

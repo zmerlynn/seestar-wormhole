@@ -15,7 +15,6 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
-	"github.com/zmerlynn/seestar-wormhole/internal/keylog"
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
@@ -35,8 +34,6 @@ type Config struct {
 	// Serial optionally selects a device; Model disambiguates a serial with several
 	// catalog models. StateDir opts into installation UUID persistence.
 	Serial, Model, StateDir string
-	// KeyLog is opt-in; the caller closes it after Session.Close.
-	KeyLog *keylog.Writer
 	// PauseThreshold is bytes of attributed receive pressure; zero uses the default.
 	PauseThreshold int
 	Idle           time.Duration
@@ -59,7 +56,6 @@ type Session struct {
 	tunnelConfig             p2ptunnel.Config
 	statsInterval            time.Duration
 	lazy                     bool
-	keylog                   *keylog.Writer
 	logger                   *slog.Logger
 	lifecycleReason          string // owner-only fixed vocabulary
 	wasReady                 bool   // owner-only availability telemetry
@@ -91,7 +87,7 @@ func startWithRNG(ctx context.Context, cfg Config, factory func(*Session) sessio
 	if cfg.PauseThreshold < 0 || cfg.PauseThreshold == 1 || cfg.PauseThreshold > MaxPauseThreshold {
 		return nil, &diagnostic.OptionError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608 (zero selects default)"}
 	}
-	s := &Session{lazy: cfg.Idle > 0, trace: cfg.Trace, traceID: cfg.Trace.Instance(), statsInterval: cfg.StatsInterval, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), keylog: cfg.KeyLog, logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
+	s := &Session{lazy: cfg.Idle > 0, trace: cfg.Trace, traceID: cfg.Trace.Instance(), statsInterval: cfg.StatsInterval, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
 	ctx, s.cancel = context.WithCancel(ctx)
 	c := session.DefaultConfig()
 	c.Idle = cfg.Idle
