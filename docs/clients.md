@@ -36,9 +36,6 @@ See [pi_get_time](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/
 printf '%s\r\n' '{"id":1,"method":"pi_get_time"}' | nc -w 2 127.0.0.1 4700
 ```
 
-If you started the proxy with `--bind 127.0.0.1` as above, use that address
-instead.
-
 The proxy removes site and time changes from the inspected JSON requests; see [the inspected request rules](reference.md#site-protection).
 
 ## Ports
