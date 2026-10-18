@@ -31,11 +31,7 @@ type pair struct {
 
 func newPair(t testing.TB, seed uint64, l sim.Link, edit func(*Config)) *pair {
 	t.Helper()
-	return newPairObserved(t, seed, l, edit, nil)
-}
-
-func newPairObserved(t testing.TB, seed uint64, l sim.Link, edit func(*Config), observe func(int, Event, []Action, core.Instant)) *pair {
-	p := &pair{observe: observe, t: t, clock: sim.New[delivery](1<<20, 4096), network: sim.NewNetwork(seed, 1<<20, 4096), link: l, read: true}
+	p := &pair{t: t, clock: sim.New[delivery](1<<20, 4096), network: sim.NewNetwork(seed, 1<<20, 4096), link: l, read: true}
 	for i := range p.owners {
 		c := DefaultConfig()
 		c.LocalID = byte(7 + 2*i)

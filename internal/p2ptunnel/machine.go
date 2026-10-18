@@ -135,7 +135,7 @@ type Action struct {
 	Reason                     string
 	PeerClose                  *CloseOutcome // non-nil only for a received CLOSE
 	Temporary                  bool          // OpenFailed: local capacity may become available without redial
-	Command                    Command       // Original frame command on Send (including continuations), or ReceiveOddity
+	Command                    Command       // ReceiveOddity only
 }
 
 const MaxInput = HeaderSize + MaxData
@@ -153,9 +153,8 @@ type channel struct {
 	freeAt                                                 core.Instant
 }
 type outbound struct {
-	data    []byte
-	offset  int
-	command Command
+	data   []byte
+	offset int
 }
 type pendingOpen struct {
 	request  uint64
@@ -264,7 +263,7 @@ func (m *Machine) queue(f Frame, phase Phase) bool {
 		m.stop("outbound budget or encoding failure")
 		return false
 	}
-	m.tx = append(m.tx, outbound{data: b, command: f.Command})
+	m.tx = append(m.tx, outbound{data: b})
 	m.txBytes += len(b)
 	return true
 }
@@ -425,7 +424,7 @@ func (m *Machine) pumpSend() {
 			if cmd == 0 {
 				continue
 			}
-			m.flowTX = outbound{data: []byte{byte(cmd), id, 0, 0}, command: cmd}
+			m.flowTX = outbound{data: []byte{byte(cmd), id, 0, 0}}
 			m.flowID, m.flowCommand, m.flowGeneration = id, cmd, m.channels[id].generation
 			if cmd == WakeCommand {
 				m.flowWakeSuperseded = false
@@ -435,21 +434,18 @@ func (m *Machine) pumpSend() {
 		}
 	}
 	var b []byte
-	var command Command
 	m.sendFlow = len(m.flowTX.data) > 0
 	if m.sendFlow {
 		b = m.flowTX.data[m.flowTX.offset:]
-		command = m.flowTX.command
 	} else {
 		if len(m.tx) == 0 {
 			return
 		}
 		b = m.tx[0].data[m.tx[0].offset:]
-		command = m.tx[0].command
 	}
 	m.sendToken = m.next()
 	m.sendCount = len(b)
-	m.emit(Action{Kind: Send, Token: m.sendToken, Data: bytes.Clone(b), Command: command})
+	m.emit(Action{Kind: Send, Token: m.sendToken, Data: bytes.Clone(b)})
 }
 
 // Drain received DATA before acting on END, retaining the reverse direction:

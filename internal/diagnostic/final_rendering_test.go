@@ -17,7 +17,7 @@ import (
 )
 
 func TestFinalCompactRendering(t *testing.T) {
-	for _, message := range []string{"proxy failed", "proxy failed"} {
+	for _, message := range []string{"proxy failed"} {
 		for _, format := range []string{"json", "text"} {
 			for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {
 				t.Run(fmt.Sprintf("%s/%s/%s", message, format, level), func(t *testing.T) {

@@ -50,20 +50,13 @@ func New(ctx context.Context, cfg Config) (*Session, error) {
 	}
 	s, err := startSelected(ctx, cfg, detail, func(s *Session) sessionedge.Factory {
 		s.deviceDetail = detail
-		return &factory{s: s, cloud: c, device: d, verify: iotcedge.VerifyIOTCLicense, wire: defaultWireFactory(cfg)}
+		return &factory{s: s, cloud: c, device: d, verify: iotcedge.VerifyIOTCLicense, wire: func(l iotc.License) wireRunner { return &iotcedge.IOTCIO{Mask: l.Mask, Logger: cfg.Logger} }}
 	})
 	if err != nil {
 		c.Close()
 		return nil, err
 	}
 	return s, nil
-}
-
-// defaultWireFactory binds logging to each executor.
-func defaultWireFactory(cfg Config) func(iotc.License) wireRunner {
-	return func(l iotc.License) wireRunner {
-		return &iotcedge.IOTCIO{Mask: l.Mask, Logger: cfg.Logger}
-	}
 }
 
 func startSelected(ctx context.Context, cfg Config, detail cloud.Detail, factory func(*Session) sessionedge.Factory) (*Session, error) {

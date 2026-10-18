@@ -61,9 +61,9 @@ func TestTunnelLossRefusal(t *testing.T) {
 				}
 				found := false
 				for _, a := range m.actions {
-					if a.Kind == Send && a.Command == CloseCommand {
+					if a.Kind == Send {
 						f, e := Decode(a.Data, Established)
-						if e == nil && f.Channel == 7 && len(f.Payload) == 1 && f.Payload[0] == 1 {
+						if e == nil && f.Command == CloseCommand && f.Channel == 7 && len(f.Payload) == 1 && f.Payload[0] == 1 {
 							found = true
 						}
 					}

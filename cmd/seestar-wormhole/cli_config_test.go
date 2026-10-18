@@ -49,53 +49,51 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 func TestCLIConfigAttribution(t *testing.T) {
 	for _, command := range []string{"proxy"} {
 		for _, format := range []string{"text", "json"} {
-			{
-				for _, problem := range []string{"email", "password", "state", "selection"} {
-					t.Run(command+"/"+format+"/"+problem, func(t *testing.T) {
-						synctest.Test(t, func(t *testing.T) {
-							t.Setenv("SEESTAR_EMAIL", "test@example.invalid")
-							t.Setenv("SEESTAR_PASSWORD", "PRIVATE_PASSWORD")
-							args := []string{command, "--log-format=" + format, "--log-level=debug"}
-							option, rule := "SEESTAR_EMAIL", "use a valid UTF-8 email of at most 4096 bytes matching the supported account format"
-							switch problem {
-							case "email":
-								t.Setenv("SEESTAR_EMAIL", "")
-							case "password":
-								t.Setenv("SEESTAR_PASSWORD", "bad")
-								option, rule = "SEESTAR_PASSWORD", "use a valid UTF-8 password of 8..32 UTF-16 units"
-							case "state":
-								state := filepath.Join(t.TempDir(), "PRIVATE_STATE_PATH")
-								if err := os.WriteFile(state, []byte("block directory"), 0600); err != nil {
-									t.Fatal(err)
-								}
-								args = append(args, "--state-dir="+state)
-								option, rule = "--state-dir", "use a private writable state directory and installation identity file"
-							case "selection":
-								option, rule = "--serial", "select an existing device from the account catalog"
+			for _, problem := range []string{"email", "password", "state", "selection"} {
+				t.Run(command+"/"+format+"/"+problem, func(t *testing.T) {
+					synctest.Test(t, func(t *testing.T) {
+						t.Setenv("SEESTAR_EMAIL", "test@example.invalid")
+						t.Setenv("SEESTAR_PASSWORD", "PRIVATE_PASSWORD")
+						args := []string{command, "--log-format=" + format, "--log-level=debug"}
+						option, rule := "SEESTAR_EMAIL", "use a valid UTF-8 email of at most 4096 bytes matching the supported account format"
+						switch problem {
+						case "email":
+							t.Setenv("SEESTAR_EMAIL", "")
+						case "password":
+							t.Setenv("SEESTAR_PASSWORD", "bad")
+							option, rule = "SEESTAR_PASSWORD", "use a valid UTF-8 password of 8..32 UTF-16 units"
+						case "state":
+							state := filepath.Join(t.TempDir(), "PRIVATE_STATE_PATH")
+							if err := os.WriteFile(state, []byte("block directory"), 0600); err != nil {
+								t.Fatal(err)
 							}
-							var out, logs bytes.Buffer
-							factory := func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
-								if problem == "selection" {
-									// A preliminary dependency record must not survive a typed refusal.
-									cfg.Logger.Debug("dependency_startup", "count", 1)
-									return nil, diagnostic.Wrap("device_selection", "invalid_configuration", errors.Join(cloud.ErrConfig, &argumentError{Option: option, Rule: rule}))
-								}
-								return proxy.New(ctx, cfg)
+							args = append(args, "--state-dir="+state)
+							option, rule = "--state-dir", "use a private writable state directory and installation identity file"
+						case "selection":
+							option, rule = "--serial", "select an existing device from the account catalog"
+						}
+						var out, logs bytes.Buffer
+						factory := func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
+							if problem == "selection" {
+								// A preliminary dependency record must not survive a typed refusal.
+								cfg.Logger.Debug("dependency_startup", "count", 1)
+								return nil, diagnostic.Wrap("device_selection", "invalid_configuration", errors.Join(cloud.ErrConfig, &argumentError{Option: option, Rule: rule}))
 							}
-							// Ephemeral loopback listeners avoid collisions and never reach a device:
-							// each real construction fails local credential/state validation.
-							err := runWithListener(t.Context(), args, &out, &logs, factory, func(_, _ string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") })
-							if got := commandExitCode(options{command: commandProxy}, err); got != 2 {
-								t.Fatalf("exit=%d want=2 err=%v logs=%s", got, err, &logs)
-							}
-							assertConfigRecord(t, logs.Bytes(), command, option, rule)
-							assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_STATE_PATH", "PRIVATE_PAYLOAD")
-							if out.Len() != 0 {
-								t.Fatalf("proxy stdout=%s", &out)
-							}
-						})
+							return proxy.New(ctx, cfg)
+						}
+						// Ephemeral loopback listeners avoid collisions and never reach a device:
+						// each real construction fails local credential/state validation.
+						err := runWithListener(t.Context(), args, &out, &logs, factory, func(_, _ string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") })
+						if got := commandExitCode(options{command: commandProxy}, err); got != 2 {
+							t.Fatalf("exit=%d want=2 err=%v logs=%s", got, err, &logs)
+						}
+						assertConfigRecord(t, logs.Bytes(), command, option, rule)
+						assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_STATE_PATH", "PRIVATE_PAYLOAD")
+						if out.Len() != 0 {
+							t.Fatalf("proxy stdout=%s", &out)
+						}
 					})
-				}
+				})
 			}
 		}
 	}

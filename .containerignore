@@ -32,7 +32,7 @@
 **/*.log
 **/*.log.*
 
-# Installation identity and pull receipts/checkpoints, locks and temporary data.
+# Installation identity and local archive data.
 **/InterProcessKV/**
 **/device_uuid
 **/.seestar-wormhole/**
@@ -40,15 +40,3 @@
 **/SHA256SUMS
 **/.seestar-sums-*
 **/.seestar-part-*
-
-# Only these known synthetic replay records belong in source and image contexts.
-!internal/cloud/testdata/trace-account.jsonl
-!internal/edge/testdata/trace-adapter.jsonl
-!internal/landiscovery/testdata/trace-rate.jsonl
-!internal/iotc/testdata/trace-direct.jsonl
-!internal/iotc/testdata/trace-relay.jsonl
-!internal/p2ptunnel/testdata/trace-lifecycle.jsonl
-!internal/rdt/testdata/trace-loss.jsonl
-!internal/rdt/testdata/trace-ordered.jsonl
-!internal/rdt/testdata/trace-reorder_duplicate.jsonl
-!internal/session/testdata/trace-recovery.jsonl

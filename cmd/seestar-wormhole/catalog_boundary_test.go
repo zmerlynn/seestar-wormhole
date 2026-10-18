@@ -126,31 +126,29 @@ func TestCatalogBoundary(t *testing.T) {
 				wantOption, wantRule = "--model", "serial is ambiguous; name --model to select a catalog pair"
 			}
 
-			{
-				for _, format := range []string{"json", "text"} {
-					t.Run(format, func(t *testing.T) {
-						var out, logs bytes.Buffer
-						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer cancel()
-						args := []string{"--idle=2m", "--bind=127.0.0.1", "--port", availableCommandPort(t) + ":445", "--log-format", format, "--log-level=debug", "--serial", tc.serial}
-						err := run(ctx, append([]string{"proxy"}, args...), &out, &logs)
-						t.Logf("error=%v stdout=%q log=%s", err, out.String(), &logs)
-						if !errors.Is(err, cloud.ErrConfig) {
-							t.Fatalf("want config error, got %v", err)
-						}
-						assertNoSensitiveErrorDetails(t, err, "PRIVATE_WRONG_SERIAL", "SYNTHETIC_TOKEN", "SYNTHETIC_SOURCE")
-						var detail *diagnostic.OptionError
-						if !errors.As(err, &detail) || detail.Option != wantOption || detail.Rule != wantRule {
-							t.Errorf("catalog-dependent configuration failure lacks option/rule: %v", err)
-						}
-						var rec map[string]any
-						if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
-							t.Errorf("want exactly one attributed JSON error before dependencies: %v", e)
-						} else if rec["option"] != wantOption || rec["rule"] != wantRule || rec["level"] != "ERROR" || rec["reason"] != "invalid_option" || rec["phase"] != "arguments" || rec["help"] != "seestar-wormhole proxy --help" || out.Len() != 0 {
-							t.Errorf("wrong final diagnostic: %v", rec)
-						}
-					})
-				}
+			for _, format := range []string{"json", "text"} {
+				t.Run(format, func(t *testing.T) {
+					var out, logs bytes.Buffer
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					defer cancel()
+					args := []string{"--idle=2m", "--bind=127.0.0.1", "--port", availableCommandPort(t) + ":445", "--log-format", format, "--log-level=debug", "--serial", tc.serial}
+					err := run(ctx, append([]string{"proxy"}, args...), &out, &logs)
+					t.Logf("error=%v stdout=%q log=%s", err, out.String(), &logs)
+					if !errors.Is(err, cloud.ErrConfig) {
+						t.Fatalf("want config error, got %v", err)
+					}
+					assertNoSensitiveErrorDetails(t, err, "PRIVATE_WRONG_SERIAL", "SYNTHETIC_TOKEN", "SYNTHETIC_SOURCE")
+					var detail *diagnostic.OptionError
+					if !errors.As(err, &detail) || detail.Option != wantOption || detail.Rule != wantRule {
+						t.Errorf("catalog-dependent configuration failure lacks option/rule: %v", err)
+					}
+					var rec map[string]any
+					if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
+						t.Errorf("want exactly one attributed JSON error before dependencies: %v", e)
+					} else if rec["option"] != wantOption || rec["rule"] != wantRule || rec["level"] != "ERROR" || rec["reason"] != "invalid_option" || rec["phase"] != "arguments" || rec["help"] != "seestar-wormhole proxy --help" || out.Len() != 0 {
+						t.Errorf("wrong final diagnostic: %v", rec)
+					}
+				})
 			}
 		})
 	}

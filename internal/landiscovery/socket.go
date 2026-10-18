@@ -63,7 +63,7 @@ func ValidBind(bind string) bool {
 }
 
 // Supported reports whether the platform provides the required packet metadata.
-// Commands can validate the option before opening captures or listeners.
+// Commands can validate the option before opening listeners.
 func Supported() error { return platformSupported() }
 
 // Listen binds UDP port on the selected interface(s). Production uses Port;
