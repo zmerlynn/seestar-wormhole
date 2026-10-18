@@ -1,0 +1,96 @@
+seestar-wormhole NOTICE
+======================
+
+The project's own code is released under the Unlicense. Files under vendor/ and the vendored Pion DTLS patch retain their upstream licenses; the local Pion adapter attribution and patch details are in internal/edge/PION-LICENSE and internal/edge/PION-PATCH.md.
+
+One exception outside vendor/: internal/edge/dtls_suite.go adapts MIT-licensed Pion suite code. That
+adapted portion remains under the MIT license reproduced in internal/edge/PION-LICENSE.
+
+This binary uses github.com/cloudsoda/sddl, covered by LGPL-3.0-only, including
+its use in this combined work. Its source is in vendor/github.com/cloudsoda/sddl/.
+The published source includes the application and vendored dependencies. Users
+may modify sddl there and relink by building from that source with:
+
+    go build -mod=vendor -o seestar-wormhole ./cmd/seestar-wormhole
+
+Modification of sddl and reverse engineering to debug those modifications are
+permitted. Run `seestar-wormhole licenses` for the full LGPL-3.0 and GPL-3.0
+texts, the notices of libraries linked into this build, and internal/edge/PION-LICENSE.
+The GPL-3.0 text incorporated by LGPL-3.0 is also provided separately in
+internal/licenses/supplemental/GPL-3.0.txt (verbatim from
+https://www.gnu.org/licenses/gpl-3.0.txt).
+
+Vendored modules and the license files copied into vendor/:
+
+| Module | License file under vendor/ | SPDX identifier |
+| --- | --- | --- |
+| github.com/Max-Sum/base32768 | vendor/github.com/Max-Sum/base32768/LICENSE | MIT |
+| github.com/abbot/go-http-auth | vendor/github.com/abbot/go-http-auth/LICENSE | Apache-2.0 |
+| github.com/adrg/xdg | vendor/github.com/adrg/xdg/LICENSE | MIT |
+| github.com/beorn7/perks | vendor/github.com/beorn7/perks/LICENSE | MIT |
+| github.com/cespare/xxhash/v2 | vendor/github.com/cespare/xxhash/v2/LICENSE.txt | MIT |
+| github.com/clipperhouse/uax29/v2 | vendor/github.com/clipperhouse/uax29/v2/LICENSE | MIT |
+| github.com/cloudsoda/go-smb2 | vendor/github.com/cloudsoda/go-smb2/LICENSE | BSD-3-Clause |
+| github.com/cloudsoda/sddl | vendor/github.com/cloudsoda/sddl/LICENSE | LGPL-3.0-only |
+| github.com/coreos/go-semver | vendor/github.com/coreos/go-semver/LICENSE | Apache-2.0 |
+| github.com/coreos/go-systemd/v22 | vendor/github.com/coreos/go-systemd/v22/LICENSE | Apache-2.0 |
+| github.com/ebitengine/purego | vendor/github.com/ebitengine/purego/LICENSE | Apache-2.0 |
+| github.com/geoffgarside/ber | vendor/github.com/geoffgarside/ber/LICENSE | BSD-3-Clause |
+| github.com/go-chi/chi/v5 | vendor/github.com/go-chi/chi/v5/LICENSE | MIT |
+| github.com/go-darwin/apfs | vendor/github.com/go-darwin/apfs/LICENSE | BSD-3-Clause |
+| github.com/go-json-experiment/json | vendor/github.com/go-json-experiment/json/LICENSE | BSD-3-Clause |
+| github.com/go-ole/go-ole | vendor/github.com/go-ole/go-ole/LICENSE | MIT |
+| github.com/gopacket/gopacket | vendor/github.com/gopacket/gopacket/LICENSE | BSD-3-Clause |
+| github.com/hashicorp/go-uuid | vendor/github.com/hashicorp/go-uuid/LICENSE | MPL-2.0 |
+| github.com/inconshreveable/mousetrap | vendor/github.com/inconshreveable/mousetrap/LICENSE | Apache-2.0 |
+| github.com/jcmturner/aescts/v2 | vendor/github.com/jcmturner/aescts/v2/LICENSE | Apache-2.0 |
+| github.com/jcmturner/dnsutils/v2 | vendor/github.com/jcmturner/dnsutils/v2/LICENSE | Apache-2.0 |
+| github.com/jcmturner/gofork | vendor/github.com/jcmturner/gofork/LICENSE | BSD-3-Clause |
+| github.com/jcmturner/goidentity/v6 | vendor/github.com/jcmturner/goidentity/v6/LICENSE | Apache-2.0 |
+| github.com/jcmturner/gokrb5/v8 | vendor/github.com/jcmturner/gokrb5/v8/LICENSE | Apache-2.0 |
+| github.com/jcmturner/rpc/v2 | vendor/github.com/jcmturner/rpc/v2/LICENSE | Apache-2.0 |
+| github.com/jzelinskie/whirlpool | vendor/github.com/jzelinskie/whirlpool/LICENSE | BSD-3-Clause |
+| github.com/klauspost/cpuid/v2 | vendor/github.com/klauspost/cpuid/v2/LICENSE | MIT |
+| github.com/kr/text | No source or license file copied into vendor/ | see file |
+| github.com/lanrat/extsort | vendor/github.com/lanrat/extsort/LICENSE | Apache-2.0 |
+| github.com/lufia/plan9stats | vendor/github.com/lufia/plan9stats/LICENSE | BSD-3-Clause |
+| github.com/mattn/go-colorable | vendor/github.com/mattn/go-colorable/LICENSE | MIT |
+| github.com/mattn/go-isatty | vendor/github.com/mattn/go-isatty/LICENSE | MIT |
+| github.com/mattn/go-runewidth | vendor/github.com/mattn/go-runewidth/LICENSE | MIT |
+| github.com/mitchellh/go-homedir | vendor/github.com/mitchellh/go-homedir/LICENSE | MIT |
+| github.com/munnerz/goautoneg | vendor/github.com/munnerz/goautoneg/LICENSE | BSD-3-Clause |
+| github.com/peterh/liner | vendor/github.com/peterh/liner/COPYING | MIT |
+| github.com/pion/dtls/v3 | vendor/github.com/pion/dtls/v3/LICENSE | MIT |
+| github.com/pion/logging | vendor/github.com/pion/logging/LICENSE | MIT |
+| github.com/pion/transport/v5 | vendor/github.com/pion/transport/v5/LICENSE | MIT |
+| github.com/pkg/xattr | vendor/github.com/pkg/xattr/LICENSE | BSD-3-Clause |
+| github.com/power-devops/perfstat | vendor/github.com/power-devops/perfstat/LICENSE | MIT |
+| github.com/prometheus/client_golang | vendor/github.com/prometheus/client_golang/LICENSE | Apache-2.0 |
+| github.com/prometheus/client_model | vendor/github.com/prometheus/client_model/LICENSE | Apache-2.0 |
+| github.com/prometheus/common | vendor/github.com/prometheus/common/LICENSE | Apache-2.0 |
+| github.com/prometheus/procfs | vendor/github.com/prometheus/procfs/LICENSE | Apache-2.0 |
+| github.com/rclone/rclone | vendor/github.com/rclone/rclone/COPYING | MIT |
+| github.com/rfjakob/eme | vendor/github.com/rfjakob/eme/LICENSE | MIT |
+| github.com/shirou/gopsutil/v4 | vendor/github.com/shirou/gopsutil/v4/LICENSE | BSD-3-Clause |
+| github.com/spf13/cobra | vendor/github.com/spf13/cobra/LICENSE.txt | Apache-2.0 |
+| github.com/spf13/pflag | vendor/github.com/spf13/pflag/LICENSE | BSD-3-Clause |
+| github.com/tklauser/go-sysconf | vendor/github.com/tklauser/go-sysconf/LICENSE | BSD-3-Clause |
+| github.com/tklauser/numcpus | vendor/github.com/tklauser/numcpus/LICENSE | Apache-2.0 |
+| github.com/youmark/pkcs8 | vendor/github.com/youmark/pkcs8/LICENSE | MIT |
+| github.com/yusufpapurcu/wmi | vendor/github.com/yusufpapurcu/wmi/LICENSE | MIT |
+| github.com/zeebo/assert | No source or license file copied into vendor/ | see file |
+| github.com/zeebo/blake3 | vendor/github.com/zeebo/blake3/LICENSE | CC0-1.0 |
+| github.com/zeebo/xxh3 | vendor/github.com/zeebo/xxh3/LICENSE | BSD-2-Clause |
+| golang.org/x/crypto | vendor/golang.org/x/crypto/LICENSE | BSD-3-Clause |
+| golang.org/x/net | vendor/golang.org/x/net/LICENSE | BSD-3-Clause |
+| golang.org/x/sync | vendor/golang.org/x/sync/LICENSE | BSD-3-Clause |
+| golang.org/x/sys | vendor/golang.org/x/sys/LICENSE | BSD-3-Clause |
+| golang.org/x/term | vendor/golang.org/x/term/LICENSE | BSD-3-Clause |
+| golang.org/x/text | vendor/golang.org/x/text/LICENSE | BSD-3-Clause |
+| golang.org/x/time | vendor/golang.org/x/time/LICENSE | BSD-3-Clause |
+| google.golang.org/protobuf | vendor/google.golang.org/protobuf/LICENSE | BSD-3-Clause |
+| gopkg.in/check.v1 | No source or license file copied into vendor/ | see file |
+| gopkg.in/yaml.v3 | vendor/gopkg.in/yaml.v3/LICENSE | MIT AND Apache-2.0 |
+| moul.io/http2curl/v2 | vendor/moul.io/http2curl/v2/LICENSE-MIT and vendor/moul.io/http2curl/v2/LICENSE-APACHE | MIT OR Apache-2.0 |
+
+`vendor/modules.txt` also records github.com/kr/text, github.com/zeebo/assert, and gopkg.in/check.v1, but contains no package entries for them; no source or license files for those modules are present in vendor/.

@@ -1,0 +1,54 @@
+/bin/
+/dist/
+/coverage.out
+/.cache/
+
+# Local evidence and diagnostic bundles.
+**/reports*/**
+**/review*/**
+**/evidence*/**
+**/*-evidence*/**
+**/*evidence*.tar*
+**/*evidence*.tgz
+**/*evidence*.zip
+**/artifacts/**
+**/live/**
+**/captures/**
+**/traces/**
+**/keylogs/**
+**/receipts/**
+
+# Packet captures, decryption secrets, traces and local proxy logs.
+**/*.pcap
+**/*.pcapng
+**/*.pcap.*
+**/*.pcapng.*
+**/*.keys
+**/*.keylog
+**/*.keylog.*
+**/sslkeylog*
+**/*.trace
+**/*.jsonl
+**/*.log
+**/*.log.*
+
+# Installation identity and pull receipts/checkpoints, locks and temporary data.
+**/InterProcessKV/**
+**/device_uuid
+**/.seestar-wormhole/**
+**/state.json
+**/SHA256SUMS
+**/.seestar-sums-*
+**/.seestar-part-*
+
+# Only these known synthetic replay records belong in source and image contexts.
+!internal/cloud/testdata/trace-account.jsonl
+!internal/edge/testdata/trace-adapter.jsonl
+!internal/landiscovery/testdata/trace-rate.jsonl
+!internal/iotc/testdata/trace-direct.jsonl
+!internal/iotc/testdata/trace-relay.jsonl
+!internal/p2ptunnel/testdata/trace-lifecycle.jsonl
+!internal/rdt/testdata/trace-loss.jsonl
+!internal/rdt/testdata/trace-ordered.jsonl
+!internal/rdt/testdata/trace-reorder_duplicate.jsonl
+!internal/session/testdata/trace-recovery.jsonl

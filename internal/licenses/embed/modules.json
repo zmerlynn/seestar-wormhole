@@ -1,0 +1,471 @@
+[
+  {
+    "Path": "github.com/Max-Sum/base32768",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/Max-Sum/base32768/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/abbot/go-http-auth",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/abbot/go-http-auth/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/adrg/xdg",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/adrg/xdg/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/beorn7/perks",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/beorn7/perks/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/cespare/xxhash/v2",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/cespare/xxhash/v2/LICENSE.txt"
+    ]
+  },
+  {
+    "Path": "github.com/clipperhouse/uax29/v2",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/clipperhouse/uax29/v2/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/cloudsoda/go-smb2",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/cloudsoda/go-smb2/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/cloudsoda/sddl",
+    "SPDX": "LGPL-3.0-only",
+    "Files": [
+      "vendor/github.com/cloudsoda/sddl/LICENSE",
+      "internal/licenses/supplemental/GPL-3.0.txt"
+    ]
+  },
+  {
+    "Path": "github.com/coreos/go-semver",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/coreos/go-semver/LICENSE",
+      "vendor/github.com/coreos/go-semver/NOTICE"
+    ]
+  },
+  {
+    "Path": "github.com/coreos/go-systemd/v22",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/coreos/go-systemd/v22/LICENSE",
+      "vendor/github.com/coreos/go-systemd/v22/NOTICE"
+    ]
+  },
+  {
+    "Path": "github.com/ebitengine/purego",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/ebitengine/purego/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/geoffgarside/ber",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/geoffgarside/ber/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-chi/chi/v5",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/go-chi/chi/v5/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-darwin/apfs",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/go-darwin/apfs/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-json-experiment/json",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/go-json-experiment/json/AUTHORS",
+      "vendor/github.com/go-json-experiment/json/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-ole/go-ole",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/go-ole/go-ole/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/gopacket/gopacket",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/gopacket/gopacket/AUTHORS",
+      "vendor/github.com/gopacket/gopacket/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/hashicorp/go-uuid",
+    "SPDX": "MPL-2.0",
+    "Files": [
+      "vendor/github.com/hashicorp/go-uuid/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/inconshreveable/mousetrap",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/inconshreveable/mousetrap/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/jcmturner/aescts/v2",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/jcmturner/aescts/v2/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/jcmturner/dnsutils/v2",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/jcmturner/dnsutils/v2/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/jcmturner/gofork",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/jcmturner/gofork/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/jcmturner/goidentity/v6",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/jcmturner/goidentity/v6/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/jcmturner/gokrb5/v8",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/jcmturner/gokrb5/v8/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/jcmturner/rpc/v2",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/jcmturner/rpc/v2/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/jzelinskie/whirlpool",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/jzelinskie/whirlpool/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/klauspost/cpuid/v2",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/klauspost/cpuid/v2/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/lanrat/extsort",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/lanrat/extsort/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/lufia/plan9stats",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/lufia/plan9stats/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/mattn/go-colorable",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/mattn/go-colorable/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/mattn/go-isatty",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/mattn/go-isatty/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/mattn/go-runewidth",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/mattn/go-runewidth/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/mitchellh/go-homedir",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/mitchellh/go-homedir/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/munnerz/goautoneg",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/munnerz/goautoneg/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/peterh/liner",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/peterh/liner/COPYING"
+    ]
+  },
+  {
+    "Path": "github.com/pion/dtls/v3",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/pion/dtls/v3/LICENSE",
+      "internal/edge/PION-LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/pion/logging",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/pion/logging/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/pion/transport/v5",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/pion/transport/v5/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/pkg/xattr",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/pkg/xattr/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/power-devops/perfstat",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/power-devops/perfstat/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/prometheus/client_golang",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/prometheus/client_golang/LICENSE",
+      "vendor/github.com/prometheus/client_golang/NOTICE"
+    ]
+  },
+  {
+    "Path": "github.com/prometheus/client_model",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/prometheus/client_model/LICENSE",
+      "vendor/github.com/prometheus/client_model/NOTICE"
+    ]
+  },
+  {
+    "Path": "github.com/prometheus/common",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/prometheus/common/LICENSE",
+      "vendor/github.com/prometheus/common/NOTICE"
+    ]
+  },
+  {
+    "Path": "github.com/prometheus/procfs",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/prometheus/procfs/LICENSE",
+      "vendor/github.com/prometheus/procfs/NOTICE"
+    ]
+  },
+  {
+    "Path": "github.com/rclone/rclone",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/rclone/rclone/COPYING"
+    ]
+  },
+  {
+    "Path": "github.com/rfjakob/eme",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/rfjakob/eme/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/shirou/gopsutil/v4",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/shirou/gopsutil/v4/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/spf13/cobra",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/spf13/cobra/LICENSE.txt"
+    ]
+  },
+  {
+    "Path": "github.com/spf13/pflag",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/spf13/pflag/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/tklauser/go-sysconf",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/tklauser/go-sysconf/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/tklauser/numcpus",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/tklauser/numcpus/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/youmark/pkcs8",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/youmark/pkcs8/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/yusufpapurcu/wmi",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/yusufpapurcu/wmi/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/zeebo/blake3",
+    "SPDX": "CC0-1.0",
+    "Files": [
+      "vendor/github.com/zeebo/blake3/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/zeebo/xxh3",
+    "SPDX": "BSD-2-Clause",
+    "Files": [
+      "vendor/github.com/zeebo/xxh3/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/crypto",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/crypto/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/net",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/net/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/sync",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/sync/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/sys",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/sys/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/term",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/term/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/text",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/text/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/time",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/time/LICENSE"
+    ]
+  },
+  {
+    "Path": "google.golang.org/protobuf",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/google.golang.org/protobuf/LICENSE"
+    ]
+  },
+  {
+    "Path": "gopkg.in/yaml.v3",
+    "SPDX": "MIT AND Apache-2.0",
+    "Files": [
+      "vendor/gopkg.in/yaml.v3/LICENSE",
+      "vendor/gopkg.in/yaml.v3/NOTICE"
+    ]
+  },
+  {
+    "Path": "moul.io/http2curl/v2",
+    "SPDX": "MIT OR Apache-2.0",
+    "Files": [
+      "vendor/moul.io/http2curl/v2/AUTHORS",
+      "vendor/moul.io/http2curl/v2/COPYRIGHT",
+      "vendor/moul.io/http2curl/v2/LICENSE-APACHE",
+      "vendor/moul.io/http2curl/v2/LICENSE-MIT"
+    ]
+  }
+]

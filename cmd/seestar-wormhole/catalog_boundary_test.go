@@ -1,0 +1,226 @@
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"github.com/go-json-experiment/json"
+	"io"
+	"math/big"
+	"net"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/pull"
+	"github.com/zmerlynn/seestar-wormhole/internal/session"
+)
+
+// Exercise the HTTP boundary with the vendor origin mapped to loopback.
+// Real TLS/HTTP edge and synthetic read-only response; never contacts the service.
+func TestCatalogBoundary(t *testing.T) {
+	if os.Getenv("ROUND3_LOOPBACK_TLS") != "1" {
+		t.Skip("requires disposable container with vendor origin mapped to loopback")
+	}
+	if os.Getenv("ROUND4_CATALOG_CHILD") != "1" {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestCatalogBoundary$", "-test.v")
+		cmd.Env = append(os.Environ(), "ROUND4_CATALOG_CHILD=1")
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("loopback catalog probe: %v\n%s", err, output)
+		}
+		t.Logf("%s", output)
+		return
+	}
+	ips, e := net.LookupHost("api-ithings.zwoastro.com")
+	if e != nil || len(ips) != 1 || ips[0] != "127.0.0.1" {
+		t.Fatal("fixture origin must resolve only to loopback")
+	}
+	setValidCommandEnvironment(t)
+	t.Setenv("SEESTAR_EMAIL", "fixture@example.invalid")
+	t.Setenv("SEESTAR_PASSWORD", "fixture-password")
+
+	pub, priv, e := ed25519.GenerateKey(rand.Reader)
+	if e != nil {
+		t.Fatal(e)
+	}
+	cert := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "round2 fixture"}, DNSNames: []string{"api-ithings.zwoastro.com", "api.seestar.com"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	der, e := x509.CreateCertificate(rand.Reader, cert, cert, pub, priv)
+	if e != nil {
+		t.Fatal(e)
+	}
+	root := t.TempDir()
+	ca := filepath.Join(root, "PRIVATE_CA_PATH.pem")
+	if e := os.WriteFile(ca, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}), 0600); e != nil {
+		t.Fatal(e)
+	}
+	t.Setenv("SSL_CERT_FILE", ca)
+	t.Setenv("SSL_CERT_DIR", root)
+	l, e := tls.Listen("tcp", "127.0.0.1:443", &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: priv}}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	var detailRequests atomic.Int32
+	var requestedModel atomic.Value
+	requestedModel.Store("")
+	var detailReply atomic.Value
+	detailReply.Store(`{"data":{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"fixture"}}`)
+	var catalog atomic.Value
+	catalog.Store(`{"code":200,"data":{"items":[],"total":0}}`)
+	srv := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/user/login" {
+			io.WriteString(w, `{"code":0,"data":{"accessToken":"fixture-token"}}`)
+			return
+		}
+		if r.URL.Path == "/v1/user/current-profile" {
+			io.WriteString(w, `{"code":0,"data":{"id":"fixture-account"}}`)
+			return
+		}
+		if r.URL.Path == "/v1/my-device" {
+			if r.URL.Query().Get("current") != "1" {
+				t.Error("unexpected catalog page")
+				w.WriteHeader(http.StatusBadRequest)
+			} else {
+				io.WriteString(w, catalog.Load().(string))
+			}
+			return
+		}
+		if r.URL.Path != "/v1/my-device/detail" {
+			w.WriteHeader(401)
+			io.WriteString(w, `{"code":401,"msg":"fixture refuses allocation"}`)
+			return
+		}
+		detailRequests.Add(1)
+		requestedModel.Store(r.URL.Query().Get("deviceModel"))
+		io.WriteString(w, detailReply.Load().(string))
+	})}
+	done := make(chan struct{})
+	go func() { defer close(done); srv.Serve(l) }()
+	defer func() { srv.Close(); <-done }()
+
+	for _, tc := range []struct{ name, serial, body string }{
+		{"wrong-serial", "PRIVATE_WRONG_SERIAL", `{"code":200,"data":{"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"synthetic-wifi"}],"total":1}}`},
+		{"ambiguous-catalog", "", `{"code":200,"data":{"items":[{"deviceSn":"SYNTHETIC_SN_A","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"synthetic-wifi"},{"deviceSn":"SYNTHETIC_SN_B","deviceModel":"S30","deviceStatus":1,"ssid":"synthetic-wifi"}],"total":2}}`},
+		{"ambiguous-serial", "SYNTHETIC_SN", `{"data":{"total":2,"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":2,"ssid":"first"},{"deviceSn":"SYNTHETIC_SN","deviceModel":"S30","deviceStatus":1,"ssid":"second"}]}}`},
+		{"empty-catalog", "", `{"code":200,"data":{"items":[],"total":0}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			catalog.Store(tc.body)
+			wantOption, wantRule := "--serial", "select an existing device from the account catalog"
+			if tc.name == "empty-catalog" {
+				wantOption, wantRule = "--model", "incomplete catalog; name --model to select a received pair"
+			}
+			if tc.name == "ambiguous-serial" {
+				wantOption, wantRule = "--model", "serial is ambiguous; name --model to select a catalog pair"
+			}
+
+			for _, capture := range []bool{false, true} {
+				for _, format := range []string{"json", "text"} {
+					t.Run(fmt.Sprintf("%s/capture=%t", format, capture), func(t *testing.T) {
+						var out, logs bytes.Buffer
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						args := []string{"--idle=2m", "--bind=127.0.0.1", "--port", availableCommandPort(t) + ":445", "--log-format", format, "--log-level=debug", "--serial", tc.serial}
+						if capture {
+							args = append(args, "--keylog=/nonexistent/PRIVATE_KEYLOG_PATH")
+						}
+						err := run(ctx, append([]string{"proxy"}, args...), &out, &logs)
+						t.Logf("error=%v stdout=%q log=%s", err, out.String(), &logs)
+						if !errors.Is(err, cloud.ErrConfig) {
+							t.Fatalf("want config error, got %v", err)
+						}
+						assertNoSensitiveErrorDetails(t, err, "PRIVATE_WRONG_SERIAL", "PRIVATE_KEYLOG_PATH", "SYNTHETIC_TOKEN", "SYNTHETIC_SOURCE")
+						var detail *diagnostic.OptionError
+						if !errors.As(err, &detail) || detail.Option != wantOption || detail.Rule != wantRule {
+							t.Errorf("catalog-dependent configuration failure lacks option/rule: %v", err)
+						}
+						var rec map[string]any
+						if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
+							t.Errorf("want exactly one attributed JSON error before dependencies: %v", e)
+						} else if rec["option"] != wantOption || rec["rule"] != wantRule || rec["level"] != "ERROR" || rec["reason"] != "invalid_option" || rec["phase"] != "arguments" || rec["help"] != "seestar-wormhole proxy --help" || out.Len() != 0 {
+							t.Errorf("wrong final diagnostic: %v", rec)
+						}
+					})
+				}
+			}
+		})
+	}
+
+	// Check Config.Model reaches real catalog selection in proxy.New, using the
+	// synchronous read-only LAN detail precheck before any device session exists.
+	catalog.Store(`{"data":{"total":2,"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"first"},{"deviceSn":"SYNTHETIC_SN","deviceModel":"S30","deviceStatus":2,"ssid":"second"}]}}`)
+	detailReply.Store(`{"data":{"deviceSn":"SYNTHETIC_SN","deviceModel":"S30","deviceStatus":4,"ssid":"fixture"}}`)
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	s, err := proxy.New(ctx, proxy.Config{Serial: "SYNTHETIC_SN", Model: "S30", LANDiscovery: true})
+	if s != nil {
+		s.Close()
+		t.Fatal("unavailable detail started session")
+	}
+	if !errors.Is(err, session.ErrBusy) || detailRequests.Load() != 1 || requestedModel.Load() != "S30" {
+		t.Fatalf("config pair wiring: error=%v detail count=%d model=%v", err, detailRequests.Load(), requestedModel.Load())
+	}
+
+	// Source binding must distinguish pairs before any SMB connection. Literal
+	// digests are independent SHA-256 oracles, with NUL separating pair fields.
+	destination, err := pull.OpenDestination(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer destination.Close()
+	for _, tc := range []struct{ model, source string }{
+		{"S50 Pro", "direct:pair:2374d048c57bdffbe9ce790124cc58e7a0212243628dec3d33cfa982b80f3763"},
+		{"S30", "direct:pair:29133ac330b314a81bb8d4597b7ade72824f7f5379a122c47669de3b9b95cd13"},
+	} {
+		s, err := proxy.New(ctx, proxy.Config{Serial: "SYNTHETIC_SN", Model: tc.model, HoldOnDemand: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		identity := s.SourceID()
+		if err := s.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if identity != tc.source {
+			t.Fatal("selected pair lacks its independent literal source binding")
+		}
+		err = destination.BindSource(identity)
+		if tc.model == "S50 Pro" && err != nil {
+			t.Fatal(err)
+		}
+		if tc.model == "S30" {
+			var mismatch *pull.SourceMismatchError
+			if !errors.As(err, &mismatch) || mismatch.ExistingKind != "direct" || mismatch.RequestedKind != "direct" {
+				t.Fatalf("second model source binding=%v, want redacted source mismatch", err)
+			}
+		}
+	}
+	// Existing serial-only pulls retain their persistent destination identity.
+	catalog.Store(`{"data":{"total":1,"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"first"}]}}`)
+	s, err = proxy.New(ctx, proxy.Config{Serial: "SYNTHETIC_SN", HoldOnDemand: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s.SourceID() != "direct:4efb7b00c86f1151c5a84041f6920f63dae1541b1ecf7e840dc4b3d6dd511583" {
+		t.Error("serial-only source binding changed")
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if detailRequests.Load() != 1 {
+		t.Fatal("source identity allocated or queried device detail")
+	}
+}

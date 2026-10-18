@@ -1,0 +1,144 @@
+[
+  {
+    "opcode": "0217",
+    "inner_length": 52,
+    "body_length": 36,
+    "fields": {
+      "nonce": 16,
+      "uid": 20,
+      "argument": 40,
+      "auth": 44
+    },
+    "hex": "04021d00240000001702240000000000341200004558414d504c4555494430303030303030303030000000004558414d504c4538",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "0240",
+    "inner_length": 288,
+    "body_length": 272,
+    "fields": {
+      "uid": 16,
+      "local_addresses": 36,
+      "rid": 100,
+      "nat": 108,
+      "auth": 272
+    },
+    "hex": "04021d001001000040023400000000004558414d504c455549443030303030303030303002009c40c000020a0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000443322118877665502000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004558414d504c45380000000000000000",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "020d",
+    "inner_length": 48,
+    "body_length": 32,
+    "fields": {
+      "uid": 16,
+      "result": 36,
+      "rid": 40
+    },
+    "hex": "04021d00200000000d022400000000004558414d504c4555494430303030303030303030f9ffffff4433221188776655",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "030e",
+    "inner_length": 104,
+    "body_length": 88,
+    "fields": {
+      "uid": 16,
+      "relay_id": 36,
+      "client": 40,
+      "device": 56,
+      "rid": 72,
+      "client_sdk": 80,
+      "device_sdk": 84,
+      "client_protocol": 88,
+      "device_protocol": 92,
+      "client_nat": 96,
+      "device_nat": 100
+    },
+    "hex": "04021d00580000000e032400000000004558414d504c45554944303030303030303030304523000002009c40c000020a00000000000000000200a028c63364140000000000000000443322118877665500080304030603041d0000001d0000000200000003000000",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "030d",
+    "inner_length": 312,
+    "body_length": 296,
+    "fields": {
+      "nonce": 16,
+      "uid": 20,
+      "wan": 40,
+      "lan": 56,
+      "rid": 120,
+      "client_nat": 128,
+      "device_nat": 132,
+      "additional_wan": 136,
+      "opaque_metadata": 264,
+      "opaque_tail": 296
+    },
+    "hex": "04021d00280100000d03240000000000341200004558414d504c45554944303030303030303030300200a028c633641400000000000000000200a028c00002140000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000443322118877665502000000030000000200a029cb007114000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "010d",
+    "inner_length": 52,
+    "body_length": 36,
+    "fields": {
+      "nonce": 16,
+      "uid": 20,
+      "rid": 40,
+      "iotc_port": 48
+    },
+    "hex": "04021d00240000000d01240000000000341200004558414d504c4555494430303030303030303030443322118877665500000000",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "030f",
+    "inner_length": 44,
+    "body_length": 28,
+    "fields": {
+      "relay_id": 12,
+      "uid": 16,
+      "rid": 36
+    },
+    "hex": "04021d001c0000000f032400452300004558414d504c45554944303030303030303030304433221188776655",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "0129",
+    "inner_length": 40,
+    "body_length": 24,
+    "fields": {
+      "nonce": 16,
+      "uid": 20
+    },
+    "hex": "04021d00180000002901240000000000341200004558414d504c4555494430303030303030303030",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "012b",
+    "inner_length": 40,
+    "body_length": 24,
+    "fields": {
+      "nonce": 16,
+      "uid": 20
+    },
+    "hex": "04021d00180000002b01240000000000341200004558414d504c4555494430303030303030303030",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  },
+  {
+    "opcode": "100c",
+    "inner_length": 198,
+    "body_length": 182,
+    "fields": {
+      "nonce": 16,
+      "uid": 20,
+      "observed": 56,
+      "count": 74,
+      "tdu1": 76,
+      "tdu9": 86,
+      "server_address": 90,
+      "key_slot": 106
+    },
+    "hex": "04021d00b60000000c10180000000000214300004558414d504c45554944303030303030303030300000000000000000000000000000000002009c40c000020a0000000000000000000002000100060001000200030009006c0002002711cb00710100000000000000003059301306072a8648ce3d020106082a8648ce3d030107034200046b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c2964fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f500",
+    "kind": "synthetic offset fixture, not captured, opaque receive fields zero only for illustration"
+  }
+]
