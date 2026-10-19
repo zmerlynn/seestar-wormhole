@@ -68,7 +68,7 @@ func TestDispatchRuntimeAndExitPolicy(t *testing.T) {
 			opened := 0
 			code := mainExitCodeWithRunner(args, &out, &logs,
 				func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} },
-				func() (io.Writer, func()) { return &logs, func() {} }, func() error { return nil },
+				func() (io.Writer, func()) { return &logs, func() {} }, false,
 				func(ctx context.Context, o options, stdout, stderr io.Writer) error {
 					return runParsedWithListener(ctx, o, stdout, stderr, func(context.Context, proxy.Config) (commandSession, error) { opened++; return nil, cause },
 						func(string, string) (net.Listener, error) { t.Fatal("unexpected listener"); return nil, nil })
@@ -90,7 +90,7 @@ func TestDispatchInvalidPortRefusesBeforeOwnerStarts(t *testing.T) {
 	code := mainExitCodeWithRunner([]string{"proxy", "--port=invalid"}, &out, &logs,
 		func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} },
 		func() (io.Writer, func()) { return &logs, func() {} },
-		func() error { return nil },
+		false,
 		func(ctx context.Context, o options, stdout, stderr io.Writer) error {
 			runtimeCalls++
 			return runParsedWithListener(ctx, o, stdout, stderr,
@@ -116,8 +116,8 @@ func TestDispatchInformationalOutcomes(t *testing.T) {
 		{"--version", "proxy", "--help"}, // Help takes precedence over version.
 		{"__complete", ""}, {"__completeNoDesc", "proxy", "--"},
 	} {
-		for _, unsupported := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%q/unsupported=%t", args, unsupported), func(t *testing.T) {
+		for _, windows := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%q/windows=%t", args, windows), func(t *testing.T) {
 				var out, logs bytes.Buffer
 				code := mainExitCodeWithRunner(args, &out, &logs,
 					func(context.Context, ...os.Signal) (context.Context, context.CancelFunc) {
@@ -125,12 +125,7 @@ func TestDispatchInformationalOutcomes(t *testing.T) {
 						return nil, nil
 					},
 					func() (io.Writer, func()) { t.Fatal("information acquired log handles"); return nil, nil },
-					func() error {
-						if unsupported {
-							return errors.New("unsupported")
-						}
-						return nil
-					},
+					windows,
 					func(context.Context, options, io.Writer, io.Writer) error {
 						t.Fatal("information entered runtime")
 						return nil
@@ -151,8 +146,8 @@ func TestDispatchUsageErrors(t *testing.T) {
 			if subcommand == "__complete" && permutation.name != "plain" {
 				continue
 			}
-			for _, unsupported := range []bool{false, true} {
-				t.Run(fmt.Sprintf("%s/%s/unsupported=%t", permutation.name, subcommand, unsupported), func(t *testing.T) {
+			for _, windows := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/%s/windows=%t", permutation.name, subcommand, windows), func(t *testing.T) {
 					var out, logs bytes.Buffer
 					args := append([]string{}, permutation.before...)
 					args = append(args, subcommand)
@@ -162,23 +157,18 @@ func TestDispatchUsageErrors(t *testing.T) {
 					}
 					code := mainExitCodeWithRunner(args, &out, &logs,
 						func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) {
-							if unsupported {
+							if windows {
 								t.Fatal("refusal acquired Windows signals")
 							}
 							return ctx, func() {}
 						},
 						func() (io.Writer, func()) {
-							if unsupported {
+							if windows {
 								t.Fatal("refusal acquired Windows log handles")
 							}
 							return &logs, func() {}
 						},
-						func() error {
-							if unsupported {
-								return errors.New("unsupported")
-							}
-							return nil
-						},
+						windows,
 						func(context.Context, options, io.Writer, io.Writer) error {
 							t.Fatal("usage error entered runtime")
 							return nil
@@ -197,21 +187,22 @@ func TestDispatchUsageErrors(t *testing.T) {
 	}
 }
 
-func TestDispatchParsesOnce(t *testing.T) {
+// The runtime receives the validated options selected by Cobra even when a
+// root flag precedes the subcommand. It must not reinterpret argument positions.
+func TestDispatchValidatedOptions(t *testing.T) {
 	var out, logs bytes.Buffer
-	validations := 0
-	code := mainExitCodeWithRunner([]string{"--version", "proxy", "--lan-discovery", "--bind=0.0.0.0"}, &out, &logs,
-		func(context.Context, ...os.Signal) (context.Context, context.CancelFunc) {
-			t.Fatal("version acquired signals")
-			return nil, nil
-		},
-		func() (io.Writer, func()) { t.Fatal("version acquired log handles"); return nil, nil },
-		func() error { validations++; return nil },
-		func(context.Context, options, io.Writer, io.Writer) error {
-			t.Fatal("version entered runtime")
+	calls := 0
+	code := mainExitCodeWithRunner([]string{"--version=false", "proxy", "--lan-discovery", "--bind=0.0.0.0"}, &out, &logs,
+		func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} },
+		func() (io.Writer, func()) { return &logs, func() {} }, true,
+		func(_ context.Context, o options, _, _ io.Writer) error {
+			calls++
+			if o.command != commandProxy || !o.lanDiscovery || o.bind != "0.0.0.0" || o.version {
+				t.Fatalf("invalid parsed options: %+v", o)
+			}
 			return nil
 		})
-	if code != 0 || validations != 1 || out.String() != versionString()+"\n" {
-		t.Fatalf("exit=%d validations=%d stdout=%q; want 0/1/version", code, validations, &out)
+	if code != 0 || calls != 1 || out.Len() != 0 || logs.Len() != 0 {
+		t.Fatalf("exit=%d calls=%d stdout=%q logs=%q", code, calls, &out, &logs)
 	}
 }

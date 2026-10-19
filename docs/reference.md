@@ -37,7 +37,8 @@ loopback or a trusted network behind a firewall.
 | `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
 | `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
 | `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
-| `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. Unsupported on Windows. |
+| `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. |
+| `--lan-discovery-all-interfaces` | `false` | Include VPN and virtual adapters; requires `--lan-discovery`. |
 
 See also [identity and logging flags](#identity-and-logging-flags).
 
@@ -341,7 +342,7 @@ selection masks serials.
 | `site_protected` | WARN | Dropped setter; method, integer ID or `unavailable`, reason |
 | `site_reject` | WARN | Invalid frame; method and reason |
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
-| `lan_discovery_started` | INFO | UDP port |
+| `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode |
 | `lan_discovery_refused` | WARN | Nonzero refusal counts per fixed `rule`, at most once per rule per five seconds, plus pending counts at shutdown; no peer data |
 | `lan_discovery_delivery_failed` | WARN | Local deadline/write failure or short write; fixed `rule`, error returned to the owner |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
@@ -572,17 +573,32 @@ directories. Unsupported private storage fails closed.
 Ctrl+C or Ctrl+Break requests cleanup; wait for exit. Console close, logoff,
 and shutdown allow only best-effort cleanup before OS termination. Windows
 stderr logging uses a bounded queue; lost lines are counted, reported on recovery or stdout, and cause a failed command result.
-`--lan-discovery` fails validation because packet metadata needed for safe
-interface/source selection is unavailable; TCP forwarding remains available.
+LAN discovery uses the [shared responder](#lan-discovery).
 For build/runtime coverage, see [status](status.md).
 
 ## LAN discovery
 
 Enable `--lan-discovery` with a literal LAN IPv4 bind or `0.0.0.0`. Loopback,
-IPv6, and hostnames are refused for discovery. An explicit address must belong
-to an active nonloopback broadcast interface. Wildcard selects all qualifying
-IPv4 addresses at startup. TCP still follows `--bind`; UDP 4720 uses a filtered
-wildcard socket so it can receive directed and limited broadcasts.
+IPv6, and hostnames are refused for discovery. By default, an explicit address
+must belong to an active nonloopback broadcast interface. Wildcard selects all
+qualifying IPv4 addresses at startup. TCP still follows `--bind`; UDP 4720 uses
+a filtered wildcard socket so it can receive directed and limited broadcasts.
+
+Add `--lan-discovery-all-interfaces` to include VPN and virtual adapters that
+lack the broadcast flag, so peers on those networks can discover the proxy.
+Windows types some virtual adapters as non-broadcast even when they support
+discovery traffic. This option removes only the broadcast-flag requirement;
+interfaces must still be up, loopback stays excluded, and selected addresses
+must be IPv4 global unicast. Explicit binds must still belong to a qualifying
+interface. On-link prefix admission and reply/inspection budgets still apply.
+The option is rejected without `--lan-discovery`.
+
+Windows discovery uses x/net with Windows control-message support from the
+fork at [github.com/zmerlynn/net](https://github.com/zmerlynn/net), branch
+`wormhole-windows-pktinfo`, until upstream
+[golang/go#7175](https://github.com/golang/go/issues/7175) lands. The ingress,
+destination and reply-source checks are the same on every OS; see
+[platform validation status](status.md#platforms).
 
 Discovery uses selected cloud detail for serial, name (`ssid`), and model.
 Lazy mode fetches detail without allocating a session. Replies are unicast to
@@ -595,8 +611,8 @@ broadcast source addresses are excluded for prefixes wider than `/31`;
 requester subnet select the reply source. Ambiguous broadcasts matching several
 local addresses get no reply; use an explicit bind or unicast scan.
 
-Oversize datagrams (over 4096 bytes) and malformed or non-object JSON are
-ignored; accepted scans follow the [request validation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#request) and the [discovery dispatcher](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#device-side-responder)
+Oversize datagrams (over 4096 bytes), truncated packets or metadata, and
+malformed or non-object JSON are ignored; accepted scans follow the [request validation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#request) and the [discovery dispatcher](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#device-side-responder)
 with a synthesized identity. There are four immediate
 reply tokens, then one per second globally. Live interface inspections have
 a separate four-immediate/one-per-second budget, including failed admissions.

@@ -101,7 +101,7 @@ func TestCLIConfigAttribution(t *testing.T) {
 
 func TestCLIParserRules(t *testing.T) {
 	var o options
-	root := newCommand(&o, io.Discard, func() error { return nil })
+	root := newCommand(&o, io.Discard)
 	commands := append(root.Commands(), root)
 	for _, cmd := range commands {
 		cmd.InitDefaultHelpFlag()

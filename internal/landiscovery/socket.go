@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -55,37 +56,62 @@ func (s *Socket) takeInspection(now time.Duration) bool {
 	return true
 }
 
+// Options configures local interface discovery and adapter eligibility.
+type Options struct {
+	AllInterfaces bool       // Include non-broadcast adapters; loopback is always excluded.
+	Interfaces    Interfaces // Source of interface metadata; nil uses the operating system.
+}
+
+func eligibleInterface(flags net.Flags, options Options) bool {
+	return flags&net.FlagUp != 0 && flags&net.FlagLoopback == 0 &&
+		(options.AllInterfaces || flags&net.FlagBroadcast != 0)
+}
+
 // ValidBind reports whether bind is a literal IPv4 LAN candidate or 0.0.0.0.
-// Listen additionally verifies ownership by an active broadcast interface.
+// Listen additionally verifies ownership by an eligible active interface.
 func ValidBind(bind string) bool {
 	ip, err := netip.ParseAddr(bind)
 	return err == nil && ip.Is4() && (ip.IsUnspecified() || (ip.IsGlobalUnicast() && !ip.IsLoopback()))
 }
 
-// Supported reports whether the platform provides the required packet metadata.
-// Commands can validate the option before opening listeners.
-func Supported() error { return platformSupported() }
+// Interfaces supplies interface metadata at startup and on each scan.
+// Implementations must support listing adapters, looking one up by index,
+// and listing its addresses.
+type Interfaces interface {
+	List() ([]net.Interface, error)
+	ByIndex(int) (*net.Interface, error)
+	Addrs(*net.Interface) ([]net.Addr, error)
+}
+
+type netInterfaceSource struct{}
+
+func (netInterfaceSource) List() ([]net.Interface, error) { return net.Interfaces() }
+func (netInterfaceSource) ByIndex(index int) (*net.Interface, error) {
+	return net.InterfaceByIndex(index)
+}
+func (netInterfaceSource) Addrs(iface *net.Interface) ([]net.Addr, error) { return iface.Addrs() }
 
 // Listen binds UDP port on the selected interface(s). Production uses Port;
 // port zero permits isolated tests without sharing the app's real listener.
-func Listen(bind string, port int) (*Socket, error) {
-	if err := platformSupported(); err != nil {
-		return nil, err
-	}
+func Listen(bind string, port int, options Options) (*Socket, error) {
 	if !ValidBind(bind) {
 		return nil, errors.New("LAN discovery: bind must be a local LAN IPv4 address or 0.0.0.0")
 	}
+	source := options.Interfaces
+	if source == nil {
+		source = netInterfaceSource{}
+	}
 	selected, _ := netip.ParseAddr(bind)
-	interfaces, err := net.Interfaces()
+	interfaces, err := source.List()
 	if err != nil {
 		return nil, err
 	}
 	sources := make(map[int][]netip.Prefix)
 	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagBroadcast == 0 || iface.Flags&net.FlagLoopback != 0 {
+		if !eligibleInterface(iface.Flags, options) {
 			continue
 		}
-		addresses, err := iface.Addrs()
+		addresses, err := source.Addrs(&iface)
 		if err != nil {
 			return nil, err
 		}
@@ -102,25 +128,28 @@ func Listen(bind string, port int) (*Socket, error) {
 		}
 	}
 	if len(sources) == 0 {
+		if options.AllInterfaces {
+			return nil, errors.New("LAN discovery: bind has no active local nonloopback interface")
+		}
 		return nil, errors.New("LAN discovery: bind has no active local broadcast interface")
 	}
 	s, err := listen(port, sources)
 	if err != nil {
 		return nil, err
 	}
-	s.addresses = interfacePrefixes
+	s.addresses = func(index int) []netip.Prefix { return interfacePrefixes(source, index, options) }
 	return s, nil
 }
 
 // interfacePrefixes fails closed if the ingress interface is gone, inactive,
 // or cannot be inspected. Read per eligible scan so a prefix change cannot leave
 // an obsolete on-link admission boundary in use.
-func interfacePrefixes(index int) []netip.Prefix {
-	iface, err := net.InterfaceByIndex(index)
-	if err != nil || iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagBroadcast == 0 || iface.Flags&net.FlagLoopback != 0 {
+func interfacePrefixes(source Interfaces, index int, options Options) []netip.Prefix {
+	iface, err := source.ByIndex(index)
+	if err != nil || !eligibleInterface(iface.Flags, options) {
 		return nil
 	}
-	addresses, err := iface.Addrs()
+	addresses, err := source.Addrs(iface)
 	if err != nil {
 		return nil
 	}
@@ -203,6 +232,12 @@ func (s *Socket) Serve(ctx context.Context, m *Machine) error {
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
+			}
+			// A truncated datagram or ancillary buffer cannot authorize a reply.
+			// x/net reports Windows WSAEMSGSIZE and truncation flags this way.
+			if errors.Is(err, io.ErrShortBuffer) {
+				m.refuse(refusalMetadata)
+				continue
 			}
 			var timeout net.Error
 			if errors.As(err, &timeout) && timeout.Timeout() {

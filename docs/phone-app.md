@@ -11,8 +11,7 @@ Phone use requires LAN discovery; the tested phone platforms and paths are liste
 
 - A computer on the same Wi-Fi network as your phone. The tested computer was
   a Mac. Linux or a Raspberry Pi should work the same way, though neither has
-  been tested. Windows
-  doesn't support LAN discovery.
+  been tested. See [platform coverage](status.md#platforms) for Windows.
 - Your Seestar account email and password.
 - A correct site stored on the telescope. The device keeps that site and its
   own clock. To change the site, connect the app to the device without the
@@ -56,6 +55,7 @@ Stop the proxy and wait for it to exit before switching the phone app to remote 
   `"phase":"ready"` in its output. (With `--idle`, it only connects once the
   app picks it, so this doesn't apply.)
 Discovery replies use the proxy’s current local address; after an address change, restart the proxy and reconnect the app. See [LAN discovery](reference.md#lan-discovery).
+For discovery over VPN or virtual adapters, see `--lan-discovery-all-interfaces` in the [reference](reference.md#lan-discovery).
 - **It's running in a container or VM.** It needs to see the phone's broadcast
   packets directly, so use host networking or run the binary natively.
 
@@ -75,7 +75,7 @@ Add `--idle 2m` to allocate only when a client connects and release after two id
 
 ## What hasn't been tried
 
-Windows and container phone discovery have not been tested; see [untested phone paths](status.md#phone-app).
+See [phone coverage](status.md#phone-app) and [platform coverage](status.md#platforms).
 
 Details on how discovery answers, what it reports, and its rate limits are in
 [the reference](reference.md#lan-discovery).

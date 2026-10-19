@@ -6,6 +6,7 @@ package ipv4
 
 import (
 	"net"
+	"runtime"
 	"time"
 
 	"golang.org/x/net/internal/socket"
@@ -58,6 +59,11 @@ func (c *dgramOpt) ok() bool { return c != nil && c.Conn != nil }
 func (c *PacketConn) SetControlMessage(cf ControlFlags, on bool) error {
 	if !c.payloadHandler.ok() {
 		return errInvalidConn
+	}
+	if runtime.GOOS == "windows" {
+		if _, ok := c.payloadHandler.PacketConn.(*net.UDPConn); !ok {
+			return errNotImplemented
+		}
 	}
 	return setControlMessage(c.dgramOpt.Conn, &c.payloadHandler.rawOpt, cf, on)
 }
@@ -124,6 +130,9 @@ type RawConn struct {
 func (c *RawConn) SetControlMessage(cf ControlFlags, on bool) error {
 	if !c.packetHandler.ok() {
 		return errInvalidConn
+	}
+	if runtime.GOOS == "windows" {
+		return errNotImplemented
 	}
 	return setControlMessage(c.dgramOpt.Conn, &c.packetHandler.rawOpt, cf, on)
 }

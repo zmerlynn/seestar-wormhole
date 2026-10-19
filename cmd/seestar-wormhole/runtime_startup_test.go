@@ -6,7 +6,6 @@ import (
 	"errors"
 	"github.com/go-json-experiment/json"
 	"net"
-	"runtime"
 	"strconv"
 	"testing"
 
@@ -49,11 +48,6 @@ func TestRuntimeFailures(t *testing.T) {
 				args = []string{"--bind", "0.0.0.0", "--port", strconv.Itoa(l.Addr().(*net.TCPAddr).Port) + ":13459"}
 				option = "--bind"
 			case "occupied-udp":
-				if runtime.GOOS == "windows" {
-					args = append(args, "--lan-discovery")
-					option = "--lan-discovery"
-					break
-				}
 				l, e := net.ListenPacket("udp4", "0.0.0.0:4720")
 				if e != nil {
 					t.Fatal(e)

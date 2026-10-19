@@ -18,3 +18,5 @@ require (
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 )
+
+replace golang.org/x/net => github.com/zmerlynn/net v0.60.1-wormhole.2

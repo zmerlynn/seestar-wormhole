@@ -1,4 +1,4 @@
-//go:build unix
+//go:build unix || windows
 
 package landiscovery
 
@@ -14,7 +14,7 @@ import (
 
 func TestLANBindValidation(t *testing.T) {
 	for _, bind := range []string{"127.0.0.1", "localhost", "::", "224.0.0.1", "255.255.255.255", "192.0.2.45"} {
-		if _, err := Listen(bind, 0); err == nil {
+		if _, err := Listen(bind, 0, Options{}); err == nil {
 			t.Fatalf("accepted non-LAN/unassigned bind %s", bind)
 		}
 	}
@@ -90,12 +90,24 @@ func (s *Socket) addr() *net.UDPAddr {
 
 func loopbackSources(t *testing.T) map[int][]netip.Prefix {
 	t.Helper()
-	lo, err := net.InterfaceByName("lo")
-	if err != nil {
-		lo, err = net.InterfaceByName("lo0")
-	}
+	// Enumerate the owner of the assigned loopback address: Windows does not
+	// use Unix interface names and does not assign Linux's 127.0.0.2 alias.
+	interfaces, err := net.Interfaces()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return map[int][]netip.Prefix{lo.Index: {netip.MustParsePrefix("127.0.0.1/8")}}
+	for _, iface := range interfaces {
+		addresses, err := iface.Addrs()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, address := range addresses {
+			prefix, err := netip.ParsePrefix(address.String())
+			if err == nil && prefix.Addr() == netip.MustParseAddr("127.0.0.1") {
+				return map[int][]netip.Prefix{iface.Index: {prefix}}
+			}
+		}
+	}
+	t.Fatal("127.0.0.1 has no interface")
+	return nil
 }

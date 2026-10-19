@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"github.com/go-json-experiment/json"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -40,7 +39,7 @@ func TestInvalidOptions(t *testing.T) {
 	for _, value := range []string{"-123456789", "987654321"} {
 		tests = append(tests, test{"int-range" + value, "--pause-threshold", "byte count must be 2..8388608", []string{"--pause-threshold=" + value}, []string{value}})
 	}
-	for _, name := range []string{"lan-discovery", "version"} {
+	for _, name := range []string{"lan-discovery", "lan-discovery-all-interfaces", "version"} {
 		tests = append(tests, test{name + "bool", "--" + name, "use a boolean value", []string{"--" + name + "=PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}})
 	}
 	for _, name := range []string{"bind", "port", "idle", "pause-threshold", "log-format", "log-level", "serial", "state-dir"} {
@@ -49,9 +48,6 @@ func TestInvalidOptions(t *testing.T) {
 		}
 	}
 	for _, tc := range tests {
-		if runtime.GOOS == "windows" && tc.name == "bad-bind-discovery" {
-			tc.option, tc.rule = "--lan-discovery", "LAN discovery is unsupported on Windows"
-		}
 		t.Run(tc.name, func(t *testing.T) {
 			var out, logs bytes.Buffer
 			err := run(context.Background(), append([]string{"proxy"}, tc.args...), &out, &logs)
@@ -127,7 +123,7 @@ func FuzzConfiguration(f *testing.F) {
 			t.Skip()
 		}
 		private := "FUZZ_SECRET_MARKER:" + value
-		for _, name := range []string{"port", "idle", "pause-threshold", "lan-discovery", "version", "log-format", "log-level", "unknown"} {
+		for _, name := range []string{"port", "idle", "pause-threshold", "lan-discovery", "lan-discovery-all-interfaces", "version", "log-format", "log-level", "unknown"} {
 			var out, logs bytes.Buffer
 			err := run(context.Background(), append([]string{"proxy"}, []string{"--" + name + "=" + private}...), &out, &logs)
 			if err == nil {

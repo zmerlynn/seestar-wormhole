@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/go-json-experiment/json"
 	"io"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -53,9 +52,6 @@ func TestArgumentRulesAndRedaction(t *testing.T) {
 		{"unknown option", "arguments", "use only supported options", []string{"--private-secret=/private/path"}, []string{"private-secret", "/private/path"}},
 		{"positional", "arguments", "positional arguments are not allowed", []string{"private-password"}, []string{"private-password"}},
 	} {
-		if runtime.GOOS == "windows" && tt.name == "discovery bind" {
-			tt.option, tt.rule = "--lan-discovery", "LAN discovery is unsupported on Windows"
-		}
 		t.Run(tt.name, func(t *testing.T) {
 			var out, logs bytes.Buffer
 			err := run(context.Background(), append([]string{"proxy"}, tt.args...), &out, &logs)

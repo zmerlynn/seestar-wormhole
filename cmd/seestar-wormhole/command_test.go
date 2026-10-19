@@ -35,7 +35,7 @@ func TestRootVersion(t *testing.T) {
 
 func TestCommandTreeAndFlagScope(t *testing.T) {
 	var o options
-	root := newCommand(&o, io.Discard, func() error { return nil })
+	root := newCommand(&o, io.Discard)
 	commands := root.Commands()
 	if len(commands) != 2 || commands[0].Name() != "licenses" || commands[1].Name() != "proxy" || len(commands[1].Aliases) != 0 {
 		t.Fatalf("commands = %v, want licenses and proxy with no aliases", commands)
@@ -43,7 +43,7 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {
 		t.Fatal("root version or flag scope changed")
 	}
-	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "log-format", "log-level", "lan-discovery"} {
+	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "log-format", "log-level", "lan-discovery", "lan-discovery-all-interfaces"} {
 		if root.Flags().Lookup(name) != nil || root.PersistentFlags().Lookup(name) != nil || commands[1].Flags().Lookup(name) == nil {
 			t.Errorf("%s must be proxy-local", name)
 		}
@@ -90,11 +90,10 @@ func TestCobraPortSpellingsAndBooleanRules(t *testing.T) {
 // Exercise the actual production bootstrap branch on Linux too. Removing the
 // Windows preflight must invoke the fatal resource hooks and fail this test.
 func TestWindowsPreflightOrdering(t *testing.T) {
-	unsupported := func() error { return errors.New("unsupported platform") }
 	for _, args := range [][]string{
 		{"proxy", "--lan-discovery"},
-		{"proxy", "--lan-discovery", "--bind=0.0.0.0"},
-		{"proxy", "--version", "--lan-discovery", "--bind=0.0.0.0"},
+		{"proxy", "--lan-discovery", "--bind=localhost"},
+		{"proxy", "--version", "--lan-discovery", "--bind=127.0.0.1"},
 	} {
 		var out, logs bytes.Buffer
 		code := mainExitCodeWithPlatform(args, &out, &logs, func(context.Context, ...os.Signal) (context.Context, context.CancelFunc) {
@@ -103,12 +102,12 @@ func TestWindowsPreflightOrdering(t *testing.T) {
 		}, func() (io.Writer, func()) {
 			t.Fatal("log bootstrap ran before Windows refusal")
 			return nil, nil
-		}, unsupported)
+		}, true)
 		var record struct{ Option, Rule, Phase, Reason string }
 		if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
 			t.Fatal(err, &logs)
 		}
-		if code != 2 || out.Len() != 0 || record.Option != "--lan-discovery" || record.Rule != "LAN discovery is unsupported on Windows" || record.Phase != "arguments" || record.Reason != "invalid_option" || strings.Contains(logs.String(), "PRIVATE_CAPTURE") {
+		if code != 2 || out.Len() != 0 || record.Option != "--bind" || record.Rule != "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0" || record.Phase != "arguments" || record.Reason != "invalid_option" || strings.Contains(logs.String(), "PRIVATE_CAPTURE") {
 			t.Fatalf("Windows preflight: exit=%d out=%q diagnostic=%+v", code, &out, record)
 		}
 	}

@@ -8,7 +8,6 @@ import (
 	"io"
 	"net"
 	"net/netip"
-	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -79,9 +78,6 @@ func (cleanupRNG) Uint64() uint64 { return 0 }
 // cleanup schedules use that listener, so loopback-only containers explicitly
 // skip the discovery cases; context and owner cleanup still run there.
 func requireDiscoveryInterface(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("LAN discovery is unsupported on Windows")
-	}
 	t.Helper()
 	interfaces, err := net.Interfaces()
 	if err != nil {

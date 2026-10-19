@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,19 +68,20 @@ func (m *mappings) Set(s string) error {
 }
 
 type options struct {
-	command                 commandKind
-	outcome                 commandOutcome
-	bind, format            string
-	level                   string
-	ports                   mappings
-	idle                    time.Duration
-	pauseThreshold          int
-	version                 bool
-	lanDiscovery            bool
-	serial, model, stateDir string
+	command                   commandKind
+	outcome                   commandOutcome
+	bind, format              string
+	level                     string
+	ports                     mappings
+	idle                      time.Duration
+	pauseThreshold            int
+	version                   bool
+	lanDiscovery              bool
+	lanDiscoveryAllInterfaces bool
+	serial, model, stateDir   string
 }
 
-func validateOptions(o *options, supported func() error) error {
+func validateOptions(o *options) error {
 	if o.idle < 0 {
 		return &argumentError{Option: "--idle", Rule: "duration must be nonnegative"}
 	}
@@ -89,8 +91,8 @@ func validateOptions(o *options, supported func() error) error {
 	if err := validateSharedOptions(o); err != nil {
 		return err
 	}
-	if o.lanDiscovery && supported() != nil {
-		return &argumentError{Option: "--lan-discovery", Rule: "LAN discovery is unsupported on Windows"}
+	if o.lanDiscoveryAllInterfaces && !o.lanDiscovery {
+		return &argumentError{Option: "--lan-discovery-all-interfaces", Rule: "requires --lan-discovery"}
 	}
 	if o.lanDiscovery && !landiscovery.ValidBind(o.bind) {
 		return &argumentError{Option: "--bind", Rule: "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0"}
@@ -146,6 +148,21 @@ type commandSession interface {
 	DeviceDetail() cloud.Detail
 }
 
+// commandDiscovery permits startup tests without an active LAN or a fixed UDP port.
+type commandDiscovery interface {
+	Serve(context.Context, *landiscovery.Machine) error
+	Close() error
+}
+
+func listenCommandDiscovery(bind string, port int, options landiscovery.Options, logger *slog.Logger) (commandDiscovery, error) {
+	s, err := landiscovery.Listen(bind, port, options)
+	if err != nil {
+		return nil, err
+	}
+	s.Logger = logger
+	return s, nil
+}
+
 func runWithSession(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error)) error {
 	return runWithListener(ctx, args, out, logOutput, newSession, net.Listen)
 }
@@ -176,10 +193,10 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 	if o.command == commandLicenses {
 		return licenses.Write(out)
 	}
-	return runProxy(ctx, o, logs, newSession, listen, proxy.CheckTCPStateSupport)
+	return runProxy(ctx, o, logs, newSession, listen, listenCommandDiscovery, proxy.CheckTCPStateSupport)
 }
 
-func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), checkTCPState func(context.Context) error) (result error) {
+func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) (result error) {
 	var err error
 	phase := "arguments"
 	var cleanupErr error
@@ -225,14 +242,13 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		}
 		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.device})
 	}
-	var discovery *landiscovery.Socket
+	var discovery commandDiscovery
 	if o.lanDiscovery {
 		phase = "lan_discovery"
-		discovery, err = landiscovery.Listen(o.bind, landiscovery.Port)
+		discovery, err = listenDiscovery(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces}, logger)
 		if err != nil {
 			return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
 		}
-		discovery.Logger = logger
 		defer discovery.Close()
 	}
 	phase = "session"
@@ -262,7 +278,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		go func() { discoveryErr = discovery.Serve(ctx, machine); close(discoveryDone) }()
 		// Join discovery before closing the session or returning from any branch.
 		defer func() { cancel(); discovery.Close(); <-discoveryDone }()
-		logger.Info("lan_discovery_started", "port", landiscovery.Port)
+		logger.Info("lan_discovery_started", "port", landiscovery.Port, "all_interfaces", o.lanDiscoveryAllInterfaces)
 		warnLANHTTP(logger, o.ports)
 	}
 	// Configuration is accepted before waiting for readiness, which may spend
@@ -315,17 +331,17 @@ func mainExitCode() int {
 }
 
 func mainExitCodeWithBootstrap(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func())) int {
-	return mainExitCodeWithPlatform(args, out, logOutput, notify, newLog, landiscovery.Supported)
+	return mainExitCodeWithPlatform(args, out, logOutput, notify, newLog, runtime.GOOS == "windows")
 }
 
-func mainExitCodeWithPlatform(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func()), supported func() error) int {
-	return mainExitCodeWithRunner(args, out, logOutput, notify, newLog, supported, runParsed)
+func mainExitCodeWithPlatform(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func()), windows bool) int {
+	return mainExitCodeWithRunner(args, out, logOutput, notify, newLog, windows, runParsed)
 }
 
 // The parsed options cross this boundary exactly once; runtime and exit policy
 // must never independently reinterpret the original argument positions.
-func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func()), supported func() error, execute func(context.Context, options, io.Writer, io.Writer) error) int {
-	o, err := parseWithSupport(args, out, supported)
+func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func()), windows bool, execute func(context.Context, options, io.Writer, io.Writer) error) int {
+	o, err := parse(args, out)
 	if errors.Is(err, errHelp) {
 		return 0
 	}
@@ -338,7 +354,7 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	}
 	// Windows refuses invalid options before acquiring signal or log handles.
 	// Unix keeps nonblocking log setup for argument errors on stalled stderr.
-	if err != nil && supported() != nil {
+	if err != nil && windows {
 		logCommandArgumentError(o, logOutput, err)
 		return commandExitCode(o, err)
 	}

@@ -50,7 +50,7 @@ func TestLogLossReceipt(t *testing.T) {
 			var final bytes.Buffer
 			code := mainExitCodeWithRunner([]string{"proxy"}, &final, io.Discard, func(context.Context, ...os.Signal) (context.Context, context.CancelFunc) {
 				return context.Background(), func() {}
-			}, func() (io.Writer, func()) { return w, func() {} }, func() error { return nil }, func(context.Context, options, io.Writer, io.Writer) error { return nil })
+			}, func() (io.Writer, func()) { return w, func() {} }, false, func(context.Context, options, io.Writer, io.Writer) error { return nil })
 			if code == 0 || !strings.Contains(final.String(), `"rule":"log_sink_loss"`) {
 				t.Fatalf("final code=%d output=%s", code, &final)
 			}
@@ -124,7 +124,7 @@ func TestQueuedLogLoss(t *testing.T) {
 				var final bytes.Buffer
 				code := mainExitCodeWithRunner([]string{"proxy"}, &final, io.Discard, func(context.Context, ...os.Signal) (context.Context, context.CancelFunc) {
 					return context.Background(), func() {}
-				}, func() (io.Writer, func()) { return w, func() {} }, func() error { return nil }, func(context.Context, options, io.Writer, io.Writer) error { return nil })
+				}, func() (io.Writer, func()) { return w, func() {} }, false, func(context.Context, options, io.Writer, io.Writer) error { return nil })
 				if code == 0 || !strings.Contains(final.String(), `"rule":"log_sink_loss"`) || !strings.Contains(final.String(), `"level":"WARN"`) {
 					t.Fatalf("queue final code=%d summary=%s", code, &final)
 				}

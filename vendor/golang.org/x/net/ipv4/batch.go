@@ -76,6 +76,8 @@ func (c *payloadHandler) ReadBatch(ms []Message, flags int) (int, error) {
 		return 0, errInvalidConn
 	}
 	switch runtime.GOOS {
+	case "windows":
+		return 0, errNotImplemented
 	case "linux":
 		n, err := c.RecvMsgs([]socket.Message(ms), flags)
 		if err != nil {
@@ -110,6 +112,8 @@ func (c *payloadHandler) WriteBatch(ms []Message, flags int) (int, error) {
 		return 0, errInvalidConn
 	}
 	switch runtime.GOOS {
+	case "windows":
+		return 0, errNotImplemented
 	case "linux":
 		n, err := c.SendMsgs([]socket.Message(ms), flags)
 		if err != nil {
@@ -142,6 +146,8 @@ func (c *packetHandler) ReadBatch(ms []Message, flags int) (int, error) {
 		return 0, errInvalidConn
 	}
 	switch runtime.GOOS {
+	case "windows":
+		return 0, errNotImplemented
 	case "linux":
 		n, err := c.RecvMsgs([]socket.Message(ms), flags)
 		if err != nil {
@@ -176,6 +182,8 @@ func (c *packetHandler) WriteBatch(ms []Message, flags int) (int, error) {
 		return 0, errInvalidConn
 	}
 	switch runtime.GOOS {
+	case "windows":
+		return 0, errNotImplemented
 	case "linux":
 		n, err := c.SendMsgs([]socket.Message(ms), flags)
 		if err != nil {
