@@ -4,7 +4,7 @@ go 1.27
 
 require (
 	github.com/go-json-experiment/json v0.0.0-20260820222146-c27c302e5fc3
-	github.com/pion/dtls/v3 v3.1.14
+	github.com/pion/dtls/v3 v3.1.15-0.20261019015738-db6e8867c3b5
 	github.com/pion/logging v0.2.4
 	github.com/pion/transport/v5 v5.0.0
 	github.com/spf13/cobra v1.10.2
