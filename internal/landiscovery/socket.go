@@ -56,9 +56,10 @@ func (s *Socket) takeInspection(now time.Duration) bool {
 	return true
 }
 
-// Options selects which local adapters may answer discovery scans.
+// Options configures local interface discovery and adapter eligibility.
 type Options struct {
-	AllInterfaces bool // Include non-broadcast adapters; loopback is always excluded.
+	AllInterfaces bool       // Include non-broadcast adapters; loopback is always excluded.
+	Interfaces    Interfaces // Source of interface metadata; nil uses the operating system.
 }
 
 func eligibleInterface(flags net.Flags, options Options) bool {
@@ -73,33 +74,35 @@ func ValidBind(bind string) bool {
 	return err == nil && ip.Is4() && (ip.IsUnspecified() || (ip.IsGlobalUnicast() && !ip.IsLoopback()))
 }
 
-// interfaceSource supplies the OS metadata used at startup and on each scan.
-type interfaceSource interface {
-	interfaces() ([]net.Interface, error)
-	interfaceByIndex(int) (*net.Interface, error)
-	addrs(*net.Interface) ([]net.Addr, error)
+// Interfaces supplies interface metadata at startup and on each scan.
+// Implementations must support listing adapters, looking one up by index,
+// and listing its addresses.
+type Interfaces interface {
+	List() ([]net.Interface, error)
+	ByIndex(int) (*net.Interface, error)
+	Addrs(*net.Interface) ([]net.Addr, error)
 }
 
 type netInterfaceSource struct{}
 
-func (netInterfaceSource) interfaces() ([]net.Interface, error) { return net.Interfaces() }
-func (netInterfaceSource) interfaceByIndex(index int) (*net.Interface, error) {
+func (netInterfaceSource) List() ([]net.Interface, error) { return net.Interfaces() }
+func (netInterfaceSource) ByIndex(index int) (*net.Interface, error) {
 	return net.InterfaceByIndex(index)
 }
-func (netInterfaceSource) addrs(iface *net.Interface) ([]net.Addr, error) { return iface.Addrs() }
+func (netInterfaceSource) Addrs(iface *net.Interface) ([]net.Addr, error) { return iface.Addrs() }
 
 // Listen binds UDP port on the selected interface(s). Production uses Port;
 // port zero permits isolated tests without sharing the app's real listener.
 func Listen(bind string, port int, options Options) (*Socket, error) {
-	return listenInterfaces(netInterfaceSource{}, bind, port, options)
-}
-
-func listenInterfaces(source interfaceSource, bind string, port int, options Options) (*Socket, error) {
 	if !ValidBind(bind) {
 		return nil, errors.New("LAN discovery: bind must be a local LAN IPv4 address or 0.0.0.0")
 	}
+	source := options.Interfaces
+	if source == nil {
+		source = netInterfaceSource{}
+	}
 	selected, _ := netip.ParseAddr(bind)
-	interfaces, err := source.interfaces()
+	interfaces, err := source.List()
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +111,7 @@ func listenInterfaces(source interfaceSource, bind string, port int, options Opt
 		if !eligibleInterface(iface.Flags, options) {
 			continue
 		}
-		addresses, err := source.addrs(&iface)
+		addresses, err := source.Addrs(&iface)
 		if err != nil {
 			return nil, err
 		}
@@ -141,12 +144,12 @@ func listenInterfaces(source interfaceSource, bind string, port int, options Opt
 // interfacePrefixes fails closed if the ingress interface is gone, inactive,
 // or cannot be inspected. Read per eligible scan so a prefix change cannot leave
 // an obsolete on-link admission boundary in use.
-func interfacePrefixes(source interfaceSource, index int, options Options) []netip.Prefix {
-	iface, err := source.interfaceByIndex(index)
+func interfacePrefixes(source Interfaces, index int, options Options) []netip.Prefix {
+	iface, err := source.ByIndex(index)
 	if err != nil || !eligibleInterface(iface.Flags, options) {
 		return nil
 	}
-	addresses, err := source.addrs(iface)
+	addresses, err := source.Addrs(iface)
 	if err != nil {
 		return nil
 	}

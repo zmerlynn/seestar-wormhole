@@ -20,11 +20,11 @@ type fakeInterfaceSource struct {
 	lookups   int
 }
 
-func (s *fakeInterfaceSource) interfaces() ([]net.Interface, error) {
+func (s *fakeInterfaceSource) List() ([]net.Interface, error) {
 	return []net.Interface{s.iface}, nil
 }
 
-func (s *fakeInterfaceSource) interfaceByIndex(index int) (*net.Interface, error) {
+func (s *fakeInterfaceSource) ByIndex(index int) (*net.Interface, error) {
 	if index != s.iface.Index {
 		s.t.Fatalf("lookup index=%d, want %d", index, s.iface.Index)
 	}
@@ -32,7 +32,7 @@ func (s *fakeInterfaceSource) interfaceByIndex(index int) (*net.Interface, error
 	return &s.iface, nil
 }
 
-func (s *fakeInterfaceSource) addrs(iface *net.Interface) ([]net.Addr, error) {
+func (s *fakeInterfaceSource) Addrs(iface *net.Interface) ([]net.Addr, error) {
 	if iface.Index != s.iface.Index {
 		s.t.Fatalf("address index=%d, want %d", iface.Index, s.iface.Index)
 	}
@@ -50,11 +50,11 @@ func TestListenAllInterfaces(t *testing.T) {
 				t: t, iface: net.Interface{Index: 3, Name: "synthetic-tap", Flags: net.FlagUp},
 				addresses: originalAddresses,
 			}
-			if s, err := listenInterfaces(source, bind, 0, Options{}); err == nil {
+			if s, err := Listen(bind, 0, Options{Interfaces: source}); err == nil {
 				s.Close()
 				t.Fatal("default accepted a non-broadcast adapter")
 			}
-			s, err := listenInterfaces(source, bind, 0, Options{AllInterfaces: true})
+			s, err := Listen(bind, 0, Options{AllInterfaces: true, Interfaces: source})
 			if err != nil {
 				t.Fatalf("opt-in Listen: %v", err)
 			}
