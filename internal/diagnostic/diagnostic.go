@@ -124,7 +124,7 @@ func Class(err error) string {
 		return "none"
 	case errors.Is(err, context.DeadlineExceeded), errors.Is(err, session.ErrTimeout):
 		return "timeout"
-	case errors.Is(err, os.ErrPermission):
+	case errors.Is(err, os.ErrPermission), oserror.Is(err, syscall.EACCES):
 		return "permission_denied"
 	case oserror.Is(err, syscall.ENOTDIR):
 		return "not_a_directory"

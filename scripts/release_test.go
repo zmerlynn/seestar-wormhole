@@ -211,8 +211,11 @@ func TestReleaseVersions(t *testing.T) {
 			if got := releaseVersion.MatchString(tc.version); got != tc.valid {
 				t.Errorf("Go validation=%t, want %t", got, tc.valid)
 			}
-			cmd := exec.Command(bash, script, tc.version)
-			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+			// Go's Windows quoting leaves LF unquoted; MSYS argv parsing then
+			// strips it. Pass the literal value through the environment and let
+			// Bash construct its quoted argument, as the release workflow does.
+			cmd := exec.Command(bash, "-c", `exec "$BASH" "$1" "$RELEASE_TEST_VERSION"`, "release-test", script)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "RELEASE_TEST_VERSION="+tc.version)
 			output, err := cmd.CombinedOutput()
 			want := 0
 			if !tc.valid {
@@ -300,7 +303,7 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 				continue
 			}
 			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", step.Run)
-			cmd.Env = append(os.Environ(), "PATH="+bin+":"+os.Getenv("PATH"), "BUILD_MARKER="+marker)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "BUILD_MARKER="+marker)
 			for key, value := range step.Env {
 				if value == "${{ github.ref_name }}" {
 					value = version

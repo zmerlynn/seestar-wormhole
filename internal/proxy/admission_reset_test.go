@@ -141,7 +141,9 @@ func TestRealTCPResetAfterStaging(t *testing.T) {
 	if err := client.SetLinger(0); err != nil {
 		t.Fatal(err)
 	}
-	client.Close()
+	if err := client.Close(); err != nil {
+		t.Fatal(err)
+	}
 	select {
 	case <-req.ctx.Done():
 	case <-time.After(250 * time.Millisecond):

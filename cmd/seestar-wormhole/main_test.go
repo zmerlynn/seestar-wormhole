@@ -16,7 +16,7 @@ import (
 
 func TestFlagDefaultsAndMappings(t *testing.T) {
 	o, err := parse(append([]string{"proxy"}, nil...), io.Discard)
-	if err != nil || o.bind != "127.0.0.2" || o.idle != 0 || len(o.ports) != 10 || o.ports[1] != (mapping{4445, 445}) {
+	if err != nil || o.bind != defaultBind || o.idle != 0 || len(o.ports) != 10 || o.ports[1] != (mapping{4445, 445}) {
 		t.Fatalf("defaults %+v %v", o, err)
 	}
 	o, err = parse(append([]string{"proxy"}, []string{"--port", "1445:445", "--port", "8080:80", "--idle", "2m", "--log-format", "text"}...), io.Discard)

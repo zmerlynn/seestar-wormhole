@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/go-json-experiment/json"
+	"os"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -33,6 +35,13 @@ func TestEnvironmentBoundaries(t *testing.T) {
 			}
 			if tc.key != "--serial" {
 				t.Setenv(tc.key, tc.value)
+				if runtime.GOOS == "windows" && os.Getenv(tc.key) != tc.value {
+					// Skip only when the actual UTF-16 environment round trip changed
+					// these bytes. Representable WTF-8 must still reach validation.
+					// TestCredentialFailureSetting in internal/cloud rejects the
+					// original invalid UTF-8 directly on every platform.
+					t.Skip("Windows UTF-16 environment changed the fixture bytes; direct credential validation covers the original bytes")
+				}
 			}
 			var out, logs bytes.Buffer
 			args := []string{"--idle=2m", "--bind=0.0.0.0", "--port", availableCommandPort(t) + ":13459", "--log-format=text", "--log-level=debug"}

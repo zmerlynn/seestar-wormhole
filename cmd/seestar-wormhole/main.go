@@ -176,10 +176,10 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 	if o.command == commandLicenses {
 		return licenses.Write(out)
 	}
-	return runProxy(ctx, o, logs, newSession, listen)
+	return runProxy(ctx, o, logs, newSession, listen, proxy.CheckTCPStateSupport)
 }
 
-func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) (result error) {
+func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), checkTCPState func(context.Context) error) (result error) {
 	var err error
 	phase := "arguments"
 	var cleanupErr error
@@ -188,6 +188,9 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			// The contracted final record is always JSON, independently of the
 			// lifecycle format, threshold, startup buffering, and receipt history.
 			logger := newLogger("json", logOutput)
+			if phase == "tcp_state_query" {
+				logger = logger.With("rule", "SIO_TCP_INFO_required", "requirement", "Windows 10 version 1703 or later, or Windows Server 2016 or later")
+			}
 			var detail *argumentError
 			if errors.As(result, &detail) {
 				// Startup resolution follows the same JSON-only configuration contract as
@@ -202,6 +205,10 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	startup := newStartupLogging(o, logOutput)
 	logger := startup.logger
 	defer func() { result = errors.Join(result, startup.finish(result)) }()
+	phase = "tcp_state_query"
+	if err := checkTCPState(ctx); err != nil {
+		return err
+	}
 	phase = "listener"
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()

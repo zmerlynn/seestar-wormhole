@@ -51,7 +51,7 @@ func TestComposedSMB(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	local, err := net.Listen("tcp", "127.0.0.2:4445")
+	local, err := net.Listen("tcp", "127.0.0.1:4445")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +75,7 @@ func TestComposedSMB(t *testing.T) {
 		}
 		return out
 	}
-	run("config", "create", "seestar", "smb", "host", "127.0.0.2", "port", "4445", "user", "guest")
+	run("config", "create", "seestar", "smb", "host", "127.0.0.1", "port", "4445", "user", "guest")
 	listing := strings.Fields(string(run("lsf", "seestar:EMMC Images/MyWorks", "--recursive", "--files-only")))
 	slices.Sort(listing)
 	if !slices.Equal(listing, []string{"nested/small.fit", "zeros.fit"}) {

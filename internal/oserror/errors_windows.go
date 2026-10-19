@@ -17,6 +17,8 @@ func Is(err, target error) bool {
 	}
 	var native []error
 	switch target {
+	case syscall.EACCES:
+		native = []error{windows.WSAEACCES}
 	case syscall.ECONNREFUSED:
 		native = []error{windows.WSAECONNREFUSED}
 	case syscall.ECONNRESET:

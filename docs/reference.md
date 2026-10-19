@@ -32,7 +32,7 @@ loopback or a trusted network behind a firewall.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--bind` | `127.0.0.2` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
+| `--bind` | `127.0.0.1` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
 | `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
 | `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
 | `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
@@ -335,7 +335,7 @@ selection masks serials.
 | `channel_open` | INFO | Device `port`, `local_port`, `channel`, `client_class` |
 | `channel_close` | INFO | Same context, `duration_ms`, successful `local_to_device_bytes`, `device_to_local_bytes`, classified reason |
 | `channel_closed` | INFO for a closed local writer; WARN for abnormal failures; DEBUG otherwise | Tunnel/bridge detail, direction or channel, reason and classified cause |
-| `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason |
+| `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason; `rule=SIO_TCP_INFO_required` identifies a failed or short TCP-state query, which refuses admission |
 | `client_canceled` | INFO | Admission canceled before forwarding; ports/client class |
 | `site_protected` | WARN | Dropped setter; method, integer ID or `unavailable`, reason |
 | `site_reject` | WARN | Invalid frame; method and reason |
@@ -350,7 +350,7 @@ selection masks serials.
 | `dtls_credentials_refused` | WARN | NUL-containing credentials refused with an error; `rule=R024` |
 | `diagnostics_lost` | WARN | Rule and cumulative loss count for startup or stderr rules; stderr failure uses stdout |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
-| `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys |
+| `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
 | `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions; direct/relay and UDP/TCP path |
 | `cloud_catalog_pagination_oddities`, `cloud_receive_oddity`, `cloud_response_rejected` | DEBUG | Bounded cloud parsing/catalog diagnostics |
@@ -477,6 +477,7 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `local_queue_capacity` | 1 | The tunnel send queue is full. |
 | `reason` | `local_write_failed` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `login_rejected` | 1 | Login rejected. |
+| `reason` | `loopback_unavailable` | 1 | The startup TCP-state check could not establish its loopback connection; check local networking. |
 | `reason` | `multiple device logins` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `no_space` | 1 | No space. |
 | `reason` | `none` | 0 | No primary failure. |
@@ -538,7 +539,14 @@ the phone's actual LAN broadcasts for discovery. See [always-on hosts](always-on
 
 ## Windows
 
-The bind default is also `127.0.0.2` on Windows. Image copying uses
+TCP forwarding requires Windows 10 version 1703 or later, or Windows Server
+2016 or later, for non-consuming reset detection (`SIO_TCP_INFO`).
+Before opening forwarding listeners, the proxy queries a connected IPv4 loopback
+TCP pair at `127.0.0.1`, independently of `--bind`, and refuses startup with exit 1
+and a final ERROR if the query fails, returns a short result, or loopback setup is
+unavailable.
+
+Image copying uses
 [rclone through the SMB listener](copying.md#windows).
 
 Installation identity files must be owned by the current user and have a

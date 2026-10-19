@@ -3,14 +3,21 @@
 package proxy
 
 import (
+	"encoding/binary"
+	"io"
 	"net"
 	"syscall"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"golang.org/x/sys/windows"
 )
 
-// Winsock SO_ERROR (winsock2.h); x/sys/windows does not export this option.
-const soError = 0x1007
+// Winsock constants from winsock2.h and mstcpip.h, absent from x/sys/windows.
+const (
+	soError        = 0x1007
+	sioTCPInfo     = 0xd8000027
+	tcpStateClosed = 0
+)
 
 type tcpSocketErrors struct{ raw syscall.RawConn }
 
@@ -32,11 +39,28 @@ func admissionSocketErrors(conn net.Conn) (socketErrorSource, error) {
 func (s tcpSocketErrors) socketError() error {
 	var pending int
 	var queryErr error
-	// Control pins the descriptor only for this nonblocking query. SO_ERROR
-	// gets and clears errors (Winsock SO_ERROR); it consumes no queued data. A valid
-	// FIN has no socket error, including with an unread prefix.
+	// Winsock leaves SO_ERROR clear and retains Getpeername after a reset with
+	// unread bytes. TCP_INFO_v0 exposes CLOSED after RST and CLOSE_WAIT after
+	// FIN without consuming bytes. These accepted sockets were established;
+	// CLOSED is terminal, while FIN must preserve the queued stream and reply.
 	err := s.raw.Control(func(fd uintptr) {
 		pending, queryErr = windows.GetsockoptInt(windows.Handle(fd), windows.SOL_SOCKET, soError)
+		if queryErr == nil && pending == 0 {
+			// SIO_TCP_INFO takes a DWORD version (zero) and an 88-byte v0
+			// structure. Only its first DWORD, TCPSTATE, is needed here.
+			var version [4]byte
+			var info [88]byte
+			var returned uint32
+			queryErr = windows.WSAIoctl(windows.Handle(fd), sioTCPInfo,
+				&version[0], uint32(len(version)), &info[0], uint32(len(info)), &returned, nil, 0)
+			if queryErr != nil {
+				queryErr = diagnostic.Wrap("tcp_state_query", "", queryErr)
+			} else if returned != uint32(len(info)) {
+				queryErr = diagnostic.Wrap("tcp_state_query", "", io.ErrUnexpectedEOF)
+			} else if binary.LittleEndian.Uint32(info[:4]) == tcpStateClosed {
+				queryErr = windows.WSAECONNRESET
+			}
+		}
 	})
 	if err != nil {
 		return err

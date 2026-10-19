@@ -9,6 +9,7 @@ import (
 	"net"
 	"os/exec"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +22,11 @@ func TestDTLSOpenSSL(t *testing.T) {
 	if _, e := exec.LookPath("openssl"); e != nil {
 		t.Fatal("OpenSSL is required for independent DTLS interop")
 	}
+	version, e := exec.Command("openssl", "version").CombinedOutput()
+	if e != nil {
+		t.Fatalf("OpenSSL version: %v: %s", e, version)
+	}
+	t.Logf("%s", version)
 	for _, tc := range []struct {
 		name, ciphers string
 		suite         uint16
@@ -36,7 +42,9 @@ func TestDTLSOpenSSL(t *testing.T) {
 			addr := reservation.LocalAddr().String()
 			reservation.Close()
 			key := sha256.Sum256([]byte("password"))
-			cmd := exec.CommandContext(ctx, "openssl", "s_server", "-accept", addr, "-dtls1_2", "-nocert", "-psk", hex.EncodeToString(key[:]), "-psk_identity", "test", "-cipher", tc.ciphers, "-quiet", "-no_ticket")
+			// Use OpenSSL's DTLS cookie listener and the fixture's IPv4 endpoint.
+			// Both suites must still complete and exchange records.
+			cmd := exec.CommandContext(ctx, "openssl", "s_server", "-4", "-accept", addr, "-dtls1_2", "-listen", "-nocert", "-psk", hex.EncodeToString(key[:]), "-psk_identity", "test", "-cipher", tc.ciphers, "-quiet", "-state", "-no_ticket")
 			stdin, e := cmd.StdinPipe()
 			if e != nil {
 				t.Fatal(e)
@@ -50,7 +58,13 @@ func TestDTLSOpenSSL(t *testing.T) {
 			if e = cmd.Start(); e != nil {
 				t.Fatal(e)
 			}
-			defer func() { cancel(); cmd.Wait() }()
+			defer func() {
+				cancel()
+				err := cmd.Wait()
+				if t.Failed() {
+					t.Logf("OpenSSL exit: %v; stderr: %s", err, &stderr)
+				}
+			}()
 			udp, e := net.ListenPacket("udp4", "127.0.0.1:0")
 			if e != nil {
 				t.Fatal(e)
@@ -60,6 +74,7 @@ func TestDTLSOpenSSL(t *testing.T) {
 				t.Fatal(e)
 			}
 			p := packetPath(t, 1388)
+			var sent, received atomic.Uint32
 			var wg sync.WaitGroup
 			wg.Add(2)
 			go func() {
@@ -72,6 +87,7 @@ func TestDTLSOpenSSL(t *testing.T) {
 						if _, e := udp.WriteTo(d, remote); e != nil {
 							return
 						}
+						sent.Add(1)
 					}
 				}
 			}()
@@ -83,28 +99,34 @@ func TestDTLSOpenSSL(t *testing.T) {
 					if e != nil {
 						return
 					}
+					received.Add(1)
 					if p.Deliver(1, b[:n]) != nil {
 						return
 					}
 				}
 			}()
 			defer func() { cancel(); udp.Close(); p.Close(); wg.Wait() }()
+			// Windows s_server treats redirected stdin as ready even when the
+			// pipe is empty, then blocks reading it before servicing the UDP socket.
+			// Supply a greeting to drive its handshake, and queue each reply before
+			// waiting for decrypted output. Both sides still verify both application sizes.
+			greeting := []byte("ready\n")
+			if _, e := stdin.Write(greeting); e != nil {
+				t.Fatal(e)
+			}
 			c, e := DialDTLS(ctx, p, []byte("test"), []byte("password"))
 			if e != nil {
-				t.Fatalf("OpenSSL handshake: %v", e)
+				t.Fatalf("OpenSSL handshake: %v (UDP datagrams sent=%d received=%d)", e, sent.Load(), received.Load())
 			}
 			defer c.Close()
 			if c.Profile() != (profile.Profile{Version: 0xfefd, Suite: tc.suite}) {
 				t.Fatal(c.Profile())
 			}
+			b := make([]byte, 1300)
 			// Two distinct application sizes catch record/AAD/nonce and boundary mistakes.
-			for _, msg := range [][]byte{[]byte("ping\n"), append(bytes.Repeat([]byte{'x'}, 1299), '\n')} {
+			for i, msg := range [][]byte{[]byte("ping\n"), append(bytes.Repeat([]byte{'x'}, 1299), '\n')} {
 				if _, e = c.Write(msg); e != nil {
 					t.Fatal(e)
-				}
-				got := make([]byte, len(msg))
-				if _, e = io.ReadFull(stdout, got); e != nil || !bytes.Equal(got, msg) {
-					t.Fatalf("OpenSSL decrypt mismatch: %v", e)
 				}
 				reply := []byte("pong\n")
 				if len(msg) == 1300 {
@@ -113,8 +135,16 @@ func TestDTLSOpenSSL(t *testing.T) {
 				if _, e = stdin.Write(reply); e != nil {
 					t.Fatal(e)
 				}
-				b := make([]byte, 1300)
+				got := make([]byte, len(msg))
+				if _, e = io.ReadFull(stdout, got); e != nil || !bytes.Equal(got, msg) {
+					t.Fatalf("OpenSSL decrypt mismatch: %v", e)
+				}
 				n, e := c.Read(b)
+				// The greeting can arrive before application admission opens and be
+				// dropped. If it arrives afterward, consume it before the real reply.
+				if i == 0 && e == nil && bytes.Equal(b[:n], greeting) {
+					n, e = c.Read(b)
+				}
 				if e != nil || !bytes.Equal(b[:n], reply) {
 					t.Fatalf("OpenSSL encrypt mismatch: got %d bytes, want %d: %v", n, len(reply), e)
 				}

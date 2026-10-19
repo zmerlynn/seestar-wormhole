@@ -12,7 +12,7 @@ func TestStartupDiagnostics(t *testing.T) {
 	t.Setenv("SEESTAR_EMAIL", "")
 	t.Setenv("SEESTAR_PASSWORD", "sentinel-password")
 
-	args := []string{"--bind", "127.0.0.2", "--port", "14700:4700", "--port", "14445:445", "--port", "18080:80", "--log-format", "json"}
+	args := []string{"--port", "14700:4700", "--port", "14445:445", "--port", "18080:80", "--log-format", "json"}
 	var logs, out bytes.Buffer
 	if err := run(context.Background(), append([]string{"proxy"}, args...), &out, &logs); err == nil {
 		t.Fatal("missing credentials accepted")
@@ -28,7 +28,7 @@ func TestStartupDiagnostics(t *testing.T) {
 }
 
 func TestListenerAndArgumentDiagnostics(t *testing.T) {
-	l, err := net.Listen("tcp", "127.0.0.2:14700")
+	l, err := net.Listen("tcp", net.JoinHostPort(defaultBind, "14700"))
 	if err != nil {
 		t.Fatal(err)
 	}

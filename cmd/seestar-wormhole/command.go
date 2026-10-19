@@ -11,6 +11,8 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
 )
 
+const defaultBind = "127.0.0.1"
+
 var errHelp = errors.New("help requested")
 
 type commandKind uint8
@@ -83,7 +85,7 @@ or 1 on runtime errors including failed release.`,
 	}
 	f := proxyCommand.Flags()
 	registerSharedOptions(f, o)
-	f.StringVar(&o.bind, "bind", "127.0.0.2", "local bind address (use 0.0.0.0 for a container)")
+	f.StringVar(&o.bind, "bind", defaultBind, "local bind address (use 0.0.0.0 for a container)")
 	f.VarP(&o.ports, "port", "p", "override a device listener with local:device; local 0 disables; repeatable (defaults 4700:4700, SMB 4445:445, HTTP 8080:80; 4350:4350,4554:4554,4555:4555,4801:4801,4800:4800,4804:4804,4361:4361)")
 	f.IntVar(&o.pauseThreshold, "pause-threshold", p2ptunnel.DefaultConfig().HighWater, "per-channel PAUSE pressure in bytes (2..8388608; RESUME below 80%)")
 	f.DurationVar(&o.idle, "idle", 0, "release after this idle duration; zero holds eagerly")
