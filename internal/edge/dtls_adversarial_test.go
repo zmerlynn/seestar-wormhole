@@ -203,7 +203,7 @@ func TestReviewReorderedEarlyApplication(t *testing.T) {
 						opts = append(opts, o)
 					}
 					if fallback {
-						opts = append(opts, pion.WithCustomCipherSuites(func() []pion.CipherSuite { return nil }))
+						opts = append(opts, pion.WithCipherSuites(pion.TLS_PSK_WITH_AES_128_GCM_SHA256))
 					}
 					s, err := pion.ServerWithOptions(b, dtlsAddr{}, opts...)
 					if err != nil {

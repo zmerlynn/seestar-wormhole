@@ -38,10 +38,8 @@ type SecureDTLS struct {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#version-and-cipher-suite
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#timers-and-shutdown
 func dtlsOptions(identity []byte, key [32]byte, mtu int) []pion.Option {
-	// Pion v3.1.14 prepends custom suites. Each factory call must return fresh cipher state.
 	return []pion.Option{
-		pion.WithCipherSuites(pion.TLS_PSK_WITH_AES_128_GCM_SHA256),
-		pion.WithCustomCipherSuites(func() []pion.CipherSuite { return []pion.CipherSuite{&ecdhePSKChaCha{}} }),
+		pion.WithCipherSuites(pion.TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256, pion.TLS_PSK_WITH_AES_128_GCM_SHA256),
 		pion.WithPSKIdentityHint(identity),
 		pion.WithPSK(func([]byte) ([]byte, error) { return append([]byte(nil), key[:]...), nil }),
 		pion.WithEllipticCurves(elliptic.X25519, elliptic.P256, elliptic.P384),

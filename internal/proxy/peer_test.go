@@ -30,7 +30,6 @@ import (
 	pion "github.com/pion/dtls/v3"
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/dtls"
-	"github.com/zmerlynn/seestar-wormhole/internal/edge"
 	"github.com/zmerlynn/seestar-wormhole/internal/edge/iotcedge"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
@@ -375,7 +374,7 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 	_, key, _ := dtls.Credentials([]byte("sim-user"), []byte("sim-pass"))
 	opts := []pion.ServerOption{pion.WithCipherSuites(pion.TLS_PSK_WITH_AES_128_GCM_SHA256), pion.WithPSK(func([]byte) ([]byte, error) { return key[:], nil }), pion.WithPSKIdentityHint([]byte{})}
 	if p.suite == dtls.CCAC {
-		opts = append(opts, pion.WithCustomCipherSuites(func() []pion.CipherSuite { return []pion.CipherSuite{edge.NewECDHEPSKSuite()} }))
+		opts = append(opts, pion.WithCipherSuites(pion.TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256, pion.TLS_PSK_WITH_AES_128_GCM_SHA256))
 	}
 	c, err := pion.ServerWithOptions(packets, streamAddr{}, opts...)
 	if err != nil {
