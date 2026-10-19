@@ -144,6 +144,13 @@ Build from the checked-in vendor tree with `-mod=vendor`. The vendor tree is
 exactly what `go mod tidy` and `go mod vendor` produce; CI regenerates it and
 fails on any difference, so vendored files are never edited by hand.
 
+The [Windows discovery dependency](../reference.md#lan-discovery) is carried
+as an x/net fork.
+The development replacement in `go.mod` points to the sibling x/net checkout;
+it must resolve before running module or vendoring commands. Integration replaces
+that local path with a published fork pseudo-version. The fork retains the
+`golang.org/x/net` module path and BSD license.
+
 ## Licenses and generated notices
 
 See [NOTICE](../../NOTICE) for terms and [license generator notes](../../internal/licenses/README.md) for generation and integrity details.

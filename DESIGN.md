@@ -702,6 +702,16 @@ podman build --platform linux/amd64 --build-arg BUILDPLATFORM=linux/arm64 --buil
 
 See [container runtime contract](docs/reference.md#containers). The platform smoke test uses network isolation and synthetic environment strings; no cloud or device contact is needed.
 
+## LAN discovery edge
+
+`internal/landiscovery` uses one wildcard UDP socket with x/net/ipv4 controls
+on every OS. Admission consumes the actual destination and ingress interface;
+replies specify both the selected local source and that interface. Truncated
+payloads or controls are refused before admission, counted as `packet_metadata`,
+and leave the receive loop available for the next datagram. The source, live-prefix
+and ambiguity policies are described in [LAN discovery](docs/reference.md#lan-discovery).
+The Windows library dependency is recorded in [Vendoring](docs/development/README.md#vendoring).
+
 ## Not implemented
 
 - Legacy tunnel authentication: normal `_Ex` LOGIN is sent, and nonempty legacy

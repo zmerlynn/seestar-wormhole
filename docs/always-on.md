@@ -113,7 +113,7 @@ has not been tested.
 
 ## On Windows
 
-Windows supports the proxy without LAN discovery; see [Windows coverage](status.md#platforms). In PowerShell:
+See [Windows coverage](status.md#platforms) and [requirements](reference.md#windows). In PowerShell:
 
 ```powershell
 $env:SEESTAR_EMAIL = Read-Host "Seestar email"

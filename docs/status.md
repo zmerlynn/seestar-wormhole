@@ -50,7 +50,9 @@ test the command's version and help output.
   admission, including resets with full staging and byte preservation after FIN.
   See the [Windows requirements](reference.md#windows). It hasn't been run
   against a real telescope, so console handling and file permissions are
-  untested in practice. It has no LAN discovery.
+  untested in practice. Discovery's native loopback behavior is tested in CI:
+  unicast reply address/port, malformed and oversized input, and cancellation.
+  Real LAN behavior on Windows is not yet validated.
   [rclone is the supported copying route](copying.md#windows).
 - **Containers** are checked for the image's user and startup. The phone setup
   hasn't been run in one.
