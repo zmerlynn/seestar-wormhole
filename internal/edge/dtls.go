@@ -38,16 +38,14 @@ type SecureDTLS struct {
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#version-and-cipher-suite
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/dtls.md#timers-and-shutdown
 func dtlsOptions(identity []byte, key [32]byte, mtu int) []pion.Option {
-	// Pion v3.1.14 prepends custom suites. Each factory call must return fresh cipher state.
 	return []pion.Option{
-		pion.WithCipherSuites(pion.TLS_PSK_WITH_AES_128_GCM_SHA256),
-		pion.WithCustomCipherSuites(func() []pion.CipherSuite { return []pion.CipherSuite{&ecdhePSKChaCha{}} }),
+		pion.WithCipherSuites(pion.TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256, pion.TLS_PSK_WITH_AES_128_GCM_SHA256),
 		pion.WithPSKIdentityHint(identity),
 		pion.WithPSK(func([]byte) ([]byte, error) { return append([]byte(nil), key[:]...), nil }),
 		pion.WithEllipticCurves(elliptic.X25519, elliptic.P256, elliptic.P384),
 		pion.WithExtendedMasterSecret(pion.RequestExtendedMasterSecret),
 		pion.WithFlightInterval(500 * time.Millisecond),
-		// Pion v3.1.14 fragments handshake bodies; reserve record13 + handshake12 + AEAD24.
+		// Pion fragments handshake bodies; reserve record13 + handshake12 + AEAD24.
 		pion.WithMTU(mtu - 49),
 		pion.WithSessionStore(nil), // No resumption or exported State/Resume entry point.
 		pion.WithLoggerFactory(quietDTLSLogger{}),
@@ -112,7 +110,7 @@ func DialDTLS(ctx context.Context, packets *DTLSPackets, username, password []by
 		}
 		return nil, ErrDTLSHandshake
 	}
-	// Pion v3.1.14 rejects ServerHello versions other than 1.2 in flight3handler.
+	// Pion rejects ServerHello versions other than 1.2 in flight3handler.
 	// Its State does not export version. This value is the library's authenticated
 	// handshake guarantee, never inferred from an unauthenticated record header.
 	state, ok := conn.ConnectionState()

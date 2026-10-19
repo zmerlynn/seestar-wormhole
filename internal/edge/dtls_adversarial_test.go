@@ -4,8 +4,6 @@ package edge
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
 	"errors"
 	"fmt"
 	"net"
@@ -18,71 +16,8 @@ import (
 	"github.com/pion/dtls/v3/pkg/protocol"
 	"github.com/pion/dtls/v3/pkg/protocol/recordlayer"
 	profile "github.com/zmerlynn/seestar-wormhole/internal/dtls"
-	"golang.org/x/crypto/chacha20poly1305"
 )
 
-// Independent TLS P_hash transcription; never used by production.
-func reviewKeys(secret, client, server []byte) []byte {
-	seed := append([]byte("key expansion"), server...)
-	seed = append(seed, client...)
-	mac := func(b []byte) []byte { h := hmac.New(sha256.New, secret); h.Write(b); return h.Sum(nil) }
-	a := seed
-	var out []byte
-	for len(out) < 88 {
-		a = mac(a)
-		out = append(out, mac(append(append([]byte{}, a...), seed...))...)
-	}
-	return out[:88]
-}
-func TestReviewRecordConstruction(t *testing.T) {
-	secret := bytes.Repeat([]byte{0x11}, 48)
-	client := bytes.Repeat([]byte{0x22}, 32)
-	server := bytes.Repeat([]byte{0x33}, 32)
-	keys := reviewKeys(secret, client, server)
-	for _, isClient := range []bool{true, false} {
-		sender, receiver := &ecdhePSKChaCha{}, &ecdhePSKChaCha{}
-		if err := sender.Init(secret, client, server, isClient); err != nil {
-			t.Fatal(err)
-		}
-		if err := receiver.Init(secret, client, server, !isClient); err != nil {
-			t.Fatal(err)
-		}
-		header := []byte{23, 0xfe, 0xfd, 0x12, 0x34, 1, 2, 3, 4, 5, 6, 0, 5}
-		payload := []byte("hello")
-		raw := append(append([]byte{}, header...), payload...)
-		pkt := &recordlayer.RecordLayer{Header: recordlayer.Header{ContentType: protocol.ContentTypeApplicationData, Version: protocol.Version1_2, Epoch: 0x1234, SequenceNumber: 0x010203040506, ContentLen: 5}}
-		got, err := sender.Encrypt(pkt, raw)
-		if err != nil {
-			t.Fatal(err)
-		}
-		key, iv := keys[:32], keys[64:76]
-		if !isClient {
-			key, iv = keys[32:64], keys[76:88]
-		}
-		nonce := append([]byte{}, iv...)
-		for i := 0; i < 8; i++ {
-			nonce[4+i] ^= header[3+i]
-		}
-		aad := append(append(append([]byte{}, header[3:11]...), header[:3]...), header[11:13]...)
-		aead, _ := chacha20poly1305.New(key)
-		want := append(append([]byte{}, header...), aead.Seal(nil, nonce, payload, aad)...)
-		want[12] = 21
-		if !bytes.Equal(got, want) {
-			t.Fatalf("client=%v record=%x want=%x", isClient, got, want)
-		}
-		for _, pos := range []int{0, 2, 3, 4, 5, 10, 13, len(got) - 1} {
-			bad := bytes.Clone(got)
-			bad[pos] ^= 1
-			if _, err := receiver.Decrypt(recordlayer.Header{}, bad); err == nil {
-				t.Fatalf("accepted modified byte %d", pos)
-			}
-		}
-		decoded, err := receiver.Decrypt(recordlayer.Header{}, bytes.Clone(got))
-		if err != nil || !bytes.Equal(decoded[13:], payload) {
-			t.Fatalf("decode %x %v", decoded, err)
-		}
-	}
-}
 func TestReviewSlowReaderCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		for _, fallback := range []bool{false, true} {
@@ -203,7 +138,7 @@ func TestReviewReorderedEarlyApplication(t *testing.T) {
 						opts = append(opts, o)
 					}
 					if fallback {
-						opts = append(opts, pion.WithCustomCipherSuites(func() []pion.CipherSuite { return nil }))
+						opts = append(opts, pion.WithCipherSuites(pion.TLS_PSK_WITH_AES_128_GCM_SHA256))
 					}
 					s, err := pion.ServerWithOptions(b, dtlsAddr{}, opts...)
 					if err != nil {

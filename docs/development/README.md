@@ -119,7 +119,7 @@ outside the checkout. Those are script controls, not runtime application options
 |---|---|
 | `internal/cloud/`, `internal/cloud/cloudhttp/` | Response parsing, account lifecycle, catalog selection, allocation/release and cancellation |
 | `internal/iotc/`, `internal/rdt/`, `internal/p2ptunnel/`, `internal/session/` | Codecs, virtual-clock machines, bounds, loss/reordering, retry/flow policy, stale completions |
-| `internal/edge/`, `internal/edge/iotcedge/`, `internal/dtls/` | Crypto/profile checks, library integration, datagram boundaries, worker cleanup |
+| `internal/edge/`, `internal/edge/iotcedge/`, `internal/dtls/` | Profile checks, Pion integration, datagram boundaries, worker cleanup |
 | `internal/proxy/` | Composed sessions, listeners, forwarding, busy/idle recovery, site protection and cleanup |
 | `cmd/seestar-wormhole/` | CLI output/exits, startup, diagnostics and cancellation |
 | `internal/landiscovery/` | Scan decoding, synthesized replies, source/interface policy and rate bounds |

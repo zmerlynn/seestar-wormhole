@@ -3,6 +3,7 @@ package edge
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net"
@@ -218,7 +219,7 @@ func pairedDTLS(t *testing.T, mtu int, drop bool, fallback bool, wrong bool, tam
 		opts = append(opts, o)
 	}
 	if fallback {
-		opts = append(opts, pion.WithCustomCipherSuites(func() []pion.CipherSuite { return nil }))
+		opts = append(opts, pion.WithCipherSuites(pion.TLS_PSK_WITH_AES_128_GCM_SHA256))
 	}
 	opts = append(opts, pion.WithPSKIdentityHint([]byte{}))
 	opts = append(opts, pion.WithPSK(func(id []byte) ([]byte, error) {
@@ -391,6 +392,13 @@ func TestDTLSOfferAndNoResumption(t *testing.T) {
 			hello, ok := h.Message.(*handshake.MessageClientHello)
 			if !ok || !hello.Version.Equal(protocol.Version1_2) || len(hello.SessionID) != 0 || len(hello.Cookie) != 0 || !slices.Equal(hello.CipherSuiteIDs, []uint16{0xccac, 0x00a8}) {
 				t.Fatal("unexpected ClientHello profile, session ID or cookie")
+			}
+			// The empty session ID and cookie put the cipher vector at byte 61:
+			// record (13), handshake (12), version/random (34), and two lengths.
+			// Pin the original offer, compression and complete extension bytes.
+			const want = "0004ccac00a801000035000d001600140403050306030807080408050806040105010601ff01000100000a00080006001d00170018000b0002010000170000"
+			if got := hex.EncodeToString(records[0][61:]); got != want {
+				t.Fatalf("ClientHello suites/compression/extensions = %s, want %s", got, want)
 			}
 		}
 	})

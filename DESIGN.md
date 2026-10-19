@@ -517,8 +517,11 @@ reader delays only its own LocalWritten completion.
 IOTC, RDT and tunnel through a bounded FIFO of completions, with iterative layer
 feedback and one replaceable timer worker per attempt. `internal/edge/iotcedge` owns the
 shared UDP socket, up to 32 TCP alternatives, framing, DNS and attempt-scoped
-crypto. Pion is confined to `edge.SecureDTLS`; authenticated version and suite are
-logged. Attempt teardown follows the [shutdown invariant](#end-to-end-composition-invariants).
+crypto. Pion provides the built-in cipher suites, key expansion and record
+protection. `edge.SecureDTLS` selects the
+[permitted offer](docs/protocol.md#local-policy-where-the-spec-is-silent-or-unresolved)
+by suite ID and reports the authenticated version and suite for logging.
+Attempt teardown follows the [shutdown invariant](#end-to-end-composition-invariants).
 The cloud adapter maps busy explicitly, treats failed
 internal cloud stop as bounded `ErrReleaseAbandoned` (preserving refusal),
 retries network interruptions with fresh detail/online-link, and treats malformed

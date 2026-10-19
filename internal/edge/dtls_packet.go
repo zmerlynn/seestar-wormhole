@@ -71,7 +71,7 @@ func (p *DTLSPackets) Deliver(datatype byte, b []byte) (result error) {
 	if p.closed {
 		return net.ErrClosed
 	}
-	// Pion v3.1.14 bounds fragment and transcript caches. This adapter also bounds
+	// Pion bounds fragment and transcript caches. This adapter also bounds
 	// all lifetime control input, including post-handshake messages, before it
 	// enters the library. Policy permits ample retransmissions of this PSK profile.
 	if n > 0 && (p.controlCount >= 512 || n > 256*1024-p.controlBytes) {
