@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"io"
-	"log/slog"
 	"net"
 	"strings"
 	"testing"
@@ -65,6 +64,7 @@ func TestLANHTTPStartupWarning(t *testing.T) {
 		{"defaults", nil, 1, "8080", 10, false},
 		{"http-80", []string{"--port", "80:80"}, 0, "80", 10, false},
 		{"http-disabled", []string{"--port", "0:80"}, 1, "", 9, false},
+		{"all-interfaces-disabled", []string{"--lan-discovery-all-interfaces=false"}, 1, "8080", 10, false},
 		{"all-interfaces", []string{"--lan-discovery-all-interfaces"}, 1, "8080", 10, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -97,12 +97,12 @@ func TestLANHTTPStartupWarning(t *testing.T) {
 				return net.Listen("tcp", "127.0.0.1:0")
 			}
 			discoveryCalls := 0
-			listenDiscovery := func(bind string, port int, options landiscovery.Options, _ *slog.Logger) (commandDiscovery, error) {
+			listenDiscovery := func(bind string, port int, options landiscovery.Options) (commandDiscovery, error) {
 				discoveryCalls++
 				if bind != "0.0.0.0" || port != landiscovery.Port {
 					t.Fatalf("discovery bind=%q port=%d", bind, port)
 				}
-				if options.AllInterfaces != tc.allInterfaces {
+				if options != (landiscovery.Options{AllInterfaces: tc.allInterfaces}) {
 					t.Fatalf("discovery all_interfaces=%t want %t", options.AllInterfaces, tc.allInterfaces)
 				}
 				return idleCommandDiscovery{}, nil

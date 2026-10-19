@@ -154,13 +154,8 @@ type commandDiscovery interface {
 	Close() error
 }
 
-func listenCommandDiscovery(bind string, port int, options landiscovery.Options, logger *slog.Logger) (commandDiscovery, error) {
-	s, err := landiscovery.Listen(bind, port, options)
-	if err != nil {
-		return nil, err
-	}
-	s.Logger = logger
-	return s, nil
+func listenCommandDiscovery(bind string, port int, options landiscovery.Options) (commandDiscovery, error) {
+	return landiscovery.Listen(bind, port, options)
 }
 
 func runWithSession(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error)) error {
@@ -196,7 +191,7 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 	return runProxy(ctx, o, logs, newSession, listen, listenCommandDiscovery, proxy.CheckTCPStateSupport)
 }
 
-func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) (result error) {
+func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options) (commandDiscovery, error), checkTCPState func(context.Context) error) (result error) {
 	var err error
 	phase := "arguments"
 	var cleanupErr error
@@ -245,9 +240,12 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	var discovery commandDiscovery
 	if o.lanDiscovery {
 		phase = "lan_discovery"
-		discovery, err = listenDiscovery(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces}, logger)
+		discovery, err = listenDiscovery(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces})
 		if err != nil {
 			return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
+		}
+		if socket, ok := discovery.(*landiscovery.Socket); ok {
+			socket.Logger = logger
 		}
 		defer discovery.Close()
 	}

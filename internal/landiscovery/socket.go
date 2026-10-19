@@ -10,7 +10,6 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery/interfaceio"
 	"golang.org/x/net/ipv4"
 )
 
@@ -74,14 +73,33 @@ func ValidBind(bind string) bool {
 	return err == nil && ip.Is4() && (ip.IsUnspecified() || (ip.IsGlobalUnicast() && !ip.IsLoopback()))
 }
 
+// interfaceSource supplies the OS metadata used at startup and on each scan.
+type interfaceSource interface {
+	interfaces() ([]net.Interface, error)
+	interfaceByIndex(int) (*net.Interface, error)
+	addrs(*net.Interface) ([]net.Addr, error)
+}
+
+type netInterfaceSource struct{}
+
+func (netInterfaceSource) interfaces() ([]net.Interface, error) { return net.Interfaces() }
+func (netInterfaceSource) interfaceByIndex(index int) (*net.Interface, error) {
+	return net.InterfaceByIndex(index)
+}
+func (netInterfaceSource) addrs(iface *net.Interface) ([]net.Addr, error) { return iface.Addrs() }
+
 // Listen binds UDP port on the selected interface(s). Production uses Port;
 // port zero permits isolated tests without sharing the app's real listener.
 func Listen(bind string, port int, options Options) (*Socket, error) {
+	return listenInterfaces(netInterfaceSource{}, bind, port, options)
+}
+
+func listenInterfaces(source interfaceSource, bind string, port int, options Options) (*Socket, error) {
 	if !ValidBind(bind) {
 		return nil, errors.New("LAN discovery: bind must be a local LAN IPv4 address or 0.0.0.0")
 	}
 	selected, _ := netip.ParseAddr(bind)
-	interfaces, err := interfaceio.Interfaces()
+	interfaces, err := source.interfaces()
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +108,7 @@ func Listen(bind string, port int, options Options) (*Socket, error) {
 		if !eligibleInterface(iface.Flags, options) {
 			continue
 		}
-		addresses, err := interfaceio.Addrs(&iface)
+		addresses, err := source.addrs(&iface)
 		if err != nil {
 			return nil, err
 		}
@@ -116,19 +134,19 @@ func Listen(bind string, port int, options Options) (*Socket, error) {
 	if err != nil {
 		return nil, err
 	}
-	s.addresses = func(index int) []netip.Prefix { return interfacePrefixes(index, options) }
+	s.addresses = func(index int) []netip.Prefix { return interfacePrefixes(source, index, options) }
 	return s, nil
 }
 
 // interfacePrefixes fails closed if the ingress interface is gone, inactive,
 // or cannot be inspected. Read per eligible scan so a prefix change cannot leave
 // an obsolete on-link admission boundary in use.
-func interfacePrefixes(index int, options Options) []netip.Prefix {
-	iface, err := interfaceio.InterfaceByIndex(index)
+func interfacePrefixes(source interfaceSource, index int, options Options) []netip.Prefix {
+	iface, err := source.interfaceByIndex(index)
 	if err != nil || !eligibleInterface(iface.Flags, options) {
 		return nil
 	}
-	addresses, err := interfaceio.Addrs(iface)
+	addresses, err := source.addrs(iface)
 	if err != nil {
 		return nil
 	}

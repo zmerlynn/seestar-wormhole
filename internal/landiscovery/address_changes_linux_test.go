@@ -53,7 +53,7 @@ func TestLANAddressChangesServer(t *testing.T) {
 		if rejectedFlood && inspections == inspectionBurst+1 && m.tokens != ReplyBurst {
 			t.Errorf("rejected scans spent reply tokens: got=%d want=%d", m.tokens, ReplyBurst)
 		}
-		return interfacePrefixes(index, Options{})
+		return interfacePrefixes(netInterfaceSource{}, index, Options{})
 	}
 	var memoryBefore runtime.MemStats
 	runtime.GC()
