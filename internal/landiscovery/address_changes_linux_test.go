@@ -27,7 +27,7 @@ func TestLANAddressChangesServer(t *testing.T) {
 	if os.Getenv("LAN_DISCOVERY_NETWORK_SERVER") != "1" {
 		t.Skip("fixture only")
 	}
-	s, err := Listen(os.Getenv("LAN_DISCOVERY_BIND"), 0)
+	s, err := Listen(os.Getenv("LAN_DISCOVERY_BIND"), 0, Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestLANAddressChangesServer(t *testing.T) {
 		if rejectedFlood && inspections == inspectionBurst+1 && m.tokens != ReplyBurst {
 			t.Errorf("rejected scans spent reply tokens: got=%d want=%d", m.tokens, ReplyBurst)
 		}
-		return interfacePrefixes(index)
+		return interfacePrefixes(index, Options{})
 	}
 	var memoryBefore runtime.MemStats
 	runtime.GC()

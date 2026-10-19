@@ -55,15 +55,17 @@ func (idleCommandDiscovery) Close() error { return nil }
 
 func TestLANHTTPStartupWarning(t *testing.T) {
 	for _, tc := range []struct {
-		name      string
-		args      []string
-		want      int
-		http      string
-		listeners int
+		name          string
+		args          []string
+		want          int
+		http          string
+		listeners     int
+		allInterfaces bool
 	}{
-		{"defaults", nil, 1, "8080", 10},
-		{"http-80", []string{"--port", "80:80"}, 0, "80", 10},
-		{"http-disabled", []string{"--port", "0:80"}, 1, "", 9},
+		{"defaults", nil, 1, "8080", 10, false},
+		{"http-80", []string{"--port", "80:80"}, 0, "80", 10, false},
+		{"http-disabled", []string{"--port", "0:80"}, 1, "", 9, false},
+		{"all-interfaces", []string{"--lan-discovery-all-interfaces"}, 1, "8080", 10, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
@@ -95,10 +97,13 @@ func TestLANHTTPStartupWarning(t *testing.T) {
 				return net.Listen("tcp", "127.0.0.1:0")
 			}
 			discoveryCalls := 0
-			listenDiscovery := func(bind string, port int, _ *slog.Logger) (commandDiscovery, error) {
+			listenDiscovery := func(bind string, port int, options landiscovery.Options, _ *slog.Logger) (commandDiscovery, error) {
 				discoveryCalls++
 				if bind != "0.0.0.0" || port != landiscovery.Port {
 					t.Fatalf("discovery bind=%q port=%d", bind, port)
+				}
+				if options.AllInterfaces != tc.allInterfaces {
+					t.Fatalf("discovery all_interfaces=%t want %t", options.AllInterfaces, tc.allInterfaces)
 				}
 				return idleCommandDiscovery{}, nil
 			}
@@ -127,6 +132,16 @@ func TestLANHTTPStartupWarning(t *testing.T) {
 			}
 			if !strings.Contains(logs.b.String(), "proxy_started") {
 				t.Fatal("HTTP warning stopped startup")
+			}
+			if strings.Count(logs.b.String(), `"msg":"lan_discovery_started"`) != 1 {
+				t.Fatal("expected one discovery start record")
+			}
+			wantMode := `"all_interfaces":false`
+			if tc.allInterfaces {
+				wantMode = `"all_interfaces":true`
+			}
+			if !strings.Contains(logs.b.String(), wantMode) {
+				t.Fatalf("missing discovery mode %s in logs: %s", wantMode, logs.b.String())
 			}
 		})
 	}

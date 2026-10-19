@@ -14,7 +14,7 @@ import (
 
 func TestLANBindValidation(t *testing.T) {
 	for _, bind := range []string{"127.0.0.1", "localhost", "::", "224.0.0.1", "255.255.255.255", "192.0.2.45"} {
-		if _, err := Listen(bind, 0); err == nil {
+		if _, err := Listen(bind, 0, Options{}); err == nil {
 			t.Fatalf("accepted non-LAN/unassigned bind %s", bind)
 		}
 	}

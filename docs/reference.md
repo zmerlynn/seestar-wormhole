@@ -38,6 +38,7 @@ loopback or a trusted network behind a firewall.
 | `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
 | `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
 | `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. |
+| `--lan-discovery-all-interfaces` | `false` | Include VPN and virtual adapters; requires `--lan-discovery`. |
 
 See also [identity and logging flags](#identity-and-logging-flags).
 
@@ -341,7 +342,7 @@ selection masks serials.
 | `site_protected` | WARN | Dropped setter; method, integer ID or `unavailable`, reason |
 | `site_reject` | WARN | Invalid frame; method and reason |
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
-| `lan_discovery_started` | INFO | UDP port |
+| `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode |
 | `lan_discovery_refused` | WARN | Nonzero refusal counts per fixed `rule`, at most once per rule per five seconds, plus pending counts at shutdown; no peer data |
 | `lan_discovery_delivery_failed` | WARN | Local deadline/write failure or short write; fixed `rule`, error returned to the owner |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
@@ -578,10 +579,19 @@ For build/runtime coverage, see [status](status.md).
 ## LAN discovery
 
 Enable `--lan-discovery` with a literal LAN IPv4 bind or `0.0.0.0`. Loopback,
-IPv6, and hostnames are refused for discovery. An explicit address must belong
-to an active nonloopback broadcast interface. Wildcard selects all qualifying
-IPv4 addresses at startup. TCP still follows `--bind`; UDP 4720 uses a filtered
-wildcard socket so it can receive directed and limited broadcasts.
+IPv6, and hostnames are refused for discovery. By default, an explicit address
+must belong to an active nonloopback broadcast interface. Wildcard selects all
+qualifying IPv4 addresses at startup. TCP still follows `--bind`; UDP 4720 uses
+a filtered wildcard socket so it can receive directed and limited broadcasts.
+
+Add `--lan-discovery-all-interfaces` to include VPN and virtual adapters that
+lack the broadcast flag, so peers on those networks can discover the proxy.
+Windows types some virtual adapters as non-broadcast even when they support
+discovery traffic. This option removes only the broadcast-flag requirement;
+interfaces must still be up, loopback stays excluded, and selected addresses
+must be IPv4 global unicast. Explicit binds must still belong to a qualifying
+interface. On-link prefix admission and reply/inspection budgets still apply.
+The option is rejected without `--lan-discovery`.
 
 Windows discovery uses x/net with Windows control-message support from the
 fork at [github.com/zmerlynn/net](https://github.com/zmerlynn/net), branch

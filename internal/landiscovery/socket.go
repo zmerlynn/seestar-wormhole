@@ -56,8 +56,18 @@ func (s *Socket) takeInspection(now time.Duration) bool {
 	return true
 }
 
+// Options selects which local adapters may answer discovery scans.
+type Options struct {
+	AllInterfaces bool // Include non-broadcast adapters; loopback is always excluded.
+}
+
+func eligibleInterface(flags net.Flags, options Options) bool {
+	return flags&net.FlagUp != 0 && flags&net.FlagLoopback == 0 &&
+		(options.AllInterfaces || flags&net.FlagBroadcast != 0)
+}
+
 // ValidBind reports whether bind is a literal IPv4 LAN candidate or 0.0.0.0.
-// Listen additionally verifies ownership by an active broadcast interface.
+// Listen additionally verifies ownership by an eligible active interface.
 func ValidBind(bind string) bool {
 	ip, err := netip.ParseAddr(bind)
 	return err == nil && ip.Is4() && (ip.IsUnspecified() || (ip.IsGlobalUnicast() && !ip.IsLoopback()))
@@ -65,7 +75,7 @@ func ValidBind(bind string) bool {
 
 // Listen binds UDP port on the selected interface(s). Production uses Port;
 // port zero permits isolated tests without sharing the app's real listener.
-func Listen(bind string, port int) (*Socket, error) {
+func Listen(bind string, port int, options Options) (*Socket, error) {
 	if !ValidBind(bind) {
 		return nil, errors.New("LAN discovery: bind must be a local LAN IPv4 address or 0.0.0.0")
 	}
@@ -76,7 +86,7 @@ func Listen(bind string, port int) (*Socket, error) {
 	}
 	sources := make(map[int][]netip.Prefix)
 	for _, iface := range interfaces {
-		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagBroadcast == 0 || iface.Flags&net.FlagLoopback != 0 {
+		if !eligibleInterface(iface.Flags, options) {
 			continue
 		}
 		addresses, err := iface.Addrs()
@@ -96,22 +106,25 @@ func Listen(bind string, port int) (*Socket, error) {
 		}
 	}
 	if len(sources) == 0 {
+		if options.AllInterfaces {
+			return nil, errors.New("LAN discovery: bind has no active local nonloopback interface")
+		}
 		return nil, errors.New("LAN discovery: bind has no active local broadcast interface")
 	}
 	s, err := listen(port, sources)
 	if err != nil {
 		return nil, err
 	}
-	s.addresses = interfacePrefixes
+	s.addresses = func(index int) []netip.Prefix { return interfacePrefixes(index, options) }
 	return s, nil
 }
 
 // interfacePrefixes fails closed if the ingress interface is gone, inactive,
 // or cannot be inspected. Read per eligible scan so a prefix change cannot leave
 // an obsolete on-link admission boundary in use.
-func interfacePrefixes(index int) []netip.Prefix {
+func interfacePrefixes(index int, options Options) []netip.Prefix {
 	iface, err := net.InterfaceByIndex(index)
-	if err != nil || iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagBroadcast == 0 || iface.Flags&net.FlagLoopback != 0 {
+	if err != nil || !eligibleInterface(iface.Flags, options) {
 		return nil
 	}
 	addresses, err := iface.Addrs()

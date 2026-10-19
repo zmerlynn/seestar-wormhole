@@ -43,7 +43,7 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {
 		t.Fatal("root version or flag scope changed")
 	}
-	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "log-format", "log-level", "lan-discovery"} {
+	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "log-format", "log-level", "lan-discovery", "lan-discovery-all-interfaces"} {
 		if root.Flags().Lookup(name) != nil || root.PersistentFlags().Lookup(name) != nil || commands[1].Flags().Lookup(name) == nil {
 			t.Errorf("%s must be proxy-local", name)
 		}

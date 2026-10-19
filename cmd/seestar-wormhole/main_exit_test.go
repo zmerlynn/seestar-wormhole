@@ -20,6 +20,8 @@ func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 		args               []string
 		accepted           bool
 	}{
+		{"all interfaces without discovery", "--lan-discovery-all-interfaces", "requires --lan-discovery", []string{"--lan-discovery-all-interfaces"}, false},
+		{"all interfaces with discovery disabled", "--lan-discovery-all-interfaces", "requires --lan-discovery", []string{"--lan-discovery-all-interfaces", "--lan-discovery=false"}, false},
 		{"default bind", discoveryOption, discoveryRule, []string{"--lan-discovery"}, false},
 		{"private bind and captures", discoveryOption, discoveryRule, []string{"--lan-discovery", "--bind=PRIVATE_MARKER"}, false},
 		{"earlier validation", "--idle", "duration must be nonnegative", []string{"--lan-discovery", "--idle=-1s"}, false},

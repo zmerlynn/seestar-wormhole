@@ -68,16 +68,17 @@ func (m *mappings) Set(s string) error {
 }
 
 type options struct {
-	command                 commandKind
-	outcome                 commandOutcome
-	bind, format            string
-	level                   string
-	ports                   mappings
-	idle                    time.Duration
-	pauseThreshold          int
-	version                 bool
-	lanDiscovery            bool
-	serial, model, stateDir string
+	command                   commandKind
+	outcome                   commandOutcome
+	bind, format              string
+	level                     string
+	ports                     mappings
+	idle                      time.Duration
+	pauseThreshold            int
+	version                   bool
+	lanDiscovery              bool
+	lanDiscoveryAllInterfaces bool
+	serial, model, stateDir   string
 }
 
 func validateOptions(o *options) error {
@@ -89,6 +90,9 @@ func validateOptions(o *options) error {
 	}
 	if err := validateSharedOptions(o); err != nil {
 		return err
+	}
+	if o.lanDiscoveryAllInterfaces && !o.lanDiscovery {
+		return &argumentError{Option: "--lan-discovery-all-interfaces", Rule: "requires --lan-discovery"}
 	}
 	if o.lanDiscovery && !landiscovery.ValidBind(o.bind) {
 		return &argumentError{Option: "--bind", Rule: "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0"}
@@ -150,8 +154,8 @@ type commandDiscovery interface {
 	Close() error
 }
 
-func listenCommandDiscovery(bind string, port int, logger *slog.Logger) (commandDiscovery, error) {
-	s, err := landiscovery.Listen(bind, port)
+func listenCommandDiscovery(bind string, port int, options landiscovery.Options, logger *slog.Logger) (commandDiscovery, error) {
+	s, err := landiscovery.Listen(bind, port, options)
 	if err != nil {
 		return nil, err
 	}
@@ -192,7 +196,7 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 	return runProxy(ctx, o, logs, newSession, listen, listenCommandDiscovery, proxy.CheckTCPStateSupport)
 }
 
-func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) (result error) {
+func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) (result error) {
 	var err error
 	phase := "arguments"
 	var cleanupErr error
@@ -241,7 +245,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	var discovery commandDiscovery
 	if o.lanDiscovery {
 		phase = "lan_discovery"
-		discovery, err = listenDiscovery(o.bind, landiscovery.Port, logger)
+		discovery, err = listenDiscovery(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces}, logger)
 		if err != nil {
 			return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
 		}
@@ -274,7 +278,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		go func() { discoveryErr = discovery.Serve(ctx, machine); close(discoveryDone) }()
 		// Join discovery before closing the session or returning from any branch.
 		defer func() { cancel(); discovery.Close(); <-discoveryDone }()
-		logger.Info("lan_discovery_started", "port", landiscovery.Port)
+		logger.Info("lan_discovery_started", "port", landiscovery.Port, "all_interfaces", o.lanDiscoveryAllInterfaces)
 		warnLANHTTP(logger, o.ports)
 	}
 	// Configuration is accepted before waiting for readiness, which may spend

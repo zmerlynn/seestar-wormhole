@@ -55,6 +55,7 @@ Stop the proxy and wait for it to exit before switching the phone app to remote 
   `"phase":"ready"` in its output. (With `--idle`, it only connects once the
   app picks it, so this doesn't apply.)
 Discovery replies use the proxy’s current local address; after an address change, restart the proxy and reconnect the app. See [LAN discovery](reference.md#lan-discovery).
+For discovery over VPN or virtual adapters, see `--lan-discovery-all-interfaces` in the [reference](reference.md#lan-discovery).
 - **It's running in a container or VM.** It needs to see the phone's broadcast
   packets directly, so use host networking or run the binary natively.
 
