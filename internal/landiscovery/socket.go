@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -62,16 +63,9 @@ func ValidBind(bind string) bool {
 	return err == nil && ip.Is4() && (ip.IsUnspecified() || (ip.IsGlobalUnicast() && !ip.IsLoopback()))
 }
 
-// Supported reports whether the platform provides the required packet metadata.
-// Commands can validate the option before opening listeners.
-func Supported() error { return platformSupported() }
-
 // Listen binds UDP port on the selected interface(s). Production uses Port;
 // port zero permits isolated tests without sharing the app's real listener.
 func Listen(bind string, port int) (*Socket, error) {
-	if err := platformSupported(); err != nil {
-		return nil, err
-	}
 	if !ValidBind(bind) {
 		return nil, errors.New("LAN discovery: bind must be a local LAN IPv4 address or 0.0.0.0")
 	}
@@ -203,6 +197,12 @@ func (s *Socket) Serve(ctx context.Context, m *Machine) error {
 		if err != nil {
 			if ctx.Err() != nil {
 				return nil
+			}
+			// A truncated datagram or ancillary buffer cannot authorize a reply.
+			// x/net reports Windows WSAEMSGSIZE and truncation flags this way.
+			if errors.Is(err, io.ErrShortBuffer) {
+				m.refuse(refusalMetadata)
+				continue
 			}
 			var timeout net.Error
 			if errors.As(err, &timeout) && timeout.Timeout() {

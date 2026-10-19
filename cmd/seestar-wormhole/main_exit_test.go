@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"github.com/go-json-experiment/json"
 	"io"
 	"os"
@@ -16,9 +15,6 @@ import (
 func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 	discoveryOption, discoveryRule := "--bind", "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0"
 	windows := runtime.GOOS == "windows"
-	if windows {
-		discoveryOption, discoveryRule = "--lan-discovery", "LAN discovery is unsupported on Windows"
-	}
 	for _, tc := range []struct {
 		name, option, rule string
 		args               []string
@@ -33,7 +29,7 @@ func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 		{"version", "", "", []string{"--version"}, true},
 		{"false boolean", "", "", []string{"--version", "--lan-discovery=false"}, true},
 		{"last boolean wins", "", "", []string{"--version", "--lan-discovery", "--lan-discovery=false"}, true},
-		{"wildcard bind and version", "--lan-discovery", "LAN discovery is unsupported on Windows", []string{"--version", "--lan-discovery", "--bind=0.0.0.0"}, !windows},
+		{"wildcard bind and version", "", "", []string{"--version", "--lan-discovery", "--bind=0.0.0.0"}, true},
 		{"help", "", "", []string{"--lan-discovery", "--help"}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -86,23 +82,17 @@ func TestUsageExitAcrossCommands(t *testing.T) {
 		{"unknown"}, {"--unknown"}, {"proxy", "--unknown"}, {"proxy", "--idle=bad"},
 		{"proxy", "--idle=-1s"}, {"proxy", "extra"},
 	} {
-		for _, unsupported := range []bool{false, true} {
+		for _, windows := range []bool{false, true} {
 			var out, logs bytes.Buffer
-			support := func() error {
-				if unsupported {
-					return errors.New("unsupported platform")
-				}
-				return nil
-			}
 			code := mainExitCodeWithPlatform(args, &out, &logs,
 				func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} },
-				func() (io.Writer, func()) { return &logs, func() {} }, support)
+				func() (io.Writer, func()) { return &logs, func() {} }, windows)
 			want := 2
 			if len(args) == 0 || args[len(args)-1] == "--help" {
 				want = 0
 			}
 			if code != want {
-				t.Errorf("%q unsupported=%t: exit %d want %d; logs=%s", args, unsupported, code, want, &logs)
+				t.Errorf("%q windows=%t: exit %d want %d; logs=%s", args, windows, code, want, &logs)
 			}
 		}
 	}

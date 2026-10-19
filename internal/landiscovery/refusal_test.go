@@ -263,3 +263,52 @@ func TestDiscoveryDeliveryRefusals(t *testing.T) {
 		})
 	}
 }
+
+// Short reads never expose partial packet metadata to admission. A later intact
+// scan must still work, and the normal bounded refusal summary records the loss.
+func TestServeTruncatedPacketRecovery(t *testing.T) {
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var logs bytes.Buffer
+	m, _, err := New("SYNTHETIC", "test", "S50")
+	if err != nil {
+		t.Fatal(err)
+	}
+	prefix := netip.MustParsePrefix("192.0.2.1/24")
+	reads := 0
+	packet := &receivePacket{}
+	packet.read = func(b []byte) (int, *ipv4.ControlMessage, net.Addr, error) {
+		reads++
+		switch reads {
+		case 1:
+			return 0, nil, nil, &net.OpError{Op: "read", Net: "udp", Err: io.ErrShortBuffer}
+		case 2:
+			if m.tokens != ReplyBurst || m.refusals[refusalMetadata] != 1 {
+				t.Error("truncated packet reached admission or lost refusal")
+			}
+			return copy(b, scan), &ipv4.ControlMessage{Dst: net.IP(prefix.Addr().AsSlice()), IfIndex: 1}, &net.UDPAddr{IP: net.IPv4(192, 0, 2, 2), Port: 1234}, nil
+		default:
+			cancel()
+			return 0, nil, nil, net.ErrClosed
+		}
+	}
+	s := &Socket{conn: conn, packet: packet, interfaces: map[int][]netip.Prefix{1: {prefix}}, addresses: func(int) []netip.Prefix { return []netip.Prefix{prefix} }, Logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+	if err := s.Serve(ctx, m); err != nil {
+		t.Fatal(err)
+	}
+	if reads != 3 || m.tokens != ReplyBurst-1 {
+		t.Fatalf("recovery: reads=%d tokens=%d", reads, m.tokens)
+	}
+	var record struct {
+		Msg, Rule string
+		Count     int
+	}
+	if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil || record.Msg != "lan_discovery_refused" || record.Rule != "packet_metadata" || record.Count != 1 {
+		t.Fatalf("refusal summary: %s err=%v", &logs, err)
+	}
+}

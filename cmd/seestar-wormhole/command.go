@@ -7,7 +7,6 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
-	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
 )
 
@@ -38,7 +37,7 @@ func versionString() string {
 
 // newCommand keeps parsing and pure validation ahead of every runtime resource.
 // Flags are local to each command, including logging and connection options.
-func newCommand(o *options, out io.Writer, supported func() error) *cobra.Command {
+func newCommand(o *options, out io.Writer) *cobra.Command {
 	root := &cobra.Command{
 		Use:                "seestar-wormhole",
 		Short:              "Remote access to Seestar devices",
@@ -80,7 +79,7 @@ or 1 on runtime errors including failed release.`,
 		Example: "  seestar-wormhole proxy --idle 2m --state-dir /private/seestar",
 		Args:    noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return validateOptions(o, supported)
+			return validateOptions(o)
 		},
 	}
 	f := proxyCommand.Flags()
@@ -107,12 +106,8 @@ func noArguments(_ *cobra.Command, args []string) error {
 }
 
 func parse(args []string, out io.Writer) (options, error) {
-	return parseWithSupport(args, out, landiscovery.Supported)
-}
-
-func parseWithSupport(args []string, out io.Writer, supported func() error) (options, error) {
 	var o options
-	command := newCommand(&o, out, supported)
+	command := newCommand(&o, out)
 	// An explicit empty invocation must not fall back to the process arguments.
 	command.SetArgs(append([]string{}, args...))
 	executed, err := command.ExecuteC()

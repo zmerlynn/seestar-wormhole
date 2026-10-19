@@ -31,7 +31,7 @@ func TestTCPStateStartupRefusal(t *testing.T) {
 				checks := 0
 				code := mainExitCodeWithRunner([]string{"proxy", "--log-format=" + format, "--log-level=error"}, &out, &logs,
 					func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} },
-					func() (io.Writer, func()) { return &logs, func() {} }, func() error { return nil },
+					func() (io.Writer, func()) { return &logs, func() {} }, false,
 					func(ctx context.Context, o options, _ io.Writer, stderr io.Writer) error {
 						return runProxy(ctx, o, stderr,
 							func(context.Context, proxy.Config) (commandSession, error) {

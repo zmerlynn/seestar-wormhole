@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"github.com/go-json-experiment/json"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -49,9 +48,6 @@ func TestInvalidOptions(t *testing.T) {
 		}
 	}
 	for _, tc := range tests {
-		if runtime.GOOS == "windows" && tc.name == "bad-bind-discovery" {
-			tc.option, tc.rule = "--lan-discovery", "LAN discovery is unsupported on Windows"
-		}
 		t.Run(tc.name, func(t *testing.T) {
 			var out, logs bytes.Buffer
 			err := run(context.Background(), append([]string{"proxy"}, tc.args...), &out, &logs)

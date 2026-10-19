@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -79,7 +80,7 @@ type options struct {
 	serial, model, stateDir string
 }
 
-func validateOptions(o *options, supported func() error) error {
+func validateOptions(o *options) error {
 	if o.idle < 0 {
 		return &argumentError{Option: "--idle", Rule: "duration must be nonnegative"}
 	}
@@ -88,9 +89,6 @@ func validateOptions(o *options, supported func() error) error {
 	}
 	if err := validateSharedOptions(o); err != nil {
 		return err
-	}
-	if o.lanDiscovery && supported() != nil {
-		return &argumentError{Option: "--lan-discovery", Rule: "LAN discovery is unsupported on Windows"}
 	}
 	if o.lanDiscovery && !landiscovery.ValidBind(o.bind) {
 		return &argumentError{Option: "--bind", Rule: "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0"}
@@ -315,17 +313,17 @@ func mainExitCode() int {
 }
 
 func mainExitCodeWithBootstrap(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func())) int {
-	return mainExitCodeWithPlatform(args, out, logOutput, notify, newLog, landiscovery.Supported)
+	return mainExitCodeWithPlatform(args, out, logOutput, notify, newLog, runtime.GOOS == "windows")
 }
 
-func mainExitCodeWithPlatform(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func()), supported func() error) int {
-	return mainExitCodeWithRunner(args, out, logOutput, notify, newLog, supported, runParsed)
+func mainExitCodeWithPlatform(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func()), windows bool) int {
+	return mainExitCodeWithRunner(args, out, logOutput, notify, newLog, windows, runParsed)
 }
 
 // The parsed options cross this boundary exactly once; runtime and exit policy
 // must never independently reinterpret the original argument positions.
-func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func()), supported func() error, execute func(context.Context, options, io.Writer, io.Writer) error) int {
-	o, err := parseWithSupport(args, out, supported)
+func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func()), windows bool, execute func(context.Context, options, io.Writer, io.Writer) error) int {
+	o, err := parse(args, out)
 	if errors.Is(err, errHelp) {
 		return 0
 	}
@@ -338,7 +336,7 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	}
 	// Windows refuses invalid options before acquiring signal or log handles.
 	// Unix keeps nonblocking log setup for argument errors on stalled stderr.
-	if err != nil && supported() != nil {
+	if err != nil && windows {
 		logCommandArgumentError(o, logOutput, err)
 		return commandExitCode(o, err)
 	}
