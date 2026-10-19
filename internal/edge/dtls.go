@@ -45,7 +45,7 @@ func dtlsOptions(identity []byte, key [32]byte, mtu int) []pion.Option {
 		pion.WithEllipticCurves(elliptic.X25519, elliptic.P256, elliptic.P384),
 		pion.WithExtendedMasterSecret(pion.RequestExtendedMasterSecret),
 		pion.WithFlightInterval(500 * time.Millisecond),
-		// Pion v3.1.14 fragments handshake bodies; reserve record13 + handshake12 + AEAD24.
+		// Pion fragments handshake bodies; reserve record13 + handshake12 + AEAD24.
 		pion.WithMTU(mtu - 49),
 		pion.WithSessionStore(nil), // No resumption or exported State/Resume entry point.
 		pion.WithLoggerFactory(quietDTLSLogger{}),
@@ -110,7 +110,7 @@ func DialDTLS(ctx context.Context, packets *DTLSPackets, username, password []by
 		}
 		return nil, ErrDTLSHandshake
 	}
-	// Pion v3.1.14 rejects ServerHello versions other than 1.2 in flight3handler.
+	// Pion rejects ServerHello versions other than 1.2 in flight3handler.
 	// Its State does not export version. This value is the library's authenticated
 	// handshake guarantee, never inferred from an unauthenticated record header.
 	state, ok := conn.ConnectionState()
