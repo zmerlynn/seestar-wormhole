@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net"
 	"strings"
 	"testing"
@@ -97,10 +98,13 @@ func TestLANHTTPStartupWarning(t *testing.T) {
 				return net.Listen("tcp", "127.0.0.1:0")
 			}
 			discoveryCalls := 0
-			listenDiscovery := func(bind string, port int, options landiscovery.Options) (commandDiscovery, error) {
+			listenDiscovery := func(bind string, port int, options landiscovery.Options, logger *slog.Logger) (commandDiscovery, error) {
 				discoveryCalls++
 				if bind != "0.0.0.0" || port != landiscovery.Port {
 					t.Fatalf("discovery bind=%q port=%d", bind, port)
+				}
+				if logger == nil {
+					t.Fatal("discovery listener received no logger")
 				}
 				if options != (landiscovery.Options{AllInterfaces: tc.allInterfaces}) {
 					t.Fatalf("discovery all_interfaces=%t want %t", options.AllInterfaces, tc.allInterfaces)
