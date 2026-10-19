@@ -10,8 +10,8 @@ Use the same route if you find sensitive data published in this repository, its 
 
 Include the seestar-wormhole version (`seestar-wormhole --version`), your OS, the steps to reproduce and what an
 attacker gains. Leave out the things listed under [What never goes in](CONTRIBUTING.md#what-never-goes-in): no
-passwords, tokens, account names, device serials or UIDs, real IP addresses, coordinates or packet captures. If a
-report needs one of these, say so and we will arrange how to share it.
+passwords, tokens, account names, device serials or UIDs, real IP addresses, coordinates or packet captures. A report
+that needs one of these should describe the need without including the material; sharing is then arranged privately.
 
 This is a one-maintainer project, handled on a best-effort basis. Reports are acknowledged in the advisory, and a fix
 is released before the advisory is published.
@@ -33,10 +33,5 @@ Out of scope:
 
 ## Verifying a release
 
-Each release archive has a SHA-256 checksum in `SHA256SUMS`. Releases after v0.1.0 also carry a GitHub build
-provenance attestation for every archive:
-
-```sh
-sha256sum --check --ignore-missing SHA256SUMS
-gh attestation verify <archive> --repo zmerlynn/seestar-wormhole
-```
+Release checksums and build provenance verification are described in the
+[command reference](docs/reference.md#verifying-a-release).

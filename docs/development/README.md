@@ -53,8 +53,8 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -mod=vendor -p 2 -o seestar-wor
 
 See [runtime site rules](../reference.md#site-protection).
 
-`main` changes only through a pull request. To make an accidental push to it fail locally, enable the
-repository's hooks once per clone:
+`main` changes only through a pull request. The optional pre-push hook
+rejects pushes to `main`. It is enabled once per clone with:
 
 ```sh
 git config core.hooksPath .githooks

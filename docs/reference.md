@@ -13,6 +13,7 @@ proxy's wire behavior and local policy to the v1 specification.
 - [Site protection](#site-protection)
 - [Device selection](#device-selection) and [installation identity](#installation-identity)
 - [Logs](#logs)
+- [Verifying a release](#verifying-a-release)
 - [Containers](#containers), [Windows](#windows), [LAN discovery](#lan-discovery)
 
 ## proxy
@@ -522,6 +523,18 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `unauthorized` | 1 | Unauthorized. |
 | `reason` | `unsupported` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `write_failed` | 1 | Write failed. |
+
+## Verifying a release
+
+Each release lists a SHA-256 checksum for every archive in `SHA256SUMS`.
+Releases after v0.1.0 also carry a GitHub build provenance attestation for
+every archive. With the downloaded archives and `SHA256SUMS` in one
+directory:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify <archive> --repo zmerlynn/seestar-wormhole
+```
 
 ## Containers
 
