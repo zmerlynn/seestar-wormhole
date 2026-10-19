@@ -5,6 +5,7 @@
 package ipv4
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -54,6 +55,25 @@ func (cm *ControlMessage) String() string {
 	return fmt.Sprintf("ttl=%d src=%v dst=%v ifindex=%d", cm.TTL, cm.Src, cm.Dst, cm.IfIndex)
 }
 
+// validateWindows checks send controls independently of Windows socket I/O.
+func (cm *ControlMessage) validateWindows() error {
+	if cm == nil {
+		return nil
+	}
+	if cm.TTL != 0 {
+		return errNotImplemented
+	}
+	if cm.IfIndex < 0 || uint64(cm.IfIndex) > uint64(^uint32(0)) || len(cm.Src) > 0 && cm.Src.To4() == nil {
+		return errors.New("invalid control message")
+	}
+	// A zero IN_PKTINFO address can be used as the literal source on Windows;
+	// it does not reliably ask the stack to choose one for the interface.
+	if cm.IfIndex > 0 && (cm.Src.To4() == nil || cm.Src.IsUnspecified()) {
+		return errors.New("source address required with interface index on Windows")
+	}
+	return nil
+}
+
 // Marshal returns the binary encoding of cm.
 func (cm *ControlMessage) Marshal() []byte {
 	if cm == nil {
@@ -75,6 +95,7 @@ func (cm *ControlMessage) Parse(b []byte) error {
 	if err != nil {
 		return err
 	}
+	var packetInfo bool
 	for _, m := range ms {
 		lvl, typ, l, err := m.ParseHeader()
 		if err != nil {
@@ -84,13 +105,20 @@ func (cm *ControlMessage) Parse(b []byte) error {
 			continue
 		}
 		switch {
-		case typ == ctlOpts[ctlTTL].name && l >= ctlOpts[ctlTTL].length:
+		case ctlOpts[ctlTTL].name > 0 && typ == ctlOpts[ctlTTL].name && l >= ctlOpts[ctlTTL].length:
 			ctlOpts[ctlTTL].parse(cm, m.Data(l))
-		case typ == ctlOpts[ctlDst].name && l >= ctlOpts[ctlDst].length:
+		case ctlOpts[ctlDst].name > 0 && typ == ctlOpts[ctlDst].name && l >= ctlOpts[ctlDst].length:
 			ctlOpts[ctlDst].parse(cm, m.Data(l))
-		case typ == ctlOpts[ctlInterface].name && l >= ctlOpts[ctlInterface].length:
+		case ctlOpts[ctlInterface].name > 0 && typ == ctlOpts[ctlInterface].name && l >= ctlOpts[ctlInterface].length:
 			ctlOpts[ctlInterface].parse(cm, m.Data(l))
-		case typ == ctlOpts[ctlPacketInfo].name && l >= ctlOpts[ctlPacketInfo].length:
+		case ctlOpts[ctlPacketInfo].name > 0 && typ == ctlOpts[ctlPacketInfo].name:
+			if l < ctlOpts[ctlPacketInfo].length {
+				return errors.New("short packet information")
+			}
+			if packetInfo {
+				return errors.New("duplicate packet information")
+			}
+			packetInfo = true
 			ctlOpts[ctlPacketInfo].parse(cm, m.Data(l))
 		}
 	}
