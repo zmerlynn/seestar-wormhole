@@ -53,6 +53,13 @@ CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -mod=vendor -p 2 -o seestar-wor
 
 See [runtime site rules](../reference.md#site-protection).
 
+`main` changes only through a pull request. To make an accidental push to it fail locally, enable the
+repository's hooks once per clone:
+
+```sh
+git config core.hooksPath .githooks
+```
+
 Release archives for every platform come from `scripts/release.sh`; see
 [cutting a release](releasing.md).
 

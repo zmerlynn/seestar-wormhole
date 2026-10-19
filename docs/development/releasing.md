@@ -18,8 +18,9 @@ image (Go 1.27.2). Dependencies are vendored; builds need no network or C toolch
    that the license output includes `Module: github.com/pion/dtls/v3`.
 5. When ready to publish, create an annotated `v1.2.3` tag at that commit and
    push that tag. The release workflow verifies the code, runs the same script,
-   uploads the six archives and `SHA256SUMS` to a draft GitHub Release. RC tags
-   create a pre-release draft; stable tags create an ordinary draft. Add the
+   uploads the six archives and `SHA256SUMS` to a draft GitHub Release, and
+   records a build provenance attestation for each archive. RC tags create a
+   pre-release draft; stable tags create an ordinary draft. Add the
    compatibility record and breaking changes, review the notes, and publish
    by hand when ready.
 

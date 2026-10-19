@@ -1,0 +1,10 @@
+# Version updates for the SHA-pinned workflow actions only. Go modules get security updates alone.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
