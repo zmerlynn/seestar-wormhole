@@ -144,6 +144,21 @@ type commandSession interface {
 	DeviceDetail() cloud.Detail
 }
 
+// commandDiscovery permits startup tests without an active LAN or a fixed UDP port.
+type commandDiscovery interface {
+	Serve(context.Context, *landiscovery.Machine) error
+	Close() error
+}
+
+func listenCommandDiscovery(bind string, port int, logger *slog.Logger) (commandDiscovery, error) {
+	s, err := landiscovery.Listen(bind, port)
+	if err != nil {
+		return nil, err
+	}
+	s.Logger = logger
+	return s, nil
+}
+
 func runWithSession(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error)) error {
 	return runWithListener(ctx, args, out, logOutput, newSession, net.Listen)
 }
@@ -174,10 +189,10 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 	if o.command == commandLicenses {
 		return licenses.Write(out)
 	}
-	return runProxy(ctx, o, logs, newSession, listen, proxy.CheckTCPStateSupport)
+	return runProxy(ctx, o, logs, newSession, listen, listenCommandDiscovery, proxy.CheckTCPStateSupport)
 }
 
-func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), checkTCPState func(context.Context) error) (result error) {
+func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) (result error) {
 	var err error
 	phase := "arguments"
 	var cleanupErr error
@@ -223,14 +238,13 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		}
 		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.device})
 	}
-	var discovery *landiscovery.Socket
+	var discovery commandDiscovery
 	if o.lanDiscovery {
 		phase = "lan_discovery"
-		discovery, err = landiscovery.Listen(o.bind, landiscovery.Port)
+		discovery, err = listenDiscovery(o.bind, landiscovery.Port, logger)
 		if err != nil {
 			return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
 		}
-		discovery.Logger = logger
 		defer discovery.Close()
 	}
 	phase = "session"

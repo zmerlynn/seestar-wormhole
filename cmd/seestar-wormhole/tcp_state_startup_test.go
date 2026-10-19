@@ -42,6 +42,7 @@ func TestTCPStateStartupRefusal(t *testing.T) {
 								t.Fatal("listener opened before capability check")
 								return nil, nil
 							},
+							listenCommandDiscovery,
 							func(context.Context) error { checks++; return diagnostic.Wrap(tc.phase, tc.reason, tc.err) })
 					})
 				if code != 1 || checks != 1 || out.Len() != 0 || strings.Count(logs.String(), "\n") != 1 {
