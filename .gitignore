@@ -1,0 +1,42 @@
+/bin/
+/dist/
+/coverage.out
+/.cache/
+
+# Local evidence and diagnostic bundles.
+**/reports*/**
+**/review*/**
+**/evidence*/**
+**/*-evidence*/**
+**/*evidence*.tar*
+**/*evidence*.tgz
+**/*evidence*.zip
+**/artifacts/**
+**/live/**
+**/captures/**
+**/traces/**
+**/keylogs/**
+**/receipts/**
+
+# Packet captures, decryption secrets, traces and local proxy logs.
+**/*.pcap
+**/*.pcapng
+**/*.pcap.*
+**/*.pcapng.*
+**/*.keys
+**/*.keylog
+**/*.keylog.*
+**/sslkeylog*
+**/*.trace
+**/*.jsonl
+**/*.log
+**/*.log.*
+
+# Installation identity and local archive data.
+**/InterProcessKV/**
+**/device_uuid
+**/.seestar-wormhole/**
+**/state.json
+**/SHA256SUMS
+**/.seestar-sums-*
+**/.seestar-part-*

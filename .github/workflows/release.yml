@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*'] # release.sh enforces the full version grammar before building.
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=vendor
+  GOTOOLCHAIN: local
+  GOPROXY: 'off'
+  GOSUMDB: 'off'
+
+jobs:
+  verify:
+    uses: ./.github/workflows/ci.yml
+
+  validate:
+    runs-on: ubuntu-24.04
+    container: golang:1.27.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Validate release version
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: ./scripts/release.sh --validate-only "$RELEASE_VERSION"
+
+  release:
+    needs: [validate, verify]
+    runs-on: ubuntu-24.04
+    container: golang:1.27.2
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build release archives
+        env:
+          RELEASE_VERSION: ${{ github.ref_name }}
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          ./scripts/release.sh "$RELEASE_VERSION"
+          cd dist
+          sha256sum --check SHA256SUMS
+      - name: Create release and upload archives and checksums
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const files = fs.readdirSync('dist').filter(name =>
+              name === 'SHA256SUMS' || /\.(tar\.gz|zip)$/.test(name)).sort();
+            if (files.length !== 7) throw new Error('Expected six archives and SHA256SUMS');
+            const { data: release } = await github.rest.repos.createRelease({
+              ...context.repo,
+              tag_name: context.ref.slice('refs/tags/'.length),
+              name: context.ref.slice('refs/tags/'.length),
+              draft: true,
+              prerelease: /-rc\.[0-9]+$/.test(context.ref),
+              generate_release_notes: true
+            });
+            for (const name of files) {
+              await github.rest.repos.uploadReleaseAsset({
+                ...context.repo,
+                release_id: release.id,
+                name,
+                data: fs.readFileSync(path.join('dist', name)),
+                headers: { 'content-type': name.endsWith('.zip') ? 'application/zip' :
+                  name.endsWith('.gz') ? 'application/gzip' : 'text/plain' }
+              });
+            }

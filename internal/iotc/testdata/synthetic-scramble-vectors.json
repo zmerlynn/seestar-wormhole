@@ -1,0 +1,188 @@
+{
+  "label": "INFERRED: synthetic vectors from the chapter transcription; not observed library output or live traffic",
+  "round_trip_checks": 8502,
+  "vectors": [
+    {
+      "length": 0,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "",
+      "output": ""
+    },
+    {
+      "length": 0,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "",
+      "output": ""
+    },
+    {
+      "length": 1,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "00",
+      "output": "43"
+    },
+    {
+      "length": 1,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "00",
+      "output": "43"
+    },
+    {
+      "length": 2,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "0001",
+      "output": "6943"
+    },
+    {
+      "length": 2,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "0001",
+      "output": "6943"
+    },
+    {
+      "length": 4,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "00010203",
+      "output": "63714369"
+    },
+    {
+      "length": 4,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "00010203",
+      "output": "63714369"
+    },
+    {
+      "length": 8,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "0001020304050607",
+      "output": "2768716369636c43"
+    },
+    {
+      "length": 8,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "0001020304050607",
+      "output": "2768716369636c43"
+    },
+    {
+      "length": 15,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e",
+      "output": "43696371686c6327617a2a7f64682e"
+    },
+    {
+      "length": 15,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e",
+      "output": "43696371686c6327617a2a7f64682e"
+    },
+    {
+      "length": 16,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f",
+      "output": "debe8d014a30803a2d6b181c00e6ba88"
+    },
+    {
+      "length": 16,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f",
+      "output": "debe8d014a30803a2d6b181c00e6ba88"
+    },
+    {
+      "length": 17,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f10",
+      "output": "debe8d014a30803a2d6b181c00e6ba8853"
+    },
+    {
+      "length": 17,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f10",
+      "output": "debe8d014a30803a2d6b181c00e6ba8853"
+    },
+    {
+      "length": 24,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f1011121314151617",
+      "output": "debe8d014a30803a2d6b181c00e6ba883778617379737c53"
+    },
+    {
+      "length": 24,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f1011121314151617",
+      "output": "debe8d014a30803a2d6b181c00e6ba883778617379737c53"
+    },
+    {
+      "length": 32,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "output": "debe8d014a30803a2d6b181c00e6ba88dfbf8c115b30813b2c7b191d01f7ba89"
+    },
+    {
+      "length": 32,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+      "output": "debe8d014a30803a2d6b181c00e6ba88dfbf8c115b30813b2c7b191d01f7ba89"
+    },
+    {
+      "length": 63,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e",
+      "output": "debe8d014a30803a2d6b181c00e6ba88dfbf8c115b30813b2c7b191d01f7ba89dcbcaf016a3282380f6b1a1e02c6b88a73595341585c5317514a1a4f54581e"
+    },
+    {
+      "length": 63,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e",
+      "output": "debe8d014a30803a2d6b181c00e6ba88dfbf8c115b30813b2c7b191d01f7ba89dcbcaf016a3282380f6b1a1e02c6b88a73595341585c5317514a1a4f54581e"
+    },
+    {
+      "length": 64,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "output": "debe8d014a30803a2d6b181c00e6ba88dfbf8c115b30813b2c7b191d01f7ba89dcbcaf016a3282380f6b1a1e02c6b88addbdae117b3283390e7b1b1f03d7b88b"
+    },
+    {
+      "length": 64,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+      "output": "debe8d014a30803a2d6b181c00e6ba88dfbf8c115b30813b2c7b191d01f7ba89dcbcaf016a3282380f6b1a1e02c6b88addbdae117b3283390e7b1b1f03d7b88b"
+    },
+    {
+      "length": 65,
+      "partial": false,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+      "output": "debe8d014a30803a2d6b181c00e6ba88dfbf8c115b30813b2c7b191d01f7ba89dcbcaf016a3282380f6b1a1e02c6b88addbdae117b3283390e7b1b1f03d7b88b03"
+    },
+    {
+      "length": 65,
+      "partial": true,
+      "key": "436861726c6965206973207468652064",
+      "input": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f40",
+      "output": "debe8d014a30803a2d6b181c00e6ba88dfbf8c115b30813b2c7b191d01f7ba89dcbcaf016a3282380f6b1a1e02c6b88addbdae117b3283390e7b1b1f03d7b88b40"
+    }
+  ]
+}

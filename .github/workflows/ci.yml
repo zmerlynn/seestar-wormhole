@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=vendor
+  GOTOOLCHAIN: local
+  GOPROXY: 'off'
+  GOSUMDB: 'off'
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    container: golang:1.27.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build, vet and test vendored source
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go build ./...
+          go vet ./...
+          go test ./...
+          go test scripts/release.go scripts/release_test.go
+          ./scripts/test-check.sh
+
+  vendor:
+    runs-on: ubuntu-24.04
+    container: golang:1.27.2
+    env:
+      GOFLAGS: ''
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Vendor tree is reproducible
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go mod tidy
+          go mod vendor
+          test -z "$(git status --porcelain -- go.mod go.sum vendor)" || { git status --porcelain -- go.mod go.sum vendor; exit 1; }

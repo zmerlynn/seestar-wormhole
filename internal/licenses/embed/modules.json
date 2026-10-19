@@ -1,0 +1,81 @@
+[
+  {
+    "Path": "github.com/go-json-experiment/json",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/go-json-experiment/json/AUTHORS",
+      "vendor/github.com/go-json-experiment/json/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/inconshreveable/mousetrap",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/inconshreveable/mousetrap/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/pion/dtls/v3",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/pion/dtls/v3/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/pion/logging",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/pion/logging/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/pion/transport/v5",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/pion/transport/v5/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/spf13/cobra",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/spf13/cobra/LICENSE.txt"
+    ]
+  },
+  {
+    "Path": "github.com/spf13/pflag",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/spf13/pflag/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/crypto",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/crypto/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/net",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/net/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/sys",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/sys/LICENSE"
+    ]
+  },
+  {
+    "Path": "gopkg.in/yaml.v3",
+    "SPDX": "MIT AND Apache-2.0",
+    "Files": [
+      "vendor/gopkg.in/yaml.v3/LICENSE",
+      "vendor/gopkg.in/yaml.v3/NOTICE"
+    ]
+  }
+]

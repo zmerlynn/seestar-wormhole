@@ -1,0 +1,22 @@
+{  "id" : 115,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : false  }}
+{  "id" : 146,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.00000000000000,    "force" : false  }}
+{  "id" : 147,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : false  }}
+{  "id" : 148,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : false  }}
+{  "id" : 152,  "method" : "set_setting",  "params" : {    "lang" : "en"  }}
+{  "id" : 153,  "method" : "pi_set_time",  "params" : [    {      "time_zone" : "Etc\/UTC",      "hour" : 14,      "min" : 11,      "sec" : 44,      "day" : 11,      "year" : 2026,      "mon" : 10    }  ]}
+{  "id" : 154,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : false  }}
+{  "id" : 156,  "method" : "set_setting",  "params" : {    "cli_uuid" : "REDACTED",    "cli_name" : "REDACTED"  }}
+{  "id" : 159,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : true  }}
+{  "id" : 106,  "method" : "set_setting",  "params" : {    "lang" : "en"  }}
+{  "id" : 107,  "method" : "pi_set_time",  "params" : [    {      "time_zone" : "Etc\/UTC",      "hour" : 14,      "min" : 16,      "sec" : 36,      "day" : 11,      "year" : 2026,      "mon" : 10    }  ]}
+{  "id" : 108,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : false  }}
+{  "id" : 110,  "method" : "set_setting",  "params" : {    "cli_uuid" : "REDACTED",    "cli_name" : "REDACTED"  }}
+{  "id" : 112,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : true  }}
+{  "id" : 131,  "method" : "set_setting",  "params" : {    "lang" : "en"  }}
+{  "id" : 132,  "method" : "pi_set_time",  "params" : [    {      "time_zone" : "Etc\/UTC",      "hour" : 14,      "min" : 27,      "sec" : 39,      "day" : 11,      "year" : 2026,      "mon" : 10    }  ]}
+{  "id" : 133,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : false  }}
+{  "id" : 135,  "method" : "set_setting",  "params" : {    "cli_uuid" : "REDACTED",    "cli_name" : "REDACTED"  }}
+{  "id" : 185,  "method" : "set_setting",  "params" : {    "lang" : "en"  }}
+{  "id" : 186,  "method" : "pi_set_time",  "params" : [    {      "time_zone" : "Etc\/UTC",      "hour" : 14,      "min" : 38,      "sec" : 59,      "day" : 11,      "year" : 2026,      "mon" : 10    }  ]}
+{  "id" : 187,  "method" : "set_user_location",  "params" : {    "lon" : 20.0000000000000000,    "lat" : 10.000000000000000,    "force" : false  }}
+{  "id" : 190,  "method" : "set_setting",  "params" : {    "cli_uuid" : "REDACTED",    "cli_name" : "REDACTED"  }}
