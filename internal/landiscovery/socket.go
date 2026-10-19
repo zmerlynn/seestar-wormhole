@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery/interfaceio"
 	"golang.org/x/net/ipv4"
 )
 
@@ -80,7 +81,7 @@ func Listen(bind string, port int, options Options) (*Socket, error) {
 		return nil, errors.New("LAN discovery: bind must be a local LAN IPv4 address or 0.0.0.0")
 	}
 	selected, _ := netip.ParseAddr(bind)
-	interfaces, err := net.Interfaces()
+	interfaces, err := interfaceio.Interfaces()
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +90,7 @@ func Listen(bind string, port int, options Options) (*Socket, error) {
 		if !eligibleInterface(iface.Flags, options) {
 			continue
 		}
-		addresses, err := iface.Addrs()
+		addresses, err := interfaceio.Addrs(&iface)
 		if err != nil {
 			return nil, err
 		}
@@ -123,11 +124,11 @@ func Listen(bind string, port int, options Options) (*Socket, error) {
 // or cannot be inspected. Read per eligible scan so a prefix change cannot leave
 // an obsolete on-link admission boundary in use.
 func interfacePrefixes(index int, options Options) []netip.Prefix {
-	iface, err := net.InterfaceByIndex(index)
+	iface, err := interfaceio.InterfaceByIndex(index)
 	if err != nil || !eligibleInterface(iface.Flags, options) {
 		return nil
 	}
-	addresses, err := iface.Addrs()
+	addresses, err := interfaceio.Addrs(iface)
 	if err != nil {
 		return nil
 	}
