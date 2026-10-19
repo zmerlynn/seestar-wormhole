@@ -146,10 +146,9 @@ fails on any difference, so vendored files are never edited by hand.
 
 The [Windows discovery dependency](../reference.md#lan-discovery) is carried
 as an x/net fork.
-The development replacement in `go.mod` points to the sibling x/net checkout;
-it must resolve before running module or vendoring commands. Integration replaces
-that local path with a published fork pseudo-version. The fork retains the
-`golang.org/x/net` module path and BSD license.
+The `replace` directive in `go.mod` pins a tagged fork release, so module and
+vendoring commands resolve it through the module proxy like any other
+dependency. The fork retains the `golang.org/x/net` module path and BSD license.
 
 ## Licenses and generated notices
 
