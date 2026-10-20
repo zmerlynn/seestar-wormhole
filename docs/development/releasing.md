@@ -1,5 +1,9 @@
 # Cutting a release
 
+[`.claude/skills/wormhole-release`](../../.claude/skills/wormhole-release/SKILL.md)
+is the checklist for a whole release, with its single owner check before the
+tag. This page has the build mechanics.
+
 Use a clean checkout of the intended commit and the official `golang:1.27.2`
 image (Go 1.27.2). Dependencies are vendored; builds need no network or C toolchain.
 
@@ -20,9 +24,8 @@ image (Go 1.27.2). Dependencies are vendored; builds need no network or C toolch
    push that tag. The release workflow verifies the code, runs the same script,
    uploads the six archives and `SHA256SUMS` to a draft GitHub Release, and
    records a build provenance attestation for each archive. RC tags create a
-   pre-release draft; stable tags create an ordinary draft. Add the
-   compatibility record and breaking changes, review the notes, and publish
-   by hand when ready.
+   pre-release draft; stable tags create an ordinary draft. Add the notes,
+   with the compatibility record and any breaking changes, and publish.
 
 The script builds Linux, macOS and Windows for amd64 and arm64. Each archive
 contains `seestar-wormhole` (`seestar-wormhole.exe` on Windows), `README.md`,

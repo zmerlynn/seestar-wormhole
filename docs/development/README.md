@@ -194,3 +194,10 @@ describes how to review a change in focused lanes, such as correctness, tests,
 simplicity, licensing and docs. A coding agent can follow it as a skill, and a
 person can follow it as a checklist. A review is scoped to the change by
 default and ends in a single verdict.
+
+## Releasing
+
+[`.claude/skills/wormhole-release`](../../.claude/skills/wormhole-release/SKILL.md)
+is the release checklist: gates, a reproducible build, notes with a
+compatibility record, one owner check, then the tag, a checked draft and
+publication. [Cutting a release](releasing.md) has the build mechanics.
