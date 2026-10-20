@@ -8,7 +8,7 @@ description: Cut a seestar-wormhole release - gates, a reproducible build, relea
 A checklist the release preparer runs from start to finish, tag included.
 There is one human check: the owner reviews the draft release and its notes,
 then approves publication. Any failed check stops the release and goes back
-to the owner. [Cutting a release](../../../docs/development/releasing.md)
+to the owner, and so does an open pull request (step 5). [Cutting a release](../../../docs/development/releasing.md)
 has the mechanics; this file is the order and the checks.
 
 ## 1. Pick the commit and the version
@@ -59,6 +59,11 @@ Keep the tone short and plain, like the v0.2.0 notes. Verification
 details are for power users; one line and a link is enough.
 
 ## 5. Tag
+
+- [ ] No pull requests are open:
+  `gh pr list --repo zmerlynn/seestar-wormhole --state open`. If any are,
+  list them for the owner and wait for their answer before tagging. An open
+  PR may be meant for this release.
 
 ```sh
 git tag -a vX.Y.Z -m "seestar-wormhole vX.Y.Z" <sha>
