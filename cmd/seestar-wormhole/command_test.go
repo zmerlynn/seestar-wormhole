@@ -37,18 +37,18 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	var o options
 	root := newCommand(&o, io.Discard)
 	commands := root.Commands()
-	if len(commands) != 2 || commands[0].Name() != "licenses" || commands[1].Name() != "proxy" || len(commands[1].Aliases) != 0 {
-		t.Fatalf("commands = %v, want licenses and proxy with no aliases", commands)
+	if len(commands) != 3 || commands[0].Name() != "discovery" || commands[1].Name() != "licenses" || commands[2].Name() != "proxy" || len(commands[2].Aliases) != 0 {
+		t.Fatalf("commands = %v, want discovery, licenses and proxy with no aliases", commands)
 	}
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {
 		t.Fatal("root version or flag scope changed")
 	}
 	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "log-format", "log-level", "lan-discovery", "lan-discovery-all-interfaces"} {
-		if root.Flags().Lookup(name) != nil || root.PersistentFlags().Lookup(name) != nil || commands[1].Flags().Lookup(name) == nil {
+		if root.Flags().Lookup(name) != nil || root.PersistentFlags().Lookup(name) != nil || commands[2].Flags().Lookup(name) == nil {
 			t.Errorf("%s must be proxy-local", name)
 		}
 	}
-	commands[1].Flags().VisitAll(func(f *pflag.Flag) {
+	commands[2].Flags().VisitAll(func(f *pflag.Flag) {
 		if f.Shorthand != "" && (f.Name != "port" || f.Shorthand != "p") {
 			t.Errorf("unexpected shorthand %q for %s", f.Shorthand, f.Name)
 		}

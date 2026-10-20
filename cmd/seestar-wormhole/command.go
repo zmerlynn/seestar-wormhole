@@ -20,6 +20,7 @@ const (
 	commandRoot commandKind = iota
 	commandProxy
 	commandLicenses
+	commandDiscoveryOnly
 )
 
 type commandOutcome uint8
@@ -90,7 +91,7 @@ or 1 on runtime errors including failed release.`,
 	f.DurationVar(&o.idle, "idle", 0, "release after this idle duration; zero holds eagerly")
 	f.BoolVar(&o.lanDiscovery, "lan-discovery", false, "answer UDP 4720 discovery on the bind address LAN (off by default)")
 	f.BoolVar(&o.lanDiscoveryAllInterfaces, "lan-discovery-all-interfaces", false, "include VPN and virtual adapters in LAN discovery (requires --lan-discovery)")
-	root.AddCommand(proxyCommand, &cobra.Command{
+	root.AddCommand(proxyCommand, newDiscoveryCommand(o), &cobra.Command{
 		Use:   "licenses",
 		Short: "View license information for third-party libraries used in this build",
 		Args:  noArguments,
@@ -119,6 +120,8 @@ func parse(args []string, out io.Writer) (options, error) {
 		o.command = commandProxy
 	case "licenses":
 		o.command = commandLicenses
+	case "discovery":
+		o.command = commandDiscoveryOnly
 	}
 	if err != nil {
 		return o, flagParseError(err)

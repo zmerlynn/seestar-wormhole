@@ -79,6 +79,7 @@ type options struct {
 	lanDiscovery              bool
 	lanDiscoveryAllInterfaces bool
 	serial, model, stateDir   string
+	name                      string
 }
 
 func validateOptions(o *options) error {
@@ -183,6 +184,10 @@ func runParsed(ctx context.Context, o options, out, logs io.Writer) error {
 }
 
 func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) error {
+	return runParsedWithDiscovery(ctx, o, out, logs, newSession, listen, listenCommandDiscovery)
+}
+
+func runParsedWithDiscovery(ctx context.Context, o options, out, logs io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error)) error {
 	if o.outcome == commandHelp || o.outcome == commandCompletion {
 		return errHelp
 	}
@@ -193,7 +198,10 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 	if o.command == commandLicenses {
 		return licenses.Write(out)
 	}
-	return runProxy(ctx, o, logs, newSession, listen, listenCommandDiscovery, proxy.CheckTCPStateSupport)
+	if o.command == commandDiscoveryOnly {
+		return runDiscovery(ctx, o, logs, listenDiscovery)
+	}
+	return runProxy(ctx, o, logs, newSession, listen, listenDiscovery, proxy.CheckTCPStateSupport)
 }
 
 func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) (result error) {
@@ -399,9 +407,12 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 }
 
 func logCommandArgumentError(o options, out io.Writer, err error) {
-	if o.command == commandLicenses {
+	switch o.command {
+	case commandLicenses:
 		logConfigurationError(out, "licenses", err)
-	} else {
+	case commandDiscoveryOnly:
+		logConfigurationError(out, "discovery", err)
+	default:
 		logArgumentError(out, err)
 	}
 }

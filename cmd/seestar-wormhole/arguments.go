@@ -49,8 +49,8 @@ func logConfigurationError(out io.Writer, command string, err error) {
 	var detail *argumentError
 	if errors.As(err, &detail) {
 		logger := configurationLogger(out, command, detail)
-		if command == "proxy" {
-			logger.Error("proxy failed", "phase", "arguments", "reason", "invalid_option", "cleanup_reason", "none")
+		if command == "proxy" || command == "discovery" {
+			logger.Error(command+" failed", "phase", "arguments", "reason", "invalid_option", "cleanup_reason", "none")
 		} else {
 			logger.Error(command+" failed", "phase", "arguments", "reason", "invalid_option")
 		}
