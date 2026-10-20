@@ -16,18 +16,27 @@ The October 16, 2026 acceptance run checked:
 
 - JSON-RPC control reads through the proxy: 40 of 40 replies correlated.
 - Several concurrent control clients, with no cross-talk or drops.
-- The previous site-pin behavior worked in that run. Current site protection
-  drops app setters and is covered by offline tests; it has no device-run
-  coverage yet.
+- The previous site-pin behavior worked in that run.
 
-The phone app through the proxy, LAN discovery from the phone, and always-on
-idle release/redial over days have not been tested on 9.75. Camera-info reads
-worked on 9.31; they weren't part of the 9.75 run.
+The October 20, 2026 run, on a build of commit a3a85c9, checked:
+
+- The DTLS handshake and session setup, from Linux and from macOS.
+- JSON-RPC control reads, an SMB listing, and an rclone copy of 12 files
+  (82 MB) with a download check: no differences.
+- The iOS app over the LAN from a Mac: discovery found the telescope,
+  the app connected and controlled it, and album images were served over
+  port 80.
+- Site protection on the device: the app's clock and location setters were
+  dropped on every connection.
+
+Always-on idle release/redial over days has not been tested on 9.75.
+Camera-info reads worked on 9.31; they weren't part of the 9.75 runs.
 
 ## Phone app
 
 - **iOS** works over the LAN from a Mac on firmware 9.31: discovery, control,
-  live preview, the album, plans and video.
+  live preview, the album, plans and video. On 9.75, discovery, control and
+  the album have been checked.
 - **Android** hasn't been run. Its protocol has been studied, but nobody has
   tried it with a real phone.
 - **Several phones at once** hasn't been tried. Through the proxy every phone
@@ -43,9 +52,10 @@ test the command's version and help output.
 - **Linux** is where the proxy runs continuously, including overnight use.
   The phone setup hasn't been run from Linux, though it should work the
   same way.
-- **macOS** has run the phone-app setup. Discovery has native loopback unicast
-  and admission/response tests; LAN broadcast discovery has not been verified
-  on macOS. The loopback broadcast socket fixture runs only on Linux.
+- **macOS** has run the phone-app setup. LAN broadcast discovery answered an
+  iPhone's scans on macOS 26 (arm64), bound to the Mac's LAN address and to
+  `0.0.0.0`. Discovery also has native loopback unicast and admission/response
+  tests. The loopback broadcast socket fixture runs only on Linux.
 - **Windows** has native CI coverage of DTLS interop and loopback TCP
   admission, including resets with full staging and byte preservation after FIN.
   See the [Windows requirements](reference.md#windows). It hasn't been run
