@@ -213,6 +213,63 @@ func TestDiscoveryFailureRecords(t *testing.T) {
 	}
 }
 
+type transientDiscoverySink struct {
+	bytes.Buffer
+	failed bool
+}
+
+func (s *transientDiscoverySink) Write(p []byte) (int, error) {
+	if !s.failed {
+		s.failed = true
+		return 0, io.ErrClosedPipe
+	}
+	return s.Buffer.Write(p)
+}
+
+type orderlyCommandDiscovery struct{ closed bool }
+
+func (*orderlyCommandDiscovery) Serve(context.Context, *landiscovery.Machine) error { return nil }
+func (s *orderlyCommandDiscovery) Close() error                                     { s.closed = true; return nil }
+
+func TestDiscoveryTransientLogFailure(t *testing.T) {
+	var out bytes.Buffer
+	logs := &transientDiscoverySink{}
+	s := &orderlyCommandDiscovery{}
+	// Lose the text synthesis warning, then recover. Serve succeeds, so the
+	// startup logging finalizer must turn the loss into a final JSON failure.
+	code := mainExitCodeWithRunner(append(discoveryArgs(), "--log-format=text", "--log-level=warn"), &out, logs,
+		func(context.Context, ...os.Signal) (context.Context, context.CancelFunc) {
+			return t.Context(), func() {}
+		},
+		func() (io.Writer, func()) { return logs, func() {} }, false,
+		func(ctx context.Context, o options, stdout, stderr io.Writer) error {
+			return runParsedWithDiscovery(ctx, o, stdout, stderr,
+				func(context.Context, proxy.Config) (commandSession, error) {
+					t.Error("discovery constructed a session")
+					return nil, errors.New("unexpected session")
+				}, func(string, string) (net.Listener, error) {
+					t.Error("discovery opened a TCP listener")
+					return nil, errors.New("unexpected TCP listener")
+				}, func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error) {
+					return s, nil
+				})
+		})
+	if code != 1 || !s.closed || !logs.failed {
+		t.Fatalf("shutdown: exit=%d closed=%t sink_failed=%t stdout=%q logs=%q", code, s.closed, logs.failed, &out, logs)
+	}
+	lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
+	var rec struct {
+		Msg, Phase, Reason string
+		CleanupReason      string `json:"cleanup_reason"`
+	}
+	if err := json.Unmarshal(lines[len(lines)-1], &rec, json.MatchCaseInsensitiveNames(true)); err != nil {
+		t.Fatalf("want final JSON failure: %v, logs=%q", err, logs)
+	}
+	if rec.Msg != "discovery failed" || rec.Phase != "lan_discovery" || rec.Reason != "operation_failed" || rec.CleanupReason != "none" {
+		t.Fatalf("final failure: logs=%q", logs)
+	}
+}
+
 func TestDiscoveryHelpWithoutIdentity(t *testing.T) {
 	for _, args := range [][]string{{"discovery", "--help"}, {"help", "discovery"}} {
 		var out, logs bytes.Buffer
