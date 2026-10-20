@@ -95,7 +95,7 @@ privileged HTTP listener. Do not start a second proxy alongside it.
 On the home machine, run:
 
 ```sh
-ssh -N -T -o ExitOnForwardFailure=yes \
+ssh -N -T -o ForkAfterAuthentication=no -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   -L '<home-lan-ip>:4700:127.0.0.1:4700' \
   -L '<home-lan-ip>:4800:127.0.0.1:4800' \
@@ -146,12 +146,13 @@ isolation and duplicate-serial warnings from the earlier setup still apply.
 Select the app's **LAN** entry. An advertised row is not proof that the
 SSH transport, primary session or telescope is ready.
 
-### Restart the home services together
+### Run the home services with systemd
 
 Install these user units under `~/.config/systemd/user/`. Replace all
 placeholders, use absolute executable paths, and provision SSH host keys and
 noninteractive authentication first. The SSH service uses the same complete
 forward set as above; keep optional forwards consistent in both places.
+These units are compatible with Debian 11 (systemd 247).
 
 ```ini
 # seestar-home.target
@@ -168,10 +169,11 @@ WantedBy=default.target
 [Unit]
 Description=Seestar TCP forwards to the primary
 PartOf=seestar-home.target
-OnFailure=seestar-home-restart.service
 
 [Service]
-ExecStart=/usr/bin/ssh -N -T -o BatchMode=yes -o ExitOnForwardFailure=yes \
+Restart=always
+RestartSec=5
+ExecStart=/usr/bin/ssh -N -T -o BatchMode=yes -o ForkAfterAuthentication=no -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   -L <home-lan-ip>:4700:127.0.0.1:4700 \
   -L <home-lan-ip>:4800:127.0.0.1:4800 \
@@ -186,28 +188,15 @@ ExecStart=/usr/bin/ssh -N -T -o BatchMode=yes -o ExitOnForwardFailure=yes \
 [Unit]
 Description=Seestar scan replies on the home LAN
 PartOf=seestar-home.target
-BindsTo=seestar-home-ssh.service
-After=seestar-home-ssh.service
-OnFailure=seestar-home-restart.service
 
 [Service]
+Restart=always
+RestartSec=5
 ExecStart=%h/bin/seestar-wormhole discovery --bind <home-lan-ip> \
   --advertise-serial <serial> --advertise-model "<model-label>" \
   --advertise-name "<device-name>"
 KillSignal=SIGINT
 TimeoutStopSec=10
-```
-
-```ini
-# seestar-home-restart.service
-[Unit]
-Description=Restart both home Seestar services after either fails
-StartLimitIntervalSec=0
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sleep 5
-ExecStart=/usr/bin/systemctl --user --no-block restart seestar-home.target
 ```
 
 ```sh
@@ -216,15 +205,13 @@ systemctl --user enable --now seestar-home.target
 journalctl --user -u seestar-home-ssh -u seestar-home-discovery -f
 ```
 
-`PartOf` makes target stop/restart apply to both services. A failed service
-requests a delayed restart of the target, and `BindsTo` stops discovery when
-SSH goes away. The services themselves do not restart independently. Use
-`systemctl --user stop seestar-home.target` to stop the pair deliberately;
-if a delayed recovery is already pending, stop `seestar-home-restart.service`
-as well. See [user-service logout behavior](always-on.md#a-systemd-service).
-A running SSH process and its local binds do not establish primary readiness.
-After an address or identity change, restart the target and select a fresh
-LAN row in the app.
+The target starts both services; `PartOf` makes its stop/restart apply to
+both. Each service restarts independently after five seconds, even after a
+clean exit; `ForkAfterAuthentication=no` keeps SSH in the foreground.
+Discovery advertising while SSH reconnects is acceptable; a LAN row does
+not prove readiness. Use `systemctl --user stop seestar-home.target` to stop
+both deliberately. See [user-service logout behavior](always-on.md#a-systemd-service).
+After an address or identity change, restart the target and select a fresh LAN row.
 
 ## What hasn't been tried
 
