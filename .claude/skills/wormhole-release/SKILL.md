@@ -65,7 +65,7 @@ details are for power users; one line and a link is enough.
 ## 5. Tag
 
 - [ ] No pull requests are open:
-  `gh pr list --repo zmerlynn/seestar-wormhole --state open`. If any are,
+  `gh pr list --repo zmerlynn/seestar-wormhole --state open --limit 1000`. If any are,
   list them for the owner and wait for their answer before tagging. An open
   PR may be meant for this release.
 
