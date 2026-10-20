@@ -32,13 +32,17 @@ Run these in a clean worktree at that SHA, in `golang:1.27.2` with
 
 - [ ] `docs/status.md` on that commit records a run with a real telescope on
   the current firmware. If it doesn't, run a smoke test and land the status
-  update first; the release commit moves to that merge.
+  update first. Return to step 1 with the merge's SHA once its CI is green,
+  and repeat all of step 2 at that SHA: the archives include
+  `docs/status.md` and the commit, so the earlier build no longer matches.
 - [ ] Keep track of what was tested with this build, what is carried forward
   from older runs, and what was never tested.
 
 ## 4. Draft the notes
 
-Write them outside the checkout, for users rather than developers:
+From the worktree root, set `release_notes=../release-notes-vX.Y.Z.md` and
+write the notes to that file, outside the checkout, for users rather than
+developers:
 
 1. One summary line.
 2. **Changes:** one or two plain sentences each, linking the reference
@@ -85,7 +89,7 @@ When the release workflow finishes, check:
 Then apply the notes, leaving the release a draft:
 
 ```sh
-gh release edit vX.Y.Z --draft=true --notes-file NOTES.md
+gh release edit vX.Y.Z --draft=true --notes-file "$release_notes"
 ```
 
 ## 7. Owner check: publish
@@ -95,7 +99,12 @@ Send the owner the draft link (it changes on every edit, so take it from
 few lines. Apply their edits to the notes. Publish only on their approval:
 
 ```sh
-gh release edit vX.Y.Z --draft=false --latest
+# stable release
+gh release edit vX.Y.Z --draft=false --prerelease=false --latest
+# release candidate
+gh release edit vX.Y.Z-rc.N --draft=false --prerelease=true --latest=false
 ```
 
-Confirm that `releases/latest` is the new tag, then delete the worktree and `dist/`.
+Check the result with `gh release view <tag> --json tagName,isDraft,isPrerelease,url`.
+For a stable release, `releases/latest` must now be the new tag; for an RC it
+must be unchanged. Then delete the worktree and `dist/`.
