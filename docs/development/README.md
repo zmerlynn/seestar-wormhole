@@ -199,5 +199,5 @@ default and ends in a single verdict.
 
 [`.claude/skills/wormhole-release`](../../.claude/skills/wormhole-release/SKILL.md)
 is the release checklist: gates, a reproducible build, notes with a
-compatibility record, one owner check, then the tag, a checked draft and
-publication. [Cutting a release](releasing.md) has the build mechanics.
+compatibility record, the tag and a checked draft, then one owner check
+before publication. [Cutting a release](releasing.md) has the build mechanics.
