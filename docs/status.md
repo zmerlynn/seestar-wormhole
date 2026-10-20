@@ -40,8 +40,9 @@ Camera-info reads worked on 9.31; they weren't part of the 9.75 runs.
 - **Android** hasn't been run. Its protocol has been studied, but nobody has
   tried it with a real phone.
 - **[Discovery at home with an SSH chain](phone-app.md#discovery-at-home-with-a-primary-on-another-lan)**
-  has not yet been tested with a real phone. Command and discovery socket
-  tests are offline; they do not establish app interoperability through SSH.
+  works with a real phone on firmware 9.75: discovery, control, the album and
+  a plan, with the proxy on another network and a Debian 11 home machine.
+  Live video and the systemd units have not been checked.
 - **Several phones at once** hasn't been tried. Through the proxy every phone
   shares a device-side address; [guest/master state also depends on the socket and client identity](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/session-handshake/verification-and-roles.md#guest-and-master).
 - **[Video over UDP](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/media/video.md#rtsp-endpoints)** isn't supported. The proxy forwards TCP only, and the app
