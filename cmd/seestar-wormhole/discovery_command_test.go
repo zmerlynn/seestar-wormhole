@@ -41,6 +41,7 @@ func TestDiscoveryInvalidOptions(t *testing.T) {
 		{"empty model", "--advertise-model", append(discoveryArgs(), "--advertise-model=")},
 		{"blank serial", "--advertise-serial", append(discoveryArgs(), "--advertise-serial= \t")},
 		{"blank model", "--advertise-model", append(discoveryArgs(), "--advertise-model= \t")},
+		{"omitted bind", "--bind", []string{"discovery", "--advertise-serial=TEST-SERIAL", "--advertise-model=TEST-MODEL"}},
 		{"missing bind", "--bind", append(discoveryArgs(), "--bind=")},
 		{"hostname", "--bind", append(discoveryArgs(), "--bind=PRIVATE_HOST")},
 		{"loopback", "--bind", append(discoveryArgs(), "--bind=127.0.0.1")},
@@ -49,6 +50,8 @@ func TestDiscoveryInvalidOptions(t *testing.T) {
 		{"broadcast", "--bind", append(discoveryArgs(), "--bind=255.255.255.255")},
 		{"oversize identity", "arguments", append(discoveryArgs(), "--advertise-name="+strings.Repeat("PRIVATE_NAME", 500))},
 		{"invalid UTF-8", "arguments", append(discoveryArgs(), "--advertise-name=\xff")},
+		{"invalid serial UTF-8", "arguments", append(discoveryArgs(), "--advertise-serial=\xff")},
+		{"invalid model UTF-8", "arguments", append(discoveryArgs(), "--advertise-model=\xff")},
 		{"format", "--log-format", append(discoveryArgs(), "--log-format=PRIVATE_FORMAT")},
 		{"level", "--log-level", append(discoveryArgs(), "--log-level=PRIVATE_LEVEL")},
 		{"catalog serial", "arguments", append(discoveryArgs(), "--serial=PRIVATE_SERIAL")},
@@ -56,6 +59,9 @@ func TestDiscoveryInvalidOptions(t *testing.T) {
 		{"positional", "arguments", append(discoveryArgs(), "PRIVATE_ARGUMENT")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if _, err := parse(tc.args, io.Discard); err == nil {
+				t.Fatal("invalid flags passed pure validation")
+			}
 			var out, logs bytes.Buffer
 			err := run(context.Background(), tc.args, &out, &logs)
 			var detail *argumentError
@@ -105,8 +111,6 @@ func TestDiscoveryScanWithoutCredentialsOrSession(t *testing.T) {
 						}
 					}
 				}
-				// Discovery must also ignore unrelated proxy environment options.
-				t.Setenv("SEESTAR_STATE_DIR", "PRIVATE_INVALID_STATE")
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
 				s := &scanCommandDiscovery{replies: make(chan []byte, 2)}

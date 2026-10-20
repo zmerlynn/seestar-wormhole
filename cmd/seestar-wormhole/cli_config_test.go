@@ -38,7 +38,7 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 	}
 	delete(got, "time")
 	want := map[string]any{"level": "ERROR", "msg": command + " failed", "option": option, "rule": rule, "help": "seestar-wormhole " + command + " --help", "phase": "arguments", "reason": "invalid_option"}
-	if command == "proxy" {
+	if command == "proxy" || command == "discovery" {
 		want["cleanup_reason"] = "none"
 	}
 	if !reflect.DeepEqual(got, want) {
