@@ -95,7 +95,7 @@ privileged HTTP listener. Do not start a second proxy alongside it.
 On the home machine, run:
 
 ```sh
-ssh -N -T -o ForkAfterAuthentication=no -o ExitOnForwardFailure=yes \
+ssh -N -T -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   -L '<home-lan-ip>:4700:127.0.0.1:4700' \
   -L '<home-lan-ip>:4800:127.0.0.1:4800' \
@@ -173,7 +173,7 @@ PartOf=seestar-home.target
 [Service]
 Restart=always
 RestartSec=5
-ExecStart=/usr/bin/ssh -N -T -o BatchMode=yes -o ForkAfterAuthentication=no -o ExitOnForwardFailure=yes \
+ExecStart=/usr/bin/ssh -N -T -o BatchMode=yes -o ExitOnForwardFailure=yes \
   -o ServerAliveInterval=15 -o ServerAliveCountMax=3 \
   -L <home-lan-ip>:4700:127.0.0.1:4700 \
   -L <home-lan-ip>:4800:127.0.0.1:4800 \
@@ -207,7 +207,10 @@ journalctl --user -u seestar-home-ssh -u seestar-home-discovery -f
 
 The target starts both services; `PartOf` makes its stop/restart apply to
 both. Each service restarts independently after five seconds, even after a
-clean exit; `ForkAfterAuthentication=no` keeps SSH in the foreground.
+clean exit. SSH must stay in the foreground: if your `ssh_config` sets
+`ForkAfterAuthentication` (OpenSSH 8.7 and later), add
+`-o ForkAfterAuthentication=no`; older OpenSSH, such as Debian 11's 8.4,
+rejects that option.
 Discovery advertising while SSH reconnects is acceptable; a LAN row does
 not prove readiness. Use `systemctl --user stop seestar-home.target` to stop
 both deliberately. See [user-service logout behavior](always-on.md#a-systemd-service).
