@@ -54,8 +54,7 @@ Native macOS (arm64) and Windows CI jobs run build, vet and tests, then smoke
 test the command's version and help output.
 
 - **Linux** is where the proxy runs continuously, including overnight use.
-  The phone setup hasn't been run from Linux, though it should work the
-  same way.
+  See [phone-app coverage](#phone-app) for the Debian 11 home SSH-chain test.
 - **macOS** has run the phone-app setup. LAN broadcast discovery answered an
   iPhone's scans on macOS 26 (arm64), bound to the Mac's LAN address and to
   `0.0.0.0`. Discovery also has native loopback unicast and admission/response

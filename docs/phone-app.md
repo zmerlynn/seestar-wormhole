@@ -75,7 +75,7 @@ Add `--idle 2m` to allocate only when a client connects and release after two id
 
 ## Discovery at home with a primary on another LAN
 
-This chained setup has **not yet been tested with a real phone**. Keep the
+See [tested coverage](status.md#phone-app) for this chained setup. Keep the
 single primary proxy and its credentials on the remote Linux host. On the
 home Linux machine, use SSH for TCP and `discovery` for the phone's local
 scans. Use a stable home LAN IPv4 address reachable from the phone; all home
