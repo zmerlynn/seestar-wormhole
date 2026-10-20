@@ -31,6 +31,8 @@ For `iotc_rid_history_exhausted`, restart the process after it exits; the reserv
 [the phone app guide](phone-app.md#if-the-telescope-doesnt-show-up). Most of
 the time it's the firewall or a Wi-Fi network that keeps devices apart.
 
+A `lan_discovery_delivery_failed` record with a `reply_*` rule means one discovery reply couldn't be sent, usually because the proxy's LAN address just changed. Discovery keeps running. If it repeats, check that the bind address is still on the interface, or restart the proxy to pick up a new address. See [LAN discovery](reference.md#lan-discovery).
+
 If the album is empty, start the proxy with `-p 80:80`; see [HTTP port mappings](reference.md#port-mappings).
 
 To correct the stored site, connect the app directly to the device and set it there; see [site protection](reference.md#site-protection).

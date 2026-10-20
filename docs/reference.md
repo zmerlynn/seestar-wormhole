@@ -344,7 +344,7 @@ selection masks serials.
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
 | `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode |
 | `lan_discovery_refused` | WARN | Nonzero refusal counts per fixed `rule`, at most once per rule per five seconds, plus pending counts at shutdown; no peer data |
-| `lan_discovery_delivery_failed` | WARN | Local deadline/write failure or short write; fixed `rule`, error returned to the owner |
+| `lan_discovery_delivery_failed` | WARN | Local deadline/write failure or short write; fixed `rule`. Reply failures drop one reply; read-deadline failures end discovery. |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |
 | `transport_discard_summary` | WARN | Nonzero discard deltas per `rule` (audit row ID) and `count`, every ten seconds on the owner timer; release flushes the final interval |
@@ -623,7 +623,11 @@ Before replying, discovery rereads ingress interface addresses. Removed or
 inactive interfaces, lookup failures, and removed selected addresses get no
 reply. Prefix changes for an existing selected address apply immediately.
 New/replacement addresses require a restart, including wildcard mode. A reply
-write has a 250 ms deadline. This bounded responder is not a flood defense.
+write has a 250 ms deadline. Reply deadline failures, write failures, and short
+writes log `lan_discovery_delivery_failed`, count toward the `reply_delivery_failed`
+refusal summary, and drop only that reply; discovery keeps serving. Cancellation,
+read-deadline failures, and terminal receive errors still end discovery.
+This bounded responder is not a flood defense.
 
 Discovery is synthesized from cloud detail; this differs from the
 [recommendation to forward the real result](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#stand-in-responders).

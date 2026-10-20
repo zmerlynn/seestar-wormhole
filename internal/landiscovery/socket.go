@@ -203,6 +203,7 @@ func (s *Socket) Close() error { return s.conn.Close() }
 // Serve owns the Machine, unicasts to each request's original
 // source address/port from the proxy LAN address and server port, and joins its
 // cancellation callback. No authentication or remote allocation is performed.
+// Reply delivery failures are logged and counted, then serving continues.
 func (s *Socket) Serve(ctx context.Context, m *Machine) error {
 	stopped := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() { s.Close(); close(stopped) })
@@ -250,7 +251,7 @@ func (s *Socket) Serve(ctx context.Context, m *Machine) error {
 			continue
 		}
 		if err := s.deliver(response, local, cm.IfIndex, source); err != nil {
-			return err
+			m.refuse(refusalDelivery)
 		}
 	}
 }

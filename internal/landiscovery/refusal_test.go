@@ -147,7 +147,7 @@ func TestDiscoveryRefusalSummaries(t *testing.T) {
 }
 
 // A narrow socket seam injects local write failures; no packet or live listener
-// is needed to prove the caller receives the error and its owner logs the rule.
+// is needed to prove deliver returns the error and logs the rule.
 type failedPacket struct {
 	deadline, write error
 	short           bool
@@ -168,6 +168,97 @@ func (p *failedPacket) WriteTo(b []byte, _ *ipv4.ControlMessage, _ net.Addr) (in
 type receivePacket struct {
 	failedPacket
 	read func([]byte) (int, *ipv4.ControlMessage, net.Addr, error)
+}
+
+// Only the first delivery fails; subsequent replies use the same connection.
+type recoveringPacket struct {
+	receivePacket
+	failure           failedPacket
+	deadlines, writes int
+	replies           [][]byte
+}
+
+func (p *recoveringPacket) SetWriteDeadline(at time.Time) error {
+	p.deadlines++
+	if p.deadlines == 1 {
+		return p.failure.SetWriteDeadline(at)
+	}
+	return nil
+}
+
+func (p *recoveringPacket) WriteTo(b []byte, cm *ipv4.ControlMessage, dst net.Addr) (int, error) {
+	p.writes++
+	if p.deadlines == 1 {
+		return p.failure.WriteTo(b, cm, dst)
+	}
+	p.replies = append(p.replies, bytes.Clone(b))
+	return len(b), nil
+}
+
+func TestServeDeliveryFailureRecovery(t *testing.T) {
+	private := errors.New("secret-socket-error")
+	for _, tc := range []struct {
+		name, rule string
+		failure    failedPacket
+		writes     int
+	}{
+		{"deadline", "reply_deadline_failed", failedPacket{deadline: private}, 1},
+		{"write", "reply_write_failed", failedPacket{write: private}, 2},
+		{"short", "reply_short_write", failedPacket{short: true}, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer conn.Close()
+			var logs bytes.Buffer
+			prefix := netip.MustParsePrefix("192.0.2.1/24")
+			packet := &recoveringPacket{failure: tc.failure}
+			reads := 0
+			packet.read = func(b []byte) (int, *ipv4.ControlMessage, net.Addr, error) {
+				reads++
+				var wire string
+				switch reads {
+				case 1:
+					wire = scan
+				case 2:
+					wire = `{"id":8,"method":"scan_iscope"}`
+				default:
+					return 0, nil, nil, io.ErrUnexpectedEOF
+				}
+				return copy(b, wire), &ipv4.ControlMessage{Dst: net.IP(prefix.Addr().AsSlice()), IfIndex: 1}, &net.UDPAddr{IP: net.IPv4(192, 0, 2, 2), Port: 1234}, nil
+			}
+			s := &Socket{conn: conn, packet: packet, interfaces: map[int][]netip.Prefix{1: {prefix}},
+				addresses: func(int) []netip.Prefix { return []netip.Prefix{prefix} },
+				elapsed:   func() time.Duration { return 0 }, Logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+			m, _, err := New("SYNTHETIC", "test", "S50")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := s.Serve(t.Context(), m); !errors.Is(err, io.ErrUnexpectedEOF) {
+				t.Fatalf("Serve returned %v, want terminal read error", err)
+			}
+			if reads != 3 || packet.deadlines != 2 || packet.writes != tc.writes || len(packet.replies) != 1 || m.tokens != ReplyBurst-2 {
+				t.Fatalf("reads=%d deadlines=%d writes=%d replies=%d tokens=%d", reads, packet.deadlines, packet.writes, len(packet.replies), m.tokens)
+			}
+			var response reply
+			if err := json.Unmarshal(packet.replies[0], &response); err != nil || string(response.ID) != "8" || response.Result == nil {
+				t.Fatalf("second reply=%s err=%v", packet.replies[0], err)
+			}
+			for _, want := range []string{
+				`"level":"WARN","msg":"lan_discovery_delivery_failed","rule":"` + tc.rule + `"`,
+				`"level":"WARN","msg":"lan_discovery_refused","rule":"reply_delivery_failed","count":1`,
+			} {
+				if !strings.Contains(logs.String(), want) {
+					t.Errorf("missing %s in logs: %s", want, &logs)
+				}
+			}
+			if strings.Contains(logs.String(), "secret") {
+				t.Fatal("dependency error leaked")
+			}
+		})
+	}
 }
 
 func (p *receivePacket) ReadFrom(b []byte) (int, *ipv4.ControlMessage, net.Addr, error) {

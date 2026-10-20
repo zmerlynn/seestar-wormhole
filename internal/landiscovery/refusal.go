@@ -17,6 +17,7 @@ const (
 	refusalInspection
 	refusalSource
 	refusalAlias
+	refusalDelivery
 	refusalCount
 )
 
@@ -24,6 +25,7 @@ var refusalRules = [refusalCount]string{
 	"malformed_scan", "oversized_scan", "unknown_method", "missing_id",
 	"invalid_method", "reply_rate", "oversized_reply", "packet_metadata",
 	"interface_unavailable", "inspection_rate", "wrong_source", "ambiguous_alias",
+	"reply_delivery_failed",
 }
 
 const refusalInterval = 5 * time.Second
