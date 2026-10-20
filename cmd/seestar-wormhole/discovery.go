@@ -28,7 +28,7 @@ Exit 0 on orderly shutdown, 2 on usage/configuration errors, or 1 on runtime err
 		},
 	}
 	f := cmd.Flags()
-	f.StringVar(&o.bind, "bind", defaultBind, "required local LAN IPv4 address or 0.0.0.0; selects discovery interfaces and reply source")
+	f.StringVar(&o.bind, "bind", defaultBind, "LAN IPv4 address or 0.0.0.0 to answer on; must be set, the loopback default is refused")
 	f.StringVar(&o.serial, "advertise-serial", "", "required serial to include in discovery replies (no catalog lookup)")
 	f.StringVar(&o.model, "advertise-model", "", "required model label to include in discovery replies (no catalog lookup)")
 	f.StringVar(&o.name, "advertise-name", "", "display name in discovery replies (empty uses the model label)")
