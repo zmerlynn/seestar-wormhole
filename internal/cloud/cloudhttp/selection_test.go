@@ -60,7 +60,7 @@ func selectionClient(t *testing.T, f *selectionCloud, logs *bytes.Buffer, level 
 	t.Helper()
 	t.Setenv("SEESTAR_EMAIL", "fixture@example.invalid")
 	t.Setenv("SEESTAR_PASSWORD", "fixture-password")
-	c, err := NewFromEnvironment(Config{Transport: f, StateDir: t.TempDir(), Logger: slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: level}))})
+	c, err := NewFromEnvironment(Config{Transport: f, StateDir: t.TempDir(), Logger: redactionTestLogger(logs, level)})
 	if err != nil {
 		t.Fatal(err)
 	}
