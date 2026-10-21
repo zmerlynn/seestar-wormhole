@@ -64,7 +64,7 @@ func decodeRequest(b []byte) (request, error) {
 	return r, nil
 }
 
-// The synthesized reply carries only cloud identity and the inferred activation bit.
+// The synthesized reply carries only supplied identity and the inferred activation bit.
 // omitzero omits nil pointers while retaining nonnil empty/false values as v1 did.
 type result struct {
 	SN           *string `json:"sn,omitzero"`
@@ -94,7 +94,7 @@ type Machine struct {
 	refusals [refusalCount]uint64
 }
 
-// New synthesizes a discovery reply from cloud identity. Synthesized names may
+// New synthesizes a discovery reply from supplied identity. Synthesized names may
 // differ from device-reported values.
 // Cloud-derived identity and activation=true are local synthesis, not observed device values:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#stand-in-responders

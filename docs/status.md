@@ -39,6 +39,10 @@ Camera-info reads worked on 9.31; they weren't part of the 9.75 runs.
   the album have been checked.
 - **Android** hasn't been run. Its protocol has been studied, but nobody has
   tried it with a real phone.
+- **[Discovery at home with an SSH chain](phone-app.md#discovery-at-home-with-a-primary-on-another-lan)**
+  works with a real phone on firmware 9.75: discovery, control, the album and
+  a plan, with the proxy on another network and a Debian 11 home machine.
+  Live video and the systemd units have not been checked.
 - **Several phones at once** hasn't been tried. Through the proxy every phone
   shares a device-side address; [guest/master state also depends on the socket and client identity](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/session-handshake/verification-and-roles.md#guest-and-master).
 - **[Video over UDP](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/media/video.md#rtsp-endpoints)** isn't supported. The proxy forwards TCP only, and the app
@@ -50,8 +54,7 @@ Native macOS (arm64) and Windows CI jobs run build, vet and tests, then smoke
 test the command's version and help output.
 
 - **Linux** is where the proxy runs continuously, including overnight use.
-  The phone setup hasn't been run from Linux, though it should work the
-  same way.
+  See [phone-app coverage](#phone-app) for the Debian 11 home SSH-chain test.
 - **macOS** has run the phone-app setup. LAN broadcast discovery answered an
   iPhone's scans on macOS 26 (arm64), bound to the Mac's LAN address and to
   `0.0.0.0`. Discovery also has native loopback unicast and admission/response

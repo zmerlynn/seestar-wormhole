@@ -7,6 +7,7 @@ failure rule. For setup examples, see [phone app](phone-app.md),
 proxy's wire behavior and local policy to the v1 specification.
 
 - [proxy](#proxy): listeners and flags
+- [discovery](#discovery): scan replies without a cloud session
 - [licenses](#licenses)
 - [Global command behavior](#global-command-behavior) and [exit codes](#exit-codes)
 - [Availability and busy devices](#availability-and-busy-devices)
@@ -85,6 +86,60 @@ Bulk data and RPC replies share the device's ordered send path. Local flow
 control cannot move a reply ahead of [bytes the device has already queued](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#backlog-after-pause).
 See [copying images](copying.md) for transfer settings.
 
+## discovery
+
+```sh
+seestar-wormhole discovery --bind '<home-lan-ip>' \
+  --advertise-serial '<serial>' --advertise-model '<model-label>' \
+  --advertise-name '<device-name>'
+```
+
+Answers UDP 4720 scans only. It opens no TCP listeners, reads no credentials
+(including `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`), and creates no cloud client
+or device session. TCP forwarding is separate; see the
+[chained home setup](phone-app.md#discovery-at-home-with-a-primary-on-another-lan).
+There are no positional arguments, identity files, or status API.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--bind` | `127.0.0.1`, refused | Supply a literal local LAN IPv4 address or `0.0.0.0`; selects eligible interfaces and reply sources. |
+| `--advertise-serial` | Empty; required | Serial placed in `result.sn`; no catalog lookup. |
+| `--advertise-model` | Empty; required | Model label placed in `result.product_model`; no catalog lookup. |
+| `--advertise-name` | Empty | Display name placed in `result.ssid`; empty uses the model label. |
+| `--lan-discovery-all-interfaces` | `false` | Include non-broadcast VPN/virtual adapters with the same checks as [proxy discovery](#lan-discovery); no `--lan-discovery` flag is needed. |
+| `--log-format` | `json` | `json` or `text` stderr records. |
+| `--log-level` | `info` | `debug`, `info`, `warn`, or `error`. |
+| `--version` | `false` | Print version, revision and platform; other flags are still validated. |
+
+Serial and model must be nonblank. Identity must be valid UTF-8 and encode
+within the existing 4096-byte reply limit; validation happens before opening
+UDP. Supplied values are advertised verbatim, with only the empty-name
+fallback. These flags differ from `proxy --serial/--model`, which select an
+account catalog pair. Identity is visible in process arguments and scan
+replies. Restart to change it.
+
+The [LAN discovery admission, source selection, rate bounds, synthesis and
+platform behavior](#lan-discovery) apply unchanged. Here identity comes from
+flags instead of cloud detail. The row does not indicate SSH, primary, or
+device readiness. There is no `lan_http_port` warning because this command
+cannot inspect the separate TCP forwards.
+
+Exit 0 means orderly shutdown, including cancellation by Ctrl+C or SIGTERM;
+exit 2 means a usage/configuration error, including an unavailable UDP bind;
+exit 1 means a runtime or logging failure. Configuration errors produce one
+JSON `discovery failed` record with `phase=arguments`,
+`reason=invalid_option`, fixed `option`/`rule`, a discovery-help hint, and
+`cleanup_reason=none`, regardless of log format/level. Other failures also
+produce a final JSON `discovery failed` record with `phase`, an existing
+[reason value](#status-and-reason-values), and `cleanup_reason=none`.
+Orderly shutdown has no failure record.
+
+Lifecycle records are the shared `lan_discovery_started` (INFO, `port` and
+`all_interfaces`), `lan_discovery_synthesized` (WARN, `fields` and
+`envelope_fields`), `lan_discovery_refused`, and
+`lan_discovery_delivery_failed`; see [logs](#logs) for the latter records and
+logging-loss handling. No serial, name, model, or credentials are logged.
+
 ## licenses
 
 ```sh
@@ -106,7 +161,7 @@ Bare `seestar-wormhole` prints root help and exits 0. Use `help [command]` or
 validates other supplied flags.
 See the [versioning policy](versioning.md) for the release contract.
 
-Operational flags are local to `proxy`; they are not root options.
+Operational flags are local to `proxy` or `discovery`; they are not root options.
 Long flags use double dashes. The only operational short flag is `-p` for
 proxy ports. Boolean flags need no value to enable; use `--flag=false` to
 disable. Scalar flags use the last supplied value; repeatable port mappings
@@ -114,7 +169,8 @@ accumulate. Durations use Go units such as `2m` and `1h30m`, without a `d` unit.
 
 ### Identity and logging flags
 
-These flags are local to `proxy`.
+These identity flags are local to `proxy`; `discovery` shares its logging and
+version flags and has [separate advertised identity flags](#discovery).
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -578,7 +634,9 @@ For build/runtime coverage, see [status](status.md).
 
 ## LAN discovery
 
-Enable `--lan-discovery` with a literal LAN IPv4 bind or `0.0.0.0`. Loopback,
+For the proxy, enable `--lan-discovery` with a literal LAN IPv4 bind or
+`0.0.0.0`. The [discovery command](#discovery) uses the same responder without
+a cloud session or TCP listeners. Loopback,
 IPv6, and hostnames are refused for discovery. By default, an explicit address
 must belong to an active nonloopback broadcast interface. Wildcard selects all
 qualifying IPv4 addresses at startup. TCP still follows `--bind`; UDP 4720 uses
@@ -591,7 +649,8 @@ discovery traffic. This option removes only the broadcast-flag requirement;
 interfaces must still be up, loopback stays excluded, and selected addresses
 must be IPv4 global unicast. Explicit binds must still belong to a qualifying
 interface. On-link prefix admission and reply/inspection budgets still apply.
-The option is rejected without `--lan-discovery`.
+On `proxy`, the option is rejected without `--lan-discovery`; on `discovery`,
+scan replies are already the command's purpose.
 
 Windows discovery uses x/net with Windows control-message support from the
 fork at [github.com/zmerlynn/net](https://github.com/zmerlynn/net), branch
@@ -600,7 +659,7 @@ fork at [github.com/zmerlynn/net](https://github.com/zmerlynn/net), branch
 destination and reply-source checks are the same on every OS; see
 [platform validation status](status.md#platforms).
 
-Discovery uses selected cloud detail for serial, name (`ssid`), and model.
+Proxy discovery uses selected cloud detail for serial, name (`ssid`), and model.
 Lazy mode fetches detail without allocating a session. Replies are unicast to
 the scan's original source port, sourced from the matching local LAN address
 and UDP 4720. [The app uses the reply's source IP, not a JSON IP field.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#accepting-a-reply)
@@ -629,9 +688,9 @@ refusal summary, and drop only that reply; discovery keeps serving. Cancellation
 read-deadline failures, and terminal receive errors still end discovery.
 This bounded responder is not a flood defense.
 
-Discovery is synthesized from cloud detail; this differs from the
+Proxy discovery is synthesized from cloud detail; this differs from the
 [recommendation to forward the real result](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#stand-in-responders).
-The reply includes cloud serial/name, a `product_model` synthesized from the
+The proxy reply includes cloud serial/name, a `product_model` synthesized from the
 cloud label, and inferred `is_verified:true`. Empty `ssid` falls back to model;
 missing/null `ssid` fails cloud validation. No password, lock, or client count
 is invented. `Timestamp` is proxy elapsed seconds plus nine fractional digits.
