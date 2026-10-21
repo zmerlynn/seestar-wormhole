@@ -154,19 +154,20 @@ noninteractive authentication first. The SSH service uses the same complete
 forward set as above; keep optional forwards consistent in both places.
 These units are compatible with Debian 11 (systemd 247).
 
-`systemctl --user` needs a user D-Bus session. Without one it fails with
-"Failed to connect to bus: No such file or directory". Debian 11 doesn't
-install it by default; it comes from the `dbus-user-session` package, after
-which you start a new login session. To start the units at boot without logging
-in, enable lingering as in [the primary's service](always-on.md#a-systemd-service).
+On one Debian 11 machine, `systemctl --user` failed with "Failed to connect
+to bus: No such file or directory", although the user manager was running and
+`XDG_RUNTIME_DIR` was set. The `dbus-user-session` package wasn't installed;
+installing it wasn't tried, and that machine uses the system-unit form below.
+To start user units at boot without logging in, enable lingering as in
+[the primary's service](always-on.md#a-systemd-service).
 
 You can instead install the same three files as system units in
 `/etc/systemd/system/`. Add `User=<your-user>` to both services, replace
 `%h` with the home directory's absolute path, use
 `WantedBy=multi-user.target` in the target, and run the commands below with
-`sudo` and without `--user`. Adding `Wants=network-online.target` and
-`After=network-online.target` to both services avoids failed starts at
-boot before the LAN address is up.
+`sudo` and without `--user`. For boot ordering, add `Wants=network-online.target` and
+`After=network-online.target` to both services' `[Unit]` sections. This
+doesn't guarantee the LAN address is ready, so keep the five-second restart.
 
 ```ini
 # seestar-home.target
