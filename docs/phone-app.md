@@ -154,6 +154,20 @@ noninteractive authentication first. The SSH service uses the same complete
 forward set as above; keep optional forwards consistent in both places.
 These units are compatible with Debian 11 (systemd 247).
 
+`systemctl --user` needs a user D-Bus session. Without one it fails with
+"Failed to connect to bus: No such file or directory". Debian 11 doesn't
+install it by default; it comes from the `dbus-user-session` package, after
+which you start a new login session. To start the units at boot without logging
+in, enable lingering as in [the primary's service](always-on.md#a-systemd-service).
+
+You can instead install the same three files as system units in
+`/etc/systemd/system/`. Add `User=<your-user>` to both services, replace
+`%h` with the home directory's absolute path, use
+`WantedBy=multi-user.target` in the target, and run the commands below with
+`sudo` and without `--user`. Adding `Wants=network-online.target` and
+`After=network-online.target` to both services avoids failed starts at
+boot before the LAN address is up.
+
 ```ini
 # seestar-home.target
 [Unit]
