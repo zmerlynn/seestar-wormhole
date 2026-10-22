@@ -1,4 +1,6 @@
-# Version updates for the SHA-pinned workflow actions only. Go modules get security updates alone.
+# Version updates for the SHA-pinned workflow actions and the Containerfile's
+# digest-pinned build image, whose CA bundle ships in the image. Go modules get
+# security updates alone.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -8,3 +10,7 @@ updates:
     groups:
       actions:
         patterns: ['*']
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: monthly

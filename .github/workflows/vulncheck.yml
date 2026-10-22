@@ -1,0 +1,27 @@
+name: Vulncheck
+
+# Dependabot does not cover the Go standard library; govulncheck does, for the
+# toolchain CI and releases use. Keep the container in step with ci.yml.
+on:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  govulncheck:
+    runs-on: ubuntu-24.04
+    container: golang:1.27.3
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check reachable vulnerabilities
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          GOFLAGS=-mod=vendor "$(go env GOPATH)/bin/govulncheck" ./...

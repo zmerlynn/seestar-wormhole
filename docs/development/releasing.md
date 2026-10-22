@@ -4,8 +4,8 @@
 is the checklist for a whole release, ending in a single owner check of the
 draft. This page has the build mechanics.
 
-Use a clean checkout of the intended commit and the official `golang:1.27.2`
-image (Go 1.27.2). Dependencies are vendored; builds need no network or C toolchain.
+Use a clean checkout of the intended commit and the official `golang:1.27.3`
+image (Go 1.27.3). Dependencies are vendored; builds need no network or C toolchain.
 
 1. Run `go build ./...`, `go vet ./...`, `go test ./...` with
    `GOFLAGS=-mod=vendor`, then `go test scripts/release.go scripts/release_test.go`
