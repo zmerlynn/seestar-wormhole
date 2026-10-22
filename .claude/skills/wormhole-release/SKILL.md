@@ -20,7 +20,7 @@ has the mechanics; this file is the order and the checks.
 
 ## 2. Run the gates
 
-Run these in a clean worktree at that SHA, in `golang:1.27.2` with
+Run these in a clean worktree at that SHA, in `golang:1.27.3` with
 `--network none`. Follow steps 1-4 of [releasing.md](../../../docs/development/releasing.md):
 
 - [ ] build, vet and test pass, along with the release test and `./scripts/test-check.sh`;

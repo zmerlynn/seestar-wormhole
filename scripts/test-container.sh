@@ -30,7 +30,7 @@ for task_arch in arm64 amd64; do
  task_user=$(podman image inspect --format '{{.Config.User}}' "$task_image")
  printf 'linux/%s effective Config.User=%s\n' "$task_arch" "$task_user"
  podman run --rm --pull=never --network=none --memory=4g --cpus=2 \
-  -e GOMAXPROCS=2 -e GOFLAGS=-p=2 -e GOTOOLCHAIN=go1.27.2 \
+  -e GOMAXPROCS=2 -e GOFLAGS=-p=2 -e GOTOOLCHAIN=go1.27.3 \
   -e GOPROXY=off -e GOSUMDB=off -e GOMODCACHE=/tmp/go-mod \
   -e "SEESTAR_CONTAINER_USER=$task_user" \
   -v "$task_src:/src:ro,Z" -v "$task_cache:/root/.cache/go-build:Z" \
