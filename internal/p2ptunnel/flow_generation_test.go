@@ -15,7 +15,7 @@ func TestFlowReleasedGenerationCompletion(t *testing.T) {
 	pause := mustAction(t, d.frame(Frame{DataCommand, a.Channel, []byte{1, 2, 3}}), Send)
 	tail := mustAction(t, d.step(Event{Kind: Sent, Token: pause.Token, Count: 1}), Send)
 	d.step(local(Event{Kind: LocalClose}, a))
-	d.now = core.Instant(29 * time.Second)
+	d.now = core.Instant(5 * time.Minute)
 	for range 255 {
 		d.open(445)
 	}

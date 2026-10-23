@@ -51,6 +51,11 @@ const DefaultChannelBytes = 16 * 1024 * 1024
 // stalled. It is consulted only at aggregate pressure, never as an idle timeout.
 const receiveProgressGrace = time.Second
 
+// channelReuseFloor keeps late frames from a closed channel from reaching a
+// reused ID; wire DATA has no generation:
+// https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#channel-allocation-and-reuse
+const channelReuseFloor = 5 * time.Minute
+
 func DefaultConfig() Config {
 	return Config{Role: Agent, MaxChannels: 256, ChannelBytes: DefaultChannelBytes, SessionBytes: 64 * 1024 * 1024, HighWater: 4 * 1024 * 1024, TXBytes: 1024 * 1024, TXFrames: 512, LoginTimeout: 30 * time.Second, VerifyTimeout: 5 * time.Second}
 }
@@ -330,6 +335,7 @@ func (m *Machine) releaseOutcome(id byte, why string, outcome *CloseOutcome) {
 	// Native state 2 becomes free on the 29th one-second sweep. Keep that
 	// phase relative to Start, but use monotonic time rather than wall time.
 	free := m.epoch.Add(time.Duration((m.now-m.epoch)/core.Instant(time.Second)+29) * time.Second)
+	free = max(free, m.now.Add(channelReuseFloor))
 	generation := c.generation
 	*c = channel{generation: generation, freeAt: free}
 }
