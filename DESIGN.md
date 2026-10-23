@@ -76,10 +76,12 @@ queueing, so a later [peer rejection](https://github.com/zmerlynn/seestar-spec/b
 The adapter must retain the local socket until Opened or OpenFailed, and
 cancel it on either later CloseLocal or session failure. No free slot reports temporary local capacity. The composition retains at most
 128 pending/active clients and retries pending admissions once per second until
-the original wire quarantine permits reuse or the dial context is canceled.
+a quarantined ID becomes reusable or the dial context is canceled.
 
 The allocator follows [channel scanning and quarantine](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#channel-allocation-and-reuse)
-using the injected Start epoch for its sweeps.
+using the injected Start epoch for its sweeps. A released ID is held until the
+later of its native sweep deadline and five minutes after close (monotonic),
+because incoming DATA carries no generation.
 A fresh local generation is assigned on every activation. Incoming server SETUP
 can replace an active/quarantined slot; a stale local completion cannot change it.
 There is no wire generation to distinguish arbitrarily delayed bytes after reuse.
