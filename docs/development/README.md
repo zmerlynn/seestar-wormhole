@@ -89,19 +89,23 @@ architectures and compiles their CLI/discovery tests, runs vet, then runs
 `go test -race -count=2 -timeout 50m ./...`. macOS test compilation is not
 execution. Go/package parallelism is two throughout.
 
-Fuzz mode runs 60 seconds per target with two workers:
+Fuzz mode runs every target for 60 seconds with two workers.
+`./scripts/test-check.sh` checks the campaign against the source declarations
+to catch omitted targets:
 
 | Package | Targets |
 |---|---|
-| `internal/iotc` | `FuzzLicenseJSON`, `FuzzPacket`, `FuzzStream`, `FuzzProtocolParsers`, `FuzzLicense` |
-| `internal/cloud` | `FuzzJSON`, `FuzzAccountResponses`, `FuzzDevices` |
+| `cmd/seestar-wormhole` | `FuzzConfiguration` |
+| `internal/iotc` | `FuzzLicenseJSON`, `FuzzPacket`, `FuzzStream`, `FuzzProtocolParsers`, `FuzzLicense`, `FuzzWireEvents`, `FuzzMetamorphicReceive` |
+| `internal/cloud` | `FuzzJSON`, `FuzzAccountResponses`, `FuzzDevices`, `FuzzOutcomeJoin` |
+| `internal/cloud/cloudhttp` | `FuzzCloudMetamorphic`, `FuzzRejectedResponseDiagnostics` |
 | `internal/edge/iotcedge` | `FuzzIOTCLicenseVerification` |
 | `internal/proxy` | `FuzzSiteProtection` |
 | `internal/landiscovery` | `FuzzDecodeRequest` |
 | `internal/edge` | `FuzzDTLSAdmission` |
 | `internal/dtls` | `FuzzControlBytes` |
-| `internal/rdt` | `FuzzDecode` |
-| `internal/p2ptunnel` | `FuzzDecode`, `FuzzStream` |
+| `internal/rdt` | `FuzzDecode`, `FuzzMachine`, `FuzzMetamorphicReceive` |
+| `internal/p2ptunnel` | `FuzzDecode`, `FuzzStream`, `FuzzMetamorphicReceive` |
 
 Caches default outside the worktree at
 `$XDG_CACHE_HOME/seestar-wormhole/{go-build,go-mod}`, or
