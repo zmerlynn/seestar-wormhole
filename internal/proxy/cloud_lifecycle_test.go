@@ -257,7 +257,7 @@ func TestCloudOutageSchedules(t *testing.T) {
 // The call matrix includes profile and catalog paths absent from this call set.
 func TestEveryCloudCall(t *testing.T) {
 	for _, path := range []string{"/v1/user/login", "/v1/user/current-profile", "/v1/my-device", "/v1/my-device/detail", "/v1/device-p2p/online-link", "/v1/device-p2p/stop"} {
-		for _, status := range []int{200, 401, 403, 409, 503} {
+		for _, status := range []int{200, 401, 403, 409, 429, 500, 502, 503, 504} {
 			for _, bodyFault := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%d/bodyFault-%t", path, status, bodyFault), func(t *testing.T) {
 					c := &r3Cloud{faultPath: path, faultStatus: status, bodyFault: bodyFault}
@@ -292,7 +292,12 @@ func TestEveryCloudCall(t *testing.T) {
 							}
 							err = l.Stop(t.Context())
 						}
-						if status != 200 {
+						temporary := (status == 429 || status == 502 || status == 503 || status == 504) && path != "/v1/device-p2p/online-link" && path != "/v1/device-p2p/stop"
+						if temporary {
+							if !(retryableCloud(err) || errors.Is(err, session.ErrTransport) || path == "/v1/my-device" && errors.Is(err, context.DeadlineExceeded)) {
+								t.Errorf("temporary status %d -> %v, want retryable failure or canceled selection", status, err)
+							}
+						} else if status != 200 {
 							if retryableCloud(err) || errors.Is(err, session.ErrTransport) || err == nil {
 								t.Errorf("received status %d -> %v, want blocking", status, err)
 							}

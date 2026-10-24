@@ -15,6 +15,7 @@ type responseInfo struct {
 	status      int
 	contentType string
 	complete    bool // Read reached EOF; a later Close error cannot undo completion.
+	temporary   bool // Selected service status on a request that cannot change ownership.
 }
 
 // Typed JSON decoding intentionally cannot inventory ignored member names.
@@ -41,7 +42,7 @@ func (c *Client) rejected(ctx context.Context, phase string, info responseInfo, 
 	}
 	field, rule := "http_status", "accepted_status"
 	var v *cloud.ValidationError
-	if errors.As(err, &v) {
+	if !info.temporary && errors.As(err, &v) {
 		field, rule = v.Field, v.Rule
 	}
 	c.logger.DebugContext(ctx, "cloud_response_rejected",

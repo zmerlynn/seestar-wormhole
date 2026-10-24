@@ -104,6 +104,13 @@ func TestResponseStatusWithBodyErrors(t *testing.T) {
 					case "canceled":
 						bodyErr = context.Canceled
 					}
+					temporary := operation == "detail" && status == 503
+					if temporary {
+						bodyErr = nil // Error-page bodies are closed without reading.
+						if cloud.Disposition(err) != cloud.Retryable {
+							t.Errorf("temporary detail status=%v, want retryable", err)
+						}
+					}
 					if errors.Is(err, cloud.ErrUnauthorized) != (status == 401 || status == 403) {
 						t.Errorf("HTTP %d: got %v; unauthorized = %t, want %t", status, err, errors.Is(err, cloud.ErrUnauthorized), status == 401 || status == 403)
 					}
@@ -114,7 +121,7 @@ func TestResponseStatusWithBodyErrors(t *testing.T) {
 						if status == 200 && err != nil {
 							t.Errorf("valid response: %v", err)
 						}
-						if status == 503 && !errors.Is(err, cloud.ErrRejected) {
+						if status == 503 && !temporary && !errors.Is(err, cloud.ErrRejected) {
 							t.Errorf("got %v, want ErrRejected", err)
 						}
 					}

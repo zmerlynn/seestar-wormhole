@@ -30,7 +30,7 @@ func TestLateAccountCompletionBlocksLaterAuthorization(t *testing.T) {
 					tr := &r4ProfileDeadline{r4Cloud: r4Cloud{stops: map[string]int{}}, status: 200, body: `{"code":"invalid","data":null}`}
 					transport, state = tr, &tr.r4Cloud
 				case "profile-denied":
-					tr := &r4ProfileDeadline{r4Cloud: r4Cloud{stops: map[string]int{}}, status: 503, body: `{"code":0,"data":null}`}
+					tr := &r4ProfileDeadline{r4Cloud: r4Cloud{stops: map[string]int{}}, status: 409, body: `{"code":0,"data":null}`}
 					transport, state = tr, &tr.r4Cloud
 					want = cloud.Denied
 				}
