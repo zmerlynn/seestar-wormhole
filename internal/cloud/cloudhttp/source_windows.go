@@ -63,6 +63,11 @@ func persistentIdentity(f *os.File) (string, error) {
 		}
 	}
 	defer windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, &lock)
+	return readOrRepairIdentity(f)
+}
+
+// readOrRepairIdentity requires the caller to hold the native identity lock.
+func readOrRepairIdentity(f *os.File) (string, error) {
 	b, err := io.ReadAll(io.LimitReader(f, 4097))
 	if len(b) > 4096 {
 		return "", stateError("state_identity", "invalid_content")

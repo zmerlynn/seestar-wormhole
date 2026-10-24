@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"testing/synctest"
+	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
@@ -14,6 +16,11 @@ import (
 )
 
 func TestWindowsPersistentSource(t *testing.T) {
+	// All lock holders live in the bubble; file I/O cannot advance its clock.
+	synctest.Test(t, testWindowsPersistentSource)
+}
+
+func testWindowsPersistentSource(t *testing.T) {
 	dir := t.TempDir()
 	var wg sync.WaitGroup
 	ids := make(chan string, 16)
@@ -61,17 +68,32 @@ func TestWindowsPersistentSource(t *testing.T) {
 	if err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &lock); err != nil {
 		t.Fatal(err)
 	}
+	start := time.Now()
 	if _, err := persistentSource(dir); err == nil {
 		t.Fatal("contended lock accepted")
 	} else if phase, reason := diagnostic.Fields(err, ""); phase != "state_identity" || reason != "lock_timeout" {
 		t.Fatalf("contention = %s/%s; want state_identity/lock_timeout", phase, reason)
 	}
+	if elapsed := time.Since(start); elapsed != time.Second {
+		t.Fatalf("lock timeout = %v; want one virtual second", elapsed)
+	}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		if id, err := persistentSource(dir); err != nil || id != first {
+			t.Errorf("queued identity = %q, %v; want %s", id, err, first)
+		}
+	}()
+	synctest.Wait()
+	select {
+	case <-done:
+		t.Fatal("contended identity completed before release")
+	default:
+	}
 	if err := windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, &lock); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := persistentSource(dir); err != nil {
-		t.Fatalf("lock not released: %v", err)
-	}
+	<-done
 }
 
 func TestWindowsStateDirectoryADSRefusal(t *testing.T) {

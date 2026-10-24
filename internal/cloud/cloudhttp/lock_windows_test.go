@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/go-json-experiment/json"
 	"io"
@@ -34,7 +35,7 @@ func TestWindowsIdentityProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	if role == "repair" || role == "queued-repair" {
+	if role == "repair" || role == "queued-repair" || role == "blocking-repair" {
 		if role == "queued-repair" {
 			fmt.Println("ready")
 			input := bufio.NewScanner(os.Stdin)
@@ -42,8 +43,27 @@ func TestWindowsIdentityProcess(t *testing.T) {
 				t.Fatal("missing repair barrier")
 			}
 		}
-		fmt.Println("started")
-		id, err := persistentIdentity(f)
+		var id string
+		if role == "repair" {
+			fmt.Println("started")
+			id, err = persistentIdentity(f)
+		} else {
+			var lock windows.Overlapped
+			if role == "queued-repair" {
+				err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &lock)
+				if !errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
+					t.Fatalf("queued lock = %v; want lock violation", err)
+				}
+			}
+			fmt.Println("started")
+			// Real processes test exclusion and repair, with only the subprocess
+			// watchdog bounding progress. The production deadline is tested in synctest.
+			if err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, &lock); err != nil {
+				t.Fatal(err)
+			}
+			defer windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, &lock)
+			id, err = readOrRepairIdentity(f)
+		}
 		result := identityResult{ID: id}
 		if err != nil {
 			result.Phase, result.Reason = diagnostic.Fields(err, "")
@@ -165,7 +185,7 @@ func TestWindowsIdentityLockRelease(t *testing.T) {
 				holder.barrier(t, "closed")
 			}
 			// In the close case the holder process is still alive at this point.
-			next := startIdentityChild(t, path, "repair", "started").result(t)
+			next := startIdentityChild(t, path, "blocking-repair", "started").result(t)
 			if next.ID != want || next.Phase != "" || next.Reason != "" {
 				t.Fatalf("reacquisition = %+v; want %s", next, want)
 			}
@@ -204,7 +224,7 @@ func TestWindowsEmptyIdentityRepairContention(t *testing.T) {
 	}
 	defer f.Close()
 	var lock windows.Overlapped
-	if err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &lock); err != nil {
+	if err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK, 0, 1, 0, &lock); err != nil {
 		t.Fatal(err)
 	}
 	children := make([]*identityChild, 6)
