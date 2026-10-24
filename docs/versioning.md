@@ -24,7 +24,7 @@ tag scheme join the contract from that release, with the image tagged by the bin
    not ours). Adding opt-in config discovery later is additive and must not override explicit flags or variables.
 3. **Installation identity.** Memory-only unless `--state-dir` is given; with it, the identity at
    `<state-dir>/InterProcessKV/device_uuid` is kept, or migrated compatibly.
-4. **Exit codes.** 0, 1 and 2, as in docs/reference.md "Exit codes", and which outcome maps to which code.
+4. **Exit codes.** 0, 1, 2 and 3, as in docs/reference.md "Exit codes", and which outcome maps to which code.
 5. **Reasons.** One authoritative table of every `reason` and `cleanup_reason` value with its mapping to exit
    codes. Readers must treat an unknown reason as an unspecified failure and use the process exit code. A new reason for a new
    case is additive; reclassifying an already-documented case follows the fix-versus-break rule below. Hint text is
