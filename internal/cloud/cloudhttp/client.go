@@ -209,8 +209,11 @@ func (c *Client) exchangeRaw(ctx context.Context, path string, q url.Values, bod
 		return responseInfo{}, nil, safeIO(ctx, err)
 	}
 	info = responseInfo{status: resp.StatusCode, contentType: resp.Header.Get("Content-Type")}
+	info.temporary = temporaryResponse(info.status, path, account)
 	// Observe headers before touching the body; read/close/panic cannot erase them.
-	if account && path == "/v1/user/login" {
+	if info.temporary {
+		resultErr = cloud.ErrTransport
+	} else if account && path == "/v1/user/login" {
 		if resp.StatusCode != 200 && !(renewal && resp.StatusCode >= 200 && resp.StatusCode < 300) {
 			_, resultErr = cloud.ParseLogin(resp.StatusCode, nil, renewal)
 		}
@@ -236,6 +239,11 @@ func (c *Client) exchangeRaw(ctx context.Context, path string, q url.Values, bod
 			resultErr = cloud.JoinOutcomes(resultErr, safeIO(ctx, closeErr))
 		}
 	}()
+	if info.temporary {
+		// The status explains this failure. Do not read an error page as JSON;
+		// retry belongs to the existing owner backoff, never the HTTP transport.
+		return info, nil, resultErr
+	}
 	if capture == nil {
 		capture = new(bytes.Buffer)
 	}
@@ -268,6 +276,20 @@ func safeIO(ctx context.Context, err error) error {
 	return result
 }
 
+// Local retry policy is restricted to throttling, gateway failures and service
+// unavailability on requests that cannot create or release a device allocation.
+func temporaryResponse(status int, path string, account bool) bool {
+	switch status {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+	default:
+		return false
+	}
+	if account {
+		return path == "/v1/user/login" || path == "/v1/user/current-profile"
+	}
+	return path == "/v1/my-device" || path == "/v1/my-device/detail"
+}
+
 // Remote 401 requires reauthentication; treating 403 as blocking is local policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#response-envelope
 func headerOutcome(status int) error {
@@ -282,6 +304,9 @@ func headerOutcome(status int) error {
 	return nil
 }
 func responseError(info responseInfo, body []byte, parseErr, errorIO error) error {
+	if info.temporary {
+		return cloud.JoinOutcomes(cloud.ErrTransport, errorIO)
+	}
 	status := info.status
 	headerErr := headerOutcome(status)
 	// A complete documented busy reply explains the vendor's HTTP 400. Keep

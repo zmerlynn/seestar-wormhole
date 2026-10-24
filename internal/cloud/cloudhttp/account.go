@@ -277,6 +277,9 @@ func runAccount(ctx context.Context, c *Client, m *cloud.AccountMachine, e cloud
 	return accountReply{token: a.Token, err: a.Err}
 }
 func accountResponseError(info responseInfo, body []byte, ioErr, parseErr error) error {
+	if info.temporary {
+		return cloud.JoinOutcomes(cloud.ErrTransport, ioErr)
+	}
 	status := info.status
 	// Account parsers own login/profile status semantics, including bounded
 	// profile renewal. Join only established parser observations, as for remote I/O.

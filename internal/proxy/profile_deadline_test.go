@@ -34,7 +34,7 @@ func TestTimedOutProfileDenialDoesNotReacquire(t *testing.T) {
 		name   string
 		status int
 		body   string
-	}{{"malformed", 200, `{"code":"invalid","data":null}`}, {"denied", 503, `{"code":0,"data":null}`}} {
+	}{{"malformed", 200, `{"code":"invalid","data":null}`}, {"denied", 409, `{"code":0,"data":null}`}} {
 		t.Run(row.name, func(t *testing.T) {
 			t.Setenv("SEESTAR_EMAIL", "fixture@example.invalid")
 			t.Setenv("SEESTAR_PASSWORD", "fixture-password")
