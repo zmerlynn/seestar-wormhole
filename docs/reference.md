@@ -222,6 +222,15 @@ transport, recovery is automatic. No new client or restart is required.
 Transport failures on the first eager dial retry; uncertain ownership or failed
 cleanup keeps the proxy running while blocking replacement.
 
+HTTP 429, 502, 503, and 504 on catalog, detail, profile, and login requests
+use the same capped backoff as network failures. Their error-page bodies do
+not count as malformed JSON. Login allocates no device session, and a
+temporary profile failure preserves the installed token. Recovery continues
+without restarting the owner. `Retry-After` does not change the retry delay.
+Allocation and stop responses keep their ownership uncertainty and cleanup
+barriers, including these statuses. Credential rejections, remote authorization
+denials, and other rejected HTTP statuses remain blocking.
+
 With positive `--idle`, startup can still authorize/read the catalog and,
 for discovery, detail. Session allocation waits for a client. Client-triggered
 busy retries hold waiting clients for at most 90 seconds from the first dial;
@@ -389,7 +398,7 @@ selection masks serials.
 | `lazy_open_attempt` | INFO | New client-triggered attempt and fixed cause |
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |
 | `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy, recovery after ready, or an ownership/cleanup block, including initial acquisition |
-| `cloud_retry` | WARN | Catalog transport retry and delay |
+| `cloud_retry` | WARN | Catalog network/service retry and delay |
 | `device_selection_refused` | WARN | `rule=model_mismatch`; requested and catalog public model labels (unknown labels redacted) |
 | `release_not_attempted` | WARN | Release needs reauthentication |
 | `dtls_ready` | INFO | Negotiated version and suite |
