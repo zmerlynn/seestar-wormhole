@@ -21,7 +21,7 @@ func TestLazyBusySignalExitStatus(t *testing.T) {
 	for _, mode := range []string{"eager", "eager_busy", "lazy", "lazy_empty", "lazy_busy", "lazy_idle_busy"} {
 		for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM} {
 			t.Run(mode+"/"+sig.String(), func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+				ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 				defer cancel()
 				cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestLazyBusySignalHelper$", "-test.v")
 				cmd.Env = append(os.Environ(), "LAZY_BUSY_SIGNAL_HELPER="+mode)

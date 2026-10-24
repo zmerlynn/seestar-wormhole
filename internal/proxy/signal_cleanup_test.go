@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
@@ -25,7 +26,7 @@ func TestActualSignals(t *testing.T) {
 	for _, mode := range []string{"transport", "busy", "first-busy"} {
 		for _, sig := range []syscall.Signal{syscall.SIGINT, syscall.SIGTERM} {
 			t.Run(mode+"/"+sig.String(), func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestActualSignalHelper$", "-test.v")
 				cmd.Env = append(os.Environ(), "REVIEW_SIGNAL_HELPER="+mode)
@@ -48,8 +49,11 @@ func TestActualSignals(t *testing.T) {
 					}
 					t.Log(scanner.Text())
 				}
+				if err = scanner.Err(); err != nil {
+					t.Error(err)
+				}
 				if err = cmd.Wait(); err != nil {
-					t.Fatalf("helper: %v", err)
+					t.Fatalf("signal helper did not complete (watchdog=%v): %v", ctx.Err(), err)
 				}
 				if !ready {
 					t.Fatal("helper never reached joined release/backoff")
@@ -106,7 +110,7 @@ func (h *signalHandle) TryClose(uint64)              {}
 type signalSink struct {
 	h         *signalHandle
 	triggered bool
-	joinedAt  time.Time
+	backoff   func()
 	busy      bool
 	firstBusy bool
 }
@@ -118,8 +122,7 @@ func (s *signalSink) Observe(_ session.Event, before, after session.Snapshot, _ 
 		s.h.notices <- session.Event{Kind: session.Failed, Err: session.ErrTransport}
 	}
 	if before.State == session.Releasing && after.State == session.Backoff && (!s.busy || s.firstBusy || after.Attempt == 2) {
-		s.joinedAt = time.Now()
-		fmt.Println("REVIEW_BACKOFF")
+		s.backoff()
 	}
 }
 func TestActualSignalHelper(t *testing.T) {
@@ -129,9 +132,19 @@ func TestActualSignalHelper(t *testing.T) {
 	}
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	runSignalCancellation(t, ctx, mode, func() {
+		fmt.Println("REVIEW_BACKOFF")
+		// Hold this observed boundary until the parent delivers the real signal.
+		// Timer interruption itself is checked with virtual time below.
+		<-ctx.Done()
+	})
+}
+
+func runSignalCancellation(t *testing.T, ctx context.Context, mode string, backoff func()) {
+	t.Helper()
 	h := &signalHandle{notices: make(chan session.Event, 1)}
 	f := &signalFactory{h: h, busy: mode != "transport", firstBusy: mode == "first-busy"}
-	sink := &signalSink{h: h, busy: f.busy, firstBusy: f.firstBusy}
+	sink := &signalSink{h: h, busy: f.busy, firstBusy: f.firstBusy, backoff: backoff}
 	cfg := session.DefaultConfig()
 	cfg.RetryBusy = true
 	cfg.BackoffMin = 3 * time.Second
@@ -151,8 +164,29 @@ func TestActualSignalHelper(t *testing.T) {
 	if f.calls != wantCalls || f.stops != wantStops {
 		t.Fatalf("allocation attempts=%d stops=%d, want %d/%d", f.calls, f.stops, wantCalls, wantStops)
 	}
-	if d := time.Since(sink.joinedAt); d > time.Second {
-		t.Fatalf("backoff signal exit=%v, want <1s", d)
+	t.Logf("signal joined; allocations=%d stops=%d", f.calls, f.stops)
+}
+
+func TestSignalBackoffCancellation(t *testing.T) {
+	for _, mode := range []string{"transport", "busy", "first-busy"} {
+		t.Run(mode, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				backoff, done := make(chan struct{}, 1), make(chan struct{})
+				go func() {
+					defer close(done)
+					runSignalCancellation(t, ctx, mode, func() { backoff <- struct{}{} })
+				}()
+				<-backoff
+				synctest.Wait() // The owner is waiting on its backoff timer.
+				start := time.Now()
+				cancel()
+				<-done
+				if elapsed := time.Since(start); elapsed != 0 {
+					t.Fatalf("cancellation waited %v for backoff, want 0", elapsed)
+				}
+			})
+		})
 	}
-	t.Logf("signal joined in %v; allocations=%d stops=%d", time.Since(sink.joinedAt), f.calls, f.stops)
 }

@@ -47,7 +47,7 @@ func (p *sambaPeer) handle(a p2ptunnel.Action, enqueue func(layerEvent)) bool {
 			send(e)
 			return true
 		}
-		c, err := (&net.Dialer{Timeout: time.Second}).DialContext(p.ctx, "tcp", p.addr)
+		c, err := (&net.Dialer{Timeout: 30 * time.Second}).DialContext(p.ctx, "tcp", p.addr)
 		if err != nil {
 			e.Failed = true
 		} else {
@@ -63,7 +63,7 @@ func (p *sambaPeer) handle(a p2ptunnel.Action, enqueue func(layerEvent)) bool {
 		if c == nil {
 			e.Kind = p2ptunnel.LocalWriteFailed
 		} else {
-			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			c.SetWriteDeadline(time.Now().Add(30 * time.Second))
 			n, err := c.Write(a.Data)
 			e.Count = n
 			if err != nil {

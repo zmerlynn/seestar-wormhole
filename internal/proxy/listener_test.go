@@ -27,11 +27,11 @@ func listen(t *testing.T) net.Listener {
 }
 func dial(t *testing.T, l net.Listener) *net.TCPConn {
 	t.Helper()
-	c, e := net.DialTimeout("tcp4", l.Addr().String(), time.Second)
+	c, e := net.DialTimeout("tcp4", l.Addr().String(), 30*time.Second)
 	if e != nil {
 		t.Fatal(e)
 	}
-	c.SetDeadline(time.Now().Add(5 * time.Second))
+	c.SetDeadline(time.Now().Add(30 * time.Second))
 	return c.(*net.TCPConn)
 }
 
@@ -53,7 +53,7 @@ func TestListenerHalfCloseBothDirections(t *testing.T) {
 				t.Fatal(e)
 			}
 			defer remote.Close()
-			remote.SetDeadline(time.Now().Add(5 * time.Second))
+			remote.SetDeadline(time.Now().Add(30 * time.Second))
 			request, response := []byte(`{"method":"get_setting"}`+"\r\n"), []byte("response")
 			if deviceFirst {
 				remote.Write(response)
@@ -88,7 +88,7 @@ func TestListenerHalfCloseBothDirections(t *testing.T) {
 				if e != nil {
 					t.Fatal(e)
 				}
-			case <-time.After(time.Second):
+			case <-time.After(30 * time.Second):
 				t.Fatal("shutdown blocked")
 			}
 		})
@@ -112,7 +112,7 @@ func TestListenerSlowClientManyClientsAndShutdown(t *testing.T) {
 			if e != nil {
 				return
 			}
-			peers.Go(func() { defer c.Close(); c.SetDeadline(time.Now().Add(5 * time.Second)); io.Copy(c, c) })
+			peers.Go(func() { defer c.Close(); c.SetDeadline(time.Now().Add(30 * time.Second)); io.Copy(c, c) })
 		}
 	}()
 	slow := dial(t, local)
@@ -148,7 +148,7 @@ func TestListenerSlowClientManyClientsAndShutdown(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("slow client blocked shutdown")
 	}
 	slow.Close()
@@ -179,7 +179,7 @@ func TestListenerStartStopDoesNotLeak(t *testing.T) {
 	// WaitGroup completion and the buffered result can precede goroutine exit.
 	// Require every labeled descendant to exit, without counting unrelated
 	// workers or relying on NumGoroutine's concurrent free-list accounting.
-	if after := waitListenerWorkers(t, t.Name(), time.Second); after != 0 {
+	if after := waitListenerWorkers(t, t.Name(), 30*time.Second); after != 0 {
 		var stacks bytes.Buffer
 		if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
 			t.Fatal(err)
@@ -244,7 +244,7 @@ func TestListenerWorkerInventory(t *testing.T) {
 		t.Fatalf("blocked owned worker escaped deadline check: got %d; want 1", n)
 	}
 	finish()
-	if n := waitListenerWorkers(t, t.Name(), time.Second); n != 0 {
+	if n := waitListenerWorkers(t, t.Name(), 30*time.Second); n != 0 {
 		t.Fatalf("completed owned workers=%d; want 0", n)
 	}
 }

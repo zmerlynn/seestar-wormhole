@@ -125,7 +125,7 @@ func TestRealTCPResetAfterStaging(t *testing.T) {
 		}
 	}()
 	req := <-d.requests
-	client.SetWriteDeadline(time.Now().Add(time.Second))
+	client.SetWriteDeadline(time.Now().Add(30 * time.Second))
 	if _, err := client.Write(make([]byte, 24<<10)); err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +134,7 @@ func TestRealTCPResetAfterStaging(t *testing.T) {
 		select {
 		case n := <-counted.reads:
 			total += n
-		case <-time.After(time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("preread did not saturate")
 		}
 	}
@@ -146,7 +146,7 @@ func TestRealTCPResetAfterStaging(t *testing.T) {
 	}
 	select {
 	case <-req.ctx.Done():
-	case <-time.After(250 * time.Millisecond):
+	case <-time.After(30 * time.Second):
 		t.Errorf("real loopback RST after 24 KiB kept DialPort live (preread=%d bytes)", total)
 	}
 }

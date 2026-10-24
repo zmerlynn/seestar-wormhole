@@ -129,7 +129,7 @@ func TestCatalogBoundary(t *testing.T) {
 			for _, format := range []string{"json", "text"} {
 				t.Run(format, func(t *testing.T) {
 					var out, logs bytes.Buffer
-					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 					defer cancel()
 					args := []string{"--idle=2m", "--bind=127.0.0.1", "--port", availableCommandPort(t) + ":445", "--log-format", format, "--log-level=debug", "--serial", tc.serial}
 					err := run(ctx, append([]string{"proxy"}, args...), &out, &logs)
@@ -157,7 +157,7 @@ func TestCatalogBoundary(t *testing.T) {
 	// synchronous read-only LAN detail precheck before any device session exists.
 	catalog.Store(`{"data":{"total":2,"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"first"},{"deviceSn":"SYNTHETIC_SN","deviceModel":"S30","deviceStatus":2,"ssid":"second"}]}}`)
 	detailReply.Store(`{"data":{"deviceSn":"SYNTHETIC_SN","deviceModel":"S30","deviceStatus":4,"ssid":"fixture"}}`)
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	s, err := proxy.New(ctx, proxy.Config{Serial: "SYNTHETIC_SN", Model: "S30", LANDiscovery: true})
 	if s != nil {

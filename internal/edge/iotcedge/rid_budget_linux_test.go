@@ -56,7 +56,7 @@ func TestRIDHistoryBudgetFullLogPipe(t *testing.T) {
 	logger := diagnostic.Logger(os.Getenv("WORMHOLE_RID_FORMAT"), sink, slog.LevelInfo)
 	actions := make(chan iotc.Action, 1)
 	actions <- iotc.Action{Kind: iotc.Generate, Attempt: 9, Token: 17}
-	ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	done := make(chan iotc.Event, 1)
 	go func() {

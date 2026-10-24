@@ -49,7 +49,7 @@ func TestAdmissionRealTCPSaturatedFINPreservesBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer client.Close()
-	client.SetDeadline(time.Now().Add(5 * time.Second))
+	client.SetDeadline(time.Now().Add(30 * time.Second))
 	local, err := l.AcceptTCP()
 	if err != nil {
 		t.Fatal(err)
@@ -75,7 +75,7 @@ func TestAdmissionRealTCPSaturatedFINPreservesBytes(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		select {
 		case <-counted.reads:
-		case <-time.After(5 * time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("preread did not saturate")
 		}
 	}
@@ -89,7 +89,7 @@ func TestAdmissionRealTCPSaturatedFINPreservesBytes(t *testing.T) {
 	}
 	select {
 	case <-counted.checked:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("no socket check after FIN")
 	}
 	if err := req.ctx.Err(); err != nil {
@@ -97,7 +97,7 @@ func TestAdmissionRealTCPSaturatedFINPreservesBytes(t *testing.T) {
 	}
 	remote, device := net.Pipe()
 	defer device.Close()
-	device.SetDeadline(time.Now().Add(5 * time.Second))
+	device.SetDeadline(time.Now().Add(30 * time.Second))
 	end := make(chan struct{})
 	req.result <- &admissionHalfConn{remote, end}
 	got := make([]byte, len(want))
@@ -109,7 +109,7 @@ func TestAdmissionRealTCPSaturatedFINPreservesBytes(t *testing.T) {
 	}
 	select {
 	case <-end:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("queued bytes were not followed by FIN")
 	}
 	written := make(chan error, 1)

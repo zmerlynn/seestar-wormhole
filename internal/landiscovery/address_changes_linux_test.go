@@ -87,7 +87,7 @@ func TestLANAddressChangesServer(t *testing.T) {
 		if err := json.MarshalEncode(jsontext.NewEncoder(c), true); err != nil {
 			t.Fatal(err)
 		}
-		c.SetReadDeadline(time.Now().Add(3 * time.Second))
+		c.SetReadDeadline(time.Now().Add(30 * time.Second))
 		var finished bool
 		if err := json.UnmarshalRead(c, &finished, json.MatchCaseInsensitiveNames(true)); err != nil || !finished {
 			t.Fatalf("recovery handshake: finished=%v err=%v", finished, err)
@@ -191,7 +191,7 @@ func TestLANAddressChangesClient(t *testing.T) {
 			} else if timeout, ok := err.(net.Error); !ok || !timeout.Timeout() {
 				t.Fatal(err)
 			}
-			ctrl, err = net.DialTimeout("unix", "/evidence/control", time.Second)
+			ctrl, err = net.DialTimeout("unix", "/evidence/control", 30*time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -220,7 +220,11 @@ func TestLANAddressChangesClient(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		c.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		bound := 30 * time.Second
+		if tc.Reject {
+			bound = 100 * time.Millisecond
+		}
+		c.SetReadDeadline(time.Now().Add(bound))
 		response := make([]byte, 4097)
 		n, from, err := c.ReadFromUDP(response)
 		c.Close()
@@ -238,7 +242,7 @@ func TestLANAddressChangesClient(t *testing.T) {
 			if from.IP.String() != tc.Reply {
 				t.Errorf("reply source=%s want=%s", from.IP, tc.Reply)
 			}
-			dialer := net.Dialer{Timeout: 100 * time.Millisecond, LocalAddr: &net.TCPAddr{IP: net.ParseIP(tc.Source)}}
+			dialer := net.Dialer{Timeout: 30 * time.Second, LocalAddr: &net.TCPAddr{IP: net.ParseIP(tc.Source)}}
 			conn, err := dialer.DialContext(t.Context(), "tcp4", net.JoinHostPort(from.IP.String(), "4700"))
 			if err != nil {
 				t.Errorf("phone cannot dial reply source %v: %v", from, err)
@@ -249,7 +253,7 @@ func TestLANAddressChangesClient(t *testing.T) {
 		}
 	}
 	if ctrl == nil {
-		ctrl, err = net.DialTimeout("unix", "/evidence/control", time.Second)
+		ctrl, err = net.DialTimeout("unix", "/evidence/control", 30*time.Second)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -49,7 +49,7 @@ func TestDarwinStderrRestoresFlags(t *testing.T) {
 	if _, err := unix.FcntlInt(write.Fd(), unix.F_SETFL, original); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestDarwinLogHelper$")
 	cmd.Env = append(os.Environ(), "DARWIN_LOG_HELPER=1")

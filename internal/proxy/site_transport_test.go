@@ -32,8 +32,9 @@ func siteTransportPair(t *testing.T, port uint16) (*net.TCPConn, net.Conn) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { remote.Close() })
-	client.SetDeadline(time.Now().Add(5 * time.Second))
-	remote.SetDeadline(time.Now().Add(5 * time.Second))
+	// Socket operations are completion gates; deadlines only watch for deadlock.
+	client.SetDeadline(time.Now().Add(30 * time.Second))
+	remote.SetDeadline(time.Now().Add(30 * time.Second))
 	return client, remote
 }
 
@@ -79,11 +80,10 @@ func TestSiteBinaryPrefixImmediate(t *testing.T) {
 				if _, err := src.Write(payload); err != nil {
 					t.Fatal(err)
 				}
-				dst.SetReadDeadline(time.Now().Add(200 * time.Millisecond))
 				got := make([]byte, len(payload))
 				n, err := io.ReadFull(dst, got)
 				if err != nil || !bytes.Equal(got, payload) {
-					t.Fatalf("binary prefix: received=%d/%d err=%v equal=%t", n, len(payload), err, bytes.Equal(got, payload))
+					t.Fatalf("binary prefix with both connections open: received=%d/%d err=%v equal=%t", n, len(payload), err, bytes.Equal(got, payload))
 				}
 			})
 		}

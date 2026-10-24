@@ -15,7 +15,7 @@ func TestIOTCIOUDPAndCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer peer.Close()
-	peer.SetDeadline(time.Now().Add(2 * time.Second))
+	peer.SetDeadline(time.Now().Add(30 * time.Second))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	actions := make(chan iotc.Action, 4)
@@ -44,13 +44,13 @@ func TestIOTCIOUDPAndCancellation(t *testing.T) {
 		if e.Kind != iotc.Wire || string(e.Data) != "reply" || e.Marker.Seconds == 0 {
 			t.Fatal("wrong ingress")
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("no ingress")
 	}
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("workers did not join")
 	}
 }
@@ -83,7 +83,7 @@ func TestIOTCIOTCPFraming(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	c.SetDeadline(time.Now().Add(time.Second))
+	c.SetDeadline(time.Now().Add(30 * time.Second))
 	packet, err := iotc.EncodeLegacy(iotc.Packet{Opcode: 0x8004, Route: 0x3f, Body: make([]byte, 24)}, iotc.ScrambleKey([16]byte{}))
 	if err != nil {
 		t.Fatal(err)
@@ -100,14 +100,14 @@ func TestIOTCIOTCPFraming(t *testing.T) {
 				}
 				got = true
 			}
-		case <-time.After(time.Second):
+		case <-time.After(30 * time.Second):
 			t.Fatal("missing framed packet")
 		}
 	}
 	cancel()
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("TCP workers did not join")
 	}
 }

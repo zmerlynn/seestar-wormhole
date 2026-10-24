@@ -37,7 +37,7 @@ func TestProxyLogHelper(t *testing.T) {
 func TestProxyStderrDescriptors(t *testing.T) {
 	for _, sink := range []string{"pipe", "file", "socket", "full socket"} {
 		t.Run(sink, func(t *testing.T) {
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 			defer cancel()
 			cmd := exec.CommandContext(ctx, os.Args[0], "-test.run=^TestProxyLogHelper$")
 			cmd.Env = append(os.Environ(), "PROXY_LOG_HELPER=1")

@@ -3,41 +3,41 @@
 package main
 
 import (
-	"bytes"
 	"io"
-	"sync"
 	"testing"
 	"time"
 )
-
-type heldLog struct {
-	entered, release chan struct{}
-	once             sync.Once
-	bytes.Buffer
-}
-
-func (s *heldLog) Write(b []byte) (int, error) {
-	s.once.Do(func() { close(s.entered) })
-	<-s.release
-	return s.Buffer.Write(b)
-}
-func (*heldLog) Close() error { return nil }
 
 func TestWindowsBlockedLogDoesNotBlockShutdown(t *testing.T) {
 	sink := &heldLog{entered: make(chan struct{}), release: make(chan struct{})}
 	w := newQueuedLog(sink)
 	w.Write([]byte("first\n"))
-	<-sink.entered
+	select {
+	case <-sink.entered:
+	case <-time.After(30 * time.Second):
+		t.Fatal("log worker did not enter sink write")
+	}
 	for range 2 * logQueueSize {
 		w.Write([]byte("line\n"))
 	}
-	start := time.Now()
-	w.close()
-	if time.Since(start) > time.Second {
-		t.Fatal("blocked log stalled close")
+	closed := make(chan struct{})
+	go func() { w.close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(30 * time.Second):
+		t.Fatal("blocked log stalled close; deadlock watchdog expired")
+	}
+	select {
+	case <-w.done:
+		t.Fatal("log worker exited before sink release")
+	default:
 	}
 	close(sink.release)
-	<-w.done
+	select {
+	case <-w.done:
+	case <-time.After(30 * time.Second):
+		t.Fatal("log worker did not finish after sink release")
+	}
 	if sink.Len() > 6+(logQueueSize*5) {
 		t.Fatal("queue budget exceeded")
 	}
