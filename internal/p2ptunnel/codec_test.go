@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"os"
 	"reflect"
 	"testing"

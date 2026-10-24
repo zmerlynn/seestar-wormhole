@@ -3,7 +3,7 @@ package rdt
 import (
 	"bytes"
 	"encoding/hex"
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"os"
 	"testing"
 )

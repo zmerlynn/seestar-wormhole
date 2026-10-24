@@ -3,7 +3,7 @@ package rdt
 import (
 	"bytes"
 	"encoding/binary"
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/wiretest"
 	"os"

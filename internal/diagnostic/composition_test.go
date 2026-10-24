@@ -3,13 +3,13 @@ package diagnostic
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
-	"github.com/go-json-experiment/json"
 	"log/slog"
 	"strings"
 	"testing"
 
-	"github.com/go-json-experiment/json/jsontext"
+	"encoding/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 

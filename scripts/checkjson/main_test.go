@@ -13,10 +13,13 @@ func TestCheck(t *testing.T) {
 	}{
 		{"ordinary", "main.go", "package p\nimport \"encoding/json\"", true},
 		{"alias and build tag", "main.go", "//go:build ignore\n\npackage p\nimport (j \"encoding/json\")", true},
-		{"stdlib experiment", "main.go", "package p\nimport \"encoding/json/jsontext\"", true},
+		{"jsontext", "main.go", "package p\nimport \"encoding/json/jsontext\"", false},
 		{"quoted escape", "main.go", "package p\nimport \"encoding/\\u006ason\"", true},
 		{"test comparator", "main_test.go", "package p\nimport \"encoding/json\"", false},
-		{"v2", "main.go", "package p\nimport \"github.com/go-json-experiment/json\"", false},
+		{"v2", "main.go", "package p\nimport \"encoding/json/v2\"", false},
+		{"retired mirror", "main.go", "package p\nimport \"github.com/go-json-experiment/json\"", true},
+		{"retired tokenizer", "main.go", "package p\nimport \"github.com/go-json-experiment/json/jsontext\"", true},
+		{"other stdlib path", "main.go", "package p\nimport \"encoding/json/other\"", true},
 		{"comment", "main.go", "package p\n// import \"encoding/json\"", false},
 		{"vendor", "vendor/p/main.go", "package p\nimport \"encoding/json\"", false},
 	} {

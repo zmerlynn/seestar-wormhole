@@ -3,7 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/edge"

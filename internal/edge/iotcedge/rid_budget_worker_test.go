@@ -3,8 +3,8 @@ package iotcedge
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
-	"github.com/go-json-experiment/json"
 	"log/slog"
 	"os"
 	"os/exec"

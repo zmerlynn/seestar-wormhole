@@ -2,9 +2,9 @@ package proxy
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"io"
 	"net/http"
 	"strings"

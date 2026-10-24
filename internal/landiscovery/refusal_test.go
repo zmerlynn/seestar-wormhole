@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"golang.org/x/net/ipv4"
 )
 

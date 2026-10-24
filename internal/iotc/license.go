@@ -3,9 +3,9 @@ package iotc
 import (
 	"bytes"
 	"encoding/base64"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 	"sort"
 	"strings"
 )

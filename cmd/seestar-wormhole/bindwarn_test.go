@@ -2,9 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"net"
 	"reflect"
 	"strings"

@@ -4,8 +4,8 @@ package licenses
 import (
 	"bytes"
 	"embed"
+	"encoding/json/v2"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"io"
 	"runtime/debug"
 )

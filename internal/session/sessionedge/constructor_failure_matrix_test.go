@@ -3,14 +3,14 @@ package sessionedge
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"log/slog"
 	"testing"
 	"testing/synctest"
 
-	"github.com/go-json-experiment/json/jsontext"
+	"encoding/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )

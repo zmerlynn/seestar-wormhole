@@ -3,8 +3,8 @@ package cloudhttp
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"errors"
-	"github.com/go-json-experiment/json/jsontext"
 	"net/url"
 	"sync"
 	"time"

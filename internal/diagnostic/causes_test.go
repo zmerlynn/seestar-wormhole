@@ -2,9 +2,9 @@ package diagnostic
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"io"
 	"net"

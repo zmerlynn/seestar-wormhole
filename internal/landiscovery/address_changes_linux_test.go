@@ -6,8 +6,8 @@ package landiscovery
 
 import (
 	"context"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 	"net"

@@ -1,8 +1,8 @@
 package cloudhttp
 
 import (
+	"encoding/json/jsontext"
 	"errors"
-	"github.com/go-json-experiment/json/jsontext"
 	"reflect"
 	"testing"
 

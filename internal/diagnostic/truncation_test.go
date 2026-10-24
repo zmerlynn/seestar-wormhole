@@ -2,8 +2,8 @@ package diagnostic
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"errors"
-	"github.com/go-json-experiment/json"
 	"io"
 	"log/slog"
 	"slices"

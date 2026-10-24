@@ -2,8 +2,8 @@ package proxy
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"log/slog"
 	"strings"
 	"testing"

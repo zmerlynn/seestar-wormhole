@@ -1,13 +1,5 @@
 [
   {
-    "Path": "github.com/go-json-experiment/json",
-    "SPDX": "BSD-3-Clause",
-    "Files": [
-      "vendor/github.com/go-json-experiment/json/AUTHORS",
-      "vendor/github.com/go-json-experiment/json/LICENSE"
-    ]
-  },
-  {
     "Path": "github.com/inconshreveable/mousetrap",
     "SPDX": "Apache-2.0",
     "Files": [
@@ -50,6 +42,14 @@
     ]
   },
   {
+    "Path": "go.yaml.in/yaml/v3",
+    "SPDX": "MIT AND Apache-2.0",
+    "Files": [
+      "vendor/go.yaml.in/yaml/v3/LICENSE",
+      "vendor/go.yaml.in/yaml/v3/NOTICE"
+    ]
+  },
+  {
     "Path": "golang.org/x/crypto",
     "SPDX": "BSD-3-Clause",
     "Files": [
@@ -68,14 +68,6 @@
     "SPDX": "BSD-3-Clause",
     "Files": [
       "vendor/golang.org/x/sys/LICENSE"
-    ]
-  },
-  {
-    "Path": "gopkg.in/yaml.v3",
-    "SPDX": "MIT AND Apache-2.0",
-    "Files": [
-      "vendor/gopkg.in/yaml.v3/LICENSE",
-      "vendor/gopkg.in/yaml.v3/NOTICE"
     ]
   }
 ]

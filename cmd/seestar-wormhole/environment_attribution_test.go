@@ -3,9 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"io"

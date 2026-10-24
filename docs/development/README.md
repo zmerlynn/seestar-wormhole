@@ -189,8 +189,9 @@ These apply to every change, whoever writes it.
   the [log contract](../reference.md#logs).
 - **Standard formats use standard libraries.** Don't hand-write a parser,
   walker or tokenizer for a format that has a well-known library: JSON, HTTP,
-  SMB, TLS and DTLS, Markdown. JSON goes through vendored `github.com/go-json-experiment/json` (v2) into typed
-  structs holding only the fields used, behind a size-limited reader;
+  SMB, TLS and DTLS, Markdown. JSON goes through the standard library’s
+  `encoding/json/v2` and `encoding/json/jsontext` into typed structs holding
+  only the fields used, behind a size-limited reader;
   permissiveness comes from the decoder's own behavior, so never set
   `RejectUnknownMembers(true)`. Hand-written codecs are for the vendor's binary
   framing only. If it isn't clear whether a library covers a format, ask in

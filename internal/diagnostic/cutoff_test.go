@@ -3,9 +3,9 @@ package diagnostic
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"io"
 	"log/slog"
 	"net"
