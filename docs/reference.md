@@ -205,8 +205,14 @@ identity-storage errors identify `--bind` and `--state-dir`.
 ### Exit codes
 
 The proxy exits 0 after orderly shutdown, 2 for usage or configuration errors,
-and 1 for runtime or cleanup failures. See [status and reason values](#status-and-reason-values)
-for the complete mapping.
+3 for terminal cloud credential or authorization rejection, and 1 for other
+runtime or cleanup failures. Exit 3 covers HTTP 401/403 denial (including rejected
+login), persistent profile challenges after the two permitted renewals, and
+reauthentication required. Transport failures, busy responses, generic rejected
+statuses, and uncertain ownership do not select exit 3. Correct the credentials
+or account restriction before deliberately restarting; see the
+[service recipe](always-on.md#a-systemd-service).
+See [status and reason values](#status-and-reason-values) for the complete mapping.
 
 ## Availability and busy devices
 
@@ -490,7 +496,8 @@ Recovery hints are advice, not stable machine-readable text.
 The exit column describes a terminal outcome. A handled retry, channel close,
 or debug diagnostic can carry the same reason while the process keeps running;
 `—` means the value only describes such an event. Proxy configuration exits 2,
-other failures 1, and orderly shutdown 0, including handled busy retries.
+terminal cloud authorization rejection 3, other failures 1, and orderly shutdown
+0, including handled busy retries.
 An unknown reason means an unspecified failure. Readers ignore unknown JSON fields.
 
 `<empty>` denotes the empty string. Relay diagnostic rows with spaces are
@@ -501,7 +508,7 @@ request count. These prose diagnostics are outside the versioned log contract.
 | Field | Value | Exit when terminal | Meaning or next step |
 |---|---|---|---|
 | `cleanup_reason` | `none` | any primary code | No cleanup failure; the primary outcome chooses the exit. |
-| `cleanup_reason` | `release_failed` | 1 | Cleanup failed, overriding success, busy, and interruption. |
+| `cleanup_reason` | `release_failed` | 1 or 3 | Cleanup failed, overriding success, busy, and interruption; a primary cloud authorization rejection keeps exit 3. |
 | `reason` | `<empty>` | — | Initial session lifecycle reason before any outcome. |
 | `reason` | `address_in_use` | 1 | Address in use. |
 | `reason` | `address_unavailable` | 1 | Address unavailable. |
@@ -568,7 +575,7 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `port rejected` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `read_failed` | 1 | Read failed. |
 | `reason` | `read_only` | 1 | Read only. |
-| `reason` | `reauthentication_required` | 1 | Reauthentication required. |
+| `reason` | `reauthentication_required` | 3 | Cloud authorization requires explicit credentials and an operator restart. |
 | `reason` | `receive_budget` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `rejected` | 1 | Rejected. |
 | `reason` | `relay accepted; relay info never arrived after %d requests` | — | Diagnostic context; does not itself exit the process. |
@@ -592,7 +599,7 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `transport failed` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `transport_failed` | 1 | Transport failed. |
 | `reason` | `transport` | — | Diagnostic context; does not itself exit the process. |
-| `reason` | `unauthorized` | 1 | Unauthorized. |
+| `reason` | `unauthorized` | 3 | Cloud HTTP 401/403 denial, including login rejection or exhausted profile renewal; correct credentials or account restrictions, then restart explicitly. |
 | `reason` | `unsupported` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `write_failed` | 1 | Write failed. |
 

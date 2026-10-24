@@ -59,15 +59,18 @@ things elsewhere:
 Description=seestar-wormhole proxy
 After=network-online.target
 Wants=network-online.target
+StartLimitIntervalSec=2d
+StartLimitBurst=1800
 
 [Service]
 EnvironmentFile=%h/.config/seestar-wormhole.env
 ExecStart=%h/bin/seestar-wormhole proxy --bind 127.0.0.1 \
   --state-dir %h/.local/state/seestar-wormhole --log-level warn
 KillSignal=SIGINT
-TimeoutStopSec=30
+TimeoutStopSec=150
 Restart=on-failure
 RestartSec=60
+RestartPreventExitStatus=3
 
 [Install]
 WantedBy=default.target
@@ -83,6 +86,10 @@ journalctl --user -u seestar-wormhole -f
 User services normally stop when you log out. `enable-linger` keeps yours
 running, which is the point.
 
+After a [credential-rejection exit (3)](reference.md#exit-codes), correct the
+password in the environment file (or resolve the account's authorization
+restriction), then run `systemctl --user restart seestar-wormhole`.
+
 A few choices in there:
 
 - `--bind 127.0.0.1` keeps it to this machine. Use your LAN address if other
@@ -91,8 +98,11 @@ A few choices in there:
 - `--state-dir` stores the installation identity across restarts; see [installation identity](reference.md#installation-identity).
 - `--log-level warn` keeps the logs quiet. At the default `info` level, every
   client connection gets a line, which adds up on an SD card.
-- `KillSignal=SIGINT` and the 30-second stop timeout give the proxy time to
-  release the telescope on the way out.
+- `KillSignal=SIGINT` and the 150-second stop timeout allow the defensive
+  125-second cleanup bound (120-second dial plus five-second stop) and a margin
+  to release the telescope on the way out; production stop normally takes at most five seconds.
+- The two-day limit of 1,800 starts allows recovery from a day-long outage at
+  `RestartSec=60`, while stopping a persistent immediate-failure loop after about 30 hours.
 
 ## In a container
 

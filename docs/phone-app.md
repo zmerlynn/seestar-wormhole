@@ -91,6 +91,8 @@ seestar-wormhole proxy --bind 127.0.0.1 --state-dir '<primary-private-state-dir>
 Run that instance as the [primary systemd user service](always-on.md#a-systemd-service),
 with credentials only there. It needs neither `--lan-discovery` nor a
 privileged HTTP listener. Do not start a second proxy alongside it.
+For a system unit, keep the primary recipe's restart limits,
+`RestartPreventExitStatus=3`, and `TimeoutStopSec=150`.
 
 On the home machine, run:
 

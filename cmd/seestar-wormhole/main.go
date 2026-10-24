@@ -425,5 +425,9 @@ func commandExitCode(o options, err error) int {
 	if errors.As(err, &detail) || errors.Is(err, cloud.ErrConfig) {
 		return 2
 	}
+	phase, reason := diagnostic.Fields(err, "")
+	if phase == "cloud" && (reason == "unauthorized" || reason == "reauthentication_required") {
+		return 3
+	}
 	return 1
 }

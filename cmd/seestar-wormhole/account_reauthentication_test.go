@@ -33,8 +33,8 @@ func TestReplayReauthenticationCommandProjection(t *testing.T) {
 			// The cloud edge projects denied disposition to uncertain session ownership.
 			err := diagnostic.AtLayer(a.Err, session.Cloud, session.ErrUncertain)
 			for _, command := range []commandKind{commandProxy} {
-				if code := commandExitCode(options{command: command}, err); code != 1 {
-					t.Errorf("command=%v exit=%d, want 1", command, code)
+				if code := commandExitCode(options{command: command}, err); code != 3 {
+					t.Errorf("command=%v exit=%d, want 3", command, code)
 				}
 			}
 			var logs bytes.Buffer
@@ -46,6 +46,19 @@ func TestReplayReauthenticationCommandProjection(t *testing.T) {
 				if strings.Contains(logs.String()+fmt.Sprintf("%v %+v %#v", err, err, err), secret) {
 					t.Error("secret reached command diagnostics")
 				}
+			}
+			m = cloud.NewAccountMachine(creds)
+			a = m.Step(cloud.AccountEvent{Kind: cloud.AccountBegin}, 0)
+			for range 3 {
+				a = m.Step(cloud.AccountEvent{Kind: cloud.AccountLoginDone, Sequence: a.Sequence, Token: token}, 0)
+				a = m.Step(cloud.AccountEvent{Kind: cloud.AccountProfileDone, Sequence: a.Sequence, Err: cloud.ErrUnauthorized}, 0)
+			}
+			if a.Kind != cloud.AccountComplete || !errors.Is(a.Err, cloud.ErrReauthentication) {
+				t.Fatal("profile challenge did not exhaust the renewal cap")
+			}
+			err = diagnostic.AtLayer(a.Err, session.Cloud, session.ErrUncertain)
+			if code := commandExitCode(options{command: commandProxy}, err); code != 3 {
+				t.Errorf("profile renewal cap exit=%d, want 3", code)
 			}
 		})
 	}
