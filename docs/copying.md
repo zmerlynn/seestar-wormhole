@@ -24,7 +24,7 @@ this recipe. Another share-relative directory can replace `MyWorks` in the
 source path. The rclone remote is a local client configuration, separate from
 the proxy's account credentials and installation identity.
 
-## Copy and confirm the bytes
+## Copy
 
 This example copies files modified within the last day. `--min-age 2m` skips
 recent files that may still be written by the telescope.
@@ -43,8 +43,11 @@ A large copy shares the telescope session with control clients and delays
 status replies. A smaller time window or a bandwidth limit reduces contention;
 large transfers can also run while control clients are idle.
 
-A download check rereads the selected source and destination files to confirm
-bytes, rather than only comparing sizes:
+rclone compares each file's size after it transfers. The proxy's connection to
+the telescope authenticates every packet, so routine copies do not need a
+second read. A download check rereads the selected source and destination files
+and compares their bytes, for example after upgrading the proxy. It reads every
+file from the telescope again, roughly doubling the time:
 
 ```sh
 rclone --config seestar-rclone.conf check --download "seestar:EMMC Images/MyWorks" ./MyWorks --max-age 24h --min-age 2m --transfers 4 --multi-thread-streams 0 --low-level-retries 3
