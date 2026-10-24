@@ -18,7 +18,7 @@ tag scheme join the contract from that release, with the image tagged by the bin
 
 ## The contract
 
-1. **Commands and flags.** `proxy`, `licenses`; flag names, meanings and grammar; defaults that change what is
+1. **Commands and flags.** `proxy`, `discovery`, `licenses`; flag names, meanings and grammar; defaults that change what is
    written or sent; and the rules about which combinations are refused.
 2. **Runtime inputs.** `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` and how they are interpreted. The binary discovers no config or credential file (a systemd EnvironmentFile is the service manager's,
    not ours). Adding opt-in config discovery later is additive and must not override explicit flags or variables.

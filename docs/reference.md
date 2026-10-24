@@ -82,6 +82,11 @@ most 16 queued during acquisition. Its application buffer reservation is
 Slow consumers remain subject to progress-aware reclamation. These budgets,
 timeouts, and retry policies have no CLI overrides beyond the flags above.
 
+All forwards share 128 client slots with no idle timeout, so restrict who can
+reach the listeners. Closed channel IDs are held for at least five minutes, so
+hundreds of short-lived connections within five minutes can temporarily exhaust
+channel IDs; polling clients should reuse a connection or back off.
+
 Bulk data and RPC replies share the device's ordered send path. Local flow
 control cannot move a reply ahead of [bytes the device has already queued](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#backlog-after-pause).
 See [copying images](copying.md) for transfer settings.
@@ -214,7 +219,8 @@ With default `--idle 0`, proxy connects at startup and retries recognized busy
 indefinitely, including the first dial. Equal-jitter delays start at 0.5–1
 second and grow exponentially to 15–30 seconds. After a ready session loses
 transport, recovery is automatic. No new client or restart is required.
-A nonbusy failure on the first eager dial is fatal.
+Transport failures on the first eager dial retry; uncertain ownership or failed
+cleanup keeps the proxy running while blocking replacement.
 
 With positive `--idle`, startup can still authorize/read the catalog and,
 for discovery, detail. Session allocation waits for a client. Client-triggered
@@ -382,7 +388,7 @@ selection masks serials.
 | `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy |
 | `lazy_open_attempt` | INFO | New client-triggered attempt and fixed cause |
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |
-| `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy or recovery after ready |
+| `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy, recovery after ready, or an ownership/cleanup block, including initial acquisition |
 | `cloud_retry` | WARN | Catalog transport retry and delay |
 | `device_selection_refused` | WARN | `rule=model_mismatch`; requested and catalog public model labels (unknown labels redacted) |
 | `release_not_attempted` | WARN | Release needs reauthentication |

@@ -8,6 +8,9 @@ goes through it. This page covers setting that up.
 
 For unattended use, the proxy retries eligible busy responses and releases its session when stopped; see [recovery and release](reference.md#availability-and-busy-devices).
 
+Alert on persistent `session_unavailable` or blocking failure records in the
+[logs](reference.md#logs), since the process can stay running while unable to serve clients.
+
 ## Credentials for a service
 
 Set `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` in the service environment; see [account setup](../README.md#before-you-start-your-account-and-your-site).

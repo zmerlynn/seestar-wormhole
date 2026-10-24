@@ -25,7 +25,7 @@ A `site_protected` event means the proxy dropped a site or time setter; see [sit
 
 A `cloud_license_missing` event means allocation returned no SDK license key; retries stop. See [the log reference](reference.md#logs).
 
-For `iotc_rid_history_exhausted`, restart the process after it exits; the reserved identifier budget lasts for the process lifetime. See [logs](reference.md#logs).
+For `iotc_rid_history_exhausted`, stop the process normally, wait for session release and exit, then restart it; retries in the same process cannot restore the budget. See [logs](reference.md#logs).
 
 **The phone app can't find the telescope.** See
 [the phone app guide](phone-app.md#if-the-telescope-doesnt-show-up). Most of
