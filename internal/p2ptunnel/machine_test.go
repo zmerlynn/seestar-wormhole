@@ -375,7 +375,7 @@ func TestQuarantineAndStaleCompletions(t *testing.T) {
 	mustAction(t, d.step(Event{Kind: Open, Port: 4700}), OpenFailed)
 	d.now = core.Instant(28 * time.Second)
 	mustAction(t, d.step(Event{Kind: Open, Port: 4700}), OpenFailed)
-	d.now = core.Instant(29 * time.Second)
+	d.now = core.Instant(5 * time.Minute)
 	fresh := d.open(4700)
 	if fresh.Channel != opened[0].Channel || fresh.Generation == opened[0].Generation {
 		t.Fatal("reuse")
@@ -386,8 +386,57 @@ func TestQuarantineAndStaleCompletions(t *testing.T) {
 	}
 	d.now = 0
 	d.step(local(Event{Kind: LocalClose}, fresh))
-	if d.m.Channel(fresh.Channel).FreeAt < core.Instant(58*time.Second) {
+	if d.m.Channel(fresh.Channel).FreeAt < core.Instant(10*time.Minute) {
 		t.Fatal("backward clock shortened quarantine")
+	}
+}
+
+func TestChannelReuseFloor(t *testing.T) {
+	d := activeDriver(t, DefaultConfig(), false)
+	old := d.open(4700)
+	d.now = core.Instant(1750 * time.Millisecond)
+	d.step(local(Event{Kind: LocalClose}, old))
+	at := d.now.Add(5 * time.Minute)
+	for i, now := range []core.Instant{core.Instant(31 * time.Second), at - 1, at} {
+		d.now = now
+		fresh := mustAction(t, d.step(Event{Kind: Open, Mapping: byte(i + 1), Port: 4700}), Opened)
+		if wantReuse := now == at; (fresh.Channel == old.Channel) != wantReuse {
+			t.Fatalf("at %d: channel=%d old=%d want reuse=%v", now, fresh.Channel, old.Channel, wantReuse)
+		}
+		if fresh.Channel == old.Channel && fresh.Generation == old.Generation {
+			t.Fatal("reused channel retained generation")
+		}
+	}
+}
+
+func TestChannelReuseFloorExhaustion(t *testing.T) {
+	d := activeDriver(t, DefaultConfig(), false)
+	var opened []Action
+	for range 256 {
+		opened = append(opened, d.open(4700))
+	}
+	d.now = core.Instant(time.Second)
+	d.step(local(Event{Kind: LocalClose}, opened[0]))
+	at := d.now.Add(5 * time.Minute)
+	d.now = core.Instant(2 * time.Second)
+	for _, a := range opened[1:] {
+		d.step(local(Event{Kind: LocalClose}, a))
+	}
+	for _, now := range []core.Instant{core.Instant(31 * time.Second), at - 1} {
+		d.now = now
+		actions := d.step(Event{Kind: Open, Port: 4700, Request: 7})
+		failed := mustAction(t, actions, OpenFailed)
+		if !failed.Temporary || failed.Request != 7 || failed.Reason != "no free channel (reuse quarantine)" {
+			t.Fatalf("quarantine refusal: %+v", failed)
+		}
+		if _, ok := find(actions, Opened); ok {
+			t.Fatal("opened before reuse floor")
+		}
+	}
+	d.now = at
+	fresh := d.open(4700)
+	if fresh.Channel != opened[0].Channel || fresh.Generation == opened[0].Generation {
+		t.Fatalf("reuse after floor: %+v", fresh)
 	}
 }
 func TestOutboundCompletionAndBackpressure(t *testing.T) {

@@ -76,13 +76,13 @@ func TestSimulatorTimerReplacementStaleTicksAndQuarantine(t *testing.T) {
 	if _, ok := d.timer.Deadline(); ok {
 		t.Fatal("successful login failed to cancel timer")
 	}
-	// Literal successful verification; release starts quarantine at epoch + 29 s.
+	// Literal successful verification; release starts a five-minute quarantine.
 	d.advance(core.Instant(time.Second))
 	d.step(Event{Kind: Open, Port: 4700, Request: 1})
 	requireDeadline(t, d, core.Instant(6*time.Second))
 	ch := mustAction(t, d.step(Event{Kind: Stream, Data: unhex(t, "0d00060001005c120100")}), Opened)
 	d.step(local(Event{Kind: LocalClose}, ch))
-	requireDeadline(t, d, core.Instant(30*time.Second))
+	requireDeadline(t, d, core.Instant(301*time.Second))
 	d.advance(core.Instant(2 * time.Second))
 	d.step(Event{Kind: Open, Port: 4700, Request: 2})
 	requireDeadline(t, d, core.Instant(7*time.Second))
@@ -97,12 +97,12 @@ func TestSimulatorTimerReplacementStaleTicksAndQuarantine(t *testing.T) {
 	}
 	requireDeadline(t, d, core.Instant(7*time.Second))
 	mustAction(t, d.advance(core.Instant(7*time.Second)), OpenFailed)
-	requireDeadline(t, d, core.Instant(30*time.Second))
-	d.advance(core.Instant(30*time.Second) - 1)
+	requireDeadline(t, d, core.Instant(301*time.Second))
+	d.advance(core.Instant(301*time.Second) - 1)
 	if d.m.Channel(ch.Channel).FreeAt <= d.now {
 		t.Fatal("quarantine expired early")
 	}
-	d.advance(core.Instant(30 * time.Second))
+	d.advance(core.Instant(301 * time.Second))
 	if _, ok := d.timer.Deadline(); ok {
 		t.Fatal("expired quarantine retained timer")
 	}
