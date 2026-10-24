@@ -38,13 +38,17 @@ func (c *payloadHandler) ReadFrom(b []byte) (n int, cm *ControlMessage, src net.
 			return 0, nil, nil, &net.OpError{Op: "read", Net: c.PacketConn.LocalAddr().Network(), Source: c.PacketConn.LocalAddr(), Err: err}
 		}
 		hdrlen := int(h[0]&0x0f) << 2
+		if m.N < HeaderLen || hdrlen < HeaderLen {
+			return 0, nil, nil, &net.OpError{Op: "read", Net: c.PacketConn.LocalAddr().Network(), Source: c.PacketConn.LocalAddr(), Err: errHeaderTooShort}
+		}
+		if m.N < hdrlen {
+			return 0, nil, nil, &net.OpError{Op: "read", Net: c.PacketConn.LocalAddr().Network(), Source: c.PacketConn.LocalAddr(), Err: errExtHeaderTooShort}
+		}
 		if hdrlen > len(h) {
 			d := hdrlen - len(h)
 			copy(b, b[d:])
-			m.N -= d
-		} else {
-			m.N -= hdrlen
 		}
+		m.N -= hdrlen
 	default:
 		return 0, nil, nil, &net.OpError{Op: "read", Net: c.PacketConn.LocalAddr().Network(), Source: c.PacketConn.LocalAddr(), Err: errInvalidConnType}
 	}
@@ -65,8 +69,8 @@ func (c *payloadHandler) ReadFrom(b []byte) (n int, cm *ControlMessage, src net.
 // address dst through the endpoint c, copying the payload from b. It
 // returns the number of bytes written. The control message cm allows
 // the datagram path and the outgoing interface to be specified.
-// Currently only Darwin and Linux support this. The cm may be nil if
-// control of the outgoing datagram is not required.
+// Currently only Darwin, Linux and Windows support this. The cm may
+// be nil if control of the outgoing datagram is not required.
 func (c *payloadHandler) WriteTo(b []byte, cm *ControlMessage, dst net.Addr) (n int, err error) {
 	if !c.ok() {
 		return 0, errInvalidConn

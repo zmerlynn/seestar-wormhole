@@ -18,4 +18,4 @@ require (
 	golang.org/x/crypto v0.57.0 // indirect
 )
 
-replace golang.org/x/net => github.com/zmerlynn/net v0.60.1-wormhole.2
+replace golang.org/x/net => github.com/zmerlynn/net v0.60.1-wormhole.3

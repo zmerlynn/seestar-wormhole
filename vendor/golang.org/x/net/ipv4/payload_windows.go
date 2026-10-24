@@ -12,37 +12,49 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// ReadFrom reads a UDP payload and its destination and interface controls.
-// Truncated payloads or controls return an error wrapping io.ErrShortBuffer,
-// without a partial control message.
+// ReadFrom reads a payload and, for UDP, its destination and interface
+// controls. Other connections are read without controls, as before UDP
+// controls were supported. Truncated payloads or controls return an error
+// wrapping io.ErrShortBuffer, without a partial control message.
 func (c *payloadHandler) ReadFrom(b []byte) (int, *ControlMessage, net.Addr, error) {
 	if !c.ok() {
 		return 0, nil, nil, errInvalidConn
 	}
 	udp, ok := c.PacketConn.(*net.UDPConn)
 	if !ok {
-		return 0, nil, nil, errNotImplemented
+		n, src, err := c.PacketConn.ReadFrom(b)
+		if err != nil {
+			return 0, nil, nil, err
+		}
+		return n, nil, src, nil
 	}
 	c.rawOpt.RLock()
 	oob := NewControlMessage(c.rawOpt.cflags)
 	c.rawOpt.RUnlock()
-	// UDPConn uses the runtime poller and overlapped WSARecvMsg. In particular,
-	// do not perform blocking message I/O in a syscall.RawConn callback.
+	return readMsgUDP(udp, b, oob)
+}
+
+// readMsgUDP reads a datagram and parses the controls received in oob.
+// UDPConn uses the runtime poller and overlapped WSARecvMsg. In particular,
+// do not perform blocking message I/O in a syscall.RawConn callback.
+func readMsgUDP(udp *net.UDPConn, b, oob []byte) (int, *ControlMessage, net.Addr, error) {
 	n, nn, flags, from, err := udp.ReadMsgUDP(b, oob)
-	cm, err := parseControlMessage(oob, nn, flags, err)
 	if err != nil {
-		return 0, nil, nil, &net.OpError{Op: "read", Net: "udp", Source: udp.LocalAddr(), Err: err}
+		if oe, ok := err.(*net.OpError); ok && errors.Is(err, windows.WSAEMSGSIZE) {
+			e := *oe
+			e.Err = errors.Join(io.ErrShortBuffer, oe.Err)
+			err = &e
+		}
+		return 0, nil, nil, err
+	}
+	cm, err := parseControlMessage(oob, nn, flags)
+	if err != nil {
+		return 0, nil, nil, &net.OpError{Op: "read", Net: "udp", Source: udp.LocalAddr(), Addr: from, Err: err}
 	}
 	return n, cm, from, nil
 }
 
-func parseControlMessage(oob []byte, nn, flags int, err error) (*ControlMessage, error) {
-	if errors.Is(err, windows.WSAEMSGSIZE) {
-		return nil, errors.Join(io.ErrShortBuffer, err)
-	}
-	if err != nil {
-		return nil, err
-	}
+func parseControlMessage(oob []byte, nn, flags int) (*ControlMessage, error) {
 	if flags&(windows.MSG_CTRUNC|windows.MSG_TRUNC) != 0 {
 		return nil, io.ErrShortBuffer
 	}
@@ -59,14 +71,19 @@ func parseControlMessage(oob []byte, nn, flags int, err error) (*ControlMessage,
 	return cm, nil
 }
 
-// WriteTo writes a UDP payload with optional source and interface controls.
+// WriteTo writes a payload and, for UDP, optional source and interface
+// controls. Other connections ignore cm, as before UDP controls were
+// supported.
 func (c *payloadHandler) WriteTo(b []byte, cm *ControlMessage, dst net.Addr) (int, error) {
 	if !c.ok() {
 		return 0, errInvalidConn
 	}
 	udp, ok := c.PacketConn.(*net.UDPConn)
 	if !ok {
-		return 0, errNotImplemented
+		if dst == nil {
+			return 0, errMissingAddress
+		}
+		return c.PacketConn.WriteTo(b, dst)
 	}
 	var to *net.UDPAddr
 	if dst != nil {
@@ -81,10 +98,10 @@ func (c *payloadHandler) WriteTo(b []byte, cm *ControlMessage, dst net.Addr) (in
 
 	n, _, err := udp.WriteMsgUDP(b, cm.Marshal(), to)
 	if err == nil {
-		// internal/poll.FD.WriteMsg passes a nil byte-count pointer to
-		// WSASendMsg, so synchronous success can report zero bytes. UDP sends
-		// are atomic: a nil error means the whole datagram was accepted.
-		// Remove this workaround once the standard library reports the count.
+		// WriteMsgUDP can report zero bytes for a send that completes
+		// immediately (go.dev/issue/82335). UDP sends are atomic, so a nil
+		// error means the whole datagram was accepted. Remove this once the
+		// minimum supported Go version includes the fix.
 		n = len(b)
 	}
 	return n, err
