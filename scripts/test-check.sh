@@ -31,14 +31,18 @@ if ! grep -Fq "go run ./scripts/checkjson" "$CHECK_ARGS"; then
 fi
 "$task_src/scripts/check.sh" fuzz
 require_arg --network=none
-for target in iotc:FuzzLicenseJSON iotc:FuzzPacket iotc:FuzzStream iotc:FuzzProtocolParsers iotc:FuzzLicense \
- cloud:FuzzJSON cloud:FuzzAccountResponses cloud:FuzzDevices edge/iotcedge:FuzzIOTCLicenseVerification \
- proxy:FuzzSiteProtection landiscovery:FuzzDecodeRequest edge:FuzzDTLSAdmission dtls:FuzzControlBytes \
- rdt:FuzzDecode p2ptunnel:FuzzDecode p2ptunnel:FuzzStream; do
- if ! grep -Fq "go test -p 2 ./internal/${target%:*} -run=\"^$\" -fuzz=\"^${target#*:}$\" -fuzztime=60s -parallel=2" "$CHECK_ARGS"; then
-  printf 'missing fuzz target: %s\n' "$target" >&2; exit 1
+# Compare against every source declaration so new targets cannot be skipped.
+find "$task_src" \( -type d -name '.*' ! -path "$task_src" -o -path "$task_src/vendor" \) -prune -o \
+ -type f -name '*_test.go' -exec grep -H '^func Fuzz' {} + > "$task_tmp/fuzz-targets"
+while IFS=: read -r file declaration; do
+ target=${declaration#func }
+ target=${target%%(*}
+ package=${file%/*}
+ package=${package#"$task_src"/}
+ if ! grep -Fq "go test -p 2 ./$package -run=\"^$\" -fuzz=\"^${target}$\" -fuzztime=60s -parallel=2" "$CHECK_ARGS"; then
+  printf 'missing fuzz target: %s:%s\n' "$package" "$target" >&2; exit 1
  fi
-done
+done < "$task_tmp/fuzz-targets"
 "$task_src/scripts/check.sh" prepare
 if grep -Fxq -- --network=none "$CHECK_ARGS"; then
  echo 'dependency preparation has no network' >&2; exit 1
