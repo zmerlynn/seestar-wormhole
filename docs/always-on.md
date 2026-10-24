@@ -16,11 +16,18 @@ Alert on persistent `session_unavailable` or blocking failure records in the
 Set `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` in the service environment; see [account setup](../README.md#before-you-start-your-account-and-your-site).
 
 ```sh
-mkdir -p ~/.config
-[ -e ~/.config/seestar-wormhole.env ] || install -m 600 /dev/null ~/.config/seestar-wormhole.env
+(
+  set -e
+  mkdir -p ~/.config
+  env_file=~/.config/seestar-wormhole.env
+  [ -e "$env_file" ] || [ -L "$env_file" ] || (umask 077; set -C; : > "$env_file")
+  [ ! -L "$env_file" ] && [ -f "$env_file" ] && [ -O "$env_file" ] ||
+    { echo "Refusing unsafe environment file" >&2; exit 1; }
+  chmod 600 "$env_file"
+)
 ```
 
-Then open it in a text editor and add two lines:
+After that succeeds, open the file in a text editor and add two lines:
 
 ```
 SEESTAR_EMAIL=you@example.com
