@@ -57,8 +57,8 @@ func TestStartupJoinsPendingAccountBeforeAttribution(t *testing.T) {
 		}
 		close(h.reply)
 		result := <-done
-		if p, r := diagnostic.Fields(result, ""); p != "cloud" || r != "rejected" {
-			t.Fatalf("startup=%s/%s want cloud/rejected", p, r)
+		if p, r := diagnostic.Fields(result, ""); p != "cloud" || r != "unauthorized" {
+			t.Fatalf("startup=%s/%s want cloud/unauthorized", p, r)
 		}
 		if !errors.Is(result, context.Canceled) || !errors.Is(result, session.ErrUncertain) {
 			t.Fatalf("startup policy/cancellation lost: %v", result)
