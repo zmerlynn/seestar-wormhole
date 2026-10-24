@@ -269,7 +269,7 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 		s.busyAnswers = 0
 	} else if after.State == session.Closed {
 		s.unavailable = false
-	} else if !s.unavailable && ((before.State == session.Ready && (e.Kind == session.Failed || e.Kind == session.Usage)) || (s.wasReady && after.State == session.Busy) || (!s.lazy && e.Kind == session.Failed && errors.Is(e.Err, session.ErrBusy))) {
+	} else if !s.unavailable && ((before.State == session.Ready && (e.Kind == session.Failed || e.Kind == session.Usage)) || after.State == session.Busy || (!s.lazy && e.Kind == session.Failed && errors.Is(e.Err, session.ErrBusy))) {
 		s.unavailable = true
 		s.unavailableSince = now
 		s.warnAt = now.Add(5 * time.Minute)

@@ -16,6 +16,80 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
 
+func TestInitialBlockedOutageWarnings(t *testing.T) {
+	for _, lazy := range []bool{false, true} {
+		for _, cleanupFailure := range []bool{false, true} {
+			t.Run(fmt.Sprintf("lazy=%v/cleanup_failure=%v", lazy, cleanupFailure), func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					var logs logBuffer
+					attempts := 0
+					f := &busyFactory{channels: make(chan *busyChannels, 1)}
+					f.allocate = func(context.Context) (sessionedge.Lease, error) {
+						attempts++
+						if cleanupFailure {
+							f.stopError = session.ErrStop
+							return f, session.ErrTransport
+						}
+						return nil, session.ErrUncertain
+					}
+					cfg := Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}
+					if lazy {
+						cfg.Idle = time.Hour
+					}
+					s, err := startWithRNG(t.Context(), cfg, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer s.Close()
+					if lazy {
+						if _, err := s.DialPort(t.Context(), 445); err == nil {
+							t.Fatal("initial blocked dial succeeded")
+						}
+					}
+					synctest.Wait()
+					if data := string(logs.take()); !strings.Contains(data, `"phase":"busy"`) || strings.Contains(data, `"phase":"ready"`) {
+						t.Fatalf("initial acquisition did not block: %s", data)
+					}
+					// No client input or layer completions during these thirty minutes.
+					for i := 1; i <= 6; i++ {
+						<-time.After(5*time.Minute - time.Nanosecond)
+						synctest.Wait()
+						if data := logs.take(); strings.Contains(string(data), `"msg":"session_unavailable"`) {
+							t.Fatalf("early reminder: %s", data)
+						}
+						<-time.After(time.Nanosecond)
+						synctest.Wait()
+						records := loggingRecords(t, bytes.NewBuffer(logs.take()))
+						reason := "ownership_uncertain"
+						wantStops := int32(0)
+						if cleanupFailure {
+							reason, wantStops = "release_failed", 1
+						}
+						if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["level"] != "WARN" || records[0]["reason"] != reason || records[0]["unavailable_ms"] != float64(i*300000) {
+							t.Fatalf("at %dm records=%v, want one bounded reminder", i*5, records)
+						}
+						if attempts != 1 || f.stops.Load() != wantStops {
+							t.Fatalf("blocked owner allocated/stopped again: %d/%d", attempts, f.stops.Load())
+						}
+						select {
+						case <-s.Done():
+							t.Fatal("blocked owner exited")
+						default:
+						}
+					}
+					if _, err := s.DialPort(t.Context(), 445); !errors.Is(err, session.ErrStop) && !errors.Is(err, session.ErrUncertain) {
+						t.Fatalf("blocked owner admitted fresh demand: %v", err)
+					}
+					synctest.Wait()
+					if attempts != 1 {
+						t.Fatalf("fresh demand restarted blocked owner: attempts=%d", attempts)
+					}
+				})
+			})
+		}
+	}
+}
+
 func TestBusyBlockedOutageWarnings(t *testing.T) {
 	for _, lazy := range []bool{false, true} {
 		for _, partialBusy := range []bool{false, true} {

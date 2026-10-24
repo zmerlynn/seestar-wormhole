@@ -63,8 +63,14 @@ func TestCloudLicenseMissingStopsWithoutRedial(t *testing.T) {
 					}
 					peer.mu.Unlock()
 					data := logs.take()
-					var failures int
+					var failures, reminders int
 					for _, r := range loggingRecords(t, bytes.NewBuffer(data)) {
+						if r["msg"] == "session_unavailable" {
+							reminders++
+							if r["reason"] != "cloud_license_missing" || r["level"] != "WARN" {
+								t.Errorf("unexpected reminder: %v", r)
+							}
+						}
 						if r["msg"] == "layer_failed" {
 							failures++
 							if r["phase"] != "cloud" || r["reason"] != "cloud_license_missing" || r["level"] != "ERROR" || !strings.Contains(r["hint"].(string), "service-side change, not your configuration") {
@@ -72,8 +78,8 @@ func TestCloudLicenseMissingStopsWithoutRedial(t *testing.T) {
 							}
 						}
 					}
-					if failures != 1 || strings.Contains(string(data), "PRIVATE_") || strings.Contains(string(data), `"msg":"session_unavailable"`) {
-						t.Errorf("want one sanitized failure and no outage reminders before first readiness: %s", data)
+					if failures != 1 || reminders != 8 || strings.Contains(string(data), "PRIVATE_") {
+						t.Errorf("want one sanitized failure and eight outage reminders: %s", data)
 					}
 				})
 			})
