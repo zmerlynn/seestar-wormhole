@@ -52,7 +52,7 @@ func TestAccountPhaseLogs(t *testing.T) {
 		c.Close()
 		server.Close()
 		if reject {
-			if err == nil || !strings.Contains(logs.String(), `"phase":"login","reason":"rejected"`) {
+			if err == nil || !strings.Contains(logs.String(), `"phase":"login","reason":"unauthorized"`) {
 				t.Fatalf("missing rejection: %v %s", err, &logs)
 			}
 		} else {

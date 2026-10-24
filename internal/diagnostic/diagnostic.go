@@ -93,6 +93,12 @@ func selectedCause(err error, phase string) (string, string, *Terminal) {
 
 // Class never calls Error, String or LogValue on an untrusted value.
 func Class(err error) string {
+	// Account login retains rejected HTTP status separately from its cause.
+	// Only an explicit authorization denial belongs to the credential exit policy.
+	var account *cloud.AccountError
+	if errors.As(err, &account) && (account.Status == 401 || account.Status == 403) {
+		return "unauthorized"
+	}
 	// A complete cloud reply is a received cause even when release I/O or
 	// cancellation also appears in its outcome. This precedence used to live
 	// only in the cloud adapter; normalization now applies it at every boundary.
