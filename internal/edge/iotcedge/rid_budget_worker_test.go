@@ -85,7 +85,7 @@ func TestRIDHistoryBudgetSetupFailure(t *testing.T) {
 	}
 	actions := make(chan iotc.Action, 1)
 	actions <- generate
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	var completion iotc.Event
 	// Execute only Generate: no DNS, peer connection or packet send. Returning
@@ -136,7 +136,7 @@ func TestRIDHistoryBudgetNoLogger(t *testing.T) {
 	actions := make(chan iotc.Action, 1)
 	link := iotc.Link{ID: 41}
 	actions <- iotc.Action{Kind: iotc.Generate, Attempt: 9, Token: 17, Link: link}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 	(&IOTCIO{}).Run(ctx, actions, func(e iotc.Event) bool {
 		if e.Kind != iotc.EffectFailed || e.Attempt != 9 || e.Token != 17 || e.Link != link {

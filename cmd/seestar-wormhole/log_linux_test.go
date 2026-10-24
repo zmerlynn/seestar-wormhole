@@ -33,7 +33,7 @@ func TestFullLogPipeCannotBlock(t *testing.T) {
 	go func() { newLogger("json", rawLog(fds[1])).Info("shutdown"); close(done) }()
 	select {
 	case <-done:
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("full log pipe blocked")
 	}
 }

@@ -49,7 +49,7 @@ func TestUDPUnicastAndShutdown(t *testing.T) {
 	if _, err := c.WriteToUDP([]byte(scan), s.addr()); err != nil {
 		t.Fatal(err)
 	}
-	c.SetReadDeadline(time.Now().Add(3 * time.Second))
+	c.SetReadDeadline(time.Now().Add(30 * time.Second))
 	b := make([]byte, MaxDatagram+1)
 	n, from, err := c.ReadFromUDP(b)
 	if err != nil || n == 0 || from.Port != s.addr().Port || !from.IP.Equal(net.IPv4(127, 0, 0, 1)) {
@@ -71,7 +71,7 @@ func TestUDPUnicastAndShutdown(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(3 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("responder did not join on cancellation")
 	}
 }

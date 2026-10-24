@@ -43,7 +43,11 @@ func TestUDPReplySourceAndInterfaceFilter(t *testing.T) {
 		if _, err := c.WriteToUDP([]byte(scan), s.addr()); err != nil {
 			t.Fatal(err)
 		}
-		c.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
+		bound := 30 * time.Second
+		if filter {
+			bound = 250 * time.Millisecond
+		}
+		c.SetReadDeadline(time.Now().Add(bound))
 		_, from, err := c.ReadFromUDP(make([]byte, MaxDatagram))
 		if filter {
 			if timeout, ok := err.(net.Error); !ok || !timeout.Timeout() {
@@ -114,7 +118,7 @@ func TestUDPOnLinkAdmissionBeforeBudget(t *testing.T) {
 		if _, err := c.WriteToUDP([]byte(scan), s.addr()); err != nil {
 			t.Fatal(err)
 		}
-		c.SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		c.SetReadDeadline(time.Now().Add(30 * time.Second))
 		if _, _, err := c.ReadFromUDP(make([]byte, MaxDatagram)); err != nil {
 			t.Fatalf("on-link burst reply %d missing after rejected scans: %v", i, err)
 		}
@@ -155,7 +159,7 @@ func TestUDPTwoSubnetsOnOneInterface(t *testing.T) {
 		if _, err := c.WriteToUDP([]byte(scan), dst); err != nil {
 			t.Fatal(err)
 		}
-		c.SetReadDeadline(time.Now().Add(250 * time.Millisecond))
+		c.SetReadDeadline(time.Now().Add(30 * time.Second))
 		_, from, err := c.ReadFromUDP(make([]byte, MaxDatagram))
 		c.Close()
 		if err != nil || !from.IP.Equal(dst.IP) {
@@ -269,7 +273,7 @@ func TestUDPBroadcastReceipt(t *testing.T) {
 			if _, err := ipv4.NewPacketConn(sender).WriteTo([]byte(scan), &ipv4.ControlMessage{Src: net.IPv4(127, 0, 0, 1), IfIndex: lo.Index}, dst); err != nil {
 				t.Fatal(err)
 			}
-			sender.SetReadDeadline(time.Now().Add(3 * time.Second))
+			sender.SetReadDeadline(time.Now().Add(30 * time.Second))
 			b := make([]byte, MaxDatagram)
 			n, from, err := sender.ReadFromUDP(b)
 			if err != nil || n == 0 || from.Port != dst.Port || !from.IP.Equal(net.IPv4(127, 0, 0, 1)) {

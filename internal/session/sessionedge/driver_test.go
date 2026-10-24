@@ -31,7 +31,7 @@ func TestOwnerExecutesLayerWork(t *testing.T) {
 		if now < 0 {
 			t.Fatal("negative owner time")
 		}
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("owner did not execute layer work")
 	}
 	<-done

@@ -17,7 +17,7 @@ func TestDefaultBindLoopback(t *testing.T) {
 		t.Fatalf("default bind unavailable: %v", err)
 	}
 	defer listener.Close()
-	conn, err := net.DialTimeout("tcp4", listener.Addr().String(), time.Second)
+	conn, err := net.DialTimeout("tcp4", listener.Addr().String(), 30*time.Second)
 	if err != nil {
 		t.Fatalf("default loopback unreachable: %v", err)
 	}

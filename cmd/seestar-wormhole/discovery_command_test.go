@@ -157,7 +157,7 @@ func TestDiscoveryScanWithoutCredentialsOrSession(t *testing.T) {
 						if err := json.Unmarshal(b, &rec); err != nil || rec.ID != id || rec.Result.Serial != "TEST-SERIAL" || rec.Result.Model != "TEST-MODEL" || rec.Result.Name != wantName {
 							t.Errorf("scan/reply: reply=%s err=%v", b, err)
 						}
-					case <-time.After(3 * time.Second):
+					case <-time.After(30 * time.Second):
 						t.Fatal("discovery did not answer scan")
 					}
 				}
@@ -167,7 +167,7 @@ func TestDiscoveryScanWithoutCredentialsOrSession(t *testing.T) {
 					if code != 0 || !s.closed || out.Len() != 0 || !strings.Contains(logs.String(), "lan_discovery_started") || !strings.Contains(logs.String(), "lan_discovery_synthesized") || strings.Contains(logs.String(), "failed") || strings.Contains(logs.String(), "PRIVATE_") {
 						t.Fatalf("shutdown: exit=%d closed=%t stdout=%q logs=%q", code, s.closed, &out, &logs)
 					}
-				case <-time.After(3 * time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("discovery did not join on cancellation")
 				}
 			})

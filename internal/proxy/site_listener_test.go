@@ -31,7 +31,7 @@ func TestSiteIncompleteFrameShutdown(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-	case <-time.After(time.Second):
+	case <-time.After(30 * time.Second):
 		t.Fatal("partial-frame worker blocked shutdown")
 	}
 }

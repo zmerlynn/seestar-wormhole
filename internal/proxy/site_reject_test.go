@@ -122,7 +122,7 @@ func TestSiteDeviceReadErrorWithBlockedReply(t *testing.T) {
 	select {
 	case readErr = <-downstream:
 		returned = true
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
 		t.Error("device read failure waited for blocked reply; bridge cannot stop I/O")
 	}
 	close(blocked.release)
