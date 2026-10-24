@@ -31,14 +31,12 @@ if ! grep -Fq "go run ./scripts/checkjson" "$CHECK_ARGS"; then
 fi
 "$task_src/scripts/check.sh" fuzz
 require_arg --network=none
-for target in FuzzLicenseJSON FuzzSiteProtection FuzzDecodeRequest FuzzJSON FuzzDTLSAdmission FuzzControlBytes FuzzDecode FuzzStream; do
- if ! grep -Fq "$target" "$CHECK_ARGS"; then
+for target in iotc:FuzzLicenseJSON iotc:FuzzPacket iotc:FuzzStream iotc:FuzzProtocolParsers iotc:FuzzLicense \
+ cloud:FuzzJSON cloud:FuzzAccountResponses cloud:FuzzDevices edge/iotcedge:FuzzIOTCLicenseVerification \
+ proxy:FuzzSiteProtection landiscovery:FuzzDecodeRequest edge:FuzzDTLSAdmission dtls:FuzzControlBytes \
+ rdt:FuzzDecode p2ptunnel:FuzzDecode p2ptunnel:FuzzStream; do
+ if ! grep -Fq "go test -p 2 ./internal/${target%:*} -run=\"^$\" -fuzz=\"^${target#*:}$\" -fuzztime=60s -parallel=2" "$CHECK_ARGS"; then
   printf 'missing fuzz target: %s\n' "$target" >&2; exit 1
- fi
-done
-for package in iotc proxy landiscovery cloud edge dtls rdt p2ptunnel; do
- if ! grep -Fq "go test -p 2 ./internal/$package " "$CHECK_ARGS"; then
-  printf 'missing internal fuzz package: %s\n' "$package" >&2; exit 1
  fi
 done
 "$task_src/scripts/check.sh" prepare
