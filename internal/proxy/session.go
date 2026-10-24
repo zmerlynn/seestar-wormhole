@@ -49,8 +49,7 @@ type Session struct {
 	lazy                     bool
 	logger                   *slog.Logger
 	lifecycleReason          string // owner-only fixed vocabulary
-	wasReady                 bool   // owner-only availability diagnostics
-	unavailable              bool
+	unavailable              bool   // owner-only availability diagnostics
 	unavailableSince, warnAt core.Instant
 	busyAnswers              uint64
 	terminalFailure          error // mu: typed attribution retained for client outcomes
@@ -264,12 +263,11 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 		return
 	}
 	if after.State == session.Ready {
-		s.wasReady = true
 		s.unavailable = false
 		s.busyAnswers = 0
 	} else if after.State == session.Closed {
 		s.unavailable = false
-	} else if !s.unavailable && ((before.State == session.Ready && (e.Kind == session.Failed || e.Kind == session.Usage)) || (s.wasReady && after.State == session.Busy) || (!s.lazy && e.Kind == session.Failed && errors.Is(e.Err, session.ErrBusy))) {
+	} else if !s.unavailable && ((before.State == session.Ready && (e.Kind == session.Failed || e.Kind == session.Usage)) || after.State == session.Busy || (!s.lazy && e.Kind == session.Failed && errors.Is(e.Err, session.ErrBusy))) {
 		s.unavailable = true
 		s.unavailableSince = now
 		s.warnAt = now.Add(5 * time.Minute)
@@ -357,7 +355,7 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 	clients := "wait"
 	if after.State == session.Ready {
 		clients = "forward"
-	} else if after.State == session.Busy || after.State == session.Closed || (after.State == session.Releasing && after.Queued == 0) || (!s.lazy && (s.wasReady || s.unavailable)) {
+	} else if after.State == session.Busy || after.State == session.Closed || (after.State == session.Releasing && after.Queued == 0) || (!s.lazy && s.unavailable) {
 		clients = "accept_close"
 	}
 	s.logger.Info(event, "phase", phase, "layer", layer, "reason", s.lifecycleReason, "retry_ms", retry, "local_clients", clients)
