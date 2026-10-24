@@ -24,8 +24,8 @@ func TestOwedSignalStopObservesActualDeadline(t *testing.T) {
 		if !errors.Is(err, context.DeadlineExceeded) || !errors.Is(err, session.ErrReleaseAbandoned) {
 			t.Errorf("stop result=%v, want deadline and abandonment", err)
 		}
-		if f.stops != 1 || f.elapsed > time.Second {
-			t.Errorf("stops/elapsed=%d/%v, want 1 and <=1s", f.stops, f.elapsed)
+		if f.stops != 1 || f.elapsed != 80*time.Millisecond {
+			t.Errorf("stops/elapsed=%d/%v, want 1 and 80ms", f.stops, f.elapsed)
 		}
 	})
 }
