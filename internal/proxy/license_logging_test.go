@@ -2,16 +2,16 @@ package proxy
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"io"
 	"log/slog"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/go-json-experiment/json/jsontext"
+	"encoding/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"

@@ -10,10 +10,10 @@ package cloudhttp
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/oserror"
 	"io"
 	"log/slog"

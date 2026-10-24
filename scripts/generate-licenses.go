@@ -1,17 +1,17 @@
 //go:build ignore
 
-// Generate the embedded third-party notices using Go and the vendored JSON v2 library.
+// Generate the embedded third-party notices using Go and the standard-library JSON v2 packages.
 // Run from the repository root: go run ./scripts/generate-licenses.go [--check]
 package main
 
 import (
 	"bufio"
 	"bytes"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"flag"
 	"fmt"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 	"io"
 	"io/fs"
 	"os"

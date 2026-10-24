@@ -3,7 +3,7 @@ package proxy
 import (
 	"bytes"
 	"context"
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"net"
 	"strings"
 	"testing"

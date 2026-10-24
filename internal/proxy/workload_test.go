@@ -3,10 +3,10 @@ package proxy
 import (
 	"bufio"
 	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 	"io"
 	"math/rand/v2"
 	"net"

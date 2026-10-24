@@ -1,13 +1,5 @@
 [
   {
-    "Path": "github.com/go-json-experiment/json",
-    "SPDX": "BSD-3-Clause",
-    "Files": [
-      "vendor/github.com/go-json-experiment/json/AUTHORS",
-      "vendor/github.com/go-json-experiment/json/LICENSE"
-    ]
-  },
-  {
     "Path": "github.com/inconshreveable/mousetrap",
     "SPDX": "Apache-2.0",
     "Files": [

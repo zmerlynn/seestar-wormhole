@@ -2,7 +2,7 @@ package cloudhttp
 
 import (
 	"bytes"
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"log/slog"
 	"reflect"
 	"strings"

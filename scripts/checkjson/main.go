@@ -36,8 +36,12 @@ func check(root string) error {
 			if err != nil {
 				return err
 			}
-			if name == "encoding/json" || strings.HasPrefix(name, "encoding/json/") {
-				return fmt.Errorf("%s: import %q: use github.com/go-json-experiment/json or jsontext", path, name)
+			if name == "encoding/json/v2" || name == "encoding/json/jsontext" {
+				continue
+			}
+			if name == "encoding/json" || strings.HasPrefix(name, "encoding/json/") ||
+				name == "github.com/go-json-experiment/json" || strings.HasPrefix(name, "github.com/go-json-experiment/json/") {
+				return fmt.Errorf("%s: import %q: use encoding/json/v2 or encoding/json/jsontext", path, name)
 			}
 		}
 		return nil

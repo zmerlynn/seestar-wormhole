@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )

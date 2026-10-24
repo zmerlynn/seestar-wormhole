@@ -1,9 +1,9 @@
 package cloud
 
 import (
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
 )
 
 // response holds only the common envelope fields we consume.

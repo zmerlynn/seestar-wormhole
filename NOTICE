@@ -10,7 +10,6 @@ Vendored modules and the license files copied into vendor/:
 
 | Module | License file under vendor/ | SPDX identifier |
 | --- | --- | --- |
-| github.com/go-json-experiment/json | vendor/github.com/go-json-experiment/json/LICENSE | BSD-3-Clause |
 | github.com/inconshreveable/mousetrap | vendor/github.com/inconshreveable/mousetrap/LICENSE | Apache-2.0 |
 | github.com/pion/dtls/v3 | vendor/github.com/pion/dtls/v3/LICENSE | MIT |
 | github.com/pion/logging | vendor/github.com/pion/logging/LICENSE | MIT |

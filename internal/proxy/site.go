@@ -2,8 +2,8 @@ package proxy
 
 import (
 	"bytes"
-	"github.com/go-json-experiment/json"
-	"github.com/go-json-experiment/json/jsontext"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"strings"
 	"unicode"
 )

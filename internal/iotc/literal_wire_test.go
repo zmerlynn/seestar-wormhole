@@ -2,7 +2,7 @@ package iotc
 
 import (
 	"bytes"
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"net/netip"
 	"os"
 	"testing"

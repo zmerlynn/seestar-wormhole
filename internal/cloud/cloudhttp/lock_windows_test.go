@@ -6,9 +6,10 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
-	"github.com/go-json-experiment/json"
 	"io"
 	"os"
 	"os/exec"
@@ -16,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-json-experiment/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"golang.org/x/sys/windows"
 )

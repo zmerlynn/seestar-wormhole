@@ -2,8 +2,8 @@ package cloudhttp
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"errors"
-	"github.com/go-json-experiment/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-json-experiment/json/jsontext"
+	"encoding/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )

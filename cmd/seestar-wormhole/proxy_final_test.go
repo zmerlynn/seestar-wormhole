@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/go-json-experiment/json"
+	"encoding/json/v2"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"

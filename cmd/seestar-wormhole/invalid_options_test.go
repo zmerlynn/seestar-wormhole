@@ -3,8 +3,8 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
-	"github.com/go-json-experiment/json"
 	"strings"
 	"testing"
 )
