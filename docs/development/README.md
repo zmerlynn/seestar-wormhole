@@ -109,6 +109,14 @@ Caches default outside the worktree at
 `SEESTAR_WORMHOLE_BUILD_CACHE` and `SEESTAR_WORMHOLE_MODULE_CACHE`; keep both
 outside the checkout. Those are script controls, not runtime application options.
 
+CI uses the runner's `curl` and `jq` to check the Go release series in `go.mod`
+(preferring `toolchain` when present) against the supported stable releases at
+`go.dev/dl/?mode=json`. This check, `./scripts/check-go-support.sh`, requires
+network access. Weekly Vulncheck also fails when that series is
+the older supported series, giving time to upgrade, and after 45 days without a
+default-branch commit, giving time to prevent GitHub's 60-day schedule shutdown.
+`./scripts/test-go-support.sh` tests the support check offline with synthetic responses.
+
 ### Optional integration checks
 
 - `./scripts/test-smb.sh` runs a disposable Samba fixture and checksum-verified
