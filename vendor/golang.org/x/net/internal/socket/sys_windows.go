@@ -6,6 +6,7 @@ package socket
 
 import (
 	"net"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -29,12 +30,12 @@ const (
 
 func getsockopt(s uintptr, level, name int, b []byte) (int, error) {
 	l := uint32(len(b))
-	err := windows.Getsockopt(windows.Handle(s), int32(level), int32(name), (*byte)(unsafe.Pointer(&b[0])), (*int32)(unsafe.Pointer(&l)))
+	err := syscall.Getsockopt(syscall.Handle(s), int32(level), int32(name), (*byte)(unsafe.Pointer(&b[0])), (*int32)(unsafe.Pointer(&l)))
 	return int(l), err
 }
 
 func setsockopt(s uintptr, level, name int, b []byte) error {
-	return windows.Setsockopt(windows.Handle(s), int32(level), int32(name), (*byte)(unsafe.Pointer(&b[0])), int32(len(b)))
+	return syscall.Setsockopt(syscall.Handle(s), int32(level), int32(name), (*byte)(unsafe.Pointer(&b[0])), int32(len(b)))
 }
 
 func recvmsg(s uintptr, buffers [][]byte, oob []byte, flags int, network string) (n, oobn int, recvflags int, from net.Addr, err error) {

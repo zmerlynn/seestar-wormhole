@@ -60,14 +60,13 @@ func (cm *ControlMessage) validateWindows() error {
 	if cm == nil {
 		return nil
 	}
-	if cm.TTL != 0 {
-		return errNotImplemented
-	}
-	if cm.IfIndex < 0 || uint64(cm.IfIndex) > uint64(^uint32(0)) || len(cm.Src) > 0 && cm.Src.To4() == nil {
+	// Like Marshal on other platforms, ignore TTL, which is receive-only,
+	// a non-IPv4 source and a non-positive interface index.
+	if cm.IfIndex > 0 && uint64(cm.IfIndex) > uint64(^uint32(0)) {
 		return errors.New("invalid control message")
 	}
-	// A zero IN_PKTINFO address can be used as the literal source on Windows;
-	// it does not reliably ask the stack to choose one for the interface.
+	// Windows does not choose a source for a zero IN_PKTINFO address,
+	// so an interface index alone cannot select the outgoing interface.
 	if cm.IfIndex > 0 && (cm.Src.To4() == nil || cm.Src.IsUnspecified()) {
 		return errors.New("source address required with interface index on Windows")
 	}
@@ -95,7 +94,6 @@ func (cm *ControlMessage) Parse(b []byte) error {
 	if err != nil {
 		return err
 	}
-	var packetInfo bool
 	for _, m := range ms {
 		lvl, typ, l, err := m.ParseHeader()
 		if err != nil {
@@ -111,14 +109,7 @@ func (cm *ControlMessage) Parse(b []byte) error {
 			ctlOpts[ctlDst].parse(cm, m.Data(l))
 		case ctlOpts[ctlInterface].name > 0 && typ == ctlOpts[ctlInterface].name && l >= ctlOpts[ctlInterface].length:
 			ctlOpts[ctlInterface].parse(cm, m.Data(l))
-		case ctlOpts[ctlPacketInfo].name > 0 && typ == ctlOpts[ctlPacketInfo].name:
-			if l < ctlOpts[ctlPacketInfo].length {
-				return errors.New("short packet information")
-			}
-			if packetInfo {
-				return errors.New("duplicate packet information")
-			}
-			packetInfo = true
+		case ctlOpts[ctlPacketInfo].name > 0 && typ == ctlOpts[ctlPacketInfo].name && l >= ctlOpts[ctlPacketInfo].length:
 			ctlOpts[ctlPacketInfo].parse(cm, m.Data(l))
 		}
 	}
