@@ -126,6 +126,7 @@ See [internal package boundary](docs/development/README.md).
 - [Command reference](docs/reference.md): every flag, exit code and log message
 - [How the proxy speaks the protocol](docs/protocol.md)
 - [Troubleshooting](docs/troubleshooting.md)
+- [Known issues and accepted limits](docs/known-issues.md)
 - [How it works and how to hack on it](https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md) (in the source repository)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE) and [third-party notices](NOTICE)

@@ -1,5 +1,8 @@
 # Status
 
+See [known issues and accepted limits](known-issues.md) for the limits that
+remain by choice.
+
 What's been tested and what hasn't, as of October 2026. The short version is
 in the [README](../README.md#status).
 
@@ -57,15 +60,17 @@ test the command's version and help output.
 
 - **Linux** is where the proxy runs continuously, including overnight use.
   See [phone-app coverage](#phone-app) for the Debian 11 home SSH-chain test.
-- **macOS** has run the phone-app setup. LAN broadcast discovery answered an
-  iPhone's scans on macOS 26 (arm64), bound to the Mac's LAN address and to
+- **macOS** was tested natively by the maintainer on real hardware before the
+  current Linux host. The phone-app setup ran on macOS 26 (arm64); LAN broadcast
+  discovery answered an iPhone's scans, bound to the Mac's LAN address and to
   `0.0.0.0`. Discovery also has native loopback unicast and admission/response
   tests. The loopback broadcast socket fixture runs only on Linux.
 - **Windows** has native CI coverage of DTLS interop and loopback TCP
   admission, including resets with full staging and byte preservation after FIN.
-  See the [Windows requirements](reference.md#windows). It hasn't been run
-  against a real telescope, so console handling and file permissions are
-  untested in practice. Discovery's native loopback behavior is tested in CI:
+  See the [Windows requirements](reference.md#windows). Native Windows is CI-only:
+  it has not been run against a real telescope or on a real LAN, so console
+  handling and file permissions are untested in practice. Discovery's native
+  loopback behavior is tested in CI:
   unicast reply address/port, malformed and oversized input, and cancellation.
   Real LAN behavior on Windows is not yet validated.
   [rclone is the supported copying route](copying.md#windows).
