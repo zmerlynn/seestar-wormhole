@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"testing"
@@ -45,6 +46,11 @@ func TestCredentialExitCode(t *testing.T) {
 	}
 	if code := commandExitCode(options{command: commandProxy}, diagnostic.NewTerminal(session.Tunnel, "login_rejected", session.ErrTransport)); code != 1 {
 		t.Errorf("tunnel login exit=%d, want 1", code)
+	}
+
+	var o options
+	if proxy, _, err := newCommand(&o, io.Discard).Find([]string{"proxy"}); err != nil || !strings.Contains(proxy.Long, "3 on terminal cloud credential or authorization rejection") {
+		t.Fatalf("proxy help must document exit 3: %v", err)
 	}
 
 	unit, err := os.ReadFile("../../docs/always-on.md")

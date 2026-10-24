@@ -76,7 +76,8 @@ The app cannot change the device's site, clock or time zone through the proxy.
 Durations use Go units, e.g. 2m or 1h30m, and must be nonnegative (no d unit).
 Logs and errors go to stderr; help and version go to stdout.
 Exit 0 on orderly release, 2 on usage/configuration errors,
-or 1 on runtime errors including failed release.`,
+3 on terminal cloud credential or authorization rejection,
+or 1 on other runtime errors including failed release.`,
 		Example: "  seestar-wormhole proxy --idle 2m --state-dir /private/seestar",
 		Args:    noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {

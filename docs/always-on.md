@@ -16,15 +16,12 @@ Alert on persistent `session_unavailable` or blocking failure records in the
 Set `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` in the service environment; see [account setup](../README.md#before-you-start-your-account-and-your-site).
 
 ```sh
-(
-  set -e
-  mkdir -p ~/.config
-  env_file=~/.config/seestar-wormhole.env
-  [ -e "$env_file" ] || [ -L "$env_file" ] || (umask 077; set -C; : > "$env_file")
-  [ ! -L "$env_file" ] && [ -f "$env_file" ] && [ -O "$env_file" ] ||
-    { echo "Refusing unsafe environment file" >&2; exit 1; }
-  chmod 600 "$env_file"
-)
+env_file=~/.config/seestar-wormhole.env
+mkdir -p ~/.config &&
+[ ! -L "$env_file" ] &&
+{ [ ! -e "$env_file" ] || { [ -f "$env_file" ] && [ -O "$env_file" ]; }; } &&
+(umask 077; touch "$env_file") &&
+chmod 600 "$env_file"
 ```
 
 After that succeeds, open the file in a text editor and add two lines:
@@ -102,7 +99,10 @@ A few choices in there:
   125-second cleanup bound (120-second dial plus five-second stop) and a margin
   to release the telescope on the way out; production stop normally takes at most five seconds.
 - The two-day limit of 1,800 starts allows recovery from a day-long outage at
-  `RestartSec=60`, while stopping a persistent immediate-failure loop after about 30 hours.
+  `RestartSec=60`. About 30 hours of immediate failures exhausts it and leaves
+  the service failed; automatic retries do not resume when the interval expires.
+  After fixing the cause, run `systemctl --user reset-failed seestar-wormhole`
+  followed by `systemctl --user restart seestar-wormhole`.
 
 ## In a container
 
