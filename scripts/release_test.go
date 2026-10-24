@@ -256,8 +256,9 @@ func TestReleaseVersions(t *testing.T) {
 }
 
 type workflowStep struct {
-	Uses, Run string
-	Env       map[string]string
+	Name, Uses, Run string
+	Env             map[string]string
+	With            map[string]string
 }
 
 // Execute the workflow's actual run steps: validate alone, then release for each
@@ -348,5 +349,75 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 				t.Fatalf("release exit=%d build=%t want exit=97 build=true: %s", code, err == nil, output)
 			}
 		})
+	}
+}
+
+func TestWorkflowYAML(t *testing.T) {
+	if _, err := os.Stat(".github/workflows"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	paths, err := filepath.Glob(".github/workflows/*.yml")
+	if err != nil || len(paths) == 0 {
+		t.Fatalf("workflow paths: %v, %v", paths, err)
+	}
+	for _, path := range paths {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var workflow yaml.Node
+		if err := yaml.Unmarshal(data, &workflow); err != nil {
+			t.Fatalf("%s: %v", path, err)
+		}
+	}
+}
+
+func TestDormancyAlarm(t *testing.T) {
+	if _, err := os.Stat(".github/workflows/vulncheck.yml"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	data, err := os.ReadFile(".github/workflows/vulncheck.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct{ Steps []workflowStep }
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	steps := workflow.Jobs["maintenance"].Steps
+	if len(steps) == 0 || steps[0].With["ref"] != "${{ github.event.repository.default_branch }}" {
+		t.Fatal("maintenance must check out the default branch even for manual runs")
+	}
+	var script string
+	for _, step := range steps {
+		if step.Name == "Check repository activity" {
+			script = step.Run
+		}
+	}
+	if script == "" {
+		t.Fatal("missing dormancy alarm")
+	}
+	bin := t.TempDir()
+	for name, body := range map[string]string{
+		"git":  "#!/bin/sh\nprintf '%s\\n' \"$DORMANCY_COMMIT_TIMESTAMP\"\n",
+		"date": "#!/bin/sh\necho 2000000000\n",
+	} {
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(body), 0700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const cutoff = 45 * 24 * 60 * 60
+	for _, age := range []int{0, cutoff - 1, cutoff, cutoff + 7*24*60*60} {
+		cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", script)
+		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), fmt.Sprintf("DORMANCY_COMMIT_TIMESTAMP=%d", 2000000000-age))
+		output, err := cmd.CombinedOutput()
+		if (err != nil) != (age >= cutoff) {
+			t.Fatalf("age=%d: error=%v, output=%s", age, err, output)
+		}
+		if age >= cutoff && (!bytes.Contains(output, []byte("::error::")) || !bytes.Contains(output, []byte("maintenance commit")) || !bytes.Contains(output, []byte("re-enable Vulncheck"))) {
+			t.Fatalf("alarm must explain recovery: %s", output)
+		}
 	}
 }

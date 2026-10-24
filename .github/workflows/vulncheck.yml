@@ -11,6 +11,24 @@ permissions:
   contents: read
 
 jobs:
+  maintenance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Check repository activity
+        run: |
+          last_commit=$(git log -1 --format=%ct)
+          if [ "$(( $(date +%s) - last_commit ))" -ge "$((45 * 24 * 60 * 60))" ]; then
+            echo "::error::No default-branch commit in 45 days. Merge a maintenance commit into the default branch before GitHub disables schedules after 60 days of inactivity. If disabled, re-enable Vulncheck in Actions."
+            exit 1
+          fi
+      - name: Check Go support before end of support
+        if: ${{ !cancelled() }}
+        run: ./scripts/check-go-support.sh latest
+
   govulncheck:
     runs-on: ubuntu-24.04
     container: golang:1.27.3
