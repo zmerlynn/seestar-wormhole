@@ -481,8 +481,9 @@ include the fixed option and rule.
 
 This record is JSON even with `--log-format text`, and appears at every
 `--log-level`. Orderly shutdown, including a signal followed by successful release, has
-no failure record. An error returned during canceled startup still exits 1
-and has a failure record. As with other stderr output, a forced kill or a blocked or
+no failure record. An error returned during canceled startup still has a failure
+record and uses the exit-code mapping above, including exit 3 for terminal cloud
+credential or authorization rejection. As with other stderr output, a forced kill or a blocked or
 broken sink can prevent delivery. Readers must ignore added fields and use
 [the reason table](#status-and-reason-values) to interpret the values. This
 record name and those two keys are the only log record contract; lifecycle
