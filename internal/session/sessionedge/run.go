@@ -301,6 +301,23 @@ func (o *owner) recordCleanup(err error) {
 }
 
 func (o *owner) machineStep(e session.Event, now core.Instant) []session.Action {
+	// ErrUncertain also carries permanent cloud/protocol failures. Preserve
+	// those barriers while allowing ownership recovery with transient attribution.
+	if e.Kind == session.Failed {
+		diagnostic.EachTerminal(e.Err, func(t *diagnostic.Terminal) {
+			if !errors.Is(t, session.ErrStop) && !errors.Is(t, session.ErrUncertain) {
+				return
+			}
+			_, reason := diagnostic.Fields(t, "")
+			switch reason {
+			case "release_failed", "ownership_uncertain", "busy", "release_abandoned",
+				"timeout", "transport_failed", "liveness_timeout", "connection_timeout",
+				"read_failed", "write_failed":
+			default:
+				e.Permanent = true
+			}
+		})
+	}
 	actions := o.machine.Step(e, now)
 	return actions
 }
@@ -312,6 +329,10 @@ func (o *owner) step(e session.Event) (bool, error) {
 	now := core.Instant(time.Since(o.origin))
 	before := o.machine.Snapshot()
 	actions := o.machineStep(e, now)
+	if o.machine.Snapshot().State == session.Ready {
+		o.cleanupErr = nil
+		o.failureErr = nil
+	}
 	if observer, ok := o.sink.(Observer); ok {
 		observer.Observe(e, before, o.machine.Snapshot(), now)
 	}

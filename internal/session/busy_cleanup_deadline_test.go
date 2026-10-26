@@ -47,12 +47,12 @@ func TestLazyBusyDeadlinePreservesBlockingCleanup(t *testing.T) {
 					t.Fatalf("blocking cleanup queued replacement: %+v", as)
 				}
 				as = m.Step(Event{Kind: Released, Attempt: 2, Err: cleanup}, core.Instant(93*time.Second))
-				if has(as, Dial) || m.Snapshot().State != Busy {
+				if has(as, Dial) || m.Snapshot().State != Backoff {
 					t.Fatalf("joined cleanup forgot blocking failure: actions=%+v state=%+v", as, m.Snapshot())
 				}
 				as = m.Step(Event{Kind: Client, Client: 3}, core.Instant(94*time.Second))
-				if !has(as, Reject) || has(as, Dial) {
-					t.Fatalf("replacement authorized after blocking failure: %+v", as)
+				if has(as, Reject) || has(as, Dial) || m.Snapshot().Queued != 1 {
+					t.Fatalf("demand did not wait for recovery delay: %+v", as)
 				}
 				as = m.Step(Event{Kind: Shutdown}, core.Instant(95*time.Second))
 				for _, a := range as {

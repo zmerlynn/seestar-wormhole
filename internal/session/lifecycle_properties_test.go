@@ -293,7 +293,7 @@ func TestSeededLifecycleProperties(t *testing.T) {
 			if seed == 2 {
 				TestLazyFailuresRespectBackoff(t)
 			}
-			// Both public uncertainty sentinels must independently block retry,
+			// Both public uncertainty sentinels must independently delay retry,
 			// including joined errors, cleanup and late failure.
 			for _, terminal := range []error{ErrStop, ErrUncertain} {
 				for _, order := range []string{"failure", "releasing", "released"} {
@@ -392,7 +392,7 @@ func TestSeededLifecycleProperties(t *testing.T) {
 				}
 				// Switch this same random trace to fair successful completions. Once
 				// pending cleanup has concluded, retryable histories must recover;
-				// terminal busy and uncertainty must continue to reject demand.
+				// terminal busy and ownership delays must continue to reject demand.
 				h.fair = true
 				h.run(core.Instant(time.Second))
 				if h.m.Snapshot().State != Closed {

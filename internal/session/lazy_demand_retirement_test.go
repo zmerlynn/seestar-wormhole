@@ -25,12 +25,12 @@ func TestLazyDemandRetiredByEveryDropPath(t *testing.T) {
 		{"usage budget", nil, Event{Kind: Usage, Attempt: 1, Layer: Cloud, Bytes: math.MaxInt}, 1, Releasing, ErrBudget},
 		{"shutdown dial", nil, Event{Kind: Shutdown}, 1, Releasing, ErrClosed},
 		{"shutdown retained cleanup", func(m *Machine) { m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 0) }, Event{Kind: Shutdown}, 1, Releasing, ErrClosed},
-		{"failed cleanup", func(m *Machine) { m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 0) }, Event{Kind: Released, Attempt: 1, Err: ErrStop}, 1, Busy, ErrStop},
-		{"abandoned refusal cleanup", func(m *Machine) { m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 0) }, Event{Kind: Released, Attempt: 1, Err: ErrReleaseAbandoned}, 1, Busy, ErrStop},
+		{"failed cleanup", func(m *Machine) { m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 0) }, Event{Kind: Released, Attempt: 1, Err: ErrStop}, 1, Backoff, ErrStop},
+		{"abandoned refusal cleanup", func(m *Machine) { m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 0) }, Event{Kind: Released, Attempt: 1, Err: ErrReleaseAbandoned}, 1, Backoff, ErrStop},
 		{"blocked backoff", func(m *Machine) {
 			m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 0)
 			m.Step(Event{Kind: Released, Attempt: 1}, 0)
-		}, Event{Kind: Failed, Attempt: 1, Err: ErrStop}, 1, Busy, ErrStop},
+		}, Event{Kind: Failed, Attempt: 1, Err: ErrStop}, 1, Backoff, ErrStop},
 		{"cleanup grace timeout", func(m *Machine) {
 			m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 0)
 			m.Step(Event{Kind: Tick}, core.Instant(5*time.Second))

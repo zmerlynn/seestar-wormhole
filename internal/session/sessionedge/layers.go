@@ -26,7 +26,8 @@ var ErrAdapter = errors.New("invalid session adapter")
 // attempt cancellation. The worker invokes it exactly once, including failed dial.
 // Implementations may wrap cloudhttp.Lease.Close, which already bounds cloud stop.
 // ErrReleaseAbandoned opts into fresh-allocation recovery after that bound;
-// any other stop error blocks replacement. Final failed stop is always surfaced.
+// other stop errors delay replacement after cleanup joins. Final failed stop
+// is always surfaced.
 // Stop is distinct from local transport teardown; replacement ownership is local policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#reports-and-stop
 type Lease interface{ Stop(context.Context) error }

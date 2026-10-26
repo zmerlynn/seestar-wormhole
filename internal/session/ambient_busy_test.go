@@ -47,13 +47,13 @@ func TestAmbientRefusalsRecoverBeyondOwnReleaseWindow(t *testing.T) {
 	}
 }
 
-func TestAmbientPolicyStillBlocksUncertainRelease(t *testing.T) {
+func TestAmbientPolicyStillBlocksPermanentRejection(t *testing.T) {
 	for _, cause := range []error{ErrStop, ErrUncertain} {
 		cfg := DefaultConfig()
 		cfg.RetryBusy = true
 		m := machine(t, cfg)
 		m.Step(Event{Kind: Start}, 0)
-		m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: cause}, 1)
+		m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: cause, Permanent: true}, 1)
 		m.Step(Event{Kind: Released, Attempt: 1}, 2)
 		if has(m.Step(Event{Kind: Tick}, core.Instant(24*time.Hour)), Dial) || m.Snapshot().State != Busy {
 			t.Fatalf("unsafe retry for %v: %+v", cause, m.Snapshot())
@@ -78,7 +78,7 @@ func TestLazyClientRetriesTerminalCloudBusy(t *testing.T) {
 	}
 }
 
-func TestAmbientBusyCleanupFailureBlocksReplacement(t *testing.T) {
+func TestAmbientBusyCleanupFailureDelaysReplacement(t *testing.T) {
 	for _, cause := range []error{ErrStop, ErrUncertain, ErrReleaseAbandoned} {
 		cfg := DefaultConfig()
 		cfg.RetryBusy = true
@@ -91,8 +91,11 @@ func TestAmbientBusyCleanupFailureBlocksReplacement(t *testing.T) {
 		m.Step(Event{Kind: Tick}, now)
 		m.Step(Event{Kind: Failed, Attempt: 2, Layer: Cloud, Err: ErrBusy}, now)
 		m.Step(Event{Kind: Released, Attempt: 2, Err: cause}, now)
-		if has(m.Step(Event{Kind: Tick}, now.Add(24*time.Hour)), Dial) || m.Snapshot().State != Busy {
-			t.Fatalf("replacement after refusal cleanup %v: %+v", cause, m.Snapshot())
+		if m.Snapshot().State != Backoff || m.Snapshot().Deadline != now.Add(OwnershipRecoveryDelay) {
+			t.Fatalf("missing recovery delay after refusal cleanup %v: %+v", cause, m.Snapshot())
+		}
+		if !has(m.Step(Event{Kind: Tick}, m.Snapshot().Deadline), Dial) {
+			t.Fatal("did not recover")
 		}
 	}
 }

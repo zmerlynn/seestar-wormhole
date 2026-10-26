@@ -75,7 +75,7 @@ func TestBackoffEndpointsAndCap(t *testing.T) {
 		}
 	}
 }
-func TestReleaseFailureAndTimeoutDoNotRetry(t *testing.T) {
+func TestReleaseFailureRecoversButJoinTimeoutIsFatal(t *testing.T) {
 	for _, timeout := range []bool{false, true} {
 		m := machine(t, DefaultConfig())
 		m.Step(Event{Kind: Start}, 0)
@@ -85,17 +85,17 @@ func TestReleaseFailureAndTimeoutDoNotRetry(t *testing.T) {
 		} else {
 			m.Step(Event{Kind: Released, Attempt: 1, Err: errors.New("stop failed")}, 2)
 		}
-		as := m.Step(Event{Kind: Tick}, core.Instant(time.Hour))
-		if has(as, Dial) || m.attempt != 1 {
-			t.Fatal("uncertain release automatically retried")
-		}
-		if timeout && m.state != Closed {
-			t.Fatal("release deadline did not close local owner")
-		}
 		if !timeout {
-			as = m.Step(Event{Kind: Client, Client: 1}, core.Instant(time.Hour))
-			if len(as) != 1 || as[0].Err != ErrStop {
-				t.Fatalf("stop failure not surfaced: %+v", as)
+			if m.state != Backoff || m.deadline != core.Instant(OwnershipRecoveryDelay)+2 {
+				t.Fatal("missing release recovery delay")
+			}
+			if !has(m.Step(Event{Kind: Tick}, m.deadline), Dial) {
+				t.Fatal("release failure did not recover")
+			}
+		} else {
+			as := m.Step(Event{Kind: Tick}, core.Instant(time.Hour))
+			if has(as, Dial) || m.attempt != 1 || m.state != Closed {
+				t.Fatal("unjoined worker allowed replacement")
 			}
 		}
 	}

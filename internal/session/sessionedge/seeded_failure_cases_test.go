@@ -12,7 +12,7 @@ func TestSeededRuntimeFailureCases(t *testing.T) {
 	}{
 		{"4/late-busy", TestLateBusyDoesNotRetry},
 		{"5/canceled-stop", TestCancellationReportsStopFailure},
-		{"6/internal-stop", TestAllocatorStopFailureDoesNotRetry},
+		{"6/internal-stop", TestAllocatorStopFailureRecoversAfterDelay},
 	} {
 		t.Run(seed.name, seed.run)
 	}
