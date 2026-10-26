@@ -304,6 +304,7 @@ func (o *owner) machineStep(e session.Event, now core.Instant) []session.Action 
 	// ErrUncertain also carries permanent cloud/protocol failures. Preserve
 	// those barriers while allowing ownership recovery with transient attribution.
 	if e.Kind == session.Failed {
+		e.Permanent = e.Permanent || errors.Is(e.Err, ErrPanic)
 		diagnostic.EachTerminal(e.Err, func(t *diagnostic.Terminal) {
 			if !errors.Is(t, session.ErrStop) && !errors.Is(t, session.ErrUncertain) {
 				return

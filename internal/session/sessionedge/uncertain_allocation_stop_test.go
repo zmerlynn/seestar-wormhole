@@ -148,3 +148,25 @@ func TestPermanentOutcomesDoNotRecoverOwnership(t *testing.T) {
 		})
 	}
 }
+
+func TestAllocatorPanicStillBlocksRecovery(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newFake()
+		f.panicAt = int(session.Cloud)
+		var calls atomic.Int32
+		factory := factoryFunc(func(a uint64, b session.Budgets) (Layers, error) { calls.Add(1); return f.New(a, b) })
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan error, 1)
+		go func() { done <- Run(ctx, session.DefaultConfig(), rng{}, factory, nil, make(ChannelSink, 16)) }()
+		synctest.Wait()
+		<-time.After(2 * time.Minute)
+		synctest.Wait()
+		if calls.Load() != 1 {
+			t.Errorf("allocator panic retried: %d", calls.Load())
+		}
+		cancel()
+		if err := <-done; !errors.Is(err, session.ErrStop) || !errors.Is(err, context.Canceled) {
+			t.Fatalf("panic cleanup reporting=%v", err)
+		}
+	})
+}
