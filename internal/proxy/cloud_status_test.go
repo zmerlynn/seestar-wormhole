@@ -214,6 +214,17 @@ func TestBusyAndRejectedCloudCallsPolicy(t *testing.T) {
 						if (failure.code == 300403 || failure.code == 300404) && path != "/v1/device-p2p/stop" {
 							want = session.ErrBusy
 						}
+						if path == "/v1/device-p2p/stop" && status != 401 {
+							// A stop response is reduced to release_failed after joining.
+							// Recover that ownership block; the synthetic wire stays down.
+							if !errors.Is(err, session.ErrTransport) && !errors.Is(err, session.ErrStop) {
+								t.Errorf("recovering client error=%v, want closed unavailable client", err)
+							}
+							if tr.online.Load() < 2 || tr.details.Load() != tr.online.Load() || tr.stops.Load() < 1 {
+								t.Errorf("stop recovery detail/online/stop=%d/%d/%d", tr.details.Load(), tr.online.Load(), tr.stops.Load())
+							}
+							return
+						}
 						if !errors.Is(err, want) {
 							t.Errorf("blocked client error=%v, want %v after joined cleanup", err, want)
 						}

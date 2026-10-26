@@ -23,11 +23,12 @@ var ErrTransport = errors.New("session transport failed")
 // ErrTimeout means a dial or local release deadline expired.
 var ErrTimeout = errors.New("session deadline exceeded")
 
-// ErrUncertain means allocation ownership could not be determined. No automatic
-// retry is safe; stop the owner and resolve remote ownership before restarting.
+// ErrUncertain means allocation ownership could not be determined. After cleanup
+// joins, the owner delays replacement; permanent rejections still block recovery.
 var ErrUncertain = errors.New("session allocation outcome uncertain")
 
-// ErrStop means release could not be confirmed; replacement remains blocked.
+// ErrStop means release could not be confirmed. After cleanup joins, the owner
+// delays replacement and retains the cleanup failure until recovery succeeds.
 var ErrStop = errors.New("session release failed")
 
 // ErrReleaseAbandoned means a bounded cloud stop failed after local teardown.
@@ -91,6 +92,7 @@ type Event struct {
 	Layer              Layer
 	Bytes, Count       int
 	Err                error
+	Permanent          bool // Failed only: a rejection or protocol error forbids ownership recovery.
 	ReleasedAllocation bool // Released only: this worker actually stopped an owned lease.
 }
 
@@ -139,6 +141,10 @@ const OwnSessionRetryWindow = 90 * time.Second
 // after an unclean exit can take 35–81s. Keep 90s for margin; this local policy
 // is not a vendor timer.
 const LazyBusyWindow = 90 * time.Second
+
+// OwnershipRecoveryDelay precedes fresh allocation after unconfirmed ownership
+// or failed cleanup. It is local recovery policy, not a vendor allocation timer.
+const OwnershipRecoveryDelay = time.Minute
 
 // Config contains local policy, not protocol constants. Idle == 0 is eager mode.
 // By default eager busy retries within the own-session-end window. LazyBusyWindow

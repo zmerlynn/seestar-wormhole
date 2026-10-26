@@ -209,7 +209,10 @@ The proxy exits 0 after orderly shutdown, 2 for usage or configuration errors,
 runtime or cleanup failures. Exit 3 covers HTTP 401/403 denial (including rejected
 login), persistent profile challenges after the two permitted renewals, and
 reauthentication required. Transport failures, busy responses, generic rejected
-statuses, and uncertain ownership do not select exit 3. Correct the credentials
+statuses, and uncertain ownership do not select exit 3. An exit code describes
+the final result, not whether the running proxy retried: a stop-only HTTP 403
+that is still unresolved at shutdown exits 3, and reaching ready clears it.
+Correct the credentials
 or account restriction before deliberately restarting; see the
 [service recipe](always-on.md#a-systemd-service).
 See [status and reason values](#status-and-reason-values) for the complete mapping.
@@ -225,17 +228,21 @@ With default `--idle 0`, proxy connects at startup and retries recognized busy
 indefinitely, including the first dial. Equal-jitter delays start at 0.5–1
 second and grow exponentially to 15–30 seconds. After a ready session loses
 transport, recovery is automatic. No new client or restart is required.
-Transport failures on the first eager dial retry; uncertain ownership or failed
-cleanup keeps the proxy running while blocking replacement.
+Transport failures on the first eager dial retry. Uncertain ownership or failed
+cleanup keeps the proxy running: once cleanup joins, it waits 60 seconds before
+allocating fresh. Busy answers then use the same indefinite retry policy.
 
 HTTP 429, 502, 503, and 504 on catalog, detail, profile, and login requests
 use the same capped backoff as network failures. Their error-page bodies do
 not count as malformed JSON. Login allocates no device session, and a
 temporary profile failure preserves the installed token. Recovery continues
 without restarting the owner. `Retry-After` does not change the retry delay.
-Allocation and stop responses keep their ownership uncertainty and cleanup
-barriers, including these statuses. Credential rejections, remote authorization
-denials, and other rejected HTTP statuses remain blocking.
+Allocation and stop responses keep their ownership uncertainty and bounded
+cleanup, including these statuses. Credential rejections and authorization or
+other permanent rejections during sign-in or allocation remain blocking. A
+rejection received only from stop, such as HTTP 403 or 409, follows the
+ownership recovery policy above. HTTP 401 on stop expires the sign-in, so the
+next attempt blocks before allocating.
 
 With positive `--idle`, startup can still authorize/read the catalog and,
 for discovery, detail. Session allocation waits for a client. Client-triggered
@@ -249,8 +256,12 @@ identity, and protocol errors do not enter this busy policy.
 Cleanup has to join before replacement. The client deadline does not extend
 for first-response latency or cleanup, and closing waiting clients does not
 abandon an allocated session's release. Uncertain ownership and cleanup
-failures block replacement, except for bounded cloud-stop abandonment during
-transport recovery; see [session ownership policy](../DESIGN.md#session-ownership-implementation).
+failures use the same 60-second recovery delay in lazy mode. Existing clients
+close as they do after transport loss; new demand can wait for the next allowed
+dial. Its 90-second busy budget starts at that dial. Without demand, the proxy
+remains dormant after the delay and does not allocate. Bounded cloud-stop
+abandonment during transport recovery keeps its ordinary backoff; see
+[session ownership policy](../DESIGN.md#session-ownership-implementation).
 
 | State | What local clients experience |
 |---|---|
@@ -259,7 +270,7 @@ transport recovery; see [session ownership policy](../DESIGN.md#session-ownershi
 | `ready` | Forward to the device. |
 | `releasing` | Close clients and join bounded cleanup; retryable lazy opens can remain queued within their deadline. |
 | `backoff` | Eager retries automatically and closes clients; lazy demand waits for the next allowed dial. |
-| `busy` | Fresh lazy demand can retry cloud refusal; uncertainty/failed release remains blocked. |
+| `busy` | Fresh lazy demand can retry cloud refusal; permanent rejection or protocol errors remain blocked. Ownership recovery uses `backoff`. |
 | `closed` | Listeners and session cleanup have finished. |
 
 State logs describe `local_clients=wait`, `forward`, or `accept_close`.
@@ -403,7 +414,7 @@ selection masks serials.
 | `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy |
 | `lazy_open_attempt` | INFO | New client-triggered attempt and fixed cause |
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |
-| `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy, recovery after ready, or an ownership/cleanup block, including initial acquisition |
+| `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy, recovery after ready, or ownership/cleanup recovery, including initial acquisition |
 | `cloud_retry` | WARN | Catalog network/service retry and delay |
 | `device_selection_refused` | WARN | `rule=model_mismatch`; requested and catalog public model labels (unknown labels redacted) |
 | `release_not_attempted` | WARN | Release needs reauthentication |
@@ -455,7 +466,10 @@ Client class is `loopback`, `LAN` for private/link-local IPs, or `other`;
 client addresses are omitted. Channel byte counts include successful partial
 writes; duration ends when both forwarding workers finish.
 Outage reminders continue without clients and during an in-flight dial or
-blocked cleanup. Readiness resets the outage; intentional idle release does
+cleanup or recovery delay. Ownership recovery keeps its original
+`release_failed` or `ownership_uncertain` reminder reason until ready, including
+later busy answers. `session_state` shows `backoff` with `retry_ms=60000` and
+the fresh `dialing` transition. Readiness resets the outage; intentional idle release does
 not start one.
 
 A local client may close after one reply while the device keeps sending events.
@@ -566,7 +580,7 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `not_found` | 1 | Not found. |
 | `reason` | `operation_failed` | 1 | Operation failed. |
 | `reason` | `owner_closed` | — | Diagnostic context; does not itself exit the process. |
-| `reason` | `ownership_uncertain` | 1 | Ownership could not be confirmed; check release before reconnecting. |
+| `reason` | `ownership_uncertain` | 1 | Ownership could not be confirmed; after cleanup joins, wait 60 seconds before fresh allocation when eager or when lazy demand exists. |
 | `reason` | `packet_delivery_failed` | 1 | Packet delivery failed. |
 | `reason` | `peer_close` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `peer_closed` | 1 | Peer closed. |
@@ -588,7 +602,7 @@ request count. These prose diagnostics are outside the versioned log contract.
 | `reason` | `relay result never arrived after %d requests` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `relay unsupported` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `release_abandoned` | 1 | Bounded cloud stop was abandoned or unavailable; see [session ownership policy](../DESIGN.md#session-ownership-implementation) for retry and final-release behavior. |
-| `reason` | `release_failed` | 1 | Release or local cleanup failed; check ownership before reconnecting. |
+| `reason` | `release_failed` | 1 | Release or local cleanup failed; after cleanup joins, wait 60 seconds before fresh allocation when eager or when lazy demand exists. Shutdown still reports failed cleanup. |
 | `reason` | `send_capacity` | 1 | The secure-send queue is full. |
 | `reason` | `server refused` | — | Diagnostic context; does not itself exit the process. |
 | `reason` | `server_refused` | 1 | Server refused. |

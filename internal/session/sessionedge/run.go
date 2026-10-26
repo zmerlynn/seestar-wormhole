@@ -301,6 +301,14 @@ func (o *owner) recordCleanup(err error) {
 }
 
 func (o *owner) machineStep(e session.Event, now core.Instant) []session.Action {
+	// Classification belongs to the adapter while acquisition and cleanup are
+	// distinct. Normalization carries that barrier independently of log attribution.
+	if e.Kind == session.Failed {
+		e.Permanent = e.Permanent || errors.Is(e.Err, ErrPanic)
+		diagnostic.EachTerminal(e.Err, func(t *diagnostic.Terminal) {
+			e.Permanent = e.Permanent || t.Permanent
+		})
+	}
 	actions := o.machine.Step(e, now)
 	return actions
 }
@@ -312,6 +320,10 @@ func (o *owner) step(e session.Event) (bool, error) {
 	now := core.Instant(time.Since(o.origin))
 	before := o.machine.Snapshot()
 	actions := o.machineStep(e, now)
+	if o.machine.Snapshot().State == session.Ready {
+		o.cleanupErr = nil
+		o.failureErr = nil
+	}
 	if observer, ok := o.sink.(Observer); ok {
 		observer.Observe(e, before, o.machine.Snapshot(), now)
 	}

@@ -49,6 +49,7 @@ type Session struct {
 	lazy                     bool
 	logger                   *slog.Logger
 	lifecycleReason          string // owner-only fixed vocabulary
+	ownershipReason          string // original ownership recovery reason, until ready
 	unavailable              bool   // owner-only availability diagnostics
 	unavailableSince, warnAt core.Instant
 	busyAnswers              uint64
@@ -264,10 +265,11 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 	}
 	if after.State == session.Ready {
 		s.unavailable = false
+		s.ownershipReason = ""
 		s.busyAnswers = 0
 	} else if after.State == session.Closed {
 		s.unavailable = false
-	} else if !s.unavailable && ((before.State == session.Ready && (e.Kind == session.Failed || e.Kind == session.Usage)) || after.State == session.Busy || (!s.lazy && e.Kind == session.Failed && errors.Is(e.Err, session.ErrBusy))) {
+	} else if !s.unavailable && ((before.State == session.Ready && (e.Kind == session.Failed || e.Kind == session.Usage)) || after.State == session.Busy || (after.State == session.Backoff && after.OwnershipRecovery) || (!s.lazy && e.Kind == session.Failed && errors.Is(e.Err, session.ErrBusy))) {
 		s.unavailable = true
 		s.unavailableSince = now
 		s.warnAt = now.Add(5 * time.Minute)
@@ -319,13 +321,28 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 		}
 		s.mu.Unlock()
 	}
+	// Refusal cleanup can promote abandonment to an ownership block in the
+	// machine. Report that policy even when the incoming receipt is only busy.
+	if after.OwnershipRecovery && !before.OwnershipRecovery && reason != "release_failed" && reason != "ownership_uncertain" {
+		reason = "ownership_uncertain"
+		if e.Kind == session.Released || errors.Is(e.Err, session.ErrStop) {
+			reason = "release_failed"
+		}
+	}
 	if reason != "none" {
 		s.lifecycleReason = reason
+		if s.ownershipReason == "" && (reason == "release_failed" || reason == "ownership_uncertain") {
+			s.ownershipReason = reason
+		}
 	}
 	// The owner arms a separate observation deadline, so terminal ownership
-	// blocks and in-flight dials still report without incoming client events.
+	// recovery delays and in-flight dials still report without incoming client events.
 	if s.unavailable && after.State != session.Closed && now >= s.warnAt {
-		s.logger.Warn("session_unavailable", "reason", s.lifecycleReason, "unavailable_ms", time.Duration(now-s.unavailableSince).Milliseconds(), "busy_answers", s.busyAnswers)
+		outageReason := s.lifecycleReason
+		if s.ownershipReason != "" {
+			outageReason = s.ownershipReason
+		}
+		s.logger.Warn("session_unavailable", "reason", outageReason, "unavailable_ms", time.Duration(now-s.unavailableSince).Milliseconds(), "busy_answers", s.busyAnswers)
 		s.warnAt = now.Add(5 * time.Minute)
 	}
 	if before.State == after.State && e.Kind != session.Progress && e.Kind != session.Released {
@@ -357,6 +374,9 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 		clients = "forward"
 	} else if after.State == session.Busy || after.State == session.Closed || (after.State == session.Releasing && after.Queued == 0) || (!s.lazy && s.unavailable) {
 		clients = "accept_close"
+	}
+	if e.Kind == session.Released && before.State != after.State && after.State == session.Backoff && after.OwnershipRecovery {
+		s.logger.Info("session_state", "phase", phase, "layer", layer, "reason", s.lifecycleReason, "retry_ms", retry, "local_clients", clients)
 	}
 	s.logger.Info(event, "phase", phase, "layer", layer, "reason", s.lifecycleReason, "retry_ms", retry, "local_clients", clients)
 	if after.State == session.Ready {

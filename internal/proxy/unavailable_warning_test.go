@@ -16,173 +16,10 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
 
-func TestInitialBlockedOutageWarnings(t *testing.T) {
-	for _, lazy := range []bool{false, true} {
-		for _, cleanupFailure := range []bool{false, true} {
-			t.Run(fmt.Sprintf("lazy=%v/cleanup_failure=%v", lazy, cleanupFailure), func(t *testing.T) {
-				synctest.Test(t, func(t *testing.T) {
-					var logs logBuffer
-					attempts := 0
-					f := &busyFactory{channels: make(chan *busyChannels, 1)}
-					f.allocate = func(context.Context) (sessionedge.Lease, error) {
-						attempts++
-						if cleanupFailure {
-							f.stopError = session.ErrStop
-							return f, session.ErrTransport
-						}
-						return nil, session.ErrUncertain
-					}
-					cfg := Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}
-					if lazy {
-						cfg.Idle = time.Hour
-					}
-					s, err := startWithRNG(t.Context(), cfg, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer s.Close()
-					if lazy {
-						if _, err := s.DialPort(t.Context(), 445); err == nil {
-							t.Fatal("initial blocked dial succeeded")
-						}
-					}
-					synctest.Wait()
-					if data := string(logs.take()); !strings.Contains(data, `"phase":"busy"`) || strings.Contains(data, `"phase":"ready"`) {
-						t.Fatalf("initial acquisition did not block: %s", data)
-					}
-					// No client input or layer completions during these thirty minutes.
-					for i := 1; i <= 6; i++ {
-						<-time.After(5*time.Minute - time.Nanosecond)
-						synctest.Wait()
-						if data := logs.take(); strings.Contains(string(data), `"msg":"session_unavailable"`) {
-							t.Fatalf("early reminder: %s", data)
-						}
-						<-time.After(time.Nanosecond)
-						synctest.Wait()
-						records := loggingRecords(t, bytes.NewBuffer(logs.take()))
-						reason := "ownership_uncertain"
-						wantStops := int32(0)
-						if cleanupFailure {
-							reason, wantStops = "release_failed", 1
-						}
-						if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["level"] != "WARN" || records[0]["reason"] != reason || records[0]["unavailable_ms"] != float64(i*300000) {
-							t.Fatalf("at %dm records=%v, want one bounded reminder", i*5, records)
-						}
-						if attempts != 1 || f.stops.Load() != wantStops {
-							t.Fatalf("blocked owner allocated/stopped again: %d/%d", attempts, f.stops.Load())
-						}
-						select {
-						case <-s.Done():
-							t.Fatal("blocked owner exited")
-						default:
-						}
-					}
-					if _, err := s.DialPort(t.Context(), 445); !errors.Is(err, session.ErrStop) && !errors.Is(err, session.ErrUncertain) {
-						t.Fatalf("blocked owner admitted fresh demand: %v", err)
-					}
-					synctest.Wait()
-					if attempts != 1 {
-						t.Fatalf("fresh demand restarted blocked owner: attempts=%d", attempts)
-					}
-				})
-			})
-		}
-	}
-}
-
-func TestBusyBlockedOutageWarnings(t *testing.T) {
-	for _, lazy := range []bool{false, true} {
-		for _, partialBusy := range []bool{false, true} {
-			for _, stopErr := range []error{session.ErrStop, session.ErrUncertain} {
-				t.Run(fmt.Sprintf("lazy=%v/partial_busy=%v/%v", lazy, partialBusy, stopErr), func(t *testing.T) {
-					synctest.Test(t, func(t *testing.T) {
-						var logs logBuffer
-						attempts := 0
-						f := &busyFactory{channels: make(chan *busyChannels, 8)}
-						f.allocate = func(context.Context) (sessionedge.Lease, error) {
-							attempts++
-							if partialBusy && attempts == 1 {
-								return f, nil
-							}
-							f.stopError = stopErr
-							if partialBusy {
-								return f, session.ErrBusy
-							}
-							return f, nil
-						}
-						cfg := Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}
-						if lazy {
-							cfg.Idle = time.Hour
-						}
-						s, err := startWithRNG(t.Context(), cfg, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer s.Close()
-						c, err := s.DialPort(t.Context(), 445)
-						if err != nil {
-							t.Fatal(err)
-						}
-						c.Close()
-						synctest.Wait()
-						if !strings.Contains(string(logs.take()), `"phase":"ready"`) {
-							t.Fatal("did not reach Ready")
-						}
-						lostAt := time.Now()
-						(<-f.channels).events <- session.Event{Kind: session.Failed, Err: session.ErrTransport}
-						synctest.Wait()
-						if !lazy && partialBusy {
-							<-time.After(time.Second)
-						}
-						if lazy && partialBusy {
-							if _, err := s.DialPort(t.Context(), 445); !errors.Is(err, session.ErrStop) {
-								t.Fatalf("partial busy cleanup error=%v, want stop failure", err)
-							}
-						}
-						synctest.Wait()
-						if data := string(logs.take()); !strings.Contains(data, `"phase":"busy"`) {
-							t.Fatalf("did not block failed cleanup: %s", data)
-						}
-						wantAttempts := 1
-						if partialBusy {
-							wantAttempts = 2
-						}
-						// No client input or layer completions during these twenty minutes.
-						for i := 1; i <= 4; i++ {
-							<-time.After(time.Until(lostAt.Add(time.Duration(i) * 5 * time.Minute)))
-							synctest.Wait()
-							data := logs.take()
-							records := loggingRecords(t, bytes.NewBuffer(data))
-							records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] == "transport_discard_summary" })
-							if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["level"] != "WARN" || records[0]["unavailable_ms"] != float64(i*300000) {
-								t.Fatalf("at %dm records=%s, want one WARN with original outage elapsed", i*5, data)
-							}
-							if attempts != wantAttempts || int(f.stops.Load()) != wantAttempts {
-								t.Fatalf("blocked owner allocated/stopped again: %d/%d, want %d/%d", attempts, f.stops.Load(), wantAttempts, wantAttempts)
-							}
-						}
-						if _, err := s.DialPort(t.Context(), 445); !errors.Is(err, session.ErrStop) {
-							t.Fatalf("terminal client error=%v, want stop failure", err)
-						}
-						if err := s.Close(); !errors.Is(err, session.ErrStop) {
-							t.Fatalf("close=%v, want stop failure", err)
-						}
-						<-time.After(5 * time.Minute)
-						synctest.Wait()
-						if strings.Contains(string(logs.take()), `"msg":"session_unavailable"`) {
-							t.Fatal("warning after owner shutdown")
-						}
-					})
-				})
-			}
-		}
-	}
-}
-
 func TestRecoveryWarningsResetOnReadiness(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var logs logBuffer
-		f := &busyFactory{channels: make(chan *busyChannels, 8)}
+		f := &busyFactory{channels: make(chan *busyChannels, 128)}
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return f, nil }
 		s, err := startWithRNG(t.Context(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
 		if err != nil {
@@ -203,13 +40,14 @@ func TestRecoveryWarningsResetOnReadiness(t *testing.T) {
 			t.Fatal("warning after recovery")
 		}
 		f.stopError = session.ErrStop
+		f.allocate = func(context.Context) (sessionedge.Lease, error) { return nil, session.ErrBusy }
 		(<-f.channels).events <- session.Event{Kind: session.Failed, Err: session.ErrTransport}
 		synctest.Wait()
 		logs.take()
 		<-time.After(5 * time.Minute)
 		synctest.Wait()
 		records := loggingRecords(t, bytes.NewBuffer(logs.take()))
-		records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] == "transport_discard_summary" })
+		records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] != "session_unavailable" })
 		if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["unavailable_ms"] != float64(300000) {
 			t.Fatalf("second outage records=%v, want reset five-minute warning", records)
 		}
@@ -280,7 +118,7 @@ func TestBusyWarningsAfterFailedIdleCleanup(t *testing.T) {
 		<-time.After(5 * time.Minute)
 		synctest.Wait()
 		records := loggingRecords(t, bytes.NewBuffer(logs.take()))
-		records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] == "transport_discard_summary" })
+		records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] != "session_unavailable" })
 		if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["level"] != "WARN" || records[0]["unavailable_ms"] != float64(300000) {
 			t.Fatalf("failed idle cleanup records=%v, want a five-minute WARN after ownership block", records)
 		}

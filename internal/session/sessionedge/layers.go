@@ -26,7 +26,8 @@ var ErrAdapter = errors.New("invalid session adapter")
 // attempt cancellation. The worker invokes it exactly once, including failed dial.
 // Implementations may wrap cloudhttp.Lease.Close, which already bounds cloud stop.
 // ErrReleaseAbandoned opts into fresh-allocation recovery after that bound;
-// any other stop error blocks replacement. Final failed stop is always surfaced.
+// other stop errors delay replacement after cleanup joins. Final failed stop
+// is always surfaced.
 // Stop is distinct from local transport teardown; replacement ownership is local policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#reports-and-stop
 type Lease interface{ Stop(context.Context) error }
@@ -39,7 +40,8 @@ type Lease interface{ Stop(context.Context) error }
 // A received internal stop denial or malformed reply also adds session.ErrStop.
 // Join every observed outcome monotonically: fatal/denied > malformed >
 // owed-release > retryable transport; secondary errors cannot lower disposition.
-// Local cleanup failure retains session.ErrStop.
+// Local cleanup failure retains session.ErrStop. Permanent acquisition failures
+// set diagnostic.Terminal.Permanent before publication, independently of stop policy.
 // Malformed or unknown allocation
 // responses map to session.ErrUncertain. Network errors can request fresh
 // online-link; uncertainty is not retryable. A returned partial lease

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestUncertainFailureBlocksDemandThroughCleanup(t *testing.T) {
+func TestPermanentFailureBlocksDemandThroughCleanup(t *testing.T) {
 	for _, terminal := range []error{ErrStop, ErrUncertain, errors.Join(ErrStop, ErrBusy), errors.Join(ErrUncertain, ErrBusy)} {
 		for _, pending := range []bool{false, true} {
 			m := machine(t, DefaultConfig())
@@ -15,7 +15,7 @@ func TestUncertainFailureBlocksDemandThroughCleanup(t *testing.T) {
 			if pending {
 				m.Step(Event{Kind: Failed, Attempt: 1}, 1)
 			}
-			m.Step(Event{Kind: Failed, Attempt: 1, Err: terminal}, 2)
+			m.Step(Event{Kind: Failed, Attempt: 1, Err: terminal, Permanent: true}, 2)
 			m.Step(Event{Kind: Client, Client: 2}, 3)
 			m.Step(Event{Kind: Released, Attempt: 1}, 5)
 			m.Step(Event{Kind: Tick}, core.Instant(time.Hour))

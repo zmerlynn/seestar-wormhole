@@ -2,7 +2,6 @@ package proxy
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"testing/synctest"
@@ -33,24 +32,17 @@ func TestAmbientFirstBusyPartialLeaseCleanup(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer s.Close()
-				<-time.After(time.Minute)
+				<-time.After(4 * time.Minute)
 				synctest.Wait()
 				wantAttempts := 4
-				if stopErr != nil {
-					wantAttempts = 1
-				}
 				if attempts != wantAttempts || int(f.stops.Load()) != min(3, wantAttempts) {
 					t.Fatalf("attempts/stops=%d/%d, want %d/%d", attempts, f.stops.Load(), wantAttempts, min(3, wantAttempts))
 				}
-				if stopErr == nil {
-					c, err := s.DialPort(t.Context(), 445)
-					if err != nil {
-						t.Fatal(err)
-					}
-					c.Close()
-				} else if _, err := s.DialPort(t.Context(), 445); !errors.Is(err, session.ErrStop) && !errors.Is(err, session.ErrUncertain) {
-					t.Fatalf("blocked client=%v, want cleanup failure", err)
+				c, err := s.DialPort(t.Context(), 445)
+				if err != nil {
+					t.Fatal(err)
 				}
+				c.Close()
 				if err := s.Close(); (err != nil) != (stopErr != nil) {
 					t.Fatalf("close=%v, cleanup failure=%v", err, stopErr)
 				}

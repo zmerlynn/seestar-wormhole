@@ -76,14 +76,14 @@ func TestLazyBusyCoreLateTimerAndCancellation(t *testing.T) {
 	}
 }
 
-func TestLazyBusyCoreFailureAndCleanupBlock(t *testing.T) {
+func TestLazyBusyCoreFailureAndCleanupDelay(t *testing.T) {
 	for _, cause := range []error{ErrUncertain, ErrStop, errors.Join(ErrBusy, ErrUncertain)} {
 		m := lazyBusyMachine(t)
 		m.Step(Event{Kind: Failed, Attempt: 1, Err: cause}, 1)
 		m.Step(Event{Kind: Released, Attempt: 1, Err: ErrStop}, 2)
 		as := m.Step(Event{Kind: Client, Client: 2}, 3)
-		if !has(as, Reject) || has(as, Dial) {
-			t.Fatalf("failure %v allowed dial: %+v", cause, as)
+		if has(as, Reject) || has(as, Dial) || m.Snapshot().Queued != 1 {
+			t.Fatalf("failure %v did not queue demand in delay: %+v", cause, as)
 		}
 	}
 	m := lazyBusyMachine(t)
@@ -134,7 +134,7 @@ func TestLazyBusyCoreProgressAtBudgetBoundary(t *testing.T) {
 	}
 }
 
-func TestLazyBusyAbandonedReleaseBlocksDemand(t *testing.T) {
+func TestLazyBusyAbandonedReleaseDelaysDemand(t *testing.T) {
 	for _, cancel := range []bool{false, true} {
 		t.Run(map[bool]string{false: "waiting", true: "canceled"}[cancel], func(t *testing.T) {
 			m := lazyBusyMachine(t)
@@ -147,11 +147,11 @@ func TestLazyBusyAbandonedReleaseBlocksDemand(t *testing.T) {
 			if has(as, Dial) || m.Snapshot().Queued != 0 {
 				t.Fatalf("abandoned refusal kept demand: %+v %+v", as, m.Snapshot())
 			}
-			// Later clean publication and demand cannot erase the owed release.
+			// Later demand waits for recovery and cannot erase the owed release.
 			m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 5)
 			as = m.Step(Event{Kind: Client, Client: 3}, 6)
-			if !has(as, Reject) || has(as, Dial) {
-				t.Fatalf("replacement allowed: %+v", as)
+			if has(as, Reject) || has(as, Dial) || m.Snapshot().Queued != 1 {
+				t.Fatalf("demand did not wait for recovery: %+v", as)
 			}
 			as = m.Step(Event{Kind: Shutdown}, 7)
 			for _, a := range as {
@@ -177,7 +177,7 @@ func TestLazyBusyCleanupAbandonmentSurvivesCancellation(t *testing.T) {
 				m.Step(Event{Kind: Failed, Attempt: 1, Layer: Cloud, Err: ErrBusy}, 3)
 			}
 			as := m.Step(Event{Kind: Released, Attempt: 1, Err: ErrReleaseAbandoned}, 4)
-			if has(as, Dial) || m.Snapshot().State != Busy || m.Snapshot().Queued != 0 {
+			if has(as, Dial) || m.Snapshot().State != Backoff || m.Snapshot().Queued != 0 {
 				t.Fatalf("abandoned cleanup allowed replacement: %+v %+v", as, m.Snapshot())
 			}
 		})

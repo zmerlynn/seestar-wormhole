@@ -14,13 +14,14 @@ const StackLayer session.Layer = session.LayerCount
 // Terminal carries bounded diagnostic attribution independently of policy.
 // Copies made while classifying policy share the once-only reporting receipt.
 type Terminal struct {
-	origin   session.Layer
-	cause    uint8
-	priority uint8 // The receipt's own blocking disposition, before any join.
-	rank     uint8 // Informative received cause (2), obligated cancellation (1), quiet (0).
-	policy   error
-	reported *atomic.Bool
-	next     *Terminal // Immutable received receipts from this one normalized outcome.
+	origin    session.Layer
+	cause     uint8
+	priority  uint8 // The receipt's own blocking disposition, before any join.
+	rank      uint8 // Informative received cause (2), obligated cancellation (1), quiet (0).
+	policy    error
+	reported  *atomic.Bool
+	next      *Terminal // Immutable received receipts from this one normalized outcome.
+	Permanent bool      // Acquisition barrier; set before publication, independent of attribution.
 }
 
 var terminalCauses = [...]string{
@@ -266,10 +267,14 @@ func retainTerminal(err, policy error, fallback *session.Layer) error {
 		next.reported = t.reported
 		next.rank = t.rank
 		next.priority = t.priority
+		next.Permanent = t.Permanent
 		tail.next = next
 		tail = next
 	}
-	walkReceived(err, appendReceipt, func(f *failure) {
+	walkReceived(err, func(t *Terminal) {
+		head.Permanent = head.Permanent || t.Permanent
+		appendReceipt(t)
+	}, func(f *failure) {
 		origin, ok := phaseLayer(f.phase)
 		if !ok {
 			origin = StackLayer

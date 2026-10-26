@@ -15,12 +15,13 @@ type clientSlot struct {
 
 // Snapshot exposes bounded accounting, never mutable machine storage.
 type Snapshot struct {
-	Discards        uint64 // cumulative R097 stale/irrelevant event count
-	State           State
-	Attempt         uint64
-	Clients, Queued int
-	Usage           Limit
-	Deadline        core.Instant
+	Discards          uint64 // cumulative R097 stale/irrelevant event count
+	State             State
+	OwnershipRecovery bool // An ownership block is waiting for cleanup or replacement.
+	Attempt           uint64
+	Clients, Queued   int
+	Usage             Limit
+	Deadline          core.Instant
 }
 
 // Machine is owned by one caller. Allocate one per device and do not copy it.
@@ -31,7 +32,7 @@ type Machine struct {
 	rng                              RNG
 	state, after                     State
 	started                          bool
-	wasReady                         bool
+	closeDuringRecovery              bool
 	busyCloud                        bool
 	lastDial                         core.Instant
 	attempt                          uint64
@@ -42,6 +43,7 @@ type Machine struct {
 	last, deadline, until, idleUntil core.Instant
 	retry                            time.Duration
 	blockErr                         error
+	permanent                        bool
 	retryAt                          core.Instant
 	retryPending                     bool
 	refusalRetry                     bool
@@ -79,7 +81,7 @@ func (m *Machine) Snapshot() Snapshot {
 	for _, l := range m.usage {
 		u, _ = addLimit(u, l)
 	}
-	return Snapshot{State: m.state, Attempt: m.attempt, Clients: m.count, Queued: m.queued, Usage: u, Deadline: m.deadline, Discards: m.discards}
+	return Snapshot{State: m.state, OwnershipRecovery: m.state != Closed && m.ownershipRecovery(), Attempt: m.attempt, Clients: m.count, Queued: m.queued, Usage: u, Deadline: m.deadline, Discards: m.discards}
 }
 func (m *Machine) action(k Effect) Action { return Action{Kind: k, Attempt: m.attempt} }
 func (m *Machine) clientAction(k Effect, id uint64, err error) Action {
@@ -127,6 +129,8 @@ func (m *Machine) dial(now core.Instant) []Action {
 		m.state = Closed
 		return append(m.drop(ErrClosed), m.action(Stopped))
 	}
+	m.blockErr = nil
+	m.permanent = false
 	m.attempt++
 	m.lastDial = now
 	m.state = Dialing
@@ -166,7 +170,7 @@ func (m *Machine) drop(err error) (out []Action) {
 func (m *Machine) release(target State, err error, now core.Instant) []Action {
 	// A ready session is ours even when transport loss ends it before cloud
 	// cleanup. A confirmed stop below reanchors the window at stop completion.
-	// Failed/uncertain cleanup still blocks all replacement attempts.
+	// Failed/uncertain cleanup delays replacement until after the worker joins.
 	if m.state == Ready {
 		m.recentUntil = after(now, m.cfg.RecentReleaseWindow)
 		m.releasedAttempt = m.attempt
@@ -195,6 +199,10 @@ func (m *Machine) release(target State, err error, now core.Instant) []Action {
 	m.state = target
 	return append(out, m.settle(now)...)
 }
+func (m *Machine) ownershipRecovery() bool {
+	return !m.permanent && (m.blockErr == ErrStop || m.blockErr == ErrUncertain)
+}
+
 func (m *Machine) settle(now core.Instant) []Action {
 	switch m.state {
 	case Closed:
@@ -203,8 +211,19 @@ func (m *Machine) settle(now core.Instant) []Action {
 			a.Err = m.blockErr
 		}
 		return []Action{a}
+	case Busy:
+		if m.ownershipRecovery() {
+			// Reuse the retry floor and the eager admission policy after readiness.
+			// Retain the failure for shutdown in the delay.
+			m.closeDuringRecovery = true
+			m.retryPending = false
+			m.refusalRetry = false
+			m.retryAt = after(now, OwnershipRecoveryDelay)
+			m.state = Backoff
+			m.until = m.retryAt
+		}
 	case Dormant:
-		if m.blockErr != nil {
+		if m.blockErr != nil && !m.ownershipRecovery() {
 			m.state = Busy
 			return nil
 		}
@@ -350,6 +369,9 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 			m.busyCloud = false
 			m.state = Dormant
 		}
+		if m.cfg.Idle == 0 && m.ownershipRecovery() && m.state != Releasing {
+			return []Action{m.clientAction(Reject, e.Client, m.blockErr)}
+		}
 		// Queue lazy demand during refusal cleanup; Released owns replacement and backoff.
 		if m.state == Releasing && !(m.lazyBusyEnabled() && m.blockErr == nil && (m.after == Dormant || (m.after == Backoff && m.refusalRetry))) {
 			err := ErrTransport
@@ -361,7 +383,7 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 			}
 			return []Action{m.clientAction(Reject, e.Client, err)}
 		}
-		if m.ambientRecovery() && (m.wasReady || m.refusalRetry) && m.state != Ready {
+		if m.ambientRecovery() && (m.closeDuringRecovery || m.refusalRetry) && m.state != Ready {
 			err := ErrTransport
 			if m.refusalRetry {
 				err = ErrBusy
@@ -435,7 +457,7 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 		m.next++
 		if m.next == LayerCount {
 			m.state = Ready
-			m.wasReady = true
+			m.closeDuringRecovery = true
 			m.resetLazyOpen()
 			m.retry = firstBackoff(m.cfg)
 			for i, c := range m.clients {
@@ -450,6 +472,7 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 			}
 		}
 	case Failed:
+		m.permanent = m.permanent || e.Permanent
 		uncertain := errors.Is(e.Err, ErrStop) || errors.Is(e.Err, ErrUncertain) ||
 			(errors.Is(e.Err, ErrBusy) && errors.Is(e.Err, ErrReleaseAbandoned))
 		// A refused canceled/expired generation cannot block demand queued
@@ -494,6 +517,7 @@ func (m *Machine) Step(e Event, now core.Instant) (out []Action) {
 			case Dormant, Backoff, Busy:
 				m.state = Busy
 				out = m.drop(m.blockErr)
+				out = append(out, m.settle(now)...)
 			}
 		}
 		if m.state == Dialing || m.state == Ready {
