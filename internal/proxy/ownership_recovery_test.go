@@ -148,6 +148,32 @@ func TestOwnershipRecoveryAvailability(t *testing.T) {
 							t.Fatalf("warning after ready: %v", r)
 						}
 					}
+					// Readiness must also retire the old ownership reason. Start an
+					// unrelated transport outage and inspect its next reminder.
+					for len(f.channels) > 1 {
+						<-f.channels
+					}
+					recoverNow.Store(false)
+					(<-f.channels).events <- session.Event{Kind: session.Failed, Err: session.ErrTransport}
+					synctest.Wait()
+					<-time.After(5 * time.Minute)
+					synctest.Wait()
+					wantReason := "busy"
+					if lazy {
+						wantReason = "transport_failed"
+					}
+					warnings = 0
+					for _, r := range loggingRecords(t, bytes.NewBuffer(logs.take())) {
+						if r["msg"] == "session_unavailable" {
+							warnings++
+							if r["reason"] != wantReason {
+								t.Errorf("stale ownership reason in second outage: %v, want %s", r, wantReason)
+							}
+						}
+					}
+					if warnings != 1 {
+						t.Fatalf("second outage warnings=%d, want 1", warnings)
+					}
 					if err := s.Close(); err != nil {
 						t.Fatalf("recovered cleanup poisoned shutdown: %v", err)
 					}
