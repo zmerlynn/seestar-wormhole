@@ -16,10 +16,12 @@ retrying until it gets in. Stop the proxy before switching to the app's
 remote mode. If you just killed a proxy outright, the cloud may keep the
 telescope marked busy for a minute or more. A reason like `release_failed` or
 `ownership_uncertain` is different: the proxy couldn't confirm it let go of
-the telescope, and it stops trying to reconnect until you restart it.
-Waiting won't fix it. Stop the proxy, wait for it to exit, give the
-cloud a few minutes, then start it again. File an issue if it keeps
-happening.
+the telescope. After cleanup finishes, it waits 60 seconds and tries a
+fresh allocation automatically. In lazy mode, it waits for client demand.
+Later busy answers keep retrying under the [availability policy](reference.md#availability-and-busy-devices).
+The reminder keeps the original reason until recovery succeeds; look for
+`session_state` transitions through `backoff` and `dialing`. File an issue if
+it keeps happening.
 
 A `site_protected` event means the proxy dropped a site or time setter; see [site protection](reference.md#site-protection).
 

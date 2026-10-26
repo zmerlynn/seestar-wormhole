@@ -343,8 +343,8 @@ The session manager must preserve these invariants after every event:
   of a ready session and transport loss start the window; confirmed stop of an
   owned lease reanchors it at completion, including partial allocation failures.
   This is bounded local retry policy, [not a vendor cooldown.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/state-timers.md#timers)
-  Refusals with no lease cannot start or extend the window. Uncertainty always
-  overrides retry. A refusal outside this window, without a recent own-session
+  Refusals with no lease cannot start or extend the window. Ownership recovery
+  uses its separate delay below. A refusal outside this window, without a recent own-session
   end, is treated as another holder.
 - Otherwise busy is sticky for the current attempt, even after dial timeout or
   during cleanup. An ambient proxy enables `RetryBusy`: eager cloud refusals
@@ -352,23 +352,32 @@ The session manager must preserve these invariants after every event:
   (0.5–1s initially, doubling to a 30s cap, then 15–30s). No client demand or
   prior readiness is needed. Lazy cloud busy accepts
   fresh client demand; its minimum dial interval survives canceled/expired
-  demand. Stop and restart to resolve blocked ownership/cleanup; Shutdown is
-  terminal. Stale generations cannot change ownership or policy.
+  demand. Permanent rejections and protocol/identity failures remain blocked;
+  Shutdown is terminal. Stale generations cannot change ownership or policy.
 - Backoff constrains every source of dial demand, including lazy client arrivals. Retry-not-before and exponential history survive an
   empty client queue. A retryable own-session refusal preserves pending admissions
   across cleanup; a single lazy caller can therefore recover without resubmitting.
-  Cancellation, Shutdown and terminal cleanup errors still remove demand.
+  Cancellation, Shutdown and failed cleanup still remove demand.
   Demand before expiry waits within the queue budget; expiry
   without lazy demand does not allocate.
-- Uncertain remote allocation or release blocks replacement. Cleanup must finish
-  before any new worker starts. An allocator that cannot hand back ownership must
-  report unsafe local cleanup or an unknown/malformed allocation response as
-  a nonretryable outcome. Stop the owner, resolve remote ownership and restart
-  before trying again. Bounded cloud stop failure is an explicit exception: record abandonment,
-  finish local teardown and join, then use the existing backoff before fresh
-  detail/online-link. [Service allocation expiry/reuse is
-  unresolved](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#allocation-online-link); abandoned is never accepted. The recovery deadline allows one
-  additional DialTimeout join grace, after which a broken adapter is fatal.
+- Uncertain remote allocation or failed cleanup delays replacement for
+  `session.OwnershipRecoveryDelay` (60 seconds). Cleanup must finish and the
+  worker must join before the delay starts; recovery reuses Backoff and the
+  retry-not-before floor. Eager mode then allocates fresh; lazy mode allocates
+  only with demand. Existing clients close as after transport loss; fresh lazy
+  demand waits for the allowed dial and starts its busy budget at that dial.
+  With no demand, expiry leaves the owner dormant. Classified permanent
+  rejections and protocol/identity errors retain their blocking policy even
+  when they also carry an ownership sentinel. A successful ready session
+  retires the old cleanup failure; shutdown before then still reports it.
+  Bounded cloud stop failure during transport recovery retains its existing
+  abandonment behavior: record abandonment, finish local teardown and join,
+  then use ordinary backoff before fresh detail/online-link.
+  [Service allocation expiry/reuse is unresolved](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#allocation-online-link);
+  abandonment does not confirm release. A restart forgets the old allocation,
+  so requiring one supplies no additional ownership evidence. Lease close is
+  idempotent and has no second-stop operation. The recovery deadline allows
+  one additional DialTimeout join grace, after which a broken adapter is fatal.
   Shutdown still performs its final bounded stop.
 - Every acquired allocation has exactly one stop invocation, by either the
   allocator before handoff or the attempt worker after handoff, never both.
