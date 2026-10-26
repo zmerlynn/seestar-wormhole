@@ -340,7 +340,7 @@ func TestPartialCleanupDenialPolicy(t *testing.T) {
 		})
 	}
 }
-func TestPartialCleanupDenialDaemon(t *testing.T) {
+func TestPartialCleanupDenialDaemonRecovery(t *testing.T) {
 	for _, status := range []int{401, 403, 409} {
 		t.Run(fmt.Sprint(status), func(t *testing.T) {
 			c := &r3Cloud{faultPath: "/v1/device-p2p/online-link", faultStatus: 200, bodyFault: true, stopStatus: status}
@@ -352,8 +352,19 @@ func TestPartialCleanupDenialDaemon(t *testing.T) {
 				synctest.Wait()
 				c.mu.Lock()
 				defer c.mu.Unlock()
-				if c.allocations != 1 || len(c.stops) != 1 {
-					t.Errorf("received stop %d after partial allocation: allocations=%d stops=%v, want 1/one stop", status, c.allocations, c.stops)
+				want := 3 // A failed stop delays replacement by one minute.
+				if status == 401 {
+					// Stop invalidates authorization; the next detail request hits
+					// the separate permanent account barrier before allocation.
+					want = 1
+				}
+				if c.allocations != want || len(c.stops) != want {
+					t.Errorf("received stop %d after partial allocation: allocations=%d stops=%v, want %d/one stop each", status, c.allocations, c.stops, want)
+				}
+				for id, stops := range c.stops {
+					if stops != 1 {
+						t.Errorf("allocation %s stopped %d times, want 1", id, stops)
+					}
 				}
 			})
 		})
