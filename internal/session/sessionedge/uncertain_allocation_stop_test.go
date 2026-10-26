@@ -123,7 +123,9 @@ func TestPermanentOutcomesDoNotRecoverOwnership(t *testing.T) {
 					l, _ := f.New(a, b)
 					l.Cloud = allocateFunc(func(context.Context) (Lease, error) {
 						calls.Add(1)
-						return nil, diagnostic.NewTerminal(session.Cloud, reason, session.ErrUncertain)
+						terminal := diagnostic.NewTerminal(session.Cloud, reason, session.ErrUncertain)
+						terminal.Permanent = true
+						return nil, terminal
 					})
 					return l, nil
 				})

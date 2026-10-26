@@ -301,22 +301,12 @@ func (o *owner) recordCleanup(err error) {
 }
 
 func (o *owner) machineStep(e session.Event, now core.Instant) []session.Action {
-	// ErrUncertain also carries permanent cloud/protocol failures. Preserve
-	// those barriers while allowing ownership recovery with transient attribution.
+	// Classification belongs to the adapter while acquisition and cleanup are
+	// distinct. Normalization carries that barrier independently of log attribution.
 	if e.Kind == session.Failed {
 		e.Permanent = e.Permanent || errors.Is(e.Err, ErrPanic)
 		diagnostic.EachTerminal(e.Err, func(t *diagnostic.Terminal) {
-			if !errors.Is(t, session.ErrStop) && !errors.Is(t, session.ErrUncertain) {
-				return
-			}
-			_, reason := diagnostic.Fields(t, "")
-			switch reason {
-			case "release_failed", "ownership_uncertain", "busy", "release_abandoned",
-				"timeout", "transport_failed", "liveness_timeout", "connection_timeout",
-				"read_failed", "write_failed":
-			default:
-				e.Permanent = true
-			}
+			e.Permanent = e.Permanent || t.Permanent
 		})
 	}
 	actions := o.machine.Step(e, now)

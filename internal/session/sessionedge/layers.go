@@ -40,7 +40,8 @@ type Lease interface{ Stop(context.Context) error }
 // A received internal stop denial or malformed reply also adds session.ErrStop.
 // Join every observed outcome monotonically: fatal/denied > malformed >
 // owed-release > retryable transport; secondary errors cannot lower disposition.
-// Local cleanup failure retains session.ErrStop.
+// Local cleanup failure retains session.ErrStop. Permanent acquisition failures
+// set diagnostic.Terminal.Permanent before publication, independently of stop policy.
 // Malformed or unknown allocation
 // responses map to session.ErrUncertain. Network errors can request fresh
 // online-link; uncertainty is not retryable. A returned partial lease

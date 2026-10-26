@@ -55,9 +55,18 @@ func cloudTerminal(err error) error {
 	if result == nil {
 		return nil
 	}
-	// Cloud disposition is translated once; attribution, joined receipts and
-	// cancellation then follow the same rule as every other terminal boundary.
-	return diagnostic.AtLayer(err, session.Cloud, result)
+	// Decide the acquisition barrier before normalization discards raw causes.
+	// Cleanup still contributes to result, but its denial cannot make a transport
+	// acquisition permanent or hide a permanent acquisition behind busy attribution.
+	acquisition := err
+	var acquired *cloudhttp.AcquireError
+	if errors.As(err, &acquired) {
+		acquisition = acquired.Primary
+	}
+	severity := cloud.Disposition(acquisition)
+	terminal := diagnostic.AtLayer(err, session.Cloud, result).(*diagnostic.Terminal)
+	terminal.Permanent = severity == cloud.Malformed || severity >= cloud.Denied
+	return terminal
 }
 
 // closeStartupCloud joins account publication before projecting the startup

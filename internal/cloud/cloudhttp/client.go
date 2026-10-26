@@ -57,8 +57,8 @@ type Config struct {
 var ErrCleanup = cloud.ErrOwedRelease
 
 // AcquireError keeps an acquisition failure distinct from its failed bounded
-// cleanup for diagnostics. Policy MUST use cloud.JoinOutcomes over the whole
-// error: both operations contribute severity and neither can weaken the other.
+// cleanup. Joined disposition and release obligations MUST use cloud.JoinOutcomes
+// over the whole error; the permanent acquisition barrier uses Primary separately.
 // Both causes and ErrCleanup remain available through errors.Is/errors.As.
 type AcquireError struct {
 	Primary error
