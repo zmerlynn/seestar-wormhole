@@ -209,7 +209,10 @@ The proxy exits 0 after orderly shutdown, 2 for usage or configuration errors,
 runtime or cleanup failures. Exit 3 covers HTTP 401/403 denial (including rejected
 login), persistent profile challenges after the two permitted renewals, and
 reauthentication required. Transport failures, busy responses, generic rejected
-statuses, and uncertain ownership do not select exit 3. Correct the credentials
+statuses, and uncertain ownership do not select exit 3. An exit code describes
+the final result, not whether the running proxy retried: a stop-only HTTP 403
+that is still unresolved at shutdown exits 3, and reaching ready clears it.
+Correct the credentials
 or account restriction before deliberately restarting; see the
 [service recipe](always-on.md#a-systemd-service).
 See [status and reason values](#status-and-reason-values) for the complete mapping.
@@ -235,9 +238,11 @@ not count as malformed JSON. Login allocates no device session, and a
 temporary profile failure preserves the installed token. Recovery continues
 without restarting the owner. `Retry-After` does not change the retry delay.
 Allocation and stop responses keep their ownership uncertainty and bounded
-cleanup, including these statuses. Credential rejections, remote authorization
-denials, and other permanent acquisition rejections remain blocking. Failed
-stop responses follow the ownership recovery policy above.
+cleanup, including these statuses. Credential rejections and authorization or
+other permanent rejections during sign-in or allocation remain blocking. A
+rejection received only from stop, such as HTTP 403 or 409, follows the
+ownership recovery policy above. HTTP 401 on stop expires the sign-in, so the
+next attempt blocks before allocating.
 
 With positive `--idle`, startup can still authorize/read the catalog and,
 for discovery, detail. Session allocation waits for a client. Client-triggered
