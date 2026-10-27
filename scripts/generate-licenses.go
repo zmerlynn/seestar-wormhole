@@ -173,6 +173,21 @@ func generate(check bool) error {
 		if licenseCount == 0 {
 			return fmt.Errorf("vendored module %s has no license file", path)
 		}
+		// Supplemental notices cover source-file terms that upstream does not
+		// supply as separate license files. Keep vendor output unmodified.
+		supplements, err := filepath.Glob(filepath.Join("internal/licenses/notices", path, "*"))
+		if err != nil {
+			return err
+		}
+		for _, name := range supplements {
+			name = filepath.ToSlash(name)
+			content, err := read(name)
+			if err != nil {
+				return err
+			}
+			files[name] = content
+			entry.Files = append(entry.Files, name)
+		}
 		sort.Strings(entry.Files)
 		for _, name := range entry.Files {
 			if _, ok := files[name]; !ok {

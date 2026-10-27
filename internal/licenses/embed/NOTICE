@@ -10,13 +10,20 @@ Vendored modules and the license files copied into vendor/:
 
 | Module | License file under vendor/ | SPDX identifier |
 | --- | --- | --- |
+| github.com/danieljoos/wincred | vendor/github.com/danieljoos/wincred/LICENSE | MIT |
+| github.com/godbus/dbus/v5 | vendor/github.com/godbus/dbus/v5/LICENSE | BSD-2-Clause |
 | github.com/inconshreveable/mousetrap | vendor/github.com/inconshreveable/mousetrap/LICENSE | Apache-2.0 |
 | github.com/pion/dtls/v3 | vendor/github.com/pion/dtls/v3/LICENSE | MIT |
 | github.com/pion/logging | vendor/github.com/pion/logging/LICENSE | MIT |
 | github.com/pion/transport/v5 | vendor/github.com/pion/transport/v5/LICENSE | MIT |
 | github.com/spf13/cobra | vendor/github.com/spf13/cobra/LICENSE.txt | Apache-2.0 |
 | github.com/spf13/pflag | vendor/github.com/spf13/pflag/LICENSE | BSD-3-Clause |
+| github.com/zalando/go-keyring | vendor/github.com/zalando/go-keyring/LICENSE | MIT AND Apache-2.0 |
 | go.yaml.in/yaml/v3 | vendor/go.yaml.in/yaml/v3/LICENSE | MIT AND Apache-2.0 |
 | golang.org/x/crypto | vendor/golang.org/x/crypto/LICENSE | BSD-3-Clause |
 | golang.org/x/net | vendor/golang.org/x/net/LICENSE | BSD-3-Clause |
 | golang.org/x/sys | vendor/golang.org/x/sys/LICENSE | BSD-3-Clause |
+
+The macOS implementation in github.com/zalando/go-keyring carries a Google
+copyright and Apache-2.0 notice in keyring_darwin.go. The supplemental notice
+and full Apache license are included in the generated license catalog.

@@ -116,6 +116,9 @@ func NewFromEnvironment(cfg Config) (*Client, error) {
 
 // NewWithCredentials constructs an account owner from validated in-memory credentials.
 func NewWithCredentials(cfg Config, credentials cloud.Credentials) (*Client, error) {
+	if credentials == (cloud.Credentials{}) {
+		return nil, cloud.ErrConfig
+	}
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://api-ithings.zwoastro.com"
 	}

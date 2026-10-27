@@ -12,6 +12,9 @@ func TestInMemoryCredentialsIgnoreEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err := NewWithCredentials(Config{}, cloud.Credentials{}); err == nil {
+		t.Fatal("zero credentials accepted")
+	}
 	c, err := NewWithCredentials(Config{}, credentials)
 	if err != nil {
 		t.Fatal(err)

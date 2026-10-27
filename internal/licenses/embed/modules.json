@@ -1,5 +1,19 @@
 [
   {
+    "Path": "github.com/danieljoos/wincred",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/danieljoos/wincred/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/godbus/dbus/v5",
+    "SPDX": "BSD-2-Clause",
+    "Files": [
+      "vendor/github.com/godbus/dbus/v5/LICENSE"
+    ]
+  },
+  {
     "Path": "github.com/inconshreveable/mousetrap",
     "SPDX": "Apache-2.0",
     "Files": [
@@ -39,6 +53,16 @@
     "SPDX": "BSD-3-Clause",
     "Files": [
       "vendor/github.com/spf13/pflag/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/zalando/go-keyring",
+    "SPDX": "MIT AND Apache-2.0",
+    "Files": [
+      "internal/licenses/notices/github.com/zalando/go-keyring/LICENSE-Apache-2.0",
+      "internal/licenses/notices/github.com/zalando/go-keyring/NOTICE",
+      "vendor/github.com/zalando/go-keyring/LICENSE",
+      "vendor/github.com/zalando/go-keyring/internal/shellescape/LICENSE"
     ]
   },
   {
