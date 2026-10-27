@@ -73,7 +73,7 @@ func TestNewOptionsAndRetiredFlags(t *testing.T) {
 	}
 	var help bytes.Buffer
 	_, err = parse(append([]string{"proxy"}, []string{"--help"}...), &help)
-	if !errors.Is(err, errHelp) || !strings.Contains(help.String(), "default empty: memory only") {
+	if !errors.Is(err, errHelp) || !strings.Contains(help.String(), "default: memory only; UI state root with --config") {
 		t.Fatal("missing visible state default")
 	}
 	for _, name := range []string{"--app-ports", "--lan-template"} {
