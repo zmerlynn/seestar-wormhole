@@ -56,3 +56,48 @@ func TestSettingsStorage(t *testing.T) {
 		}
 	}
 }
+
+func TestHeadlessSettingsReadOnly(t *testing.T) {
+	st := testStorage(t)
+	if err := st.write("config.json", testSettings()); err != nil {
+		t.Fatal(err)
+	}
+	lockFile, err := os.OpenFile(filepath.Join(st.root, "ui.lock"), os.O_CREATE|os.O_RDWR, 0600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lockFile.Close()
+	if locked, err := tryLock(lockFile); err != nil || !locked {
+		t.Fatalf("lock: %v", err)
+	}
+	before, err := os.Stat(filepath.Join(st.root, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadSettings(st.root); err != nil {
+		t.Fatalf("load while UI holds lock: %v", err)
+	}
+	after, _ := os.Stat(filepath.Join(st.root, "config.json"))
+	if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("config changed during read")
+	}
+	entries, _ := os.ReadDir(st.root)
+	if len(entries) != 2 {
+		t.Fatalf("unexpected files: %v", entries)
+	}
+	missing := filepath.Join(t.TempDir(), "absent")
+	if _, err := LoadSettings(missing); err == nil {
+		t.Fatal("missing root accepted")
+	}
+	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
+		t.Fatal("read created state root")
+	}
+	for _, body := range []string{`{"version":2}`, `{}`, strings.Repeat(" ", maxJSON+1)} {
+		if err := os.WriteFile(filepath.Join(st.root, "config.json"), []byte(body), 0600); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := LoadSettings(st.root); err == nil {
+			t.Fatal("invalid headless config accepted")
+		}
+	}
+}

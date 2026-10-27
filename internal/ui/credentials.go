@@ -23,6 +23,17 @@ func (osKeychain) Get(s, u string) (string, error) { return keyring.Get(s, u) }
 func (osKeychain) Set(s, u, p string) error        { return keyring.Set(s, u, p) }
 func (osKeychain) Delete(s, u string) error        { return keyring.Delete(s, u) }
 
+// KeychainPassword reads the same service/account entry as the UI, with the
+// same bounded wait. It never saves or deletes credentials.
+func KeychainPassword(ctx context.Context, email string) (string, error) {
+	return keychainPassword(ctx, email, osKeychain{})
+}
+
+func keychainPassword(ctx context.Context, email string, chain keychain) (string, error) {
+	c := &credentialStore{chain: chain}
+	return keychainCall(ctx, c, func() (string, error) { return chain.Get(keyringService, email) })
+}
+
 // The store never exposes the password. Keychain calls run outside the memory
 // mutex, so a locked provider cannot block status, Stop, or Quit.
 type credentialStore struct {

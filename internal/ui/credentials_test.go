@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"testing"
 	"testing/synctest"
+	"time"
 )
 
 const testPassword = "synthetic-password"
@@ -169,4 +171,43 @@ func TestKeychainRecordSize(t *testing.T) {
 	if chain.calls != 0 {
 		t.Fatal("Start sent oversized record to keychain")
 	}
+}
+
+type readOnlyKeychain struct {
+	t     *testing.T
+	block <-chan struct{}
+}
+
+func (f readOnlyKeychain) Get(service, email string) (string, error) {
+	if service != "seestar-wormhole" || email != testSettings().Email {
+		f.t.Error("headless used a different keychain entry")
+	}
+	if f.block != nil {
+		<-f.block
+	}
+	return testPassword, nil
+}
+func (f readOnlyKeychain) Set(string, string, string) error {
+	f.t.Error("headless wrote keychain")
+	return nil
+}
+func (f readOnlyKeychain) Delete(string, string) error {
+	f.t.Error("headless deleted keychain")
+	return nil
+}
+
+func TestHeadlessKeychainReadAndBound(t *testing.T) {
+	p, err := keychainPassword(t.Context(), testSettings().Email, readOnlyKeychain{t: t})
+	if err != nil || p != testPassword {
+		t.Fatalf("read err=%v", err)
+	}
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		defer close(release)
+		start := time.Now()
+		p, err := keychainPassword(t.Context(), testSettings().Email, readOnlyKeychain{t: t, block: release})
+		if !errors.Is(err, context.DeadlineExceeded) || p != "" || time.Since(start) != 3*time.Second {
+			t.Fatalf("bound: err=%v elapsed=%v", err, time.Since(start))
+		}
+	})
 }

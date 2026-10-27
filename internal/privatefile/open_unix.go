@@ -40,6 +40,11 @@ func Directory(path string) (*os.File, error) {
 	if err := os.Mkdir(path, 0700); err != nil && !os.IsExist(err) {
 		return nil, err
 	}
+	return ReadDirectory(path)
+}
+
+// ReadDirectory pins and checks an existing private directory without creating it.
+func ReadDirectory(path string) (*os.File, error) {
 	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err

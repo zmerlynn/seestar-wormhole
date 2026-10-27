@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"time"
 )
@@ -60,4 +61,15 @@ func loadSettings(s *storage) (Settings, error) {
 		return Settings{}, err
 	}
 	return settings, nil
+}
+
+// LoadSettings reads the UI's saved settings without writing files or taking ui.lock.
+// The root is also the installation identity root for a headless run.
+func LoadSettings(root string) (Settings, error) {
+	d, err := privatefile.ReadDirectory(root)
+	if err != nil {
+		return Settings{}, errStorage
+	}
+	defer d.Close()
+	return loadSettings(&storage{root: root, directory: d})
 }
