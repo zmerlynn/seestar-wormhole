@@ -15,6 +15,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
 func testController(run runFunc) *controller {
@@ -302,5 +303,33 @@ func TestHTTPQuitJoinsCleanup(t *testing.T) {
 	}
 	if _, active := s.controller.snapshot(); active {
 		t.Fatal("Quit left active run")
+	}
+}
+
+func TestControllerFinalCleanupError(t *testing.T) {
+	for _, canceled := range []bool{false, true} {
+		t.Run(map[bool]string{false: "failed-release", true: "canceled-and-failed-release"}[canceled], func(t *testing.T) {
+			outcome := errors.Join(session.ErrStop, errors.New(testPassword))
+			if canceled {
+				outcome = errors.Join(context.Canceled, outcome)
+			}
+			complete := make(chan struct{})
+			c := testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+				<-complete
+				return outcome
+			})
+			if err := c.start(testSettings(), testPassword); err != nil {
+				t.Fatal(err)
+			}
+			c.mu.Lock()
+			done := c.done
+			c.mu.Unlock()
+			close(complete)
+			<-done
+			text, active := c.snapshot()
+			if active || text != "Stopped with cleanup error (release_failed)" {
+				t.Fatalf("completed controller: text=%q active=%v", text, active)
+			}
+		})
 	}
 }
