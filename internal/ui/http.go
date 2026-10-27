@@ -153,8 +153,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/forget":
 		s.controller.credentials.forget(r.Context(), in.Settings.Email)
 	case "/api/quit":
-		s.controller.requestQuit()
-		// Flush the response before the process-level shutdown joins cleanup.
+		s.controller.quit()
+		// Cleanup has joined; flush the response before shutting down HTTP.
 		s.respond(w, struct {
 			OK bool `json:"ok"`
 		}{true})

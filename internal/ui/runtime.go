@@ -125,7 +125,7 @@ func runUI(ctx context.Context, root string, out io.Writer, run runFunc, open fu
 	record := runtimeRecord{Port: listener.Addr().(*net.TCPAddr).Port, Token: hex.EncodeToString(token[:])}
 	c := &controller{parent: ctx, run: run, credentials: &credentialStore{chain: chain}}
 	handler := &server{host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
-	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
+	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
 	if err = st.write("ui-runtime.json", record); err != nil {
 		return err
 	}

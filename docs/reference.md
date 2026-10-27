@@ -28,7 +28,8 @@ seestar-wormhole ui [--state-dir PATH]
 Bare launch opens the browser controls, as does `ui`. Enter credentials and
 options, then press Start. Loading settings never starts a proxy. Stop releases
 the session and leaves the page usable; Quit or Ctrl+C releases it and exits.
-Closing the tab leaves the process running. Launch again with the same state
+A terminal rejection ends the run after cleanup, leaving the options available
+for another Start. Closing the tab leaves the process running. Launch again with the same state
 directory to reopen its page. A separately running `proxy` command is independent;
 conflicting forwarding ports must be freed before starting another run.
 

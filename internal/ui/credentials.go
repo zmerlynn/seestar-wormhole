@@ -2,6 +2,7 @@ package ui
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -56,7 +57,9 @@ func (c *credentialStore) remember(ctx context.Context, s Settings, password str
 	_, err := keychainCall(ctx, c, func() (string, error) { return "", c.chain.Set(keyringService, email, p) })
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if err != nil {
+	if errors.Is(err, context.DeadlineExceeded) {
+		c.notice = "OS keychain did not respond; password kept in memory. The pending OS request may still finish"
+	} else if err != nil {
 		c.notice = "OS keychain unavailable or locked; password kept in memory"
 	} else {
 		c.notice = "Password saved in OS keychain"

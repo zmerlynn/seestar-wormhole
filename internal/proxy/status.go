@@ -13,8 +13,18 @@ import (
 // One session owner writes; any number of readers may load.
 type Status struct {
 	text      atomic.Pointer[string]
+	rejected  chan struct{}
 	reason    string
 	everReady bool
+}
+
+// NewStatus enables a nonblocking terminal-rejection notification for the UI.
+func NewStatus() *Status { return &Status{rejected: make(chan struct{}, 1)} }
+func (s *Status) Rejected() <-chan struct{} {
+	if s == nil {
+		return nil
+	}
+	return s.rejected
 }
 
 func (s *Status) Text() string {
@@ -30,19 +40,30 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 	if s == nil {
 		return
 	}
+	if e.Kind == session.Failed && e.Attempt != before.Attempt {
+		return
+	}
+	_, reason := diagnostic.Fields(e.Err, "")
+	if e.Kind == session.Failed {
+		permanent := false
+		diagnostic.EachTerminal(e.Err, func(t *diagnostic.Terminal) { permanent = permanent || t.Permanent })
+		if permanent || reason == "unauthorized" || reason == "reauthentication_required" {
+			select {
+			case s.rejected <- struct{}{}:
+			default:
+			}
+		}
+	}
 	if e.Err != nil {
 		switch {
+		case reason == "unauthorized" || reason == "reauthentication_required":
+			s.reason = "signin"
 		case errors.Is(e.Err, session.ErrStop), errors.Is(e.Err, session.ErrUncertain), errors.Is(e.Err, session.ErrReleaseAbandoned):
 			s.reason = "cleanup"
 		case errors.Is(e.Err, session.ErrBusy):
 			s.reason = "busy"
 		default:
-			_, reason := diagnostic.Fields(e.Err, "")
-			if reason == "unauthorized" || reason == "reauthentication_required" {
-				s.reason = "signin"
-			} else {
-				s.reason = "transport"
-			}
+			s.reason = "transport"
 		}
 	}
 	if before.State == session.Ready && after.State == session.Releasing && e.Err == nil {

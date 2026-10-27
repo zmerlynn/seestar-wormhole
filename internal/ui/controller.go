@@ -35,7 +35,7 @@ func (c *controller) start(s Settings, password string) error {
 	ctx, cancel := context.WithCancel(c.parent)
 	c.cancel = cancel
 	c.done = make(chan struct{})
-	c.status = new(proxy.Status)
+	c.status = proxy.NewStatus()
 	c.stopping = false
 	c.final = ""
 	done, status := c.done, c.status
@@ -45,7 +45,7 @@ func (c *controller) start(s Settings, password string) error {
 		if ctx.Err() != nil {
 			err = ctx.Err()
 		} else if err == nil {
-			err = c.run(ctx, s, credentials, status)
+			err = runObserved(cancel, status.Rejected(), func() error { return c.run(ctx, s, credentials, status) })
 		}
 		c.mu.Lock()
 		defer c.mu.Unlock()
@@ -113,4 +113,18 @@ func (c *controller) snapshot() (string, bool) {
 		return "Stopping — releasing session", true
 	}
 	return c.status.Text(), true
+}
+
+// A terminal credential/protocol rejection ends this UI run after cleanup joins.
+// The headless command retains its existing ownership and exit behavior.
+func runObserved(cancel context.CancelFunc, rejected <-chan struct{}, run func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- run() }()
+	select {
+	case err := <-done:
+		return err
+	case <-rejected:
+		cancel()
+		return <-done
+	}
 }

@@ -248,3 +248,59 @@ func TestDoubleLaunchAndStaleRecord(t *testing.T) {
 		t.Fatal("runtime record remained")
 	}
 }
+
+func TestTerminalRejectionCancelsAndJoins(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	rejected := make(chan struct{}, 1)
+	cleanup := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- runObserved(cancel, rejected, func() error { <-ctx.Done(); close(cleanup); <-release; return cloud.ErrConfig })
+	}()
+	rejected <- struct{}{}
+	<-cleanup
+	select {
+	case <-done:
+		t.Fatal("terminal rejection skipped cleanup join")
+	default:
+	}
+	close(release)
+	if got := finalStatus(<-done); got != "Sign-in required — correct credentials and Start again" {
+		t.Fatal(got)
+	}
+}
+
+func TestHTTPQuitJoinsCleanup(t *testing.T) {
+	s := testServer(t)
+	entered, cleanup, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
+	s.controller = testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+		close(entered)
+		<-ctx.Done()
+		close(cleanup)
+		<-release
+		return nil
+	})
+	if err := s.controller.start(testSettings(), testPassword); err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	done := make(chan struct{})
+	w := httptest.NewRecorder()
+	go func() { s.ServeHTTP(w, request(s, "POST", "/api/quit", "{}")); close(done) }()
+	<-cleanup
+	select {
+	case <-done:
+		t.Fatal("Quit responded before cleanup joined")
+	default:
+	}
+	close(release)
+	<-done
+	if w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	if _, active := s.controller.snapshot(); active {
+		t.Fatal("Quit left active run")
+	}
+}
