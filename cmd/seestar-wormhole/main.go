@@ -140,6 +140,20 @@ func runParsedWithListener(ctx context.Context, o options, out, logs io.Writer, 
 }
 
 func runParsedWithDiscovery(ctx context.Context, o options, out, logs io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error)) error {
+	return runParsedWithConfigRuntime(ctx, o, out, logs, newSession, listen, listenDiscovery, configRuntime{
+		keychainPassword: ui.KeychainPassword,
+		newSession:       proxy.NewWithCredentials,
+	})
+}
+
+// configRuntime replaces only the headless keychain and session boundaries for
+// offline dispatch tests; credential selection and handoff stay in this path.
+type configRuntime struct {
+	keychainPassword func(context.Context, string) (string, error)
+	newSession       func(context.Context, proxy.Config, cloud.Credentials) (*proxy.Session, error)
+}
+
+func runParsedWithConfigRuntime(ctx context.Context, o options, out, logs io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), config configRuntime) error {
 	if o.outcome == commandHelp || o.outcome == commandCompletion {
 		return errHelp
 	}
@@ -157,13 +171,13 @@ func runParsedWithDiscovery(ctx context.Context, o options, out, logs io.Writer,
 		return runDiscovery(ctx, o, logs, listenDiscovery)
 	}
 	if o.config {
-		credentials, err := savedCredentials(ctx, o.savedEmail, os.LookupEnv, ui.KeychainPassword)
+		credentials, err := savedCredentials(ctx, o.savedEmail, os.LookupEnv, config.keychainPassword)
 		if err != nil {
 			logCommandArgumentError(o, logs, err)
 			return err
 		}
 		newSession = func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
-			return proxy.NewWithCredentials(ctx, cfg, credentials)
+			return config.newSession(ctx, cfg, credentials)
 		}
 	}
 	return runProxy(ctx, o, logs, newSession, listen, listenDiscovery, proxy.CheckTCPStateSupport)

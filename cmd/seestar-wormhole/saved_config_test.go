@@ -118,6 +118,63 @@ func TestSavedConfigCredentials(t *testing.T) {
 	}
 }
 
+func TestSavedConfigRuntimeHandoff(t *testing.T) {
+	for _, source := range []string{"environment", "keychain"} {
+		t.Run(source, func(t *testing.T) {
+			root := savedConfigRoot(t)
+			// Setenv registers restoration even when the variable was already set.
+			t.Setenv("SEESTAR_EMAIL", "")
+			if err := os.Unsetenv("SEESTAR_EMAIL"); err != nil {
+				t.Fatal(err)
+			}
+			password := "synthetic-" + source + "-password"
+			t.Setenv("SEESTAR_PASSWORD", password)
+			if source == "keychain" {
+				if err := os.Unsetenv("SEESTAR_PASSWORD"); err != nil {
+					t.Fatal(err)
+				}
+			}
+			o, err := parse([]string{"proxy", "--config", "--state-dir", root}, io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			construction := errors.New("synthetic session construction boundary")
+			keychainCalls, sessionCalls := 0, 0
+			var logs bytes.Buffer
+			err = runParsedWithConfigRuntime(t.Context(), o, io.Discard, &logs,
+				func(context.Context, proxy.Config) (commandSession, error) {
+					t.Fatal("config dispatch used environment-only session constructor")
+					return nil, nil
+				},
+				func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
+				listenCommandDiscovery, configRuntime{
+					keychainPassword: func(_ context.Context, email string) (string, error) {
+						keychainCalls++
+						if source != "keychain" || email != "saved@example.invalid" {
+							t.Fatal("unexpected keychain lookup")
+						}
+						return password, nil
+					},
+					newSession: func(_ context.Context, cfg proxy.Config, credentials cloud.Credentials) (*proxy.Session, error) {
+						sessionCalls++
+						want, err := cloud.EmailCredentials("saved@example.invalid", password)
+						if err != nil || credentials != want || cfg.StateDir != root {
+							t.Fatal("saved email, chosen password or state root did not reach session construction")
+						}
+						return nil, construction
+					},
+				})
+			wantKeychainCalls := 0
+			if source == "keychain" {
+				wantKeychainCalls = 1
+			}
+			if !errors.Is(err, construction) || sessionCalls != 1 || keychainCalls != wantKeychainCalls {
+				t.Fatalf("session calls=%d keychain calls=%d err=%v logs=%s", sessionCalls, keychainCalls, err, &logs)
+			}
+		})
+	}
+}
+
 func TestSavedConfigMissingPasswordBeforeStartup(t *testing.T) {
 	root := savedConfigRoot(t)
 	o, err := parse([]string{"proxy", "--config", "--state-dir", root}, io.Discard)
