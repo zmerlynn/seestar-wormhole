@@ -26,8 +26,10 @@ it, and check it runs:
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
 
-For browser controls, run `./seestar-wormhole` (or `./seestar-wormhole ui`),
-enter your account and options, and press Start. Save settings is explicit;
+For browser controls, run `./seestar-wormhole` on macOS or Linux, or
+`.\seestar-wormhole.exe` in PowerShell on Windows. Add `ui` to the command to open
+the controls explicitly. Enter your account and options, then press Start.
+Save settings is explicit;
 passwords stay in memory unless you choose the OS keychain. Stop releases the
 session; Quit exits. See [browser controls](docs/reference.md#ui).
 
