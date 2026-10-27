@@ -64,6 +64,8 @@ the command prints a private URL; copy the whole URL, including its fragment,
 into a browser on that computer. Keep it private. Launching again with the same
 state directory reopens the running page. If another instance is still starting,
 wait briefly and try again. Ctrl+C releases the session and exits.
+Closing the terminal window also quits; on Windows, cleanup is best effort within
+the OS deadline. Closing the tab leaves the process running.
 See [browser controls](reference.md#ui).
 
 ## The OS keychain is unavailable

@@ -253,7 +253,12 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	// Go maps Windows Ctrl+C/Ctrl+Break to Interrupt and console close/logoff
 	// to SIGTERM. Console close still has an OS termination deadline: cleanup
 	// is best effort there; Ctrl+C lets the normal bounded release finish.
-	ctx, stop := notify(context.Background(), os.Interrupt, syscall.SIGTERM)
+	signals := []os.Signal{os.Interrupt, syscall.SIGTERM}
+	if o.command == commandUI && !windows {
+		// Closing a Unix terminal must release the UI's session before exit.
+		signals = append(signals, syscall.SIGHUP)
+	}
+	ctx, stop := notify(context.Background(), signals...)
 	defer stop()
 	// Acquire stdout first so Darwin restores shared stdout/stderr flags in
 	// reverse acquisition order, including launches using 2>&1.

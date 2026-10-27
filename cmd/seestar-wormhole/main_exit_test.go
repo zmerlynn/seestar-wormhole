@@ -7,10 +7,56 @@ import (
 	"io"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
 )
+
+func TestCommandShutdownSignals(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		windows bool
+		wantHUP bool
+	}{
+		{"Unix bare UI", nil, false, true},
+		{"Unix UI", []string{"ui"}, false, true},
+		{"Unix proxy", []string{"proxy"}, false, false},
+		{"Unix discovery", discoveryArgs(), false, false},
+		{"Windows bare UI", nil, true, false},
+		{"Windows UI", []string{"ui"}, true, false},
+		{"Windows proxy", []string{"proxy"}, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			want := []os.Signal{os.Interrupt, syscall.SIGTERM}
+			if tc.wantHUP {
+				want = append(want, syscall.SIGHUP)
+			}
+			stopped, executed := false, false
+			code := mainExitCodeWithRunner(tc.args, io.Discard, io.Discard,
+				func(ctx context.Context, signals ...os.Signal) (context.Context, context.CancelFunc) {
+					if !slices.Equal(signals, want) {
+						t.Errorf("signals = %v, want %v", signals, want)
+					}
+					ctx, cancel := context.WithCancel(ctx)
+					cancel() // Model delivery through the shared signal cancellation path.
+					return ctx, func() { stopped = true; cancel() }
+				},
+				func() (io.Writer, func()) { return io.Discard, func() {} }, tc.windows,
+				func(ctx context.Context, _ options, _, _ io.Writer) error {
+					executed = true
+					if ctx.Err() != context.Canceled {
+						t.Error("signal cancellation did not reach the runner")
+					}
+					return nil
+				})
+			if code != 0 || !executed || !stopped {
+				t.Fatalf("exit=%d executed=%t stopped=%t", code, executed, stopped)
+			}
+		})
+	}
+}
 
 func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 	discoveryOption, discoveryRule := "--bind", "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0"
