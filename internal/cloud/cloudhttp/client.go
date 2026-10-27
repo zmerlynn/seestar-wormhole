@@ -1,5 +1,5 @@
-// Package cloudhttp is the blocking HTTPS edge for cloud. It reads credentials
-// only from the environment, never logs response bodies or transport errors, and
+// Package cloudhttp is the blocking HTTPS edge for cloud. It accepts credentials
+// in memory or from the environment, never logs response bodies or transport errors, and
 // owns a successful allocation until a lease is explicitly transferred. It starts
 // one account owner goroutine when email credentials are supplied. Callers bound
 // remote concurrency (one active attempt per device).
@@ -111,6 +111,11 @@ func NewFromEnvironment(cfg Config) (*Client, error) {
 		}
 		return nil, environmentInputError("SEESTAR_PASSWORD", passwordRule)
 	}
+	return NewWithCredentials(cfg, credentials)
+}
+
+// NewWithCredentials constructs an account owner from validated in-memory credentials.
+func NewWithCredentials(cfg Config, credentials cloud.Credentials) (*Client, error) {
 	if cfg.BaseURL == "" {
 		cfg.BaseURL = "https://api-ithings.zwoastro.com"
 	}

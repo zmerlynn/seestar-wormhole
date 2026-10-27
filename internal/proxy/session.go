@@ -25,6 +25,7 @@ const MaxPauseThreshold = 8 << 20
 // Config is local session policy. Zero Idle holds a session eagerly; a positive
 // Idle allocates on first demand and releases after the last client leaves.
 type Config struct {
+	Status *Status // Optional nonblocking status projection.
 	// LANDiscovery loads selected cloud identity before starting the owner.
 	// This requests detail only; even in lazy mode it makes no allocation.
 	LANDiscovery bool
@@ -41,6 +42,7 @@ type Config struct {
 // construct one per device, and always Close it, including after a failed dial.
 // Protocol state is owned by sessionedge.Run; mu protects only API registrations.
 type Session struct {
+	status                   *Status
 	discardStack             atomic.Pointer[stack] // published by the attempt worker; drained by the owner after join
 	discardNext              core.Instant
 	discardLast              uint64
@@ -75,7 +77,7 @@ func startWithRNG(ctx context.Context, cfg Config, factory func(*Session) sessio
 	if cfg.PauseThreshold < 0 || cfg.PauseThreshold == 1 || cfg.PauseThreshold > MaxPauseThreshold {
 		return nil, &diagnostic.OptionError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608 (zero selects default)"}
 	}
-	s := &Session{lazy: cfg.Idle > 0, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
+	s := &Session{status: cfg.Status, lazy: cfg.Idle > 0, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
 	ctx, s.cancel = context.WithCancel(ctx)
 	c := session.DefaultConfig()
 	c.Idle = cfg.Idle
@@ -231,6 +233,7 @@ func (s *Session) forget(id uint64) {
 
 // Observe returns consumed command reservations and logs bounded lifecycle transitions.
 func (s *Session) Observe(e session.Event, before, after session.Snapshot, now core.Instant) {
+	s.status.observe(e, before, after)
 	s.sessionDiscardSummary(after.Discards, now)
 	// A normal release matches the releasing generation. Final cleanup uses
 	// identical snapshots and a zero attempt; stale Released events must not
