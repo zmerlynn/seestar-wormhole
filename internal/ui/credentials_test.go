@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 )
 
 const testPassword = "synthetic-password"
@@ -95,4 +96,32 @@ func TestKeychainOptInAndGet(t *testing.T) {
 	if chain.value != "" {
 		t.Fatal("Forget did not delete")
 	}
+}
+
+func TestForgetInvalidatesPendingGet(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		chain := lockedKeychain{make(chan struct{}), make(chan struct{})}
+		c := &credentialStore{chain: chain}
+		s := testSettings()
+		s.Remember = true
+		got := make(chan error, 1)
+		go func() { _, err := c.credentials(t.Context(), s, ""); got <- err }()
+		<-chain.entered
+		forgotten := make(chan struct{})
+		go func() { c.forget(t.Context(), s.Email); close(forgotten) }()
+		synctest.Wait() // Forget has cleared memory and is waiting for Get's native gate.
+		close(chain.release)
+		err := <-got
+		<-forgotten // Delete has succeeded, and both callers have joined.
+		if err == nil {
+			t.Error("Start used a Get invalidated by Forget")
+		}
+		if available, notice := c.info(); available || notice != "Password forgotten" {
+			t.Errorf("after Forget: available=%v notice=%q", available, notice)
+		}
+		s.Remember = false
+		if _, err := c.credentials(t.Context(), s, ""); err == nil {
+			t.Fatal("later Start found a forgotten memory password")
+		}
+	})
 }

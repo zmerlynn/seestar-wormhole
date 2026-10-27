@@ -27,6 +27,7 @@ func (osKeychain) Delete(s, u string) error        { return keyring.Delete(s, u)
 // mutex, so a locked provider cannot block status, Stop, or Quit.
 type credentialStore struct {
 	mu              sync.Mutex
+	generation      uint64
 	keyBusy         chan struct{}
 	chain           keychain
 	email, password string
@@ -73,7 +74,7 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 		}
 	}
 	c.mu.Lock()
-	email, p := c.email, c.password
+	email, p, generation := c.email, c.password, c.generation
 	c.mu.Unlock()
 	if email != s.Email {
 		p = ""
@@ -81,9 +82,11 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 	if p == "" && s.Remember {
 		saved, err := keychainCall(ctx, c, func() (string, error) { return c.chain.Get(keyringService, s.Email) })
 		if err == nil {
-			p = saved
 			c.mu.Lock()
-			c.email, c.password = s.Email, p
+			if c.generation == generation {
+				p = saved
+				c.email, c.password = s.Email, p
+			}
 			c.mu.Unlock()
 		} else {
 			c.mu.Lock()
@@ -95,6 +98,7 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 }
 func (c *credentialStore) forget(ctx context.Context, email string) {
 	c.mu.Lock()
+	c.generation++
 	c.email, c.password = "", ""
 	c.mu.Unlock()
 	_, err := keychainCall(ctx, c, func() (string, error) { return "", c.chain.Delete(keyringService, email) })
