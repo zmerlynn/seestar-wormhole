@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main>
+<h1>seestar-wormhole</h1>
+<p id="status" role="status" aria-live="polite">Loading</p>
+<form id="settings">
+<fieldset id="options">
+<legend>Connection</legend>
+<label>Email <input id="email" type="email" autocomplete="username" maxlength="4096"></label>
+<label>Password <input id="password" type="password" autocomplete="off" aria-describedby="password-note"></label>
+<label class="check"><input id="remember" type="checkbox"> Remember password in OS keychain</label>
+<p id="password-note">Passwords stay in memory unless you choose the OS keychain.</p>
+<button id="forget" type="button">Forget password</button>
+<label>Proxy bind address <input id="bind" type="text" value="127.0.0.1" spellcheck="false"></label>
+<p>Forwarded ports have no authentication. Use a wider bind only on a trusted network. The control page stays on this computer.</p>
+<label>Connection mode <select id="mode"><option value="eager">Connect now</option><option value="idle">Connect when needed</option></select></label>
+<label>Release after idle duration <input id="idle" value="2m" type="text" disabled spellcheck="false"></label>
+<details><summary>Advanced</summary>
+<label>Device serial (optional) <input id="serial" type="text" maxlength="4096" spellcheck="false"></label>
+<label>Device model (optional) <input id="model" type="text" maxlength="4096" spellcheck="false"></label>
+<p>Leave selection empty for an account with one device. Enter serial and model to select among several devices.</p>
+<label>Port overrides (one local:device pair per line) <textarea id="ports" rows="4" spellcheck="false"></textarea></label>
+<p>Defaults: 4700:4700, 4445:445, 8080:80, 4350:4350, 4554:4554, 4555:4555, 4801:4801, 4800:4800, 4804:4804, 4361:4361. Use 0:device to disable a mapping. Port 80 may require permission; choose an unprivileged local port if binding fails.</p>
+</details>
+</fieldset>
+<div class="actions"><button id="start" type="button">Start</button><button id="stop" type="button" disabled>Stop</button><button id="save" type="button">Save settings</button><button id="quit" type="button">Quit</button></div>
+</form>
+<p id="notice" role="status" aria-live="polite"></p>
+<p>Closing this tab leaves the proxy running. Quit releases the session and exits.</p>
+</main></body></html>

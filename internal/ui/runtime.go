@@ -1,0 +1,148 @@
+package ui
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
+)
+
+type runtimeRecord struct {
+	Port  int    `json:"port"`
+	Token string `json:"token"`
+}
+
+func (r runtimeRecord) valid() bool {
+	b, err := hex.DecodeString(r.Token)
+	return err == nil && len(b) == 32 && r.Port > 0 && r.Port <= 65535
+}
+func (r runtimeRecord) host() string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(r.Port)) }
+func (r runtimeRecord) url() string  { return "http://" + r.host() + "/#" + r.Token }
+func reopen(ctx context.Context, s *storage, open func(string) error, out io.Writer) error {
+	client := &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, Timeout: 300 * time.Millisecond, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	defer client.CloseIdleConnections()
+	deadline := time.NewTimer(2 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		var record runtimeRecord
+		if err := s.read("ui-runtime.json", &record); err == nil && record.valid() {
+			req, err := http.NewRequestWithContext(ctx, "GET", "http://"+record.host()+"/api/instance", nil)
+			if err != nil {
+				return errors.New("UI instance check failed")
+			}
+			req.Header.Set("X-Seestar-Token", record.Token)
+			response, err := client.Do(req)
+			if err == nil {
+				body, readErr := io.ReadAll(io.LimitReader(response.Body, 128))
+				response.Body.Close()
+				if readErr == nil && response.StatusCode == 200 && string(body) == `{"instance":"seestar-wormhole-ui-v1"}` {
+					openPage(record.url(), open, out)
+					return nil
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-deadline.C:
+			return errors.New("UI already running or starting; try again shortly")
+		case <-tick.C:
+		}
+	}
+}
+func openPage(url string, open func(string) error, out io.Writer) {
+	if err := open(url); err != nil {
+		fmt.Fprintln(out, "Open this private URL in your browser:", url)
+	}
+}
+
+// Run serves one UI per private state root. It never starts a proxy on load.
+func StateRoot(root string) (string, error) {
+	if root != "" {
+		return root, nil
+	}
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", errStorage
+	}
+	return filepath.Join(base, "seestar-wormhole"), nil
+}
+func Run(ctx context.Context, root string, out io.Writer, run runFunc) error {
+	return runUI(ctx, root, out, run, openBrowser, osKeychain{})
+}
+func runUI(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain) error {
+	if root == "" {
+		base, err := os.UserConfigDir()
+		if err != nil {
+			return errStorage
+		}
+		root = filepath.Join(base, "seestar-wormhole")
+	}
+	st, err := openStorage(root)
+	if err != nil {
+		return err
+	}
+	defer st.directory.Close()
+	lock, err := privatefile.Open(filepath.Join(root, "ui.lock"), os.O_CREATE|os.O_RDWR)
+	if err != nil {
+		return errStorage
+	}
+	defer lock.Close()
+	acquired, err := tryLock(lock)
+	if err != nil {
+		return errStorage
+	}
+	if !acquired {
+		return reopen(ctx, st, open, out)
+	}
+	settings, err := loadSettings(st)
+	if os.IsNotExist(err) {
+		settings = defaultSettings()
+	} else if err != nil {
+		return errors.New("Saved UI settings are invalid or unsafe; check config.json in the state directory")
+	}
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		return errors.New("UI loopback listener unavailable")
+	}
+	defer listener.Close()
+	var token [32]byte
+	if _, err = rand.Read(token[:]); err != nil {
+		return errors.New("UI token unavailable")
+	}
+	record := runtimeRecord{Port: listener.Addr().(*net.TCPAddr).Port, Token: hex.EncodeToString(token[:])}
+	c := &controller{parent: ctx, run: run, credentials: &credentialStore{chain: chain}}
+	handler := &server{host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
+	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
+	if err = st.write("ui-runtime.json", record); err != nil {
+		return err
+	}
+	defer os.Remove(filepath.Join(root, "ui-runtime.json"))
+	done := make(chan error, 1)
+	go func() { done <- httpServer.Serve(listener) }()
+	openPage(record.url(), open, out)
+	select {
+	case <-ctx.Done():
+	case <-handler.quit:
+	case <-done:
+	}
+	c.quit()
+	shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := httpServer.Shutdown(shutdown); err != nil {
+		httpServer.Close()
+	}
+	return nil
+}
