@@ -69,6 +69,7 @@ requests deletion of the selected email's keychain entry; retry if deletion
 reports an unavailable provider. OS prompts may require interaction. Turning the
 checkbox off changes future use; use Forget to remove an already stored copy.
 
+UI proxy runs use JSON lifecycle logs at INFO on stderr.
 Options use the same validation and [port mappings](#port-mappings) as `proxy`.
 Advanced contains optional serial/model and explicit mapping overrides. Changes
 apply on the next Start. The UI leaves discovery and flow-pressure tuning to the
@@ -266,16 +267,16 @@ version flags and has [separate advertised identity flags](#discovery).
 | `--version` | `false` | Print version/revision/platform and exit after validation. Also available at root. |
 
 The only application-specific runtime environment variables are
-`SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. They are required for proxy
-and stay in memory. No credentials are accepted in argv or persisted.
-There is no config-file loader. Serial/model
-inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+`SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. They are required for `proxy`, which
+keeps them in memory and loads no config file. Credentials are never accepted
+in argv. The [UI](#ui) has separate settings and optional OS keychain storage.
+Serial/model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
 
 Flag parsing and pure validation precede runtime files, credentials, and
-listeners. Configuration errors emit one JSON error with fixed `option`,
+listeners. Command-line configuration errors emit one JSON error with fixed `option`,
 `rule`, and command-help hint, regardless of requested log settings. Supplied
 values, paths, coordinates, and unknown option names are omitted. Unknown
 flags/positional arguments use `option=arguments`. Startup bind and
@@ -461,7 +462,7 @@ serial; unknown model labels are redacted. Duplicate counts appear at DEBUG.
 
 ## Installation identity
 
-Without `--state-dir`, a fresh random UUID exists only in memory. Startup does
+For `proxy` without `--state-dir`, a fresh random UUID exists only in memory. Startup does
 not consult a user config directory or identity file. Idle release/redial
 reuses that process's UUID. `--state-dir` persists only the
 [source identifier (`device_uuid`)](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#storage-startup-and-source-identifier)
@@ -473,7 +474,8 @@ must be regular with mode exactly `0600`; new directories use `0700`.
 The identity file refuses symlinks. First creation/empty-file repair is locked
 with a one-second acquisition bound. Existing nonempty valid identifiers are
 retained. On Windows, protected owner/SYSTEM ACLs and reparse checks apply.
-Supply trusted parent directories.
+Supply trusted parent directories. The [UI](#ui) uses its persistent state root
+by default and shares this exact identity format.
 
 ## Logs
 
@@ -520,6 +522,7 @@ selection masks serials.
 | `diagnostics_lost` | WARN | Rule and cumulative loss count for startup or stderr rules; stderr failure uses stdout |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
+| `ui failed` | ERROR, JSON | UI command argument refusal; fixed `option`, `rule`, help hint, `phase=arguments`, `reason=invalid_option`. UI startup/storage failures use fixed stderr messages; browser actions report sanitized errors in the page. |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
 | `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions; direct/relay and UDP/TCP path |
 | `cloud_catalog_pagination_oddities`, `cloud_receive_oddity`, `cloud_response_rejected` | DEBUG | Bounded cloud parsing/catalog diagnostics |
