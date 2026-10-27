@@ -93,7 +93,7 @@ The status line distinguishes listening from a ready remote session:
 | Stopping — releasing session | Stop or Quit is joining cleanup. |
 | Sign-in required — correct credentials and Start again | Credential or authorization rejection. |
 | Stopped with cleanup error (reason) | Cleanup joined with a classified error. |
-| Stopped with error — check settings and local port availability | Other startup or runtime failure. |
+| Stopped with error — check settings, network, and local port availability | Other startup or runtime failure; check settings, network, and local port availability. |
 
 ## proxy
 

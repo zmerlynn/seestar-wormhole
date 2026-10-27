@@ -199,6 +199,9 @@ func TestHTTPNoSecretsAndHeaders(t *testing.T) {
 	}
 }
 func TestFinalStatus(t *testing.T) {
+	if got := finalStatus(errors.New(testPassword)); got != "Stopped with error — check settings, network, and local port availability" {
+		t.Errorf("unexpected failure guidance: %q", got)
+	}
 	if got := finalStatus(errors.New(testPassword)); strings.Contains(got, testPassword) {
 		t.Fatal("raw error leaked")
 	}

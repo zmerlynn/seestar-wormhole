@@ -68,7 +68,7 @@ func finalStatus(err error) string {
 		return "Sign-in required — correct credentials and Start again"
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
-		return "Stopped with error — check settings and local port availability"
+		return "Stopped with error — check settings, network, and local port availability"
 	}
 	return "Stopped"
 }
