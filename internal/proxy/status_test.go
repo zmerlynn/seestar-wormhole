@@ -1,11 +1,15 @@
 package proxy
 
 import (
+	"context"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
+	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -144,4 +148,42 @@ func TestStatusBusyReturnsToDormant(t *testing.T) {
 	if s.Text() != "Connecting" {
 		t.Fatalf("stale busy reason on fresh demand: %s", s.Text())
 	}
+}
+
+func TestSessionStatusWiring(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		peer := &r3Cloud{faultPath: "/v1/device-p2p/online-link", faultStatus: 401, faultBody: `{"code":401,"data":null}`}
+		client, err := newFixtureClient(t, cloudhttp.Config{Transport: peer})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer client.Close()
+		status := NewStatus()
+		s, err := start(context.Background(), Config{Idle: time.Minute, Status: status}, func(s *Session) sessionedge.Factory {
+			return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}}
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		synctest.Wait()
+		if got := status.Text(); got != "Waiting for a local client" {
+			t.Errorf("initial owner status=%q", got)
+		}
+		if conn, err := s.DialPort(t.Context(), 4700); err == nil {
+			conn.Close()
+			t.Fatal("authorization rejection admitted client")
+		}
+		synctest.Wait()
+		// The allocation's 401 leaves ownership uncertain; after its cleanup
+		// receipt the latest projection reports recovery, while rejection is latched.
+		if got := status.Text(); got != "Reconnecting — waiting for cleanup/retry" {
+			t.Errorf("latest owner status=%q", got)
+		}
+		select {
+		case <-status.Rejected():
+		default:
+			t.Error("session did not notify terminal rejection")
+		}
+	})
 }
