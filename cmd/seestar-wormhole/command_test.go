@@ -96,7 +96,7 @@ func TestShellRefusalsWithoutResources(t *testing.T) {
 func TestCobraPortSpellingsAndBooleanRules(t *testing.T) {
 	for _, port := range []string{"--port", "-p"} {
 		o, err := parse([]string{"proxy", port, "1445:445", "--lan-discovery=false", "--version", "--idle=2m"}, io.Discard)
-		if err != nil || o.ports[1].local != 1445 || o.lanDiscovery || !o.version || o.idle != 2*time.Minute {
+		if err != nil || o.ports[1].Local != 1445 || o.lanDiscovery || !o.version || o.idle != 2*time.Minute {
 			t.Fatalf("%s: options=%+v err=%v", port, o, err)
 		}
 	}

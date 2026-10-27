@@ -177,14 +177,14 @@ func TestListenerStartupBindWarnings(t *testing.T) {
 			var forwards []proxy.Forward
 			var wantListeners []string
 			// Port zero asks the OS for unused ports, avoiding fixed-port conflicts.
-			for _, p := range (mappings{{0, 4700}, {0, 80}, {0, 445}, {0, 4350}, {0, 4554}, {0, 4555}, {0, 4800}, {0, 4801}, {0, 4804}, {0, 4361}}) {
+			for _, p := range (mappings{{Local: 0, Device: 4700}, {Local: 0, Device: 80}, {Local: 0, Device: 445}, {Local: 0, Device: 4350}, {Local: 0, Device: 4554}, {Local: 0, Device: 4555}, {Local: 0, Device: 4800}, {Local: 0, Device: 4801}, {Local: 0, Device: 4804}, {Local: 0, Device: 4361}}) {
 				l, err := net.Listen("tcp", net.JoinHostPort(tc.bind, "0"))
 				if err != nil {
 					t.Fatalf("startup with inspection failure=%v: err=%v", tc.fail, err)
 				}
 				defer l.Close()
-				forwards = append(forwards, proxy.Forward{Listener: l, Port: p.device})
-				wantListeners = append(wantListeners, fmt.Sprintf("%d:%d", l.Addr().(*net.TCPAddr).Port, p.device))
+				forwards = append(forwards, proxy.Forward{Listener: l, Port: p.Device})
+				wantListeners = append(wantListeners, fmt.Sprintf("%d:%d", l.Addr().(*net.TCPAddr).Port, p.Device))
 			}
 			warnWildcardBind(newLogger("json", &logs), forwards, source)
 			wantCalls := 0

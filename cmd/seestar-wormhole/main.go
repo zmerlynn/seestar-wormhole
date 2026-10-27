@@ -29,34 +29,22 @@ import (
 var revision = "development"
 var version = "development"
 
-type mapping struct{ local, device uint16 }
-type mappings []mapping
+type mappings []proxyrun.Port
 
 func (m *mappings) Type() string { return "local:device" }
 func (m *mappings) String() string {
 	parts := make([]string, len(*m))
 	for i, p := range *m {
-		parts[i] = strconv.Itoa(int(p.local)) + ":" + strconv.Itoa(int(p.device))
+		parts[i] = strconv.Itoa(int(p.Local)) + ":" + strconv.Itoa(int(p.Device))
 	}
 	return strings.Join(parts, ",")
 }
-func runnerPorts(m mappings) []proxyrun.Port {
-	ports := make([]proxyrun.Port, len(m))
-	for i, p := range m {
-		ports[i] = proxyrun.Port{Local: p.local, Device: p.device}
-	}
-	return ports
-}
 func (m *mappings) Set(s string) error {
-	ports, err := proxyrun.ParsePort(runnerPorts(*m), s)
-	if err != nil {
-		return err
+	ports, err := proxyrun.ParsePort(*m, s)
+	if err == nil {
+		*m = ports
 	}
-	*m = nil
-	for _, p := range ports {
-		*m = append(*m, mapping{p.Local, p.Device})
-	}
-	return nil
+	return err
 }
 
 type options struct {
@@ -90,14 +78,11 @@ func validateOptions(o *options) error {
 	if o.lanDiscovery && !landiscovery.ValidBind(o.bind) {
 		return &argumentError{Option: "--bind", Rule: "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0"}
 	}
-	ports, err := proxyrun.MergePorts(runnerPorts(o.ports))
+	ports, err := proxyrun.MergePorts(o.ports)
 	if err != nil {
 		return err
 	}
-	o.ports = nil
-	for _, p := range ports {
-		o.ports = append(o.ports, mapping{p.Local, p.Device})
-	}
+	o.ports = ports
 	return nil
 }
 func run(ctx context.Context, args []string, out io.Writer, logOutput io.Writer) error {
@@ -196,10 +181,6 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	startup := newStartupLogging(o, logOutput)
 	logger := startup.logger
 	defer func() { result = errors.Join(result, startup.finish(result)) }()
-	ports := make([]proxyrun.Port, len(o.ports))
-	for i, p := range o.ports {
-		ports[i] = proxyrun.Port{Local: p.local, Device: p.device}
-	}
 	var err error
 	phase = "tcp_state_query"
 	if err := checkTCPState(ctx); err != nil {
@@ -214,7 +195,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			f.Listener.Close()
 		}
 	}()
-	for _, p := range ports {
+	for _, p := range o.ports {
 		l, err := listen("tcp", net.JoinHostPort(o.bind, strconv.Itoa(int(p.Local))))
 		if err != nil {
 			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports"}
@@ -289,7 +270,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 // The phone builds album/FITS URLs without a port.
 func warnLANHTTP(logger *slog.Logger, ports mappings) {
 	for _, p := range ports {
-		if p.local == 80 && p.device == 80 {
+		if p.Local == 80 && p.Device == 80 {
 			return
 		}
 	}

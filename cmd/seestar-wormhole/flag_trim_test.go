@@ -25,8 +25,8 @@ func TestPortOverrides(t *testing.T) {
 		}
 		var http uint16
 		for _, p := range o.ports {
-			if p.device == 80 {
-				http = p.local
+			if p.Device == 80 {
+				http = p.Local
 			}
 		}
 		if http != tc.http {

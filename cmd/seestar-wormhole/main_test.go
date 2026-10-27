@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"log/slog"
 	"os"
@@ -16,11 +17,11 @@ import (
 
 func TestFlagDefaultsAndMappings(t *testing.T) {
 	o, err := parse(append([]string{"proxy"}, nil...), io.Discard)
-	if err != nil || o.bind != defaultBind || o.idle != 0 || len(o.ports) != 10 || o.ports[1] != (mapping{4445, 445}) {
+	if err != nil || o.bind != defaultBind || o.idle != 0 || len(o.ports) != 10 || o.ports[1] != (proxyrun.Port{Local: 4445, Device: 445}) {
 		t.Fatalf("defaults %+v %v", o, err)
 	}
 	o, err = parse(append([]string{"proxy"}, []string{"--port", "1445:445", "--port", "8080:80", "--idle", "2m", "--log-format", "text"}...), io.Discard)
-	if err != nil || len(o.ports) != 10 || o.ports[1].local != 1445 || o.idle != 2*time.Minute {
+	if err != nil || len(o.ports) != 10 || o.ports[1].Local != 1445 || o.idle != 2*time.Minute {
 		t.Fatalf("custom %+v %v", o, err)
 	}
 	for _, args := range [][]string{{"--port", "65536:80"}, {"--port", "80:0"}, {"--port", "80:80:80"}, {"--port", "80:80", "--port", "80:445"}, {"--idle", "-1s"}, {"--log-format", "xml"}, {"password"}} {
@@ -60,7 +61,7 @@ func TestVersionWithoutCredentialsOrNetworking(t *testing.T) {
 
 func TestDefaultDeviceProfile(t *testing.T) {
 	o, _ := parse(append([]string{"proxy"}, nil...), io.Discard)
-	want := mappings{{4700, 4700}, {4445, 445}, {8080, 80}, {4350, 4350}, {4554, 4554}, {4555, 4555}, {4801, 4801}, {4800, 4800}, {4804, 4804}, {4361, 4361}}
+	want := mappings{{Local: 4700, Device: 4700}, {Local: 4445, Device: 445}, {Local: 8080, Device: 80}, {Local: 4350, Device: 4350}, {Local: 4554, Device: 4554}, {Local: 4555, Device: 4555}, {Local: 4801, Device: 4801}, {Local: 4800, Device: 4800}, {Local: 4804, Device: 4804}, {Local: 4361, Device: 4361}}
 	if !reflect.DeepEqual(o.ports, want) {
 		t.Fatalf("profile %v, want %v", o.ports, want)
 	}
