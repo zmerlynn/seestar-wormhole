@@ -83,13 +83,6 @@ func Run(ctx context.Context, root string, out io.Writer, run runFunc) error {
 	return runUI(ctx, root, out, run, openBrowser, osKeychain{})
 }
 func runUI(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain) error {
-	if root == "" {
-		base, err := os.UserConfigDir()
-		if err != nil {
-			return errStorage
-		}
-		root = filepath.Join(base, "seestar-wormhole")
-	}
 	st, err := openStorage(root)
 	if err != nil {
 		return err
