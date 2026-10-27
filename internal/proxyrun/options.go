@@ -1,3 +1,4 @@
+// Package proxyrun shares port parsing and default mappings between the CLI and UI.
 package proxyrun
 
 import (
@@ -5,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 )
+
+type Port struct{ Local, Device uint16 }
 
 func ParsePort(existing []Port, s string) ([]Port, error) {
 	parts := strings.Split(s, ":")

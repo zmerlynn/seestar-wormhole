@@ -106,10 +106,18 @@ func run(ctx context.Context, args []string, out io.Writer, logOutput io.Writer)
 
 // commandSession is the owned lifetime used by the command. The seam permits
 // deterministic construction/cleanup schedules without cloud credentials.
-type commandSession = proxyrun.Session
+type commandSession interface {
+	proxy.Dialer
+	Close() error
+	Done() <-chan struct{}
+	DeviceDetail() cloud.Detail
+}
 
 // commandDiscovery permits startup tests without an active LAN or a fixed UDP port.
-type commandDiscovery = proxyrun.Discovery
+type commandDiscovery interface {
+	Serve(context.Context, *landiscovery.Machine) error
+	Close() error
+}
 
 func listenCommandDiscovery(bind string, port int, options landiscovery.Options, logger *slog.Logger) (commandDiscovery, error) {
 	s, err := landiscovery.Listen(bind, port, options)
@@ -192,10 +200,90 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	for i, p := range o.ports {
 		ports[i] = proxyrun.Port{Local: p.local, Device: p.device}
 	}
-	return proxyrun.Run(ctx, proxyrun.Config{Bind: o.bind, Revision: revision, Ports: ports, AllInterfaces: o.lanDiscoveryAllInterfaces, Session: proxy.Config{LANDiscovery: o.lanDiscovery, Serial: o.serial, Model: o.model, StateDir: o.stateDir, PauseThreshold: o.pauseThreshold, Idle: o.idle, Logger: logger}}, proxyrun.Hooks{
-		Phase: &phase, Cleanup: &cleanupErr, NewSession: newSession, Listen: listen, ListenDiscovery: listenDiscovery, CheckTCPState: checkTCPState,
-		Accepted: func() { startup.output.resolve(true) }, WarnLANHTTP: func() { warnLANHTTP(logger, o.ports) }, WarnBind: func(f []proxy.Forward) { warnWildcardBind(logger, f, systemInterfaces()) },
-	})
+	var err error
+	phase = "tcp_state_query"
+	if err := checkTCPState(ctx); err != nil {
+		return err
+	}
+	phase = "listener"
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var forwards []proxy.Forward
+	defer func() {
+		for _, f := range forwards {
+			f.Listener.Close()
+		}
+	}()
+	for _, p := range ports {
+		l, err := listen("tcp", net.JoinHostPort(o.bind, strconv.Itoa(int(p.Local))))
+		if err != nil {
+			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports"}
+		}
+		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.Device})
+	}
+	var discovery commandDiscovery
+	if o.lanDiscovery {
+		phase = "lan_discovery"
+		discovery, err = listenDiscovery(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces}, logger)
+		if err != nil {
+			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
+		}
+		defer discovery.Close()
+	}
+	phase = "session"
+	s, err := newSession(ctx, proxy.Config{LANDiscovery: o.lanDiscovery, Serial: o.serial, Model: o.model, StateDir: o.stateDir, PauseThreshold: o.pauseThreshold, Idle: o.idle, Logger: logger})
+	if err != nil {
+		return err
+	}
+	// Always attempt cloud stop even when listener setup or a worker fails.
+	defer func() {
+		outcome := s.Close()
+		result = errors.Join(result, outcome)
+		cleanupErr = diagnostic.CleanupError(outcome)
+		logger.Info("proxy_cleanup_complete", "cleanup_reason", diagnostic.CleanupClass(cleanupErr))
+	}()
+	var discoveryDone chan struct{}
+	var discoveryErr error
+	if discovery != nil {
+		phase = "lan_discovery"
+		d := s.DeviceDetail()
+		machine, synthesized, err := landiscovery.New(d.Serial(), d.Name(), d.Model())
+		if err != nil {
+			return diagnostic.Wrap("lan_discovery", "invalid_device_detail", err)
+		}
+		startup.output.resolve(true)
+		logger.Warn("lan_discovery_synthesized", "fields", synthesized, "envelope_fields", []string{"Timestamp"})
+		discoveryDone = make(chan struct{})
+		go func() { discoveryErr = discovery.Serve(ctx, machine); close(discoveryDone) }()
+		// Join discovery before closing the session or returning from any branch.
+		defer func() { cancel(); discovery.Close(); <-discoveryDone }()
+		logger.Info("lan_discovery_started", "port", landiscovery.Port, "all_interfaces", o.lanDiscoveryAllInterfaces)
+		warnLANHTTP(logger, o.ports)
+	}
+	// Configuration is accepted before waiting for readiness, which may spend
+	// a long time retrying busy. Keep those lifecycle diagnostics visible.
+	startup.output.resolve(true)
+	warnWildcardBind(logger, forwards, systemInterfaces())
+	done := make(chan error, 1)
+	go func() { done <- proxy.Serve(ctx, s, forwards, 128, logger) }()
+	logger.Info("proxy_started", "revision", revision, "listeners", len(forwards), "lazy", o.idle > 0, "pause_threshold", o.pauseThreshold)
+	for {
+		select {
+		case <-discoveryDone:
+			cancel()
+			err = <-done
+			return errors.Join(diagnostic.Wrap("lan_discovery", "", discoveryErr), err)
+		case err = <-done:
+			cancel()
+			return err
+		case <-s.Done():
+			cancel()
+			return <-done
+		case <-ctx.Done():
+			cancel()
+			return <-done
+		}
+	}
 }
 
 // The phone builds album/FITS URLs without a port.
