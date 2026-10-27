@@ -78,6 +78,29 @@ apply on the next Start. The UI leaves discovery and flow-pressure tuning to the
 CLI. Forwarded ports still have no local authentication; widen their bind only
 on a trusted network.
 
+**Use saved settings headless:** Save settings in the UI, then run
+`seestar-wormhole proxy --config` (add `--state-dir PATH` for a custom UI root).
+It reads the same `config.json` and shares the UI's installation identity;
+explicit flags override saved choices, and each `-p` replaces the saved override
+for that device port. `SEESTAR_EMAIL` overrides the saved email; the password
+comes from `SEESTAR_PASSWORD` when set, otherwise the OS keychain entry for that
+email under service `seestar-wormhole`, regardless of the saved Remember checkbox.
+A missing or unavailable password exits with code 2 and a fixed message;
+keychain reads have the UI's three-second wait limit. This command never writes
+settings or takes or writes `ui.lock`. UI Start and a headless proxy on the same
+account follow the existing one-session rule: the second gets busy.
+
+On macOS, a launchd user agent works in the user's login session and may prompt
+once to allow keychain access; choosing Always Allow permits later reads.
+On Windows, scheduled tasks can read Credential Manager as the same user while
+logged on; “Run whether user is logged on or not” uses a separate batch logon.
+A password-backed batch logon can read persistent same-user credentials, while
+S4U (“Do not store password”) cannot access encrypted credentials: use
+`SEESTAR_PASSWORD` instead.
+Headless Linux/systemd usually has no Secret Service session; supply
+`SEESTAR_PASSWORD` through the [credentials-file recipe](always-on.md#credentials-for-a-service),
+while the email can still come from `config.json`.
+
 The status line distinguishes listening from a ready remote session:
 
 | Status | Meaning |
@@ -114,6 +137,7 @@ loopback or a trusted network behind a firewall.
 
 | Flag | Default | Meaning |
 |---|---|---|
+| `--config` | `false` | Read the [UI's saved settings](#ui) and share its state root and installation identity. Flags and environment credentials override saved choices. |
 | `--bind` | `127.0.0.1` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
 | `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
 | `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
@@ -263,21 +287,21 @@ version flags and has [separate advertised identity flags](#discovery).
 |---|---|---|
 | `--serial` | Empty | Select an account device serial; required for multiple distinct catalog pairs. |
 | `--model` | Empty | Exact catalog model; a supplied value must match the selected pair. |
-| `--state-dir` | Empty; memory only | Persist installation UUID at `<path>/InterProcessKV/device_uuid`. Explicit empty selects memory-only operation. |
+| `--state-dir` | Empty; memory only without `--config`, UI root with it | Persist installation UUID at `<path>/InterProcessKV/device_uuid`. With `--config`, also read this root's `config.json`; an empty value selects the default UI root. Without `--config`, explicit empty selects memory-only operation. |
 | `--log-format` | `json` | `json` or `text` stderr records, UTC millisecond timestamps. |
 | `--log-level` | `info` | `debug`, `info`, `warn`, or `error`. |
 | `--version` | `false` | Print version/revision/platform and exit after validation. Also available at root. |
 
 The only application-specific runtime environment variables are
-`SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. They are required for `proxy`, which
-keeps them in memory and loads no config file. Credentials are never accepted
-in argv. The [UI](#ui) has separate settings and optional OS keychain storage.
+`SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
+both and loads no config file. With `--config`, they override the saved email
+and keychain password. Credentials are kept in memory and never accepted in argv.
 Serial/model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
 
-Flag parsing and pure validation precede runtime files, credentials, and
+Flag parsing and settings validation precede credentials and
 listeners. Command-line configuration errors emit one JSON error with fixed `option`,
 `rule`, and command-help hint, regardless of requested log settings. Supplied
 values, paths, coordinates, and unknown option names are omitted. Unknown

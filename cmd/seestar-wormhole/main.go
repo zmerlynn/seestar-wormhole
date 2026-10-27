@@ -24,6 +24,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/licenses"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 )
 
 var revision = "development"
@@ -59,6 +60,8 @@ type options struct {
 	lanDiscovery              bool
 	lanDiscoveryAllInterfaces bool
 	serial, model, stateDir   string
+	config                    bool
+	savedEmail                string
 	name                      string
 }
 
@@ -152,6 +155,16 @@ func runParsedWithDiscovery(ctx context.Context, o options, out, logs io.Writer,
 	}
 	if o.command == commandDiscoveryOnly {
 		return runDiscovery(ctx, o, logs, listenDiscovery)
+	}
+	if o.config {
+		credentials, err := savedCredentials(ctx, o.savedEmail, os.LookupEnv, ui.KeychainPassword)
+		if err != nil {
+			logCommandArgumentError(o, logs, err)
+			return err
+		}
+		newSession = func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
+			return proxy.NewWithCredentials(ctx, cfg, credentials)
+		}
 	}
 	return runProxy(ctx, o, logs, newSession, listen, listenDiscovery, proxy.CheckTCPStateSupport)
 }
