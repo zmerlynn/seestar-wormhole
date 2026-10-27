@@ -21,7 +21,7 @@ func runUICommand(ctx context.Context, o options, out, logs io.Writer) error {
 			if err != nil {
 				return err
 			}
-			runOptions := options{bind: s.Bind, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater}
+			runOptions := options{command: commandUI, bind: s.Bind, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater}
 			for _, p := range s.Ports {
 				if err := runOptions.ports.Set(p); err != nil {
 					return err

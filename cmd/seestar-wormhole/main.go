@@ -161,6 +161,11 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	var cleanupErr error
 	defer func() {
 		if result != nil && !errors.Is(result, errHelp) {
+			// UI Stop/Quit is an ordinary shutdown. Keep the CLI's existing
+			// startup cancellation records and all cleanup failures unchanged.
+			if _, reason := diagnostic.Fields(result, phase); o.command == commandUI && reason == "canceled" && cleanupErr == nil {
+				return
+			}
 			// The contracted final record is always JSON, independently of the
 			// lifecycle format, threshold, startup buffering, and receipt history.
 			logger := newLogger("json", logOutput)
