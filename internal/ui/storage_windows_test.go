@@ -13,6 +13,11 @@ func TestPrivateStorageWindows(t *testing.T) {
 	if err := st.write("config.json", testSettings()); err != nil {
 		t.Fatal(err)
 	}
+	reader, err := privatefile.OpenRead(filepath.Join(st.root, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
 	if err := st.write("config.json", defaultSettings()); err != nil {
 		t.Fatal("atomic replacement", err)
 	}

@@ -52,3 +52,6 @@ func Directory(path string) (*os.File, error) {
 }
 func Replace(from, to string) error  { return os.Rename(from, to) }
 func SyncDirectory(f *os.File) error { return f.Sync() }
+
+// OpenRead allows an atomic-file reader to retain the old inode across replacement.
+func OpenRead(path string) (*os.File, error) { return Open(path, os.O_RDONLY) }

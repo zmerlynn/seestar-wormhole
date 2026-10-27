@@ -39,7 +39,7 @@ func (s *storage) read(name string, v any) error {
 	if _, err := os.Lstat(path); err != nil {
 		return err
 	}
-	f, err := privatefile.Open(path, os.O_RDONLY)
+	f, err := privatefile.OpenRead(path)
 	if err != nil {
 		return errStorage
 	}
@@ -56,7 +56,7 @@ func (s *storage) read(name string, v any) error {
 func (s *storage) write(name string, v any) error {
 	path := filepath.Join(s.root, name)
 	if _, err := os.Lstat(path); err == nil {
-		f, err := privatefile.Open(path, os.O_RDONLY)
+		f, err := privatefile.OpenRead(path)
 		if err != nil {
 			return errStorage
 		}
