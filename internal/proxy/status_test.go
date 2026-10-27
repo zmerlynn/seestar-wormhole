@@ -94,3 +94,17 @@ func TestStatusActualAuthorizationOutcome(t *testing.T) {
 		t.Fatal("authorization did not end UI run")
 	}
 }
+
+func TestStatusAuthorizationDuringRelease(t *testing.T) {
+	s := NewStatus()
+	terminal := diagnostic.NewTerminal(session.Cloud, "reauthentication_required", session.ErrStop)
+	s.observe(session.Event{Kind: session.Released, Attempt: 1, Err: terminal}, session.Snapshot{State: session.Releasing, Attempt: 1}, session.Snapshot{State: session.Backoff, Attempt: 1, OwnershipRecovery: true})
+	if s.Text() != "Sign-in required — correct credentials and Start again" {
+		t.Fatal(s.Text())
+	}
+	select {
+	case <-s.Rejected():
+	default:
+		t.Fatal("release authorization failure did not end UI run")
+	}
+}

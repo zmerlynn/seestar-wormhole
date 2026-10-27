@@ -40,11 +40,11 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 	if s == nil {
 		return
 	}
-	if e.Kind == session.Failed && e.Attempt != before.Attempt {
+	if (e.Kind == session.Failed || e.Kind == session.Released) && e.Attempt != before.Attempt && !(e.Kind == session.Released && e.Attempt == 0 && before == after) {
 		return
 	}
 	_, reason := diagnostic.Fields(e.Err, "")
-	if e.Kind == session.Failed {
+	if e.Kind == session.Failed || e.Kind == session.Released {
 		permanent := false
 		diagnostic.EachTerminal(e.Err, func(t *diagnostic.Terminal) { permanent = permanent || t.Permanent })
 		if permanent || reason == "unauthorized" || reason == "reauthentication_required" {
