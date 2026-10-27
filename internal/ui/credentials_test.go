@@ -78,15 +78,18 @@ func TestKeychainOptInAndGet(t *testing.T) {
 	chain := &fakeKeychain{}
 	c := &credentialStore{chain: chain}
 	s := testSettings()
-	if err := c.remember(t.Context(), s, testPassword); err != nil {
+	if _, err := c.credentials(t.Context(), s, testPassword); err != nil {
 		t.Fatal(err)
 	}
 	if chain.calls != 0 {
 		t.Fatal("unchecked remember accessed keychain")
 	}
 	s.Remember = true
-	if err := c.remember(t.Context(), s, ""); err != nil {
+	if _, err := c.credentials(t.Context(), s, ""); err != nil {
 		t.Fatal(err)
+	}
+	if chain.calls != 1 || chain.value != testPassword {
+		t.Fatal("Start did not remember the cached password")
 	}
 	loaded := &credentialStore{chain: chain}
 	if _, err := loaded.credentials(t.Context(), s, ""); err != nil {

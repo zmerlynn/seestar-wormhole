@@ -68,10 +68,8 @@ func (c *credentialStore) remember(ctx context.Context, s Settings, password str
 	return nil
 }
 func (c *credentialStore) credentials(ctx context.Context, s Settings, password string) (cloud.Credentials, error) {
-	if password != "" {
-		if err := c.remember(ctx, s, password); err != nil {
-			return cloud.Credentials{}, err
-		}
+	if err := c.remember(ctx, s, password); err != nil {
+		return cloud.Credentials{}, err
 	}
 	c.mu.Lock()
 	email, p, generation := c.email, c.password, c.generation
