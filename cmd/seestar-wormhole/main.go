@@ -154,6 +154,9 @@ func runParsedWithDiscovery(ctx context.Context, o options, out, logs io.Writer,
 	if o.command == commandLicenses {
 		return licenses.Write(out)
 	}
+	if o.command == commandUI {
+		return runUICommand(ctx, o, out, logs)
+	}
 	if o.command == commandDiscoveryOnly {
 		return runDiscovery(ctx, o, logs, listenDiscovery)
 	}
@@ -288,6 +291,8 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 
 func logCommandArgumentError(o options, out io.Writer, err error) {
 	switch o.command {
+	case commandUI:
+		logConfigurationError(out, "ui", err)
 	case commandLicenses:
 		logConfigurationError(out, "licenses", err)
 	case commandDiscoveryOnly:

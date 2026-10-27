@@ -26,7 +26,13 @@ it, and check it runs:
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
 
-It's a single file with no dependencies.
+For browser controls, run `./seestar-wormhole` (or `./seestar-wormhole ui`),
+enter your account and options, and press Start. Save settings is explicit;
+passwords stay in memory unless you choose the OS keychain. Stop releases the
+session; Quit exits. See [browser controls](docs/reference.md#ui).
+
+It's a single executable; browser controls need a browser, and optional password
+storage needs an available OS keychain.
 
 To build from source, install Go 1.27 or newer and run the command below; see [building from source](docs/development/README.md#build-and-run).
 
@@ -37,7 +43,7 @@ CGO_ENABLED=0 go build -mod=vendor -o seestar-wormhole ./cmd/seestar-wormhole
 ## Before you start: your account and your site
 
 seestar-wormhole signs in with your Seestar account, the same one the app
-uses. It reads the email and password from `SEESTAR_EMAIL` and
+uses. The `proxy` command reads the email and password from `SEESTAR_EMAIL` and
 `SEESTAR_PASSWORD` and keeps them in memory only. Typing them in like this
 (in bash or zsh) keeps them out of your shell history:
 

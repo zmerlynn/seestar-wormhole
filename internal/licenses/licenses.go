@@ -28,6 +28,11 @@ func Write(out io.Writer) error {
 	if !ok {
 		return fmt.Errorf("licenses: Go build information is unavailable")
 	}
+	return writeForBuild(out, info)
+}
+
+// writeForBuild also permits offline notice verification of cross-built executables.
+func writeForBuild(out io.Writer, info *debug.BuildInfo) error {
 	manifest, err := notices.ReadFile("embed/modules.json")
 	if err != nil {
 		return err

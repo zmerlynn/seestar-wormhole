@@ -80,7 +80,7 @@ func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 
 func TestUsageExitAcrossCommands(t *testing.T) {
 	for _, args := range [][]string{
-		{}, {"--help"}, {"proxy", "--help"},
+		{"--help"}, {"proxy", "--help"},
 		{"unknown"}, {"--unknown"}, {"proxy", "--unknown"}, {"proxy", "--idle=bad"},
 		{"proxy", "--idle=-1s"}, {"proxy", "extra"},
 	} {
@@ -90,7 +90,7 @@ func TestUsageExitAcrossCommands(t *testing.T) {
 				func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} },
 				func() (io.Writer, func()) { return &logs, func() {} }, windows)
 			want := 2
-			if len(args) == 0 || args[len(args)-1] == "--help" {
+			if args[len(args)-1] == "--help" {
 				want = 0
 			}
 			if code != want {

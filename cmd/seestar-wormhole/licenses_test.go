@@ -85,7 +85,7 @@ func TestLicensesBinary(t *testing.T) {
 }
 
 func TestLicensesHelpAndArguments(t *testing.T) {
-	for _, args := range [][]string{nil, {"--help"}, {"help"}} {
+	for _, args := range [][]string{{"--help"}, {"help"}} {
 		var out bytes.Buffer
 		if _, err := parse(args, &out); !errors.Is(err, errHelp) {
 			t.Fatalf("root help: %v", err)

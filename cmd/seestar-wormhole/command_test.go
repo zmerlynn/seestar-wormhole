@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
-	"errors"
 	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"io"
@@ -15,14 +14,30 @@ import (
 	"time"
 )
 
-func TestBareInvocationHelp(t *testing.T) {
+func TestBareInvocationDispatchesUI(t *testing.T) {
+	for _, args := range [][]string{nil, {"ui"}, {"ui", "--state-dir", "private-state"}, {"--version=false"}} {
+		o, err := parse(args, io.Discard)
+		if err != nil || o.command != commandUI || o.outcome != commandRun {
+			t.Fatalf("%v: %+v %v", args, o, err)
+		}
+	}
+	for _, args := range [][]string{{"--help"}, {"--version"}, {"ui", "--help"}} {
+		o, err := parse(args, io.Discard)
+		if o.outcome == commandRun {
+			t.Fatalf("informational command entered UI: %v, %v", args, err)
+		}
+	}
+	var calls int
 	var out, logs bytes.Buffer
-	err := runWithListener(context.Background(), nil, &out, &logs, idleCommandFixture, func(string, string) (net.Listener, error) {
-		t.Error("bare invocation opened a listener")
-		return nil, errors.New("unexpected listener")
+	code := mainExitCodeWithRunner(nil, &out, &logs, func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} }, func() (io.Writer, func()) { return &logs, func() {} }, false, func(_ context.Context, o options, _, _ io.Writer) error {
+		calls++
+		if o.command != commandUI {
+			t.Fatal("wrong dispatch")
+		}
+		return nil
 	})
-	if !errors.Is(err, errHelp) || logs.Len() != 0 || !strings.Contains(out.String(), "Usage:") || !strings.Contains(out.String(), "proxy") {
-		t.Fatalf("bare invocation: err=%v stdout=%q stderr=%q", err, &out, &logs)
+	if code != 0 || calls != 1 {
+		t.Fatalf("code %d calls %d", code, calls)
 	}
 }
 
@@ -37,7 +52,7 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	var o options
 	root := newCommand(&o, io.Discard)
 	commands := root.Commands()
-	if len(commands) != 3 || commands[0].Name() != "discovery" || commands[1].Name() != "licenses" || commands[2].Name() != "proxy" || len(commands[2].Aliases) != 0 {
+	if len(commands) != 4 || commands[0].Name() != "discovery" || commands[1].Name() != "licenses" || commands[2].Name() != "proxy" || len(commands[2].Aliases) != 0 || commands[3].Name() != "ui" {
 		t.Fatalf("commands = %v, want discovery, licenses and proxy with no aliases", commands)
 	}
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {
@@ -114,7 +129,7 @@ func TestWindowsPreflightOrdering(t *testing.T) {
 }
 
 func TestRootHelpExitCode(t *testing.T) {
-	for _, args := range [][]string{nil, {"--help"}, {"-h"}, {"proxy", "--help"}} {
+	for _, args := range [][]string{{"--help"}, {"-h"}, {"proxy", "--help"}} {
 		var out, logs bytes.Buffer
 		code := mainExitCodeWithBootstrap(args, &out, &logs,
 			func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} },

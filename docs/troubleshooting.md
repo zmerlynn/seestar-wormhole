@@ -56,3 +56,21 @@ telescope model and firmware, and the log lines around the problem. The logs
 leave out your credentials, and errors leave out file paths, but some lines
 include a partly masked serial number or your network addresses. Read them over and remove anything you'd
 rather keep before posting.
+
+## The browser didn't open
+
+Run `seestar-wormhole ui` from a terminal. If the default browser opener fails,
+the command prints a private URL; copy the whole URL, including its fragment,
+into a browser on that computer. Keep it private. Launching again with the same
+state directory reopens the running page. If another instance is still starting,
+wait briefly and try again. Ctrl+C releases the session and exits.
+See [browser controls](reference.md#ui).
+
+## The OS keychain is unavailable
+
+A locked keychain, missing desktop session, or unavailable Secret Service can
+prevent password storage. The page says when it keeps the password in memory;
+there is no plaintext fallback. Enter it again after restarting, or unlock your
+normal OS keychain and retry Save settings with Remember password selected.
+Forget clears the memory copy; if the OS deletion fails, unlock the provider
+and retry Forget for the same email. Saved settings never contain the password.

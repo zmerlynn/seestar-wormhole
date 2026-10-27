@@ -6,6 +6,7 @@ failure rule. For setup examples, see [phone app](phone-app.md),
 [other clients](clients.md). The [protocol guide](protocol.md) connects the
 proxy's wire behavior and local policy to the v1 specification.
 
+- [ui](#ui): local browser controls
 - [proxy](#proxy): listeners and flags
 - [discovery](#discovery): scan replies without a cloud session
 - [licenses](#licenses)
@@ -17,11 +18,86 @@ proxy's wire behavior and local policy to the v1 specification.
 - [Verifying a release](#verifying-a-release)
 - [Containers](#containers), [Windows](#windows), [LAN discovery](#lan-discovery)
 
+## ui
+
+```sh
+seestar-wormhole
+seestar-wormhole ui [--state-dir PATH]
+```
+
+Bare launch opens the browser controls, as does `ui`. Enter credentials and
+options, then press Start. Loading settings never starts a proxy. Stop releases
+the session and leaves the page usable; Quit or Ctrl+C releases it and exits.
+Closing the tab leaves the process running. Launch again with the same state
+directory to reopen its page. A separately running `proxy` command is independent;
+conflicting forwarding ports must be freed before starting another run.
+
+The default state root is `os.UserConfigDir()/seestar-wormhole`: on Linux,
+`$XDG_CONFIG_HOME/seestar-wormhole` or `$HOME/.config/seestar-wormhole`; on macOS,
+`$HOME/Library/Application Support/seestar-wormhole`; on Windows,
+`%APPDATA%\seestar-wormhole`. `--state-dir PATH` selects an existing installation
+root without moving or copying its identity. The files are:
+
+| File | Purpose |
+|---|---|
+| `config.json` | Explicitly saved nonsecret settings, schema version 1: bind, idle duration, optional serial/model, port overrides, email, remember-password preference. Unknown members are accepted; reads are limited to 64 KiB. |
+| `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
+| `ui.lock` | Process-lifetime UI lock. |
+| `ui-runtime.json` | Private port and per-process control token; removed on orderly exit. |
+
+Save settings writes `config.json` atomically. On Unix the directory must be
+private (`0700`) and files `0600`; unsafe existing permissions or links are
+refused. Windows uses the same protected current-user/SYSTEM ACL policy as
+installation identity. Parent directories must be trusted. The CLI's default
+identity remains memory-only; pass the same state root explicitly to share it.
+
+The page uses an independent `127.0.0.1:0` listener even when the proxy bind is
+wider, with a random 256-bit token in the URL fragment and a token header on every
+API request. Exact Host checks, exact Origin checks on JSON POST writes, bounded
+requests, no framing, a restrictive content policy, and no-store/no-referrer
+headers protect the control page from other websites; local processes running
+as the same user remain trusted. Treat the private URL as a control capability.
+
+The password is kept in memory by default and never appears in config, API
+responses, or logs. “Remember password in OS keychain” is unchecked by default;
+when selected, Start or Save settings stores the password with the OS provider
+under the application service and account email. A later Start can retrieve it.
+An unavailable, locked, or headless keychain leaves the password in memory and
+shows a message, with no plaintext fallback. Forget clears the memory copy and
+requests deletion of the selected email's keychain entry; retry if deletion
+reports an unavailable provider. OS prompts may require interaction. Turning the
+checkbox off changes future use; use Forget to remove an already stored copy.
+
+Options use the same validation and [port mappings](#port-mappings) as `proxy`.
+Advanced contains optional serial/model and explicit mapping overrides. Changes
+apply on the next Start. The UI leaves discovery and flow-pressure tuning to the
+CLI. Forwarded ports still have no local authentication; widen their bind only
+on a trusted network.
+
+The status line distinguishes listening from a ready remote session:
+
+| Status | Meaning |
+|---|---|
+| Stopped | No active run. |
+| Connecting | Startup, catalog/login, or first connection attempt. |
+| Waiting for a local client | Connect-when-needed mode is dormant. |
+| Ready | The remote session is ready. |
+| Busy — waiting for the other session | A recognized busy response is being retried. |
+| Reconnecting | Transport recovery after an outage. |
+| Reconnecting — waiting for cleanup/retry | Ownership is uncertain or release recovery is pending. |
+| Releasing idle session | Idle-triggered release. |
+| Stopping — releasing session | Stop or Quit is joining cleanup. |
+| Sign-in required — correct credentials and Start again | Credential or authorization rejection. |
+| Stopped with cleanup error (reason) | Cleanup joined with a classified error. |
+| Stopped with error — check settings and local port availability | Other startup or runtime failure. |
+
 ## proxy
 
 ```sh
 seestar-wormhole proxy
 ```
+
+For browser controls, use [ui](#ui).
 
 The app cannot set the device's site, clock or time zone through the proxy.
 See [site protection](#site-protection). The command takes no positional arguments. It forwards TCP through one shared
@@ -159,14 +235,16 @@ exits 1. See [NOTICE](../NOTICE) for attribution.
 
 ## Global command behavior
 
-Bare `seestar-wormhole` prints root help and exits 0. Use `help [command]` or
+Bare `seestar-wormhole` opens [ui](#ui) and stays running until Quit or Ctrl+C.
+Use `help [command]` or
 `--help`/`-h` for help. Root `--version` prints
 `seestar-wormhole <version> (<revision>, <os>/<arch>)`; unset build metadata is
 `development`. Help/version require no credentials or network. Version still
 validates other supplied flags.
 See the [versioning policy](versioning.md) for the release contract.
 
-Operational flags are local to `proxy` or `discovery`; they are not root options.
+Operational flags are local to their command (`ui`, `proxy`, or `discovery`);
+they are not root options.
 Long flags use double dashes. The only operational short flag is `-p` for
 proxy ports. Boolean flags need no value to enable; use `--flag=false` to
 disable. Scalar flags use the last supplied value; repeatable port mappings
