@@ -128,3 +128,45 @@ func TestForgetInvalidatesPendingGet(t *testing.T) {
 		}
 	})
 }
+
+func TestKeychainRecordSize(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		email, password string
+		wantSet         bool
+	}{
+		{"email-boundary", strings.Repeat("a", 1014) + "@x.invalid", testPassword, true},
+		{"email-oversize", strings.Repeat("a", 1015) + "@x.invalid", testPassword, false},
+		{"password-boundary", testSettings().Email, strings.Repeat("a", 1024), true},
+		{"password-oversize", testSettings().Email, strings.Repeat("a", 1025), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			chain := &fakeKeychain{}
+			// A cache can also have been populated by a provider Get. Bound every Set,
+			// even when a provider returned more than the credential validator accepts.
+			c := &credentialStore{chain: chain, email: tc.email, password: tc.password}
+			s := testSettings()
+			s.Email, s.Remember = tc.email, true
+			if err := c.remember(t.Context(), s, ""); err != nil {
+				t.Fatal(err)
+			}
+			if (chain.calls == 1) != tc.wantSet || chain.calls > 1 {
+				t.Errorf("keychain calls=%d, want Set=%v", chain.calls, tc.wantSet)
+			}
+			if available, notice := c.info(); !available || (!tc.wantSet && !strings.Contains(notice, "kept in memory")) {
+				t.Errorf("available=%v notice=%q", available, notice)
+			}
+		})
+	}
+	// An oversized but valid email still permits Start with memory-only credentials.
+	s := testSettings()
+	s.Email, s.Remember = strings.Repeat("a", 1015)+"@x.invalid", true
+	chain := &fakeKeychain{}
+	c := &credentialStore{chain: chain}
+	if _, err := c.credentials(t.Context(), s, testPassword); err != nil {
+		t.Fatal(err)
+	}
+	if chain.calls != 0 {
+		t.Fatal("Start sent oversized record to keychain")
+	}
+}

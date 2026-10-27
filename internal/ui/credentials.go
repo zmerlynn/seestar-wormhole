@@ -55,6 +55,14 @@ func (c *credentialStore) remember(ctx context.Context, s Settings, password str
 	if email != s.Email || p == "" {
 		return nil
 	}
+	// Keep records well below Darwin's 4096-byte command limit, including
+	// password encoding and command overhead. Use the same bound on every OS.
+	if len(email) > 1024 || len(p) > 1024 {
+		c.mu.Lock()
+		c.notice = "Email or password too large for OS keychain; password kept in memory"
+		c.mu.Unlock()
+		return nil
+	}
 	_, err := keychainCall(ctx, c, func() (string, error) { return "", c.chain.Set(keyringService, email, p) })
 	c.mu.Lock()
 	defer c.mu.Unlock()
