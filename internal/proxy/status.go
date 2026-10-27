@@ -73,6 +73,9 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 		s.everReady = true
 		s.reason = ""
 	}
+	if after.State == session.Dormant && (s.reason == "busy" || s.reason == "idle" || s.reason == "transport") {
+		s.reason = ""
+	}
 	text := "Connecting"
 	switch {
 	case after.State == session.Ready:
@@ -81,12 +84,12 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 		text = "Sign-in required — correct credentials and Start again"
 	case after.OwnershipRecovery || s.reason == "cleanup":
 		text = "Reconnecting — waiting for cleanup/retry"
+	case after.State == session.Dormant:
+		text = "Waiting for a local client"
 	case s.reason == "busy":
 		text = "Busy — waiting for the other session"
 	case after.State == session.Releasing && s.reason == "idle":
 		text = "Releasing idle session"
-	case after.State == session.Dormant:
-		text = "Waiting for a local client"
 	case after.State == session.Closed:
 		text = "Stopped"
 	case after.State == session.Backoff || s.everReady:

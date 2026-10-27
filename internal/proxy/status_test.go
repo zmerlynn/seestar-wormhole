@@ -2,9 +2,11 @@ package proxy
 
 import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"testing"
+	"time"
 )
 
 func TestStatusProjection(t *testing.T) {
@@ -106,5 +108,40 @@ func TestStatusAuthorizationDuringRelease(t *testing.T) {
 	case <-s.Rejected():
 	default:
 		t.Fatal("release authorization failure did not end UI run")
+	}
+}
+
+func TestStatusBusyReturnsToDormant(t *testing.T) {
+	cfg := session.DefaultConfig()
+	cfg.Idle = time.Minute
+	cfg.LazyBusyWindow = session.LazyBusyWindow
+	m, err := session.New(cfg, zeroRetryRNG{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := NewStatus()
+	step := func(e session.Event, now core.Instant) {
+		before := m.Snapshot()
+		m.Step(e, now)
+		s.observe(e, before, m.Snapshot())
+	}
+	step(session.Event{Kind: session.Start}, 0)
+	step(session.Event{Kind: session.Client, Client: 1}, 0)
+	attempt := m.Snapshot().Attempt
+	step(session.Event{Kind: session.Failed, Attempt: attempt, Layer: session.Cloud, Err: session.ErrBusy}, 1)
+	step(session.Event{Kind: session.Released, Attempt: attempt}, 2)
+	if s.Text() != "Busy — waiting for the other session" {
+		t.Fatal(s.Text())
+	}
+	step(session.Event{Kind: session.Tick}, core.Instant(session.LazyBusyWindow))
+	if got := m.Snapshot(); got.State != session.Dormant || got.Queued != 0 {
+		t.Fatalf("not dormant after demand expired: %+v", got)
+	}
+	if s.Text() != "Waiting for a local client" {
+		t.Error(s.Text())
+	}
+	step(session.Event{Kind: session.Client, Client: 2}, core.Instant(session.LazyBusyWindow)+1)
+	if s.Text() != "Connecting" {
+		t.Fatalf("stale busy reason on fresh demand: %s", s.Text())
 	}
 }
