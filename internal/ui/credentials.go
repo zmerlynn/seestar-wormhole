@@ -222,7 +222,11 @@ func keychainCall(ctx context.Context, c *credentialStore, call func() (string, 
 		err      error
 	}
 	done := make(chan result, 1)
-	go func() { defer func() { <-busy }(); p, err := call(); done <- result{p, err} }()
+	go func() {
+		p, err := call()
+		<-busy
+		done <- result{p, err}
+	}()
 	select {
 	case r := <-done:
 		return r.password, r.err
