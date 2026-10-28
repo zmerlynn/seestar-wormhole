@@ -49,6 +49,9 @@ jobs:
             ext=.exe; flags='-H windowsgui'
           else
             export CGO_ENABLED=1
+            if [[ "$RUNNER_OS" == macOS ]]; then
+              export CC="$PWD/scripts/gui-mac-clang.sh" MACOSX_DEPLOYMENT_TARGET=13.0
+            fi
           fi
           # Keep symbols: scan the actual executables, with a positive control.
           for variant in fixture production plain; do

@@ -9,8 +9,13 @@ xcode-select -p >/dev/null
 case "$1" in /*) ;; *) echo 'Output directory must be absolute' >&2; exit 1;; esac
 cd "$(dirname "$0")/.."
 export GOFLAGS= GOAMD64=v1 GOARM64=v8.0
-export CGO_ENABLED=1 GOOS=darwin CC=clang
+export CGO_ENABLED=1 GOOS=darwin
+export CC="$PWD/scripts/gui-mac-clang.sh"
+export CGO_CFLAGS="-mmacosx-version-min=13.0" CGO_LDFLAGS="-mmacosx-version-min=13.0"
 export MACOSX_DEPLOYMENT_TARGET=13.0
+xcrun clang --version
+xcrun --show-sdk-version
+pkgutil --pkg-info=com.apple.pkg.CLTools_Executables
 for task_arch in arm64 amd64; do
  task_app="$1/$task_arch/seestar-wormhole.app/Contents"
  mkdir -p "$task_app/MacOS"
@@ -31,6 +36,9 @@ for task_arch in arm64 amd64; do
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 </dict></plist>
 PLIST
+ task_build=$(xcrun vtool -show-build "$task_app/MacOS/seestar-wormhole")
+ echo "$task_build"
+ awk '$1 == "minos" { found=1; if ($2 != "13.0") exit 1 } END { if (!found) exit 1 }' <<< "$task_build"
  plutil -lint "$task_app/Info.plist"
  shasum -a 256 "$task_app/MacOS/seestar-wormhole"
 done
