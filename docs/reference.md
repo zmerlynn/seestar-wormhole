@@ -52,7 +52,7 @@ root without moving or copying its identity. The files are:
 | `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
 | `ui.lock` | Process-lifetime UI lock. |
 | `ui-runtime.json` | Private port and per-process control token; removed on orderly exit. |
-| `webview/` | Windows GUI engine profile under the private state root. Removal is attempted after window shutdown and before the next launch; engine locks or a crash can leave files behind. |
+| `webview-<random>/` | Fresh private Windows GUI engine profile for each launch. Best-effort removal after window shutdown and on later launches; locked stale profiles never block startup. |
 | `ui-open.html` | Private browser bootstrap with the control capability; the opener receives only its path. Removed when the owning process exits normally. |
 
 Save settings writes `config.json` atomically. On Unix the directory must be
@@ -82,12 +82,14 @@ transport returns 404. These protections do not prevent navigation or popups;
 relaunch the app to return to its controls. A second launch restores the original
 control page before showing and focusing the existing window.
 
-The native engines also manage browser data. Windows uses `webview/` above
+The native engines also manage browser data. Windows uses `webview-<random>/` above
 and waits up to two seconds for profile cleanup, printing a warning if files
-remain locked without changing the normal exit status. Leftover engine cache and
-session files remain in the private state root until the next launch removes
-them (or the user removes them after exit). macOS WKWebView and Linux WebKitGTK use their default persistent
-stores: the vendored Wails options expose no nonpersistent data store or
+remain locked without changing the normal exit status. Each launch uses a new
+profile and attempts to remove older profiles, including the former `webview/`.
+Leftover engine cache and session files remain under the private state root
+until a later launch finds them unlocked (or the user removes them after exit).
+Profiles with unsafe permissions or links are left untouched for manual removal.
+macOS WKWebView and Linux WebKitGTK use their default persistent stores: the vendored Wails options expose no nonpersistent data store or
 ephemeral network session. Those stores are outside the state root and are not
 cleared on exit. The page uses sessionStorage for reload authorization and sets
 no cookies or localStorage; no-store headers do not guarantee that an engine
