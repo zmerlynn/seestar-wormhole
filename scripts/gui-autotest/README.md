@@ -72,14 +72,17 @@ Dark mode uses the OS preference, with no injected CSS or emulated media query.
 On macOS the fixture also sets the native window NSAppearance to Aqua/DarkAqua
 for the selected scenario: global defaults written outside sandbox-exec may not
 reach AppKit inside it.
-The driver checks the dark media query and computed text/background contrast
-(at least 3:1 for enabled fields, status, notes, and buttons), and Go checks for
-substantial dark background and light glyph pixels in the central screenshot.
+The driver checks the selected light/dark media query, root luminance, and
+computed text/background contrast (at least 3:1 for enabled fields, status,
+notes, and all buttons, including disabled buttons). Go also checks dark-mode
+screenshots for substantial dark background and light glyph pixels in the
+central screenshot.
 Failures log the element ID, computed foreground/background, sampled RGB,
 contrast ratio, dark preference, and root luminance. System colors are resolved
 through CSS before canvas sampling; a fixture-only raw-message callback reports
-diagnostics without enabling the HTTP runtime transport. A failed probe always
-also logs native started/evaluated receipts, distinguishing missing execution
+diagnostics without enabling the HTTP runtime transport. A `result:false`
+diagnostic is a pending poll, not a failure: each probe requires a later true
+acknowledgment before proceeding. A timed-out probe also logs native started/evaluated receipts, distinguishing missing execution
 from a completed expression whose detailed diagnostic did not arrive. This is a coarse
 readability check, not a full accessibility audit.
 

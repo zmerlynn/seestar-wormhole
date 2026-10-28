@@ -108,10 +108,10 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('start').disabled === ` + strconv.FormatBool(active) + ` && getComputedStyle(document.getElementById('status')).visibility === 'visible' && document.getElementById('status').getBoundingClientRect().top >= 0`); err != nil {
 		return err
 	}
-	if strings.HasPrefix(d.scenario, "dark") {
-		// Calculate WCAG luminance using the rendered CSS colors, without changing
-		// the page's styles or emulating a media query.
-		if err := d.probe(`(() => {
+	// Calculate WCAG luminance using the rendered CSS colors, without changing
+	// the page's styles or emulating a media query.
+	if err := d.probe(`(() => {
+   const expectDark=` + strconv.FormatBool(strings.HasPrefix(d.scenario, "dark")) + `;
    const dark=matchMedia('(prefers-color-scheme: dark)').matches;
    const root=getComputedStyle(document.documentElement).backgroundColor;
    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
@@ -130,17 +130,16 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     return Array.from(paint.getImageData(0,0,1,1).data).slice(0,3)};
    const l=rgb=>{const v=rgb.map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
    const rootRGB=sample(root),rootLuminance=l(rootRGB),failures=[];
-   for(const id of ['status','email','password','password-note','start','stop','save','quit']){
-    const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled')) continue;
+   for(const id of ['status','email','password','password-note','forget','start','stop','save','quit']){
+    const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled') && e.tagName!=='BUTTON') continue;
     const fg=sample(root,s.backgroundColor,s.color),bg=sample(root,s.backgroundColor);
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
-    if(ratio<3) failures.push({id,color:s.color,background:s.backgroundColor,fg,bg,ratio});
+    if(ratio<3) failures.push({id,disabled:e.matches(':disabled'),color:s.color,background:s.backgroundColor,fg,bg,ratio});
    }
-   return dark && rootLuminance<.2 && failures.length===0 ? true : JSON.stringify({dark,root,rootRGB,rootLuminance,failures,colorMix:CSS.supports("color","color-mix(in srgb, red, blue)")});
+   return dark===expectDark && (dark ? rootLuminance<.2 : rootLuminance>.5) && failures.length===0 ? true : JSON.stringify({dark,root,rootRGB,rootLuminance,failures,colorMix:CSS.supports("color","color-mix(in srgb, red, blue)")});
    } finally { canvas.remove();resolver.remove(); }
   })()`); err != nil {
-			return err
-		}
+		return err
 	}
 	// Give the compositor a frame after the DOM acknowledgment.
 	time.Sleep(200 * time.Millisecond)
