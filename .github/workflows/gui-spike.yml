@@ -120,6 +120,8 @@ jobs:
             -o shots/seestar-wormhole-linux-amd64 ./cmd/seestar-wormhole
       - name: Launch, screenshot, terminate
         run: |
+          # Ubuntu 24.04 restricts unprivileged user namespaces, which WebKit's bubblewrap sandbox needs.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           cat > "$RUNNER_TEMP/shot.sh" <<'EOF'
           set -u
           GDK_BACKEND=x11 shots/seestar-wormhole-linux-amd64 > shots/linux.log 2>&1 &
