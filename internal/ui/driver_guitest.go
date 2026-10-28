@@ -60,7 +60,7 @@ func (d *guiTestDriver) probe(expression string) error {
  if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
  send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
  try {const result=(` + expression + `);
- if(result===true) send(` + strconv.Quote("wails:event:emit:"+name) + `);
+ if(result===true) requestAnimationFrame(() => requestAnimationFrame(() => send(` + strconv.Quote("wails:event:emit:"+name) + `)));
  else diagnose(typeof result==='string' ? result : JSON.stringify({result}));
  } catch(e) {diagnose(JSON.stringify({probeError:String(e)}))}
  finally {send(` + strconv.Quote("wails:event:emit:"+name+":evaluated") + `)}
@@ -106,9 +106,32 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 		return err
 	}
 
-	d.w.ExecJS(`window.scrollTo(0,0)`)
-	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('settings').hidden === ` + strconv.FormatBool(active) + ` && document.getElementById('start').getBoundingClientRect().bottom < innerHeight && getComputedStyle(document.getElementById('status')).visibility === 'visible' && document.getElementById('status').getBoundingClientRect().top >= 0`); err != nil {
+	// Finish the action's DOM/focus transition before choosing a viewport.
+	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('settings').hidden === ` + strconv.FormatBool(active) + ` && pending === ''`); err != nil {
 		return err
+	}
+	if shot == "setup" {
+		// Check launch visibility before any driver scrolling can conceal a defect.
+		if err := d.probe(`document.getElementById('start').getBoundingClientRect().top >= 0 && document.getElementById('start').getBoundingClientRect().bottom < innerHeight && document.activeElement === document.getElementById('start')`); err != nil {
+			return err
+		}
+	}
+	switch shot {
+	case "details-expanded":
+		d.w.ExecJS(`document.getElementById('copy').scrollIntoView({block:'end'})`)
+		if err := d.probe(`(() => {const events=document.getElementById('events').getBoundingClientRect(),copy=document.getElementById('copy').getBoundingClientRect();return events.top < innerHeight && events.bottom > 0 && copy.top >= 0 && copy.bottom <= innerHeight})()`); err != nil {
+			return err
+		}
+	case "classified-error", "credential-rejected", "discovery-incompatible":
+		d.w.ExecJS(`document.querySelector('[aria-invalid="true"]')?.scrollIntoView({block:'center'})`)
+		if err := d.probe(`(() => {const e=document.querySelector('[aria-invalid="true"]');if(!e)return false;const r=e.getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight})()`); err != nil {
+			return err
+		}
+	default:
+		d.w.ExecJS(`window.scrollTo(0,0)`)
+		if err := d.probe(`document.getElementById('start').getBoundingClientRect().bottom < innerHeight && document.getElementById('status').getBoundingClientRect().top >= 0`); err != nil {
+			return err
+		}
 	}
 	// Calculate WCAG luminance using the rendered CSS colors, without changing
 	// the page's styles or emulating a media query.
@@ -143,8 +166,6 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
   })()`); err != nil {
 		return err
 	}
-	// Give the compositor a frame after the DOM acknowledgment.
-	time.Sleep(200 * time.Millisecond)
 	path := filepath.Join(d.dir, shot+".png")
 	if err := d.capture(d.ctx, path); err != nil {
 		return err
@@ -200,6 +221,11 @@ func (d *guiTestDriver) release() error {
 func (d *guiTestDriver) drive() error {
 	if err := d.state("Not connected", false, "setup"); err != nil {
 		return err
+	}
+	if d.scenario == "fresh" {
+		if err := d.pageStateRegressions(); err != nil {
+			return err
+		}
 	}
 	if d.scenario == "relaunch" || d.scenario == "dark-relaunch" || d.scenario == "saved-relaunch" {
 		if d.scenario == "saved-relaunch" {
@@ -320,9 +346,6 @@ func (d *guiTestDriver) drive() error {
 		if err := d.runnerUninterrupted(); err != nil {
 			return err
 		}
-		if err := d.capture(d.ctx, filepath.Join(d.dir, "stranded.png")); err != nil {
-			return err
-		}
 		if err := d.mark("off-origin"); err != nil {
 			return err
 		}
@@ -378,6 +401,9 @@ func (d *guiTestDriver) drive() error {
 }
 
 func (d *guiTestDriver) capture(ctx context.Context, path string) error {
+	if err := d.probe(`true`); err != nil {
+		return err
+	}
 	if runtime.GOOS == "windows" {
 		d.w.Show()
 		d.w.Focus()

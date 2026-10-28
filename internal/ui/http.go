@@ -103,16 +103,27 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		settings := s.settings
 		s.mu.Unlock()
 
+		view := s.controller.view()
+		effective := settings
+		if view.Active {
+			effective = view.Settings
+		}
+		ports, _, _ := effective.validate()
+		mappings := make([][2]uint16, 0, len(ports))
+		for _, p := range ports {
+			mappings = append(mappings, [2]uint16{p.Local, p.Device})
+		}
 		events, path, logFailed := s.controller.log.snapshot()
 		s.respond(w, struct {
 			Settings pageSettings `json:"settings"`
 			runView
+			Mappings  [][2]uint16  `json:"mappings"`
 			Password  passwordInfo `json:"password"`
 			Native    bool         `json:"native"`
 			Events    []string     `json:"events"`
 			LogPath   string       `json:"log_path"`
 			LogFailed bool         `json:"log_failed"`
-		}{pageSettingsFor(settings), s.controller.view(), s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
+		}{pageSettingsFor(settings), view, mappings, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
 		return
 	}
 	if r.Method != "POST" {
