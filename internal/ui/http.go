@@ -22,6 +22,7 @@ type server struct {
 	settings    Settings
 	quit        chan struct{}
 	quitOnce    sync.Once
+	activate    func()
 }
 type input struct {
 	Settings Settings `json:"settings"`
@@ -81,6 +82,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if r.URL.Path == "/api/instance" {
+			if s.activate != nil {
+				w.Header().Set("X-Seestar-Window", "1")
+			}
 			s.respond(w, struct {
 				Instance string `json:"instance"`
 			}{"seestar-wormhole-ui-v1"})
@@ -128,6 +132,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch r.URL.Path {
+	case "/api/activate":
+		if s.activate == nil {
+			fail(http.StatusNotFound)
+			return
+		}
+		s.activate()
 	case "/api/start":
 		err = s.controller.start(in.Settings, in.Password)
 		if err == nil {

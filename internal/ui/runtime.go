@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
@@ -48,8 +49,25 @@ func reopen(ctx context.Context, s *storage, open func(string) error, out io.Wri
 				body, readErr := io.ReadAll(io.LimitReader(response.Body, 128))
 				response.Body.Close()
 				if readErr == nil && response.StatusCode == 200 && string(body) == `{"instance":"seestar-wormhole-ui-v1"}` {
-					openPage(record.url(), open, out)
-					return nil
+					if response.Header.Get("X-Seestar-Window") != "1" {
+						openPage(record.url(), open, out)
+						return nil
+					}
+					req, err := http.NewRequestWithContext(ctx, "POST", "http://"+record.host()+"/api/activate", strings.NewReader("{}"))
+					if err != nil {
+						return errors.New("UI activation failed")
+					}
+					req.Header.Set("X-Seestar-Token", record.Token)
+					req.Header.Set("Origin", "http://"+record.host())
+					req.Header.Set("Content-Type", "application/json")
+					activated, err := client.Do(req)
+					if err == nil {
+						io.Copy(io.Discard, io.LimitReader(activated.Body, 128))
+						activated.Body.Close()
+						if activated.StatusCode == http.StatusOK {
+							return nil
+						}
+					}
 				}
 			}
 		}
@@ -80,9 +98,17 @@ func StateRoot(root string) (string, error) {
 	return filepath.Join(base, "seestar-wormhole"), nil
 }
 func Run(ctx context.Context, root string, out io.Writer, run runFunc) error {
-	return runUI(ctx, root, out, run, openBrowser, osKeychain{})
+	return runPlatformUI(ctx, root, out, run)
 }
+
+// windowFunc runs on the caller's main thread. Its context ends only after
+// proxy cleanup and HTTP shutdown; close requests must call quit and wait.
+type windowFunc func(context.Context, string, func(), <-chan struct{}) error
+
 func runUI(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain) error {
+	return runUIWithWindow(ctx, root, out, run, open, chain, nil)
+}
+func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc) error {
 	st, err := openStorage(root)
 	if err != nil {
 		return err
@@ -118,6 +144,16 @@ func runUI(ctx context.Context, root string, out io.Writer, run runFunc, open fu
 	record := runtimeRecord{Port: listener.Addr().(*net.TCPAddr).Port, Token: hex.EncodeToString(token[:])}
 	c := &controller{parent: ctx, run: run, credentials: &credentialStore{chain: chain}}
 	handler := &server{host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
+	activate := make(chan struct{}, 1)
+	if window != nil {
+		handler.activate = func() {
+			select {
+			case activate <- struct{}{}:
+			default:
+			}
+		}
+	}
+	requestQuit := func() { handler.quitOnce.Do(func() { close(handler.quit) }) }
 	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
 	if err = st.write("ui-runtime.json", record); err != nil {
 		return err
@@ -125,17 +161,30 @@ func runUI(ctx context.Context, root string, out io.Writer, run runFunc, open fu
 	defer os.Remove(filepath.Join(root, "ui-runtime.json"))
 	done := make(chan error, 1)
 	go func() { done <- httpServer.Serve(listener) }()
-	openPage(record.url(), open, out)
-	select {
-	case <-ctx.Done():
-	case <-handler.quit:
-	case <-done:
+	windowCtx, windowDone := context.WithCancel(context.Background())
+	defer windowDone()
+	cleanupDone := make(chan struct{})
+	go func() {
+		defer close(cleanupDone)
+		select {
+		case <-ctx.Done():
+		case <-handler.quit:
+		case <-done:
+		}
+		c.quit()
+		shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		if err := httpServer.Shutdown(shutdown); err != nil {
+			httpServer.Close()
+		}
+		windowDone()
+	}()
+	if window == nil {
+		openPage(record.url(), open, out)
+	} else {
+		err = window(windowCtx, record.url(), requestQuit, activate)
+		requestQuit() // Also joins cleanup if native startup fails.
 	}
-	c.quit()
-	shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-	if err := httpServer.Shutdown(shutdown); err != nil {
-		httpServer.Close()
-	}
-	return nil
+	<-cleanupDone
+	return err
 }
