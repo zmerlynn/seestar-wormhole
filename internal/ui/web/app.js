@@ -129,10 +129,11 @@ function render(s) {
   if (s.save_failed) alertText(active ? 'Connected. Settings could not be saved; they may reset next time.' : 'Settings could not be saved; they may reset next time.');
   else if (s.storage_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app, but settings could not be saved. Keep this window open and retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.' : 'Settings could not be saved; they may reset next time.');
   if (s.failure && !active) {
+    const newFailure = lastFailure !== s.failure.code;
     alertText(s.failure_message + ' [' + s.failure.code + ']');
-    if (lastFailure !== s.failure.code && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer ' + s.failure.local + ' → telescope ' + s.failure.service + '.' : ''),s.failure.code);
+    if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer ' + s.failure.local + ' → telescope ' + s.failure.service + '.' : ''),s.failure.code);
     lastFailure = s.failure.code;
-    if (['signin','password','password_read','password_missing','keychain_timeout'].includes(s.failure.code) && !editing) {editing = true;selectedSaved = false;$('password').value = '';}
+    if (newFailure && ['signin','password','password_read','password_missing','keychain_timeout'].includes(s.failure.code)) {if (!editing) $('password').value = '';editing = true;selectedSaved = false;memory = false;}
   }
   if (active) lastFailure = '';
   if (pending !== 'quit' && s.password.code && s.password.code !== noticeCode) {
@@ -197,7 +198,7 @@ async function act(action) {
   if (pending && !['stop','quit'].includes(action)) return;
   if (['start','password/save'].includes(action) && !validate(action === 'password/save')) return;
   pending = action; alertText('');
-  if (action === 'start') say('');
+  if (action === 'start') {say('');lastFailure = '';}
   if (action === 'password/save') say('Saving password to keychain…');
   if (action === 'forget') say('Removing saved password…');
   if (action === 'quit') say('Quitting — releasing the telescope session…');
