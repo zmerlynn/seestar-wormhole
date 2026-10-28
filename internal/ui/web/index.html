@@ -6,6 +6,7 @@
 <p>Use your Seestar telescope from another location.</p>
 <div id="announcements" role="status" aria-live="polite" aria-atomic="true"><p id="status">Loading…</p><p id="feedback"></p></div>
 <button id="start" type="submit" form="settings" disabled>Connect</button>
+<p id="trust">Use only on a trusted network. Other devices on this network can control the telescope through this computer.</p>
 <p id="notice" role="alert" hidden></p>
 <p id="last-known" hidden></p>
 <button id="retry-storage" type="button" hidden>Retry saving settings</button>
@@ -19,7 +20,6 @@
 <div class="actions"><button id="save-password" type="button" disabled>Save password to keychain</button><button id="change-password" type="button" hidden>Change password</button><button id="use-saved" type="button" hidden>Use saved password</button><button id="forget" type="button" hidden>Remove saved password</button></div>
 <label for="goal">Use with</label><select id="goal"><option value="phone">Phone on this network</option><option value="computer">This computer only</option><option value="custom">Custom</option></select>
 <p id="goal-help">Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.</p>
-<p id="trust">Use only on a trusted network. Other devices on this network can control the telescope through this computer.</p>
 <div id="switch-confirm" hidden><p>Switching setup resets custom network and port settings.</p><button id="switch-setup" type="button">Switch setup</button> <button id="keep-custom" type="button">Keep custom settings</button></div>
 <details id="advanced"><summary>Advanced</summary>
 <p>Telescope: <strong>Automatic (one telescope on this account)</strong></p>

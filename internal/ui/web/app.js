@@ -116,7 +116,7 @@ function controls() {
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
   $('retry-storage').disabled = blocked || !!pending;
   $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.' : currentGoal === 'computer' ? 'Only apps on this computer can connect. A phone on the network cannot use this setup.' : 'Check Advanced settings before connecting.';
-  $('trust').hidden = settings().bind === '127.0.0.1' || settings().bind === '::1';
+  $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   if (deferredFocus && !$('options').disabled && !$('settings').hidden) {$(deferredFocus).focus();deferredFocus = '';}
 }
 function render(s) {
@@ -126,8 +126,8 @@ function render(s) {
   $('quit').textContent = s.native ? 'Quit app' : 'Quit service';
   $('quit-help').textContent = s.native ? 'Quit stops the proxy and closes the app. Closing this window also quits.' : 'Closing this tab leaves the proxy running. Quit service stops it; you can then close this tab.';
   $('retry-storage').hidden = !s.save_failed && !s.storage_failed;
-  if (s.save_failed) alertText('Connected. Settings could not be saved; they may reset next time.');
-  else if (s.storage_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app, but settings could not be saved. Keep this window open and retry saving settings.' : 'Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.');
+  if (s.save_failed) alertText(active ? 'Connected. Settings could not be saved; they may reset next time.' : 'Settings could not be saved; they may reset next time.');
+  else if (s.storage_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app, but settings could not be saved. Keep this window open and retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.' : 'Settings could not be saved; they may reset next time.');
   if (s.failure && !active) {
     alertText(s.failure_message + ' [' + s.failure.code + ']');
     if (lastFailure !== s.failure.code && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer ' + s.failure.local + ' → telescope ' + s.failure.service + '.' : ''),s.failure.code);
@@ -139,8 +139,8 @@ function render(s) {
     noticeCode = s.password.code;
     if (noticeCode === 'password_saved' && s.settings.email === $('email').value) {selectedSaved = true;savedEmail = s.settings.email;memory = true;editing = false;$('password').value = '';}
     if (noticeCode === 'password_removed' && s.settings.email === $('email').value) {selectedSaved = false;savedEmail = '';memory = false;editing = true;$('password').value = '';retryRemoval = false;}
-    if (noticeCode === 'password_reading') say('Reading saved password…');
-    else if (s.password.notice) say(s.password.notice);
+    if (['password_saved','password_removed'].includes(noticeCode)) say(s.password.notice);
+    else say('');
   }
   const run = s.run_settings;
   const goal = goalFor(run);
@@ -195,6 +195,7 @@ async function act(action) {
   if (pending && !['stop','quit'].includes(action)) return;
   if (['start','password/save'].includes(action) && !validate(action === 'password/save')) return;
   pending = action; alertText('');
+  if (action === 'start') say('');
   if (action === 'password/save') say('Saving password to keychain…');
   if (action === 'forget') say('Removing saved password…');
   controls();

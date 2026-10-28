@@ -150,7 +150,7 @@ func TestHTTPRejections(t *testing.T) {
 }
 func TestHTTPNoSecretsAndHeaders(t *testing.T) {
 	s := testServer(t)
-	for _, path := range []string{"/", "/app.js", "/style.css", "/api/status", "/api/instance"} {
+	for _, path := range []string{"/", "/app.js", "/style.css", "/icon.svg", "/api/status", "/api/instance"} {
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, request(s, "GET", path, ""))
 		if w.Code != 200 {
