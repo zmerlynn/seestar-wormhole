@@ -127,7 +127,7 @@ function render(s) {
   $('quit-help').textContent = s.native ? 'Quit stops the proxy and closes the app. Closing this window also quits.' : 'Closing this tab leaves the proxy running. Quit service stops it; you can then close this tab.';
   $('retry-storage').hidden = !s.save_failed && !s.storage_failed;
   if (s.save_failed) alertText('Connected. Settings could not be saved; they may reset next time.');
-  else if (s.storage_failed) alertText('Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.');
+  else if (s.storage_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app, but settings could not be saved. Keep this window open and retry saving settings.' : 'Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.');
   if (s.failure && !active) {
     alertText(s.failure_message + ' [' + s.failure.code + ']');
     if (lastFailure !== s.failure.code && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer ' + s.failure.local + ' → telescope ' + s.failure.service + '.' : ''),s.failure.code);
@@ -138,6 +138,7 @@ function render(s) {
   if (s.password.code && s.password.code !== noticeCode) {
     noticeCode = s.password.code;
     if (noticeCode === 'password_saved' && s.settings.email === $('email').value) {selectedSaved = true;savedEmail = s.settings.email;memory = true;editing = false;$('password').value = '';}
+    if (noticeCode === 'password_removed' && s.settings.email === $('email').value) {selectedSaved = false;savedEmail = '';memory = false;editing = true;$('password').value = '';retryRemoval = false;}
     if (noticeCode === 'password_reading') say('Reading saved password…');
     else if (s.password.notice) say(s.password.notice);
   }
@@ -215,7 +216,14 @@ async function act(action) {
       controls();return;
     }
     await refresh();
-  } catch (e) {fail(e);} finally {pending = '';controls();if (action === 'start' && active && !$('start').disabled) $('start').focus();}
+  } catch (e) {
+    if (action === 'forget') {retryRemoval = true;memory = false;}
+    if (e.code === 'storage' && ['password/save','forget'].includes(action)) {
+      e.message = action === 'password/save' ? 'Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.' : 'Password removed from keychain and this app, but settings could not be saved. Keep this window open and retry saving settings.';
+      try {await refresh();} catch (_) {}
+    }
+    fail(e);
+  } finally {pending = '';controls();if (action === 'start' && active && !$('start').disabled) $('start').focus();}
 }
 $('settings').addEventListener('submit', e => {e.preventDefault();if (!active && !$('start').disabled) act('start');});
 $('start').addEventListener('click', () => {if (active) act('stop');});
