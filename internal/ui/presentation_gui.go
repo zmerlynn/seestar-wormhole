@@ -31,7 +31,7 @@ func showWindow(ctx context.Context, url string, quit func(), activate <-chan st
 		OnShutdown: func() { quit(); <-ctx.Done() },
 	})
 	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "seestar-wormhole", Width: 760, Height: 860, URL: url,
+		Title: "seestar-wormhole", Width: 760, Height: 700, URL: url,
 	})
 	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		if ctx.Err() == nil {
