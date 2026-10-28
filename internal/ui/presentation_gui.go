@@ -11,11 +11,12 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-func runPlatformUI(ctx context.Context, root string, out io.Writer, run runFunc) error {
-	return runUIWithWindow(ctx, root, out, run, openBrowser, osKeychain{}, showWindow)
+func showWindow(ctx context.Context, url string, quit func(), activate <-chan struct{}) error {
+	return showWindowConfigured(ctx, url, quit, activate, application.WebviewWindowOptions{}, nil)
 }
 
-func showWindow(ctx context.Context, url string, quit func(), activate <-chan struct{}) error {
+// The optional configuration callback is used by the tagged GUI fixture.
+func showWindowConfigured(ctx context.Context, url string, quit func(), activate <-chan struct{}, options application.WebviewWindowOptions, configure func(*application.App, *application.WebviewWindow)) error {
 	app := application.New(application.Options{
 		Name: "seestar-wormhole",
 		// The command owns signal cancellation and the proxy's joined release.
@@ -30,9 +31,11 @@ func showWindow(ctx context.Context, url string, quit func(), activate <-chan st
 		},
 		OnShutdown: func() { quit(); <-ctx.Done() },
 	})
-	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title: "seestar-wormhole", Width: 760, Height: 700, URL: url,
-	})
+	options.Title, options.Width, options.Height, options.URL = "seestar-wormhole", 760, 700, url
+	window := app.Window.NewWithOptions(options)
+	if configure != nil {
+		configure(app, window)
+	}
 	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		if ctx.Err() == nil {
 			event.Cancel()
