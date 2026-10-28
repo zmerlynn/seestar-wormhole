@@ -35,7 +35,7 @@ func TestFieldErrorCodes(t *testing.T) {
 		change      func(*Settings)
 	}{
 		{"discovery_bind", "bind", func(s *Settings) { s.Bind = "127.0.0.1" }},
-		{"bind", "bind", func(s *Settings) { s.Bind = "invalid" }},
+		{"discovery_bind", "bind", func(s *Settings) { s.Bind = "invalid" }},
 		{"idle", "idle", func(s *Settings) { s.Idle = "-1m" }},
 		{"email", "email", func(s *Settings) { s.Email = "invalid" }},
 		{"ports", "ports", func(s *Settings) { s.Ports = []string{"4700:80"} }},

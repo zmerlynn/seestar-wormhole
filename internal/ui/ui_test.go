@@ -89,9 +89,12 @@ func TestControllerStopStartDuringStartup(t *testing.T) {
 }
 func testServer(t *testing.T) *server {
 	t.Helper()
-	return &server{host: "127.0.0.1:12345", token: strings.Repeat("a", 64), storage: testStorage(t), controller: testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+	s := &server{host: "127.0.0.1:12345", token: strings.Repeat("a", 64), storage: testStorage(t), controller: testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
 		return errors.New(testPassword)
 	}), settings: testSettings(), quit: make(chan struct{})}
+	s.controller.save = s.saveSettings
+	s.controller.lastSaved = s.settings
+	return s
 }
 func request(s *server, method, path, body string) *http.Request {
 	r := httptest.NewRequest(method, "http://"+s.host+path, strings.NewReader(body))

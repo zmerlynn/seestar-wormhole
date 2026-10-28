@@ -178,6 +178,7 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 	handler := &server{host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
 	handler.native = native
 	c.save = handler.saveSettings
+	c.lastSaved = settings
 	c.log = eventHistory
 	activate := make(chan struct{}, 1)
 	if window != nil {

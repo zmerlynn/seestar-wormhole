@@ -261,7 +261,7 @@ func TestPasswordSaveStorageFailureAndRetry(t *testing.T) {
 	if w := doPost(s, "/api/password/save", body); w.Code != 400 {
 		t.Fatal("storage failure accepted")
 	}
-	if !s.controller.credentials.state(testSettings().Email).Saved || !s.storageFailed {
+	if !s.controller.credentials.state(testSettings().Email).Saved || !s.controller.view().SaveFailed {
 		t.Fatal("keychain outcome lost after storage failure")
 	}
 	if err := os.Remove(filepath.Join(s.storage.root, "config.json")); err != nil {
@@ -282,7 +282,7 @@ func TestStorageRetryKeepsSnapshotAfterAnotherAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := testSettings()
-	if err := s.saveSettings(original); err == nil {
+	if err := s.controller.persist(original); err == nil {
 		t.Fatal("storage failure missing")
 	}
 	// A later failed Start updates page settings but must not replace the retry snapshot.

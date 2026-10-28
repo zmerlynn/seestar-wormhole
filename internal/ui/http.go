@@ -17,17 +17,15 @@ import (
 var assets embed.FS
 
 type server struct {
-	host, token    string
-	controller     *controller
-	storage        *storage
-	mu             sync.Mutex
-	settings       Settings
-	quit           chan struct{}
-	quitOnce       sync.Once
-	activate       func()
-	native         bool
-	storageFailed  bool
-	settingsToSave Settings
+	host, token string
+	controller  *controller
+	storage     *storage
+	mu          sync.Mutex
+	settings    Settings
+	quit        chan struct{}
+	quitOnce    sync.Once
+	activate    func()
+	native      bool
 }
 type input struct {
 	Settings Settings `json:"settings"`
@@ -106,19 +104,15 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Unlock()
 
 		events, path, logFailed := s.controller.log.snapshot()
-		s.mu.Lock()
-		storageFailed := s.storageFailed
-		s.mu.Unlock()
 		s.respond(w, struct {
 			Settings pageSettings `json:"settings"`
 			runView
-			Password      passwordInfo `json:"password"`
-			Native        bool         `json:"native"`
-			Events        []string     `json:"events"`
-			LogPath       string       `json:"log_path"`
-			LogFailed     bool         `json:"log_failed"`
-			StorageFailed bool         `json:"storage_failed"`
-		}{pageSettingsFor(settings), s.controller.view(), s.controller.credentials.state(settings.Email), s.native, events, path, logFailed, storageFailed})
+			Password  passwordInfo `json:"password"`
+			Native    bool         `json:"native"`
+			Events    []string     `json:"events"`
+			LogPath   string       `json:"log_path"`
+			LogFailed bool         `json:"log_failed"`
+		}{pageSettingsFor(settings), s.controller.view(), s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
 		return
 	}
 	if r.Method != "POST" {
@@ -169,7 +163,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if _, _, err = in.Settings.validate(); err == nil {
 			err = s.controller.credentials.remember(r.Context(), in.Settings, in.Password)
 			if err == nil {
-				err = s.saveSettings(s.controller.credentials.association(in.Settings))
+				err = s.controller.persist(in.Settings)
 			}
 			_, notice := s.controller.credentials.info()
 			s.controller.record(notice)
@@ -177,23 +171,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/forget":
 		err = s.controller.credentials.forget(r.Context(), in.Settings.Email)
 		if err == nil {
-			err = s.saveSettings(s.controller.credentials.association(in.Settings))
+			err = s.controller.persistRemoval(in.Settings.Email)
 		}
 		_, notice := s.controller.credentials.info()
 		s.controller.record(notice)
-	case "/api/save":
-		// Contextual retry only; never accepts arbitrary settings or writes a secret.
-		err = s.controller.retrySave()
 	case "/api/retry-storage":
-		s.mu.Lock()
-		retry := s.settingsToSave
-		failed := s.storageFailed
-		s.mu.Unlock()
-		if !failed {
-			err = &ActionError{Code: "settings"}
-		} else {
-			err = s.saveSettings(retry)
-		}
+		err = s.controller.retrySave()
 	case "/api/quit":
 		s.controller.quit()
 		// Cleanup has joined; flush the response before shutting down HTTP.
@@ -233,13 +216,10 @@ func (s *server) respond(w http.ResponseWriter, v any) {
 }
 
 func (s *server) saveSettings(settings Settings) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Retain the exact snapshot even on storage failure so retry is truthful.
-	s.settings = settings
-	s.settingsToSave = settings
 	err := s.storage.write("config.json", settings)
-	s.storageFailed = err != nil
+	s.mu.Lock()
+	s.settings = settings
+	s.mu.Unlock()
 	return err
 }
 

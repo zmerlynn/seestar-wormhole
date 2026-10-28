@@ -12,20 +12,23 @@ import (
 
 type runFunc func(context.Context, Settings, cloud.Credentials, *proxy.Status) error
 type controller struct {
-	mu                 sync.Mutex
-	parent             context.Context
-	run                runFunc
-	credentials        *credentialStore
-	done               chan struct{}
-	cancel             context.CancelFunc
-	status             *proxy.Status
-	stopping, quitting bool
-	final              string
-	failure            *ActionError
-	save               func(Settings) error
-	log                *eventLog
-	runSettings        Settings
-	saved, saveFailed  bool
+	mu                   sync.Mutex
+	parent               context.Context
+	run                  runFunc
+	credentials          *credentialStore
+	done                 chan struct{}
+	cancel               context.CancelFunc
+	status               *proxy.Status
+	stopping, quitting   bool
+	final                string
+	failure              *ActionError
+	save                 func(Settings) error
+	log                  *eventLog
+	runSettings          Settings
+	saved, saveAttempted bool
+	saveMu               sync.Mutex // Serializes snapshot writes, never status or Stop.
+	pendingSave          *Settings
+	lastSaved            Settings
 }
 
 func (c *controller) start(s Settings, password string) error {
@@ -49,7 +52,7 @@ func (c *controller) start(s Settings, password string) error {
 	c.failure = nil
 	s.Ports = append([]string(nil), s.Ports...)
 	c.runSettings = s
-	c.saved, c.saveFailed = false, false
+	c.saved, c.saveAttempted = false, false
 	done, status := c.done, c.status
 	go func() {
 		finished := make(chan struct{})
@@ -189,35 +192,67 @@ func (c *controller) saveAtBoundary(status *proxy.Status, s Settings) {
 		return
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.saved || c.saveFailed {
+	if c.saveAttempted {
+		c.mu.Unlock()
 		return
 	}
+	c.saveAttempted = true
+	c.mu.Unlock()
 	c.persist(s)
 }
-func (c *controller) persist(s Settings) {
+
+// One owner retains the failed snapshot across later unsuccessful Starts.
+// Explicit saves supersede it; retries never accept a page's draft settings.
+func (c *controller) persist(s Settings) error {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	return c.persistLocked(s)
+}
+func (c *controller) persistLocked(s Settings) error {
 	if c.save == nil {
-		return
+		return nil
 	}
-	err := c.save(c.credentials.association(s))
-	c.saved, c.saveFailed = err == nil, err != nil
+	s = c.credentials.association(s)
+	s.Ports = append([]string(nil), s.Ports...)
+	err := c.save(s)
+	c.mu.Lock()
+	c.saved = err == nil
+	c.pendingSave = nil
+	if err != nil {
+		c.pendingSave = &s
+	} else {
+		c.lastSaved = s
+	}
+	c.mu.Unlock()
 	if err == nil {
 		c.record("Settings saved.")
 	} else {
 		c.record(errorCopy("storage"))
 	}
+	return err
 }
 func (c *controller) retrySave() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.saveFailed {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	if c.pendingSave == nil {
 		return &ActionError{Code: "settings"}
 	}
-	c.persist(c.runSettings)
-	if c.saveFailed {
-		return errStorage
+	return c.persistLocked(*c.pendingSave)
+}
+func (c *controller) persistRemoval(email string) error {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	// Remove edits only the last valid persisted snapshot, never the form draft.
+	// A first-launch removal uses the same valid defaults as initial setup.
+	s := c.lastSaved
+	if s.Version == 0 {
+		s = defaultSettings()
 	}
-	return nil
+	// A pending snapshot must never restore the removed association.
+	if c.pendingSave != nil && c.pendingSave.Email == email {
+		c.pendingSave.Remember = false
+	}
+	return c.persistLocked(s)
 }
 func uiText(text string) string {
 	switch text {
@@ -260,7 +295,7 @@ func (c *controller) view() runView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	text, active := c.snapshotLocked()
-	v := runView{Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, Settings: c.runSettings, Saved: c.saved, SaveFailed: c.saveFailed}
+	v := runView{Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, Settings: c.runSettings, Saved: c.saved, SaveFailed: c.pendingSave != nil}
 	if active {
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
 		v.Discovery = c.runSettings.Discovery && c.status.SaveBoundary(true)
