@@ -14,6 +14,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -28,6 +29,7 @@ type guiTestDriver struct {
 	w                  *application.WebviewWindow
 	runner             *guiTestRunner
 	url, dir, scenario string
+	out                io.Writer
 	seq                int
 }
 
@@ -44,17 +46,24 @@ func (d *guiTestDriver) probe(expression string) error {
 		}
 	})
 	defer off()
+	var started, evaluated atomic.Bool
+	offStarted := d.app.Event.On(name+":started", func(*application.CustomEvent) { started.Store(true) })
+	offEvaluated := d.app.Event.On(name+":evaluated", func(*application.CustomEvent) { evaluated.Store(true) })
+	defer offStarted()
+	defer offEvaluated()
 	js := `(() => {
  const send=m=>{if(window.chrome?.webview) window.chrome.webview.postMessage(m);
  else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
  else if(window.wails?.invoke) window.wails.invoke(m)};
  const diagnose=detail=>{if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
+ send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
  try {const result=(` + expression + `);
  if(result===true) send(` + strconv.Quote("wails:event:emit:"+name) + `);
- else if(typeof result==='string') diagnose(result);
+ else diagnose(typeof result==='string' ? result : JSON.stringify({result}));
  } catch(e) {diagnose(JSON.stringify({probeError:String(e)}))}
+ finally {send(` + strconv.Quote("wails:event:emit:"+name+":evaluated") + `)}
  })()`
-	return guitest.Wait(d.ctx, "DOM: "+expression, func() bool {
+	err := guitest.Wait(d.ctx, "DOM probe "+strconv.Itoa(d.seq), func() bool {
 		select {
 		case <-ack:
 			return true
@@ -63,6 +72,11 @@ func (d *guiTestDriver) probe(expression string) error {
 			return false
 		}
 	})
+	if err != nil {
+		// Native evidence survives a broken bridge, a parse error, or a hung JS call.
+		fmt.Fprintf(d.out, "DOM diagnostics: {\"probe\":%d,\"started\":%t,\"evaluated\":%t,\"timeout\":true}\n", d.seq, started.Load(), evaluated.Load())
+	}
+	return err
 }
 
 func (d *guiTestDriver) click(id string) error {
@@ -122,9 +136,9 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
    document.documentElement.append(canvas,resolver);
    try {
    const paint=canvas.getContext('2d',{willReadFrequently:true});
-   // WebKit canvas system-color parsing can use the light palette. Resolve
-   // colors through CSS first; color-mix forces an absolute serialized color.
-   const absolute=c=>{resolver.style.color='';resolver.style.color='color-mix(in srgb, '+c+' 100%, transparent)';
+   // Resolve system colors as the element's used color, independent of canvas
+   // platform-color parsing and color-mix support in the engine.
+   const absolute=c=>{resolver.style.color='';resolver.style.color=c;
     if(!resolver.style.color) throw new Error('CSS color resolution failed: '+c);
     return getComputedStyle(resolver).color};
    const sample=(...colors)=>{paint.clearRect(0,0,1,1);for(const c of colors){paint.fillStyle=absolute(c);paint.fillRect(0,0,1,1)}
@@ -137,7 +151,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
     if(ratio<3) failures.push({id,color:s.color,background:s.backgroundColor,fg,bg,ratio});
    }
-   return dark && rootLuminance<.2 && failures.length===0 ? true : JSON.stringify({dark,root,rootRGB,rootLuminance,failures});
+   return dark && rootLuminance<.2 && failures.length===0 ? true : JSON.stringify({dark,root,rootRGB,rootLuminance,failures,colorMix:CSS.supports("color","color-mix(in srgb, red, blue)")});
    } finally { canvas.remove();resolver.remove(); }
   })()`); err != nil {
 			return err

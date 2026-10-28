@@ -115,7 +115,11 @@ func launch(ctx context.Context, bin, dir, root, scenario string) (*exec.Cmd, <-
 	cmd := exec.CommandContext(ctx, bin, "ui", "--state-dir", root)
 	// No user config, account, password provider, proxy ports, or network endpoint.
 	cmd.Env = append(os.Environ(), "SEESTAR_GUITEST_OUT="+dir, "SEESTAR_GUITEST_SCENARIO="+scenario)
-	cmd.Stdout, cmd.Stderr = log, log
+	// Drain through a pipe: the CLI may reopen stderr with an independent file
+	// offset. Direct regular-file descriptors let its final error overwrite earlier
+	// stdout diagnostics. The shared writer also keeps both streams in one pipe.
+	output := struct{ io.Writer }{log}
+	cmd.Stdout, cmd.Stderr = output, output
 	if err := cmd.Start(); err != nil {
 		log.Close()
 		return nil, nil, err

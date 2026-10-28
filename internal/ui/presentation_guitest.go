@@ -70,7 +70,7 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 				go func() {
 					driverCtx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
 					defer cancel()
-					d := &guiTestDriver{ctx: driverCtx, windowCtx: windowCtx, app: app, w: w, runner: f, url: url, dir: dir, scenario: scenario}
+					d := &guiTestDriver{ctx: driverCtx, windowCtx: windowCtx, app: app, w: w, runner: f, url: url, dir: dir, scenario: scenario, out: out}
 					driveErr := d.drive()
 					if driveErr != nil {
 						fmt.Fprintln(out, "GUI fixture FAIL:", driveErr)

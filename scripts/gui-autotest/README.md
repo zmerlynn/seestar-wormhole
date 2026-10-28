@@ -18,7 +18,8 @@ scenario directories below its output directory and disposable state in the OS
 temporary directory. Engine profiles stay outside uploaded evidence, including
 on failure. Never point it at user state. Failed scenarios print the last 40
 lines of each process log, stripping every suffix starting with `#` to keep URL
-fragments private.
+fragments private. Process output is drained through a shared pipe so a reopened
+stderr cannot overwrite earlier stdout diagnostics in the artifact file.
 
 `SEESTAR_GUITEST_OUT` and `SEESTAR_GUITEST_SCENARIO` are private fixture inputs,
 set by the harness. The fixture fails without them. Its runner has no network
@@ -70,7 +71,9 @@ substantial dark background and light glyph pixels in the central screenshot.
 Failures log the element ID, computed foreground/background, sampled RGB,
 contrast ratio, dark preference, and root luminance. System colors are resolved
 through CSS before canvas sampling; a fixture-only raw-message callback reports
-diagnostics without enabling the HTTP runtime transport. This is a coarse
+diagnostics without enabling the HTTP runtime transport. A failed probe always
+also logs native started/evaluated receipts, distinguishing missing execution
+from a completed expression whose detailed diagnostic did not arrive. This is a coarse
 readability check, not a full accessibility audit.
 
 `-scenarios` selects a comma-separated subset; `dark` repeats the fresh-start,

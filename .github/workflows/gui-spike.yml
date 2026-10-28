@@ -164,7 +164,7 @@ jobs:
           SCRIPT
           # Record the distro package/profile and explicitly test the restricted
           # setting first. Probe failure is evidence, not a waiver for the suite.
-          dpkg-query -W bubblewrap | tee "$RUNNER_TEMP/gui-shots/bubblewrap-package.log"
+          dpkg-query -W bubblewrap libwebkitgtk-6.0-4 | tee "$RUNNER_TEMP/gui-shots/bubblewrap-package.log"
           dpkg -L bubblewrap | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-package.log"
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
           # The same namespace/display path, with only the short probe selected.
