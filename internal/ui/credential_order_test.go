@@ -2,7 +2,9 @@ package ui
 
 import (
 	"context"
+	"encoding/json/v2"
 	"github.com/zalando/go-keyring"
+	"net/http/httptest"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -73,6 +75,37 @@ func TestRemoveSupersedesEarlierPendingSave(t *testing.T) {
 		}
 		if c.state(a.Email).Saved {
 			t.Fatal("older Save completion resurrected association after newer Remove")
+		}
+	})
+}
+
+func TestRemoveSupersedesPendingHTTPSave(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := testServer(t)
+		a := testSettings()
+		f := &orderedKeychain{values: map[string]string{}, entered: make(chan struct{}), release: make(chan struct{}), blockSet: true}
+		s.controller.credentials.chain = f
+		body, err := json.Marshal(input{a, testPassword})
+		if err != nil {
+			t.Fatal(err)
+		}
+		saved, removed := make(chan *httptest.ResponseRecorder, 1), make(chan *httptest.ResponseRecorder, 1)
+		go func() { saved <- doPost(s, "/api/password/save", string(body)) }()
+		<-f.entered
+		go func() { removed <- doPost(s, "/api/forget", string(body)) }()
+		synctest.Wait()
+		close(f.release)
+		<-saved
+		if w := <-removed; w.Code != 200 {
+			t.Fatal(w.Body.String())
+		}
+		synctest.Wait()
+		got, err := loadSettings(s.storage)
+		if err != nil || got.Remember {
+			t.Fatal("older HTTP Save persisted a removed association", err)
+		}
+		if state := s.controller.credentials.state(a.Email); state.Saved || state.Code != "password_removed" {
+			t.Fatal("older HTTP Save replaced removal feedback")
 		}
 	})
 }
