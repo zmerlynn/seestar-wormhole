@@ -27,12 +27,12 @@ seestar-wormhole ui [--state-dir PATH]
 
 Bare launch opens the local controls, as does `ui`. Builds with the `gui` tag
 use a native window; default builds open a browser. Enter credentials and
-options, then press Start. Loading settings never starts a proxy. Stop releases
+options, then press Connect. Loading settings never starts a proxy. Stop releases
 the session and leaves the page usable; Quit or Ctrl+C releases it and exits.
 Closing the terminal window also quits; on Windows, cleanup is best effort within
 the OS deadline.
 A credential or authorization rejection ends the run after cleanup. Correct the
-credentials and press Start again. Closing a browser tab leaves the process
+credentials and press Connect again. Closing a browser tab leaves the process
 running. Closing the native window requests quit and waits for bounded release.
 Native application quit and confirmed Windows session end also join release;
 a canceled Windows session end leaves the app running. The OS can impose a
@@ -48,14 +48,15 @@ root without moving or copying its identity. The files are:
 
 | File | Purpose |
 |---|---|
-| `config.json` | Explicitly saved nonsecret settings, schema version 1: bind, idle duration, optional serial/model, port overrides, email, remember-password preference. Unknown members are accepted; reads are limited to 64 KiB. |
+| `config.json` | Non-secret settings, schema version 1: bind, discovery, idle duration, optional serial/model, port overrides, email, saved-password association (`remember_password`). Unknown members are accepted; reads are limited to 64 KiB. |
 | `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
+| `gui.log`, `gui.log.1` | Sanitized GUI lifecycle events, at most 64 KiB each, with one rotation. |
 | `ui.lock` | Process-lifetime UI lock. |
 | `ui-runtime.json` | Private port and per-process control token; removed on orderly exit. |
 | `webview-<random>/` | Fresh private Windows GUI engine profile for each launch. Best-effort removal after window shutdown and on later launches; locked stale profiles never block startup. |
 | `ui-open.html` | Private browser bootstrap with the control capability; the opener receives only its path. Removed when the owning process exits normally. |
 
-Save settings writes `config.json` atomically. On Unix the directory must be
+Successful Connect saves its non-secret settings snapshot atomically: after the first Ready state with local listeners/discovery initialized in Keep connected mode, or after authentication, telescope selection, and local initialization in connect-when-needed mode. Failed attempts preserve the last saved settings. A storage failure keeps the connection running and offers Retry saving settings. On Unix the directory must be
 private (`0700`) and files `0600`; unsafe existing permissions or links are
 refused. Windows uses the same protected current-user/SYSTEM ACL policy as
 installation identity. Parent directories must be trusted. The CLI's default
@@ -96,38 +97,52 @@ cleared on exit. The page uses sessionStorage for reload authorization and sets
 no cookies or localStorage; no-store headers do not guarantee that an engine
 writes no session/cache data. Engine file retention needs native verification.
 
-The password is kept in memory by default and never appears in config, API
-responses, or logs. “Remember password in OS keychain” is unchecked by default;
-when selected, Start or Save settings stores the password with the OS provider
-under the application service and account email. A later Start can retrieve it.
-An unavailable, locked, or headless keychain leaves the password in memory and
-shows a message, with no plaintext fallback. Forget clears the memory copy and
-requests deletion of the selected email's keychain entry; retry if deletion
-reports an unavailable provider. OS prompts may require interaction. Turning the
-checkbox off changes future use; use Forget to remove an already stored copy.
+First run selects **Phone on this network**: all-network listening, LAN
+discovery, and computer port 80 to telescope port 80. The trust warning appears
+before Connect; loading never starts a session. **This computer only** selects
+loopback, disables discovery, and uses computer port 8080 for HTTP. Existing
+saved settings retain their exposure and appear as computer-only or Custom.
+Advanced contains telescope serial/model selection, connection timing and idle
+minutes, Listen on, discovery, and port overrides. Editing network or port
+choices selects Custom. The telescope keeps its own site and clock.
 
-UI proxy runs use JSON lifecycle logs at INFO on stderr. Windows GUI builds
-also show startup errors in a native message box because they have no console.
-Fatal Windows window-engine errors use a fixed message explaining that WebView2
-Runtime is required, without exposing internal error details.
-Linux native window sandbox prerequisites are in [troubleshooting](troubleshooting.md#linux-native-window).
-Options use the same validation and [port mappings](#port-mappings) as `proxy`.
-Advanced contains optional serial/model and explicit mapping overrides. Changes
-apply on the next Start. The UI leaves discovery and flow-pressure tuning to the
-CLI. Forwarded ports still have no local authentication; widen their bind only
-on a trusted network.
+Passwords stay in memory unless **Save password to keychain** is explicitly
+chosen. Connect never writes a typed password to keychain. A successful save
+immediately persists the email and saved-password association, without signing
+in. Relaunch shows **Saved in keychain** without reading the secret or prompting.
+Connect reads it with the existing three-second bound. **Change password** opens
+entry for this launch; **Use saved password** selects a saved entry again.
+**Remove saved password** clears memory and requests keychain deletion; failure
+retains the association and permits **Retry removal**. A timeout is uncertain:
+the OS request may still finish, and further keychain mutations wait for it.
+There is no plaintext fallback and no secret is returned to the page.
 
-**Use saved settings headless:** Save settings in the UI, then run
-`seestar-wormhole proxy --config` (add `--state-dir PATH` for a custom UI root).
-It reads the same `config.json` and shares the UI's installation identity;
-explicit flags override saved choices, and each `-p` replaces the saved override
-for that device port. `SEESTAR_EMAIL` overrides the saved email; the password
+One primary button changes from **Connect** to **Cancel**, **Stop**, or disabled
+**Stopping…**. Running replaces setup with a summary and phone or computer
+instructions. **Details and logs** contains effective service mappings, bounded
+sanitized lifecycle history, the private log path, and **Copy diagnostic
+summary**. The copied summary excludes addresses, paths, credentials, tokens,
+account/device identifiers, and payloads. Logs contain fixed categories and
+recovery text, with time and phase; no raw protocol traces. Startup errors also
+use the existing native error presentation. Windows window-engine failures
+explain that WebView2 Runtime is required.
+
+Native **Quit app** stops the proxy and closes the app; closing the window also
+quits. Browser **Quit service** stops the process; closing the tab alone leaves
+it running. Field errors identify the setting to correct. Lost controls retain
+the last known state and warn that the proxy may still run.
+Linux sandbox prerequisites are in [troubleshooting](troubleshooting.md#linux-native-window).
+
+**Use saved settings headless:** after successful Connect or explicit password
+save, run `seestar-wormhole proxy --config` (add `--state-dir PATH` for a custom
+UI root). It reads the same `config.json` and shares the installation identity.
+Explicit flags override saved choices, including discovery; each `-p` replaces the saved override for
+that telescope port. `SEESTAR_EMAIL` overrides the saved email. The password
 comes from `SEESTAR_PASSWORD` when set, otherwise the OS keychain entry for that
-email under service `seestar-wormhole`, regardless of the saved Remember checkbox.
-A missing or unavailable password exits with code 2 and a fixed message;
-keychain reads have the UI's three-second wait limit. This command never writes
-settings or takes or writes `ui.lock`. UI Start and a headless proxy on the same
-account follow the existing one-session rule: the second gets busy.
+email under service `seestar-wormhole`. A missing or unavailable password exits
+with code 2 and a fixed message; keychain reads have the three-second bound.
+This command never writes settings or takes or writes `ui.lock`. GUI and
+headless runs still follow the account's one-session rule.
 
 On macOS, a launchd user agent works in the user's login session and may prompt
 once to allow keychain access; choosing Always Allow permits later reads.
@@ -140,22 +155,13 @@ Headless Linux/systemd usually has no Secret Service session; supply
 `SEESTAR_PASSWORD` through the [credentials-file recipe](always-on.md#credentials-for-a-service),
 while the email can still come from `config.json`.
 
-The status line distinguishes listening from a ready remote session:
-
-| Status | Meaning |
-|---|---|
-| Stopped | No active run. |
-| Connecting | Startup, catalog/login, or first connection attempt. |
-| Waiting for a local client | Connect-when-needed mode is dormant. |
-| Ready | The remote session is ready. |
-| Busy — waiting for the other session | A recognized busy response is being retried. |
-| Reconnecting | Transport recovery after an outage. |
-| Reconnecting — waiting for cleanup/retry | Ownership is uncertain or release recovery is pending. |
-| Releasing idle session | Idle-triggered release. |
-| Stopping — releasing session | Stop or Quit is joining cleanup. |
-| Sign-in required — correct credentials and Start again | Credential or authorization rejection. |
-| Stopped with cleanup error (reason) | Cleanup joined with a classified error. |
-| Stopped with error — check settings, network, and local port availability | Other startup or runtime failure; check settings, network, and local port availability. |
+The status distinguishes **Connected to your telescope** from **Waiting for an
+app to connect**. Busy and transport recovery say **Retrying automatically**.
+Cancel remains available during first connection; Stop joins release. A confirmed
+release says **Stopped. You can use remote mode in the Seestar app again.**
+An uncertain release instead says to wait 60 seconds. Sign-in rejection reopens
+credential correction without deleting a saved password. Bind, discovery, HTTP
+permission, and port-conflict failures have separate safe error codes.
 
 ## proxy
 

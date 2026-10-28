@@ -28,10 +28,10 @@ See the [versioning policy](docs/versioning.md) for what a release promises.
 
 For browser controls, run `./seestar-wormhole` on macOS or Linux, or
 `.\seestar-wormhole.exe` in PowerShell on Windows. Add `ui` to the command to open
-the controls explicitly. Enter your account and options, then press Start.
-Save settings is explicit;
-passwords stay in memory unless you choose the OS keychain. Stop releases the
-session; Quit exits. See [browser controls](docs/reference.md#ui).
+the controls explicitly. Enter your account and choose Connect. First run selects
+Phone on this network and shows its network trust warning. Successful connection
+saves non-secret settings; Save password to keychain is a separate choice.
+Stop releases the session; Quit exits. See [GUI controls](docs/reference.md#ui).
 
 It's a single executable; browser controls need a browser, and optional password
 storage needs an available OS keychain.

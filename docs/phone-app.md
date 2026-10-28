@@ -20,9 +20,21 @@ Phone use requires LAN discovery; the tested phone platforms and paths are liste
 
 ## Start the proxy
 
-Enter the account credentials as described in the [README](../README.md#before-you-start-your-account-and-your-site), then start the proxy with discovery enabled:
+In the GUI, leave **Use with → Phone on this network** selected, enter your
+Seestar account email and password, and choose **Connect**. This enables LAN
+discovery and computer port 80 for album/image access. Use only a trusted
+network: other devices on it can control the telescope through this computer.
+A successful connection saves non-secret settings. Saving the password to
+keychain is a separate, optional action. Existing saved setups keep their
+network exposure; choose Phone explicitly if upgrading from computer-only.
 
-Then start the proxy with discovery turned on:
+The running page shows the phone steps. Keep the computer and phone on the same
+network, use the Seestar app's LAN list, and allow Local Network access if asked.
+Keep seestar-wormhole running. Stop and wait for release before using the app's
+remote mode. Details and logs contains safe diagnostic history. If the GUI
+reports a phone HTTP permission failure, see [port 80 and permissions](#port-80-and-permissions).
+
+For the CLI, start with discovery enabled:
 
 ```sh
 ./seestar-wormhole proxy --bind 0.0.0.0 --lan-discovery -p 80:80
