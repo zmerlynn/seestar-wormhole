@@ -52,51 +52,67 @@ func (l *eventLog) add(text string) {
 	if l.storage == nil {
 		return
 	}
-	old, err := l.readFile()
-	if err != nil {
-		l.failed = true
-		return
-	}
-	b := append(old, []byte(line+"\n")...)
-	if len(b) > logLimit {
-		if err := l.storage.writeBytes("gui.log.1", old); err != nil {
-			l.failed = true
-			return
-		}
-		b = []byte(line + "\n")
-	}
-	l.failed = l.storage.writeBytes("gui.log", b) != nil
+	l.failed = l.appendLine([]byte(line+"\n")) != nil
 }
-func (l *eventLog) readFile() ([]byte, error) {
-	f, err := privatefile.OpenRead(filepath.Join(l.storage.root, "gui.log"))
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
+
+// Disk history is opaque: append without reading or projecting prior content.
+// Refuse unsafe metadata and oversized prior files; retain just one rotation.
+func (l *eventLog) appendLine(line []byte) error {
+	path := filepath.Join(l.storage.root, "gui.log")
+	f, err := privatefile.Open(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND)
 	if err != nil {
-		return nil, err
+		return err
 	}
-	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, logLimit+1))
+	defer func() {
+		if f != nil {
+			f.Close()
+		}
+	}()
+	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return err
 	}
-	// Reject oversized or modified history instead of copying arbitrary text.
-	if len(b) > logLimit {
-		return nil, errStorage
+	if info.Size() > logLimit {
+		return errStorage
 	}
-	for _, line := range strings.Split(strings.TrimSuffix(string(b), "\n"), "\n") {
-		if line == "" {
-			continue
+	if info.Size()+int64(len(line)) > logLimit {
+		rotated := path + ".1"
+		old, err := privatefile.OpenRead(rotated)
+		if err == nil {
+			info, statErr := old.Stat()
+			old.Close()
+			if statErr != nil || info.Size() > logLimit {
+				return errStorage
+			}
+		} else if !os.IsNotExist(err) {
+			return err
 		}
-		fields := strings.Split(line, "\t")
-		if len(fields) != 3 || fields[1] != "lifecycle" || !safeEvent(fields[2]) {
-			return nil, errStorage
+		if err := f.Close(); err != nil {
+			return err
 		}
-		if _, err := time.Parse(time.RFC3339, fields[0]); err != nil {
-			return nil, errStorage
+		f = nil
+		if err := privatefile.Replace(path, rotated); err != nil {
+			return err
+		}
+		f, err = privatefile.Open(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|os.O_APPEND)
+		if err != nil {
+			return err
 		}
 	}
-	return b, nil
+	// privatefile.Open uses native handles on Windows; position append there too.
+	if _, err := f.Seek(0, io.SeekEnd); err != nil {
+		return err
+	}
+	n, err := f.Write(line)
+	if err != nil {
+		return err
+	}
+	if n != len(line) {
+		return io.ErrShortWrite
+	}
+	err = f.Close()
+	f = nil
+	return err
 }
 func (l *eventLog) snapshot() ([]string, string, bool) {
 	if l == nil {

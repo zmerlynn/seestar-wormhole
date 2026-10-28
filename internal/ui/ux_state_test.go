@@ -13,6 +13,7 @@ import (
 	"github.com/zalando/go-keyring"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
@@ -155,9 +156,14 @@ func TestLogsSanitizedBoundedAndRotated(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if info.Size() > logLimit || info.Mode().Perm() != 0600 {
+		if info.Size() > logLimit {
 			t.Fatalf("%s: %v", name, info)
 		}
+		private, err := privatefile.OpenRead(filepath.Join(st.root, name))
+		if err != nil {
+			t.Fatal("unsafe private log", err)
+		}
+		private.Close()
 		b, _ := os.ReadFile(filepath.Join(st.root, name))
 		if strings.Contains(string(b), "private") {
 			t.Fatal("private text leaked")

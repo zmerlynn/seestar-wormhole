@@ -48,3 +48,23 @@ func TestPrivateStorageWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLogPrivateACLWindows(t *testing.T) {
+	st := testStorage(t)
+	log := &eventLog{storage: st}
+	for range 700 {
+		log.add("Connecting to your telescope…")
+		log.add("Stopped")
+	}
+	for _, name := range []string{"gui.log", "gui.log.1"} {
+		f, err := privatefile.OpenRead(filepath.Join(st.root, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = privatefile.Check(windows.Handle(f.Fd()), false)
+		f.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
