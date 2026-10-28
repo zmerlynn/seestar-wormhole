@@ -55,7 +55,9 @@ func (d *guiTestDriver) probe(expression string) error {
  const send=m=>{if(window.chrome?.webview) window.chrome.webview.postMessage(m);
  else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
  else if(window.wails?.invoke) window.wails.invoke(m)};
- const diagnose=detail=>{if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
+ const probe=` + strconv.Itoa(d.seq) + `;
+ const diagnose=detail=>{detail='probe '+probe+': '+detail;
+ if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
  send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
  try {const result=(` + expression + `);
  if(result===true) send(` + strconv.Quote("wails:event:emit:"+name) + `);
@@ -136,7 +138,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
     if(ratio<3) failures.push({id,disabled:e.matches(':disabled'),color:s.color,background:s.backgroundColor,fg,bg,ratio});
    }
-   return dark===expectDark && (dark ? rootLuminance<.2 : rootLuminance>.5) && failures.length===0 ? true : JSON.stringify({dark,root,rootRGB,rootLuminance,failures,colorMix:CSS.supports("color","color-mix(in srgb, red, blue)")});
+   return dark===expectDark && (dark ? rootLuminance<.2 : rootLuminance>.5) && failures.length===0 ? true : JSON.stringify({expectDark,dark,root,rootRGB,rootLuminance,failures,colorMix:CSS.supports("color","color-mix(in srgb, red, blue)")});
    } finally { canvas.remove();resolver.remove(); }
   })()`); err != nil {
 		return err

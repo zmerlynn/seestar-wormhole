@@ -79,10 +79,11 @@ computed text/background contrast (at least 3:1 for enabled fields, status,
 notes, and all buttons, including disabled buttons). Go also checks dark-mode
 screenshots for substantial dark background and light glyph pixels in the
 central screenshot.
-Failures log the element ID, computed foreground/background, sampled RGB,
-contrast ratio, dark preference, and root luminance. System colors are resolved
-through CSS before canvas sampling; a fixture-only raw-message callback reports
-diagnostics without enabling the HTTP runtime transport. A `result:false`
+Failures log the probe number, element ID, computed foreground/background,
+sampled RGB, contrast ratio, expected and actual dark preference, and root
+luminance. System colors are resolved through CSS before canvas sampling;
+a fixture-only raw-message callback reports diagnostics without enabling the
+HTTP runtime transport. A `result:false`
 diagnostic is a pending poll, not a failure: each probe requires a later true
 acknowledgment before proceeding. A timed-out probe also logs native started/evaluated receipts, distinguishing missing execution
 from a completed expression whose detailed diagnostic did not arrive. This is a coarse
