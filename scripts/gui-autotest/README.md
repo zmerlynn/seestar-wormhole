@@ -91,7 +91,8 @@ Stop, and restart sequence. `relaunch` checks page startup and Quit without
 starting a runner. The Linux workflow also uses it to record whether the distro
 bubblewrap package permits startup with Ubuntu's userns restriction enabled,
 before applying the existing CI-only sysctl workaround for the main suite.
-The probe result is evidence and does not waive any main-suite failure.
+A verified restricted startup failure is labeled EXPECTED and does not fail the
+job. An unexpected error fails the probe; no result waives a main-suite failure.
 
 `-verify fixture,production,plain-gui` checks go version metadata and linked
 symbols without starting a window. Build these binaries without stripping.
