@@ -161,12 +161,15 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case "/api/password/save":
 		if _, _, err = in.Settings.validate(); err == nil {
+			generation := s.controller.credentials.generationID()
 			err = s.controller.credentials.remember(r.Context(), in.Settings, in.Password)
 			if err == nil {
-				err = s.controller.persist(in.Settings)
+				err = s.controller.persistPassword(in.Settings, generation)
 			}
-			_, notice := s.controller.credentials.info()
-			s.controller.record(notice)
+			if s.controller.credentials.generationID() == generation {
+				_, notice := s.controller.credentials.info()
+				s.controller.record(notice)
+			}
 		}
 	case "/api/forget":
 		err = s.controller.credentials.forget(r.Context(), in.Settings.Email)

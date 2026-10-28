@@ -308,3 +308,16 @@ func (c *controller) view() runView {
 	}
 	return v
 }
+
+func (c *controller) persistPassword(s Settings, generation uint64) error {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	if c.credentials.generationID() != generation {
+		return &ActionError{Code: "password", Field: "password"}
+	}
+	err := c.persistLocked(s)
+	if c.credentials.generationID() != generation {
+		return &ActionError{Code: "password", Field: "password"}
+	}
+	return err
+}

@@ -60,7 +60,7 @@ func (c *credentialStore) remember(ctx context.Context, s Settings, password str
 		c.mu.Unlock()
 	}
 	c.mu.Lock()
-	email, p := c.email, c.password
+	email, p, generation := c.email, c.password, c.generation
 	c.mu.Unlock()
 	if email != s.Email || p == "" {
 		return &ActionError{Code: "password", Field: "password"}
@@ -69,35 +69,30 @@ func (c *credentialStore) remember(ctx context.Context, s Settings, password str
 		return c.outcome("password_save")
 	}
 	_, err := keychainCall(ctx, c, func() (string, error) { return "", c.chain.Set(keyringService, email, p) })
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.generation != generation {
+		return &ActionError{Code: "password", Field: "password"}
+	}
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
-			return c.outcome("keychain_timeout")
+			return c.outcomeLocked("keychain_timeout")
 		}
-		return c.outcome("password_save")
+		return c.outcomeLocked("password_save")
 	}
-	c.mu.Lock()
 	c.savedEmail = email
 	c.code = "password_saved"
 	c.notice = "Password saved to keychain. It will be checked when you connect."
-	c.mu.Unlock()
 	return nil
 }
 func (c *credentialStore) outcome(code string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.outcomeLocked(code)
+}
+func (c *credentialStore) outcomeLocked(code string) error {
 	c.code = code
-	switch code {
-	case "password_save":
-		c.notice = "Could not save to keychain. You can connect using this password for this launch."
-	case "password_remove":
-		c.notice = "Password cleared from this app. Could not remove the keychain copy. Unlock your keychain and choose Retry removal."
-	case "password_missing":
-		c.notice = "The saved password was not found. Enter it again."
-	case "password_read":
-		c.notice = "Could not read the saved password. Unlock your keychain and try again, or enter a password for this launch."
-	case "keychain_timeout":
-		c.notice = "The keychain has not responded. Its request may still finish. You can enter a password for this launch."
-	}
+	c.notice = errorCopy(code)
 	return &ActionError{Code: code, Field: "password"}
 }
 func (c *credentialStore) credentials(ctx context.Context, s Settings, password string) (cloud.Credentials, error) {
@@ -233,4 +228,11 @@ func keychainCall(ctx context.Context, c *credentialStore, call func() (string, 
 	case <-ctx.Done():
 		return "", ctx.Err()
 	}
+}
+
+// HTTP commits carry the same identity as the native Save they acknowledge.
+func (c *credentialStore) generationID() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.generation
 }
