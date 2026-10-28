@@ -135,7 +135,7 @@ function render(s) {
     if (['signin','password','password_read','password_missing','keychain_timeout'].includes(s.failure.code) && !editing) {editing = true;selectedSaved = false;$('password').value = '';}
   }
   if (active) lastFailure = '';
-  if (s.password.code && s.password.code !== noticeCode) {
+  if (pending !== 'quit' && s.password.code && s.password.code !== noticeCode) {
     noticeCode = s.password.code;
     if (noticeCode === 'password_saved' && s.settings.email === $('email').value) {selectedSaved = true;savedEmail = s.settings.email;memory = true;editing = false;$('password').value = '';}
     if (noticeCode === 'password_removed' && s.settings.email === $('email').value) {selectedSaved = false;savedEmail = '';memory = false;editing = true;$('password').value = '';retryRemoval = false;}
@@ -200,6 +200,7 @@ async function act(action) {
   if (action === 'start') say('');
   if (action === 'password/save') say('Saving password to keychain…');
   if (action === 'forget') say('Removing saved password…');
+  if (action === 'quit') say('Quitting — releasing the telescope session…');
   controls();
   try {
     const typed = editing ? $('password').value : '';
@@ -216,7 +217,7 @@ async function act(action) {
       say('Password removed from keychain and this app.');
     }
     if (action === 'quit') {
-      ended = true;
+      ended = true; say('');
       $('status').textContent = state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.';
       controls();return;
     }
