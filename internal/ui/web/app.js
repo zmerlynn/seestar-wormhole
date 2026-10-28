@@ -115,7 +115,10 @@ function fieldError(field, message, code, focus = false) {
   const target = field === 'bind' && $('listen').value !== 'other' ? $('listen') : e;
   target.setAttribute('aria-invalid','true');
   fieldErrors[field] = code;
-  if (focus) target.focus();
+  if (focus) {
+    controls();
+    target.focus();
+  }
   help.textContent = message;
   help.hidden = false;
 }

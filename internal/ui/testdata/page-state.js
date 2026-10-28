@@ -108,6 +108,10 @@
       setup.remember_password = false;
     });
     await check('U3 diagnostic-only codes', async () => {
+      $('email').value = '';
+      await act('start');
+      assert($('error-code').textContent === 'Error code: email', 'submit validation did not update the diagnostic code');
+      $('email').value = setup.email;
       $('password').value = 'synthetic-password';
       api = async () => {throw {code: 'signin', field: 'password', message: 'Check the password.'};};
       await act('start');
