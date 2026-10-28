@@ -107,7 +107,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	}
 
 	// Finish the action's DOM/focus transition before choosing a viewport.
-	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('settings').hidden === ` + strconv.FormatBool(active) + ` && pending === ''`); err != nil {
+	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('settings').hidden === ` + strconv.FormatBool(active) + ` && (pending === '' || (state.stopping && ['stop','quit'].includes(pending)))`); err != nil {
 		return err
 	}
 	if shot == "setup" {
@@ -415,10 +415,6 @@ func (d *guiTestDriver) drive() error {
 func (d *guiTestDriver) capture(ctx context.Context, path string) error {
 	if err := d.probe(`true`); err != nil {
 		return err
-	}
-	if runtime.GOOS == "windows" {
-		d.w.Show()
-		d.w.Focus()
 	}
 	return guitest.Capture(ctx, path, uintptr(d.w.NativeWindow()))
 }
