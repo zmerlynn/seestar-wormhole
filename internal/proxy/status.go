@@ -13,13 +13,18 @@ import (
 // One session owner writes; any number of readers may load.
 type Status struct {
 	text      atomic.Pointer[string]
+	ready     atomic.Bool
+	armed     atomic.Bool
+	updates   chan string
 	rejected  chan struct{}
 	reason    string
 	everReady bool
 }
 
 // NewStatus enables a nonblocking terminal-rejection notification for the UI.
-func NewStatus() *Status { return &Status{rejected: make(chan struct{}, 1)} }
+func NewStatus() *Status {
+	return &Status{rejected: make(chan struct{}, 1), updates: make(chan string, 64)}
+}
 func (s *Status) Rejected() <-chan struct{} {
 	if s == nil {
 		return nil
@@ -70,6 +75,7 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 		s.reason = "idle"
 	}
 	if after.State == session.Ready {
+		s.ready.Store(true)
 		s.everReady = true
 		s.reason = ""
 	}
@@ -96,4 +102,30 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 		text = "Reconnecting"
 	}
 	s.text.Store(&text)
+	s.notify(text)
+}
+
+// MarkArmed is called only after authentication/catalog selection, listeners,
+// and optional discovery have initialized. Ready alone is not local readiness.
+func (s *Status) MarkArmed() {
+	if s != nil {
+		s.armed.Store(true)
+		s.notify(s.Text())
+	}
+}
+func (s *Status) SaveBoundary(lazy bool) bool {
+	return s != nil && s.armed.Load() && (lazy || s.ready.Load())
+}
+func (s *Status) WasReady() bool { return s != nil && s.ready.Load() }
+func (s *Status) Updates() <-chan string {
+	if s == nil {
+		return nil
+	}
+	return s.updates
+}
+func (s *Status) notify(text string) {
+	select {
+	case s.updates <- text:
+	default:
+	}
 }

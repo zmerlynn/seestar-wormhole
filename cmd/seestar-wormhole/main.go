@@ -57,6 +57,7 @@ type options struct {
 	idle                      time.Duration
 	pauseThreshold            int
 	version                   bool
+	uiStatus                  *proxy.Status
 	lanDiscovery              bool
 	lanDiscoveryAllInterfaces bool
 	serial, model, stateDir   string
@@ -230,6 +231,9 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	for _, p := range o.ports {
 		l, err := listen("tcp", net.JoinHostPort(o.bind, strconv.Itoa(int(p.Local))))
 		if err != nil {
+			if o.command == commandUI {
+				return uiListenerError(p.Device, p.Local, err)
+			}
 			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports"}
 		}
 		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.Device})
@@ -239,6 +243,9 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		phase = "lan_discovery"
 		discovery, err = listenDiscovery(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces}, logger)
 		if err != nil {
+			if o.command == commandUI {
+				return &ui.ActionError{Code: "discovery", Field: "discovery"}
+			}
 			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
 		}
 		defer discovery.Close()
@@ -279,6 +286,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	warnWildcardBind(logger, forwards, systemInterfaces())
 	done := make(chan error, 1)
 	go func() { done <- proxy.Serve(ctx, s, forwards, 128, logger) }()
+	o.uiStatus.MarkArmed()
 	logger.Info("proxy_started", "revision", revision, "listeners", len(forwards), "lazy", o.idle > 0, "pause_threshold", o.pauseThreshold)
 	for {
 		select {

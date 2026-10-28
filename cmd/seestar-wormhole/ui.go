@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"syscall"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
@@ -37,7 +40,7 @@ func newUIRunner(root string, logs io.Writer, newSession func(context.Context, p
 		if err != nil {
 			return err
 		}
-		runOptions := options{command: commandUI, bind: s.Bind, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater}
+		runOptions := options{command: commandUI, bind: s.Bind, lanDiscovery: s.Discovery, uiStatus: status, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater}
 		for _, p := range s.Ports {
 			if err := runOptions.ports.Set(p); err != nil {
 				return err
@@ -51,4 +54,20 @@ func newUIRunner(root string, logs io.Writer, newSession func(context.Context, p
 			return newSession(ctx, cfg, credentials)
 		}, listen, listenCommandDiscovery, checkTCPState)
 	}
+}
+
+func uiListenerError(device, local uint16, err error) error {
+	code, field := "bind", "bind"
+	if errors.Is(err, syscall.EADDRINUSE) {
+		code, field = "port_conflict", "ports"
+	}
+	if device == 80 {
+		field = "ports"
+		if local == 80 && (errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EACCES)) {
+			code = "http_permission"
+		} else if code == "port_conflict" {
+			code = "http_conflict"
+		}
+	}
+	return &ui.ActionError{Code: code, Field: field}
 }

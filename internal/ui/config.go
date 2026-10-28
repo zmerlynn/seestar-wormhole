@@ -4,53 +4,71 @@ import (
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
+	"net"
 	"time"
 )
 
 // Settings contains only saved nonsecret choices. Ports contains overrides only.
 type Settings struct {
-	Version  int      `json:"version"`
-	Bind     string   `json:"bind"`
-	Idle     string   `json:"idle"`
-	Serial   string   `json:"serial"`
-	Model    string   `json:"model"`
-	Ports    []string `json:"ports"`
-	Email    string   `json:"email"`
-	Remember bool     `json:"remember_password"`
+	Discovery bool     `json:"discovery"`
+	Version   int      `json:"version"`
+	Bind      string   `json:"bind"`
+	Idle      string   `json:"idle"`
+	Serial    string   `json:"serial"`
+	Model     string   `json:"model"`
+	Ports     []string `json:"ports"`
+	Email     string   `json:"email"`
+	Remember  bool     `json:"remember_password"`
 }
 
 var errSettings = errors.New("Invalid settings: check idle duration, device selection, email, and port overrides")
 
 func defaultSettings() Settings {
-	return Settings{Version: 1, Bind: "127.0.0.1", Idle: "0", Ports: []string{}}
+	return Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []string{"80:80"}}
 }
 func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 	idle, err := time.ParseDuration(s.Idle)
-	if s.Version != 1 || err != nil || idle < 0 || (s.Serial != "" && !cloudhttp.ValidSerial(s.Serial)) || (s.Model != "" && !cloudhttp.ValidModel(s.Model)) {
-		return nil, 0, errSettings
+	if s.Version != 1 {
+		return nil, 0, &ActionError{Code: "settings"}
+	}
+	if err != nil || idle < 0 {
+		return nil, 0, &ActionError{Code: "idle", Field: "idle"}
+	}
+	if net.ParseIP(s.Bind) == nil {
+		return nil, 0, &ActionError{Code: "bind", Field: "bind"}
+	}
+	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
+		return nil, 0, &ActionError{Code: "discovery_bind", Field: "bind"}
+	}
+	if s.Serial != "" && !cloudhttp.ValidSerial(s.Serial) {
+		return nil, 0, &ActionError{Code: "serial", Field: "serial"}
+	}
+	if s.Model != "" && !cloudhttp.ValidModel(s.Model) {
+		return nil, 0, &ActionError{Code: "model", Field: "model"}
 	}
 	if s.Email != "" {
 		if _, err := cloud.EmailCredentials(s.Email, "validation-only"); err != nil {
-			return nil, 0, errSettings
+			return nil, 0, &ActionError{Code: "email", Field: "email"}
 		}
 	}
 	var ports []proxyrun.Port
 	for _, p := range s.Ports {
 		ports, err = proxyrun.ParsePort(ports, p)
 		if err != nil {
-			return nil, 0, errSettings
+			return nil, 0, &ActionError{Code: "ports", Field: "ports"}
 		}
 	}
 	ports, err = proxyrun.MergePorts(ports)
 	if err != nil {
-		return nil, 0, errSettings
+		return nil, 0, &ActionError{Code: "ports", Field: "ports"}
 	}
 	return ports, idle, nil
 }
 func loadSettings(s *storage) (Settings, error) {
-	settings := defaultSettings()
+	settings := Settings{Bind: "127.0.0.1", Idle: "0", Ports: []string{}}
 	settings.Version = 0
 	// Decode a fresh struct: absent members have documented defaults; unknown
 	// members are accepted by JSON v2 within this schema version.
