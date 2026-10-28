@@ -170,6 +170,7 @@ function effectiveMappings(s) {
 }
 async function refresh() {
   const s = await api('status');
+  if (ended) return;
   if (!connected && initialized) alertText('');
   connected = true;
   if (!initialized) {load(s.settings);initialized = true;}
@@ -186,6 +187,7 @@ async function refresh() {
 async function poll() {
   if (ended) return;
   try {await refresh();} catch (_) {
+    if (ended) return;
     connected = false; alertText(lostCopy);
     $('last-known').hidden = false; $('last-known').textContent = 'Last known state: ' + (state?.status || 'Loading…'); controls();
   }
