@@ -194,6 +194,10 @@ func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFun
 		if err := httpServer.Shutdown(shutdown); err != nil {
 			httpServer.Close()
 		}
+		// Native termination (notably AppKit) may exit without returning Run.
+		// Remove capability files before allowing OnShutdown to complete.
+		os.Remove(filepath.Join(root, "ui-runtime.json"))
+		os.Remove(filepath.Join(root, bootstrapName))
 		windowDone()
 	}()
 	if window == nil {

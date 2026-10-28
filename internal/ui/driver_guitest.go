@@ -158,11 +158,18 @@ func (d *guiTestDriver) release() error {
 		return errors.New("release never started")
 	}
 	time.Sleep(400 * time.Millisecond)
-	if d.windowCtx.Err() != nil || !d.w.IsVisible() {
-		return errors.New("window closed before release joined")
+	if d.windowCtx.Err() != nil {
+		return errors.New("window lifetime ended before release joined")
 	}
-	if err := d.state("Stopping — releasing session", true, "releasing"); err != nil {
-		return err
+	// Accepted AppKit termination joins OnShutdown on the native main thread.
+	// Native queries/ExecJS must not wait on that thread during the join.
+	if d.scenario != "apple" {
+		if !d.w.IsVisible() {
+			return errors.New("window closed before release joined")
+		}
+		if err := d.state("Stopping — releasing session", true, "releasing"); err != nil {
+			return err
+		}
 	}
 	if err := d.mark("release-wait-observed"); err != nil {
 		return err

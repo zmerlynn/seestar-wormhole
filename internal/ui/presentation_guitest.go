@@ -29,6 +29,22 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 	err := runUIWithWindow(ctx, root, out, f.run, func(string) error { panic("guitest: browser opener") }, guiTestKeychain{}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
 		started = true
 		return showWindowConfigured(windowCtx, root, url, quit, activate, application.WebviewWindowOptions{AllowSimpleEventEmit: true}, func(app *application.App, w *application.WebviewWindow) {
+			// AppKit may exit directly after NSTerminateNow, without returning Run.
+			// Record the joined Go lifetime while OnShutdown still owns termination.
+			app.OnShutdown(func() {
+				<-windowCtx.Done()
+				select {
+				case driverErr := <-result:
+					result <- driverErr
+					if driverErr == nil {
+						if err := os.WriteFile(filepath.Join(dir, "joined"), []byte("release and driver joined before native termination\n"), 0600); err != nil {
+							fmt.Fprintln(out, "GUI fixture FAIL: join receipt", err)
+						}
+					}
+				case <-time.After(5 * time.Second):
+					fmt.Fprintln(out, "GUI fixture FAIL: driver did not join before native termination")
+				}
+			})
 			// An external HTTP page does not import /wails/runtime.js, which normally
 			// sends this readiness message. Release ExecJS only after native navigation
 			// completes; the probes still require the real page and app.js to be ready.

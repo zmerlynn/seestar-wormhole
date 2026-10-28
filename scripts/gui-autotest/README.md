@@ -45,6 +45,10 @@ title-bar click. Unix SIGTERM and SIGINT are real process signals. Windows
 CTRL_BREAK/console close are explicitly skipped: the fixture uses the GUI PE
 subsystem and has no attached console. The Mac Apple-event scenario records the
 osascript exit 0 without -128 and requires joined release and app exit 0.
+During accepted AppKit termination, OnShutdown blocks the native main thread;
+the Apple-event scenario checks the Go release lifetime without native queries
+or DOM probes during that join. Its joined receipt is written in OnShutdown,
+since AppKit can exit directly after accepting termination.
 
 Dark mode uses the OS preference, with no injected CSS or emulated media query.
 The driver checks the dark media query and computed text/background contrast
