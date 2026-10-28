@@ -20,45 +20,25 @@ func showWindowConfigured(ctx context.Context, url string, quit func(), activate
 	if err := checkWindowSandbox(); err != nil {
 		return err
 	}
-	app := application.New(application.Options{
-		Name: "seestar-wormhole",
-		// The command owns signal cancellation and the proxy's joined release.
-		DisableDefaultSignalHandler: true,
-		Logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		ShouldQuit: func() bool {
-			if ctx.Err() != nil {
-				return true
-			}
-			quit()
-			return false
-		},
-		OnShutdown: func() { quit(); <-ctx.Done() },
-	})
-	options.Title, options.Width, options.Height, options.URL = "seestar-wormhole", 760, 700, url
-	window := app.Window.NewWithOptions(options)
-	if configure != nil {
-		configure(app, window)
-	}
-	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
-		if ctx.Err() == nil {
-			event.Cancel()
-			quit()
+	return runWindow(ctx, quit, activate, func(callbacks windowCallbacks) windowActions {
+		app := application.New(application.Options{
+			Name:                        "seestar-wormhole",
+			DisableDefaultSignalHandler: true,
+			Logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
+			ShouldQuit:                  callbacks.shouldQuit,
+			OnShutdown:                  callbacks.shutdown,
+			Windows: application.WindowsOptions{WndProcInterceptor: func(_ uintptr, msg uint32, wParam, _ uintptr) (uintptr, bool) {
+				return callbacks.endSession(msg, wParam)
+			}},
+		})
+		options.Title, options.Width, options.Height, options.URL = "seestar-wormhole", 760, 700, url
+		window := app.Window.NewWithOptions(options)
+		if configure != nil {
+			configure(app, window)
 		}
+		window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) { callbacks.closing(event.Cancel) })
+		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { callbacks.started() })
+		return windowActions{run: app.Run, quit: app.Quit,
+			unminimise: func() { window.UnMinimise() }, show: func() { window.Show() }, focus: func() { window.Focus() }}
 	})
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
-		go func() {
-			for {
-				select {
-				case <-ctx.Done():
-					app.Quit()
-					return
-				case <-activate:
-					window.Restore()
-					window.Show()
-					window.Focus()
-				}
-			}
-		}()
-	})
-	return app.Run()
 }

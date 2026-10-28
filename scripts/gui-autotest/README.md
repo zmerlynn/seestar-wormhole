@@ -44,8 +44,7 @@ exercise Wails Window.Close and its WindowClosing hook; this is not a physical
 title-bar click. Unix SIGTERM and SIGINT are real process signals. Windows
 CTRL_BREAK/console close are explicitly skipped: the fixture uses the GUI PE
 subsystem and has no attached console. The Mac Apple-event scenario records the
-current osascript -128 rejection and still requires joined release and exit 0.
-A future quit fix should require osascript exit 0 without -128, after cleanup.
+osascript exit 0 without -128 and requires joined release and app exit 0.
 
 Dark mode uses the OS preference, with no injected CSS or emulated media query.
 The driver checks the dark media query and computed text/background contrast

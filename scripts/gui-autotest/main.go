@@ -173,14 +173,12 @@ func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) 
 		case "interrupt":
 			err = terminate(cmd.Process, true)
 		case "apple":
-			// Preserve the current ShouldQuit=false receipt. Fixing it belongs to a
-			// separate lane; a corrected test would require osascript exit 0/no -128.
 			receipt, quitErr := exec.CommandContext(ctx, "osascript", "-e", `tell application id "net.zml.seestar-wormhole" to quit`).CombinedOutput()
 			if e := os.WriteFile(filepath.Join(dir, "apple-event.log"), receipt, 0600); e != nil {
 				return e
 			}
-			if quitErr == nil || !strings.Contains(string(receipt), "-128") {
-				return fmt.Errorf("expected current Apple quit rejection (-128), got %v: %s", quitErr, receipt)
+			if quitErr != nil || strings.Contains(string(receipt), "-128") {
+				return fmt.Errorf("Apple quit must be accepted, got %v: %s", quitErr, receipt)
 			}
 		default:
 			// CloseMainWindow sends WM_CLOSE, the same path as the spike workflow.
