@@ -1,0 +1,67 @@
+The GUI fixture runs the embedded page inside Wails on the native CI runners.
+It requires Go and the platform's existing window engine. There is no frontend
+build, browser launcher, WebDriver, or accessibility driver.
+
+Build and run on a desktop (use an absolute path inside an app bundle on macOS):
+
+```sh
+go build -mod=vendor -tags gui,guitest,production -o /absolute/output/gui-fixture ./cmd/seestar-wormhole
+go build -mod=vendor -tags guitest -o /absolute/output/gui-harness ./scripts/gui-autotest
+/absolute/output/gui-harness -binary /absolute/output/gui-fixture -out /absolute/output/evidence
+```
+
+The workflow supplies the native dependencies, bundle, OS theme, screenshot
+commands, and outbound-network restrictions. On Windows, build the fixture
+with `CGO_ENABLED=0 -ldflags='-H windowsgui'` and use `.exe` output names.
+Run only on a disposable desktop or runner. The harness creates and removes
+scenario directories below its output directory. Never point it at user state.
+
+`SEESTAR_GUITEST_OUT` and `SEESTAR_GUITEST_SCENARIO` are private fixture inputs,
+set by the harness. The fixture fails without them. Its runner has no network
+adapter or proxy listeners; only the existing ephemeral UI listener is used.
+The fixture's keychain and browser opener panic if called. Fake credentials use
+the reserved `.invalid` domain. Nothing is saved to the OS credential store.
+
+The driver's ExecJS sets input values, dispatches input/change events, and clicks
+the page's own buttons. It does not call app.js functions or replace page code.
+The fixture marks the Wails ExecJS queue ready at the native navigation-complete
+event, since this external HTTP page does not load the full Wails JS runtime.
+An opt-in Wails native event acknowledges DOM predicates. Each screenshot waits
+for both authenticated server status and matching DOM text/control state.
+Transitions wait for the driver, rather than racing the page's polling interval.
+Cancellation always joins an eight-second fake release. A screenshot and native
+visibility check during that interval assert that the window stays open.
+
+Each scenario has a process deadline, exit-code assertion, listener-closure
+check, and fresh native launch using the same state root to check lock release.
+The second-instance scenario hides the owner, launches another actual process,
+and requires the owner's native Show/Focus state and a successful second exit.
+The injected opener panics if the activation path tries to launch a browser.
+Screenshots, per-process logs, and checkpoint receipts remain in the output.
+
+The workflow exercises Windows WM_CLOSE through CloseMainWindow. macOS/Linux
+exercise Wails Window.Close and its WindowClosing hook; this is not a physical
+title-bar click. Unix SIGTERM and SIGINT are real process signals. Windows
+CTRL_BREAK/console close are explicitly skipped: the fixture uses the GUI PE
+subsystem and has no attached console. The Mac Apple-event scenario records the
+current osascript -128 rejection and still requires joined release and exit 0.
+A future quit fix should require osascript exit 0 without -128, after cleanup.
+
+Dark mode uses the OS preference, with no injected CSS or emulated media query.
+The driver checks the dark media query and computed text/background contrast
+(at least 3:1 for enabled fields, status, notes, and buttons), and Go checks for
+substantial dark background and light glyph pixels in the central screenshot.
+This is a coarse readability check, not a full accessibility audit.
+
+`-scenarios` selects a comma-separated subset; `dark` repeats the fresh-start,
+Stop, and restart sequence. `relaunch` checks page startup and Quit without
+starting a runner. The Linux workflow also uses it to record whether the distro
+bubblewrap package permits startup with Ubuntu's userns restriction enabled,
+before applying the existing CI-only sysctl workaround for the main suite.
+The probe result is evidence and does not waive any main-suite failure.
+
+`-verify fixture,production,plain-gui` checks go version metadata and linked
+symbols without starting a window. Build these binaries without stripping.
+The fixture must contain guitest tags and symbols; both other builds must have
+none. This positive control runs on every platform. The normal release scripts
+and default build path are unchanged.
