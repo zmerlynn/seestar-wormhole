@@ -146,7 +146,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	// Give the compositor a frame after the DOM acknowledgment.
 	time.Sleep(200 * time.Millisecond)
 	path := filepath.Join(d.dir, shot+".png")
-	if err := guitest.Capture(d.ctx, path); err != nil {
+	if err := d.capture(d.ctx, path); err != nil {
 		return err
 	}
 	if strings.HasPrefix(d.scenario, "dark") {
@@ -304,4 +304,12 @@ func (d *guiTestDriver) drive() error {
 		return err
 	}
 	return d.release()
+}
+
+func (d *guiTestDriver) capture(ctx context.Context, path string) error {
+	if runtime.GOOS == "windows" {
+		d.w.Show()
+		d.w.Focus()
+	}
+	return guitest.Capture(ctx, path, uintptr(d.w.NativeWindow()))
 }

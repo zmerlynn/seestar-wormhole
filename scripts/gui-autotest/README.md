@@ -41,6 +41,8 @@ check, and fresh native launch using the same state root to check lock release.
 The second-instance scenario hides the owner, launches another actual process,
 and requires the owner's native Show/Focus state and a successful second exit.
 The injected opener panics if the activation path tries to launch a browser.
+Windows screenshots bring the app forward, require its native foreground
+handle, and capture only its window rectangle; this includes failure shots.
 Screenshots, per-process logs, and checkpoint receipts remain in the output.
 
 The workflow exercises Windows WM_CLOSE through CloseMainWindow. macOS/Linux

@@ -16,7 +16,6 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
-	"github.com/zmerlynn/seestar-wormhole/internal/guitest"
 )
 
 // Ignore the real runner entirely. Missing fixture configuration fails closed.
@@ -76,7 +75,7 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 					if driveErr != nil {
 						fmt.Fprintln(out, "GUI fixture FAIL:", driveErr)
 						shotCtx, shotCancel := context.WithTimeout(context.Background(), 5*time.Second)
-						if shotErr := guitest.Capture(shotCtx, filepath.Join(dir, "failure.png")); shotErr != nil {
+						if shotErr := d.capture(shotCtx, filepath.Join(dir, "failure.png")); shotErr != nil {
 							fmt.Fprintln(out, "failure screenshot:", shotErr)
 						}
 						shotCancel()
