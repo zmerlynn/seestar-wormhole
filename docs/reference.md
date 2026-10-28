@@ -6,7 +6,7 @@ failure rule. For setup examples, see [phone app](phone-app.md),
 [other clients](clients.md). The [protocol guide](protocol.md) connects the
 proxy's wire behavior and local policy to the v1 specification.
 
-- [ui](#ui): local browser controls
+- [ui](#ui): local window or browser controls
 - [proxy](#proxy): listeners and flags
 - [discovery](#discovery): scan replies without a cloud session
 - [licenses](#licenses)
@@ -25,14 +25,19 @@ seestar-wormhole
 seestar-wormhole ui [--state-dir PATH]
 ```
 
-Bare launch opens the browser controls, as does `ui`. Enter credentials and
+Bare launch opens the local controls, as does `ui`. Builds with the `gui` tag
+use a native window; default builds open a browser. Enter credentials and
 options, then press Start. Loading settings never starts a proxy. Stop releases
 the session and leaves the page usable; Quit or Ctrl+C releases it and exits.
 Closing the terminal window also quits; on Windows, cleanup is best effort within
 the OS deadline.
 A credential or authorization rejection ends the run after cleanup. Correct the
-credentials and press Start again. Closing the tab leaves the process running.
-Launch again with the same state directory to reopen its page. A separately running `proxy` command is independent;
+credentials and press Start again. Closing a browser tab leaves the process
+running. Closing the native window requests quit and waits for bounded release.
+Native application quit and confirmed Windows session end also join release;
+a canceled Windows session end leaves the app running. The OS can impose a
+shorter shutdown deadline. Launch again with the same state directory to bring
+the native window forward or reopen the browser page. A separately running `proxy` command is independent;
 conflicting forwarding ports must be freed before starting another run.
 
 The default state root is `os.UserConfigDir()/seestar-wormhole`: on Linux,
@@ -47,6 +52,7 @@ root without moving or copying its identity. The files are:
 | `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
 | `ui.lock` | Process-lifetime UI lock. |
 | `ui-runtime.json` | Private port and per-process control token; removed on orderly exit. |
+| `webview/` | Windows GUI engine profile under the private state root. Removal is attempted after window shutdown and before the next launch; engine locks or a crash can leave files behind. |
 | `ui-open.html` | Private browser bootstrap with the control capability; the opener receives only its path. Removed when the owning process exits normally. |
 
 Save settings writes `config.json` atomically. On Unix the directory must be
@@ -66,6 +72,15 @@ capability is absent from opener arguments. If opening fails, the app prints
 the private URL for manual use; keep that output private. The bootstrap can
 remain after a crash and is replaced on the next browser launch.
 
+The native engines also manage browser data. Windows uses `webview/` above
+and waits up to two seconds for profile cleanup, reporting an error if files
+remain locked. macOS WKWebView and Linux WebKitGTK use their default persistent
+stores: the vendored Wails options expose no nonpersistent data store or
+ephemeral network session. Those stores are outside the state root and are not
+cleared on exit. The page uses sessionStorage for reload authorization and sets
+no cookies or localStorage; no-store headers do not guarantee that an engine
+writes no session/cache data. Engine file retention needs native verification.
+
 The password is kept in memory by default and never appears in config, API
 responses, or logs. “Remember password in OS keychain” is unchecked by default;
 when selected, Start or Save settings stores the password with the OS provider
@@ -76,7 +91,9 @@ requests deletion of the selected email's keychain entry; retry if deletion
 reports an unavailable provider. OS prompts may require interaction. Turning the
 checkbox off changes future use; use Forget to remove an already stored copy.
 
-UI proxy runs use JSON lifecycle logs at INFO on stderr.
+UI proxy runs use JSON lifecycle logs at INFO on stderr. Windows GUI builds
+also show startup errors in a native message box because they have no console.
+Linux native window sandbox prerequisites are in [troubleshooting](troubleshooting.md#linux-native-window).
 Options use the same validation and [port mappings](#port-mappings) as `proxy`.
 Advanced contains optional serial/model and explicit mapping overrides. Changes
 apply on the next Start. The UI leaves discovery and flow-pressure tuning to the

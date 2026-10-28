@@ -28,7 +28,7 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 	started := false
 	err := runUIWithWindow(ctx, root, out, f.run, func(string) error { panic("guitest: browser opener") }, guiTestKeychain{}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
 		started = true
-		return showWindowConfigured(windowCtx, url, quit, activate, application.WebviewWindowOptions{AllowSimpleEventEmit: true}, func(app *application.App, w *application.WebviewWindow) {
+		return showWindowConfigured(windowCtx, root, url, quit, activate, application.WebviewWindowOptions{AllowSimpleEventEmit: true}, func(app *application.App, w *application.WebviewWindow) {
 			// An external HTTP page does not import /wails/runtime.js, which normally
 			// sends this readiness message. Release ExecJS only after native navigation
 			// completes; the probes still require the real page and app.js to be ready.
