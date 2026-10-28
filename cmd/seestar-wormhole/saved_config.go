@@ -25,6 +25,9 @@ func loadProxySettings(o *options, flags *pflag.FlagSet) error {
 	if !flags.Changed("bind") {
 		o.bind = s.Bind
 	}
+	if !flags.Changed("lan-discovery") {
+		o.lanDiscovery = s.Discovery
+	}
 	if !flags.Changed("idle") {
 		o.idle, _ = time.ParseDuration(s.Idle)
 	}

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"syscall"
@@ -35,6 +37,9 @@ func runUICommand(ctx context.Context, o options, out, logs io.Writer) error {
 // newUIRunner is the adapter used by the UI controller. Its I/O boundaries can
 // be replaced without opening a browser, consulting a keychain or signing in.
 func newUIRunner(root string, logs io.Writer, newSession func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error), listen func(string, string) (net.Listener, error), checkTCPState func(context.Context) error) func(context.Context, ui.Settings, cloud.Credentials, *proxy.Status) error {
+	return newUIRunnerWithDiscovery(root, logs, newSession, listen, listenCommandDiscovery, checkTCPState)
+}
+func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error), listen func(string, string) (net.Listener, error), discovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) func(context.Context, ui.Settings, cloud.Credentials, *proxy.Status) error {
 	return func(ctx context.Context, s ui.Settings, credentials cloud.Credentials, status *proxy.Status) error {
 		idle, err := time.ParseDuration(s.Idle)
 		if err != nil {
@@ -52,7 +57,7 @@ func newUIRunner(root string, logs io.Writer, newSession func(context.Context, p
 		return runProxy(ctx, runOptions, logs, func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
 			cfg.Status = status
 			return newSession(ctx, cfg, credentials)
-		}, listen, listenCommandDiscovery, checkTCPState)
+		}, listen, discovery, checkTCPState)
 	}
 }
 
@@ -69,5 +74,5 @@ func uiListenerError(device, local uint16, err error) error {
 			code = "http_conflict"
 		}
 	}
-	return &ui.ActionError{Code: code, Field: field}
+	return &ui.ActionError{Code: code, Field: field, Service: device, Local: local}
 }

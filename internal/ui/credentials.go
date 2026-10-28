@@ -48,6 +48,9 @@ type credentialStore struct {
 
 // remember is used only by the explicit Save password action.
 func (c *credentialStore) remember(ctx context.Context, s Settings, password string) error {
+	if s.Email == "" {
+		return &ActionError{Code: "email", Field: "email"}
+	}
 	if password != "" {
 		if _, err := cloud.EmailCredentials(s.Email, password); err != nil {
 			return &ActionError{Code: "password", Field: "password"}
@@ -138,6 +141,7 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 	c.code = ""
 	c.notice = "Password available for this launch only."
 	if s.Remember {
+		c.savedEmail = s.Email
 		c.notice = "A saved password is selected. Your OS may ask for permission when you connect."
 	}
 	return credentials, nil

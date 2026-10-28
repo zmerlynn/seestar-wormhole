@@ -91,3 +91,5 @@ func LoadSettings(root string) (Settings, error) {
 	defer d.Close()
 	return loadSettings(&storage{root: root, directory: d})
 }
+
+func (s Settings) lazy() bool { d, _ := time.ParseDuration(s.Idle); return d > 0 }

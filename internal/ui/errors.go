@@ -8,8 +8,10 @@ import (
 
 // ActionError carries only a fixed category and a field name, never dependency text.
 type ActionError struct {
-	Code  string `json:"code"`
-	Field string `json:"field,omitempty"`
+	Code    string `json:"code"`
+	Field   string `json:"field,omitempty"`
+	Service uint16 `json:"service,omitempty"`
+	Local   uint16 `json:"local,omitempty"`
 }
 
 func (e *ActionError) Error() string { return "UI action failed: " + e.Code }

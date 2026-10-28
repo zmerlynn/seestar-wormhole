@@ -29,6 +29,9 @@ type controller struct {
 }
 
 func (c *controller) start(s Settings, password string) error {
+	if s.Email == "" {
+		return &ActionError{Code: "email", Field: "email"}
+	}
 	if _, _, err := s.validate(); err != nil {
 		return err
 	}
@@ -80,9 +83,7 @@ func (c *controller) start(s Settings, password string) error {
 			err = ctx.Err()
 		}
 		c.final = finalStatus(err)
-		if err != nil && !errors.Is(err, context.Canceled) {
-			c.failure = actionError(err)
-		}
+		c.failure = runFailure(err)
 		if diagnostic.CleanupError(err) != nil {
 			c.failure = &ActionError{Code: "release"}
 		}
@@ -96,12 +97,22 @@ func (c *controller) start(s Settings, password string) error {
 	}()
 	return nil
 }
-func finalStatus(err error) string {
+func runFailure(err error) *ActionError {
 	if diagnostic.CleanupError(err) != nil {
-		return errorCopy("release")
+		return &ActionError{Code: "release"}
 	}
-	if err != nil && !errors.Is(err, context.Canceled) {
-		return errorCopy(actionError(err).Code)
+	if err == nil {
+		return nil
+	}
+	e := actionError(err)
+	if e.Code != "connection" || !errors.Is(err, context.Canceled) {
+		return e
+	}
+	return nil
+}
+func finalStatus(err error) string {
+	if e := runFailure(err); e != nil {
+		return errorCopy(e.Code)
 	}
 	return "Stopped"
 }
@@ -136,6 +147,9 @@ func (c *controller) quit() {
 func (c *controller) snapshot() (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.snapshotLocked()
+}
+func (c *controller) snapshotLocked() (string, bool) {
 	if c.done == nil {
 		if c.final != "" {
 			return c.final, false
@@ -144,6 +158,9 @@ func (c *controller) snapshot() (string, bool) {
 	}
 	if c.stopping {
 		return "Stopping — releasing the telescope session…", true
+	}
+	if p := c.credentials.state(c.runSettings.Email); p.Code == "password_reading" {
+		return "Reading saved password…", true
 	}
 	return uiText(c.status.Text()), true
 }
@@ -168,7 +185,7 @@ func (c *controller) record(text string) {
 	}
 }
 func (c *controller) saveAtBoundary(status *proxy.Status, s Settings) {
-	if !status.SaveBoundary(s.Idle != "0" && s.Idle != "0s") {
+	if !status.SaveBoundary(s.lazy()) {
 		return
 	}
 	c.mu.Lock()
@@ -240,12 +257,12 @@ type runView struct {
 }
 
 func (c *controller) view() runView {
-	text, active := c.snapshot()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	text, active := c.snapshotLocked()
 	v := runView{Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, Settings: c.runSettings, Saved: c.saved, SaveFailed: c.saveFailed}
 	if active {
-		v.Cancel = !c.status.WasReady() && c.runSettings.Idle == "0"
+		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
 		v.Discovery = c.runSettings.Discovery && c.status.SaveBoundary(true)
 	}
 	if c.failure != nil {

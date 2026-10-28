@@ -224,3 +224,28 @@ func TestSavedConfigCredentialRefusalBeforeListeners(t *testing.T) {
 		t.Fatalf("err=%v logs=%s", err, &logs)
 	}
 }
+
+func TestSavedPhoneDiscoveryAndExplicitOverride(t *testing.T) {
+	root := savedConfigRoot(t)
+	s := ui.Settings{Version: 1, Bind: "0.0.0.0", Idle: "0", Discovery: true, Ports: []string{"80:80"}}
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "config.json"), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	for _, disable := range []bool{false, true} {
+		args := []string{"proxy", "--config", "--state-dir", root}
+		if disable {
+			args = append(args, "--lan-discovery=false", "--bind=127.0.0.1")
+		}
+		o, err := parse(args, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if o.lanDiscovery == disable {
+			t.Fatalf("saved discovery / explicit override lost: %+v", o)
+		}
+	}
+}

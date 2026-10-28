@@ -11,7 +11,9 @@ import (
 	"testing/synctest"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
 func TestRemoveFailureCanRetryRepeatedly(t *testing.T) {
@@ -189,4 +191,11 @@ func doPost(s *server, path, body string) *httptest.ResponseRecorder {
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, request(s, "POST", path, body))
 	return w
+}
+
+func TestCanceledRunRetainsSignInFailure(t *testing.T) {
+	err := errors.Join(context.Canceled, diagnostic.NewTerminal(session.Cloud, "unauthorized", session.ErrUncertain))
+	if got := finalStatus(err); got != errorCopy("signin") {
+		t.Fatalf("lost rejection: %s", got)
+	}
 }

@@ -9,7 +9,7 @@ if (token) {
   try { token = sessionStorage.getItem(tokenKey) || ''; } catch (_) {}
 }
 let initialized = false, ended = false, connected = false, pending = '', active = false;
-let lastFailure = '', state = null, selectedSaved = false, memory = false, editing = true, savedEmail = '', keyBusy = false;
+let deferredFocus = '', lastFailure = '', state = null, selectedSaved = false, memory = false, editing = true, savedEmail = '', keyBusy = false;
 let currentGoal = 'phone', proposedGoal = '', retryRemoval = false, diagnostic = '', noticeCode = '';
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen seestar-wormhole to reconnect.';
 const fieldCopy = {
@@ -47,7 +47,7 @@ function load(s) {
   for (const name of ['email', 'bind', 'serial', 'model']) $(name).value = s[name] || '';
   $('listen').value = ['0.0.0.0', '127.0.0.1'].includes(s.bind) ? s.bind : 'other';
   $('discovery').checked = !!s.discovery;
-  $('mode').value = !s.idle || s.idle === '0' || s.idle === '0s' ? 'eager' : 'idle';
+  $('mode').value = s.idle_minutes > 0 ? 'idle' : 'eager';
   // The server projects parsed duration to minutes, including old compound durations.
   $('idle').value = s.idle_minutes || 2;
   $('ports').value = (s.ports || []).join('\n');
@@ -56,9 +56,11 @@ function load(s) {
   editing = !selectedSaved;
   if (selectedSaved) $('password-note').textContent = 'A saved password is selected. Your OS may ask for permission when you connect.';
 }
-function say(text) { $('feedback').textContent = text; }
-function alertText(text) { $('notice').textContent = text; $('notice').hidden = !text; }
+function text(id,value) {if ($(id).textContent !== value) $(id).textContent = value;}
+function say(value) { text('feedback',value); }
+function alertText(value) { text('notice',value); $('notice').hidden = !value; }
 function clearErrors() {
+  $('listen').removeAttribute('aria-invalid');
   for (const id of ['email','password','idle','bind','discovery','ports','serial','model']) {
     $(id).removeAttribute('aria-invalid'); $(id + '-error').hidden = true;
   }
@@ -67,16 +69,18 @@ function fieldError(field, message, code) {
   const e = $(field), help = $(field + '-error');
   if (!e || !help) return;
   if (e.closest('details')) $('advanced').open = true;
-  if (field === 'bind' && $('listen').value !== 'other') { $('listen').setAttribute('aria-invalid','true'); $('listen').focus(); }
-  else {e.setAttribute('aria-invalid','true');e.focus();}
+  const target = field === 'bind' && $('listen').value !== 'other' ? $('listen') : e;
+  target.setAttribute('aria-invalid','true');
+  if ($('options').disabled || $('settings').hidden) deferredFocus = target.id;
+  else target.focus();
   help.textContent = message + ' [' + code + ']'; help.hidden = false;
 }
 function fail(e) {
   const code = e.code || 'controls';
   alertText((e.message || fieldCopy[code] || lostCopy) + ' [' + code + ']');
   if (e.field) fieldError(e.field, e.message || fieldCopy[code] || 'Check this setting.', code);
-  if (code === 'password_remove') retryRemoval = true;
-  if (['password_read','password_missing','keychain_timeout'].includes(code)) {editing = true;selectedSaved = false;}
+  if (code === 'password_remove') {retryRemoval = true;memory = false;}
+  if (['password_read','password_missing','keychain_timeout'].includes(code)) {if (!editing) $('password').value = '';editing = true;selectedSaved = false;memory = false;}
   if (code === 'controls') connected = false;
 }
 function validate(passwordSave = false) {
@@ -113,10 +117,11 @@ function controls() {
   $('retry-storage').disabled = blocked || !!pending;
   $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.' : currentGoal === 'computer' ? 'Only apps on this computer can connect. A phone on the network cannot use this setup.' : 'Check Advanced settings before connecting.';
   $('trust').hidden = settings().bind === '127.0.0.1' || settings().bind === '::1';
+  if (deferredFocus && !$('options').disabled && !$('settings').hidden) {$(deferredFocus).focus();deferredFocus = '';}
 }
 function render(s) {
   state = s; active = s.active; keyBusy = s.password.busy;
-  $('status').textContent = s.status;
+  text('status',s.status);
   $('last-known').hidden = true;
   $('quit').textContent = s.native ? 'Quit app' : 'Quit service';
   $('quit-help').textContent = s.native ? 'Quit stops the proxy and closes the app. Closing this window also quits.' : 'Closing this tab leaves the proxy running. Quit service stops it; you can then close this tab.';
@@ -125,7 +130,7 @@ function render(s) {
   else if (s.storage_failed) alertText('Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.');
   if (s.failure && !active) {
     alertText(s.failure_message + ' [' + s.failure.code + ']');
-    if (lastFailure !== s.failure.code && s.failure.field) fieldError(s.failure.field,s.failure_message,s.failure.code);
+    if (lastFailure !== s.failure.code && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer ' + s.failure.local + ' → telescope ' + s.failure.service + '.' : ''),s.failure.code);
     lastFailure = s.failure.code;
     if (['signin','password','password_read','password_missing','keychain_timeout'].includes(s.failure.code) && !editing) {editing = true;selectedSaved = false;$('password').value = '';}
   }
@@ -173,7 +178,9 @@ async function refresh() {
     if (memory && !selectedSaved) $('password-note').textContent = 'Password available for this launch only.';
     if (editing) $('password').value = '';
   }
+  const returning = active && !s.active;
   render(s);
+  if (returning && !s.failure && !$('start').disabled) $('start').focus();
 }
 async function poll() {
   if (ended) return;
@@ -208,14 +215,14 @@ async function act(action) {
       controls();return;
     }
     await refresh();
-  } catch (e) {fail(e);} finally {pending = '';controls();}
+  } catch (e) {fail(e);} finally {pending = '';controls();if (action === 'start' && active && !$('start').disabled) $('start').focus();}
 }
 $('settings').addEventListener('submit', e => {e.preventDefault();if (!active && !$('start').disabled) act('start');});
 $('start').addEventListener('click', () => {if (active) act('stop');});
 for (const [id,action] of [['save-password','password/save'],['forget','forget'],['quit','quit'],['retry-storage','retry-storage']]) {
   $(id).addEventListener('click', () => act(id === 'retry-storage' && state?.save_failed ? 'save' : action));
 }
-$('change-password').addEventListener('click', () => {editing = true;selectedSaved = false;$('password').value = '';$('password-note').textContent = 'Entering a password uses it for this launch. Save it to replace the keychain copy.';controls();$('password').focus();});
+$('change-password').addEventListener('click', () => {editing = true;selectedSaved = false;memory = false;$('password').value = '';$('password-note').textContent = 'Entering a password uses it for this launch. Save it to replace the keychain copy.';controls();$('password').focus();});
 $('use-saved').addEventListener('click', () => {selectedSaved = true;editing = false;savedEmail = $('email').value;$('password').value = '';$('password-note').textContent = 'A saved password is selected. Your OS may ask for permission when you connect.';controls();});
 $('email').addEventListener('input', () => {selectedSaved = false;memory = false;editing = true;$('password').value = '';$('password-note').textContent = 'Enter a password for this account.';controls();});
 $('password').addEventListener('input', controls);

@@ -125,6 +125,10 @@ func runUI(ctx context.Context, root string, out io.Writer, run runFunc, open fu
 	return runUIWithWindow(ctx, root, out, run, open, chain, nil)
 }
 func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc) error {
+	return runUIPresented(ctx, root, out, run, open, chain, window, window != nil)
+}
+
+func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native bool) (result error) {
 	st, err := openStorage(root)
 	if err != nil {
 		return err
@@ -142,6 +146,13 @@ func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFun
 	if !acquired {
 		return reopen(ctx, st, open, out)
 	}
+	eventHistory := &eventLog{storage: st}
+	eventHistory.add("Application opened.")
+	defer func() {
+		if result != nil {
+			eventHistory.add("Application could not start.")
+		}
+	}()
 	settings, err := loadSettings(st)
 	if os.IsNotExist(err) {
 		settings = defaultSettings()
@@ -165,10 +176,9 @@ func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFun
 		return ""
 	}()}}
 	handler := &server{host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
-	handler.native = window != nil
+	handler.native = native
 	c.save = handler.saveSettings
-	c.log = &eventLog{storage: st}
-	c.log.add("Application opened.")
+	c.log = eventHistory
 	activate := make(chan struct{}, 1)
 	if window != nil {
 		handler.activate = func() {
