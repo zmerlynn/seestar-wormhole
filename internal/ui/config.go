@@ -1,13 +1,11 @@
 package ui
 
 import (
-	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
-	"net"
 	"time"
 )
 
@@ -24,8 +22,6 @@ type Settings struct {
 	Remember  bool     `json:"remember_password"`
 }
 
-var errSettings = errors.New("Invalid settings: check idle duration, device selection, email, and port overrides")
-
 func defaultSettings() Settings {
 	return Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []string{"80:80"}}
 }
@@ -36,9 +32,6 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 	}
 	if err != nil || idle < 0 {
 		return nil, 0, &ActionError{Code: "idle", Field: "idle"}
-	}
-	if net.ParseIP(s.Bind) == nil {
-		return nil, 0, &ActionError{Code: "bind", Field: "bind"}
 	}
 	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
 		return nil, 0, &ActionError{Code: "discovery_bind", Field: "bind"}
