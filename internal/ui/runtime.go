@@ -158,8 +158,17 @@ func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFun
 		return errors.New("UI token unavailable")
 	}
 	record := runtimeRecord{Port: listener.Addr().(*net.TCPAddr).Port, Token: hex.EncodeToString(token[:])}
-	c := &controller{parent: ctx, run: run, credentials: &credentialStore{chain: chain}}
+	c := &controller{parent: ctx, run: run, credentials: &credentialStore{chain: chain, savedEmail: func() string {
+		if settings.Remember {
+			return settings.Email
+		}
+		return ""
+	}()}}
 	handler := &server{host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
+	handler.native = window != nil
+	c.save = handler.saveSettings
+	c.log = &eventLog{storage: st}
+	c.log.add("Application opened.")
 	activate := make(chan struct{}, 1)
 	if window != nil {
 		handler.activate = func() {

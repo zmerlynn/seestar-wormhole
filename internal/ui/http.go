@@ -9,20 +9,23 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 )
 
 //go:embed web/*
 var assets embed.FS
 
 type server struct {
-	host, token string
-	controller  *controller
-	storage     *storage
-	mu          sync.Mutex
-	settings    Settings
-	quit        chan struct{}
-	quitOnce    sync.Once
-	activate    func()
+	host, token   string
+	controller    *controller
+	storage       *storage
+	mu            sync.Mutex
+	settings      Settings
+	quit          chan struct{}
+	quitOnce      sync.Once
+	activate      func()
+	native        bool
+	storageFailed bool
 }
 type input struct {
 	Settings Settings `json:"settings"`
@@ -30,7 +33,7 @@ type input struct {
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cache-Control", "no-store")
@@ -93,15 +96,21 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		settings := s.settings
 		s.mu.Unlock()
-		text, active := s.controller.snapshot()
-		available, notice := s.controller.credentials.info()
+
+		events, path, logFailed := s.controller.log.snapshot()
+		s.mu.Lock()
+		storageFailed := s.storageFailed
+		s.mu.Unlock()
 		s.respond(w, struct {
-			Settings          Settings `json:"settings"`
-			Status            string   `json:"status"`
-			Active            bool     `json:"active"`
-			PasswordAvailable bool     `json:"password_available"`
-			Notice            string   `json:"notice"`
-		}{settings, text, active, available, notice})
+			Settings pageSettings `json:"settings"`
+			runView
+			Password      passwordInfo `json:"password"`
+			Native        bool         `json:"native"`
+			Events        []string     `json:"events"`
+			LogPath       string       `json:"log_path"`
+			LogFailed     bool         `json:"log_failed"`
+			StorageFailed bool         `json:"storage_failed"`
+		}{pageSettingsFor(settings), s.controller.view(), s.controller.credentials.state(settings.Email), s.native, events, path, logFailed, storageFailed})
 		return
 	}
 	if r.Method != "POST" {
@@ -147,21 +156,36 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	case "/api/stop":
 		s.controller.stop()
-	case "/api/save":
+
+	case "/api/password/save":
 		if _, _, err = in.Settings.validate(); err == nil {
-			// Only settings go to disk. Keychain operations never enter this structure.
 			err = s.controller.credentials.remember(r.Context(), in.Settings, in.Password)
 			if err == nil {
-				s.mu.Lock()
-				err = s.storage.write("config.json", in.Settings)
-				if err == nil {
-					s.settings = in.Settings
-				}
-				s.mu.Unlock()
+				err = s.saveSettings(s.controller.credentials.association(in.Settings))
 			}
+			_, notice := s.controller.credentials.info()
+			s.controller.record(notice)
 		}
 	case "/api/forget":
-		s.controller.credentials.forget(r.Context(), in.Settings.Email)
+		err = s.controller.credentials.forget(r.Context(), in.Settings.Email)
+		if err == nil {
+			err = s.saveSettings(s.controller.credentials.association(in.Settings))
+		}
+		_, notice := s.controller.credentials.info()
+		s.controller.record(notice)
+	case "/api/save":
+		// Contextual retry only; never accepts arbitrary settings or writes a secret.
+		err = s.controller.retrySave()
+	case "/api/retry-storage":
+		s.mu.Lock()
+		retry := s.settings
+		failed := s.storageFailed
+		s.mu.Unlock()
+		if !failed {
+			err = &ActionError{Code: "settings"}
+		} else {
+			err = s.saveSettings(retry)
+		}
 	case "/api/quit":
 		s.controller.quit()
 		// Cleanup has joined; flush the response before shutting down HTTP.
@@ -178,7 +202,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		http.Error(w, "Action failed: check settings, credentials, and private storage", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		s.respond(w, struct {
+			*ActionError
+			Message string `json:"message"`
+		}{actionError(err), errorCopy(actionError(err).Code)})
 		return
 	}
 	s.respond(w, struct {
@@ -193,4 +222,24 @@ func (s *server) respond(w http.ResponseWriter, v any) {
 		return
 	}
 	w.Write(b)
+}
+
+func (s *server) saveSettings(settings Settings) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Retain the exact snapshot even on storage failure so retry is truthful.
+	s.settings = settings
+	err := s.storage.write("config.json", settings)
+	s.storageFailed = err != nil
+	return err
+}
+
+type pageSettings struct {
+	Settings
+	IdleMinutes float64 `json:"idle_minutes"`
+}
+
+func pageSettingsFor(s Settings) pageSettings {
+	d, _ := time.ParseDuration(s.Idle)
+	return pageSettings{s, d.Minutes()}
 }

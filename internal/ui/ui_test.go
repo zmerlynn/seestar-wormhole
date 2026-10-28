@@ -42,7 +42,7 @@ func TestControllerLifetimes(t *testing.T) {
 	}
 	c.stop()
 	<-cleanup
-	if text, active := c.snapshot(); !active || text != "Stopping — releasing session" {
+	if text, active := c.snapshot(); !active || text != "Stopping — releasing the telescope session…" {
 		t.Fatalf("%s %v", text, active)
 	}
 	if err := c.start(s, testPassword); err == nil {
@@ -166,7 +166,7 @@ func TestHTTPNoSecretsAndHeaders(t *testing.T) {
 		}
 	}
 	in, _ := json.Marshal(input{testSettings(), testPassword})
-	for _, action := range []string{"save", "start"} {
+	for _, action := range []string{"password/save", "start"} {
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, request(s, "POST", "/api/"+action, string(in)))
 		if w.Code != 200 {
@@ -199,7 +199,7 @@ func TestHTTPNoSecretsAndHeaders(t *testing.T) {
 	}
 }
 func TestFinalStatus(t *testing.T) {
-	if got := finalStatus(errors.New(testPassword)); got != "Stopped with error — check settings, network, and local port availability" {
+	if got := finalStatus(errors.New(testPassword)); got != "Could not connect. Check your network and try again." {
 		t.Errorf("unexpected failure guidance: %q", got)
 	}
 	if got := finalStatus(errors.New(testPassword)); strings.Contains(got, testPassword) {
@@ -274,7 +274,7 @@ func TestTerminalRejectionCancelsAndJoins(t *testing.T) {
 	default:
 	}
 	close(release)
-	if got := finalStatus(<-done); got != "Sign-in required — correct credentials and Start again" {
+	if got := finalStatus(<-done); got != "Sign-in was rejected. Check your Seestar account email and password, then connect again." {
 		t.Fatal(got)
 	}
 }
@@ -333,7 +333,7 @@ func TestControllerFinalCleanupError(t *testing.T) {
 			close(complete)
 			<-done
 			text, active := c.snapshot()
-			if active || text != "Stopped with cleanup error (release_failed)" {
+			if active || text != "Stopped, but session release could not be confirmed. Wait 60 seconds before connecting again." {
 				t.Fatalf("completed controller: text=%q active=%v", text, active)
 			}
 		})

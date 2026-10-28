@@ -59,7 +59,7 @@ func TestKeychainUnavailableMemoryOnly(t *testing.T) {
 		t.Fatalf("%v %s", available, notice)
 	}
 	s.Remember = false
- if _, err := c.credentials(t.Context(), s, ""); err != nil {
+	if _, err := c.credentials(t.Context(), s, ""); err != nil {
 		t.Fatal("memory fallback unavailable", err)
 	}
 	if err := st.write("config.json", s); err != nil {
