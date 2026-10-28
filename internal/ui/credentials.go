@@ -48,6 +48,9 @@ type credentialStore struct {
 
 // remember is used only by the explicit Save password action.
 func (c *credentialStore) remember(ctx context.Context, s Settings, password string) error {
+	return c.rememberAt(ctx, s, password, c.generationID())
+}
+func (c *credentialStore) rememberAt(ctx context.Context, s Settings, password string, generation uint64) error {
 	if s.Email == "" {
 		return &ActionError{Code: "email", Field: "email"}
 	}
@@ -55,12 +58,16 @@ func (c *credentialStore) remember(ctx context.Context, s Settings, password str
 		if _, err := cloud.EmailCredentials(s.Email, password); err != nil {
 			return &ActionError{Code: "password", Field: "password"}
 		}
-		c.mu.Lock()
-		c.email, c.password = s.Email, password
-		c.mu.Unlock()
 	}
 	c.mu.Lock()
-	email, p, generation := c.email, c.password, c.generation
+	if c.generation != generation {
+		c.mu.Unlock()
+		return &ActionError{Code: "password", Field: "password"}
+	}
+	if password != "" {
+		c.email, c.password = s.Email, password
+	}
+	email, p := c.email, c.password
 	c.mu.Unlock()
 	if email != s.Email || p == "" {
 		return &ActionError{Code: "password", Field: "password"}

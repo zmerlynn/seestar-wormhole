@@ -173,7 +173,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/password/save":
 		if _, _, err = in.Settings.validate(); err == nil {
 			generation := s.controller.credentials.generationID()
-			err = s.controller.credentials.remember(r.Context(), in.Settings, in.Password)
+			err = s.controller.credentials.rememberAt(r.Context(), in.Settings, in.Password, generation)
 			if err == nil {
 				err = s.controller.persistPassword(in.Settings, generation)
 			}
