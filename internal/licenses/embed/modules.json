@@ -1,9 +1,30 @@
 [
   {
+    "Path": "github.com/adrg/xdg",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/adrg/xdg/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/coder/websocket",
+    "SPDX": "ISC",
+    "Files": [
+      "vendor/github.com/coder/websocket/LICENSE.txt"
+    ]
+  },
+  {
     "Path": "github.com/danieljoos/wincred",
     "SPDX": "MIT",
     "Files": [
       "vendor/github.com/danieljoos/wincred/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-ole/go-ole",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/go-ole/go-ole/LICENSE"
     ]
   },
   {
@@ -18,6 +39,20 @@
     "SPDX": "Apache-2.0",
     "Files": [
       "vendor/github.com/inconshreveable/mousetrap/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/mattn/go-colorable",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/mattn/go-colorable/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/mattn/go-isatty",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/mattn/go-isatty/LICENSE"
     ]
   },
   {
@@ -53,6 +88,20 @@
     "SPDX": "BSD-3-Clause",
     "Files": [
       "vendor/github.com/spf13/pflag/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/wailsapp/wails/v3",
+    "SPDX": "MIT AND ISC",
+    "Files": [
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/guid-MIT.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/internal-assetserver-ringqueue.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-clipboard.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-guid.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-user32.go.txt",
+      "vendor/github.com/wailsapp/wails/v3/LICENSE",
+      "vendor/github.com/wailsapp/wails/v3/internal/go-common-file-dialog/LICENSE",
+      "vendor/github.com/wailsapp/wails/v3/internal/webview2/webviewloader/LICENSE"
     ]
   },
   {

@@ -1,0 +1,2 @@
+From pkg/w32/clipboard.go:
+* Based on code originally from https://github.com/atotto/clipboard. Copyright (c) 2013 Ato Araki. All rights reserved.
