@@ -24,7 +24,7 @@ func TestNativeWindowCallbacks(t *testing.T) {
 			defer release()
 			requested := make(chan struct{}, 4)
 			nativeQuit := make(chan struct{})
-			err := runWindow(ctx, func() { requested <- struct{}{} }, nil, func(c windowCallbacks) windowActions {
+			err := runWindow(ctx, "http://example.invalid/#original", func() { requested <- struct{}{} }, nil, func(c windowCallbacks) windowActions {
 				return windowActions{quit: func() { close(nativeQuit) }, run: func() error {
 					c.started()
 					shutdownDone := make(chan struct{})
@@ -96,19 +96,28 @@ func TestNativeActivation(t *testing.T) {
 	defer release()
 	activate, focused, nativeQuit := make(chan struct{}, 1), make(chan struct{}), make(chan struct{})
 	var calls []string
-	err := runWindow(ctx, func() {}, activate, func(c windowCallbacks) windowActions {
+	err := runWindow(ctx, "http://example.invalid/#original", func() {}, activate, func(c windowCallbacks) windowActions {
 		return windowActions{
+			setURL: func(url string) {
+				if url != "http://example.invalid/#original" {
+					t.Error("activation lost original capability URL")
+				}
+				calls = append(calls, "setURL")
+			},
 			unminimise: func() { calls = append(calls, "unminimise") },
 			show:       func() { calls = append(calls, "show") },
-			focus:      func() { calls = append(calls, "focus"); close(focused) },
-			quit:       func() { close(nativeQuit) },
+			focus: func() {
+				calls = append(calls, "focus")
+				if !reflect.DeepEqual(calls, []string{"setURL", "unminimise", "show", "focus"}) {
+					t.Errorf("activation must restore before presenting: %v", calls)
+				}
+				close(focused)
+			},
+			quit: func() { close(nativeQuit) },
 			run: func() error {
 				c.started()
 				activate <- struct{}{}
 				awaitWindow(t, focused)
-				if !reflect.DeepEqual(calls, []string{"unminimise", "show", "focus"}) {
-					t.Fatalf("activation changed layout or missed focus: %v", calls)
-				}
 				release()
 				awaitWindow(t, nativeQuit)
 				return nil
@@ -125,7 +134,7 @@ func TestNativeRunReturns(t *testing.T) {
 		for _, runErr := range []error{nil, errors.New("startup failed")} {
 			ctx, release := context.WithCancel(t.Context())
 			quitCalls := make(chan struct{}, 1)
-			err := runWindow(ctx, func() {}, nil, func(c windowCallbacks) windowActions {
+			err := runWindow(ctx, "http://example.invalid/#original", func() {}, nil, func(c windowCallbacks) windowActions {
 				return windowActions{quit: func() { quitCalls <- struct{}{} }, run: func() error {
 					if started {
 						c.started()
@@ -151,7 +160,7 @@ func TestNativeCanceledBeforeStarted(t *testing.T) {
 	ctx, release := context.WithCancel(t.Context())
 	release()
 	quitCalls := make(chan struct{})
-	runWindow(ctx, func() {}, nil, func(c windowCallbacks) windowActions {
+	runWindow(ctx, "http://example.invalid/#original", func() {}, nil, func(c windowCallbacks) windowActions {
 		return windowActions{quit: func() { close(quitCalls) }, run: func() error {
 			select {
 			case <-quitCalls:

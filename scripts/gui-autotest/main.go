@@ -26,7 +26,7 @@ import (
 func main() {
 	binary := flag.String("binary", "", "gui,guitest binary (or executable inside a Mac bundle)")
 	out := flag.String("out", "", "artifact directory")
-	scenarios := flag.String("scenarios", "fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,errors,term,interrupt", "comma-separated scenarios")
+	scenarios := flag.String("scenarios", "fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,strand,errors,term,interrupt", "comma-separated scenarios")
 	verify := flag.String("verify", "", "fixture,production,plain-gui binaries: inspect only")
 	timeout := flag.Duration("timeout", 100*time.Second, "bound per scenario including relaunch")
 	flag.Parse()
@@ -176,12 +176,15 @@ func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) 
 	if record.Port < 1 || record.Port > 65535 {
 		return errors.New("invalid listener port")
 	}
-	if scenario == "activate" || scenario == "term" || scenario == "interrupt" || scenario == "apple" || (runtime.GOOS == "windows" && strings.HasPrefix(scenario, "close-")) {
+	if scenario == "activate" || scenario == "strand" || scenario == "term" || scenario == "interrupt" || scenario == "apple" || (runtime.GOOS == "windows" && strings.HasPrefix(scenario, "close-")) {
 		if err := waitFile(filepath.Join(dir, "trigger")); err != nil {
 			return err
 		}
 		switch scenario {
-		case "activate":
+		case "activate", "strand":
+			if scenario == "strand" && !exists(filepath.Join(dir, "off-origin")) {
+				return errors.New("second launch before off-origin assertion")
+			}
 			second, secondDone, err := launch(ctx, bin, filepath.Join(dir, "second"), root, scenario)
 			if err != nil {
 				return err
@@ -234,6 +237,9 @@ func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) 
 		}
 	case <-ctx.Done():
 		return errors.New("process did not exit within bound")
+	}
+	if scenario == "strand" && !exists(filepath.Join(dir, "restored")) {
+		return errors.New("missing authenticated window recovery assertion")
 	}
 	if !exists(filepath.Join(dir, "joined")) {
 		return errors.New("missing joined-window receipt")

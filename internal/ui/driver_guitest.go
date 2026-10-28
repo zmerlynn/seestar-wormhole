@@ -100,25 +100,10 @@ func (d *guiTestDriver) start() error {
 }
 
 func (d *guiTestDriver) state(want string, active bool, shot string) error {
-	parts := strings.Split(d.url, "/#")
-	client := &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, Timeout: time.Second}
-	defer client.CloseIdleConnections()
-	if err := guitest.Wait(d.ctx, "server status "+want, func() bool {
-		req, _ := http.NewRequestWithContext(d.ctx, "GET", parts[0]+"/api/status", nil)
-		req.Header.Set("X-Seestar-Token", parts[1])
-		resp, err := client.Do(req)
-		if err != nil {
-			return false
-		}
-		defer resp.Body.Close()
-		var s struct {
-			Status string `json:"status"`
-			Active bool   `json:"active"`
-		}
-		return resp.StatusCode == 200 && json.UnmarshalRead(io.LimitReader(resp.Body, maxJSON), &s) == nil && s.Status == want && s.Active == active
-	}); err != nil {
+	if err := d.serverState(want, active); err != nil {
 		return err
 	}
+
 	d.w.ExecJS(`window.scrollTo(0,0)`)
 	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('start').disabled === ` + strconv.FormatBool(active) + ` && getComputedStyle(document.getElementById('status')).visibility === 'visible' && document.getElementById('status').getBoundingClientRect().top >= 0`); err != nil {
 		return err
@@ -299,6 +284,44 @@ func (d *guiTestDriver) drive() error {
 		if err := d.state("Ready", true, "activated"); err != nil {
 			return err
 		}
+	case "strand":
+		origin := strings.Split(d.url, "/#")[0]
+		// about:blank has a different URL origin and requires no network or server.
+		// Use page navigation, not the native SetURL whose recovery we are testing.
+		d.w.ExecJS(`location.href='about:blank'`)
+		if err := d.probe(`location.href === 'about:blank' && location.origin !== ` + strconv.Quote(origin) + ` && !document.getElementById('status')`); err != nil {
+			return err
+		}
+		if err := d.serverState("Ready", true); err != nil {
+			return err
+		}
+		if err := d.runnerUninterrupted(); err != nil {
+			return err
+		}
+		if err := d.capture(d.ctx, filepath.Join(d.dir, "stranded.png")); err != nil {
+			return err
+		}
+		if err := d.mark("off-origin"); err != nil {
+			return err
+		}
+		if err := d.mark("trigger"); err != nil {
+			return err
+		}
+		if err := d.probe(`location.origin === ` + strconv.Quote(origin) + ` && document.getElementById('status')?.textContent === 'Ready'`); err != nil {
+			return err
+		}
+		// Ready in the reloaded DOM requires app.js's authenticated status fetch;
+		// also independently check that the same authenticated server stayed active.
+		if err := d.state("Ready", true, "restored"); err != nil {
+			return err
+		}
+		if err := d.runnerUninterrupted(); err != nil {
+			return err
+		}
+		if err := d.mark("restored"); err != nil {
+			return err
+		}
+
 	case "close-ready", "close-connecting":
 		if runtime.GOOS != "windows" {
 			d.w.Close()
@@ -326,4 +349,39 @@ func (d *guiTestDriver) capture(ctx context.Context, path string) error {
 		d.w.Focus()
 	}
 	return guitest.Capture(ctx, path, uintptr(d.w.NativeWindow()))
+}
+
+// The driver can authenticate independently while the window is on a foreign page.
+func (d *guiTestDriver) serverState(want string, active bool) error {
+	parts := strings.Split(d.url, "/#")
+	client := &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, Timeout: time.Second}
+	defer client.CloseIdleConnections()
+	if err := guitest.Wait(d.ctx, "server status "+want, func() bool {
+		req, _ := http.NewRequestWithContext(d.ctx, "GET", parts[0]+"/api/status", nil)
+		req.Header.Set("X-Seestar-Token", parts[1])
+		resp, err := client.Do(req)
+		if err != nil {
+			return false
+		}
+		defer resp.Body.Close()
+		var s struct {
+			Status string `json:"status"`
+			Active bool   `json:"active"`
+		}
+		return resp.StatusCode == 200 && json.UnmarshalRead(io.LimitReader(resp.Body, maxJSON), &s) == nil && s.Status == want && s.Active == active
+	}); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (d *guiTestDriver) runnerUninterrupted() error {
+	select {
+	case <-d.runner.releasing:
+		return errors.New("runner stopped while window was stranded")
+	case <-d.runner.entered:
+		return errors.New("runner restarted during window recovery")
+	default:
+		return nil
+	}
 }

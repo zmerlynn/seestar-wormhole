@@ -41,6 +41,11 @@ Each scenario has a process deadline, exit-code assertion, listener-closure
 check, and fresh native launch using the same state root to check lock release.
 The second-instance scenario hides the owner, launches another actual process,
 and requires the owner's native Show/Focus state and a successful second exit.
+The `strand` scenario navigates by page script to `about:blank`, verifies the
+window URL is off the app origin while authenticated server status stays Ready,
+and launches a second process. It requires the reloaded controls on the app
+origin, authenticated Ready status, no runner stop/restart, second exit 0, and
+the usual Quit, joined release, listener, and fresh-launch assertions.
 The injected opener panics if the activation path tries to launch a browser.
 Windows screenshots bring the app forward, require its native foreground
 handle, and capture only its window rectangle; this includes failure shots.

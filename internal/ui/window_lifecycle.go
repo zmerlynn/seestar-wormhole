@@ -6,6 +6,7 @@ import "context"
 // and worker used by the actual presenter.
 type windowActions struct {
 	run                           func() error
+	setURL                        func(string)
 	quit, unminimise, show, focus func()
 }
 type windowCallbacks struct {
@@ -15,7 +16,7 @@ type windowCallbacks struct {
 	endSession        func(uint32, uintptr) (uintptr, bool)
 }
 
-func runWindow(ctx context.Context, quit func(), activate <-chan struct{}, create func(windowCallbacks) windowActions) error {
+func runWindow(ctx context.Context, url string, quit func(), activate <-chan struct{}, create func(windowCallbacks) windowActions) error {
 	started, returned, joined := make(chan struct{}, 1), make(chan struct{}), make(chan struct{})
 	shutdown := func() { quit(); <-ctx.Done() }
 	callbacks := windowCallbacks{
@@ -61,6 +62,7 @@ func runWindow(ctx context.Context, quit func(), activate <-chan struct{}, creat
 				actions.quit()
 				return
 			case <-activate:
+				actions.setURL(url)
 				actions.unminimise()
 				actions.show()
 				actions.focus()

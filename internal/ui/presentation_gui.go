@@ -27,7 +27,7 @@ func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, 
 		return err
 	}
 	defer func() { err = profileCleanupResult(out, cleanup, err) }()
-	return runWindow(ctx, quit, activate, func(callbacks windowCallbacks) windowActions {
+	return runWindow(ctx, url, quit, activate, func(callbacks windowCallbacks) windowActions {
 		appOptions := application.Options{
 			Name:                        "seestar-wormhole",
 			DisableDefaultSignalHandler: true,
@@ -50,7 +50,7 @@ func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, 
 		}
 		window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) { callbacks.closing(event.Cancel) })
 		app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { callbacks.started() })
-		return windowActions{run: app.Run, quit: app.Quit,
+		return windowActions{run: app.Run, quit: app.Quit, setURL: func(url string) { window.SetURL(url) },
 			unminimise: func() { window.UnMinimise() }, show: func() { window.Show() }, focus: func() { window.Focus() }}
 	})
 }
