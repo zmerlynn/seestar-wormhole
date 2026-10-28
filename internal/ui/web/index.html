@@ -2,27 +2,28 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="icon" type="image/svg+xml" href="/icon.svg"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body><main>
-<h1><img src="/icon.svg" width="40" height="40" alt="">seestar-wormhole</h1>
+<h1><img src="/icon.svg" width="40" height="40" alt="">seestar‑wormhole</h1>
 <p>Use your Seestar telescope from another location.</p>
 <div id="announcements" role="status" aria-live="polite" aria-atomic="true"><p id="status">Loading…</p><p id="feedback"></p></div>
 <button id="start" type="submit" form="settings" disabled>Connect</button>
-<p id="trust">Use only on a trusted network. Other devices on this network can control the telescope through this computer.</p>
 <p id="notice" role="alert" hidden></p>
 <p id="last-known" hidden></p>
 <button id="retry-storage" type="button" hidden>Retry saving settings</button>
 <form id="settings" novalidate>
 <fieldset id="options" disabled>
+<label for="goal">Use with</label><select id="goal"><option value="phone">Phone on this network</option><option value="computer">This computer only</option><option value="custom">Custom</option></select>
+<p id="trust">Use only on a trusted network. Other devices on this network can control the telescope through this computer.</p>
+<p id="goal-help">Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.</p>
+<div id="switch-confirm" hidden><p>Switching setup resets custom network and port settings.</p><button id="switch-setup" type="button">Switch setup</button> <button id="keep-custom" type="button">Keep custom settings</button></div>
+<fieldset id="account">
 <legend>Account</legend>
-<p>Email and a password source are required.</p>
 <label for="email">Seestar account email</label><input id="email" type="email" autocomplete="username" maxlength="4096" required aria-describedby="email-error"><p id="email-error" class="error" hidden></p>
 <label for="password">Password</label><input id="password" type="password" autocomplete="off" aria-describedby="password-note password-error"><p id="password-error" class="error" hidden></p>
 <p id="password-note">Used for this launch unless you save it to your OS keychain.</p>
 <div class="actions"><button id="save-password" type="button" disabled>Save password to keychain</button><button id="change-password" type="button" hidden>Change password</button><button id="use-saved" type="button" hidden>Use saved password</button><button id="forget" type="button" hidden>Remove saved password</button></div>
-<label for="goal">Use with</label><select id="goal"><option value="phone">Phone on this network</option><option value="computer">This computer only</option><option value="custom">Custom</option></select>
-<p id="goal-help">Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.</p>
-<div id="switch-confirm" hidden><p>Switching setup resets custom network and port settings.</p><button id="switch-setup" type="button">Switch setup</button> <button id="keep-custom" type="button">Keep custom settings</button></div>
-<details id="advanced"><summary>Advanced</summary>
-<p>Telescope: <strong>Automatic (one telescope on this account)</strong></p>
+</fieldset>
+<details id="advanced"><summary tabindex="-1">Advanced</summary>
+<p>Telescope: <strong id="telescope-selection">Automatic (one telescope on this account)</strong></p>
 <p>Leave selection empty if your account has one telescope.</p>
 <label for="serial">Device serial (optional)</label><input id="serial" type="text" maxlength="4096" spellcheck="false" aria-describedby="serial-error"><p id="serial-error" class="error" hidden></p>
 <label for="model">Device model (optional)</label><input id="model" type="text" maxlength="4096" spellcheck="false" aria-describedby="model-error"><p id="model-error" class="error" hidden></p>
@@ -47,11 +48,11 @@
 </form>
 <section id="running" hidden aria-label="Connection">
 <p id="run-help"></p>
-<div id="phone-steps" hidden><h2>Connect your phone</h2><ol><li>Keep this computer and your phone on the same network.</li><li>Open the Seestar app and select your telescope from the LAN list.</li><li>Allow Local Network access if the app asks.</li></ol><p>Keep seestar-wormhole running while you use the telescope.</p><p>Stop here and wait for release before using the app's remote mode.</p></div>
+<div id="phone-steps" hidden><h2>Connect your phone</h2><ol><li>Keep this computer and your phone on the same network.</li><li>Open the Seestar app and select your telescope from the LAN list.</li><li>Allow Local Network access if the app asks.</li></ol></div>
 <div id="computer-steps" hidden><p>Open your telescope client on this computer.</p><p>Only apps on this computer can connect.</p></div>
-<p id="run-goal"></p><p id="password-source"></p><p id="discovery-state"></p><p id="saved-state"></p>
-<p>Settings are locked until the connection stops.</p>
+<p id="run-summary" class="muted"></p>
+<p>Keep this app open while you use the telescope. Stop here before using the Seestar app's remote mode.</p>
 </section>
-<details id="details"><summary>Details and logs</summary><p id="connection-mode"></p><pre id="mappings"></pre><pre id="events"></pre><p id="log-path"></p><p id="log-error" hidden>Could not write the private log file.</p><button id="copy" type="button">Copy diagnostic summary</button><p>Stop to change settings.</p><textarea id="diagnostic-copy" aria-label="Diagnostic summary" readonly hidden></textarea></details>
+<details id="details"><summary>Details and logs</summary><p id="connection-mode"></p><pre id="mappings"></pre><p>Recent events</p><pre id="events"></pre><p id="error-code" hidden></p><p id="log-path"></p><p id="log-error" hidden>Could not write the private log file.</p><button id="copy" type="button">Copy diagnostic summary</button><textarea id="diagnostic-copy" aria-label="Diagnostic summary" readonly hidden></textarea></details>
 <footer><button id="quit" type="button" disabled>Quit app</button><p id="quit-help"></p></footer>
 </main></body></html>

@@ -82,7 +82,7 @@ func (d *guiTestDriver) uxSetup() error {
 			if err := d.click("forget"); err != nil {
 				return err
 			}
-			if err := d.probe(`!document.getElementById('password').readOnly && document.getElementById('forget').hidden && document.getElementById('feedback').textContent==='Password removed from keychain and this app.'`); err != nil {
+			if err := d.probe(`!document.getElementById('password').readOnly && document.getElementById('forget').hidden && document.getElementById('feedback').textContent==='Password removed from keychain and this app.' && document.getElementById('password-error').hidden && !document.getElementById('password').hasAttribute('aria-invalid')`); err != nil {
 				return err
 			}
 			if err := d.state("Not connected", false, "password-removed"); err != nil {
@@ -122,7 +122,7 @@ func (d *guiTestDriver) uxRunning() error {
 		if err := d.click("retry-storage"); err != nil {
 			return err
 		}
-		if err := d.probe(`document.getElementById('retry-storage').hidden && document.getElementById('saved-state').textContent==='Settings saved.'`); err != nil {
+		if err := d.probe(`document.getElementById('retry-storage').hidden && document.getElementById('notice').hidden`); err != nil {
 			return err
 		}
 	case "details":

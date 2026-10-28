@@ -55,7 +55,7 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 		}
 	}
 	ports, err = proxyrun.MergePorts(ports)
-	if err != nil {
+	if err != nil || len(ports) == 0 {
 		return nil, 0, &ActionError{Code: "ports", Field: "ports"}
 	}
 	return ports, idle, nil

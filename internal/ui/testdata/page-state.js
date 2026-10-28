@@ -11,6 +11,7 @@
   });
   const assert = (value, message) => {if (!value) throw new Error(message);};
   const reset = () => {
+    setup.remember_password = false;
     active = false;
     initialized = true;
     connected = true;
@@ -96,6 +97,24 @@
       assert($('forget').hidden && !$('password').readOnly && $('password').value === '', 'removal left an obsolete source');
       assert($('feedback').textContent === 'Password removed from keychain and this app.', 'removal feedback missing');
       setup.remember_password = false;
+    });
+    await check('U3 diagnostic-only codes', async () => {
+      $('password').value = 'synthetic-password';
+      api = async () => {throw {code: 'signin', field: 'password', message: 'Check the password.'};};
+      await act('start');
+      assert(!$('notice').textContent.includes('[') && !$('password-error').textContent.includes('['), 'error code leaked into visible recovery text');
+      assert($('error-code').textContent === 'Error code: signin', 'Details lost the error code');
+    });
+    await check('U4 running summary and U13 timing label', async () => {
+      render({...status(), active: true, discovery_started: true});
+      assert($('run-summary').textContent === 'Phone on this network · password for this launch only · discovery on', 'running summary is missing or inaccurate');
+      assert($('connection-mode').textContent.startsWith('Connection timing: '), 'Details timing has no label');
+    });
+    await check('S5 explicit selection copy', async () => {
+      $('model').value = 'synthetic';
+      $('model').dispatchEvent(new Event('input'));
+      assert($('telescope-selection').textContent === 'Selected in Advanced', 'explicit telescope still described as Automatic');
+      $('model').value = '';
     });
   } finally {
     api = liveAPI;

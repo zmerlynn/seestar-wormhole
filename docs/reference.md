@@ -56,7 +56,7 @@ root without moving or copying its identity. The files are:
 | `webview-<random>/` | Fresh private Windows GUI engine profile for each launch. Best-effort removal after window shutdown and on later launches; locked stale profiles never block startup. |
 | `ui-open.html` | Private browser bootstrap with the control capability; the opener receives only its path. Removed when the owning process exits normally. |
 
-Successful Connect saves its non-secret settings snapshot atomically: after the first Ready state with local listeners/discovery initialized in Keep connected mode, or after authentication, telescope selection, and local initialization in connect-when-needed mode. Failed attempts preserve the last saved settings. A storage failure keeps the connection running and offers Retry saving settings. On Unix the directory must be
+Successful Connect saves its non-secret settings snapshot atomically: after the first Ready state with local listeners/discovery initialized in Keep connected mode, or after authentication, telescope selection, and local initialization in connect-when-needed mode. Failed attempts preserve the last saved settings. A storage failure keeps the connection running and offers Retry saving settings for that snapshot. A newer successful save supersedes an older retry. On Unix the directory must be
 private (`0700`) and files `0600`; unsafe existing permissions or links are
 refused. Windows uses the same protected current-user/SYSTEM ACL policy as
 installation identity. Parent directories must be trusted. The CLI's default
@@ -111,9 +111,9 @@ chosen. Connect never writes a typed password to keychain. A successful save
 immediately persists the email and saved-password association, without signing
 in. Relaunch shows **Saved in keychain** without reading the secret or prompting.
 Connect reads it with the existing three-second bound. **Change password** opens
-entry for this launch; **Use saved password** selects a saved entry again.
+entry for this launch; **Use saved password** is offered only for the account with a saved association.
 **Remove saved password** clears memory and requests keychain deletion; failure
-retains the association and permits **Retry removal**. A timeout is uncertain:
+retains the association and permits **Retry removal**. Removal updates the last saved settings without committing unrelated form edits. A timeout is uncertain:
 the OS request may still finish, and further keychain mutations wait for it.
 There is no plaintext fallback and no secret is returned to the page.
 
@@ -123,9 +123,14 @@ instructions. **Details and logs** contains effective service mappings, bounded
 sanitized lifecycle history, the private log path, and **Copy diagnostic
 summary**. The copied summary excludes addresses, paths, credentials, tokens,
 account/device identifiers, and payloads. Logs contain fixed categories and
-recovery text, with time and phase; no raw protocol traces. Startup errors also
+recovery text, with time and lifecycle/error category; no raw protocol traces. Startup errors also
 use the existing native error presentation. Windows window-engine failures
 explain that WebView2 Runtime is required.
+
+The rolling log appends fixed events without decoding prior disk history. Existing
+files must pass the private-file checks and remain within the size cap; an
+oversized file is refused without modification. Only events from this launch
+appear in the page and copied summary.
 
 Native **Quit app** stops the proxy and closes the app; closing the window also
 quits. Browser **Quit service** stops the process; closing the tab alone leaves
@@ -159,7 +164,7 @@ The status distinguishes **Connected to your telescope** from **Waiting for an
 app to connect**. Busy and transport recovery say **Retrying automatically**.
 Cancel remains available during first connection; Stop joins release. A confirmed
 release says **Stopped. You can use remote mode in the Seestar app again.**
-An uncertain release instead says to wait 60 seconds. Sign-in rejection reopens
+An uncertain release advises waiting a minute if a later Connect fails as busy. Sign-in rejection reopens
 credential correction without deleting a saved password. Bind, discovery, HTTP
 permission, and port-conflict failures have separate safe error codes.
 

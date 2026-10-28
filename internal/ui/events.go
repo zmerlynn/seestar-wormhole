@@ -23,20 +23,21 @@ type eventLog struct {
 	failed  bool
 }
 
-func safeEvent(text string) bool {
+func eventCode(text string) string {
 	switch text {
 	case "Application opened.", "Application could not start.", "Connecting to your telescope…", "Connected to your telescope", "Waiting for an app to connect", "Telescope is in use. Disconnect the other remote session. Retrying automatically.", "Connection lost. Retrying automatically.", "Releasing idle telescope session…", "Waiting for session release before retrying…", "Stopped", "Stopped. You can use remote mode in the Seestar app again.", "Settings saved.", "Password saved to keychain. It will be checked when you connect.", "Password removed from keychain and this app.":
-		return true
+		return "lifecycle"
 	}
 	for _, code := range []string{"email", "password", "idle", "ports", "bind", "discovery_bind", "discovery", "http_permission", "http_conflict", "port_conflict", "signin", "selection", "serial", "model", "release", "storage", "password_save", "password_remove", "password_read", "password_missing", "keychain_timeout", "connection"} {
 		if text == errorCopy(code) {
-			return true
+			return code
 		}
 	}
-	return false
+	return ""
 }
 func (l *eventLog) add(text string) {
-	if l == nil || !safeEvent(text) {
+	code := eventCode(text)
+	if l == nil || code == "" {
 		return
 	}
 	l.mu.Lock()
@@ -44,7 +45,7 @@ func (l *eventLog) add(text string) {
 	if len(l.recent) > 0 && strings.HasSuffix(l.recent[len(l.recent)-1], "\t"+text) {
 		return
 	}
-	line := time.Now().UTC().Format(time.RFC3339) + "\tlifecycle\t" + text
+	line := time.Now().UTC().Format(time.RFC3339) + "\t" + code + "\t" + text
 	l.recent = append(l.recent, line)
 	if len(l.recent) > eventLimit {
 		l.recent = append([]string(nil), l.recent[len(l.recent)-eventLimit:]...)

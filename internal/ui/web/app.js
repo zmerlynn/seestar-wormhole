@@ -18,11 +18,10 @@ let initialized = false, ended = false, connected = false, pending = '', active 
 let lastFailure = '', state = null, sourceChoice = '', statusGeneration = 0, actionError = '';
 let fieldErrors = {};
 let currentGoal = 'phone', proposedGoal = '', retryRemoval = false, diagnostic = '', noticeCode = '';
-const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen seestar-wormhole to reconnect.';
+const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
   email: 'Enter your Seestar account email.', password: 'Enter a password or use a saved password.',
-  idle: 'Enter an idle time greater than zero.', ports: 'This local port is used by more than one service.',
-  discovery_bind: 'Phone discovery cannot use this address. Choose All networks or a local IPv4 network address.'
+  idle: 'Enter an idle time greater than zero.'
 };
 const goalNames = {
   phone: 'Phone on this network', computer: 'This computer only', custom: 'Custom'
@@ -184,6 +183,10 @@ function controls() {
   $('retry-storage').disabled = blocked || !!pending;
   $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.' : currentGoal === 'computer' ? 'Only apps on this computer can connect. A phone on the network cannot use this setup.' : 'Check Advanced settings before connecting.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
+  const code = actionError || (!active && state?.failure?.code) || '';
+  text('error-code', code ? 'Error code: ' + code : '');
+  $('error-code').hidden = !code;
+  text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selected in Advanced' : 'Automatic (one telescope on this account)');
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
 }
 function render(s) {
@@ -213,14 +216,11 @@ function render(s) {
   }
   const run = s.run_settings;
   const goal = goalFor(run);
-  $('run-goal').textContent = 'Use with: ' + goalNames[goal];
-  $('run-help').textContent = s.cancel ? 'You can cancel while the connection is being established.' : run.idle !== '0' ? 'The telescope connection starts when an app needs it.' : '';
+  $('run-summary').textContent = goalNames[goal] + ' · ' + (run.remember_password ? 'password saved in keychain' : 'password for this launch only') + ' · discovery ' + (s.discovery_started ? 'on' : 'off');
+  $('run-help').textContent = s.cancel ? 'You can cancel while the connection is being established.' : '';
   $('phone-steps').hidden = !(active && run.discovery && s.discovery_started);
   $('computer-steps').hidden = !(active && goal === 'computer' && !s.cancel);
-  $('password-source').textContent = 'Password source: ' + (run.remember_password ? 'Saved in keychain' : 'This launch only');
-  $('discovery-state').textContent = s.discovery_started ? 'Phone discovery is on.' : '';
-  $('saved-state').textContent = s.settings_saved ? 'Settings saved.' : '';
-  $('connection-mode').textContent = (active ? run.idle : settings().idle) === '0' ? 'Keep connected' : 'Connect when an app needs the telescope';
+  $('connection-mode').textContent = 'Connection timing: ' + ((active ? run.idle : settings().idle) === '0' ? 'Keep connected' : 'Connect when an app needs the telescope');
   const map = s.mappings;
   $('mappings').textContent = 'Computer → telescope\n' + map.map(p => p.join(' → ')).join('\n');
   $('events').textContent = s.events.join('\n');
@@ -390,13 +390,14 @@ for (const id of ['listen','bind','discovery','ports']) $(id).addEventListener('
   controls();
 });
 $('mode').addEventListener('change', controls);
+for (const id of ['serial', 'model']) $(id).addEventListener('input', controls);
 $('copy').addEventListener('click', async () => {
   try {
-    await navigator.clipboard.writeText(diagnostic);
+    await navigator.clipboard.writeText(diagnostic + '\n' + $('error-code').textContent);
     say('Diagnostic summary copied.');
   } catch (_) {
     $('diagnostic-copy').hidden = false;
-    $('diagnostic-copy').value = diagnostic;
+    $('diagnostic-copy').value = diagnostic + '\n' + $('error-code').textContent;
     $('diagnostic-copy').focus();
     $('diagnostic-copy').select();
     say('Select and copy the diagnostic summary below.');

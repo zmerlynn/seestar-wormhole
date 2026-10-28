@@ -150,7 +150,7 @@ caption {
 }
 pre {
   white-space:pre-wrap;
-  overflow-wrap:anywhere;
+  overflow-wrap:normal;
   font: .85rem/1.5 system-ui,sans-serif
 }
 #notice,.error {
@@ -165,4 +165,23 @@ pre {
 }
 [hidden] {
   display:none!important
+}
+#options {
+  margin-top:0;
+}
+.muted {
+  color:var(--muted);
+}
+#run-help:empty {
+  display:none;
+}
+select {
+  appearance:none;
+  padding-right:2rem;
+  background-color:var(--surface);
+  color:var(--text);
+  background-image:linear-gradient(45deg, transparent 50%, var(--text) 50%), linear-gradient(135deg, var(--text) 50%, transparent 50%);
+  background-position:calc(100% - 1rem) center, calc(100% - .7rem) center;
+  background-size:.3rem .3rem;
+  background-repeat:no-repeat;
 }

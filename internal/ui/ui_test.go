@@ -122,7 +122,7 @@ func TestHTTPRejections(t *testing.T) {
 		{"method", "GET", "/api/stop", nil, 405},
 		{"status post", "POST", "/api/status", nil, 405},
 		{"malformed", "POST", "/api/start", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader("{")) }, 400},
-		{"oversize", "POST", "/api/save", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", maxJSON+1))) }, 413},
+		{"oversize", "POST", "/api/retry-storage", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", maxJSON+1))) }, 413},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := request(s, tc.method, tc.path, "{}")
@@ -336,7 +336,7 @@ func TestControllerFinalCleanupError(t *testing.T) {
 			close(complete)
 			<-done
 			text, active := c.snapshot()
-			if active || text != "Stopped, but session release could not be confirmed. Wait 60 seconds before connecting again." {
+			if active || text != "Session release could not be confirmed. If Connect fails as busy, wait a minute and try again." {
 				t.Fatalf("completed controller: text=%q active=%v", text, active)
 			}
 		})

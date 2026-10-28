@@ -48,7 +48,7 @@ func errorCopy(code string) string {
 	case "idle":
 		return "Enter an idle time greater than zero."
 	case "ports":
-		return "This local port is used by more than one service."
+		return "Enter one computer-port:telescope-port pair per line. Computer ports must be 0–65535 and telescope ports 1–65535. Use each telescope port and each nonzero computer port only once."
 	case "bind":
 		return "Could not listen on this address. Choose an address assigned to this computer in Advanced."
 	case "discovery_bind":
@@ -70,7 +70,7 @@ func errorCopy(code string) string {
 	case "model":
 		return "Check the device model in Advanced."
 	case "release":
-		return "Stopped, but session release could not be confirmed. Wait 60 seconds before connecting again."
+		return "Session release could not be confirmed. If Connect fails as busy, wait a minute and try again."
 	case "storage":
 		return "Connected. Settings could not be saved; they may reset next time."
 	case "password_save":
