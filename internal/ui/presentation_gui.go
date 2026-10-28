@@ -24,6 +24,7 @@ func showWindowConfigured(ctx context.Context, url string, quit func(), activate
 		app := application.New(application.Options{
 			Name:                        "seestar-wormhole",
 			DisableDefaultSignalHandler: true,
+			Assets:                      application.AssetOptions{Middleware: blockWindowAssets, DisableLogging: true},
 			Logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
 			ShouldQuit:                  callbacks.shouldQuit,
 			OnShutdown:                  callbacks.shutdown,
