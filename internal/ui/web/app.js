@@ -208,10 +208,12 @@ async function act(action) {
     if (action === 'password/save') {
       selectedSaved = true; savedEmail = $('email').value; editing = false; memory = true; $('password').value = '';
       $('password-note').textContent = 'Password saved to keychain. It will be checked when you connect.';
+      say('Password saved to keychain. It will be checked when you connect.');
     }
     if (action === 'forget') {
       selectedSaved = false; savedEmail = ''; memory = false; editing = true; retryRemoval = false; $('password').value = '';
       $('password-note').textContent = 'Password removed from keychain and this app.';
+      say('Password removed from keychain and this app.');
     }
     if (action === 'quit') {
       ended = true;
@@ -220,6 +222,7 @@ async function act(action) {
     }
     await refresh();
   } catch (e) {
+    if (['password/save','forget'].includes(action)) say('');
     if (action === 'forget') {retryRemoval = true;memory = false;}
     if (e.code === 'storage' && ['password/save','forget'].includes(action)) {
       e.message = action === 'password/save' ? 'Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.' : 'Password removed from keychain and this app, but settings could not be saved. Keep this window open and retry saving settings.';
