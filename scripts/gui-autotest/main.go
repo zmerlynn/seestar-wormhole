@@ -10,6 +10,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"os/exec"
@@ -61,13 +62,7 @@ func main() {
 		err := runScenario(ctx, bin, filepath.Join(dir, s), s, true)
 		cancel()
 		if err != nil {
-			reason := err.Error()
-			if b, e := os.ReadFile(filepath.Join(dir, s, "process.log")); e == nil {
-				if i := strings.LastIndex(string(b), "GUI fixture FAIL:"); i >= 0 {
-					reason += "; " + strings.SplitN(string(b)[i:], "\n", 2)[0]
-				}
-			}
-			fmt.Printf("SCENARIO %s FAIL: %s\n", s, reason)
+			printFailure(os.Stdout, s, filepath.Join(dir, s), err)
 			failed = true
 		} else {
 			if s == "relaunch" {
@@ -80,6 +75,32 @@ func main() {
 	if failed {
 		os.Exit(1)
 	}
+}
+
+// Keep startup failures visible even if an artifact upload fails. Strip the
+// entire suffix after '#' on every line, including errors and nested launches.
+func printFailure(out io.Writer, scenario, dir string, err error) {
+	clean := func(line string) string { return strings.SplitN(line, "#", 2)[0] }
+	fmt.Fprintf(out, "SCENARIO %s FAIL: %s\n", scenario, clean(err.Error()))
+	filepath.WalkDir(dir, func(path string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil || entry.IsDir() || entry.Name() != "process.log" {
+			return nil
+		}
+		b, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return nil
+		}
+		lines := strings.Split(strings.TrimRight(string(b), "\r\n"), "\n")
+		if len(lines) > 40 {
+			lines = lines[len(lines)-40:]
+		}
+		name, _ := filepath.Rel(dir, path)
+		fmt.Fprintf(out, "--- %s/%s (last %d lines) ---\n", scenario, name, len(lines))
+		for _, line := range lines {
+			fmt.Fprintln(out, clean(line))
+		}
+		return nil
+	})
 }
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
@@ -109,7 +130,13 @@ func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) 
 	if err := os.RemoveAll(dir); err != nil {
 		return err
 	}
-	root := filepath.Join(dir, "state")
+	// Engine-owned files can remain locked after exit. Never upload them.
+	state, err := os.MkdirTemp("", "seestar-guitest-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(state)
+	root := filepath.Join(state, "state")
 	cmd, done, err := launch(ctx, bin, dir, root, scenario)
 	if err != nil {
 		return err
@@ -124,12 +151,12 @@ func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) 
 				return true
 			default:
 			}
-			return exists(filepath.Join(dir, name))
+			return exists(name)
 		})
 		return errors.Join(err, early)
 	}
 	// Read only the ephemeral listener address; never log its capability token.
-	if err := waitFile("state/ui-runtime.json"); err != nil {
+	if err := waitFile(filepath.Join(root, "ui-runtime.json")); err != nil {
 		return err
 	}
 	b, err := os.ReadFile(filepath.Join(root, "ui-runtime.json"))
@@ -146,7 +173,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) 
 		return errors.New("invalid listener port")
 	}
 	if scenario == "activate" || scenario == "term" || scenario == "interrupt" || scenario == "apple" || (runtime.GOOS == "windows" && strings.HasPrefix(scenario, "close-")) {
-		if err := waitFile("trigger"); err != nil {
+		if err := waitFile(filepath.Join(dir, "trigger")); err != nil {
 			return err
 		}
 		switch scenario {

@@ -14,7 +14,11 @@ The workflow supplies the native dependencies, bundle, OS theme, screenshot
 commands, and outbound-network restrictions. On Windows, build the fixture
 with `CGO_ENABLED=0 -ldflags='-H windowsgui'` and use `.exe` output names.
 Run only on a disposable desktop or runner. The harness creates and removes
-scenario directories below its output directory. Never point it at user state.
+scenario directories below its output directory and disposable state in the OS
+temporary directory. Engine profiles stay outside uploaded evidence, including
+on failure. Never point it at user state. Failed scenarios print the last 40
+lines of each process log, stripping every suffix starting with `#` to keep URL
+fragments private.
 
 `SEESTAR_GUITEST_OUT` and `SEESTAR_GUITEST_SCENARIO` are private fixture inputs,
 set by the harness. The fixture fails without them. Its runner has no network
