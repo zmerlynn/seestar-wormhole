@@ -17,16 +17,17 @@ import (
 var assets embed.FS
 
 type server struct {
-	host, token   string
-	controller    *controller
-	storage       *storage
-	mu            sync.Mutex
-	settings      Settings
-	quit          chan struct{}
-	quitOnce      sync.Once
-	activate      func()
-	native        bool
-	storageFailed bool
+	host, token    string
+	controller     *controller
+	storage        *storage
+	mu             sync.Mutex
+	settings       Settings
+	quit           chan struct{}
+	quitOnce       sync.Once
+	activate       func()
+	native         bool
+	storageFailed  bool
+	settingsToSave Settings
 }
 type input struct {
 	Settings Settings `json:"settings"`
@@ -185,7 +186,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = s.controller.retrySave()
 	case "/api/retry-storage":
 		s.mu.Lock()
-		retry := s.settings
+		retry := s.settingsToSave
 		failed := s.storageFailed
 		s.mu.Unlock()
 		if !failed {
@@ -236,6 +237,7 @@ func (s *server) saveSettings(settings Settings) error {
 	defer s.mu.Unlock()
 	// Retain the exact snapshot even on storage failure so retry is truthful.
 	s.settings = settings
+	s.settingsToSave = settings
 	err := s.storage.write("config.json", settings)
 	s.storageFailed = err != nil
 	return err

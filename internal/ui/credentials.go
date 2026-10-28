@@ -118,6 +118,13 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 		c.mu.Unlock()
 		saved, err := keychainCall(ctx, c, func() (string, error) { return c.chain.Get(keyringService, s.Email) })
 		if err != nil {
+			if errors.Is(err, context.Canceled) {
+				c.mu.Lock()
+				c.code = ""
+				c.notice = "A saved password is selected. Your OS may ask for permission when you connect."
+				c.mu.Unlock()
+				return cloud.Credentials{}, err
+			}
 			code := "password_read"
 			if errors.Is(err, keyring.ErrNotFound) {
 				code = "password_missing"
@@ -140,7 +147,7 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 	c.email, c.password = s.Email, p
 	c.code = ""
 	c.notice = "Password available for this launch only."
-	if s.Remember {
+	if s.Remember && password == "" {
 		c.savedEmail = s.Email
 		c.notice = "A saved password is selected. Your OS may ask for permission when you connect."
 	}

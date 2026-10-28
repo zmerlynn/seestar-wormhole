@@ -10,6 +10,7 @@ import (
 	"testing"
 	"testing/synctest"
 
+	"github.com/zalando/go-keyring"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
@@ -197,5 +198,103 @@ func TestCanceledRunRetainsSignInFailure(t *testing.T) {
 	err := errors.Join(context.Canceled, diagnostic.NewTerminal(session.Cloud, "unauthorized", session.ErrUncertain))
 	if got := finalStatus(err); got != errorCopy("signin") {
 		t.Fatalf("lost rejection: %s", got)
+	}
+}
+
+func TestSaveTimeoutRetainsMemoryWithoutClaimingSaved(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		c := &credentialStore{chain: &blockedSave{release: release}}
+		if err := c.remember(t.Context(), testSettings(), testPassword); actionError(err).Code != "keychain_timeout" {
+			t.Fatal(err)
+		}
+		state := c.state(testSettings().Email)
+		if state.Saved || !state.Memory || !state.Busy {
+			t.Fatalf("save uncertainty: %+v", state)
+		}
+		close(release)
+		synctest.Wait()
+		if c.state(testSettings().Email).Saved {
+			t.Fatal("late operation claimed association without acknowledged save")
+		}
+		if err := c.remember(t.Context(), testSettings(), ""); err != nil {
+			t.Fatal(err)
+		}
+		if !c.state(testSettings().Email).Saved {
+			t.Fatal("serialized retry did not save")
+		}
+	})
+}
+
+type blockedSave struct{ release chan struct{} }
+
+func (f *blockedSave) Get(string, string) (string, error) { return "", keyring.ErrNotFound }
+func (f *blockedSave) Set(string, string, string) error   { <-f.release; return nil }
+func (f *blockedSave) Delete(string, string) error        { return nil }
+
+func TestSavedReadFailureKeepsAssociationAndAcceptsTypedCorrection(t *testing.T) {
+	for _, err := range []error{keyring.ErrNotFound, errors.New("private denial")} {
+		chain := &fakeKeychain{err: err}
+		c := &credentialStore{chain: chain, savedEmail: testSettings().Email}
+		s := testSettings()
+		s.Remember = true
+		if _, err := c.credentials(t.Context(), s, ""); err == nil {
+			t.Fatal("read failure accepted")
+		}
+		if !c.state(s.Email).Saved {
+			t.Fatal("read failure removed association")
+		}
+		if _, err := c.credentials(t.Context(), s, testPassword); err != nil {
+			t.Fatal("typed correction failed", err)
+		}
+		if chain.calls != 1 {
+			t.Fatal("typed correction accessed keychain")
+		}
+	}
+}
+func TestPasswordSaveStorageFailureAndRetry(t *testing.T) {
+	s := testServer(t)
+	if err := os.Mkdir(filepath.Join(s.storage.root, "config.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"settings":{"version":1,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
+	if w := doPost(s, "/api/password/save", body); w.Code != 400 {
+		t.Fatal("storage failure accepted")
+	}
+	if !s.controller.credentials.state(testSettings().Email).Saved || !s.storageFailed {
+		t.Fatal("keychain outcome lost after storage failure")
+	}
+	if err := os.Remove(filepath.Join(s.storage.root, "config.json")); err != nil {
+		t.Fatal(err)
+	}
+	if w := doPost(s, "/api/retry-storage", `{}`); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	saved, err := loadSettings(s.storage)
+	if err != nil || !saved.Remember {
+		t.Fatal("association retry failed", err)
+	}
+}
+
+func TestStorageRetryKeepsSnapshotAfterAnotherAttempt(t *testing.T) {
+	s := testServer(t)
+	if err := os.Mkdir(filepath.Join(s.storage.root, "config.json"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	original := testSettings()
+	if err := s.saveSettings(original); err == nil {
+		t.Fatal("storage failure missing")
+	}
+	// A later failed Start updates page settings but must not replace the retry snapshot.
+	s.settings.Email = "later-attempt@example.invalid"
+	if err := os.Remove(filepath.Join(s.storage.root, "config.json")); err != nil {
+		t.Fatal(err)
+	}
+	if w := doPost(s, "/api/retry-storage", `{}`); w.Code != 200 {
+		t.Fatal(w.Body.String())
+	}
+	loaded, err := loadSettings(s.storage)
+	if err != nil || loaded.Email != original.Email {
+		t.Fatalf("retry saved later failed edits: %+v %v", loaded, err)
 	}
 }

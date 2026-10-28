@@ -88,3 +88,34 @@ func TestGUITestFailsClosed(t *testing.T) {
 		t.Fatal("fixture ran without harness configuration")
 	}
 }
+
+func TestEagerSettingsSaveOnlyOnFirstReady(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		f := newGUITestRunner()
+		c := testController(f.run)
+		saves := 0
+		c.save = func(s Settings) error {
+			saves++
+			if s.Email != testSettings().Email {
+				t.Error("wrong run snapshot")
+			}
+			return nil
+		}
+		if err := c.start(testSettings(), testPassword); err != nil {
+			t.Fatal(err)
+		}
+		<-f.entered
+		synctest.Wait()
+		if saves != 0 {
+			t.Fatal("saved on acknowledgment/armed before Ready")
+		}
+		for range 2 {
+			f.steps <- session.Event{Kind: session.Progress}
+			synctest.Wait()
+		}
+		if saves != 1 {
+			t.Fatalf("Ready saved %d times", saves)
+		}
+		c.quit()
+	})
+}
