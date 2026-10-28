@@ -290,6 +290,7 @@ async function act(action) {
       settings: settings(), password: ['start','password/save'].includes(action) ? typed : ''
     });
     if (ended || pending !== action) return;
+    if (action === 'start') lastFailure = '';
     if (action === 'password/save' || action === 'forget') {
       sourceChoice = action === 'forget' ? 'typed' : '';
       $('password').value = '';

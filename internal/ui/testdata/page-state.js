@@ -55,6 +55,9 @@
       await act('start');
       render(rejected);
       assert(document.activeElement === $('ports') && !$('ports-error').hidden, 'old sign-in failure displaced the current ports error');
+      api = async action => action === 'start' ? {ok: true} : rejected;
+      await act('start');
+      assert(!$('password-error').hidden, 'accepted run with the same failure lost its field error');
     });
     await check('R9 render focus', async () => {
       $('start').focus();
