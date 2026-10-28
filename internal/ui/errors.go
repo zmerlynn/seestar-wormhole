@@ -22,6 +22,9 @@ func actionError(err error) *ActionError {
 		return &ActionError{Code: "storage"}
 	}
 	phase, reason := diagnostic.Fields(err, "")
+	if phase == "lan_discovery" {
+		return &ActionError{Code: "discovery", Field: "discovery"}
+	}
 	if phase == "device_selection" {
 		return &ActionError{Code: "selection", Field: "serial"}
 	}

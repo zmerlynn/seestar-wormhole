@@ -187,3 +187,24 @@ func TestSessionStatusWiring(t *testing.T) {
 		}
 	})
 }
+
+func TestStatusSaveBoundaryRequiresArmedAndFirstReady(t *testing.T) {
+	s := NewStatus()
+	s.observe(session.Event{}, session.Snapshot{}, session.Snapshot{State: session.Ready})
+	if s.SaveBoundary(false) {
+		t.Fatal("Ready without local initialization saved")
+	}
+	s.MarkArmed()
+	if !s.SaveBoundary(false) {
+		t.Fatal("first Ready boundary missing")
+	}
+	s.observe(session.Event{}, session.Snapshot{State: session.Ready}, session.Snapshot{State: session.Backoff})
+	if !s.SaveBoundary(false) {
+		t.Fatal("first Ready receipt lost during retry")
+	}
+	lazy := NewStatus()
+	lazy.MarkArmed()
+	if !lazy.SaveBoundary(true) || lazy.SaveBoundary(false) {
+		t.Fatal("lazy/eager boundaries conflated")
+	}
+}

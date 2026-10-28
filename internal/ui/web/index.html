@@ -1,32 +1,57 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="icon" type="image/svg+xml" href="/icon.svg"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body><main>
-<h1>seestar-wormhole</h1>
-<p id="status" role="status" aria-live="polite">Loading</p>
-<form id="settings">
-<fieldset id="options">
-<legend>Connection</legend>
-<label>Email <input id="email" type="email" autocomplete="username" maxlength="4096"></label>
-<label>Password <input id="password" type="password" autocomplete="off" aria-describedby="password-note"></label>
-<label class="check"><input id="remember" type="checkbox"> Remember password in OS keychain</label>
-<p id="password-note">Passwords stay in memory unless you choose the OS keychain.</p>
-<button id="forget" type="button">Forget password</button>
-<label>Proxy bind address <input id="bind" type="text" value="127.0.0.1" spellcheck="false"></label>
-<p>Forwarded ports have no authentication. Use a wider bind only on a trusted network. The control page stays on this computer.</p>
-<label>Connection mode <select id="mode"><option value="eager">Connect now</option><option value="idle">Connect when needed</option></select></label>
-<label>Release after idle duration <input id="idle" value="2m" type="text" disabled spellcheck="false"></label>
-<details><summary>Advanced</summary>
-<label>Device serial (optional) <input id="serial" type="text" maxlength="4096" spellcheck="false"></label>
-<label>Device model (optional) <input id="model" type="text" maxlength="4096" spellcheck="false"></label>
-<p>Leave selection empty for an account with one device. Enter serial and model to select among several devices.</p>
-<label>Port overrides (one local:device pair per line) <textarea id="ports" rows="4" spellcheck="false"></textarea></label>
-<p>Defaults: 4700:4700, 4445:445, 8080:80, 4350:4350, 4554:4554, 4555:4555, 4801:4801, 4800:4800, 4804:4804, 4361:4361. Use 0:device to disable a mapping. Port 80 may require permission; choose an unprivileged local port if binding fails.</p>
+<h1><img src="/icon.svg" width="40" height="40" alt="">seestar-wormhole</h1>
+<p>Use your Seestar telescope from another location.</p>
+<div id="announcements" role="status" aria-live="polite" aria-atomic="true"><p id="status">Loading…</p><p id="feedback"></p></div>
+<button id="start" type="submit" form="settings" disabled>Connect</button>
+<p id="notice" role="alert" hidden></p>
+<p id="last-known" hidden></p>
+<button id="retry-storage" type="button" hidden>Retry saving settings</button>
+<form id="settings" novalidate>
+<fieldset id="options" disabled>
+<legend>Account</legend>
+<p>Email and a password source are required.</p>
+<label for="email">Seestar account email</label><input id="email" type="email" autocomplete="username" maxlength="4096" required aria-describedby="email-error"><p id="email-error" class="error" hidden></p>
+<label for="password">Password</label><input id="password" type="password" autocomplete="off" aria-describedby="password-note password-error"><p id="password-error" class="error" hidden></p>
+<p id="password-note">Used for this launch unless you save it to your OS keychain.</p>
+<div class="actions"><button id="save-password" type="button" disabled>Save password to keychain</button><button id="change-password" type="button" hidden>Change password</button><button id="use-saved" type="button" hidden>Use saved password</button><button id="forget" type="button" hidden>Remove saved password</button></div>
+<label for="goal">Use with</label><select id="goal"><option value="phone">Phone on this network</option><option value="computer">This computer only</option><option value="custom">Custom</option></select>
+<p id="goal-help">Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.</p>
+<p id="trust">Use only on a trusted network. Other devices on this network can control the telescope through this computer.</p>
+<div id="switch-confirm" hidden><p>Switching setup resets custom network and port settings.</p><button id="switch-setup" type="button">Switch setup</button> <button id="keep-custom" type="button">Keep custom settings</button></div>
+<details id="advanced"><summary>Advanced</summary>
+<p>Telescope: <strong>Automatic (one telescope on this account)</strong></p>
+<p>Leave selection empty if your account has one telescope.</p>
+<label for="serial">Device serial (optional)</label><input id="serial" type="text" maxlength="4096" spellcheck="false" aria-describedby="serial-error"><p id="serial-error" class="error" hidden></p>
+<label for="model">Device model (optional)</label><input id="model" type="text" maxlength="4096" spellcheck="false" aria-describedby="model-error"><p id="model-error" class="error" hidden></p>
+<label for="mode">Connection timing</label><select id="mode"><option value="eager">Keep connected</option><option value="idle">Connect when an app needs the telescope</option></select>
+<div id="idle-options" hidden><label for="idle">Release after no apps are connected (minutes)</label><input id="idle" value="2" type="number" min="0.01" step="any" aria-describedby="idle-help idle-error"><p id="idle-help">The remote session is released after this wait. Connecting an app starts it again.</p><p id="idle-error" class="error" hidden></p></div>
+<label for="listen">Listen on</label><select id="listen"><option value="0.0.0.0">All networks (needed for a phone)</option><option value="127.0.0.1">This computer only</option><option value="other">Other…</option></select>
+<div id="other-address" hidden><label for="bind">Local network address</label><input id="bind" type="text" spellcheck="false" aria-describedby="bind-help bind-error"><p id="bind-help">Enter an address assigned to this computer. Phone discovery needs a local IPv4 network address.</p></div><p id="bind-error" class="error" hidden></p>
+<label class="check"><input id="discovery" type="checkbox" aria-describedby="discovery-help discovery-error"> Let the phone app find this telescope</label>
+<p id="discovery-help">Answers discovery requests from devices on this network. Requires All networks or an address assigned to this computer's local IPv4 network.</p><p id="discovery-error" class="error" hidden></p>
+<label for="ports">Port overrides (optional)</label><textarea id="ports" rows="4" spellcheck="false" aria-describedby="ports-help ports-error"></textarea>
+<p id="ports-help">Leave empty to use the ports for the selected setup. Enter one computer-port:telescope-port pair per line. A computer port of 0 turns that service off.</p><p id="ports-error" class="error" hidden></p>
+<table><caption>What the ports do</caption><thead><tr><th>Service</th><th>Purpose and default</th></tr></thead><tbody>
+<tr><td>Telescope control</td><td>Commands from control clients; keep for normal use. Computer 4700 → telescope 4700.</td></tr>
+<tr><td>File sharing (SMB)</td><td>File listing and downloads. Computer 4445 → telescope 445.</td></tr>
+<tr><td>Web and album/image access (HTTP)</td><td>Phone album/image URLs need computer 80 → telescope 80. Computer-only setup uses 8080 → 80.</td></tr>
+<tr><td>Imaging and other device services</td><td>Keep defaults for normal app use. Imaging includes telescope port 4800. Remaining default mappings stay enabled.</td></tr>
+</tbody></table>
+<p>The telescope keeps its own site and clock.</p>
 </details>
+<p>Your settings are saved after a successful connection.</p>
 </fieldset>
-<div class="actions"><button id="start" type="button">Start</button><button id="stop" type="button" disabled>Stop</button><button id="save" type="button">Save settings</button><button id="quit" type="button">Quit</button></div>
 </form>
-<p id="notice" role="status" aria-live="polite"></p>
-<p>In a browser, closing the tab leaves the proxy running. In the native app, closing the window quits. Quit releases the session and exits.</p>
-<p>Closing the terminal window also quits; on Windows, cleanup is best effort within the OS deadline.</p>
+<section id="running" hidden aria-label="Connection">
+<p id="run-help"></p>
+<div id="phone-steps" hidden><h2>Connect your phone</h2><ol><li>Keep this computer and your phone on the same network.</li><li>Open the Seestar app and select your telescope from the LAN list.</li><li>Allow Local Network access if the app asks.</li></ol><p>Keep seestar-wormhole running while you use the telescope.</p><p>Stop here and wait for release before using the app's remote mode.</p></div>
+<div id="computer-steps" hidden><p>Open your telescope client on this computer.</p><p>Only apps on this computer can connect.</p></div>
+<p id="run-goal"></p><p id="password-source"></p><p id="discovery-state"></p><p id="saved-state"></p>
+<p>Settings are locked until the connection stops.</p>
+</section>
+<details id="details"><summary>Details and logs</summary><p id="connection-mode"></p><pre id="mappings"></pre><pre id="events"></pre><p id="log-path"></p><p id="log-error" hidden>Could not write the private log file.</p><button id="copy" type="button">Copy diagnostic summary</button><p>Stop to change settings.</p><textarea id="diagnostic-copy" aria-label="Diagnostic summary" readonly hidden></textarea></details>
+<footer><button id="quit" type="button" disabled>Quit app</button><p id="quit-help"></p></footer>
 </main></body></html>
