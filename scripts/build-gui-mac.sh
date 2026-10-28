@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Run on a Mac from an extracted git archive, with the checked-in vendor tree.
+set -euo pipefail
+export GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOMAXPROCS=2
+[[ $(uname -s) == Darwin ]] || { echo 'Run on macOS with Xcode Command Line Tools' >&2; exit 1; }
+[[ $(go env GOVERSION) == go1.27.3 ]] || { echo 'Go 1.27.3 required' >&2; exit 1; }
+xcode-select -p >/dev/null
+: "${1:?Usage: scripts/build-gui-mac.sh /absolute/output/directory}"
+case "$1" in /*) ;; *) echo 'Output directory must be absolute' >&2; exit 1;; esac
+cd "$(dirname "$0")/.."
+export GOFLAGS= GOAMD64=v1 GOARM64=v8.0
+export CGO_ENABLED=1 GOOS=darwin CC=clang
+export MACOSX_DEPLOYMENT_TARGET=13.0
+for task_arch in arm64 amd64; do
+ task_app="$1/$task_arch/seestar-wormhole.app/Contents"
+ mkdir -p "$task_app/MacOS"
+ GOARCH="$task_arch" go build -mod=vendor -p 2 -tags gui,production -trimpath -buildvcs=false \
+  -ldflags='-s -w' -o "$task_app/MacOS/seestar-wormhole" ./cmd/seestar-wormhole
+ cat > "$task_app/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>CFBundleExecutable</key><string>seestar-wormhole</string>
+<key>CFBundleIdentifier</key><string>net.zml.seestar-wormhole</string>
+<key>CFBundleName</key><string>seestar-wormhole</string>
+<key>CFBundlePackageType</key><string>APPL</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>0.0.0</string>
+<key>LSMinimumSystemVersion</key><string>13.0</string>
+<key>NSHighResolutionCapable</key><true/>
+<key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+</dict></plist>
+PLIST
+ plutil -lint "$task_app/Info.plist"
+ shasum -a 256 "$task_app/MacOS/seestar-wormhole"
+done
