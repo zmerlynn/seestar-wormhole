@@ -133,24 +133,18 @@ func TestNativeRunReturns(t *testing.T) {
 	for _, started := range []bool{false, true} {
 		for _, runErr := range []error{nil, errors.New("startup failed")} {
 			ctx, release := context.WithCancel(t.Context())
-			quitCalls := make(chan struct{}, 1)
 			err := runWindow(ctx, "http://example.invalid/#original", func() {}, nil, func(c windowCallbacks) windowActions {
-				return windowActions{quit: func() { quitCalls <- struct{}{} }, run: func() error {
+				return windowActions{quit: func() {}, run: func() error {
 					if started {
 						c.started()
 					}
 					return runErr
 				}}
 			})
-			// runWindow joins its worker before returning, including startup failure.
+			// Run completion owns native lifetime, including startup failure.
 			release()
 			if !errors.Is(err, runErr) {
 				t.Fatalf("Run error lost: %v", err)
-			}
-			select {
-			case <-quitCalls:
-				t.Fatal("worker survived Run return")
-			default:
 			}
 		}
 	}

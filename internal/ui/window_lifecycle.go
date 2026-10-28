@@ -17,7 +17,7 @@ type windowCallbacks struct {
 }
 
 func runWindow(ctx context.Context, url string, quit func(), activate <-chan struct{}, create func(windowCallbacks) windowActions) error {
-	started, returned, joined := make(chan struct{}, 1), make(chan struct{}), make(chan struct{})
+	started, returned := make(chan struct{}, 1), make(chan struct{})
 	shutdown := func() { quit(); <-ctx.Done() }
 	callbacks := windowCallbacks{
 		shouldQuit: func() bool { quit(); return true },
@@ -48,7 +48,6 @@ func runWindow(ctx context.Context, url string, quit func(), activate <-chan str
 	}
 	actions := create(callbacks)
 	go func() {
-		defer close(joined)
 		select {
 		case <-returned:
 			return
@@ -71,6 +70,7 @@ func runWindow(ctx context.Context, url string, quit func(), activate <-chan str
 	}()
 	err := actions.run()
 	close(returned)
-	<-joined
+	// A synchronous native call may be stranded after Run stops its dispatcher.
+	// The caller still joins Go release; it must not wait for this native worker.
 	return err
 }
