@@ -124,7 +124,7 @@ func CheckPainted(path string) error {
 		return err
 	}
 	b := im.Bounds()
-	center := b.Inset(0)
+	center := b
 	center.Min.X = b.Min.X + b.Dx()/3
 	center.Max.X = b.Min.X + b.Dx()*2/3
 	center.Min.Y = b.Min.Y + b.Dy()/5
