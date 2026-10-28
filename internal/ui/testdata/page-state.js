@@ -82,6 +82,12 @@
       $('email').value = 'different@example.invalid';
       $('email').dispatchEvent(new Event('input'));
       assert($('use-saved').hidden, 'saved source crossed accounts');
+      $('email').value = setup.email;
+      $('email').dispatchEvent(new Event('input'));
+      render({...status(), password: {...status().password, saved: true}});
+      $('use-saved').click();
+      render(status());
+      assert(!$('password').readOnly && $('password').value === '', 'removed association became a typed status placeholder');
     });
     await check('F3 removal retry and S4 cleanup', async () => {
       state = {...status(), password: {...status().password, saved: true}};

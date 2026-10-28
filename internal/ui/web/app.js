@@ -169,6 +169,7 @@ function controls() {
   const editing = editingPassword();
   const selectedSaved = usingSaved();
   const password = passwordState();
+  if (editing && $('password').readOnly) $('password').value = '';
   $('password').readOnly = !editing;
   $('password').type = editing ? 'password' : 'text';
   if (!editing) $('password').value = selectedSaved ? 'Saved in keychain' : 'This launch only';
