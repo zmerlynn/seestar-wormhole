@@ -199,7 +199,7 @@ func (d *guiTestDriver) drive() error {
 	if err := d.state("Stopped", false, "setup"); err != nil {
 		return err
 	}
-	if d.scenario == "relaunch" {
+	if d.scenario == "relaunch" || d.scenario == "dark-relaunch" {
 		return d.click("quit")
 	}
 	if err := d.probe(`document.getElementById('email').value === '' && !document.getElementById('remember').checked`); err != nil {

@@ -41,6 +41,8 @@ visibility check during that interval assert that the window stays open.
 
 Each scenario has a process deadline, exit-code assertion, listener-closure
 check, and fresh native launch using the same state root to check lock release.
+The fresh launch preserves the selected light/dark expectation, including native
+Mac appearance, DOM contrast, and the dark screenshot check.
 The second-instance scenario hides the owner, launches another actual process,
 and requires the owner's native Show/Focus state and a successful second exit.
 The `strand` scenario navigates by page script to `about:blank`, verifies the
@@ -88,7 +90,8 @@ readability check, not a full accessibility audit.
 
 `-scenarios` selects a comma-separated subset; `dark` repeats the fresh-start,
 Stop, and restart sequence. `relaunch` checks page startup and Quit without
-starting a runner. The Linux workflow also uses it to record whether the distro
+starting a runner; the harness uses `dark-relaunch` for that check after `dark`.
+The Linux workflow also uses `relaunch` to record whether the distro
 bubblewrap package permits startup with Ubuntu's userns restriction enabled,
 before applying the existing CI-only sysctl workaround for the main suite.
 A verified restricted startup failure is labeled EXPECTED and does not fail the

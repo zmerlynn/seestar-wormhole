@@ -104,6 +104,15 @@ func printFailure(out io.Writer, scenario, dir string, err error) {
 }
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
+
+func relaunchScenario(scenario string) string {
+	// The OS preference survives exit; keep the fixture's expectation with it.
+	if strings.HasPrefix(scenario, "dark") {
+		return "dark-relaunch"
+	}
+	return "relaunch"
+}
+
 func launch(ctx context.Context, bin, dir, root, scenario string) (*exec.Cmd, <-chan error, error) {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return nil, nil, err
@@ -267,7 +276,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) 
 		return errors.New("runtime record survived exit")
 	}
 	if relaunch {
-		child, childDone, e := launch(ctx, bin, filepath.Join(dir, "relaunch"), root, "relaunch")
+		child, childDone, e := launch(ctx, bin, filepath.Join(dir, "relaunch"), root, relaunchScenario(scenario))
 		if e != nil {
 			return e
 		}
