@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/json/v2"
+	"github.com/zmerlynn/seestar-wormhole/assets/icon"
 	"io"
 	"mime"
 	"net/http"
@@ -52,11 +53,14 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if path == "/" {
 			path = "/index.html"
 		}
-		if path != "/index.html" && path != "/app.js" && path != "/style.css" {
+		if path != "/index.html" && path != "/app.js" && path != "/style.css" && path != "/icon.svg" {
 			fail(http.StatusNotFound)
 			return
 		}
 		b, err := assets.ReadFile("web" + path)
+		if path == "/icon.svg" {
+			b, err = icon.SVG, nil
+		}
 		if err != nil {
 			fail(404)
 			return
@@ -67,6 +71,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		if path == "/style.css" {
 			contentType = "text/css; charset=utf-8"
+		}
+		if path == "/icon.svg" {
+			contentType = "image/svg+xml"
 		}
 		w.Header().Set("Content-Type", contentType)
 		if r.Method != "HEAD" {

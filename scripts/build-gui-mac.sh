@@ -18,7 +18,16 @@ xcrun --show-sdk-version
 pkgutil --pkg-info=com.apple.pkg.CLTools_Executables
 for task_arch in arm64 amd64; do
  task_app="$1/$task_arch/seestar-wormhole.app/Contents"
- mkdir -p "$task_app/MacOS"
+ mkdir -p "$task_app/MacOS" "$task_app/Resources"
+ task_iconset="$1/$task_arch/wormhole.iconset"
+ mkdir -p "$task_iconset"
+ for task_size in 16 32 128 256 512; do
+  sips -z "$task_size" "$task_size" assets/icon/icon-1024.png --out "$task_iconset/icon_${task_size}x${task_size}.png" >/dev/null
+  task_double=$((task_size * 2))
+  sips -z "$task_double" "$task_double" assets/icon/icon-1024.png --out "$task_iconset/icon_${task_size}x${task_size}@2x.png" >/dev/null
+ done
+ iconutil -c icns "$task_iconset" -o "$task_app/Resources/wormhole.icns"
+ rm -r "$task_iconset"
  GOARCH="$task_arch" go build -mod=vendor -p 2 -tags gui,production -trimpath -buildvcs=false \
   -ldflags='-s -w' -o "$task_app/MacOS/seestar-wormhole" ./cmd/seestar-wormhole
  cat > "$task_app/Info.plist" <<'PLIST'
@@ -27,6 +36,7 @@ for task_arch in arm64 amd64; do
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>seestar-wormhole</string>
 <key>CFBundleIdentifier</key><string>net.zml.seestar-wormhole</string>
+<key>CFBundleIconFile</key><string>wormhole.icns</string>
 <key>CFBundleName</key><string>seestar-wormhole</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleVersion</key><string>1</string>

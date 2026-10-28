@@ -4,6 +4,7 @@ package ui
 
 import (
 	"context"
+	"github.com/zmerlynn/seestar-wormhole/assets/icon"
 	"io"
 	"log/slog"
 
@@ -30,6 +31,7 @@ func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, 
 	return runWindow(ctx, url, quit, activate, func(callbacks windowCallbacks) windowActions {
 		appOptions := application.Options{
 			Name:                        "seestar-wormhole",
+			Icon:                        icon.PNG,
 			DisableDefaultSignalHandler: true,
 			Assets:                      application.AssetOptions{Middleware: blockWindowAssets, DisableLogging: true},
 			Logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -45,6 +47,7 @@ func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, 
 		}
 		app := application.New(appOptions)
 		options.Title, options.Width, options.Height, options.URL = "seestar-wormhole", 760, 700, url
+		options.Linux.Icon = icon.PNG
 		window := app.Window.NewWithOptions(options)
 		if configure != nil {
 			configure(app, window)
