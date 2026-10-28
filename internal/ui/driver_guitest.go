@@ -44,12 +44,16 @@ func (d *guiTestDriver) probe(expression string) error {
 		}
 	})
 	defer off()
-	js := `(() => {try { if (` + expression + `) {
- const m = ` + strconv.Quote("wails:event:emit:"+name) + `;
- if (window.chrome?.webview) window.chrome.webview.postMessage(m);
- else if (window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
- else if (window.wails?.invoke) window.wails.invoke(m);
- }} catch (_) {} })()`
+	js := `(() => {
+ const send=m=>{if(window.chrome?.webview) window.chrome.webview.postMessage(m);
+ else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
+ else if(window.wails?.invoke) window.wails.invoke(m)};
+ const diagnose=detail=>{if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
+ try {const result=(` + expression + `);
+ if(result===true) send(` + strconv.Quote("wails:event:emit:"+name) + `);
+ else if(typeof result==='string') diagnose(result);
+ } catch(e) {diagnose(JSON.stringify({probeError:String(e)}))}
+ })()`
 	return guitest.Wait(d.ctx, "DOM: "+expression, func() bool {
 		select {
 		case <-ack:
@@ -109,21 +113,32 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 		// Calculate WCAG luminance using the rendered CSS colors, without changing
 		// the page's styles or emulating a media query.
 		if err := d.probe(`(() => {
-   if (!matchMedia('(prefers-color-scheme: dark)').matches) return false;
+   const dark=matchMedia('(prefers-color-scheme: dark)').matches;
    const root=getComputedStyle(document.documentElement).backgroundColor;
    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
-   // Detached canvases resolve system colors in the default light scheme on WebKit.
-   canvas.hidden=true;document.documentElement.append(canvas);
+   const resolver=document.createElement('span');
+   // Keep a rendered style context; hidden/display:none has no renderer.
+   canvas.style.cssText=resolver.style.cssText='position:fixed;left:-2px;top:-2px;width:1px;height:1px;pointer-events:none';
+   document.documentElement.append(canvas,resolver);
    try {
    const paint=canvas.getContext('2d',{willReadFrequently:true});
-   // Normalize platform CSS color formats and composite alpha in the engine.
-   const l=(color,bg=root)=>{paint.clearRect(0,0,1,1);for(const c of [root,bg,color]){paint.fillStyle=c;paint.fillRect(0,0,1,1)}
-    const v=Array.from(paint.getImageData(0,0,1,1).data).slice(0,3).map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
-   return l(root)<.2 && ['status','email','password','password-note','start','stop','save','quit'].every(id=>{
-    const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled')) return true;
-    const x=l(s.color,s.backgroundColor),y=l(s.backgroundColor);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)>=3;
-   });
-   } finally { canvas.remove(); }
+   // WebKit canvas system-color parsing can use the light palette. Resolve
+   // colors through CSS first; color-mix forces an absolute serialized color.
+   const absolute=c=>{resolver.style.color='';resolver.style.color='color-mix(in srgb, '+c+' 100%, transparent)';
+    if(!resolver.style.color) throw new Error('CSS color resolution failed: '+c);
+    return getComputedStyle(resolver).color};
+   const sample=(...colors)=>{paint.clearRect(0,0,1,1);for(const c of colors){paint.fillStyle=absolute(c);paint.fillRect(0,0,1,1)}
+    return Array.from(paint.getImageData(0,0,1,1).data).slice(0,3)};
+   const l=rgb=>{const v=rgb.map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
+   const rootRGB=sample(root),rootLuminance=l(rootRGB),failures=[];
+   for(const id of ['status','email','password','password-note','start','stop','save','quit']){
+    const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled')) continue;
+    const fg=sample(root,s.backgroundColor,s.color),bg=sample(root,s.backgroundColor);
+    const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
+    if(ratio<3) failures.push({id,color:s.color,background:s.backgroundColor,fg,bg,ratio});
+   }
+   return dark && rootLuminance<.2 && failures.length===0 ? true : JSON.stringify({dark,root,rootRGB,rootLuminance,failures});
+   } finally { canvas.remove();resolver.remove(); }
   })()`); err != nil {
 			return err
 		}

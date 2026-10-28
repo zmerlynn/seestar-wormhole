@@ -62,7 +62,11 @@ Dark mode uses the OS preference, with no injected CSS or emulated media query.
 The driver checks the dark media query and computed text/background contrast
 (at least 3:1 for enabled fields, status, notes, and buttons), and Go checks for
 substantial dark background and light glyph pixels in the central screenshot.
-This is a coarse readability check, not a full accessibility audit.
+Failures log the element ID, computed foreground/background, sampled RGB,
+contrast ratio, dark preference, and root luminance. System colors are resolved
+through CSS before canvas sampling; a fixture-only raw-message callback reports
+diagnostics without enabling the HTTP runtime transport. This is a coarse
+readability check, not a full accessibility audit.
 
 `-scenarios` selects a comma-separated subset; `dark` repeats the fresh-start,
 Stop, and restart sequence. `relaunch` checks page startup and Quit without

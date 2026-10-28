@@ -14,12 +14,12 @@ import (
 
 func windowPresenter(root string) windowFunc {
 	return func(ctx context.Context, url string, quit func(), activate <-chan struct{}) error {
-		return showWindowConfigured(ctx, root, url, quit, activate, application.WebviewWindowOptions{}, nil)
+		return showWindowConfigured(ctx, root, url, quit, activate, application.WebviewWindowOptions{}, nil, nil)
 	}
 }
 
 // The optional configuration callback is used by the tagged GUI fixture.
-func showWindowConfigured(ctx context.Context, root, url string, quit func(), activate <-chan struct{}, options application.WebviewWindowOptions, configure func(*application.App, *application.WebviewWindow)) (err error) {
+func showWindowConfigured(ctx context.Context, root, url string, quit func(), activate <-chan struct{}, options application.WebviewWindowOptions, configureOptions func(*application.Options), configure func(*application.App, *application.WebviewWindow)) (err error) {
 	if err := checkWindowSandbox(); err != nil {
 		return err
 	}
@@ -29,7 +29,7 @@ func showWindowConfigured(ctx context.Context, root, url string, quit func(), ac
 	}
 	defer func() { err = errors.Join(err, cleanup()) }()
 	return runWindow(ctx, quit, activate, func(callbacks windowCallbacks) windowActions {
-		app := application.New(application.Options{
+		appOptions := application.Options{
 			Name:                        "seestar-wormhole",
 			DisableDefaultSignalHandler: true,
 			Assets:                      application.AssetOptions{Middleware: blockWindowAssets, DisableLogging: true},
@@ -39,7 +39,11 @@ func showWindowConfigured(ctx context.Context, root, url string, quit func(), ac
 			Windows: application.WindowsOptions{WebviewUserDataPath: profile, WndProcInterceptor: func(_ uintptr, msg uint32, wParam, _ uintptr) (uintptr, bool) {
 				return callbacks.endSession(msg, wParam)
 			}},
-		})
+		}
+		if configureOptions != nil {
+			configureOptions(&appOptions)
+		}
+		app := application.New(appOptions)
 		options.Title, options.Width, options.Height, options.URL = "seestar-wormhole", 760, 700, url
 		window := app.Window.NewWithOptions(options)
 		if configure != nil {

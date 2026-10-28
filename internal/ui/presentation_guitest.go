@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -28,7 +30,22 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 	started := false
 	err := runUIWithWindow(ctx, root, out, f.run, func(string) error { panic("guitest: browser opener") }, guiTestKeychain{}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
 		started = true
-		return showWindowConfigured(windowCtx, root, url, quit, activate, application.WebviewWindowOptions{AllowSimpleEventEmit: true}, func(app *application.App, w *application.WebviewWindow) {
+		return showWindowConfigured(windowCtx, root, url, quit, activate, application.WebviewWindowOptions{AllowSimpleEventEmit: true}, func(options *application.Options) {
+			options.RawMessageHandler = func(_ application.Window, message string, _ *application.OriginInfo) {
+				if detail, ok := strings.CutPrefix(message, "guitest:diagnostic:"); ok && len(detail) <= 16384 {
+					fmt.Fprintln(out, "DOM diagnostics:", detail)
+				}
+			}
+			// Configure before New starts background logging or reports startup
+			// errors. Preserve fixture warnings/errors without URL fragments.
+			options.Logger = slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelWarn, ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+				if a.Value.Kind() == slog.KindString {
+					text, _, _ := strings.Cut(a.Value.String(), "#")
+					a.Value = slog.StringValue(text)
+				}
+				return a
+			}}))
+		}, func(app *application.App, w *application.WebviewWindow) {
 			// AppKit may exit directly after NSTerminateNow, without returning Run.
 			// Record the joined Go lifetime while OnShutdown still owns termination.
 			app.OnShutdown(func() {
