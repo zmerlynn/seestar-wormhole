@@ -1,8 +1,11 @@
 package ui
 
 import (
+	"bytes"
+	"encoding/json/v2"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"golang.org/x/sys/windows"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -20,6 +23,18 @@ func TestPrivateStorageWindows(t *testing.T) {
 	defer reader.Close()
 	if err := st.write("config.json", defaultSettings()); err != nil {
 		t.Fatal("atomic replacement", err)
+	}
+	old, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := json.Marshal(testSettings())
+	if !bytes.Equal(old, want) {
+		t.Fatal("reader lost the original contents")
+	}
+	got, err := loadSettings(st)
+	if err != nil || got.Email != defaultSettings().Email {
+		t.Fatalf("replacement not visible: %v", err)
 	}
 	f, err := privatefile.Open(filepath.Join(st.root, "config.json"), os.O_RDONLY)
 	if err != nil {

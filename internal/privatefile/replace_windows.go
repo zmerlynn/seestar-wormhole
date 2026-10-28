@@ -1,9 +1,14 @@
 package privatefile
 
 import (
+	"errors"
 	"golang.org/x/sys/windows"
 	"os"
+	"syscall"
+	"unsafe"
 )
+
+var replaceFile = windows.NewLazySystemDLL("kernel32.dll").NewProc("ReplaceFileW")
 
 func Replace(from, to string) error {
 	a, err := windows.UTF16PtrFromString(from)
@@ -14,7 +19,17 @@ func Replace(from, to string) error {
 	if err != nil {
 		return err
 	}
-	return windows.MoveFileEx(a, b, windows.MOVEFILE_REPLACE_EXISTING|windows.MOVEFILE_WRITE_THROUGH)
+	// ReplaceFile permits readers of the old file to retain their handles.
+	// MoveFileEx replacement can fail with access denied while such a reader is open.
+	ok, _, err := replaceFile.Call(uintptr(unsafe.Pointer(b)), uintptr(unsafe.Pointer(a)), 0, 0, 0, 0)
+	if ok != 0 {
+		return nil
+	}
+	if !errors.Is(err, syscall.ERROR_FILE_NOT_FOUND) {
+		return err
+	}
+	// First publication has no destination to replace. Never delete it first.
+	return windows.MoveFileEx(a, b, windows.MOVEFILE_WRITE_THROUGH)
 }
 func SyncDirectory(*os.File) error { return nil }
 
