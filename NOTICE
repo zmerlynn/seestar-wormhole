@@ -38,8 +38,3 @@ The Wails pkg/w32 sources also include Winc Authors and W32 Authors
 attributions and atotto/clipboard-derived code (Ato Araki, BSD-3-Clause).
 Their supplemental notices and full upstream license texts are included in
 the generated catalog.
-
-.claude/skills/review-ux-ui/SKILL.md is copied unchanged from
-github.com/pjt222/agent-almanac (skills/review-ux-ui/SKILL.md, commit
-75ded7a17bbd494bc5d61914c2ff3855fa5a4433) by Philipp Thoss under the MIT
-license; its license text is in .claude/skills/review-ux-ui/LICENSE.
