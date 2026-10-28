@@ -74,7 +74,7 @@ try { $g.CopyFromScreen($r.Left,$r.Top,0,0,$i.Size); $i.Save('` + strings.Replac
 	if b, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("screenshot: %w: %s", err, b)
 	}
-	return nil
+	return CheckPainted(path)
 }
 
 // CheckDarkPixels is deliberately coarse: require substantial dark background
@@ -109,4 +109,35 @@ func CheckDarkPixels(path string) error {
 		return fmt.Errorf("dark screenshot contrast: dark=%d light=%d total=%d", dark, light, total)
 	}
 	return nil
+}
+
+// CheckPainted ignores window decorations and the desktop. A uniform central
+// page region cannot establish that the requested DOM has been painted.
+func CheckPainted(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	im, err := png.Decode(f)
+	if err != nil {
+		return err
+	}
+	b := im.Bounds()
+	center := b.Inset(0)
+	center.Min.X = b.Min.X + b.Dx()/3
+	center.Max.X = b.Min.X + b.Dx()*2/3
+	center.Min.Y = b.Min.Y + b.Dy()/5
+	center.Max.Y = b.Min.Y + b.Dy()*3/5
+	first := im.At(center.Min.X, center.Min.Y)
+	r, g, blue, a := first.RGBA()
+	for y := center.Min.Y; y < center.Max.Y; y++ {
+		for x := center.Min.X; x < center.Max.X; x++ {
+			rr, gg, bb, aa := im.At(x, y).RGBA()
+			if rr != r || gg != g || bb != blue || aa != a {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("screenshot has a single-color page region")
 }
