@@ -49,6 +49,8 @@ func errorCopy(code string) string {
 		return "Enter an idle time greater than zero."
 	case "ports":
 		return "Enter one computer-port:telescope-port pair per line. Computer ports must be 0–65535 and telescope ports 1–65535. Use each telescope port and each nonzero computer port only once."
+	case "ports_empty":
+		return "Enable at least one service. In Advanced, remove a port override that turns a service off."
 	case "bind":
 		return "Could not listen on this address. Choose an address assigned to this computer in Advanced."
 	case "discovery_bind":

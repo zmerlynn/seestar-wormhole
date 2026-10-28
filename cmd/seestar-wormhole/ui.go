@@ -55,7 +55,7 @@ func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(conte
 			return err
 		}
 		if len(runOptions.ports) == 0 {
-			return &ui.ActionError{Code: "ports", Field: "ports"}
+			return &ui.ActionError{Code: "ports_empty", Field: "ports"}
 		}
 		return runProxy(ctx, runOptions, logs, func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
 			cfg.Status = status

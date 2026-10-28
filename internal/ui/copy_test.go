@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"fmt"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"strings"
 	"testing"
 )
@@ -33,5 +35,24 @@ func TestErrorCodesBelongInDiagnosticEvents(t *testing.T) {
 	events, _, _ := log.snapshot()
 	if len(events) != 1 || !strings.Contains(events[0], "\tsignin\t") {
 		t.Fatal("diagnostic event lost the error classification")
+	}
+}
+
+func TestAllServicesDisabledExplainsRecovery(t *testing.T) {
+	defaults, err := proxyrun.MergePorts(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testSettings()
+	s.Ports = nil
+	for _, p := range defaults {
+		s.Ports = append(s.Ports, fmt.Sprintf("0:%d", p.Device))
+	}
+	_, _, err = s.validate()
+	if err == nil || actionError(err).Code != "ports_empty" || actionError(err).Field != "ports" {
+		t.Fatal("empty listener set lacks its ports error", err)
+	}
+	if errorCopy("ports_empty") != "Enable at least one service. In Advanced, remove a port override that turns a service off." {
+		t.Fatal("empty listener error does not explain recovery")
 	}
 }
