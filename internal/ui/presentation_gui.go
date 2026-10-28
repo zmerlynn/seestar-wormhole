@@ -4,7 +4,6 @@ package ui
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 
@@ -12,14 +11,14 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-func windowPresenter(root string) windowFunc {
+func windowPresenter(root string, out io.Writer) windowFunc {
 	return func(ctx context.Context, url string, quit func(), activate <-chan struct{}) error {
-		return showWindowConfigured(ctx, root, url, quit, activate, application.WebviewWindowOptions{}, nil, nil)
+		return showWindowConfigured(ctx, root, url, out, quit, activate, application.WebviewWindowOptions{}, nil, nil)
 	}
 }
 
 // The optional configuration callback is used by the tagged GUI fixture.
-func showWindowConfigured(ctx context.Context, root, url string, quit func(), activate <-chan struct{}, options application.WebviewWindowOptions, configureOptions func(*application.Options), configure func(*application.App, *application.WebviewWindow)) (err error) {
+func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, quit func(), activate <-chan struct{}, options application.WebviewWindowOptions, configureOptions func(*application.Options), configure func(*application.App, *application.WebviewWindow)) (err error) {
 	if err := checkWindowSandbox(); err != nil {
 		return err
 	}
@@ -27,7 +26,7 @@ func showWindowConfigured(ctx context.Context, root, url string, quit func(), ac
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, cleanup()) }()
+	defer func() { err = profileCleanupResult(out, cleanup, err) }()
 	return runWindow(ctx, quit, activate, func(callbacks windowCallbacks) windowActions {
 		appOptions := application.Options{
 			Name:                        "seestar-wormhole",

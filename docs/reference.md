@@ -81,8 +81,10 @@ requests. The Wails command bridge is blocked: its separate asset/runtime
 transport returns 404. These protections do not prevent navigation or popups.
 
 The native engines also manage browser data. Windows uses `webview/` above
-and waits up to two seconds for profile cleanup, reporting an error if files
-remain locked. macOS WKWebView and Linux WebKitGTK use their default persistent
+and waits up to two seconds for profile cleanup, printing a warning if files
+remain locked without changing the normal exit status. Leftover engine cache and
+session files remain in the private state root until the next launch removes
+them (or the user removes them after exit). macOS WKWebView and Linux WebKitGTK use their default persistent
 stores: the vendored Wails options expose no nonpersistent data store or
 ephemeral network session. Those stores are outside the state root and are not
 cleared on exit. The page uses sessionStorage for reload authorization and sets
