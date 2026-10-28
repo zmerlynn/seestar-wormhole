@@ -33,6 +33,7 @@ func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, 
 			DisableDefaultSignalHandler: true,
 			Assets:                      application.AssetOptions{Middleware: blockWindowAssets, DisableLogging: true},
 			Logger:                      slog.New(slog.NewTextHandler(io.Discard, nil)),
+			ErrorHandler:                windowErrorHandler,
 			ShouldQuit:                  callbacks.shouldQuit,
 			OnShutdown:                  callbacks.shutdown,
 			Windows: application.WindowsOptions{WebviewUserDataPath: profile, WndProcInterceptor: func(_ uintptr, msg uint32, wParam, _ uintptr) (uintptr, bool) {
