@@ -72,6 +72,14 @@ capability is absent from opener arguments. If opening fails, the app prints
 the private URL for manual use; keep that output private. The bootstrap can
 remain after a crash and is replaced on the next browser launch.
 
+Known native-window limitation: Wails currently exposes no cancellable policy
+hooks for navigation, new windows, or external drops on all three platforms.
+Dropping a file or link can replace the controls with another page; an engine
+popup can open another view or browser window. A page from another origin cannot
+read the control capability from the original page or make authenticated control
+requests. The Wails command bridge is blocked: its separate asset/runtime
+transport returns 404. These protections do not prevent navigation or popups.
+
 The native engines also manage browser data. Windows uses `webview/` above
 and waits up to two seconds for profile cleanup, reporting an error if files
 remain locked. macOS WKWebView and Linux WebKitGTK use their default persistent
