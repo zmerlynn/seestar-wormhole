@@ -133,6 +133,18 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 			return err
 		}
 	}
+	if shot == "setup" {
+		if err := d.probe(`(() => {
+ const select=getComputedStyle(document.getElementById('goal'));
+ const input=getComputedStyle(document.getElementById('email'));
+ const legend=document.querySelector('#account legend').getBoundingClientRect();
+ const email=document.getElementById('email').getBoundingClientRect();
+ const disabled=document.getElementById('save-password');
+ return select.appearance==='none' && select.backgroundColor===input.backgroundColor && select.color===input.color && Math.abs(legend.left-email.left)<1 && (!disabled.disabled || Number(getComputedStyle(disabled).opacity)<.7);
+ })()`); err != nil {
+			return err
+		}
+	}
 	// Calculate WCAG luminance using the rendered CSS colors, without changing
 	// the page's styles or emulating a media query.
 	if err := d.probe(`(() => {
@@ -155,7 +167,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     return Array.from(paint.getImageData(0,0,1,1).data).slice(0,3)};
    const l=rgb=>{const v=rgb.map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
    const rootRGB=sample(root),rootLuminance=l(rootRGB),failures=[];
-   for(const id of ['status','email','password','password-note','forget','start','quit']){
+   for(const id of ['status','email','password','password-note','goal','forget','start','quit']){
     const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled') || e.getClientRects().length===0) continue;
     const fg=sample(root,s.backgroundColor,s.color),bg=sample(root,s.backgroundColor);
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
