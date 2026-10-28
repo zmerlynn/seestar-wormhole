@@ -30,7 +30,7 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 	started := false
 	err := runUIWithWindow(ctx, root, out, f.run, func(string) error { panic("guitest: browser opener") }, guiTestKeychain{}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
 		started = true
-		return showWindowConfigured(windowCtx, root, url, out, quit, activate, application.WebviewWindowOptions{AllowSimpleEventEmit: true}, func(options *application.Options) {
+		return showWindowConfigured(windowCtx, root, url, out, quit, activate, guiTestWindowOptions(scenario), func(options *application.Options) {
 			options.RawMessageHandler = func(_ application.Window, message string, _ *application.OriginInfo) {
 				if detail, ok := strings.CutPrefix(message, "guitest:diagnostic:"); ok && len(detail) <= 16384 {
 					fmt.Fprintln(out, "DOM diagnostics:", detail)
@@ -99,4 +99,14 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 		}
 	}
 	return err
+}
+
+// Set the native appearance inside the sandboxed fixture. Global defaults are
+// written by the unsandboxed harness and may not reach AppKit across that boundary.
+func guiTestWindowOptions(scenario string) application.WebviewWindowOptions {
+	appearance := application.NSAppearanceNameAqua
+	if strings.HasPrefix(scenario, "dark") {
+		appearance = application.NSAppearanceNameDarkAqua
+	}
+	return application.WebviewWindowOptions{AllowSimpleEventEmit: true, Mac: application.MacWindow{Appearance: appearance}}
 }

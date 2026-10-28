@@ -59,6 +59,9 @@ or DOM probes during that join. Its joined receipt is written in OnShutdown,
 since AppKit can exit directly after accepting termination.
 
 Dark mode uses the OS preference, with no injected CSS or emulated media query.
+On macOS the fixture also sets the native window NSAppearance to Aqua/DarkAqua
+for the selected scenario: global defaults written outside sandbox-exec may not
+reach AppKit inside it.
 The driver checks the dark media query and computed text/background contrast
 (at least 3:1 for enabled fields, status, notes, and buttons), and Go checks for
 substantial dark background and light glyph pixels in the central screenshot.
