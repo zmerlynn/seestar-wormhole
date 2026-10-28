@@ -9,15 +9,24 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-type unprintableWindowError struct{}
-
-func (unprintableWindowError) Error() string { panic("window errors must never be formatted") }
-
 func TestWindowErrorReporting(t *testing.T) {
-	for _, err := range []error{nil, errors.New("https://example.invalid/#private"), unprintableWindowError{}, &application.FatalError{}} {
+	for _, tc := range []struct {
+		err   error
+		shown bool
+	}{
+		{nil, false},
+		{errors.New("https://example.invalid/#private"), false},
+		{&application.FatalError{}, true},
+	} {
 		var shown []string
 		handler := fixedWindowErrorHandler(func(message string) { shown = append(shown, message) })
-		handler(err)
+		handler(tc.err)
+		if !tc.shown {
+			if len(shown) != 0 {
+				t.Fatalf("non-fatal error shown: %q", shown)
+			}
+			continue
+		}
 		if len(shown) != 1 || shown[0] != "The window engine could not start. On Windows, WebView2 Runtime is required. Install or repair the runtime and try again." {
 			t.Fatalf("missing fixed engine diagnostic: %q", shown)
 		}

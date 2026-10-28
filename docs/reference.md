@@ -108,7 +108,7 @@ checkbox off changes future use; use Forget to remove an already stored copy.
 
 UI proxy runs use JSON lifecycle logs at INFO on stderr. Windows GUI builds
 also show startup errors in a native message box because they have no console.
-Windows window-engine errors use a fixed message explaining that WebView2
+Fatal Windows window-engine errors use a fixed message explaining that WebView2
 Runtime is required, without exposing internal error details.
 Linux native window sandbox prerequisites are in [troubleshooting](troubleshooting.md#linux-native-window).
 Options use the same validation and [port mappings](#port-mappings) as `proxy`.
