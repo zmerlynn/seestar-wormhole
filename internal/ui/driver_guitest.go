@@ -24,13 +24,13 @@ import (
 )
 
 type guiTestDriver struct {
-	ctx, windowCtx     context.Context
-	app                *application.App
-	w                  *application.WebviewWindow
-	runner             *guiTestRunner
-	url, dir, scenario string
-	out                io.Writer
-	seq                int
+	ctx, windowCtx           context.Context
+	app                      *application.App
+	w                        *application.WebviewWindow
+	runner                   *guiTestRunner
+	url, dir, scenario, root string
+	out                      io.Writer
+	seq                      int
 }
 
 // Each probe has a distinct acknowledgment, so late JS cannot satisfy the next
@@ -107,7 +107,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	}
 
 	d.w.ExecJS(`window.scrollTo(0,0)`)
-	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('start').disabled === ` + strconv.FormatBool(active) + ` && getComputedStyle(document.getElementById('status')).visibility === 'visible' && document.getElementById('status').getBoundingClientRect().top >= 0`); err != nil {
+	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('settings').hidden === ` + strconv.FormatBool(active) + ` && document.getElementById('start').getBoundingClientRect().bottom < innerHeight && getComputedStyle(document.getElementById('status')).visibility === 'visible' && document.getElementById('status').getBoundingClientRect().top >= 0`); err != nil {
 		return err
 	}
 	// Calculate WCAG luminance using the rendered CSS colors, without changing
@@ -132,11 +132,11 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     return Array.from(paint.getImageData(0,0,1,1).data).slice(0,3)};
    const l=rgb=>{const v=rgb.map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
    const rootRGB=sample(root),rootLuminance=l(rootRGB),failures=[];
-   for(const id of ['status','email','password','password-note','forget','start','stop','save','quit']){
-    const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled') && e.tagName!=='BUTTON') continue;
+   for(const id of ['status','email','password','password-note','forget','start','quit']){
+    const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled') || e.getClientRects().length===0) continue;
     const fg=sample(root,s.backgroundColor,s.color),bg=sample(root,s.backgroundColor);
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
-    if(ratio<3) failures.push({id,disabled:e.matches(':disabled'),color:s.color,background:s.backgroundColor,fg,bg,ratio});
+    if(ratio<4.5) failures.push({id,disabled:e.matches(':disabled'),color:s.color,background:s.backgroundColor,fg,bg,ratio});
    }
    return dark===expectDark && (dark ? rootLuminance<.2 : rootLuminance>.5) && failures.length===0 ? true : JSON.stringify({expectDark,dark,root,rootRGB,rootLuminance,failures,colorMix:CSS.supports("color","color-mix(in srgb, red, blue)")});
    } finally { canvas.remove();resolver.remove(); }
@@ -182,7 +182,7 @@ func (d *guiTestDriver) release() error {
 		if !d.w.IsVisible() {
 			return errors.New("window closed before release joined")
 		}
-		if err := d.state("Stopping — releasing session", true, "releasing"); err != nil {
+		if err := d.state("Stopping — releasing the telescope session…", true, "releasing"); err != nil {
 			return err
 		}
 	}
@@ -198,20 +198,38 @@ func (d *guiTestDriver) release() error {
 }
 
 func (d *guiTestDriver) drive() error {
-	if err := d.state("Stopped", false, "setup"); err != nil {
+	if err := d.state("Not connected", false, "setup"); err != nil {
 		return err
 	}
-	if d.scenario == "relaunch" || d.scenario == "dark-relaunch" {
+	if d.scenario == "relaunch" || d.scenario == "dark-relaunch" || d.scenario == "saved-relaunch" {
+		if d.scenario == "saved-relaunch" {
+			if err := d.probe(`document.getElementById('password').readOnly && document.getElementById('password').value==='Saved in keychain'`); err != nil {
+				return err
+			}
+		}
 		return d.click("quit")
 	}
-	if err := d.probe(`document.getElementById('email').value === '' && !document.getElementById('remember').checked`); err != nil {
+	if err := d.probe(`document.getElementById('email').value === '' && document.getElementById('goal').value === 'phone' && !document.getElementById('trust').hidden`); err != nil {
 		return err
 	}
 	d.w.ExecJS(`for(const [id,value] of [['email','gui@example.invalid'],['password','synthetic-password']]) {const e=document.getElementById(id);e.focus();e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}`)
+	if err := d.uxSetup(); err != nil {
+		return err
+	}
 	if err := d.start(); err != nil {
 		return err
 	}
-	if err := d.state("Connecting", true, "connecting"); err != nil {
+	switch d.scenario {
+	case "bind-error", "http-permission", "http-conflict", "discovery-error":
+		if err := d.state("Could not connect", false, "classified-error"); err != nil {
+			return err
+		}
+		if err := d.probe(`!document.getElementById('notice').hidden && document.getElementById('advanced').open`); err != nil {
+			return err
+		}
+		return d.click("quit")
+	}
+	if err := d.state("Connecting to your telescope…", true, "connecting"); err != nil {
 		return err
 	}
 	connecting := strings.Contains(d.scenario, "connecting")
@@ -219,31 +237,34 @@ func (d *guiTestDriver) drive() error {
 		if err := d.step(session.Event{Kind: session.Progress}); err != nil {
 			return err
 		}
-		if err := d.state("Ready", true, "ready"); err != nil {
+		if err := d.state("Connected to your telescope", true, "ready"); err != nil {
+			return err
+		}
+		if err := d.uxRunning(); err != nil {
 			return err
 		}
 	}
 	switch d.scenario {
 	case "fresh", "dark":
-		if err := d.click("stop"); err != nil {
+		if err := d.click("start"); err != nil {
 			return err
 		}
 		if err := d.release(); err != nil {
 			return err
 		}
-		if err := d.state("Stopped", false, "stopped"); err != nil {
+		if err := d.state("Stopped. You can use remote mode in the Seestar app again.", false, "stopped"); err != nil {
 			return err
 		}
 		if err := d.start(); err != nil {
 			return err
 		}
-		if err := d.state("Connecting", true, "restart-connecting"); err != nil {
+		if err := d.state("Connecting to your telescope…", true, "restart-connecting"); err != nil {
 			return err
 		}
 		if err := d.step(session.Event{Kind: session.Progress}); err != nil {
 			return err
 		}
-		if err := d.state("Ready", true, "restart-ready"); err != nil {
+		if err := d.state("Connected to your telescope", true, "restart-ready"); err != nil {
 			return err
 		}
 	case "errors":
@@ -251,7 +272,7 @@ func (d *guiTestDriver) drive() error {
 			if err := d.step(e); err != nil {
 				return err
 			}
-			if err := d.state([]string{"Busy — waiting for the other session", "Reconnecting", "Ready"}[i], true, []string{"busy", "transport-retry", "recovered"}[i]); err != nil {
+			if err := d.state([]string{"Telescope is in use. Disconnect the other remote session. Retrying automatically.", "Connection lost. Retrying automatically.", "Connected to your telescope"}[i], true, []string{"busy", "transport-retry", "recovered"}[i]); err != nil {
 				return err
 			}
 		}
@@ -270,7 +291,7 @@ func (d *guiTestDriver) drive() error {
 		case <-d.ctx.Done():
 			return d.ctx.Err()
 		}
-		if err := d.state("Sign-in required — correct credentials and Start again", false, "credential-rejected"); err != nil {
+		if err := d.state("Could not connect", false, "credential-rejected"); err != nil {
 			return err
 		}
 		return d.click("quit")
@@ -282,7 +303,7 @@ func (d *guiTestDriver) drive() error {
 		if err := guitest.Wait(d.ctx, "owner shown and focused", func() bool { return d.w.IsVisible() && d.w.IsFocused() }); err != nil {
 			return err
 		}
-		if err := d.state("Ready", true, "activated"); err != nil {
+		if err := d.state("Connected to your telescope", true, "activated"); err != nil {
 			return err
 		}
 	case "strand":
@@ -293,7 +314,7 @@ func (d *guiTestDriver) drive() error {
 		if err := d.probe(`location.href === 'about:blank' && location.origin !== ` + strconv.Quote(origin) + ` && !document.getElementById('status')`); err != nil {
 			return err
 		}
-		if err := d.serverState("Ready", true); err != nil {
+		if err := d.serverState("Connected to your telescope", true); err != nil {
 			return err
 		}
 		if err := d.runnerUninterrupted(); err != nil {
@@ -308,12 +329,12 @@ func (d *guiTestDriver) drive() error {
 		if err := d.mark("trigger"); err != nil {
 			return err
 		}
-		if err := d.probe(`location.origin === ` + strconv.Quote(origin) + ` && document.getElementById('status')?.textContent === 'Ready'`); err != nil {
+		if err := d.probe(`location.origin === ` + strconv.Quote(origin) + ` && document.getElementById('status')?.textContent === 'Connected to your telescope'`); err != nil {
 			return err
 		}
 		// Ready in the reloaded DOM requires app.js's authenticated status fetch;
 		// also independently check that the same authenticated server stayed active.
-		if err := d.state("Ready", true, "restored"); err != nil {
+		if err := d.state("Connected to your telescope", true, "restored"); err != nil {
 			return err
 		}
 		if err := d.runnerUninterrupted(); err != nil {
@@ -334,6 +355,18 @@ func (d *guiTestDriver) drive() error {
 			return err
 		}
 		return d.release()
+	case "release-uncertain":
+		if err := d.click("start"); err != nil {
+			return err
+		}
+		if err := d.release(); err != nil {
+			return err
+		}
+		if err := d.state(errorCopy("release"), false, "release-uncertain"); err != nil {
+			return err
+		}
+		return d.click("quit")
+	case "computer", "incompatible", "saved-password", "save-denied", "save-timeout", "remove-denied", "remove-timeout", "settings-failure", "browser-copy", "details", "lost-controls":
 	case "quit-ready", "quit-connecting":
 	default:
 		return fmt.Errorf("unknown GUI scenario %q", d.scenario)

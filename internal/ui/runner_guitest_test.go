@@ -55,7 +55,7 @@ func TestGUITestRunner(t *testing.T) {
 		time.Sleep(time.Second)
 		<-f.released
 		err := <-done
-		if !errors.Is(ctx.Err(), context.Canceled) || finalStatus(err) != "Sign-in required — correct credentials and Start again" {
+		if !errors.Is(ctx.Err(), context.Canceled) || finalStatus(err) != errorCopy("signin") {
 			t.Fatal(err)
 		}
 	})

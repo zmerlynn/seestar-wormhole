@@ -25,9 +25,10 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 		return errors.New("guitest requires its Go harness")
 	}
 	f := newGUITestRunner()
+	f.scenario = scenario
 	result := make(chan error, 1)
 	started := false
-	err := runUIWithWindow(ctx, root, out, f.run, func(string) error { panic("guitest: browser opener") }, guiTestKeychain{}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
+	err := runUIPresented(ctx, root, out, f.run, func(string) error { panic("guitest: browser opener") }, &guiTestKeychain{root: root, scenario: scenario}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
 		started = true
 		return showWindowConfigured(windowCtx, root, url, out, quit, activate, guiTestWindowOptions(scenario), func(options *application.Options) {
 			options.RawMessageHandler = func(_ application.Window, message string, _ *application.OriginInfo) {
@@ -70,7 +71,7 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 				go func() {
 					driverCtx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
 					defer cancel()
-					d := &guiTestDriver{ctx: driverCtx, windowCtx: windowCtx, app: app, w: w, runner: f, url: url, dir: dir, scenario: scenario, out: out}
+					d := &guiTestDriver{ctx: driverCtx, windowCtx: windowCtx, app: app, w: w, runner: f, url: url, dir: dir, scenario: scenario, root: root, out: out}
 					driveErr := d.drive()
 					if driveErr != nil {
 						fmt.Fprintln(out, "GUI fixture FAIL:", driveErr)
@@ -85,7 +86,7 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 				}()
 			})
 		})
-	})
+	}, scenario != "browser-copy")
 	if started {
 		select {
 		case driverErr := <-result:

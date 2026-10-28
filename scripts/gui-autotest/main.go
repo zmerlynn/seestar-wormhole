@@ -26,7 +26,7 @@ import (
 func main() {
 	binary := flag.String("binary", "", "gui,guitest binary (or executable inside a Mac bundle)")
 	out := flag.String("out", "", "artifact directory")
-	scenarios := flag.String("scenarios", "fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,strand,errors,term,interrupt", "comma-separated scenarios")
+	scenarios := flag.String("scenarios", "fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,strand,errors,term,interrupt,"+guitest.UXScenarios, "comma-separated scenarios")
 	verify := flag.String("verify", "", "fixture,production,plain-gui binaries: inspect only")
 	timeout := flag.Duration("timeout", 100*time.Second, "bound per scenario including relaunch")
 	flag.Parse()
@@ -106,6 +106,9 @@ func printFailure(out io.Writer, scenario, dir string, err error) {
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }
 
 func relaunchScenario(scenario string) string {
+	if scenario == "saved-password" {
+		return "saved-relaunch"
+	}
 	// The OS preference survives exit; keep the fixture's expectation with it.
 	if strings.HasPrefix(scenario, "dark") {
 		return "dark-relaunch"
@@ -264,7 +267,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 	if !exists(filepath.Join(dir, "joined")) {
 		return errors.New("missing joined-window receipt")
 	}
-	if scenario != "relaunch" && scenario != "errors" && !exists(filepath.Join(dir, "release-wait-observed")) {
+	if guitest.RequiresRelease(scenario) && !exists(filepath.Join(dir, "release-wait-observed")) {
 		return errors.New("missing slow-release window assertion")
 	}
 	conn, e := net.DialTimeout("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(record.Port)), 300*time.Millisecond)

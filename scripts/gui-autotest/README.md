@@ -103,3 +103,13 @@ symbols without starting a window. Build these binaries without stripping.
 The fixture must contain guitest tags and symbols; both other builds must have
 none. This positive control runs on every platform. The normal release scripts
 and default build path are unchanged.
+
+
+The default campaign also captures first-run Phone and computer-only setups,
+incompatible discovery/listen choices, HTTP permission/conflict and bind or
+discovery errors, saved-password relaunch, keychain save/remove denial and timeout,
+repeated removal in the same page, settings write failure and retry, release
+uncertainty, host-selected browser quit copy, lost controls, and expanded Details
+and logs. The existing errors scenario covers cloud rejection and busy/transport
+retry. All use fake credentials and a marker-backed fake keychain. Timeout cases
+model a late OS completion; no native keychain is accessed.

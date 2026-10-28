@@ -5,6 +5,10 @@ package ui
 import (
 	"context"
 	"errors"
+	"github.com/zalando/go-keyring"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
@@ -16,6 +20,7 @@ import (
 // No sockets, cloud adapter, ports, or OS credential provider exist in this
 // runner. Progress is gated by the driver so each rendered state is observed.
 type guiTestRunner struct {
+	scenario  string
 	steps     chan session.Event
 	entered   chan struct{}
 	releasing chan struct{}
@@ -23,11 +28,22 @@ type guiTestRunner struct {
 }
 
 func newGUITestRunner() *guiTestRunner {
-	return &guiTestRunner{make(chan session.Event), make(chan struct{}, 8), make(chan struct{}, 8), make(chan struct{}, 8)}
+	return &guiTestRunner{steps: make(chan session.Event), entered: make(chan struct{}, 8), releasing: make(chan struct{}, 8), released: make(chan struct{}, 8)}
 }
 
 func (f *guiTestRunner) run(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
 	f.entered <- struct{}{}
+	switch f.scenario {
+	case "bind-error":
+		return &ActionError{Code: "bind", Field: "bind"}
+	case "http-permission":
+		return &ActionError{Code: "http_permission", Field: "ports"}
+	case "http-conflict":
+		return &ActionError{Code: "http_conflict", Field: "ports"}
+	case "discovery-error":
+		return &ActionError{Code: "discovery", Field: "discovery"}
+	}
+	status.MarkArmed()
 	before := session.Snapshot{State: session.Dialing}
 	var result error
 	for {
@@ -39,6 +55,9 @@ func (f *guiTestRunner) run(ctx context.Context, _ Settings, _ cloud.Credentials
 			f.released <- struct{}{}
 			if result != nil {
 				return result
+			}
+			if f.scenario == "release-uncertain" {
+				return errors.Join(ctx.Err(), session.ErrStop)
 			}
 			return ctx.Err()
 		case e := <-f.steps:
@@ -61,8 +80,47 @@ func (f *guiTestRunner) run(ctx context.Context, _ Settings, _ cloud.Credentials
 	}
 }
 
-type guiTestKeychain struct{}
+// The fixture persists only a boolean marker. Its one fake password is compiled
+// into the test build; no native keychain is ever accessed.
+type guiTestKeychain struct {
+	root, scenario string
+	mu             sync.Mutex
+	saves, removes int
+}
 
-func (guiTestKeychain) Get(string, string) (string, error) { panic("guitest: keychain read") }
-func (guiTestKeychain) Set(string, string, string) error   { panic("guitest: keychain write") }
-func (guiTestKeychain) Delete(string, string) error        { panic("guitest: keychain delete") }
+func (f *guiTestKeychain) Get(string, string) (string, error) {
+	if _, err := os.Stat(filepath.Join(f.root, "fixture-keychain")); err != nil {
+		return "", keyring.ErrNotFound
+	}
+	return "synthetic-password", nil
+}
+func (f *guiTestKeychain) Set(string, string, string) error {
+	f.mu.Lock()
+	f.saves++
+	n := f.saves
+	f.mu.Unlock()
+	if f.scenario == "save-denied" && n == 1 {
+		return errors.New("synthetic denial")
+	}
+	if f.scenario == "save-timeout" && n == 1 {
+		time.Sleep(4 * time.Second)
+	}
+	return os.WriteFile(filepath.Join(f.root, "fixture-keychain"), []byte("saved"), 0600)
+}
+func (f *guiTestKeychain) Delete(string, string) error {
+	f.mu.Lock()
+	f.removes++
+	n := f.removes
+	f.mu.Unlock()
+	if f.scenario == "remove-denied" && n <= 2 {
+		return errors.New("synthetic denial")
+	}
+	if f.scenario == "remove-timeout" && n == 1 {
+		time.Sleep(4 * time.Second)
+	}
+	err := os.Remove(filepath.Join(f.root, "fixture-keychain"))
+	if os.IsNotExist(err) {
+		return keyring.ErrNotFound
+	}
+	return err
+}
