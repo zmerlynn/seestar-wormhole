@@ -313,6 +313,7 @@ func main() {
 	// Cobra's Explorer hook exits before parsing; this executable owns its help
 	// and refusal policy on every launch path.
 	cobra.MousetrapHelpText = ""
+	reportUIError = showUIStartupError
 	os.Exit(mainExitCode())
 }
 
@@ -347,6 +348,9 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	// Windows refuses invalid options before acquiring signal or log handles.
 	// Unix keeps nonblocking log setup for argument errors on stalled stderr.
 	if err != nil && windows {
+		if o.command == commandUI {
+			reportUIError(err)
+		}
 		logCommandArgumentError(o, logOutput, err)
 		return commandExitCode(o, err)
 	}
@@ -384,6 +388,9 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 		logCommandArgumentError(o, w, err)
 	} else {
 		err = execute(ctx, o, out, w)
+	}
+	if err != nil && o.command == commandUI {
+		reportUIError(err)
 	}
 	closeLog()
 	if loss := w.Err(); loss != nil {

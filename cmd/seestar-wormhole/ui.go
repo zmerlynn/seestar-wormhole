@@ -13,6 +13,9 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 )
 
+// Set only by main: headless tests never display a native dialog.
+var reportUIError = func(error) {}
+
 func runUICommand(ctx context.Context, o options, out, logs io.Writer) error {
 	root, err := ui.StateRoot(o.stateDir)
 	if err == nil {

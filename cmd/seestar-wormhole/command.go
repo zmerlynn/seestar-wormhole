@@ -67,7 +67,7 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 	})
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return flagParseError(err) })
 	root.Flags().BoolVar(&o.version, "version", false, "print version, revision and platform")
-	uiCommand := &cobra.Command{Use: "ui", Short: "Open the local browser control page", Args: noArguments, RunE: func(*cobra.Command, []string) error { return nil }}
+	uiCommand := &cobra.Command{Use: "ui", Short: "Open local controls (native window in GUI builds, browser otherwise)", Args: noArguments, RunE: func(*cobra.Command, []string) error { return nil }}
 	uiCommand.Flags().StringVar(&o.stateDir, "state-dir", "", "private UI settings and shared installation identity directory")
 	root.AddCommand(uiCommand)
 	proxyCommand := &cobra.Command{
