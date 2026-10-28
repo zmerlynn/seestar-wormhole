@@ -17,6 +17,9 @@ func showWindow(ctx context.Context, url string, quit func(), activate <-chan st
 
 // The optional configuration callback is used by the tagged GUI fixture.
 func showWindowConfigured(ctx context.Context, url string, quit func(), activate <-chan struct{}, options application.WebviewWindowOptions, configure func(*application.App, *application.WebviewWindow)) error {
+	if err := checkWindowSandbox(); err != nil {
+		return err
+	}
 	app := application.New(application.Options{
 		Name: "seestar-wormhole",
 		// The command owns signal cancellation and the proxy's joined release.

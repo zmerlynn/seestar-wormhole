@@ -76,3 +76,19 @@ there is no plaintext fallback. Enter it again after restarting, or unlock your
 normal OS keychain and retry Save settings with Remember password selected.
 Forget clears the memory copy; if the OS deletion fails, unlock the provider
 and retry Forget for the same email. Saved settings never contain the password.
+
+### Linux native window
+
+The GUI build requires GTK 4, WebKitGTK 6.0, and bubblewrap (on Ubuntu:
+`libgtk-4-1`, `libwebkitgtk-6.0-4`, and `bubblewrap`). WebKit's sandbox needs
+permission to create unprivileged user namespaces. Ubuntu 24.04's AppArmor
+restriction can deny bubblewrap's uid-map setup even with the distro package
+installed. The app checks bubblewrap before starting WebKit and reports
+“WebKit sandbox unavailable” if this prerequisite fails.
+
+Use a distribution-supported AppArmor profile that permits the sandbox for
+this application, or ask the administrator to supply one. The product never
+disables the WebKit sandbox. A global user-namespace policy relaxation is
+not the recommended setup. The browser presentation remains available in
+the default build. CI probes the restricted policy before using a disposable
+runner policy relaxation for its native rendering tests.

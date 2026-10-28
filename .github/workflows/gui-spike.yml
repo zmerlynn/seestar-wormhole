@@ -164,7 +164,10 @@ jobs:
             > "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log" 2>&1; then
             echo 'PROBE bubblewrap WITHOUT userns relaxation PASS' | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
           else
-            echo 'PROBE bubblewrap WITHOUT userns relaxation FAIL: see process.log' | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
+            log="$RUNNER_TEMP/gui-shots/bubblewrap-probe/relaunch/process.log"
+            grep -F 'WebKit sandbox unavailable: bubblewrap must be installed and permitted to create unprivileged user namespaces' "$log"
+            if grep -E 'SIGTRAP|signal arrived during cgo' "$log"; then exit 1; fi
+            echo 'PROBE restricted bubblewrap: clear startup error PASS' | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
           fi
           cat "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
           # CI-only workaround retained from the spike.
