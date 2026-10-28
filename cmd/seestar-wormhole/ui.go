@@ -2,9 +2,9 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
+	"github.com/zmerlynn/seestar-wormhole/internal/oserror"
 	"io"
 	"log/slog"
 	"net"
@@ -66,12 +66,12 @@ func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(conte
 
 func uiListenerError(device, local uint16, err error) error {
 	code, field := "bind", "bind"
-	if errors.Is(err, syscall.EADDRINUSE) {
+	if oserror.Is(err, syscall.EADDRINUSE) {
 		code, field = "port_conflict", "ports"
 	}
 	if device == 80 {
 		field = "ports"
-		if local == 80 && (errors.Is(err, os.ErrPermission) || errors.Is(err, syscall.EACCES)) {
+		if local == 80 && (oserror.Is(err, os.ErrPermission) || oserror.Is(err, syscall.EACCES)) {
 			code = "http_permission"
 		} else if code == "port_conflict" {
 			code = "http_conflict"
