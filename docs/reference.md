@@ -80,7 +80,8 @@ read the control capability from the original page or make authenticated control
 requests. The Wails command bridge is blocked: its separate asset/runtime
 transport returns 404. These protections do not prevent navigation or popups;
 relaunch the app to return to its controls. A second launch restores the original
-control page before showing and focusing the existing window.
+control page before showing and focusing the existing window. Native context menus
+retain the engine defaults.
 
 The native engines also manage browser data. Windows uses `webview-<random>/` above
 and waits up to two seconds for profile cleanup, printing a warning if files

@@ -59,7 +59,7 @@ func main() {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), *timeout)
-		err := runScenario(ctx, bin, filepath.Join(dir, s), s, true)
+		err := runScenario(ctx, bin, filepath.Join(dir, s), s)
 		cancel()
 		if err != nil {
 			printFailure(os.Stdout, s, filepath.Join(dir, s), err)
@@ -149,7 +149,7 @@ func launch(ctx context.Context, bin, dir, root, scenario string) (*exec.Cmd, <-
 	return cmd, done, nil
 }
 
-func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) error {
+func runScenario(ctx context.Context, bin, dir, scenario string) error {
 	// A rerun gets fresh state and cannot accidentally use a previous checkpoint.
 	if err := os.RemoveAll(dir); err != nil {
 		return err
@@ -275,23 +275,21 @@ func runScenario(ctx context.Context, bin, dir, scenario string, relaunch bool) 
 	if exists(filepath.Join(root, "ui-runtime.json")) {
 		return errors.New("runtime record survived exit")
 	}
-	if relaunch {
-		child, childDone, e := launch(ctx, bin, filepath.Join(dir, "relaunch"), root, relaunchScenario(scenario))
+	child, childDone, e := launch(ctx, bin, filepath.Join(dir, "relaunch"), root, relaunchScenario(scenario))
+	if e != nil {
+		return e
+	}
+	defer func() { child.Process.Kill(); <-childDone }()
+	select {
+	case e := <-childDone:
 		if e != nil {
-			return e
+			return fmt.Errorf("fresh launch: %w", e)
 		}
-		defer func() { child.Process.Kill(); <-childDone }()
-		select {
-		case e := <-childDone:
-			if e != nil {
-				return fmt.Errorf("fresh launch: %w", e)
-			}
-		case <-ctx.Done():
-			return errors.New("fresh launch timed out")
-		}
-		if !exists(filepath.Join(dir, "relaunch", "joined")) {
-			return errors.New("fresh launch did not acquire lock/create native window")
-		}
+	case <-ctx.Done():
+		return errors.New("fresh launch timed out")
+	}
+	if !exists(filepath.Join(dir, "relaunch", "joined")) {
+		return errors.New("fresh launch did not acquire lock/create native window")
 	}
 	return nil
 }
