@@ -49,6 +49,10 @@ title-bar click. Unix SIGTERM and SIGINT are real process signals. Windows
 CTRL_BREAK/console close are explicitly skipped: the fixture uses the GUI PE
 subsystem and has no attached console. The Mac Apple-event scenario records the
 osascript exit 0 without -128 and requires joined release and app exit 0.
+On macOS the harness/osascript sender runs outside sandbox-exec; the fixture
+wrapper applies the network sandbox only to the app and its engine descendants.
+Sandboxed senders can receive a privilege violation before quit reaches the app;
+that refusal is a failure, never an accepted-quit result.
 During accepted AppKit termination, OnShutdown blocks the native main thread;
 the Apple-event scenario checks the Go release lifetime without native queries
 or DOM probes during that join. Its joined receipt is written in OnShutdown,
