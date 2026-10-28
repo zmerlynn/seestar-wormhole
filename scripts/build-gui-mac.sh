@@ -22,9 +22,9 @@ for task_arch in arm64 amd64; do
  task_iconset="$1/$task_arch/wormhole.iconset"
  mkdir -p "$task_iconset"
  for task_size in 16 32 128 256 512; do
-  sips -z "$task_size" "$task_size" assets/icon/icon-1024.png --out "$task_iconset/icon_${task_size}x${task_size}.png" >/dev/null
+  sips -z "$task_size" "$task_size" internal/icon/icon-1024.png --out "$task_iconset/icon_${task_size}x${task_size}.png" >/dev/null
   task_double=$((task_size * 2))
-  sips -z "$task_double" "$task_double" assets/icon/icon-1024.png --out "$task_iconset/icon_${task_size}x${task_size}@2x.png" >/dev/null
+  sips -z "$task_double" "$task_double" internal/icon/icon-1024.png --out "$task_iconset/icon_${task_size}x${task_size}@2x.png" >/dev/null
  done
  iconutil -c icns "$task_iconset" -o "$task_app/Resources/wormhole.icns"
  rm -r "$task_iconset"

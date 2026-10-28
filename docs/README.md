@@ -1,4 +1,4 @@
-# <img src="../assets/icon/icon.svg" width="48" height="48" alt=""> seestar-wormhole documentation
+# <img src="../internal/icon/icon.svg" width="48" height="48" alt=""> seestar-wormhole documentation
 
 - [Use the phone app](phone-app.md)
 - [Command and GUI reference](reference.md)

@@ -4,7 +4,7 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/json/v2"
-	"github.com/zmerlynn/seestar-wormhole/assets/icon"
+	"github.com/zmerlynn/seestar-wormhole/internal/icon"
 	"io"
 	"mime"
 	"net/http"

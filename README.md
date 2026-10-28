@@ -1,4 +1,4 @@
-# <img src="assets/icon/icon.svg" width="48" height="48" alt=""> seestar-wormhole
+# <img src="internal/icon/icon.svg" width="48" height="48" alt=""> seestar-wormhole
 
 A Seestar kept at a remote site is reachable from the phone app through ZWO's
 cloud, but nothing else can reach it: not
