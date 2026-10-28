@@ -52,13 +52,14 @@ func TestKeychainUnavailableMemoryOnly(t *testing.T) {
 	c := &credentialStore{chain: chain}
 	s := testSettings()
 	s.Remember = true
-	if err := c.remember(t.Context(), s, testPassword); err != nil {
-		t.Fatal(err)
+	if err := c.remember(t.Context(), s, testPassword); err == nil {
+		t.Fatal("keychain denial reported success")
 	}
-	if available, notice := c.info(); !available || !strings.Contains(notice, "kept in memory") {
+	if available, notice := c.info(); !available || !strings.Contains(notice, "for this launch") {
 		t.Fatalf("%v %s", available, notice)
 	}
-	if _, err := c.credentials(t.Context(), s, ""); err != nil {
+	s.Remember = false
+ if _, err := c.credentials(t.Context(), s, ""); err != nil {
 		t.Fatal("memory fallback unavailable", err)
 	}
 	if err := st.write("config.json", s); err != nil {
@@ -87,11 +88,11 @@ func TestKeychainOptInAndGet(t *testing.T) {
 		t.Fatal("unchecked remember accessed keychain")
 	}
 	s.Remember = true
-	if _, err := c.credentials(t.Context(), s, ""); err != nil {
+	if err := c.remember(t.Context(), s, ""); err != nil {
 		t.Fatal(err)
 	}
 	if chain.calls != 1 || chain.value != testPassword {
-		t.Fatal("Start did not remember the cached password")
+		t.Fatal("explicit save did not save the cached password")
 	}
 	loaded := &credentialStore{chain: chain}
 	if _, err := loaded.credentials(t.Context(), s, ""); err != nil {
@@ -121,7 +122,7 @@ func TestForgetInvalidatesPendingGet(t *testing.T) {
 		if err == nil {
 			t.Error("Start used a Get invalidated by Forget")
 		}
-		if available, notice := c.info(); available || notice != "Password forgotten" {
+		if available, notice := c.info(); available || notice != "Password removed from keychain and this app." {
 			t.Errorf("after Forget: available=%v notice=%q", available, notice)
 		}
 		s.Remember = false
@@ -149,13 +150,13 @@ func TestKeychainRecordSize(t *testing.T) {
 			c := &credentialStore{chain: chain, email: tc.email, password: tc.password}
 			s := testSettings()
 			s.Email, s.Remember = tc.email, true
-			if err := c.remember(t.Context(), s, ""); err != nil {
-				t.Fatal(err)
+			if err := c.remember(t.Context(), s, ""); (err == nil) != tc.wantSet {
+				t.Fatalf("save error=%v, wantSet=%v", err, tc.wantSet)
 			}
 			if (chain.calls == 1) != tc.wantSet || chain.calls > 1 {
 				t.Errorf("keychain calls=%d, want Set=%v", chain.calls, tc.wantSet)
 			}
-			if available, notice := c.info(); !available || (!tc.wantSet && !strings.Contains(notice, "kept in memory")) {
+			if available, notice := c.info(); !available || (!tc.wantSet && !strings.Contains(notice, "for this launch")) {
 				t.Errorf("available=%v notice=%q", available, notice)
 			}
 		})
