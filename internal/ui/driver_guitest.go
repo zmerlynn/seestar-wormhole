@@ -112,6 +112,9 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
    if (!matchMedia('(prefers-color-scheme: dark)').matches) return false;
    const root=getComputedStyle(document.documentElement).backgroundColor;
    const canvas=document.createElement('canvas');canvas.width=canvas.height=1;
+   // Detached canvases resolve system colors in the default light scheme on WebKit.
+   canvas.hidden=true;document.documentElement.append(canvas);
+   try {
    const paint=canvas.getContext('2d',{willReadFrequently:true});
    // Normalize platform CSS color formats and composite alpha in the engine.
    const l=(color,bg=root)=>{paint.clearRect(0,0,1,1);for(const c of [root,bg,color]){paint.fillStyle=c;paint.fillRect(0,0,1,1)}
@@ -120,6 +123,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled')) return true;
     const x=l(s.color,s.backgroundColor),y=l(s.backgroundColor);return (Math.max(x,y)+.05)/(Math.min(x,y)+.05)>=3;
    });
+   } finally { canvas.remove(); }
   })()`); err != nil {
 			return err
 		}

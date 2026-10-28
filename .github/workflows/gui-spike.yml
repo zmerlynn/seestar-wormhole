@@ -104,7 +104,7 @@ jobs:
           binary="$RUNNER_TEMP/GUIFixture.app/Contents/MacOS/seestar-wormhole"
           # No external IP traffic from the harness or its descendants. Retain
           # Unix sockets for native framework IPC and IPv4 app loopback only.
-          profile='(version 1)(allow default)(deny network-outbound (remote ip "*:*"))(allow network-outbound (remote ip "127.0.0.1:*"))'
+          profile='(version 1)(allow default)(deny network-outbound (remote ip "*:*"))(allow network-outbound (remote ip "localhost:*"))'
           defaults delete -g AppleInterfaceStyle 2>/dev/null || true
           sandbox-exec -p "$profile" "$RUNNER_TEMP/gui-harness" -binary "$binary" \
             -out "$RUNNER_TEMP/gui-shots/light" -scenarios fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,errors,term,interrupt,apple \
