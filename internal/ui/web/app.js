@@ -348,7 +348,8 @@ async function act(action) {
   }
 }
 $('settings').addEventListener('submit', e => {
-  e.preventDefault(); if (!active && !$('start').disabled) act('start');
+  e.preventDefault();
+  if (!active && !$('start').disabled) act('start');
 });
 $('start').addEventListener('click', () => {
   if (active) act('stop');
@@ -357,13 +358,29 @@ for (const [id,action] of [['save-password','password/save'],['forget','forget']
   $(id).addEventListener('click', () => act(id === 'retry-storage' && state?.save_failed ? 'save' : action));
 }
 $('change-password').addEventListener('click', () => {
-  editing = true; selectedSaved = false; memory = false; $('password').value = ''; $('password-note').textContent = 'Entering a password uses it for this launch. Save it to replace the keychain copy.'; controls(); $('password').focus();
+  editing = true;
+  selectedSaved = false;
+  memory = false;
+  $('password').value = '';
+  $('password-note').textContent = 'Entering a password uses it for this launch. Save it to replace the keychain copy.';
+  controls();
+  $('password').focus();
 });
 $('use-saved').addEventListener('click', () => {
-  selectedSaved = true; editing = false; savedEmail = $('email').value; $('password').value = ''; $('password-note').textContent = 'A saved password is selected. Your OS may ask for permission when you connect.'; controls();
+  selectedSaved = true;
+  editing = false;
+  savedEmail = $('email').value;
+  $('password').value = '';
+  $('password-note').textContent = 'A saved password is selected. Your OS may ask for permission when you connect.';
+  controls();
 });
 $('email').addEventListener('input', () => {
-  selectedSaved = false; memory = false; editing = true; $('password').value = ''; $('password-note').textContent = 'Enter a password for this account.'; controls();
+  selectedSaved = false;
+  memory = false;
+  editing = true;
+  $('password').value = '';
+  $('password-note').textContent = 'Enter a password for this account.';
+  controls();
 });
 $('password').addEventListener('input', controls);
 function applyGoal(goal) {
@@ -382,22 +399,32 @@ function applyGoal(goal) {
 $('goal').addEventListener('change', () => {
   const choice = $('goal').value;
   if (currentGoal === 'custom' && choice !== 'custom') {
-    proposedGoal = choice; $('goal').value = currentGoal; $('switch-confirm').hidden = false;
+    proposedGoal = choice;
+    $('goal').value = currentGoal;
+    $('switch-confirm').hidden = false;
   } else applyGoal(choice);
 });
 $('switch-setup').addEventListener('click', () => applyGoal(proposedGoal));
 $('keep-custom').addEventListener('click', () => {
-  proposedGoal = ''; $('switch-confirm').hidden = true;
+  proposedGoal = '';
+  $('switch-confirm').hidden = true;
 });
 for (const id of ['listen','bind','discovery','ports']) $(id).addEventListener('change', () => {
-  currentGoal = 'custom'; $('goal').value = 'custom'; controls();
+  currentGoal = 'custom';
+  $('goal').value = 'custom';
+  controls();
 });
 $('mode').addEventListener('change', controls);
 $('copy').addEventListener('click', async () => {
   try {
-    await navigator.clipboard.writeText(diagnostic); say('Diagnostic summary copied.');
+    await navigator.clipboard.writeText(diagnostic);
+    say('Diagnostic summary copied.');
   } catch (_) {
-    $('diagnostic-copy').hidden = false; $('diagnostic-copy').value = diagnostic; $('diagnostic-copy').focus(); $('diagnostic-copy').select(); say('Select and copy the diagnostic summary below.');
+    $('diagnostic-copy').hidden = false;
+    $('diagnostic-copy').value = diagnostic;
+    $('diagnostic-copy').focus();
+    $('diagnostic-copy').select();
+    say('Select and copy the diagnostic summary below.');
   }
 });
 controls();
