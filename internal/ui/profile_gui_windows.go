@@ -29,8 +29,10 @@ func windowProfile(root string) (string, func() error, error) {
 	if err != nil {
 		return "", nil, errStorage
 	}
+	// The private state root remains pinned by storage. Do not pin the engine's
+	// directory without FILE_SHARE_DELETE: WebView2 must manage its own folder.
+	dir.Close()
 	return path, func() error {
-		dir.Close()
 		// WebView2 may release its profile locks shortly after the window closes.
 		deadline := time.Now().Add(2 * time.Second)
 		for {
