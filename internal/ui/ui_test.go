@@ -248,6 +248,9 @@ func TestDoubleLaunchAndStaleRecord(t *testing.T) {
 	if runs != 0 {
 		t.Fatal("loading settings started proxy")
 	}
+	if _, err := os.Stat(filepath.Join(root, bootstrapName)); !os.IsNotExist(err) {
+		t.Fatal("bootstrap remained")
+	}
 	if _, err := os.Stat(filepath.Join(root, "ui-runtime.json")); !os.IsNotExist(err) {
 		t.Fatal("runtime record remained")
 	}

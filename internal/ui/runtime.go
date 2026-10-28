@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -50,7 +51,7 @@ func reopen(ctx context.Context, s *storage, open func(string) error, out io.Wri
 				response.Body.Close()
 				if readErr == nil && response.StatusCode == 200 && string(body) == `{"instance":"seestar-wormhole-ui-v1"}` {
 					if response.Header.Get("X-Seestar-Window") != "1" {
-						openPage(record.url(), open, out)
+						openPage(s, record.url(), open, out)
 						return nil
 					}
 					req, err := http.NewRequestWithContext(ctx, "POST", "http://"+record.host()+"/api/activate", strings.NewReader("{}"))
@@ -80,8 +81,23 @@ func reopen(ctx context.Context, s *storage, open func(string) error, out io.Wri
 		}
 	}
 }
-func openPage(url string, open func(string) error, out io.Writer) {
-	if err := open(url); err != nil {
+
+const bootstrapName = "ui-open.html"
+
+func openPage(st *storage, url string, open func(string) error, out io.Writer) {
+	// Pass only a private filename to xdg-open, open, or ShellExecute. ShellExecute
+	// can hand its target to a browser process too, so all platforms use this file.
+	target, _ := json.Marshal(url)
+	html := []byte(`<!doctype html><meta name="referrer" content="no-referrer"><script>location.replace(` + string(target) + `)</script>`)
+	err := st.writeBytes(bootstrapName, html)
+	if err == nil {
+		var path string
+		path, err = filepath.Abs(filepath.Join(st.root, bootstrapName))
+		if err == nil {
+			err = open(path)
+		}
+	}
+	if err != nil {
 		fmt.Fprintln(out, "Open this private URL in your browser:", url)
 	}
 }
@@ -159,6 +175,7 @@ func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFun
 		return err
 	}
 	defer os.Remove(filepath.Join(root, "ui-runtime.json"))
+	defer os.Remove(filepath.Join(root, bootstrapName))
 	done := make(chan error, 1)
 	go func() { done <- httpServer.Serve(listener) }()
 	windowCtx, windowDone := context.WithCancel(context.Background())
@@ -180,7 +197,7 @@ func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFun
 		windowDone()
 	}()
 	if window == nil {
-		openPage(record.url(), open, out)
+		openPage(st, record.url(), open, out)
 	} else {
 		err = window(windowCtx, record.url(), requestQuit, activate)
 		requestQuit() // Also joins cleanup if native startup fails.

@@ -54,6 +54,14 @@ func (s *storage) read(name string, v any) error {
 	return nil
 }
 func (s *storage) write(name string, v any) error {
+	b, err := json.Marshal(v)
+	if err != nil || len(b) > maxJSON {
+		return errStorage
+	}
+	return s.writeBytes(name, b)
+}
+
+func (s *storage) writeBytes(name string, b []byte) error {
 	path := filepath.Join(s.root, name)
 	if _, err := os.Lstat(path); err == nil {
 		f, err := privatefile.OpenRead(path)
@@ -64,12 +72,8 @@ func (s *storage) write(name string, v any) error {
 	} else if !os.IsNotExist(err) {
 		return errStorage
 	}
-	b, err := json.Marshal(v)
-	if err != nil || len(b) > maxJSON {
-		return errStorage
-	}
 	var nonce [16]byte
-	if _, err = rand.Read(nonce[:]); err != nil {
+	if _, err := rand.Read(nonce[:]); err != nil {
 		return errStorage
 	}
 	tmp := filepath.Join(s.root, ".ui-"+hex.EncodeToString(nonce[:]))
@@ -86,10 +90,10 @@ func (s *storage) write(name string, v any) error {
 	if err != nil || closeErr != nil {
 		return errStorage
 	}
-	if err = privatefile.Replace(tmp, path); err != nil {
+	if err := privatefile.Replace(tmp, path); err != nil {
 		return errStorage
 	}
-	if err = privatefile.SyncDirectory(s.directory); err != nil {
+	if err := privatefile.SyncDirectory(s.directory); err != nil {
 		return errStorage
 	}
 	return nil

@@ -41,7 +41,7 @@ func TestHeldLockDoesNotReplaceStaleRecord(t *testing.T) {
 }
 func TestOpenFailurePrintsPrivateURL(t *testing.T) {
 	var out strings.Builder
-	openPage("http://127.0.0.1:12345/#synthetic-control-token", func(string) error { return errStorage }, &out)
+	openPage(testStorage(t), "http://127.0.0.1:12345/#synthetic-control-token", func(string) error { return errStorage }, &out)
 	if !strings.Contains(out.String(), "/#synthetic-control-token") {
 		t.Fatal("missing manual URL")
 	}
@@ -51,5 +51,31 @@ func TestRuntimeRecordBounds(t *testing.T) {
 		if r.valid() {
 			t.Fatal("invalid runtime record accepted")
 		}
+	}
+}
+
+func TestOpenerReceivesOnlyPrivateFile(t *testing.T) {
+	st := testStorage(t)
+	const token = "synthetic-control-token"
+	const url = "http://127.0.0.1:12345/#" + token
+	called := false
+	openPage(st, url, func(arg string) error {
+		called = true
+		if strings.Contains(arg, token) || arg != filepath.Join(st.root, bootstrapName) {
+			t.Fatalf("opener received capability: %q", arg)
+		}
+		f, err := privatefile.OpenRead(arg)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		b, err := io.ReadAll(f)
+		if err != nil || !strings.Contains(string(b), `location.replace("`+url+`")`) {
+			t.Fatal("missing redirect", err)
+		}
+		return nil
+	}, io.Discard)
+	if !called {
+		t.Fatal("opener not called")
 	}
 }

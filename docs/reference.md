@@ -47,6 +47,7 @@ root without moving or copying its identity. The files are:
 | `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
 | `ui.lock` | Process-lifetime UI lock. |
 | `ui-runtime.json` | Private port and per-process control token; removed on orderly exit. |
+| `ui-open.html` | Private browser bootstrap with the control capability; the opener receives only its path. Removed when the owning process exits normally. |
 
 Save settings writes `config.json` atomically. On Unix the directory must be
 private (`0700`) and files `0600`; unsafe existing permissions or links are
@@ -60,6 +61,10 @@ API request. Exact Host checks, exact Origin checks on JSON POST writes, bounded
 requests, no framing, a restrictive content policy, and no-store/no-referrer
 headers protect the control page from other websites; local processes running
 as the same user remain trusted. Treat the private URL as a control capability.
+Browser openers receive a private HTML file that redirects to the page, so the
+capability is absent from opener arguments. If opening fails, the app prints
+the private URL for manual use; keep that output private. The bootstrap can
+remain after a crash and is replaced on the next browser launch.
 
 The password is kept in memory by default and never appears in config, API
 responses, or logs. “Remember password in OS keychain” is unchecked by default;
