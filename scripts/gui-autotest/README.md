@@ -19,7 +19,9 @@ temporary directory. Engine profiles stay outside uploaded evidence, including
 on failure. Never point it at user state. Failed scenarios print the last 40
 lines of each process log, stripping every suffix starting with `#` to keep URL
 fragments private. Process output is drained through a shared pipe so a reopened
-stderr cannot overwrite earlier stdout diagnostics in the artifact file.
+stderr cannot overwrite earlier stdout diagnostics in the artifact file. Output
+drain is bounded to two seconds after process exit; inherited child handles
+produce a capture warning while preserving the successful process result.
 
 `SEESTAR_GUITEST_OUT` and `SEESTAR_GUITEST_SCENARIO` are private fixture inputs,
 set by the harness. The fixture fails without them. Its runner has no network

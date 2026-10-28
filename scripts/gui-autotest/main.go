@@ -113,6 +113,8 @@ func launch(ctx context.Context, bin, dir, root, scenario string) (*exec.Cmd, <-
 		return nil, nil, err
 	}
 	cmd := exec.CommandContext(ctx, bin, "ui", "--state-dir", root)
+	// An engine child may inherit output handles beyond the fixture lifetime.
+	cmd.WaitDelay = 2 * time.Second
 	// No user config, account, password provider, proxy ports, or network endpoint.
 	cmd.Env = append(os.Environ(), "SEESTAR_GUITEST_OUT="+dir, "SEESTAR_GUITEST_SCENARIO="+scenario)
 	// Drain through a pipe: the CLI may reopen stderr with an independent file
@@ -125,7 +127,16 @@ func launch(ctx context.Context, bin, dir, root, scenario string) (*exec.Cmd, <-
 		return nil, nil, err
 	}
 	done := make(chan error, 1)
-	go func() { err := cmd.Wait(); log.Close(); done <- err; close(done) }()
+	go func() {
+		err := cmd.Wait()
+		if errors.Is(err, exec.ErrWaitDelay) {
+			fmt.Fprintln(log, "Warning: inherited process output remained open after exit; capture stopped")
+			err = nil // ErrWaitDelay means the process itself exited successfully.
+		}
+		log.Close()
+		done <- err
+		close(done)
+	}()
 	return cmd, done, nil
 }
 

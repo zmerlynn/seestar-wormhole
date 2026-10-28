@@ -43,7 +43,8 @@ func Capture(ctx context.Context, path string, window uintptr) error {
 	case "windows":
 		// Foreground ownership is asserted before copying only the app rectangle.
 		// A console or another window must never satisfy the pixel assertions.
-		script := `Add-Type -AssemblyName System.Drawing
+		script := `$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Drawing
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
