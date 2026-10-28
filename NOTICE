@@ -23,7 +23,7 @@ Vendored modules and the license files copied into vendor/:
 | github.com/pion/transport/v5 | vendor/github.com/pion/transport/v5/LICENSE | MIT |
 | github.com/spf13/cobra | vendor/github.com/spf13/cobra/LICENSE.txt | Apache-2.0 |
 | github.com/spf13/pflag | vendor/github.com/spf13/pflag/LICENSE | BSD-3-Clause |
-| github.com/wailsapp/wails/v3 | vendor/github.com/wailsapp/wails/v3/LICENSE | MIT AND ISC |
+| github.com/wailsapp/wails/v3 | vendor/github.com/wailsapp/wails/v3/LICENSE | MIT AND ISC AND BSD-3-Clause |
 | github.com/zalando/go-keyring | vendor/github.com/zalando/go-keyring/LICENSE | MIT AND Apache-2.0 |
 | go.yaml.in/yaml/v3 | vendor/go.yaml.in/yaml/v3/LICENSE | MIT AND Apache-2.0 |
 | golang.org/x/crypto | vendor/golang.org/x/crypto/LICENSE | BSD-3-Clause |
@@ -33,3 +33,8 @@ Vendored modules and the license files copied into vendor/:
 The macOS implementation in github.com/zalando/go-keyring carries a Google
 copyright and Apache-2.0 notice in keyring_darwin.go. The supplemental notice
 and full Apache license are included in the generated license catalog.
+
+The Wails pkg/w32 sources also include Winc Authors and W32 Authors
+attributions and atotto/clipboard-derived code (Ato Araki, BSD-3-Clause).
+Their supplemental notices and full upstream license texts are included in
+the generated catalog.

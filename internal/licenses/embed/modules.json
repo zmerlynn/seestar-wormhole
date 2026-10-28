@@ -92,13 +92,14 @@
   },
   {
     "Path": "github.com/wailsapp/wails/v3",
-    "SPDX": "MIT AND ISC",
+    "SPDX": "MIT AND ISC AND BSD-3-Clause",
     "Files": [
       "internal/licenses/notices/github.com/wailsapp/wails/v3/guid-MIT.txt",
       "internal/licenses/notices/github.com/wailsapp/wails/v3/internal-assetserver-ringqueue.go.txt",
       "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-clipboard.go.txt",
       "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-guid.go.txt",
       "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-user32.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-winc.txt",
       "vendor/github.com/wailsapp/wails/v3/LICENSE",
       "vendor/github.com/wailsapp/wails/v3/internal/go-common-file-dialog/LICENSE",
       "vendor/github.com/wailsapp/wails/v3/internal/webview2/webviewloader/LICENSE"

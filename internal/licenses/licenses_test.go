@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"testing"
 )
@@ -45,6 +46,19 @@ func TestTargetNotices(t *testing.T) {
 				}
 				t.Logf("CGO_ENABLED=0 %s/%s: build and linked-module licenses verified", goos, arch)
 			})
+		}
+	}
+}
+
+func TestWailsSourceNotices(t *testing.T) {
+	var out bytes.Buffer
+	info := &debug.BuildInfo{Deps: []*debug.Module{{Path: "github.com/wailsapp/wails/v3"}}}
+	if err := writeForBuild(&out, info); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"MIT AND ISC AND BSD-3-Clause", "The Winc Authors", "Copyright (c) 2013 Ato Araki", "Neither the name of @atotto.", "THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("missing attribution or license term %q", want)
 		}
 	}
 }
