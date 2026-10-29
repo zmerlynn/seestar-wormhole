@@ -70,3 +70,12 @@ func TestOwnerCopy(t *testing.T) {
 		t.Fatal("ready copy")
 	}
 }
+
+func TestKeychainRecoveryMatchesTwoPasswordStates(t *testing.T) {
+	for _, code := range []string{"password_read", "password_missing", "keychain_timeout"} {
+		copy := errorCopy(code)
+		if strings.Contains(copy, "for this launch") {
+			t.Fatalf("%s offers typing into disabled saved input: %s", code, copy)
+		}
+	}
+}

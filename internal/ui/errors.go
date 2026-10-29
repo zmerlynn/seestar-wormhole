@@ -24,8 +24,11 @@ func actionError(err error) *ActionError {
 		return &ActionError{Code: "storage"}
 	}
 	var validation *cloud.ValidationError
-	if errors.As(err, &validation) && errors.Is(err, cloud.ErrConfig) && validation.Field == "email" {
-		return &ActionError{Code: "email", Field: "email"}
+	if errors.As(err, &validation) && errors.Is(err, cloud.ErrConfig) {
+		switch validation.Field {
+		case "email", "password":
+			return &ActionError{Code: validation.Field, Field: validation.Field}
+		}
 	}
 	phase, reason := diagnostic.Fields(err, "")
 	if reason == "busy" || reason == "ownership_uncertain" || reason == "release_abandoned" {
@@ -89,11 +92,11 @@ func errorCopy(code string) string {
 	case "password_remove":
 		return "Password cleared from this app. Could not remove the keychain copy. Unlock your keychain and choose Retry removal."
 	case "password_read":
-		return "Could not read the saved password. Unlock your keychain and try again, or enter a password for this launch."
+		return "Could not read the saved password. Unlock your keychain and try again, or remove the saved password."
 	case "password_missing":
-		return "The saved password was not found. Enter it again."
+		return "The saved password was not found. Remove the saved password, then enter it again."
 	case "keychain_timeout":
-		return "The keychain has not responded. Its request may still finish. You can enter a password for this launch."
+		return "The keychain has not responded. Its request may still finish. Try again when it finishes."
 	default:
 		return "Could not connect. Check your network and try again."
 	}

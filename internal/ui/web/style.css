@@ -176,9 +176,6 @@ pre {
 .muted {
   color:var(--muted);
 }
-#run-help:empty {
-  display:none;
-}
 select {
   appearance:none;
   padding-right:2rem;

@@ -136,15 +136,15 @@
     });
     await check('Running view uses effective settings', async () => {
       const run = {...setup, bind: '0.0.0.0', discovery: true, idle: '0'};
-      render({...status(), run_settings: run, active: true, discovery_started: true, mappings: [[80,80], [1234,445]]});
+      render({...status(), effective: {...status().effective, listen: 'all_networks', idle: {mode: 'keep_connected'}}, run_settings: run, active: true, discovery_started: true, mappings: [[80,80], [1234,445]]});
       assert($('run-summary').textContent === 'Listening on all networks · Seestar app discovery on · Keep connected', 'running summary inaccurate');
       const rows = $('running-ports').querySelectorAll('tbody tr');
       assert(rows.length === 10 && !$('running-ports').querySelector('input'), 'running ports must use read-only table');
       assert(rows[1].cells[0].textContent === '80' && rows[9].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
-      render({...status(), active: true, run_settings: {...run, bind: '127.0.0.1', discovery: false, idle: '2m'}});
+      render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}}, run_settings: {...run, bind: '127.0.0.1', discovery: false, idle: '2m'}});
       assert($('run-summary').textContent === 'Listening on this computer only · Seestar app discovery off · Connect when an app needs the telescope' && $('phone-steps').hidden, 'computer/idle summary inaccurate');
-      render({...status(), active: true, run_settings: {...run, bind: 'synthetic-address'}});
+      render({...status(), active: true, effective: {...status().effective, listen: 'other'}, run_settings: {...run, bind: 'synthetic-address'}});
       assert($('run-summary').textContent.startsWith('Listening on Other ·'), 'Other listen summary missing');
     });
     await check('Custom switches immediately', async () => {

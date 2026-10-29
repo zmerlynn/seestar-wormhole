@@ -1,4 +1,4 @@
-// Package proxyrun shares port parsing and default mappings between the CLI and UI.
+// Package proxyrun owns CLI port parsing and shared default mappings.
 package proxyrun
 
 import (

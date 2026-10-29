@@ -44,9 +44,9 @@ Advanced shows ten fixed service rows with Local, Remote, and Purpose columns.
 Leave Local empty to disable a service; enabled local ports must be unique and
 within 1–65535. Phone setup uses local 80 for remote 80; computer setup uses 8080.
 SMB uses local 4445 for remote 445. The CLI retains arbitrary port mappings.
-Schema 1 files with text port overrides are rejected; re-enter settings in a
-new state directory to use schema 2. Existing state files are never overwritten
-on a failed load.
+Schema 1 files with text port overrides are rejected; convert their version and
+port entries to schema 2 before loading. Existing state files are never
+overwritten on a failed load.
 
 The default state root is `os.UserConfigDir()/seestar-wormhole`: on Linux,
 `$XDG_CONFIG_HOME/seestar-wormhole` or `$HOME/.config/seestar-wormhole`; on macOS,
@@ -116,27 +116,30 @@ before Connect; loading never starts a session. **This computer only** selects
 loopback, disables discovery, and uses computer port 8080 for HTTP. Existing
 saved settings retain their exposure and appear as computer-only or Custom.
 Advanced contains telescope serial/model selection, connection timing and idle
-minutes, Listen on, discovery, and port overrides. Editing network or port
-choices selects Custom. The telescope keeps its own site and clock.
+minutes, Listen on, discovery, and the fixed port table. Editing network or port
+choices selects Custom. Choosing another setup immediately replaces those
+network and port settings.
 
 Passwords stay in memory unless **Save password to keychain** is explicitly
 chosen. Connect never writes a typed password to keychain. A successful save
 immediately persists the email and saved-password association, without signing
 in. Relaunch shows **Saved in keychain** without reading the secret or prompting.
-Connect reads it with the existing three-second bound. **Change password** opens
-entry for this launch; **Use saved password** is offered only for the account with a saved association.
+Connect reads it with the existing three-second bound. The saved input is
+disabled and gray. To change the password, remove the saved password, then type
+and optionally save its replacement.
 **Remove saved password** clears memory and requests keychain deletion; failure
 retains the association and permits **Retry removal**. Removal updates the last saved settings without committing unrelated form edits. A timeout is uncertain:
 the OS request may still finish, and further keychain mutations wait for it.
 There is no plaintext fallback and no secret is returned to the page.
 
 One primary button changes from **Connect** to **Cancel**, **Stop**, or disabled
-**Stopping…**. Running replaces setup with a summary and phone or computer
-instructions. **Details and logs** contains effective service mappings, bounded
-sanitized lifecycle history, the private log path, and **Copy diagnostic
-summary**. The copied summary excludes addresses, paths, credentials, tokens,
-account/device identifiers, and payloads. Logs contain fixed categories and
-recovery text, with time and lifecycle/error category; no raw protocol traces. Startup errors also
+**Stopping…**. Running replaces setup with effective read-only ports, a muted
+listen/discovery/timing summary, and small Seestar app instructions when discovery
+is on. **Details and logs** contains effective settings JSON, bounded sanitized
+events in local time, the private log path, and **Copy diagnostic summary**.
+The copied JSON excludes addresses, paths, credentials, tokens, account/device
+identifiers, and payloads. Logs contain fixed messages and categories with UTC
+time and classified failure phase/reason; no raw protocol traces. Startup errors also
 use the existing native error presentation. Windows window-engine failures
 explain that WebView2 Runtime is required.
 

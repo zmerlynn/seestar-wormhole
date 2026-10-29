@@ -69,3 +69,30 @@ func TestEmailValidationUsesVendorRule(t *testing.T) {
 		t.Fatalf("email error: %+v", e)
 	}
 }
+
+func TestHTTPAccountInputPreparation(t *testing.T) {
+	s := testServer(t)
+	body := `{"settings":{"version":2,"bind":"127.0.0.1","idle":"0","email":"  Mixed. Case+Tag @Example.Invalid  "},"password":"synthetic-password"}`
+	if w := doPost(s, "/api/password/save", body); w.Code != 200 {
+		t.Fatalf("save: %s", w.Body)
+	}
+	saved, err := loadSettings(s.storage)
+	if err != nil || saved.Email != "Mixed.Case+Tag@Example.Invalid" {
+		t.Fatalf("normalization: %q %v", saved.Email, err)
+	}
+}
+
+func TestCredentialValidationTargetsItsField(t *testing.T) {
+	for _, tc := range []struct{ email, password, field string }{
+		{"invalid", testPassword, "email"},
+		{testSettings().Email, "short", "password"},
+	} {
+		c := &credentialStore{chain: &fakeKeychain{}}
+		s := testSettings()
+		s.Email = tc.email
+		_, err := c.credentials(t.Context(), s, tc.password)
+		if e := actionError(err); e.Field != tc.field || e.Code != tc.field {
+			t.Fatalf("credential field: %+v", e)
+		}
+	}
+}

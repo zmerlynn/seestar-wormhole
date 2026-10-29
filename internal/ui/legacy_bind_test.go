@@ -4,17 +4,17 @@ import (
 	"testing"
 )
 
-func TestLegacyOSResolvedBindLoads(t *testing.T) {
+func TestOSResolvedBindLoads(t *testing.T) {
 	st := testStorage(t)
-	// Literal schema-v1 fixture: the old UI and TCP CLI allowed OS-resolved binds.
+	// OS-resolved binds remain available for saved settings used by the CLI.
 	if err := st.writeBytes("config.json", []byte(`{"version":2,"bind":"localhost","idle":"0"}`)); err != nil {
 		t.Fatal(err)
 	}
 	s, err := loadSettings(st)
 	if err != nil {
-		t.Fatal("valid legacy OS-resolved bind rejected during upgrade")
+		t.Fatal("valid OS-resolved bind rejected")
 	}
 	if s.Bind != "localhost" || s.Discovery {
-		t.Fatal("legacy exposure changed")
+		t.Fatal("saved exposure changed")
 	}
 }

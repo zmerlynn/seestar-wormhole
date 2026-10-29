@@ -233,7 +233,7 @@ function controls() {
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
-  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, connect to the telescope as if it were nearby.' : currentGoal === 'computer' ? 'Only apps on this computer can connect. A phone on the network cannot use this setup.' : 'Check Advanced settings before connecting.';
+  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, connect to the telescope as if it were nearby.' : 'Only apps on this computer can connect. A phone on the network cannot use this setup.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const code = actionError || (!active && state?.failure?.code) || '';
   text('error-code', code ? 'Error code: ' + code : '');
@@ -263,9 +263,9 @@ function render(s) {
     if (['password_saved','password_removed'].includes(noticeCode) && state.settings.email === accountEmail()) say(s.password.notice);
     else say('');
   }
-  const run = s.run_settings;
-  const listen = run.bind === '0.0.0.0' ? 'all networks' : run.bind === '127.0.0.1' ? 'this computer only' : 'Other';
-  $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle === '0' ? 'Keep connected' : 'Connect when an app needs the telescope');
+  const run = s.effective;
+  const listen = {all_networks: 'all networks', this_computer: 'this computer only', other: 'Other'}[run.listen];
+  $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle.mode === 'keep_connected' ? 'Keep connected' : 'Connect when an app needs the telescope');
   $('phone-steps').hidden = !(active && s.discovery_started);
   portsTable('running-ports', Object.fromEntries(s.mappings.map(([local, remote]) => [remote, local])));
   $('effective-settings').textContent = JSON.stringify(s.effective, null, 2);
