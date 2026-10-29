@@ -1,6 +1,8 @@
 (async () => {
   const live = state;
   const liveAPI = api;
+  const liveTimeout = window.setTimeout;
+  window.setTimeout = () => {};
   const results = [];
   const setup = {...live.settings, email: 'synthetic@example.invalid', remember_password: false};
   const status = () => ({
@@ -145,6 +147,7 @@
       $('model').value = '';
     });
   } finally {
+    window.setTimeout = liveTimeout;
     api = liveAPI;
     pending = '';
     active = live.active;
