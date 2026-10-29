@@ -40,6 +40,7 @@ judgment call; the table is a starting point.
 | operability-security | logging, secrets, crypto, file writes, budgets; `internal/cloud/`, `internal/edge/`, `internal/proxy/`, diagnostics, protocol packages |
 | provenance | protocol packages (`internal/core/`, `internal/iotc/`, `internal/rdt/`, `internal/p2ptunnel/`, `internal/dtls/`, `internal/session/`), `internal/edge/`, `internal/cloud/` |
 | cli-contract | `cmd/`, `docs/reference.md`, help text, exit codes, log records |
+| upgrade | a file on disk (settings, state, identity, manifests), its version, its defaults or its reader and writer; a change of default behavior an existing user would notice |
 | licensing | `go.mod`, `go.sum`, `vendor/`, `LICENSE`, `NOTICE`, `internal/licenses/`, new imports, new data files, copied code |
 | build-release | `scripts/`, `Containerfile`, `.github/`, build tags, `GOOS`-specific code |
 | public-hygiene | always |

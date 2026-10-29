@@ -223,6 +223,37 @@ is the contract for people at a terminal.
 Must fix: help, reference and behavior disagree; an undocumented
 compatibility break; or a wrong exit code.
 
+## upgrade
+
+Can a user move between releases in both directions without losing data or
+behavior? The rule is in
+[project rules](../../../docs/development/README.md#project-rules): files on
+disk stay downgradable.
+
+1. Inventory every file the change reads or writes on disk, and for each its
+   version member, its members and their defaults when absent.
+2. Upgrade. A file written by the base release loads at HEAD with the same
+   meaning. Write it as a literal-byte fixture taken from the base, not by
+   marshaling HEAD's struct.
+3. Downgrade. A file written at HEAD loads in the base release. Build the base
+   and feed it HEAD's file, or show by reading why it would load. Then let the
+   base save and reload at HEAD: members the base does not know survive.
+4. Versions. A version change is justified by a change an older release
+   cannot read, and the reference names it. An unknown or newer version is
+   refused with the documented error and is never overwritten silently.
+   Reading never rewrites a file.
+5. Defaults. A changed default, a renamed or retyped member, or a changed
+   meaning of an existing value is either compatible with old files or a
+   one-way change.
+6. Names follow the file's existing convention (JSON members in snake_case)
+   and common forms: numbers as numbers, durations in one documented form,
+   lists of objects rather than encoded strings.
+
+Must fix: data loss on upgrade or downgrade; a file that an older release can
+no longer read without the maintainer's recorded approval; a file overwritten
+after it was refused; a one-way change the reference does not name. Before a
+format's first release these are Should fix unless they would ship.
+
 ## licensing
 
 The project's own code is under the Unlicense (`LICENSE`); `NOTICE` lists
