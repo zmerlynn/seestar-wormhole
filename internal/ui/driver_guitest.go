@@ -297,7 +297,7 @@ func (d *guiTestDriver) drive() error {
 		if err := d.release(); err != nil {
 			return err
 		}
-		if err := d.state("Stopped. You can use remote mode in the Seestar app again.", false, "stopped"); err != nil {
+		if err := d.state("Stopped. The telescope may take a minute to release the session.", false, "stopped"); err != nil {
 			return err
 		}
 		if err := d.start(); err != nil {

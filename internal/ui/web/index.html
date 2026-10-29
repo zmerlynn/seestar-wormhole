@@ -3,7 +3,7 @@
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="icon" type="image/svg+xml" href="/icon.svg"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
 <body><main>
 <h1><img src="/icon.svg" width="40" height="40" alt="">seestar‑wormhole</h1>
-<p>Use your Seestar telescope from another location.</p>
+<p>Use your remote Seestar through the Telescope Network, as if it were nearby.</p>
 <div id="announcements" role="status" aria-live="polite" aria-atomic="true"><p id="status">Loading…</p><p id="feedback"></p></div>
 <button id="start" type="submit" form="settings" disabled>Connect</button>
 <p id="notice" role="alert" hidden></p>
@@ -13,7 +13,7 @@
 <fieldset id="options" disabled>
 <label for="goal">Use with</label><select id="goal"><option value="phone">Phone on this network</option><option value="computer">This computer only</option><option value="custom">Custom</option></select>
 <p id="trust">Use only on a trusted network. Other devices on this network can control the telescope through this computer.</p>
-<p id="goal-help">Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.</p>
+<p id="goal-help">Keep this computer on the same network as your phone. In the Seestar app, connect to the telescope as if it were nearby.</p>
 <div id="switch-confirm" hidden><p>Switching setup resets custom network and port settings.</p><button id="switch-setup" type="button">Switch setup</button> <button id="keep-custom" type="button">Keep custom settings</button></div>
 <fieldset id="account">
 <legend>Account</legend>
@@ -29,10 +29,10 @@
 <label for="model">Device model (optional)</label><input id="model" type="text" maxlength="4096" spellcheck="false" aria-describedby="model-error"><p id="model-error" class="error" hidden></p>
 <label for="mode">Connection timing</label><select id="mode"><option value="eager">Keep connected</option><option value="idle">Connect when an app needs the telescope</option></select>
 <div id="idle-options" hidden><label for="idle">Release after no apps are connected (minutes)</label><input id="idle" value="2" type="number" min="0.01" step="any" aria-describedby="idle-help idle-error"><p id="idle-help">The remote session is released after this wait. Connecting an app starts it again.</p><p id="idle-error" class="error" hidden></p></div>
-<label for="listen">Listen on</label><select id="listen" aria-describedby="bind-error"><option value="0.0.0.0">All networks (needed for a phone)</option><option value="127.0.0.1">This computer only</option><option value="other">Other…</option></select>
-<div id="other-address" hidden><label for="bind">Local network address</label><input id="bind" type="text" spellcheck="false" aria-describedby="bind-help bind-error"><p id="bind-help">Enter an address assigned to this computer. Phone discovery needs a local IPv4 network address.</p></div><p id="bind-error" class="error" hidden></p>
-<label class="check"><input id="discovery" type="checkbox" aria-describedby="discovery-help discovery-error"> Let the phone app find this telescope</label>
-<p id="discovery-help">Answers discovery requests from devices on this network. Requires All networks or an address assigned to this computer's local IPv4 network.</p><p id="discovery-error" class="error" hidden></p>
+<label for="listen">Listen on</label><select id="listen" aria-describedby="bind-error"><option value="0.0.0.0">All networks</option><option value="127.0.0.1">This computer only (the Seestar app can't connect)</option><option value="other">Other…</option></select>
+<div id="other-address" hidden><label for="bind">Local network address</label><input id="bind" type="text" spellcheck="false" aria-describedby="bind-help bind-error"><p id="bind-help">Enter an IPv4 address assigned to this computer.</p></div><p id="bind-error" class="error" hidden></p>
+<label class="check"><input id="discovery" type="checkbox" aria-describedby="discovery-help discovery-error"> Let the Seestar app find this telescope</label>
+<p id="discovery-help">Answers Seestar app discovery requests on this network.</p><p id="discovery-error" class="error" hidden></p>
 <label for="ports">Port overrides (optional)</label><textarea id="ports" rows="4" spellcheck="false" aria-describedby="ports-help ports-error"></textarea>
 <p id="ports-help">Leave empty to use the ports for the selected setup. Enter one computer-port:telescope-port pair per line. A computer port of 0 turns that service off.</p><p id="ports-error" class="error" hidden></p>
 <table><caption>What the ports do</caption><thead><tr><th>Service</th><th>Purpose and default</th></tr></thead><tbody>
@@ -41,7 +41,6 @@
 <tr><td>Web and album/image access (HTTP)</td><td>Phone album/image URLs need computer 80 → telescope 80. Computer-only setup uses 8080 → 80.</td></tr>
 <tr><td>Imaging and other device services</td><td>Keep defaults for normal app use. Imaging includes telescope port 4800. Remaining default mappings stay enabled.</td></tr>
 </tbody></table>
-<p>The telescope keeps its own site and clock.</p>
 </details>
 <p>Your settings are saved after a successful connection.</p>
 </fieldset>

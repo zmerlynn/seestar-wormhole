@@ -185,7 +185,7 @@ function controls() {
   $('forget').disabled = blocked || !!pending || password.busy;
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
   $('retry-storage').disabled = blocked || !!pending;
-  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, use the LAN list.' : currentGoal === 'computer' ? 'Only apps on this computer can connect. A phone on the network cannot use this setup.' : 'Check Advanced settings before connecting.';
+  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, connect to the telescope as if it were nearby.' : currentGoal === 'computer' ? 'Only apps on this computer can connect. A phone on the network cannot use this setup.' : 'Check Advanced settings before connecting.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const code = actionError || (!active && state?.failure?.code) || '';
   text('error-code', code ? 'Error code: ' + code : '');

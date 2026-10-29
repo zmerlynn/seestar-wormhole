@@ -91,7 +91,7 @@ func (c *controller) start(s Settings, password string) error {
 			c.failure = &ActionError{Code: "release"}
 		}
 		if c.final == "Stopped" && status.WasReady() {
-			c.final = "Stopped. You can use remote mode in the Seestar app again."
+			c.final = "Stopped. The telescope may take a minute to release the session."
 		}
 		c.record(c.final)
 		c.done = nil
