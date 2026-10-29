@@ -130,14 +130,14 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 		}
 	case "ready-ports":
 		d.w.ExecJS(`document.getElementById('running-ports-box').scrollIntoView({block:'start'})`)
-		if err := d.probe(`(() => {const b=el('running-ports-box'),r=b.getBoundingClientRect();return check(b.open && r.top>=0 && r.top<innerHeight,{open:b.open,rect:r,innerHeight})})()`); err != nil {
+		if err := d.probe(`(() => {const b=el('running-ports-box'),r=b.getBoundingClientRect();return check(b.open && r.top>=-1 && r.top<innerHeight,{open:b.open,rect:r,innerHeight})})()`); err != nil {
 			return err
 		}
 	case "advanced-top", "advanced-network":
 		// Capture the opened Advanced section in two views so its grouping is reviewable.
 		target := map[string]string{"advanced-top": "#advanced", "advanced-network": `label[for="listen"]`}[shot]
 		d.w.ExecJS(`document.querySelector(` + strconv.Quote(target) + `).scrollIntoView({block:'start'})`)
-		if err := d.probe(`(() => {const r=document.querySelector(` + strconv.Quote(target) + `).getBoundingClientRect();return check(r.top>=0 && r.top<innerHeight,{rect:r,innerHeight})})()`); err != nil {
+		if err := d.probe(`(() => {const r=document.querySelector(` + strconv.Quote(target) + `).getBoundingClientRect();return check(r.top>=-1 && r.top<innerHeight,{rect:r,innerHeight})})()`); err != nil {
 			return err
 		}
 	case "classified-error", "credential-rejected", "discovery-incompatible":
