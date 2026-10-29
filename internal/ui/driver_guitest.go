@@ -117,7 +117,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	}
 	if shot == "setup" {
 		// Check launch visibility before any driver scrolling can conceal a defect.
-		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),focused=document.activeElement?.id;return check(start.top>=0 && start.bottom<innerHeight && document.activeElement===el('start'),{start,innerHeight,focused})})()`); err != nil {
+		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),focused=document.activeElement?.id;return check(start.top>=0 && start.bottom<innerHeight && document.activeElement===el('start'),{start,innerHeight,focused,documentFocused:document.hasFocus()})})()`); err != nil {
 			return err
 		}
 	}
