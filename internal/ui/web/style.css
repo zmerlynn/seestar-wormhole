@@ -200,7 +200,34 @@ select {
 
 #events {
   list-style:none;
-  padding:0;
-  font-size:.85rem;
   white-space:pre-wrap;
+  background:var(--surface);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:.3rem;
+  padding:.75rem;
+  font:.9rem/1.6 ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere
+}
+
+.help {
+  margin:.2rem 0 .85rem;
+  font-size:.85rem;
+  color:var(--muted)
+}
+.check + .help {
+  margin-left:1.6rem
+}
+.section-start {
+  border-top:1px solid var(--border);
+  margin-top:1.4rem;
+  padding-top:1rem
+}
+#advanced,#details {
+  border-top:1px solid var(--border);
+  padding-top:.4rem
+}
+#events li + li {
+  margin-top:.35rem
 }

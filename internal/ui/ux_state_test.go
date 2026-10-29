@@ -145,7 +145,7 @@ func TestLogsSanitizedBoundedAndRotated(t *testing.T) {
 		t.Fatal("untrusted event retained")
 	}
 	for i := 0; i < 1500; i++ {
-		log.add("Connecting to your telescope…")
+		log.add("Connecting to your Seestar…")
 		log.add(errorCopy("signin"))
 	}
 	lines, _, failed := log.snapshot()

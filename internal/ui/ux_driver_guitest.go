@@ -24,7 +24,7 @@ func (d *guiTestDriver) uxSetup() error {
 		if err := d.click("start"); err != nil {
 			return err
 		}
-		if err := d.probe(`check(el('bind-error').textContent.includes('Phone discovery cannot use this address.') && !el('bind-error').hidden,{bindError:el('bind-error').textContent,hidden:el('bind-error').hidden})`); err != nil {
+		if err := d.probe(`check(el('bind-error').textContent.includes('Seestar app discovery needs All networks or an IPv4 address on this computer.') && !el('bind-error').hidden,{bindError:el('bind-error').textContent,hidden:el('bind-error').hidden})`); err != nil {
 			return err
 		}
 		if err := d.state("Not connected", false, "discovery-incompatible"); err != nil {
@@ -32,7 +32,7 @@ func (d *guiTestDriver) uxSetup() error {
 		}
 		d.js(`document.getElementById('listen').value='0.0.0.0';document.getElementById('listen').dispatchEvent(new Event('change'));`)
 	case "browser-copy":
-		if err := d.probe(`check(el('quit').textContent==='Quit service' && el('quit-help').textContent.startsWith('Closing this tab leaves the proxy running.'),{quit:el('quit').textContent,help:el('quit-help').textContent})`); err != nil {
+		if err := d.probe(`check(el('quit').textContent==='Quit service' && el('quit-help').textContent.startsWith('Closing this tab leaves the service running.'),{quit:el('quit').textContent,help:el('quit-help').textContent})`); err != nil {
 			return err
 		}
 	case "settings-failure":
@@ -57,7 +57,7 @@ func (d *guiTestDriver) uxSetup() error {
 				return err
 			}
 		}
-		if err := d.probe(`check(el('password').disabled && el('password').value==='Saved in keychain' && getComputedStyle(el('password')).backgroundColor!==getComputedStyle(el('email')).backgroundColor && el('password-note').textContent==='Saved in your OS keychain.' && !el('forget').disabled,{disabled:el('password').disabled,savedPlaceholder:el('password').value==='Saved in keychain',forgetDisabled:el('forget').disabled})`); err != nil {
+		if err := d.probe(`check(el('password').disabled && el('password').value==='Saved in keychain' && getComputedStyle(el('password')).backgroundColor!==getComputedStyle(el('email')).backgroundColor && el('password-note').textContent==='Saved in your keychain.' && !el('forget').disabled,{disabled:el('password').disabled,savedPlaceholder:el('password').value==='Saved in keychain',forgetDisabled:el('forget').disabled})`); err != nil {
 			return err
 		}
 		if err := d.state("Not connected", false, "password-saved"); err != nil {
@@ -116,7 +116,7 @@ func (d *guiTestDriver) uxRunning() error {
 		if err := d.probe(`check(!el('retry-storage').hidden && el('notice').textContent.includes('Settings could not be saved'),{retryHidden:el('retry-storage').hidden,notice:el('notice').textContent})`); err != nil {
 			return err
 		}
-		if err := d.state("Connected to your telescope", true, "settings-storage-failed"); err != nil {
+		if err := d.state("Connected to your Seestar", true, "settings-storage-failed"); err != nil {
 			return err
 		}
 		if err := os.Remove(filepath.Join(d.root, "config.json")); err != nil {
@@ -130,15 +130,15 @@ func (d *guiTestDriver) uxRunning() error {
 		}
 	case "details":
 		d.js(`document.getElementById('details').open=true;`)
-		if err := d.probe(`check(el('events').textContent.includes('Connected to your telescope') && JSON.parse(el('effective-settings').textContent).ports['4700']===4700 && el('log-path').textContent.includes('gui.log'),{events:el('events').textContent,logPath:el('log-path').textContent})`); err != nil {
+		if err := d.probe(`check(el('events').textContent.includes('Connected to your Seestar') && JSON.parse(el('effective-settings').textContent).ports['4700']===4700 && el('log-path').textContent.includes('gui.log'),{events:el('events').textContent,logPath:el('log-path').textContent})`); err != nil {
 			return err
 		}
-		if err := d.state("Connected to your telescope", true, "details-expanded"); err != nil {
+		if err := d.state("Connected to your Seestar", true, "details-expanded"); err != nil {
 			return err
 		}
 	case "lost-controls":
 		d.js(`token='synthetic-invalid-token';`)
-		if err := d.probe(`check(el('notice').textContent.startsWith('Connection to the controls was lost.') && el('last-known').textContent==='Last known state: Connected to your telescope' && el('start').disabled,{notice:el('notice').textContent,lastKnown:el('last-known').textContent,startDisabled:el('start').disabled})`); err != nil {
+		if err := d.probe(`check(el('notice').textContent.startsWith('Connection to the controls was lost.') && el('last-known').textContent==='Last known state: Connected to your Seestar' && el('start').disabled,{notice:el('notice').textContent,lastKnown:el('last-known').textContent,startDisabled:el('start').disabled})`); err != nil {
 			return err
 		}
 		if err := d.capture(d.ctx, filepath.Join(d.dir, "lost-controls.png")); err != nil {

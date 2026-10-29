@@ -21,7 +21,7 @@ func TestLogAppendsOpaqueHistoryWithoutRewriting(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := &eventLog{storage: st}
-	log.add("Application opened.")
+	log.add("App opened.")
 	recent, _, failed := log.snapshot()
 	if failed || len(recent) != 1 || strings.Contains(recent[0].Message, "modified history") {
 		t.Fatal("disk history affected page state")

@@ -153,7 +153,7 @@ func TestSettingsRefusedFileCannotBeSaved(t *testing.T) {
 				t.Error("opened UI for refused settings")
 				return nil
 			}, &fakeKeychain{})
-			if err == nil || err.Error() != "Saved UI settings are invalid or unsafe; check config.json in the state directory" {
+			if err == nil || err.Error() != "Could not load saved settings safely. Check config.json in the state directory." {
 				t.Errorf("startup did not explain refusal: %v", err)
 			}
 			if _, err := loadSettings(s.storage); err == nil || actionError(err).Code != "settings" {

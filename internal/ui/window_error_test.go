@@ -27,7 +27,7 @@ func TestWindowErrorReporting(t *testing.T) {
 			}
 			continue
 		}
-		if len(shown) != 1 || shown[0] != "The window engine could not start. On Windows, WebView2 Runtime is required. Install or repair the runtime and try again." {
+		if len(shown) != 1 || shown[0] != "Could not open the app window. Install or repair Microsoft Edge WebView2 Runtime, then try again." {
 			t.Fatalf("missing fixed engine diagnostic: %q", shown)
 		}
 	}

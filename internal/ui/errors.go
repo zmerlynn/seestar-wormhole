@@ -52,51 +52,51 @@ func actionError(err error) *ActionError {
 func errorCopy(code string) string {
 	switch code {
 	case "busy":
-		return "The telescope is still releasing the previous session. Try again in a minute."
+		return "Seestar is occupied. If another remote session is open, disconnect it."
 	case "email":
-		return "Enter the email address of your Seestar account."
+		return "Enter your Seestar account email."
 	case "password":
 		return "Enter a password or use a saved password."
 	case "idle":
-		return "Enter an idle time greater than zero."
+		return "Enter a wait time greater than zero."
 	case "ports":
-		return "Enter a local port from 1 to 65535, or leave it empty to turn the service off. Use each local port only once."
+		return "Use ports 1–65535, with no duplicates. Leave a port empty to turn off its service."
 	case "ports_empty":
-		return "Enable at least one service by entering a local port in Advanced."
+		return "Enter a local port for at least one service in Advanced."
 	case "bind":
-		return "Could not listen on this address. Choose an address assigned to this computer in Advanced."
+		return "Could not listen on this address. In Advanced, choose an address assigned to this computer."
 	case "discovery_bind":
-		return "Phone discovery cannot use this address. Choose All networks or a local IPv4 network address."
+		return "Seestar app discovery needs All networks or an IPv4 address on this computer."
 	case "discovery":
-		return "Could not start phone discovery. Check the local network address and discovery port in Advanced."
+		return "Could not start Seestar app discovery. Check the network address or stop another discovery service."
 	case "http_permission":
-		return "Could not open the port needed for phone album/image access. Follow the port permissions guide, then connect again."
+		return "Could not open the image-download port. See the port permissions guide, then connect again."
 	case "http_conflict":
-		return "A local port is already in use. Stop the other proxy or change that port in Advanced. Phone album/image access is incomplete."
+		return "A local port is in use. Stop the app using it or change the port in Advanced. Seestar app image access is unavailable."
 	case "port_conflict":
-		return "A local port is already in use. Stop the other proxy or change that port in Advanced."
+		return "A local port is in use. Stop the app using it or change the port in Advanced."
 	case "signin":
-		return "Sign-in was rejected. Check your Seestar account email and password, then connect again."
+		return "Could not sign in. Check your Seestar account email and password, then connect again."
 	case "selection":
-		return "Choose your telescope in Advanced. Enter its device serial and model from your Seestar account."
+		return "In Advanced, enter your Seestar's serial and model exactly as shown in your account."
 	case "serial":
-		return "Check the device serial in Advanced."
+		return "Check the serial number in Advanced."
 	case "model":
-		return "Check the device model in Advanced."
+		return "Check the model in Advanced."
 	case "release":
-		return "Session release could not be confirmed. If Connect fails as busy, wait a minute and try again."
+		return "Session release could not be confirmed. If Seestar is occupied, wait and try Connect again."
 	case "storage":
-		return "Connected. Settings could not be saved; they may reset next time."
+		return "Settings could not be saved; they may reset next time."
 	case "password_save":
-		return "Could not save to keychain. You can connect using this password for this launch."
+		return "Could not save to keychain. You can use this password until you quit."
 	case "password_remove":
 		return "Password cleared from this app. Could not remove the keychain copy. Unlock your keychain and choose Retry removal."
 	case "password_read":
 		return "Could not read the saved password. Unlock your keychain and try again, or remove the saved password."
 	case "password_missing":
-		return "The saved password was not found. Remove the saved password, then enter it again."
+		return "Saved password not found. Remove the saved password, then enter it again."
 	case "keychain_timeout":
-		return "The keychain has not responded. Its request may still finish. Try again when it finishes."
+		return "Keychain has not responded. Its request may still finish; wait before trying again."
 	default:
 		return "Could not connect. Check your network and try again."
 	}

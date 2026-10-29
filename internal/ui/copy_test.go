@@ -7,7 +7,7 @@ import (
 )
 
 func TestPortErrorsExplainAcceptedSyntax(t *testing.T) {
-	want := "Enter a local port from 1 to 65535, or leave it empty to turn the service off. Use each local port only once."
+	want := "Use ports 1–65535, with no duplicates. Leave a port empty to turn off its service."
 	for _, ports := range [][]proxyrun.Port{{{Device: 999}}, {{Local: 1234, Device: 80}, {Local: 1234, Device: 445}}, {{Device: 80}, {Device: 80}}} {
 		s := testSettings()
 		s.Ports = ports
@@ -22,7 +22,7 @@ func TestPortErrorsExplainAcceptedSyntax(t *testing.T) {
 }
 
 func TestReleaseUncertaintyOffersBusyRetryWithoutCountdown(t *testing.T) {
-	want := "Session release could not be confirmed. If Connect fails as busy, wait a minute and try again."
+	want := "Session release could not be confirmed. If Seestar is occupied, wait and try Connect again."
 	if errorCopy("release") != want {
 		t.Fatal("release uncertainty copy promises a fixed wait")
 	}
@@ -51,14 +51,14 @@ func TestAllServicesDisabledExplainsRecovery(t *testing.T) {
 	if err == nil || actionError(err).Code != "ports_empty" || actionError(err).Field != "ports" {
 		t.Fatal("empty listener set lacks its ports error", err)
 	}
-	if errorCopy("ports_empty") != "Enable at least one service by entering a local port in Advanced." {
+	if errorCopy("ports_empty") != "Enter a local port for at least one service in Advanced." {
 		t.Fatal("empty listener error does not explain recovery")
 	}
 }
 
 func TestOwnerCopy(t *testing.T) {
 	b, _ := assets.ReadFile("web/index.html")
-	for _, want := range []string{"Use your remote Seestar through the Telescope Network, as if it were nearby.", "Enter an IPv4 address assigned to this computer.", "Let the Seestar app find this telescope", "All networks</option>", "This computer only (the Seestar app can't connect)"} {
+	for _, want := range []string{"Your remote Seestar, as if it were on your network.", "Enter an IPv4 address assigned to this computer.", "Let the Seestar app find your Seestar", "All networks</option>", "This computer only"} {
 		if !strings.Contains(string(b), want) {
 			t.Fatalf("missing copy %q", want)
 		}
@@ -76,6 +76,20 @@ func TestKeychainRecoveryMatchesTwoPasswordStates(t *testing.T) {
 		copy := errorCopy(code)
 		if strings.Contains(copy, "for this launch") {
 			t.Fatalf("%s offers typing into disabled saved input: %s", code, copy)
+		}
+	}
+}
+
+func TestOccupiedCopyDistinguishesRetryPaths(t *testing.T) {
+	if got := errorCopy("busy"); got != "Seestar is occupied. If another remote session is open, disconnect it." {
+		t.Fatal(got)
+	}
+	if got := uiText("Busy — waiting for the other session"); got != "Seestar is occupied. Retrying automatically." {
+		t.Fatal(got)
+	}
+	for _, message := range []string{"App opened.", "App could not start.", uiText("Ready"), uiText("Busy — waiting for the other session"), uiText("Reconnecting — waiting for cleanup/retry"), "Stopped. Seestar may still be releasing the session."} {
+		if eventCode(message) != "lifecycle" {
+			t.Fatalf("lifecycle event dropped: %s", message)
 		}
 	}
 }

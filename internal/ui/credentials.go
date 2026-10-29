@@ -89,7 +89,7 @@ func (c *credentialStore) rememberAt(ctx context.Context, s Settings, password s
 	}
 	c.savedEmail = email
 	c.code = "password_saved"
-	c.notice = "Password saved to keychain. It will be checked when you connect."
+	c.notice = "Password saved to keychain. Checked when you connect."
 	return nil
 }
 func (c *credentialStore) outcome(code string) error {
@@ -123,7 +123,7 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 			if errors.Is(err, context.Canceled) {
 				c.mu.Lock()
 				c.code = ""
-				c.notice = "Saved in your OS keychain."
+				c.notice = "Saved in your keychain."
 				c.mu.Unlock()
 				return cloud.Credentials{}, err
 			}
@@ -148,10 +148,10 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 	}
 	c.email, c.password = s.Email, p
 	c.code = ""
-	c.notice = "Password available for this launch only."
+	c.notice = "Password kept until you quit."
 	if s.Remember && password == "" {
 		c.savedEmail = s.Email
-		c.notice = "Saved in your OS keychain."
+		c.notice = "Saved in your keychain."
 	}
 	return credentials, nil
 }

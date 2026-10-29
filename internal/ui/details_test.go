@@ -38,9 +38,9 @@ func TestEffectiveDiagnosticSettings(t *testing.T) {
 		t.Fatalf("private fields: %s", b)
 	}
 	log := &eventLog{}
-	log.add("Application opened.")
+	log.add("App opened.")
 	events, _, _ := log.snapshot()
-	if len(events) != 1 || events[0].Time.Location() != time.UTC || events[0].Message != "Application opened." {
+	if len(events) != 1 || events[0].Time.Location() != time.UTC || events[0].Message != "App opened." {
 		t.Fatalf("events: %+v", events)
 	}
 }

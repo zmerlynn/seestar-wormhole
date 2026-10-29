@@ -176,7 +176,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     return Array.from(paint.getImageData(0,0,1,1).data).slice(0,3)};
    const l=rgb=>{const v=rgb.map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
    const rootRGB=sample(root),rootLuminance=l(rootRGB),failures=[];
-   for(const id of ['status','email','password','password-note','goal','forget','start','quit']){
+   for(const id of ['status','email','password','password-note','goal','forget','start','quit','events','custom-help','discovery-help']){
     const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled') || e.getClientRects().length===0) continue;
     const fg=sample(root,s.backgroundColor,s.color),bg=sample(root,s.backgroundColor);
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
@@ -224,7 +224,7 @@ func (d *guiTestDriver) release() error {
 		if !d.w.IsVisible() {
 			return errors.New("window closed before release joined")
 		}
-		if err := d.state("Stopping — releasing the telescope session…", true, "releasing"); err != nil {
+		if err := d.state("Stopping — releasing the Seestar session…", true, "releasing"); err != nil {
 			return err
 		}
 	}
@@ -242,6 +242,13 @@ func (d *guiTestDriver) release() error {
 func (d *guiTestDriver) drive() error {
 	if err := d.state("Not connected", false, "setup"); err != nil {
 		return err
+	}
+	if d.scenario == "fresh" || d.scenario == "dark" {
+		d.js(`applyGoal('custom');document.getElementById('advanced').open=true;document.getElementById('details').open=true;`)
+		if err := d.state("Not connected", false, "help-and-events"); err != nil {
+			return err
+		}
+		d.js(`applyGoal('phone');document.getElementById('advanced').open=false;document.getElementById('details').open=false;document.getElementById('start').focus();`)
 	}
 	if d.scenario == "fresh" {
 		if err := d.pageStateRegressions(); err != nil {
@@ -276,7 +283,7 @@ func (d *guiTestDriver) drive() error {
 		}
 		return d.click("quit")
 	}
-	if err := d.state("Connecting to your telescope…", true, "connecting"); err != nil {
+	if err := d.state("Connecting to your Seestar…", true, "connecting"); err != nil {
 		return err
 	}
 	connecting := strings.Contains(d.scenario, "connecting")
@@ -284,7 +291,7 @@ func (d *guiTestDriver) drive() error {
 		if err := d.step(session.Event{Kind: session.Progress}); err != nil {
 			return err
 		}
-		if err := d.state("Connected to your telescope", true, "ready"); err != nil {
+		if err := d.state("Connected to your Seestar", true, "ready"); err != nil {
 			return err
 		}
 		if err := d.uxRunning(); err != nil {
@@ -299,19 +306,19 @@ func (d *guiTestDriver) drive() error {
 		if err := d.release(); err != nil {
 			return err
 		}
-		if err := d.state("Stopped. The telescope may take a minute to release the session.", false, "stopped"); err != nil {
+		if err := d.state("Stopped. Seestar may still be releasing the session.", false, "stopped"); err != nil {
 			return err
 		}
 		if err := d.start(); err != nil {
 			return err
 		}
-		if err := d.state("Connecting to your telescope…", true, "restart-connecting"); err != nil {
+		if err := d.state("Connecting to your Seestar…", true, "restart-connecting"); err != nil {
 			return err
 		}
 		if err := d.step(session.Event{Kind: session.Progress}); err != nil {
 			return err
 		}
-		if err := d.state("Connected to your telescope", true, "restart-ready"); err != nil {
+		if err := d.state("Connected to your Seestar", true, "restart-ready"); err != nil {
 			return err
 		}
 	case "errors":
@@ -319,7 +326,7 @@ func (d *guiTestDriver) drive() error {
 			if err := d.step(e); err != nil {
 				return err
 			}
-			if err := d.state([]string{"Telescope is in use. Disconnect the other remote session. Retrying automatically.", "Connection lost. Retrying automatically.", "Connected to your telescope"}[i], true, []string{"busy", "transport-retry", "recovered"}[i]); err != nil {
+			if err := d.state([]string{"Seestar is occupied. Retrying automatically.", "Connection interrupted. Retrying automatically.", "Connected to your Seestar"}[i], true, []string{"busy", "transport-retry", "recovered"}[i]); err != nil {
 				return err
 			}
 		}
@@ -350,7 +357,7 @@ func (d *guiTestDriver) drive() error {
 		if err := guitest.Wait(d.ctx, "owner shown and focused", func() bool { return d.w.IsVisible() && d.w.IsFocused() }); err != nil {
 			return err
 		}
-		if err := d.state("Connected to your telescope", true, "activated"); err != nil {
+		if err := d.state("Connected to your Seestar", true, "activated"); err != nil {
 			return err
 		}
 	case "strand":
@@ -361,7 +368,7 @@ func (d *guiTestDriver) drive() error {
 		if err := d.probe(`(() => {const origin=` + strconv.Quote(origin) + `;return check(location.href==='about:blank' && location.origin!==origin && !el('status'),{href:location.href.split('#')[0],origin:location.origin,appOrigin:origin,statusExists:!!el('status')})})()`); err != nil {
 			return err
 		}
-		if err := d.serverState("Connected to your telescope", true); err != nil {
+		if err := d.serverState("Connected to your Seestar", true); err != nil {
 			return err
 		}
 		if err := d.runnerUninterrupted(); err != nil {
@@ -373,12 +380,12 @@ func (d *guiTestDriver) drive() error {
 		if err := d.mark("trigger"); err != nil {
 			return err
 		}
-		if err := d.probe(`(() => {const origin=` + strconv.Quote(origin) + `;return check(location.origin===origin && el('status')?.textContent==='Connected to your telescope',{origin:location.origin,appOrigin:origin,status:el('status')?.textContent ?? null})})()`); err != nil {
+		if err := d.probe(`(() => {const origin=` + strconv.Quote(origin) + `;return check(location.origin===origin && el('status')?.textContent==='Connected to your Seestar',{origin:location.origin,appOrigin:origin,status:el('status')?.textContent ?? null})})()`); err != nil {
 			return err
 		}
 		// Ready in the reloaded DOM requires app.js's authenticated status fetch;
 		// also independently check that the same authenticated server stayed active.
-		if err := d.state("Connected to your telescope", true, "restored"); err != nil {
+		if err := d.state("Connected to your Seestar", true, "restored"); err != nil {
 			return err
 		}
 		if err := d.runnerUninterrupted(); err != nil {

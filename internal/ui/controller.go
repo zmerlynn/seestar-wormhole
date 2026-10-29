@@ -71,7 +71,7 @@ func (c *controller) start(s Settings, password string) error {
 				}
 			}
 		}()
-		c.record("Connecting to your telescope…")
+		c.record("Connecting to your Seestar…")
 		defer cancel()
 		credentials, err := c.credentials.credentials(ctx, s, password)
 		if ctx.Err() != nil {
@@ -92,7 +92,7 @@ func (c *controller) start(s Settings, password string) error {
 			c.failure = &ActionError{Code: "release"}
 		}
 		if c.final == "Stopped" {
-			c.final = "Stopped. The telescope may take a minute to release the session."
+			c.final = "Stopped. Seestar may still be releasing the session."
 		}
 		c.log.addFailure(c.final, err)
 		c.done = nil
@@ -161,7 +161,7 @@ func (c *controller) snapshotLocked() (string, bool) {
 		return "Not connected", false
 	}
 	if c.stopping {
-		return "Stopping — releasing the telescope session…", true
+		return "Stopping — releasing the Seestar session…", true
 	}
 	if p := c.credentials.state(c.runSettings.Email); p.Code == "password_reading" {
 		return "Reading saved password…", true
@@ -266,23 +266,23 @@ func (c *controller) persistRemoval(email string) error {
 func uiText(text string) string {
 	switch text {
 	case "Ready":
-		return "Connected to your telescope"
+		return "Connected to your Seestar"
 	case "Waiting for a local client":
 		return "Waiting for an app to connect"
 	case "Busy — waiting for the other session":
-		return "Telescope is in use. Disconnect the other remote session. Retrying automatically."
+		return "Seestar is occupied. Retrying automatically."
 	case "Reconnecting":
-		return "Connection lost. Retrying automatically."
+		return "Connection interrupted. Retrying automatically."
 	case "Releasing idle session":
-		return "Releasing idle telescope session…"
+		return "Releasing idle Seestar session…"
 	case "Reconnecting — waiting for cleanup/retry":
-		return "Waiting for session release before retrying…"
+		return "Waiting before retrying the connection…"
 	case "Sign-in required — correct credentials and Start again":
 		return errorCopy("signin")
 	case "Stopped":
 		return "Stopped"
 	default:
-		return "Connecting to your telescope…"
+		return "Connecting to your Seestar…"
 	}
 }
 

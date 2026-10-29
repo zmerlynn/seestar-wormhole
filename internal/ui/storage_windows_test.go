@@ -53,7 +53,7 @@ func TestLogPrivateACLWindows(t *testing.T) {
 	st := testStorage(t)
 	log := &eventLog{storage: st}
 	for range 700 {
-		log.add("Connecting to your telescope…")
+		log.add("Connecting to your Seestar…")
 		log.add("Stopped")
 	}
 	for _, name := range []string{"gui.log", "gui.log.1"} {

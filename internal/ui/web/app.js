@@ -20,8 +20,8 @@ let fieldErrors = {}, portDefaults = [];
 let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '';
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
-  email: 'Enter the email address of your Seestar account.', password: 'Enter a password or use a saved password.',
-  idle: 'Enter an idle time greater than zero.'
+  email: 'Enter your Seestar account email.', password: 'Enter a password or use a saved password.',
+  idle: 'Enter a wait time greater than zero.'
 };
 async function api(action, body) {
   const options = {
@@ -60,10 +60,10 @@ function settings() {
   };
 }
 const services = [
-  [4700, 'Telescope control'], [80, 'Web files (image downloads)'],
+  [4700, 'Seestar control'], [80, 'Image downloads (web)'],
   [4800, 'Main camera images'], [4804, 'Wide camera images'],
-  [4801, 'Album and files'], [4554, 'Live video, main camera'],
-  [4555, 'Live video, wide camera (some models)'], [4350, 'Firmware updater'],
+  [4801, 'Album and files'], [4554, 'Main camera video'],
+  [4555, 'Wide camera video (some models)'], [4350, 'Firmware updater'],
   [4361, 'Firmware upload'], [445, 'File sharing (SMB)']
 ];
 function portValues(s) {
@@ -74,7 +74,7 @@ function portValues(s) {
 function portsTable(id, ports, editable = false) {
   const table = document.createElement('table');
   const head = table.createTHead().insertRow();
-  for (const name of ['Local', 'Remote', 'Purpose']) {
+  for (const name of ['Computer port', 'Seestar port', 'Purpose']) {
     const th = document.createElement('th');
     th.textContent = name;
     head.append(th);
@@ -192,7 +192,7 @@ function validate(passwordSave = false) {
     const input = $('port-' + remote), value = Number(input.value);
     if (!input.validity.valid || (value && locals.has(value))) {
       actionError = 'ports';
-      fieldError('ports', 'Enter a local port from 1 to 65535, or leave it empty to turn the service off. Use each local port only once.', 'ports');
+      fieldError('ports', 'Use ports 1–65535, with no duplicates. Leave a port empty to turn off its service.', 'ports');
       input.setAttribute('aria-invalid', 'true');
       input.focus();
       return false;
@@ -226,19 +226,19 @@ function controls() {
   if (selectedSaved) $('password').value = 'Saved in keychain';
   $('save-password').hidden = selectedSaved;
   $('save-password').disabled = blocked || !!pending || password.busy || !accountEmail() || !$('password').value;
-  text('password-note', selectedSaved ? 'Saved in your OS keychain.' : 'Password is kept only until you quit this app, unless you save it to your OS keychain.');
+  text('password-note', selectedSaved ? 'Saved in your keychain.' : 'Kept until you quit. Save to your keychain to use it next time.');
   $('forget').hidden = !password.saved;
   $('forget').disabled = blocked || !!pending || password.busy;
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
-  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, connect to the telescope as if it were nearby.' : 'Only apps on this computer can connect. A phone on the network cannot use this setup.';
+  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep your phone and this computer on the same network. Select your Seestar in the app\'s LAN list.' : 'Only apps on this computer can connect.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const code = actionError || (!active && state?.failure?.code) || '';
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
-  text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selected in Advanced' : 'Automatic (one telescope on this account)');
+  text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selection entered' : 'Automatic');
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
 }
 function render(s) {
@@ -247,13 +247,13 @@ function render(s) {
   text('status',s.status);
   $('last-known').hidden = true;
   $('quit').textContent = s.native ? 'Quit app' : 'Quit service';
-  $('quit-help').textContent = s.native ? 'Quit stops the proxy and closes the app. Closing this window also quits.' : 'Closing this tab leaves the proxy running. Quit service stops it; you can then close this tab.';
+  $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';
   $('retry-storage').hidden = !s.save_failed;
-  if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app, but settings could not be saved. Keep this window open and retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.' : active ? 'Connected. Settings could not be saved; they may reset next time.' : 'Settings could not be saved; they may reset next time.');
+  if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Settings could not be saved; they may reset next time.');
   if (s.failure && !active && !actionError) {
     const newFailure = lastFailure !== s.failure.code;
     alertText(s.failure.code === 'release' ? '' : s.failure.field ? 'Check the highlighted setting.' : s.failure_message);
-    if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer ' + s.failure.local + ' → telescope ' + s.failure.service + '.' : ''),s.failure.code);
+    if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer port ' + s.failure.local + ' → Seestar port ' + s.failure.service + '.' : ''),s.failure.code);
     lastFailure = s.failure.code;
 
   }
@@ -264,8 +264,8 @@ function render(s) {
     else say('');
   }
   const run = s.effective;
-  const listen = {all_networks: 'all networks', this_computer: 'this computer only', other: 'Other'}[run.listen];
-  $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle.mode === 'keep_connected' ? 'Keep connected' : 'Connect when an app needs the telescope');
+  const listen = {all_networks: 'all networks', this_computer: 'this computer only', other: 'a selected network address'}[run.listen];
+  $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle.mode === 'keep_connected' ? 'Keep connected' : 'Connect when an app needs Seestar');
   $('phone-steps').hidden = !(active && s.discovery_started);
   portsTable('running-ports', Object.fromEntries(s.mappings.map(([local, remote]) => [remote, local])));
   $('effective-settings').textContent = JSON.stringify(s.effective, null, 2);
@@ -274,7 +274,7 @@ function render(s) {
     item.textContent = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + event.message;
     return item;
   }));
-  $('log-path').textContent = s.log_path ? 'Private rolling log: ' + s.log_path : '';
+  $('log-path').textContent = s.log_path ? 'Private log: ' + s.log_path : '';
   $('log-error').hidden = !s.log_failed;
   diagnostic = JSON.stringify({app: 'seestar-wormhole', version: s.version, settings: s.effective, events: s.events}, null, 2);
   controls();
@@ -334,7 +334,7 @@ async function act(action) {
   }
   if (action === 'password/save') say('Saving password to keychain…');
   if (action === 'forget') say('Removing saved password…');
-  if (action === 'quit') say('Quitting — releasing the telescope session…');
+  if (action === 'quit') say('Quitting — releasing the Seestar session…');
   controls();
   let errorField = '';
   try {
@@ -367,7 +367,7 @@ async function act(action) {
       retryRemoval = true;
     }
     if (e.code === 'storage' && ['password/save','forget'].includes(action)) {
-      e.message = action === 'password/save' ? 'Password saved to keychain, but settings could not be saved. Keep this window open and retry saving settings.' : 'Password removed from keychain and this app, but settings could not be saved. Keep this window open and retry saving settings.';
+      e.message = action === 'password/save' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.';
       try {
         await refresh();
       } catch (_) {
@@ -432,7 +432,7 @@ $('copy').addEventListener('click', async () => {
     $('diagnostic-copy').value = diagnostic;
     $('diagnostic-copy').focus();
     $('diagnostic-copy').select();
-    text('copy-feedback', 'Select and copy the diagnostic summary below.');
+    text('copy-feedback', 'Copy the selected diagnostic summary below.');
   }
 });
 portsTable('ports', {}, true);

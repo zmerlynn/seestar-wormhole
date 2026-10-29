@@ -42,7 +42,7 @@ func reopen(ctx context.Context, s *storage, open func(string) error, out io.Wri
 		if err := s.read("ui-runtime.json", &record); err == nil && record.valid() {
 			req, err := http.NewRequestWithContext(ctx, "GET", "http://"+record.host()+"/api/instance", nil)
 			if err != nil {
-				return errors.New("UI instance check failed")
+				return errors.New("Could not check the running app.")
 			}
 			req.Header.Set("X-Seestar-Token", record.Token)
 			response, err := client.Do(req)
@@ -56,7 +56,7 @@ func reopen(ctx context.Context, s *storage, open func(string) error, out io.Wri
 					}
 					req, err := http.NewRequestWithContext(ctx, "POST", "http://"+record.host()+"/api/activate", strings.NewReader("{}"))
 					if err != nil {
-						return errors.New("UI activation failed")
+						return errors.New("Could not reopen the running app.")
 					}
 					req.Header.Set("X-Seestar-Token", record.Token)
 					req.Header.Set("Origin", "http://"+record.host())
@@ -76,7 +76,7 @@ func reopen(ctx context.Context, s *storage, open func(string) error, out io.Wri
 		case <-ctx.Done():
 			return nil
 		case <-deadline.C:
-			return errors.New("UI already running or starting; try again shortly")
+			return errors.New("App is already running or starting. Try again shortly.")
 		case <-tick.C:
 		}
 	}
@@ -150,26 +150,26 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 		return reopen(ctx, st, open, out)
 	}
 	eventHistory := &eventLog{storage: st}
-	eventHistory.add("Application opened.")
+	eventHistory.add("App opened.")
 	defer func() {
 		if result != nil {
-			eventHistory.add("Application could not start.")
+			eventHistory.add("App could not start.")
 		}
 	}()
 	settings, err := loadSettings(st)
 	if os.IsNotExist(err) {
 		settings = defaultSettings()
 	} else if err != nil {
-		return errors.New("Saved UI settings are invalid or unsafe; check config.json in the state directory")
+		return errors.New("Could not load saved settings safely. Check config.json in the state directory.")
 	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
-		return errors.New("UI loopback listener unavailable")
+		return errors.New("Could not start the local controls.")
 	}
 	defer listener.Close()
 	var token [32]byte
 	if _, err = rand.Read(token[:]); err != nil {
-		return errors.New("UI token unavailable")
+		return errors.New("Could not secure the local controls.")
 	}
 	record := runtimeRecord{Port: listener.Addr().(*net.TCPAddr).Port, Token: hex.EncodeToString(token[:])}
 	c := &controller{parent: ctx, run: run, credentials: &credentialStore{chain: chain, savedEmail: func() string {

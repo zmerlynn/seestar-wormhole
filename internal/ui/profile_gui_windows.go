@@ -40,7 +40,7 @@ func windowProfile(root string) (string, func() error, error) {
 				return nil
 			}
 			if time.Now().After(deadline) {
-				return errors.New("WebView2 profile cleanup failed: a later launch will retry removing stale profiles")
+				return errors.New("Could not remove the temporary WebView2 profile. The next launch will retry.")
 			}
 			time.Sleep(50 * time.Millisecond)
 		}

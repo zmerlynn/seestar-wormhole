@@ -14,7 +14,7 @@ func fixedWindowErrorHandler(show func(string)) func(error) {
 	return func(err error) {
 		var fatal *application.FatalError
 		if errors.As(err, &fatal) {
-			show("The window engine could not start. On Windows, WebView2 Runtime is required. Install or repair the runtime and try again.")
+			show("Could not open the app window. Install or repair Microsoft Edge WebView2 Runtime, then try again.")
 		}
 	}
 }

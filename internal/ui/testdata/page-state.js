@@ -38,11 +38,23 @@
     }
   };
   try {
+    await check('Setup help and services grouping', async () => {
+      applyGoal('custom');
+      const custom = $('custom-help'), discovery = $('discovery-help');
+      assert(!custom.hidden && custom.classList.contains('help') && !custom.classList.contains('error') && !custom.hasAttribute('aria-invalid') && !$('goal').hasAttribute('aria-invalid'), 'Custom is styled as an error');
+      assert($('goal').getAttribute('aria-describedby') === 'goal-help custom-help', 'Use with help association missing');
+      assert(discovery.previousElementSibling === $('discovery').closest('label') && discovery.classList.contains('help') && parseFloat(getComputedStyle(discovery).marginLeft) > 0, 'discovery help detached or not indented');
+      assert($('services-title').tagName === 'H2' && $('services-title').textContent === 'Services' && $('ports').getAttribute('aria-labelledby') === 'services-title', 'Services heading missing');
+      for (const [id, placeholder] of [['serial', 'From your Seestar account'], ['model', 'e.g. S50 Pro']]) {
+        assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && !$(id+'-help') && $(id).getAttribute('aria-describedby').includes('selection-help'), id+' example is not placeholder-only');
+      }
+      assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Computer port|Seestar port|Purpose', 'ambiguous port headings');
+    });
     await check('R3 stale response', async () => {
       let release;
       api = () => new Promise(resolve => {release = resolve;});
       const old = refresh();
-      api = async () => ({...status(), active: true, cancel: true, status: 'Connecting to your telescope…'});
+      api = async () => ({...status(), active: true, cancel: true, status: 'Connecting to your Seestar…'});
       $('password').value = 'synthetic-password';
       await act('start');
       assert(active, 'new run was not rendered');
@@ -51,14 +63,14 @@
       assert(active && $('start').textContent === 'Cancel' && $('options').disabled, 'late idle response restored Connect');
     });
     for (const action of ['stop', 'quit']) await check('Release progress during ' + action, async () => {
-      render({...status(), active: true, status: 'Connected to your telescope'});
+      render({...status(), active: true, status: 'Connected to your Seestar'});
       let release;
       api = async name => name === action ? new Promise(resolve => {release = resolve;}) :
-        {...status(), active: true, stopping: true, status: 'Stopping — releasing the telescope session…'};
+        {...status(), active: true, stopping: true, status: 'Stopping — releasing the Seestar session…'};
       const finishing = act(action);
       await poll();
       assert(pending === action && !ended, 'release completed before its response');
-      assert(state.stopping && $('status').textContent === 'Stopping — releasing the telescope session…' && $('settings').hidden, 'pending action hid release progress');
+      assert(state.stopping && $('status').textContent === 'Stopping — releasing the Seestar session…' && $('settings').hidden, 'pending action hid release progress');
       assert($('start').disabled, 'Connect enabled before release joined');
       release({ok: true});
       await finishing;
@@ -99,10 +111,10 @@
       $('password').dispatchEvent(new Event('input'));
       await refresh();
       assert($('password').value === 'new-synthetic-password' && !$('password').disabled, 'poll erased a typed draft');
-      assert(!$('save-password').disabled && $('password-note').textContent === 'Password is kept only until you quit this app, unless you save it to your OS keychain.', 'editable password controls');
+      assert(!$('save-password').disabled && $('password-note').textContent === 'Kept until you quit. Save to your keychain to use it next time.', 'editable password controls');
       render({...status(), password: {...status().password, saved: true}});
       assert($('password').disabled && $('password').value === 'Saved in keychain' && $('save-password').hidden && !$('forget').hidden, 'saved state is editable');
-      assert($('password-note').textContent === 'Saved in your OS keychain.', 'saved help repeats confirmation');
+      assert($('password-note').textContent === 'Saved in your keychain.', 'saved help repeats confirmation');
       assert(getComputedStyle($('password')).backgroundColor !== getComputedStyle($('email')).backgroundColor && getComputedStyle($('password')).outlineStyle === 'none', 'saved state is not visibly disabled');
       assert(!$('change-password') && !$('use-saved'), 'obsolete password source controls');
       $('email').value = 'different@example.invalid';
@@ -152,15 +164,15 @@
       assert(rows[1].cells[0].textContent === '80' && rows[9].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
       render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}}, run_settings: {...run, bind: '127.0.0.1', discovery: false, idle: '2m'}});
-      assert($('run-summary').textContent === 'Listening on this computer only · Seestar app discovery off · Connect when an app needs the telescope' && $('phone-steps').hidden, 'computer/idle summary inaccurate');
+      assert($('run-summary').textContent === 'Listening on this computer only · Seestar app discovery off · Connect when an app needs Seestar' && $('phone-steps').hidden, 'computer/idle summary inaccurate');
       render({...status(), active: true, effective: {...status().effective, listen: 'other'}, run_settings: {...run, bind: 'synthetic-address'}});
-      assert($('run-summary').textContent.startsWith('Listening on Other ·'), 'Other listen summary missing');
+      assert($('run-summary').textContent.startsWith('Listening on a selected network address ·'), 'Other listen summary missing');
     });
     await check('Custom switches immediately', async () => {
       $('listen').value = 'other';
       $('listen').dispatchEvent(new Event('change'));
-      assert($('goal').value === 'custom' && !$('custom-help').hidden && $('custom-help').classList.contains('error'), 'Custom warning missing');
-      assert($('custom-help').textContent === 'Custom: network and port settings are set in Advanced. Choosing another setup replaces them.', 'Custom copy');
+      assert($('goal').value === 'custom' && !$('custom-help').hidden && $('custom-help').classList.contains('help'), 'Custom warning missing');
+      assert($('custom-help').textContent === 'Set in Advanced. Choosing another setup replaces these settings.', 'Custom copy');
       $('port-80').value = '1234';
       $('goal').value = 'computer';
       $('goal').dispatchEvent(new Event('change'));
@@ -203,10 +215,10 @@
       $('email').value = 'vendor-will-validate';
       assert(validate(), 'page added email format validation');
       $('email').value = '   ';
-      assert(!validate() && $('email-error').textContent === 'Enter the email address of your Seestar account.', 'empty email copy');
+      assert(!validate() && $('email-error').textContent === 'Enter your Seestar account email.', 'empty email copy');
     });
     await check('Details and copied summary are JSON', async () => {
-      const event = {time: '2026-01-01T19:16:00Z', message: 'Application opened.', code: 'lifecycle', phase: '', reason: ''};
+      const event = {time: '2026-01-01T19:16:00Z', message: 'App opened.', code: 'lifecycle', phase: '', reason: ''};
       const effective = {idle: {mode: 'keep_connected', minutes: 0}, listen: 'all_networks', discovery: true, ports: {'80': 80}};
       render({...status(), effective, events: [event], log_path: 'synthetic-private-path'});
       assert($('effective-settings').textContent === JSON.stringify(effective, null, 2), 'Settings is not pretty JSON');
@@ -238,7 +250,7 @@
     await check('S5 explicit selection copy', async () => {
       $('model').value = 'synthetic';
       $('model').dispatchEvent(new Event('input'));
-      assert($('telescope-selection').textContent === 'Selected in Advanced', 'explicit telescope still described as Automatic');
+      assert($('telescope-selection').textContent === 'Selection entered', 'explicit telescope still described as Automatic');
       $('model').value = '';
     });
   } finally {

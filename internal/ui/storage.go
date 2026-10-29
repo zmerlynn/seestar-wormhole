@@ -15,7 +15,7 @@ import (
 
 const maxJSON = 64 << 10
 
-var errStorage = errors.New("UI storage unavailable: use a private state directory")
+var errStorage = errors.New("Settings storage unavailable. Use a private state directory.")
 
 type storage struct {
 	root            string

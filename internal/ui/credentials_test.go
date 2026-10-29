@@ -55,7 +55,7 @@ func TestKeychainUnavailableMemoryOnly(t *testing.T) {
 	if err := c.remember(t.Context(), s, testPassword); err == nil {
 		t.Fatal("keychain denial reported success")
 	}
-	if available, notice := c.info(); !available || !strings.Contains(notice, "for this launch") {
+	if available, notice := c.info(); !available || !strings.Contains(notice, "until you quit") {
 		t.Fatalf("%v %s", available, notice)
 	}
 	s.Remember = false
@@ -156,7 +156,7 @@ func TestKeychainRecordSize(t *testing.T) {
 			if (chain.calls == 1) != tc.wantSet || chain.calls > 1 {
 				t.Errorf("keychain calls=%d, want Set=%v", chain.calls, tc.wantSet)
 			}
-			if available, notice := c.info(); !available || (!tc.wantSet && !strings.Contains(notice, "for this launch")) {
+			if available, notice := c.info(); !available || (!tc.wantSet && !strings.Contains(notice, "until you quit")) {
 				t.Errorf("available=%v notice=%q", available, notice)
 			}
 		})

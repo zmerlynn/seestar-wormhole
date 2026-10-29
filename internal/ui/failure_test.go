@@ -32,7 +32,7 @@ func TestFailureEventsRetainSafeCause(t *testing.T) {
 func TestStartupBusyHasReleaseRecoveryCopy(t *testing.T) {
 	for _, err := range []error{cloud.ErrBusy, session.ErrBusy, session.ErrUncertain, session.ErrReleaseAbandoned} {
 		e := actionError(err)
-		if e.Code != "busy" || errorCopy(e.Code) != "The telescope is still releasing the previous session. Try again in a minute." {
+		if e.Code != "busy" || errorCopy(e.Code) != "Seestar is occupied. If another remote session is open, disconnect it." {
 			t.Fatalf("busy: %+v", e)
 		}
 	}

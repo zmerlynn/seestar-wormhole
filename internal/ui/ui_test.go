@@ -42,7 +42,7 @@ func TestControllerLifetimes(t *testing.T) {
 	}
 	c.stop()
 	<-cleanup
-	if text, active := c.snapshot(); !active || text != "Stopping — releasing the telescope session…" {
+	if text, active := c.snapshot(); !active || text != "Stopping — releasing the Seestar session…" {
 		t.Fatalf("%s %v", text, active)
 	}
 	if err := c.start(s, testPassword); err == nil {
@@ -57,7 +57,7 @@ func TestControllerLifetimes(t *testing.T) {
 	}
 	close(release)
 	<-joined
-	if text, active := c.snapshot(); active || text != "Stopped. The telescope may take a minute to release the session." {
+	if text, active := c.snapshot(); active || text != "Stopped. Seestar may still be releasing the session." {
 		t.Fatalf("%s %v", text, active)
 	}
 	if err := c.start(s, testPassword); err == nil {
@@ -81,7 +81,7 @@ func TestControllerStopStartDuringStartup(t *testing.T) {
 		c.mu.Unlock()
 		c.stop()
 		<-done
-		if text, active := c.snapshot(); active || text != "Stopped. The telescope may take a minute to release the session." {
+		if text, active := c.snapshot(); active || text != "Stopped. Seestar may still be releasing the session." {
 			t.Fatalf("%s %v", text, active)
 		}
 	}
@@ -277,7 +277,7 @@ func TestTerminalRejectionCancelsAndJoins(t *testing.T) {
 	default:
 	}
 	close(release)
-	if got := finalStatus(<-done); got != "Sign-in was rejected. Check your Seestar account email and password, then connect again." {
+	if got := finalStatus(<-done); got != "Could not sign in. Check your Seestar account email and password, then connect again." {
 		t.Fatal(got)
 	}
 }
@@ -336,7 +336,7 @@ func TestControllerFinalCleanupError(t *testing.T) {
 			close(complete)
 			<-done
 			text, active := c.snapshot()
-			if active || text != "Session release could not be confirmed. If Connect fails as busy, wait a minute and try again." {
+			if active || text != "Session release could not be confirmed. If Seestar is occupied, wait and try Connect again." {
 				t.Fatalf("completed controller: text=%q active=%v", text, active)
 			}
 		})
