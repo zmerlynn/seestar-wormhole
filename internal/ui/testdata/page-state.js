@@ -50,6 +50,28 @@
       }
       assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Computer port|Seestar port|Purpose', 'ambiguous port headings');
     });
+    await check('Version and external links', async () => {
+      const s = status();
+      render(s);
+      assert($('version').textContent === s.version, 'footer lost the launch version');
+      const bridge = window._wails;
+      let opened = '', prevented = false;
+      const link = $('releases-link');
+      const click = {target: link, button: 0, preventDefault() {prevented = true;}};
+      try {
+        window._wails = {invoke(message) {opened = message;}};
+        openExternalLink(click);
+        assert(prevented && opened === 'seestar:open:'+link.href, 'native link did not use the browser bridge');
+        window._wails = undefined;
+        prevented = false;
+        openExternalLink(click);
+        assert(!prevented, 'browser link lost normal navigation');
+      } finally {window._wails = bridge;}
+      render({...s, failure: {code: 'http_permission', field: 'ports'}, failure_message: 'See the port permissions guide.'});
+      assert(!$('port-permissions').hidden, 'permission error lacks a guide link');
+      render(s);
+      assert($('port-permissions').hidden, 'permission guide stayed after recovery');
+    });
     await check('R3 stale response', async () => {
       let release;
       api = () => new Promise(resolve => {release = resolve;});

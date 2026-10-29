@@ -131,3 +131,41 @@ func TestActivationRequiresAuthentication(t *testing.T) {
 		t.Fatal("activation refused")
 	}
 }
+
+func TestWindowReceivesLaunchVersion(t *testing.T) {
+	for _, injected := range []string{"", "synthetic-version"} {
+		ctx := context.WithValue(t.Context(), versionKey{}, injected)
+		want := injected
+		if want == "" {
+			want = "development"
+		}
+		err := runUIWithWindow(ctx, t.TempDir()+"/state", io.Discard, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(windowCtx context.Context, url string, quit func(), _ <-chan struct{}) error {
+			if uiVersion(windowCtx) != want {
+				t.Errorf("window version %q, want %q", uiVersion(windowCtx), want)
+			}
+			parts := strings.Split(url, "/#")
+			req, _ := http.NewRequest("GET", parts[0]+"/api/status", nil)
+			req.Header.Set("X-Seestar-Token", parts[1])
+			client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: time.Second}
+			defer client.CloseIdleConnections()
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Error(err)
+			} else {
+				defer resp.Body.Close()
+				var status struct {
+					Version string `json:"version"`
+				}
+				if err := json.UnmarshalRead(resp.Body, &status); err != nil || status.Version != want {
+					t.Errorf("page version %q, want %q: %v", status.Version, want, err)
+				}
+			}
+			quit()
+			<-windowCtx.Done()
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}

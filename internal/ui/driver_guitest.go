@@ -176,7 +176,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     return Array.from(paint.getImageData(0,0,1,1).data).slice(0,3)};
    const l=rgb=>{const v=rgb.map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
    const rootRGB=sample(root),rootLuminance=l(rootRGB),failures=[];
-   for(const id of ['status','email','password','password-note','goal','forget','start','quit','events','custom-help','discovery-help']){
+   for(const id of ['status','email','password','password-note','goal','forget','start','quit','events','custom-help','discovery-help','releases-link']){
     const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled') || e.getClientRects().length===0) continue;
     const fg=sample(root,s.backgroundColor,s.color),bg=sample(root,s.backgroundColor);
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);

@@ -231,3 +231,6 @@ select {
 #events li + li {
   margin-top:.35rem
 }
+footer a,#port-permissions a {
+  color:var(--focus)
+}

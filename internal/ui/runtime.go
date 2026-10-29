@@ -114,6 +114,14 @@ func StateRoot(root string) (string, error) {
 	return filepath.Join(base, "seestar-wormhole"), nil
 }
 
+func uiVersion(ctx context.Context) string {
+	version, _ := ctx.Value(versionKey{}).(string)
+	if version == "" {
+		return "development"
+	}
+	return version
+}
+
 type versionKey struct{}
 
 func Run(ctx context.Context, root string, out io.Writer, run runFunc, version string) error {
@@ -178,10 +186,7 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 		}
 		return ""
 	}()}}
-	version, _ := ctx.Value(versionKey{}).(string)
-	if version == "" {
-		version = "development"
-	}
+	version := uiVersion(ctx)
 	handler := &server{version: version, host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
 	handler.native = native
 	c.save = handler.saveSettings
@@ -205,7 +210,7 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 	defer os.Remove(filepath.Join(root, bootstrapName))
 	done := make(chan error, 1)
 	go func() { done <- httpServer.Serve(listener) }()
-	windowCtx, windowDone := context.WithCancel(context.Background())
+	windowCtx, windowDone := context.WithCancel(context.WithValue(context.Background(), versionKey{}, version))
 	defer windowDone()
 	cleanupDone := make(chan struct{})
 	go func() {

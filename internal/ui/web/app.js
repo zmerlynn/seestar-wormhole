@@ -236,6 +236,7 @@ function controls() {
   $('goal-help').textContent = currentGoal === 'phone' ? 'Keep your phone and this computer on the same network. Select your Seestar in the app\'s LAN list.' : 'Only apps on this computer can connect.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const code = actionError || (!active && state?.failure?.code) || '';
+  $('port-permissions').hidden = code !== 'http_permission';
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
   text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selection entered' : 'Automatic');
@@ -243,6 +244,7 @@ function controls() {
 }
 function render(s) {
   state = s;
+  text('version',s.version);
   active = s.active;
   text('status',s.status);
   $('last-known').hidden = true;
@@ -435,6 +437,15 @@ $('copy').addEventListener('click', async () => {
     text('copy-feedback', 'Copy the selected diagnostic summary below.');
   }
 });
+// The native page uses Wails' postMessage bridge; browser mode keeps normal links.
+function openExternalLink(event) {
+  const link = event.target.closest('a[href^="https://"]');
+  if (!link || !window._wails?.invoke || event.button > 1) return;
+  event.preventDefault();
+  window._wails.invoke('seestar:open:' + link.href);
+}
+document.addEventListener('click', openExternalLink);
+document.addEventListener('auxclick', openExternalLink);
 portsTable('ports', {}, true);
 controls();
 poll();

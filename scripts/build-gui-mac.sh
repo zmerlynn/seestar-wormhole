@@ -5,7 +5,14 @@ export GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOMAXPROCS=2
 [[ $(uname -s) == Darwin ]] || { echo 'Run on macOS with Xcode Command Line Tools' >&2; exit 1; }
 [[ $(go env GOVERSION) == go1.27.3 ]] || { echo 'Go 1.27.3 required' >&2; exit 1; }
 xcode-select -p >/dev/null
-: "${1:?Usage: scripts/build-gui-mac.sh /absolute/output/directory}"
+: "${1:?Usage: scripts/build-gui-mac.sh /absolute/output/directory [version]}"
+task_version=${2:-development}
+task_bundle_version=
+if [[ "$task_version" != development ]]; then
+ [[ "$task_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo 'Version must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N' >&2; exit 1; }
+ task_bundle_version=${task_version#v}
+ task_bundle_version=${task_bundle_version%-rc.*}
+fi
 case "$1" in /*) ;; *) echo 'Output directory must be absolute' >&2; exit 1;; esac
 cd "$(dirname "$0")/.."
 export GOFLAGS= GOAMD64=v1 GOARM64=v8.0
@@ -29,8 +36,8 @@ for task_arch in arm64 amd64; do
  iconutil -c icns "$task_iconset" -o "$task_app/Resources/wormhole.icns"
  rm -r "$task_iconset"
  GOARCH="$task_arch" go build -mod=vendor -p 2 -tags gui,production -trimpath -buildvcs=false \
-  -ldflags='-s -w' -o "$task_app/MacOS/seestar-wormhole" ./cmd/seestar-wormhole
- cat > "$task_app/Info.plist" <<'PLIST'
+  -ldflags="-s -w -X main.version=$task_version" -o "$task_app/MacOS/seestar-wormhole" ./cmd/seestar-wormhole
+ cat > "$task_app/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -39,8 +46,8 @@ for task_arch in arm64 amd64; do
 <key>CFBundleIconFile</key><string>wormhole.icns</string>
 <key>CFBundleName</key><string>seestar-wormhole</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleVersion</key><string>1</string>
-<key>CFBundleShortVersionString</key><string>0.0.0</string>
+<key>CFBundleVersion</key><string>${task_bundle_version:-1}</string>
+<key>CFBundleShortVersionString</key><string>${task_bundle_version:-0.0.0}</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
