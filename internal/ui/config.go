@@ -7,6 +7,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
+	"os"
 	"time"
 )
 
@@ -70,9 +71,13 @@ func loadSettings(s *storage) (Settings, error) {
 	// Decode a fresh struct: absent members have documented defaults; unknown
 	// members are retained by JSON v2 within this schema version.
 	if err := s.read("config.json", &settings); err != nil {
+		if !os.IsNotExist(err) {
+			s.settingsRefused = true
+		}
 		return Settings{}, err
 	}
 	if _, _, err := settings.validate(); err != nil {
+		s.settingsRefused = true
 		return Settings{}, err
 	}
 	s.settingsUnknown = settings.Unknown

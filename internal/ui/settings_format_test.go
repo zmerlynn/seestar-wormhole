@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -134,6 +135,41 @@ func TestSettingsPortKeys(t *testing.T) {
 			encoded, err := json.Marshal(tc.want)
 			if err != nil || !bytes.Contains(encoded, []byte(`"local":`)) || !bytes.Contains(encoded, []byte(`"device":`)) {
 				t.Fatalf("port keys = %s, %v", encoded, err)
+			}
+		})
+	}
+}
+
+func TestSettingsRefusedFileCannotBeSaved(t *testing.T) {
+	for _, body := range []string{`{"version":2,"future":{"keep":[1,2]}}`, `{"future":{"keep":[1,2]}}`} {
+		t.Run(body, func(t *testing.T) {
+			s := testServer(t)
+			if err := s.storage.writeBytes("config.json", []byte(body)); err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			cancel()
+			err := runUI(ctx, s.storage.root, io.Discard, nil, func(string) error {
+				t.Error("opened UI for refused settings")
+				return nil
+			}, &fakeKeychain{})
+			if err == nil || err.Error() != "Saved UI settings are invalid or unsafe; check config.json in the state directory" {
+				t.Errorf("startup did not explain refusal: %v", err)
+			}
+			if _, err := loadSettings(s.storage); err == nil || actionError(err).Code != "settings" {
+				t.Errorf("expected invalid-settings error, got %v", err)
+			}
+			// Connect, password save/removal, and retry share this save callback.
+			if err := s.saveSettings(defaultSettings()); err == nil {
+				t.Error("save after refusal succeeded")
+			}
+			// Also cover the lower-level atomic replacement path.
+			if err := s.storage.writeBytes("config.json", []byte(`{"version":1}`)); err == nil {
+				t.Error("raw save after refusal succeeded")
+			}
+			after, err := os.ReadFile(filepath.Join(s.storage.root, "config.json"))
+			if err != nil || string(after) != body {
+				t.Fatalf("refused file changed: %s, %v", after, err)
 			}
 		})
 	}

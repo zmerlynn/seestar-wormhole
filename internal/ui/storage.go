@@ -21,6 +21,7 @@ type storage struct {
 	root            string
 	directory       *os.File
 	settingsUnknown jsontext.Value
+	settingsRefused bool // A failed load disables settings writes for this run.
 }
 
 func openStorage(root string) (*storage, error) {
@@ -64,6 +65,9 @@ func (s *storage) write(name string, v any) error {
 }
 
 func (s *storage) writeBytes(name string, b []byte) error {
+	if name == "config.json" && s.settingsRefused {
+		return &ActionError{Code: "settings"}
+	}
 	path := filepath.Join(s.root, name)
 	if _, err := os.Lstat(path); err == nil {
 		f, err := privatefile.OpenRead(path)

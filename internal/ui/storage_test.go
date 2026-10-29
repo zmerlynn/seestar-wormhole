@@ -32,7 +32,7 @@ func TestSettingsStorage(t *testing.T) {
 
 func TestHeadlessSettingsReadOnly(t *testing.T) {
 	st := testStorage(t)
-	if err := st.write("config.json", testSettings()); err != nil {
+	if err := st.writeBytes("config.json", []byte(`{"version":1,"future":{"keep":true}}`)); err != nil {
 		t.Fatal(err)
 	}
 	lockFile, err := os.OpenFile(filepath.Join(st.root, "ui.lock"), os.O_CREATE|os.O_RDWR, 0600)
