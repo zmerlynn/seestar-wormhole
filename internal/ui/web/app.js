@@ -17,7 +17,7 @@ if (token) {
 let initialized = false, ended = false, connected = false, pending = '', active = false;
 let lastFailure = '', state = null, statusGeneration = 0, actionError = '';
 let fieldErrors = {};
-let currentGoal = 'phone', proposedGoal = '', retryRemoval = false, diagnostic = '', noticeCode = '';
+let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '';
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
   email: 'Enter the email address of your Seestar account.', password: 'Enter a password or use a saved password.',
@@ -178,6 +178,8 @@ function controls() {
   $('forget').disabled = blocked || !!pending || password.busy;
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
   $('retry-storage').disabled = blocked || !!pending;
+  $('custom-help').hidden = currentGoal !== 'custom';
+  $('goal-help').hidden = currentGoal === 'custom';
   $('goal-help').textContent = currentGoal === 'phone' ? 'Keep this computer on the same network as your phone. In the Seestar app, connect to the telescope as if it were nearby.' : currentGoal === 'computer' ? 'Only apps on this computer can connect. A phone on the network cannot use this setup.' : 'Check Advanced settings before connecting.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const code = actionError || (!active && state?.failure?.code) || '';
@@ -349,8 +351,6 @@ for (const id of ['listen','discovery','ports','mode']) $(id).addEventListener('
 function applyGoal(goal) {
   currentGoal = goal;
   $('goal').value = goal;
-  proposedGoal = '';
-  $('switch-confirm').hidden = true;
   if (goal !== 'custom') {
     $('listen').value = goal === 'phone' ? '0.0.0.0' : '127.0.0.1';
     $('bind').value = $('listen').value;
@@ -359,19 +359,7 @@ function applyGoal(goal) {
   }
   controls();
 }
-$('goal').addEventListener('change', () => {
-  const choice = $('goal').value;
-  if (currentGoal === 'custom' && choice !== 'custom') {
-    proposedGoal = choice;
-    $('goal').value = currentGoal;
-    $('switch-confirm').hidden = false;
-  } else applyGoal(choice);
-});
-$('switch-setup').addEventListener('click', () => applyGoal(proposedGoal));
-$('keep-custom').addEventListener('click', () => {
-  proposedGoal = '';
-  $('switch-confirm').hidden = true;
-});
+$('goal').addEventListener('change', () => applyGoal($('goal').value));
 for (const id of ['listen','bind','discovery','ports']) $(id).addEventListener('change', () => {
   currentGoal = 'custom';
   $('goal').value = 'custom';

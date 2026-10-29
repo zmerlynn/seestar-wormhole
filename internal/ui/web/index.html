@@ -12,9 +12,9 @@
 <form id="settings" novalidate>
 <fieldset id="options" disabled>
 <label for="goal">Use with</label><select id="goal"><option value="phone">Phone on this network</option><option value="computer">This computer only</option><option value="custom">Custom</option></select>
+<p id="custom-help" class="error" hidden>Custom: network and port settings are set in Advanced. Choosing another setup replaces them.</p>
 <p id="trust">Use only on a trusted network. Other devices on this network can control the telescope through this computer.</p>
 <p id="goal-help">Keep this computer on the same network as your phone. In the Seestar app, connect to the telescope as if it were nearby.</p>
-<div id="switch-confirm" hidden><p>Switching setup resets custom network and port settings.</p><button id="switch-setup" type="button">Switch setup</button> <button id="keep-custom" type="button">Keep custom settings</button></div>
 <fieldset id="account">
 <legend>Account</legend>
 <label for="email">Seestar account email</label><input id="email" type="text" inputmode="email" autocomplete="username" maxlength="4096" required aria-describedby="email-error"><p id="email-error" class="error" hidden></p>
