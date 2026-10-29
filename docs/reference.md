@@ -58,7 +58,7 @@ root without moving or copying its identity. The files are:
 |---|---|
 | `config.json` | Non-secret settings, schema version 2: bind, discovery, idle duration, optional serial/model, structured port overrides (`Local` and `Device` numbers), email, saved-password association (`remember_password`). Unknown members are accepted; reads are limited to 64 KiB. |
 | `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
-| `gui.log`, `gui.log.1` | Sanitized GUI lifecycle events, at most 64 KiB each, with one rotation. |
+| `gui.log`, `gui.log.1` | Sanitized GUI events as JSON lines (UTC time, message, code, classified phase/reason), at most 64 KiB each, with one rotation. |
 | `ui.lock` | Process-lifetime UI lock. |
 | `ui-runtime.json` | Private port and per-process control token; removed on orderly exit. |
 | `webview-<random>/` | Fresh private Windows GUI engine profile for each launch. Best-effort removal after window shutdown and on later launches; locked stale profiles never block startup. |
@@ -69,6 +69,11 @@ private (`0700`) and files `0600`; unsafe existing permissions or links are
 refused. Windows uses the same protected current-user/SYSTEM ACL policy as
 installation identity. Parent directories must be trusted. The CLI's default
 identity remains memory-only; pass the same state root explicitly to share it.
+
+Details shows effective settings as JSON and recent events in local time. Copy
+diagnostic summary copies one JSON object with app/version, those settings, and
+events in UTC. It excludes account/device identifiers, addresses, secrets, and
+paths. The private log path remains visible on the page.
 
 The page uses an independent `127.0.0.1:0` listener even when the proxy bind is
 wider, with a random 256-bit token in the URL fragment and a token header on every

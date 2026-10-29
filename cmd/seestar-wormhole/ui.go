@@ -26,7 +26,7 @@ func runUICommand(ctx context.Context, o options, out, logs io.Writer) error {
 	if err == nil {
 		err = ui.Run(ctx, root, out, newUIRunner(root, logs, func(ctx context.Context, cfg proxy.Config, credentials cloud.Credentials) (commandSession, error) {
 			return proxy.NewWithCredentials(ctx, cfg, credentials)
-		}, net.Listen, proxy.CheckTCPStateSupport))
+		}, net.Listen, proxy.CheckTCPStateSupport), version)
 	}
 	if err != nil {
 		fmt.Fprintln(logs, err)

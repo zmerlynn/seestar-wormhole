@@ -155,7 +155,7 @@ caption {
 pre {
   white-space:pre-wrap;
   overflow-wrap:normal;
-  font: .85rem/1.5 system-ui,sans-serif
+  font: .85rem/1.5 ui-monospace,monospace
 }
 #notice,.error {
   color:var(--error)
@@ -199,4 +199,11 @@ select {
 }
 #ports input {
   min-width:5rem;
+}
+
+#events {
+  list-style:none;
+  padding:0;
+  font-size:.85rem;
+  white-space:pre-wrap;
 }

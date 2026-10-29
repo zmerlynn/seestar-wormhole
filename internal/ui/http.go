@@ -19,6 +19,7 @@ var assets embed.FS
 
 type server struct {
 	host, token string
+	version     string
 	controller  *controller
 	storage     *storage
 	mu          sync.Mutex
@@ -117,7 +118,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defaults, _ := proxyrun.MergePorts(nil)
 		events, path, logFailed := s.controller.log.snapshot()
 		s.respond(w, struct {
-			Settings pageSettings `json:"settings"`
+			Settings  pageSettings       `json:"settings"`
+			Version   string             `json:"version"`
+			Effective diagnosticSettings `json:"effective"`
 			runView
 			PortDefaults []proxyrun.Port `json:"port_defaults"`
 			Mappings     [][2]uint16     `json:"mappings"`
@@ -126,7 +129,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Events       []event         `json:"events"`
 			LogPath      string          `json:"log_path"`
 			LogFailed    bool            `json:"log_failed"`
-		}{pageSettingsFor(settings), view, defaults, mappings, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
+		}{pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, mappings, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
 		return
 	}
 	if r.Method != "POST" {
@@ -250,4 +253,39 @@ type pageSettings struct {
 func pageSettingsFor(s Settings) pageSettings {
 	d, _ := time.ParseDuration(s.Idle)
 	return pageSettings{s, d.Minutes()}
+}
+
+// One allowlisted projection feeds both Settings and the copied summary.
+// It contains no account, device, address, credential, token, or path.
+type diagnosticSettings struct {
+	Idle      diagnosticIdle    `json:"idle"`
+	Listen    string            `json:"listen"`
+	Discovery bool              `json:"discovery"`
+	Ports     map[uint16]uint16 `json:"ports"`
+}
+type diagnosticIdle struct {
+	Mode    string  `json:"mode"`
+	Minutes float64 `json:"minutes"`
+}
+
+func diagnosticSettingsFor(s Settings, ports []proxyrun.Port) diagnosticSettings {
+	d, _ := time.ParseDuration(s.Idle)
+	v := diagnosticSettings{Idle: diagnosticIdle{Mode: "keep_connected", Minutes: d.Minutes()}, Listen: "other", Discovery: s.Discovery, Ports: make(map[uint16]uint16)}
+	if d > 0 {
+		v.Idle.Mode = "on_demand"
+	}
+	switch s.Bind {
+	case "0.0.0.0":
+		v.Listen = "all_networks"
+	case "127.0.0.1", "::1":
+		v.Listen = "this_computer"
+	}
+	defaults, _ := proxyrun.MergePorts(nil)
+	for _, p := range defaults {
+		v.Ports[p.Device] = 0
+	}
+	for _, p := range ports {
+		v.Ports[p.Device] = p.Local
+	}
+	return v
 }

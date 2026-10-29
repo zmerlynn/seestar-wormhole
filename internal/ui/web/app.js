@@ -271,15 +271,15 @@ function render(s) {
   $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle === '0' ? 'Keep connected' : 'Connect when an app needs the telescope');
   $('phone-steps').hidden = !(active && s.discovery_started);
   portsTable('running-ports', Object.fromEntries(s.mappings.map(([local, remote]) => [remote, local])));
-  $('connection-mode').textContent = 'Connection timing: ' + ((active ? run.idle : settings().idle) === '0' ? 'Keep connected' : 'Connect when an app needs the telescope');
-  const map = s.mappings;
-  $('mappings').textContent = 'Computer → telescope\n' + map.map(p => p.join(' → ')).join('\n');
-  $('events').textContent = s.events.join('\n');
+  $('effective-settings').textContent = JSON.stringify(s.effective, null, 2);
+  $('events').replaceChildren(...s.events.map(event => {
+    const item = document.createElement('li');
+    item.textContent = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + event.message;
+    return item;
+  }));
   $('log-path').textContent = s.log_path ? 'Private rolling log: ' + s.log_path : '';
   $('log-error').hidden = !s.log_failed;
-  // Copy only fixed lifecycle events and numeric service mappings. No path,
-  // account, device selection, bind address, URL, token, or raw settings.
-  diagnostic = 'seestar-wormhole\n' + $('connection-mode').textContent + '\n' + $('mappings').textContent + '\n' + s.events.join('\n');
+  diagnostic = JSON.stringify({app: 'seestar-wormhole', version: s.version, settings: s.effective, events: s.events}, null, 2);
   controls();
 }
 async function refresh() {
@@ -426,14 +426,14 @@ $('mode').addEventListener('change', controls);
 for (const id of ['serial', 'model']) $(id).addEventListener('input', controls);
 $('copy').addEventListener('click', async () => {
   try {
-    await navigator.clipboard.writeText(diagnostic + '\n' + $('error-code').textContent);
-    say('Diagnostic summary copied.');
+    await navigator.clipboard.writeText(diagnostic);
+    text('copy-feedback', 'Diagnostic summary copied.');
   } catch (_) {
     $('diagnostic-copy').hidden = false;
-    $('diagnostic-copy').value = diagnostic + '\n' + $('error-code').textContent;
+    $('diagnostic-copy').value = diagnostic;
     $('diagnostic-copy').focus();
     $('diagnostic-copy').select();
-    say('Select and copy the diagnostic summary below.');
+    text('copy-feedback', 'Select and copy the diagnostic summary below.');
   }
 });
 controls();

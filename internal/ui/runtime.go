@@ -113,8 +113,11 @@ func StateRoot(root string) (string, error) {
 	}
 	return filepath.Join(base, "seestar-wormhole"), nil
 }
-func Run(ctx context.Context, root string, out io.Writer, run runFunc) error {
-	return runPlatformUI(ctx, root, out, run)
+
+type versionKey struct{}
+
+func Run(ctx context.Context, root string, out io.Writer, run runFunc, version string) error {
+	return runPlatformUI(context.WithValue(ctx, versionKey{}, version), root, out, run)
 }
 
 // windowFunc runs on the caller's main thread. Its context ends only after
@@ -175,7 +178,11 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 		}
 		return ""
 	}()}}
-	handler := &server{host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
+	version, _ := ctx.Value(versionKey{}).(string)
+	if version == "" {
+		version = "development"
+	}
+	handler := &server{version: version, host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
 	handler.native = native
 	c.save = handler.saveSettings
 	c.lastSaved = settings
