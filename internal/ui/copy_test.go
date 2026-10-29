@@ -1,15 +1,14 @@
 package ui
 
 import (
-	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"strings"
 	"testing"
 )
 
 func TestPortErrorsExplainAcceptedSyntax(t *testing.T) {
-	want := "Enter one computer-port:telescope-port pair per line. Computer ports must be 0–65535 and telescope ports 1–65535. Use each telescope port and each nonzero computer port only once."
-	for _, ports := range [][]string{{"malformed"}, {"65536:80"}, {"1:0"}, {"1234:80", "1234:445"}} {
+	want := "Enter a local port from 1 to 65535, or leave it empty to turn the service off. Use each local port only once."
+	for _, ports := range [][]proxyrun.Port{{{Device: 999}}, {{Local: 1234, Device: 80}, {Local: 1234, Device: 445}}, {{Device: 80}, {Device: 80}}} {
 		s := testSettings()
 		s.Ports = ports
 		_, _, err := s.validate()
@@ -46,13 +45,13 @@ func TestAllServicesDisabledExplainsRecovery(t *testing.T) {
 	s := testSettings()
 	s.Ports = nil
 	for _, p := range defaults {
-		s.Ports = append(s.Ports, fmt.Sprintf("0:%d", p.Device))
+		s.Ports = append(s.Ports, proxyrun.Port{Device: p.Device})
 	}
 	_, _, err = s.validate()
 	if err == nil || actionError(err).Code != "ports_empty" || actionError(err).Field != "ports" {
 		t.Fatal("empty listener set lacks its ports error", err)
 	}
-	if errorCopy("ports_empty") != "Enable at least one service. In Advanced, remove a port override that turns a service off." {
+	if errorCopy("ports_empty") != "Enable at least one service by entering a local port in Advanced." {
 		t.Fatal("empty listener error does not explain recovery")
 	}
 }

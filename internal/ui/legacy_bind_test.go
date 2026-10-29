@@ -7,7 +7,7 @@ import (
 func TestLegacyOSResolvedBindLoads(t *testing.T) {
 	st := testStorage(t)
 	// Literal schema-v1 fixture: the old UI and TCP CLI allowed OS-resolved binds.
-	if err := st.writeBytes("config.json", []byte(`{"version":1,"bind":"localhost","idle":"0"}`)); err != nil {
+	if err := st.writeBytes("config.json", []byte(`{"version":2,"bind":"localhost","idle":"0"}`)); err != nil {
 		t.Fatal(err)
 	}
 	s, err := loadSettings(st)

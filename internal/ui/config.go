@@ -11,23 +11,23 @@ import (
 
 // Settings contains only saved nonsecret choices. Ports contains overrides only.
 type Settings struct {
-	Discovery bool     `json:"discovery"`
-	Version   int      `json:"version"`
-	Bind      string   `json:"bind"`
-	Idle      string   `json:"idle"`
-	Serial    string   `json:"serial"`
-	Model     string   `json:"model"`
-	Ports     []string `json:"ports"`
-	Email     string   `json:"email"`
-	Remember  bool     `json:"remember_password"`
+	Discovery bool            `json:"discovery"`
+	Version   int             `json:"version"`
+	Bind      string          `json:"bind"`
+	Idle      string          `json:"idle"`
+	Serial    string          `json:"serial"`
+	Model     string          `json:"model"`
+	Ports     []proxyrun.Port `json:"ports"`
+	Email     string          `json:"email"`
+	Remember  bool            `json:"remember_password"`
 }
 
 func defaultSettings() Settings {
-	return Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []string{"80:80"}}
+	return Settings{Version: 2, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []proxyrun.Port{{Local: 80, Device: 80}}}
 }
 func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 	idle, err := time.ParseDuration(s.Idle)
-	if s.Version != 1 {
+	if s.Version != 2 {
 		return nil, 0, &ActionError{Code: "settings"}
 	}
 	if err != nil || idle < 0 {
@@ -47,14 +47,14 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 			return nil, 0, &ActionError{Code: "email", Field: "email"}
 		}
 	}
-	var ports []proxyrun.Port
+	seen := make(map[uint16]bool)
 	for _, p := range s.Ports {
-		ports, err = proxyrun.ParsePort(ports, p)
-		if err != nil {
+		if !guiPort(p.Device) || seen[p.Device] {
 			return nil, 0, &ActionError{Code: "ports", Field: "ports"}
 		}
+		seen[p.Device] = true
 	}
-	ports, err = proxyrun.MergePorts(ports)
+	ports, err := proxyrun.MergePorts(s.Ports)
 	if err != nil {
 		return nil, 0, &ActionError{Code: "ports", Field: "ports"}
 	}
@@ -64,7 +64,7 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 	return ports, idle, nil
 }
 func loadSettings(s *storage) (Settings, error) {
-	settings := Settings{Bind: "127.0.0.1", Idle: "0", Ports: []string{}}
+	settings := Settings{Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{}}
 	settings.Version = 0
 	// Decode a fresh struct: absent members have documented defaults; unknown
 	// members are accepted by JSON v2 within this schema version.
@@ -89,3 +89,12 @@ func LoadSettings(root string) (Settings, error) {
 }
 
 func (s Settings) lazy() bool { d, _ := time.ParseDuration(s.Idle); return d > 0 }
+
+// The GUI edits only the ten standard services. CLI mappings remain unrestricted.
+func guiPort(remote uint16) bool {
+	switch remote {
+	case 4700, 80, 4800, 4804, 4801, 4554, 4555, 4350, 4361, 445:
+		return true
+	}
+	return false
+}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"net"
 	"os"
@@ -25,7 +26,7 @@ func savedConfigRoot(t *testing.T) string {
 	if err := os.Mkdir(root, 0700); err != nil {
 		t.Fatal(err)
 	}
-	s := ui.Settings{Version: 1, Bind: "127.0.0.2", Idle: "2m", Serial: "SYNTHETIC_SERIAL", Model: "S50", Ports: []string{"1445:445", "0:80"}, Email: "saved@example.invalid"}
+	s := ui.Settings{Version: 2, Bind: "127.0.0.2", Idle: "2m", Serial: "SYNTHETIC_SERIAL", Model: "S50", Ports: []proxyrun.Port{{Local: 1445, Device: 445}, {Local: 0, Device: 80}}, Email: "saved@example.invalid"}
 	b, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
@@ -227,7 +228,7 @@ func TestSavedConfigCredentialRefusalBeforeListeners(t *testing.T) {
 
 func TestSavedPhoneDiscoveryAndExplicitOverride(t *testing.T) {
 	root := savedConfigRoot(t)
-	s := ui.Settings{Version: 1, Bind: "0.0.0.0", Idle: "0", Discovery: true, Ports: []string{"80:80"}}
+	s := ui.Settings{Version: 2, Bind: "0.0.0.0", Idle: "0", Discovery: true, Ports: []proxyrun.Port{{Local: 80, Device: 80}}}
 	b, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)

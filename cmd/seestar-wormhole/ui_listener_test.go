@@ -6,6 +6,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 	"io"
 	"log/slog"
@@ -57,7 +58,7 @@ func TestUIRunnerWiresDiscoveryAndArmedBoundary(t *testing.T) {
 		}, func(context.Context) error { return nil })
 	done := make(chan error, 1)
 	go func() {
-		done <- runner(ctx, ui.Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "2m", Ports: []string{"80:80"}}, cloud.Credentials{}, status)
+		done <- runner(ctx, ui.Settings{Version: 2, Bind: "0.0.0.0", Discovery: true, Idle: "2m", Ports: []proxyrun.Port{{Local: 80, Device: 80}}}, cloud.Credentials{}, status)
 	}()
 	select {
 	case <-status.Updates():

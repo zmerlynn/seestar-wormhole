@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"sync"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
@@ -50,7 +51,7 @@ func (c *controller) start(s Settings, password string) error {
 	c.stopping = false
 	c.final = ""
 	c.failure = nil
-	s.Ports = append([]string(nil), s.Ports...)
+	s.Ports = append([]proxyrun.Port(nil), s.Ports...)
 	c.runSettings = s
 	c.saved, c.saveAttempted = false, false
 	done, status := c.done, c.status
@@ -213,7 +214,7 @@ func (c *controller) persistLocked(s Settings) error {
 		return nil
 	}
 	s = c.credentials.association(s)
-	s.Ports = append([]string(nil), s.Ports...)
+	s.Ports = append([]proxyrun.Port(nil), s.Ports...)
 	err := c.save(s)
 	c.mu.Lock()
 	c.saved = err == nil

@@ -40,6 +40,14 @@ shorter shutdown deadline. Launch again with the same state directory to bring
 the native window forward or reopen the browser page. A separately running `proxy` command is independent;
 conflicting forwarding ports must be freed before starting another run.
 
+Advanced shows ten fixed service rows with Local, Remote, and Purpose columns.
+Leave Local empty to disable a service; enabled local ports must be unique and
+within 1–65535. Phone setup uses local 80 for remote 80; computer setup uses 8080.
+SMB uses local 4445 for remote 445. The CLI retains arbitrary port mappings.
+Schema 1 files with text port overrides are rejected; re-enter settings in a
+new state directory to use schema 2. Existing state files are never overwritten
+on a failed load.
+
 The default state root is `os.UserConfigDir()/seestar-wormhole`: on Linux,
 `$XDG_CONFIG_HOME/seestar-wormhole` or `$HOME/.config/seestar-wormhole`; on macOS,
 `$HOME/Library/Application Support/seestar-wormhole`; on Windows,
@@ -48,7 +56,7 @@ root without moving or copying its identity. The files are:
 
 | File | Purpose |
 |---|---|
-| `config.json` | Non-secret settings, schema version 1: bind, discovery, idle duration, optional serial/model, port overrides, email, saved-password association (`remember_password`). Unknown members are accepted; reads are limited to 64 KiB. |
+| `config.json` | Non-secret settings, schema version 2: bind, discovery, idle duration, optional serial/model, structured port overrides (`Local` and `Device` numbers), email, saved-password association (`remember_password`). Unknown members are accepted; reads are limited to 64 KiB. |
 | `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
 | `gui.log`, `gui.log.1` | Sanitized GUI lifecycle events, at most 64 KiB each, with one rotation. |
 | `ui.lock` | Process-lifetime UI lock. |

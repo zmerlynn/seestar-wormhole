@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"log/slog"
 	"net"
@@ -48,7 +49,7 @@ func TestHTTPFailureClosesEarlierListeners(t *testing.T) {
 				return nil, errors.New("unexpected")
 			},
 			func(context.Context) error { return nil })
-		err := runner(t.Context(), ui.Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []string{"80:80"}}, cloud.Credentials{}, proxy.NewStatus())
+		err := runner(t.Context(), ui.Settings{Version: 2, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []proxyrun.Port{{Local: 80, Device: 80}}}, cloud.Credentials{}, proxy.NewStatus())
 		var e *ui.ActionError
 		want := "http_permission"
 		if cause == syscall.EADDRINUSE {
@@ -79,7 +80,7 @@ func TestRunnerRefusesIncompatibleBeforeIO(t *testing.T) {
 			return nil, errors.New("unexpected")
 		},
 		func(context.Context) error { t.Error("TCP check called"); return nil })
-	if err := runner(t.Context(), ui.Settings{Version: 1, Bind: "127.0.0.1", Discovery: true, Idle: "0"}, cloud.Credentials{}, proxy.NewStatus()); err == nil {
+	if err := runner(t.Context(), ui.Settings{Version: 2, Bind: "127.0.0.1", Discovery: true, Idle: "0"}, cloud.Credentials{}, proxy.NewStatus()); err == nil {
 		t.Fatal("incompatible accepted")
 	}
 }
@@ -99,7 +100,7 @@ func TestNoListenersCannotArmLazyRun(t *testing.T) {
 			return nil, errors.New("unexpected")
 		},
 		func(context.Context) error { return nil })
-	s := ui.Settings{Version: 1, Bind: "127.0.0.1", Idle: "2m", Ports: []string{"0:4700", "0:445", "0:80", "0:4350", "0:4554", "0:4555", "0:4801", "0:4800", "0:4804", "0:4361"}}
+	s := ui.Settings{Version: 2, Bind: "127.0.0.1", Idle: "2m", Ports: []proxyrun.Port{{Local: 0, Device: 4700}, {Local: 0, Device: 445}, {Local: 0, Device: 80}, {Local: 0, Device: 4350}, {Local: 0, Device: 4554}, {Local: 0, Device: 4555}, {Local: 0, Device: 4801}, {Local: 0, Device: 4800}, {Local: 0, Device: 4804}, {Local: 0, Device: 4361}}}
 	if err := runner(t.Context(), s, cloud.Credentials{}, status); err == nil {
 		t.Fatal("no-listener run unexpectedly succeeded")
 	}

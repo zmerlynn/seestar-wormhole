@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json/v2"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"testing"
 )
 
@@ -20,7 +21,7 @@ func TestRemoveDoesNotSaveUnstartedDraft(t *testing.T) {
 			draft := working
 			draft.Idle = "17m"
 			if invalid {
-				draft.Ports = []string{"not-a-mapping"}
+				draft.Ports = []proxyrun.Port{{Device: 999}}
 			}
 			b, _ := json.Marshal(input{Settings: draft})
 			if w := doPost(s, "/api/forget", string(b)); w.Code != 200 {

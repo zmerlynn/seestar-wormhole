@@ -22,7 +22,7 @@ func TestFirstRunPhoneAndSavedExposure(t *testing.T) {
 		t.Fatal("phone HTTP mapping missing")
 	}
 	st := testStorage(t)
-	if err := st.writeBytes("config.json", []byte(`{"version":1,"bind":"127.0.0.1","idle":"0"}`)); err != nil {
+	if err := st.writeBytes("config.json", []byte(`{"version":2,"bind":"127.0.0.1","idle":"0"}`)); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := loadSettings(st)
@@ -39,7 +39,7 @@ func TestFieldErrorCodes(t *testing.T) {
 		{"discovery_bind", "bind", func(s *Settings) { s.Bind = "invalid" }},
 		{"idle", "idle", func(s *Settings) { s.Idle = "-1m" }},
 		{"email", "email", func(s *Settings) { s.Email = "invalid" }},
-		{"ports", "ports", func(s *Settings) { s.Ports = []string{"4700:80"} }},
+		{"ports", "ports", func(s *Settings) { s.Ports = []proxyrun.Port{{Local: 4700, Device: 80}} }},
 	} {
 		t.Run(tc.code, func(t *testing.T) {
 			s := testSettings()

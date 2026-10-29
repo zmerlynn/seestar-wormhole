@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json/v2"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
+"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"mime"
 	"net/http"
@@ -113,17 +114,19 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		for _, p := range ports {
 			mappings = append(mappings, [2]uint16{p.Local, p.Device})
 		}
+		defaults, _ := proxyrun.MergePorts(nil)
 		events, path, logFailed := s.controller.log.snapshot()
 		s.respond(w, struct {
 			Settings pageSettings `json:"settings"`
 			runView
+			PortDefaults []proxyrun.Port `json:"port_defaults"`
 			Mappings  [][2]uint16  `json:"mappings"`
 			Password  passwordInfo `json:"password"`
 			Native    bool         `json:"native"`
 			Events    []string     `json:"events"`
 			LogPath   string       `json:"log_path"`
 			LogFailed bool         `json:"log_failed"`
-		}{pageSettingsFor(settings), view, mappings, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
+		}{pageSettingsFor(settings), view, defaults, mappings, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
 		return
 	}
 	if r.Method != "POST" {

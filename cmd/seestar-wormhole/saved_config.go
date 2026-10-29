@@ -40,21 +40,15 @@ func loadProxySettings(o *options, flags *pflag.FlagSet) error {
 	// CLI overrides replace the saved override for the same device port.
 	// Drop replaced entries before validating the merged local-port uniqueness.
 	for _, mapping := range s.Ports {
-		var saved mappings
-		if err := saved.Set(mapping); err != nil {
-			return err
-		}
 		replaced := false
 		for _, explicit := range o.ports {
-			if explicit.Device == saved[0].Device {
+			if explicit.Device == mapping.Device {
 				replaced = true
 				break
 			}
 		}
 		if !replaced {
-			if err := o.ports.Set(mapping); err != nil {
-				return err
-			}
+			o.ports = append(o.ports, mapping)
 		}
 	}
 	return nil

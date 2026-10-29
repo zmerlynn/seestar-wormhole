@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json/v2"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"net/http/httptest"
 	"testing"
 
@@ -12,7 +13,7 @@ func TestStatusMappingsUseSharedMergerAndRunningSnapshot(t *testing.T) {
 	s := testServer(t)
 	for _, active := range []bool{false, true} {
 		settings := testSettings()
-		settings.Ports = []string{"0:80", "1234:445"}
+		settings.Ports = []proxyrun.Port{{Local: 0, Device: 80}, {Local: 1234, Device: 445}}
 		if active {
 			s.controller.done = make(chan struct{})
 			s.controller.status = proxy.NewStatus()

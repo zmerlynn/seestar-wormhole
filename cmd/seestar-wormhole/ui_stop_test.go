@@ -37,7 +37,7 @@ func TestUIStopLogsLikeCLISteadyShutdown(t *testing.T) {
 				return &stoppedUISession{&idleCommandSession{done: make(chan struct{})}, outcome}, nil
 			}
 			runner := newUIRunner(t.TempDir(), &logs, newSession, func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }, func(context.Context) error { return nil })
-			err := runner(ctx, ui.Settings{Version: 1, Bind: "127.0.0.1", Idle: "0"}, cloud.Credentials{}, proxy.NewStatus())
+			err := runner(ctx, ui.Settings{Version: 2, Bind: "127.0.0.1", Idle: "0"}, cloud.Credentials{}, proxy.NewStatus())
 			if !errors.Is(err, context.Canceled) || errors.Is(err, session.ErrStop) != cleanupFailure {
 				t.Fatalf("unexpected run result: %v", err)
 			}

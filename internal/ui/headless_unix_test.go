@@ -24,7 +24,7 @@ func TestHeadlessSettingsPrivateFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := filepath.Join(t.TempDir(), "target")
-	if err := os.WriteFile(target, []byte(`{"version":1}`), 0600); err != nil {
+	if err := os.WriteFile(target, []byte(`{"version":2}`), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Symlink(target, path); err != nil {

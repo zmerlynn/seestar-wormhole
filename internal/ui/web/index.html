@@ -33,14 +33,8 @@
 <div id="other-address" hidden><label for="bind">Local network address</label><input id="bind" type="text" spellcheck="false" aria-describedby="bind-help bind-error"><p id="bind-help">Enter an IPv4 address assigned to this computer.</p></div><p id="bind-error" class="error" hidden></p>
 <label class="check"><input id="discovery" type="checkbox" aria-describedby="discovery-help discovery-error"> Let the Seestar app find this telescope</label>
 <p id="discovery-help">Answers Seestar app discovery requests on this network.</p><p id="discovery-error" class="error" hidden></p>
-<label for="ports">Port overrides (optional)</label><textarea id="ports" rows="4" spellcheck="false" aria-describedby="ports-help ports-error"></textarea>
-<p id="ports-help">Leave empty to use the ports for the selected setup. Enter one computer-port:telescope-port pair per line. A computer port of 0 turns that service off.</p><p id="ports-error" class="error" hidden></p>
-<table><caption>What the ports do</caption><thead><tr><th>Service</th><th>Purpose and default</th></tr></thead><tbody>
-<tr><td>Telescope control</td><td>Commands from control clients; keep for normal use. Computer 4700 → telescope 4700.</td></tr>
-<tr><td>File sharing (SMB)</td><td>File listing and downloads. Computer 4445 → telescope 445.</td></tr>
-<tr><td>Web and album/image access (HTTP)</td><td>Phone album/image URLs need computer 80 → telescope 80. Computer-only setup uses 8080 → 80.</td></tr>
-<tr><td>Imaging and other device services</td><td>Keep defaults for normal app use. Imaging includes telescope port 4800. Remaining default mappings stay enabled.</td></tr>
-</tbody></table>
+<p id="ports-help">Leave a local port empty to turn that service off.</p>
+<div id="ports" tabindex="-1" aria-describedby="ports-help ports-error"></div><p id="ports-error" class="error" hidden></p>
 </details>
 <p>Your settings are saved after a successful connection.</p>
 </fieldset>

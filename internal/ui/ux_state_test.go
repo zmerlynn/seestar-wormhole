@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
@@ -61,7 +62,7 @@ func TestConnectNeverWritesKeychain(t *testing.T) {
 func TestExplicitPasswordSaveAssociationRelaunch(t *testing.T) {
 	s := testServer(t)
 	s.controller.save = s.saveSettings
-	body := `{"settings":{"version":1,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
+	body := `{"settings":{"version":2,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
 	w := doPost(s, "/api/password/save", body)
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
@@ -97,7 +98,7 @@ func TestSettingsSaveBoundarySnapshotAndRetry(t *testing.T) {
 				calls := 0
 				c.save = func(got Settings) error {
 					calls++
-					if got.Email != testSettings().Email || got.Ports[0] != "80:80" {
+					if got.Email != testSettings().Email || got.Ports[0] != (proxyrun.Port{Local: 80, Device: 80}) {
 						t.Errorf("wrong snapshot: %+v", got)
 					}
 					if calls == 1 {
@@ -112,7 +113,7 @@ func TestSettingsSaveBoundarySnapshotAndRetry(t *testing.T) {
 				if err := c.start(s, testPassword); err != nil {
 					t.Fatal(err)
 				}
-				s.Ports[0] = "0:80"
+				s.Ports[0] = proxyrun.Port{Device: 80}
 				synctest.Wait()
 				if calls != 0 {
 					t.Fatal("saved on acknowledgment")
@@ -263,7 +264,7 @@ func TestPasswordSaveStorageFailureAndRetry(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(s.storage.root, "config.json"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"settings":{"version":1,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
+	body := `{"settings":{"version":2,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
 	if w := doPost(s, "/api/password/save", body); w.Code != 400 {
 		t.Fatal("storage failure accepted")
 	}

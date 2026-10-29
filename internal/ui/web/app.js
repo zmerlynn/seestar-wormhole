@@ -16,7 +16,7 @@ if (token) {
 }
 let initialized = false, ended = false, connected = false, pending = '', active = false;
 let lastFailure = '', state = null, statusGeneration = 0, actionError = '';
-let fieldErrors = {};
+let fieldErrors = {}, portDefaults = [];
 let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '';
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
@@ -56,15 +56,58 @@ function accountEmail() {
 }
 function settings() {
   return {
-    version: 1, bind: $('listen').value === 'other' ? $('bind').value.trim() : $('listen').value,
+    version: 2, bind: $('listen').value === 'other' ? $('bind').value.trim() : $('listen').value,
     discovery: $('discovery').checked, idle: $('mode').value === 'eager' ? '0' : Number($('idle').value) + 'm',
-    serial: $('serial').value.trim(), model: $('model').value.trim(), ports: $('ports').value.split(/\s+/).filter(Boolean),
+    serial: $('serial').value.trim(), model: $('model').value.trim(), ports: services.map(([Device]) => ({Device, Local: Number($('port-' + Device).value)})),
     email: accountEmail(), remember_password: usingSaved()
   };
 }
+const services = [
+  [4700, 'Telescope control'], [80, 'Web files (image downloads)'],
+  [4800, 'Main camera images'], [4804, 'Wide camera images'],
+  [4801, 'Album and files'], [4554, 'Live video, main camera'],
+  [4555, 'Live video, wide camera (some models)'], [4350, 'Firmware updater'],
+  [4361, 'Firmware upload'], [445, 'File sharing (SMB)']
+];
+function portValues(s) {
+  const ports = Object.fromEntries(portDefaults.map(p => [p.Device, p.Local]));
+  for (const p of s.ports || []) ports[p.Device] = p.Local;
+  return ports;
+}
+function portsTable(id, ports, editable = false) {
+  const table = document.createElement('table');
+  const head = table.createTHead().insertRow();
+  for (const name of ['Local', 'Remote', 'Purpose']) {
+    const th = document.createElement('th');
+    th.textContent = name;
+    head.append(th);
+  }
+  const body = table.createTBody();
+  for (const [remote, purpose] of services) {
+    const row = body.insertRow(), local = row.insertCell();
+    if (editable) {
+      const input = document.createElement('input');
+      input.id = 'port-' + remote;
+      input.type = 'number';
+      input.min = '1';
+      input.max = '65535';
+      input.step = '1';
+      input.setAttribute('aria-label', 'Local port for ' + purpose);
+      input.setAttribute('aria-describedby', 'ports-help ports-error');
+      input.value = ports[remote] || '';
+      input.addEventListener('input', () => {clearField('ports'); customGoal();});
+      local.append(input);
+    } else local.textContent = ports[remote] || 'Off';
+    row.insertCell().textContent = remote;
+    row.insertCell().textContent = purpose;
+  }
+  $(id).replaceChildren(table);
+}
 function goalFor(s) {
-  if (s.bind === '0.0.0.0' && s.discovery && (s.ports || []).join() === '80:80') return 'phone';
-  if (s.bind === '127.0.0.1' && !s.discovery && !(s.ports || []).length) return 'computer';
+  const ports = portValues(s);
+  const standard = services.every(([remote]) => ports[remote] === (remote === 80 && s.discovery ? 80 : portValues({})[remote]));
+  if (standard && s.bind === '0.0.0.0' && s.discovery) return 'phone';
+  if (standard && s.bind === '127.0.0.1' && !s.discovery) return 'computer';
   return 'custom';
 }
 function load(s) {
@@ -74,7 +117,7 @@ function load(s) {
   $('mode').value = s.idle_minutes > 0 ? 'idle' : 'eager';
   // The server projects parsed duration to minutes, including old compound durations.
   $('idle').value = s.idle_minutes || 2;
-  $('ports').value = (s.ports || []).join('\n');
+  portsTable('ports', portValues(s), true);
   currentGoal = goalFor(s);
   $('goal').value = currentGoal;
 
@@ -88,6 +131,7 @@ function usingSaved() {
 }
 function clearField(field) {
   $(field).removeAttribute('aria-invalid');
+  if (field === 'ports') for (const [remote] of services) $('port-' + remote)?.removeAttribute('aria-invalid');
   if (field === 'bind') $('listen').removeAttribute('aria-invalid');
   $(field + '-error').hidden = true;
   delete fieldErrors[field];
@@ -146,6 +190,18 @@ function validate(passwordSave = false) {
     return false;
   }
   if (passwordSave) return true;
+  const locals = new Set();
+  for (const [remote] of services) {
+    const input = $('port-' + remote), value = Number(input.value);
+    if (!input.validity.valid || (value && locals.has(value))) {
+      actionError = 'ports';
+      fieldError('ports', 'Enter a local port from 1 to 65535, or leave it empty to turn the service off. Use each local port only once.', 'ports');
+      input.setAttribute('aria-invalid', 'true');
+      input.focus();
+      return false;
+    }
+    if (value) locals.add(value);
+  }
   if ($('mode').value === 'idle' && !(Number($('idle').value) > 0)) {
     actionError = 'idle';
     fieldError('idle',fieldCopy.idle,'idle',true);
@@ -241,6 +297,7 @@ async function refresh() {
   connected = true;
   const first = !initialized;
   if (first) {
+    portDefaults = s.port_defaults;
     load(s.settings);
     initialized = true;
   }
@@ -355,16 +412,17 @@ function applyGoal(goal) {
     $('listen').value = goal === 'phone' ? '0.0.0.0' : '127.0.0.1';
     $('bind').value = $('listen').value;
     $('discovery').checked = goal === 'phone';
-    $('ports').value = goal === 'phone' ? '80:80' : '';
+    portsTable('ports', portValues({ports: goal === 'phone' ? [{Device: 80, Local: 80}] : []}), true);
   }
   controls();
 }
 $('goal').addEventListener('change', () => applyGoal($('goal').value));
-for (const id of ['listen','bind','discovery','ports']) $(id).addEventListener('change', () => {
+function customGoal() {
   currentGoal = 'custom';
   $('goal').value = 'custom';
   controls();
-});
+}
+for (const id of ['listen','bind','discovery']) $(id).addEventListener('change', customGoal);
 $('mode').addEventListener('change', controls);
 for (const id of ['serial', 'model']) $(id).addEventListener('input', controls);
 $('copy').addEventListener('click', async () => {

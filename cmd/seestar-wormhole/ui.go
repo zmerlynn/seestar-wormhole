@@ -46,11 +46,7 @@ func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(conte
 			return err
 		}
 		runOptions := options{command: commandUI, bind: s.Bind, lanDiscovery: s.Discovery, uiStatus: status, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater}
-		for _, p := range s.Ports {
-			if err := runOptions.ports.Set(p); err != nil {
-				return err
-			}
-		}
+		runOptions.ports = append(mappings(nil), s.Ports...)
 		if err := validateOptions(&runOptions); err != nil {
 			return err
 		}
