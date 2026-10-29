@@ -416,10 +416,9 @@ func (d *guiTestDriver) drive() error {
 	return d.release()
 }
 
+// Captures must survive a timed-out driver or an unresponsive JS bridge.
+// Successful state probes already wait for animation frames; Capture checks paint.
 func (d *guiTestDriver) capture(ctx context.Context, path string) error {
-	if err := d.probe(`true`); err != nil {
-		return err
-	}
 	return guitest.Capture(ctx, path, uintptr(d.w.NativeWindow()))
 }
 
