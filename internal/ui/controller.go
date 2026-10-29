@@ -63,7 +63,7 @@ func (c *controller) start(s Settings, password string) error {
 			for {
 				select {
 				case text := <-status.Updates():
-					c.record(uiText(text))
+					c.recordProgress(uiText(text))
 					c.saveAtBoundary(status, s)
 				case <-finished:
 					c.saveAtBoundary(status, s)
@@ -91,10 +91,10 @@ func (c *controller) start(s Settings, password string) error {
 		if diagnostic.CleanupError(err) != nil {
 			c.failure = &ActionError{Code: "release"}
 		}
-		if c.final == "Stopped" && status.WasReady() {
+		if c.final == "Stopped" {
 			c.final = "Stopped. The telescope may take a minute to release the session."
 		}
-		c.record(c.final)
+		c.log.addFailure(c.final, err)
 		c.done = nil
 		c.cancel = nil
 		close(done)
@@ -183,6 +183,14 @@ func runObserved(cancel context.CancelFunc, rejected <-chan struct{}, run func()
 	}
 }
 
+// A queued Ready update must not announce a new connection during Stop.
+func (c *controller) recordProgress(text string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.stopping {
+		c.record(text)
+	}
+}
 func (c *controller) record(text string) {
 	if c.log != nil {
 		c.log.add(text)

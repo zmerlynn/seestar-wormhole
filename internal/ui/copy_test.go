@@ -32,7 +32,7 @@ func TestErrorCodesBelongInDiagnosticEvents(t *testing.T) {
 	log := &eventLog{}
 	log.add(errorCopy("signin"))
 	events, _, _ := log.snapshot()
-	if len(events) != 1 || !strings.Contains(events[0], "\tsignin\t") {
+	if len(events) != 1 || events[0].Code != "signin" {
 		t.Fatal("diagnostic event lost the error classification")
 	}
 }

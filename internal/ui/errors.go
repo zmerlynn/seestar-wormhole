@@ -28,6 +28,9 @@ func actionError(err error) *ActionError {
 		return &ActionError{Code: "email", Field: "email"}
 	}
 	phase, reason := diagnostic.Fields(err, "")
+	if reason == "busy" || reason == "ownership_uncertain" || reason == "release_abandoned" {
+		return &ActionError{Code: "busy"}
+	}
 	if phase == "lan_discovery" {
 		return &ActionError{Code: "discovery", Field: "discovery"}
 	}
@@ -45,6 +48,8 @@ func actionError(err error) *ActionError {
 
 func errorCopy(code string) string {
 	switch code {
+	case "busy":
+		return "The telescope is still releasing the previous session. Try again in a minute."
 	case "email":
 		return "Enter the email address of your Seestar account."
 	case "password":

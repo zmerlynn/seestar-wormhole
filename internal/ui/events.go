@@ -1,10 +1,11 @@
 package ui
 
 import (
+	"encoding/json/v2"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -16,10 +17,18 @@ const eventLimit = 80
 
 // Only fixed, user-facing lifecycle categories enter either log. No dependency
 // error, settings, address, account, control capability, or payload is accepted.
+type event struct {
+	Time    time.Time `json:"time"`
+	Message string    `json:"message"`
+	Code    string    `json:"code"`
+	Phase   string    `json:"phase"`
+	Reason  string    `json:"reason"`
+}
+
 type eventLog struct {
 	mu      sync.Mutex
 	storage *storage
-	recent  []string
+	recent  []event
 	failed  bool
 }
 
@@ -28,32 +37,41 @@ func eventCode(text string) string {
 	case "Application opened.", "Application could not start.", "Connecting to your telescope…", "Connected to your telescope", "Waiting for an app to connect", "Telescope is in use. Disconnect the other remote session. Retrying automatically.", "Connection lost. Retrying automatically.", "Releasing idle telescope session…", "Waiting for session release before retrying…", "Stopped", "Stopped. The telescope may take a minute to release the session.", "Settings saved.", "Password saved to keychain. It will be checked when you connect.", "Password removed from keychain and this app.":
 		return "lifecycle"
 	}
-	for _, code := range []string{"email", "password", "idle", "ports", "ports_empty", "bind", "discovery_bind", "discovery", "http_permission", "http_conflict", "port_conflict", "signin", "selection", "serial", "model", "release", "storage", "password_save", "password_remove", "password_read", "password_missing", "keychain_timeout", "connection"} {
+	for _, code := range []string{"email", "password", "idle", "ports", "ports_empty", "bind", "discovery_bind", "discovery", "http_permission", "http_conflict", "port_conflict", "signin", "selection", "serial", "model", "release", "storage", "password_save", "password_remove", "password_read", "password_missing", "keychain_timeout", "connection", "busy"} {
 		if text == errorCopy(code) {
 			return code
 		}
 	}
 	return ""
 }
-func (l *eventLog) add(text string) {
+func (l *eventLog) add(text string) { l.addFailure(text, nil) }
+
+func (l *eventLog) addFailure(text string, err error) {
 	code := eventCode(text)
 	if l == nil || code == "" {
 		return
 	}
+	entry := event{Time: time.Now().UTC(), Message: text, Code: code}
+	if err != nil {
+		entry.Phase, entry.Reason = diagnostic.Fields(err, "connect")
+	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	if len(l.recent) > 0 && strings.HasSuffix(l.recent[len(l.recent)-1], "\t"+text) {
-		return
+	if len(l.recent) > 0 {
+		last := l.recent[len(l.recent)-1]
+		if last.Message == entry.Message && last.Phase == entry.Phase && last.Reason == entry.Reason {
+			return
+		}
 	}
-	line := time.Now().UTC().Format(time.RFC3339) + "\t" + code + "\t" + text
-	l.recent = append(l.recent, line)
+	l.recent = append(l.recent, entry)
 	if len(l.recent) > eventLimit {
-		l.recent = append([]string(nil), l.recent[len(l.recent)-eventLimit:]...)
+		l.recent = append([]event(nil), l.recent[len(l.recent)-eventLimit:]...)
 	}
 	if l.storage == nil {
 		return
 	}
-	l.failed = l.appendLine([]byte(line+"\n")) != nil
+	line, err := json.Marshal(entry)
+	l.failed = err != nil || l.appendLine(append(line, '\n')) != nil
 }
 
 // Disk history is opaque: append without reading or projecting prior content.
@@ -115,9 +133,9 @@ func (l *eventLog) appendLine(line []byte) error {
 	f = nil
 	return err
 }
-func (l *eventLog) snapshot() ([]string, string, bool) {
+func (l *eventLog) snapshot() ([]event, string, bool) {
 	if l == nil {
-		return []string{}, "", false
+		return []event{}, "", false
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -125,5 +143,5 @@ func (l *eventLog) snapshot() ([]string, string, bool) {
 	if l.storage != nil {
 		path = filepath.Join(l.storage.root, "gui.log")
 	}
-	return append([]string{}, l.recent...), path, l.failed
+	return append([]event{}, l.recent...), path, l.failed
 }

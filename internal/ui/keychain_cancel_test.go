@@ -31,7 +31,7 @@ func TestStopDuringKeychainStartup(t *testing.T) {
 	}
 	<-chain.entered
 	c.quit()
-	if text, active := c.snapshot(); active || text != "Stopped" {
+	if text, active := c.snapshot(); active || text != "Stopped. The telescope may take a minute to release the session." {
 		t.Fatalf("%s %v", text, active)
 	}
 }

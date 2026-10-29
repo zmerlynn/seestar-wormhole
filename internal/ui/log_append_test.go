@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,7 +23,7 @@ func TestLogAppendsOpaqueHistoryWithoutRewriting(t *testing.T) {
 	log := &eventLog{storage: st}
 	log.add("Application opened.")
 	recent, _, failed := log.snapshot()
-	if failed || len(recent) != 1 || strings.Contains(recent[0], "modified history") {
+	if failed || len(recent) != 1 || strings.Contains(recent[0].Message, "modified history") {
 		t.Fatal("disk history affected page state")
 	}
 	after, err := os.Stat(path)
@@ -32,11 +33,12 @@ func TestLogAppendsOpaqueHistoryWithoutRewriting(t *testing.T) {
 	if !os.SameFile(before, after) {
 		t.Fatal("append replaced the existing log file")
 	}
+	encoded, _ := json.Marshal(recent[0])
 	got, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.HasPrefix(got, prior) || len(got) != len(prior)+len(recent[0])+1 {
+	if !bytes.HasPrefix(got, prior) || len(got) != len(prior)+len(encoded)+1 {
 		t.Fatal("append changed prior bytes or wrote the wrong byte count")
 	}
 }

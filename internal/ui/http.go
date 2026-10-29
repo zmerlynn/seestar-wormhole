@@ -5,7 +5,7 @@ import (
 	"embed"
 	"encoding/json/v2"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
-"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"mime"
 	"net/http"
@@ -120,12 +120,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Settings pageSettings `json:"settings"`
 			runView
 			PortDefaults []proxyrun.Port `json:"port_defaults"`
-			Mappings  [][2]uint16  `json:"mappings"`
-			Password  passwordInfo `json:"password"`
-			Native    bool         `json:"native"`
-			Events    []string     `json:"events"`
-			LogPath   string       `json:"log_path"`
-			LogFailed bool         `json:"log_failed"`
+			Mappings     [][2]uint16     `json:"mappings"`
+			Password     passwordInfo    `json:"password"`
+			Native       bool            `json:"native"`
+			Events       []event         `json:"events"`
+			LogPath      string          `json:"log_path"`
+			LogFailed    bool            `json:"log_failed"`
 		}{pageSettingsFor(settings), view, defaults, mappings, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
 		return
 	}
@@ -211,6 +211,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
+		s.controller.log.addFailure(errorCopy(actionError(err).Code), err)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		s.respond(w, struct {
