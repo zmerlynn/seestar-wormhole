@@ -22,7 +22,7 @@ func TestFirstRunPhoneAndSavedExposure(t *testing.T) {
 		t.Fatal("phone HTTP mapping missing")
 	}
 	st := testStorage(t)
-	if err := st.writeBytes("config.json", []byte(`{"version":2,"bind":"127.0.0.1","idle":"0"}`)); err != nil {
+	if err := st.writeBytes("config.json", []byte(`{"version":1,"bind":"127.0.0.1","idle":"0"}`)); err != nil {
 		t.Fatal(err)
 	}
 	loaded, err := loadSettings(st)
@@ -72,7 +72,7 @@ func TestEmailValidationUsesVendorRule(t *testing.T) {
 
 func TestHTTPAccountInputPreparation(t *testing.T) {
 	s := testServer(t)
-	body := `{"settings":{"version":2,"bind":"127.0.0.1","idle":"0","email":"  Mixed. Case+Tag @Example.Invalid  "},"password":"synthetic-password"}`
+	body := `{"settings":{"version":1,"bind":"127.0.0.1","idle":"0","email":"  Mixed. Case+Tag @Example.Invalid  "},"password":"synthetic-password"}`
 	if w := doPost(s, "/api/password/save", body); w.Code != 200 {
 		t.Fatalf("save: %s", w.Body)
 	}

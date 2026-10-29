@@ -182,8 +182,8 @@
         assert($('ports-error').hidden && !$('port-80').hasAttribute('aria-invalid'), 'port error persists during edit');
       }
       $('port-80').value = '';
-      assert(validate() && settings().ports.find(p => p.Device === 80).Local === 0, 'empty local did not disable service');
-      assert(settings().ports.length === 10 && settings().ports.every(p => typeof p.Local === 'number' && typeof p.Device === 'number'), 'ports became text');
+      assert(validate() && settings().ports.find(p => p.device === 80).local === 0, 'empty local did not disable service');
+      assert(settings().ports.length === 10 && settings().ports.every(p => typeof p.local === 'number' && typeof p.device === 'number'), 'ports became text');
     });
     await check('Field errors clear on edit and email normalization', async () => {
       assert($('email').type === 'text' && $('email').inputMode === 'email' && $('email').autocomplete === 'username', 'browser email validity still active');

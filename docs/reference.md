@@ -54,13 +54,15 @@ root without moving or copying its identity. The files are:
 
 | File | Purpose |
 |---|---|
-| `config.json` | Non-secret settings, schema version 2: bind, discovery, idle duration, optional serial/model, structured port overrides (`Local` and `Device` numbers), email, saved-password association (`remember_password`). Unknown members are accepted; reads are limited to 64 KiB. |
+| `config.json` | Non-secret settings; see the version 1 format below. |
 | `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
 | `gui.log`, `gui.log.1` | Sanitized GUI events as JSON lines (UTC time, message, code, classified phase/reason), at most 64 KiB each, with one rotation. |
 | `ui.lock` | Process-lifetime UI lock. |
 | `ui-runtime.json` | Private port and per-process control token; removed on orderly exit. |
 | `webview-<random>/` | Fresh private Windows GUI engine profile for each launch. Best-effort removal after window shutdown and on later launches; locked stale profiles never block startup. |
 | `ui-open.html` | Private browser bootstrap with the control capability; the opener receives only its path. Removed when the owning process exits normally. |
+
+`config.json` uses version 1: `version` is required and must be `1`; absent members default to `bind: "127.0.0.1"`, `discovery: false`, `idle: "0"` (a nonnegative Go duration string, such as `"2m"`), `serial: ""`, `model: ""`, `ports: []` (standard service mappings), `email: ""`, and `remember_password: false`. Port overrides are objects with lowercase numeric `local` and `device` members (0–65535; local 0 disables a service, device must name a standard service). Unknown members are preserved on save. Reads are limited to 64 KiB and never rewrite the file; a missing or unsupported version, including a newer version, is refused and left untouched.
 
 Successful Connect saves its non-secret settings snapshot atomically: after the first Ready state with local listeners/discovery initialized in Keep connected mode, or after authentication, telescope selection, and local initialization in connect-when-needed mode. Failed attempts preserve the last saved settings. A storage failure keeps the connection running and offers Retry saving settings for that snapshot. A newer successful save supersedes an older retry. On Unix the directory must be
 private (`0700`) and files `0600`; unsafe existing permissions or links are
@@ -154,7 +156,7 @@ Linux sandbox prerequisites are in [troubleshooting](troubleshooting.md#linux-na
 
 **Use saved settings headless:** after successful Connect or explicit password
 save, run `seestar-wormhole proxy --config` (add `--state-dir PATH` for a custom
-UI root). It reads the same `config.json` and shares the installation identity.
+UI root). It reads the same [version 1 `config.json`](#ui) without rewriting it and shares the installation identity.
 Explicit flags override saved choices, including discovery; each `-p` replaces the saved override for
 that telescope port. `SEESTAR_EMAIL` overrides the saved email. The password
 comes from `SEESTAR_PASSWORD` when set, otherwise the OS keychain entry for that

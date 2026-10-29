@@ -7,7 +7,10 @@ import (
 	"strings"
 )
 
-type Port struct{ Local, Device uint16 }
+type Port struct {
+	Local  uint16 `json:"local"`
+	Device uint16 `json:"device"`
+}
 
 func ParsePort(existing []Port, s string) ([]Port, error) {
 	parts := strings.Split(s, ":")

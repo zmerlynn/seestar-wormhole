@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
@@ -20,14 +21,15 @@ type Settings struct {
 	Ports     []proxyrun.Port `json:"ports"`
 	Email     string          `json:"email"`
 	Remember  bool            `json:"remember_password"`
+	Unknown   jsontext.Value  `json:",embed"`
 }
 
 func defaultSettings() Settings {
-	return Settings{Version: 2, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []proxyrun.Port{{Local: 80, Device: 80}}}
+	return Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []proxyrun.Port{{Local: 80, Device: 80}}}
 }
 func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 	idle, err := time.ParseDuration(s.Idle)
-	if s.Version != 2 {
+	if s.Version != 1 {
 		return nil, 0, &ActionError{Code: "settings"}
 	}
 	if err != nil || idle < 0 {
@@ -66,13 +68,14 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 func loadSettings(s *storage) (Settings, error) {
 	settings := Settings{Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{}}
 	// Decode a fresh struct: absent members have documented defaults; unknown
-	// members are accepted by JSON v2 within this schema version.
+	// members are retained by JSON v2 within this schema version.
 	if err := s.read("config.json", &settings); err != nil {
 		return Settings{}, err
 	}
 	if _, _, err := settings.validate(); err != nil {
 		return Settings{}, err
 	}
+	s.settingsUnknown = settings.Unknown
 	return settings, nil
 }
 

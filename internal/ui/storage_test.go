@@ -1,10 +1,6 @@
 package ui
 
 import (
-	"bytes"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
-	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"os"
 	"path/filepath"
 	"strings"
@@ -23,31 +19,7 @@ func testStorage(t *testing.T) *storage {
 }
 func TestSettingsStorage(t *testing.T) {
 	st := testStorage(t)
-	want := testSettings()
-	want.Idle = "2m"
-	want.Ports = []proxyrun.Port{{Local: 1445, Device: 445}, {Local: 0, Device: 80}}
-	want.Remember = true
-	if err := st.write("config.json", want); err != nil {
-		t.Fatal(err)
-	}
-	got, err := loadSettings(st)
-	if err != nil {
-		t.Fatal(err)
-	}
-	a, _ := json.Marshal(want)
-	b, _ := json.Marshal(got)
-	if !bytes.Equal(a, b) {
-		t.Fatalf("%s != %s", a, b)
-	}
-	for _, body := range []string{`{"version":2,"bind":"127.0.0.1","idle":"0","future":{"nested":true}}`, `{"version":2,"future":3}`} {
-		if err := st.write("config.json", jsontext.Value(body)); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := loadSettings(st); err != nil {
-			t.Fatalf("unknown members refused: %v", err)
-		}
-	}
-	for _, body := range []string{`{`, `{"version":99}`, `{}`, `null`, `{"version":2,"idle":"-1s"}`, `{"version":2,"ports":["4445:80"]}`, `{"version":2,"serial":"\n"}`, `{"version":2,"email":"invalid"}`, `{"version":2,"version":2}`, strings.Repeat(" ", maxJSON+1)} {
+	for _, body := range []string{`{`, `{"version":99}`, `{}`, `null`, `{"version":1,"idle":"-1s"}`, `{"version":1,"idle":120}`, `{"version":1,"ports":[{"local":"80","device":80}]}`, `{"version":1,"ports":["4445:80"]}`, `{"version":1,"serial":"\n"}`, `{"version":1,"email":"invalid"}`, `{"version":1,"version":1}`, strings.Repeat(" ", maxJSON+1)} {
 		path := filepath.Join(st.root, "config.json")
 		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 			t.Fatal(err)

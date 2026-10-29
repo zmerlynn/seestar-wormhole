@@ -3,6 +3,7 @@ package ui
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -17,8 +18,9 @@ const maxJSON = 64 << 10
 var errStorage = errors.New("UI storage unavailable: use a private state directory")
 
 type storage struct {
-	root      string
-	directory *os.File
+	root            string
+	directory       *os.File
+	settingsUnknown jsontext.Value
 }
 
 func openStorage(root string) (*storage, error) {
@@ -32,7 +34,7 @@ func openStorage(root string) (*storage, error) {
 	if err != nil {
 		return nil, errStorage
 	}
-	return &storage{root, d}, nil
+	return &storage{root: root, directory: d}, nil
 }
 func (s *storage) read(name string, v any) error {
 	path := filepath.Join(s.root, name)

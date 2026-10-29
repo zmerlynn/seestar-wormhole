@@ -238,6 +238,8 @@ func (s *server) respond(w http.ResponseWriter, v any) {
 }
 
 func (s *server) saveSettings(settings Settings) error {
+	// The page submits known choices only; retain the file's future members.
+	settings.Unknown = s.storage.settingsUnknown
 	err := s.storage.write("config.json", settings)
 	s.mu.Lock()
 	s.settings = settings

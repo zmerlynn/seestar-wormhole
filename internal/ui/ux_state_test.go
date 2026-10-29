@@ -62,7 +62,7 @@ func TestConnectNeverWritesKeychain(t *testing.T) {
 func TestExplicitPasswordSaveAssociationRelaunch(t *testing.T) {
 	s := testServer(t)
 	s.controller.save = s.saveSettings
-	body := `{"settings":{"version":2,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
+	body := `{"settings":{"version":1,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
 	w := doPost(s, "/api/password/save", body)
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
@@ -264,7 +264,7 @@ func TestPasswordSaveStorageFailureAndRetry(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(s.storage.root, "config.json"), 0700); err != nil {
 		t.Fatal(err)
 	}
-	body := `{"settings":{"version":2,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
+	body := `{"settings":{"version":1,"bind":"127.0.0.1","idle":"0","email":"synthetic@example.invalid"},"password":"synthetic-password"}`
 	if w := doPost(s, "/api/password/save", body); w.Code != 400 {
 		t.Fatal("storage failure accepted")
 	}

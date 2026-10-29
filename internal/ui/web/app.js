@@ -53,9 +53,9 @@ function accountEmail() {
 }
 function settings() {
   return {
-    version: 2, bind: $('listen').value === 'other' ? $('bind').value.trim() : $('listen').value,
+    version: 1, bind: $('listen').value === 'other' ? $('bind').value.trim() : $('listen').value,
     discovery: $('discovery').checked, idle: $('mode').value === 'eager' ? '0' : Number($('idle').value) + 'm',
-    serial: $('serial').value.trim(), model: $('model').value.trim(), ports: services.map(([Device]) => ({Device, Local: Number($('port-' + Device).value)})),
+    serial: $('serial').value.trim(), model: $('model').value.trim(), ports: services.map(([device]) => ({device, local: Number($('port-' + device).value)})),
     email: accountEmail(), remember_password: usingSaved()
   };
 }
@@ -67,8 +67,8 @@ const services = [
   [4361, 'Firmware upload'], [445, 'File sharing (SMB)']
 ];
 function portValues(s) {
-  const ports = Object.fromEntries(portDefaults.map(p => [p.Device, p.Local]));
-  for (const p of s.ports || []) ports[p.Device] = p.Local;
+  const ports = Object.fromEntries(portDefaults.map(p => [p.device, p.local]));
+  for (const p of s.ports || []) ports[p.device] = p.local;
   return ports;
 }
 function portsTable(id, ports, editable = false) {
@@ -412,7 +412,7 @@ function applyGoal(goal) {
     $('listen').value = goal === 'phone' ? '0.0.0.0' : '127.0.0.1';
     $('bind').value = $('listen').value;
     $('discovery').checked = goal === 'phone';
-    portsTable('ports', portValues({ports: goal === 'phone' ? [{Device: 80, Local: 80}] : []}), true);
+    portsTable('ports', portValues({ports: goal === 'phone' ? [{device: 80, local: 80}] : []}), true);
   }
   controls();
 }
