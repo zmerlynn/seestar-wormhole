@@ -265,7 +265,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 		return errors.New("missing authenticated window recovery assertion")
 	}
 	if !exists(filepath.Join(dir, "joined")) {
-		return errors.New("missing joined-window receipt")
+		return errors.New("missing joined-window receipt (see process.log)")
 	}
 	if guitest.RequiresRelease(scenario) && !exists(filepath.Join(dir, "release-wait-observed")) {
 		return errors.New("missing slow-release window assertion")
@@ -292,7 +292,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 		return errors.New("fresh launch timed out")
 	}
 	if !exists(filepath.Join(dir, "relaunch", "joined")) {
-		return errors.New("fresh launch did not acquire lock/create native window")
+		return errors.New("fresh launch missing joined-window receipt (see relaunch/process.log)")
 	}
 	return nil
 }
