@@ -128,6 +128,13 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 		if err := d.probe(`(() => {const events=document.getElementById('events').getBoundingClientRect(),copy=document.getElementById('copy').getBoundingClientRect();return check(events.top<innerHeight && events.bottom>0 && copy.top>=0 && copy.bottom<=innerHeight,{events,copy,innerHeight})})()`); err != nil {
 			return err
 		}
+	case "advanced-top", "advanced-network":
+		// Capture the opened Advanced section in two views so its grouping is reviewable.
+		target := map[string]string{"advanced-top": "#advanced", "advanced-network": `label[for="listen"]`}[shot]
+		d.w.ExecJS(`document.querySelector(` + strconv.Quote(target) + `).scrollIntoView({block:'start'})`)
+		if err := d.probe(`(() => {const r=document.querySelector(` + strconv.Quote(target) + `).getBoundingClientRect();return check(r.top>=0 && r.top<innerHeight,{rect:r,innerHeight})})()`); err != nil {
+			return err
+		}
 	case "classified-error", "credential-rejected", "discovery-incompatible":
 		d.w.ExecJS(`document.querySelector('[aria-invalid="true"]')?.scrollIntoView({block:'center'})`)
 		if err := d.probe(`(() => {const e=document.querySelector('[aria-invalid="true"]');const rect=e?.getBoundingClientRect();return check(!!rect && rect.top>=0 && rect.bottom<=innerHeight,{invalid:e?.id ?? null,rect:rect ?? null,innerHeight})})()`); err != nil {
@@ -247,6 +254,11 @@ func (d *guiTestDriver) drive() error {
 		d.js(`applyGoal('custom');document.getElementById('advanced').open=true;document.getElementById('details').open=true;`)
 		if err := d.state("Not connected", false, "help-and-events"); err != nil {
 			return err
+		}
+		for _, shot := range []string{"advanced-top", "advanced-network"} {
+			if err := d.state("Not connected", false, shot); err != nil {
+				return err
+			}
 		}
 		d.js(`applyGoal('phone');document.getElementById('advanced').open=false;document.getElementById('details').open=false;document.getElementById('start').focus();`)
 	}
