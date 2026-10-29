@@ -128,6 +128,11 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 		if err := d.probe(`(() => {const events=document.getElementById('events').getBoundingClientRect(),copy=document.getElementById('copy').getBoundingClientRect();return check(events.top<innerHeight && events.bottom>0 && copy.top>=0 && copy.bottom<=innerHeight,{events,copy,innerHeight})})()`); err != nil {
 			return err
 		}
+	case "ready-ports":
+		d.w.ExecJS(`document.getElementById('running-ports-box').scrollIntoView({block:'start'})`)
+		if err := d.probe(`(() => {const b=el('running-ports-box'),r=b.getBoundingClientRect();return check(b.open && r.top>=0 && r.top<innerHeight,{open:b.open,rect:r,innerHeight})})()`); err != nil {
+			return err
+		}
 	case "advanced-top", "advanced-network":
 		// Capture the opened Advanced section in two views so its grouping is reviewable.
 		target := map[string]string{"advanced-top": "#advanced", "advanced-network": `label[for="listen"]`}[shot]
@@ -308,6 +313,13 @@ func (d *guiTestDriver) drive() error {
 		}
 		if err := d.uxRunning(); err != nil {
 			return err
+		}
+		if d.scenario == "fresh" || d.scenario == "dark" {
+			d.w.ExecJS(`document.getElementById('running-ports-box').open=true`)
+			if err := d.state("Connected to your Seestar", true, "ready-ports"); err != nil {
+				return err
+			}
+			d.w.ExecJS(`document.getElementById('running-ports-box').open=false`)
 		}
 	}
 	switch d.scenario {
