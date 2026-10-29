@@ -123,7 +123,7 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 			if errors.Is(err, context.Canceled) {
 				c.mu.Lock()
 				c.code = ""
-				c.notice = "A saved password is selected. Your OS may ask for permission when you connect."
+				c.notice = "Saved in your OS keychain."
 				c.mu.Unlock()
 				return cloud.Credentials{}, err
 			}
@@ -151,7 +151,7 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 	c.notice = "Password available for this launch only."
 	if s.Remember && password == "" {
 		c.savedEmail = s.Email
-		c.notice = "A saved password is selected. Your OS may ask for permission when you connect."
+		c.notice = "Saved in your OS keychain."
 	}
 	return credentials, nil
 }

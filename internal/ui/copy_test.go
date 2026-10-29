@@ -58,10 +58,16 @@ func TestAllServicesDisabledExplainsRecovery(t *testing.T) {
 }
 
 func TestOwnerCopy(t *testing.T) {
- b, _ := assets.ReadFile("web/index.html")
- for _, want := range []string{"Use your remote Seestar through the Telescope Network, as if it were nearby.", "Enter an IPv4 address assigned to this computer.", "Let the Seestar app find this telescope", "All networks</option>", "This computer only (the Seestar app can't connect)"} {
-  if !strings.Contains(string(b), want) { t.Fatalf("missing copy %q", want) }
- }
- if strings.Contains(string(b), "The telescope keeps its own site and clock.") || strings.Contains(string(b), "phone app") { t.Fatal("obsolete copy") }
- if !strings.Contains(uiText("Ready"), "Connected") { t.Fatal("ready copy") }
+	b, _ := assets.ReadFile("web/index.html")
+	for _, want := range []string{"Use your remote Seestar through the Telescope Network, as if it were nearby.", "Enter an IPv4 address assigned to this computer.", "Let the Seestar app find this telescope", "All networks</option>", "This computer only (the Seestar app can't connect)"} {
+		if !strings.Contains(string(b), want) {
+			t.Fatalf("missing copy %q", want)
+		}
+	}
+	if strings.Contains(string(b), "The telescope keeps its own site and clock.") || strings.Contains(string(b), "phone app") {
+		t.Fatal("obsolete copy")
+	}
+	if !strings.Contains(uiText("Ready"), "Connected") {
+		t.Fatal("ready copy")
+	}
 }

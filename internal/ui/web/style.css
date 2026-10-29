@@ -80,8 +80,11 @@ input:not([type=checkbox]),select,textarea {
   background:var(--surface);
   color:var(--text)
 }
-input[readonly] {
-  color:var(--muted)
+#password:disabled {
+  color:var(--muted);
+  background:color-mix(in srgb, var(--border) 20%, var(--surface));
+  outline:none;
+  cursor:default
 }
 input[type=checkbox] {
   width:1.1rem;

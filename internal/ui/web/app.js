@@ -15,7 +15,7 @@ if (token) {
   }
 }
 let initialized = false, ended = false, connected = false, pending = '', active = false;
-let lastFailure = '', state = null, sourceChoice = '', statusGeneration = 0, actionError = '';
+let lastFailure = '', state = null, statusGeneration = 0, actionError = '';
 let fieldErrors = {};
 let currentGoal = 'phone', proposedGoal = '', retryRemoval = false, diagnostic = '', noticeCode = '';
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
@@ -79,16 +79,12 @@ function load(s) {
   $('goal').value = currentGoal;
 
 }
-// The status projection is account-scoped and contains booleans, never a secret.
-// Only an explicit draft/source choice belongs to the page.
+// The saved association belongs to this exact account; secrets stay in Go.
 function passwordState() {
   return state?.settings.email === accountEmail() ? state.password : {};
 }
 function usingSaved() {
-  return !!passwordState().saved && sourceChoice !== 'typed';
-}
-function editingPassword() {
-  return sourceChoice === 'typed' || (!usingSaved() && !passwordState().memory);
+  return !!passwordState().saved;
 }
 function clearField(field) {
   $(field).removeAttribute('aria-invalid');
@@ -134,10 +130,6 @@ function fail(e, focus = false) {
   if (code === 'password_remove') {
     retryRemoval = true;
   }
-  if (['password_read','password_missing','keychain_timeout'].includes(code)) {
-    if (!editingPassword()) $('password').value = '';
-    sourceChoice = 'typed';
-  }
   if (code === 'controls') connected = false;
 }
 function validate(passwordSave = false) {
@@ -148,7 +140,7 @@ function validate(passwordSave = false) {
     fieldError('email',fieldCopy.email,'email',true);
     return false;
   }
-  if (!$('password').value && !usingSaved() && (sourceChoice === 'typed' || !passwordState().memory)) {
+  if (!$('password').value && !usingSaved() && !passwordState().memory) {
     actionError = 'password';
     fieldError('password',fieldCopy.password,'password',true);
     return false;
@@ -173,18 +165,15 @@ function controls() {
   $('idle-options').hidden = $('mode').value !== 'idle';
   $('idle').disabled = $('mode').value !== 'idle';
   $('other-address').hidden = $('listen').value !== 'other';
-  const editing = editingPassword();
   const selectedSaved = usingSaved();
   const password = passwordState();
-  if (editing && $('password').readOnly) $('password').value = '';
-  $('password').readOnly = !editing;
-  $('password').type = editing ? 'password' : 'text';
-  if (!editing) $('password').value = selectedSaved ? 'Saved in keychain' : 'This launch only';
-  $('save-password').hidden = selectedSaved && !editing;
-  $('save-password').disabled = blocked || !!pending || password.busy || !accountEmail() || (!editing && !password.memory) || (editing && !$('password').value);
-  $('change-password').hidden = editing;
-  text('password-note', editing ? 'Used for this launch unless you save it to your OS keychain.' : selectedSaved ? 'A saved password is selected. Your OS may ask for permission when you connect.' : 'Password available for this launch only.');
-  $('use-saved').hidden = !editing || !password.saved;
+  if (!selectedSaved && $('password').disabled) $('password').value = '';
+  $('password').disabled = selectedSaved;
+  $('password').type = selectedSaved ? 'text' : 'password';
+  if (selectedSaved) $('password').value = 'Saved in keychain';
+  $('save-password').hidden = selectedSaved;
+  $('save-password').disabled = blocked || !!pending || password.busy || !accountEmail() || !$('password').value;
+  text('password-note', selectedSaved ? 'Saved in your OS keychain.' : 'Password is kept only until you quit this app, unless you save it to your OS keychain.');
   $('forget').hidden = !password.saved;
   $('forget').disabled = blocked || !!pending || password.busy;
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
@@ -211,10 +200,7 @@ function render(s) {
     alertText(s.failure.code === 'release' ? '' : s.failure.field ? 'Check the highlighted setting.' : s.failure_message);
     if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer ' + s.failure.local + ' → telescope ' + s.failure.service + '.' : ''),s.failure.code);
     lastFailure = s.failure.code;
-    if (newFailure && ['signin','password','password_read','password_missing','keychain_timeout'].includes(s.failure.code)) {
-      if (!editingPassword()) $('password').value = '';
-      sourceChoice = 'typed';
-    }
+
   }
   if (active) lastFailure = '';
   if (pending !== 'quit' && s.password.code && s.password.code !== noticeCode) {
@@ -258,7 +244,6 @@ async function refresh() {
   }
   if (!active && s.active) {
     $('password').value = '';
-    sourceChoice = '';
   }
   render(s);
   if (first) $('start').focus();
@@ -293,14 +278,13 @@ async function act(action) {
   controls();
   let errorField = '';
   try {
-    const typed = editingPassword() ? $('password').value : '';
+    const typed = usingSaved() ? '' : $('password').value;
     await api(action, {
       settings: settings(), password: ['start','password/save'].includes(action) ? typed : ''
     });
     if (ended || pending !== action) return;
     if (action === 'start') lastFailure = '';
     if (action === 'password/save' || action === 'forget') {
-      sourceChoice = action === 'forget' ? 'typed' : '';
       $('password').value = '';
       if (action === 'forget') {
         retryRemoval = false;
@@ -350,19 +334,7 @@ $('start').addEventListener('click', () => {
 for (const [id,action] of [['save-password','password/save'],['forget','forget'],['quit','quit'],['retry-storage','retry-storage']]) {
   $(id).addEventListener('click', () => act(action));
 }
-$('change-password').addEventListener('click', () => {
-  sourceChoice = 'typed';
-  $('password').value = '';
-  controls();
-});
-$('use-saved').addEventListener('click', () => {
-  if (!passwordState().saved) return;
-  sourceChoice = 'saved';
-  $('password').value = '';
-  controls();
-});
 $('email').addEventListener('input', () => {
-  sourceChoice = 'typed';
   $('password').value = '';
   controls();
 });
