@@ -245,7 +245,7 @@
       render({...status(), effective, events: [event], log_path: 'synthetic-private-path'});
       assert($('effective-settings').textContent === JSON.stringify(effective, null, 2), 'Settings is not pretty JSON');
       const localTime = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
-      assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  Application opened.', 'event category or UTC leaked into local list');
+      assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  App opened.', 'event category or UTC leaked into local list');
       const copied = JSON.parse(diagnostic);
       assert(Object.keys(copied).join() === 'app,version,settings,events' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && !diagnostic.includes('synthetic-private-path') && !$('mappings'), 'copied object schema/privacy');
       const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
