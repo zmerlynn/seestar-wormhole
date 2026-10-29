@@ -9,5 +9,5 @@ var pageStateChecks string
 
 func (d *guiTestDriver) pageStateRegressions() error {
 	d.w.ExecJS(pageStateChecks)
-	return d.probe(`typeof window.__guitestPageState === 'string' && !window.__guitestPageState.includes('FAIL') ? true : window.__guitestPageState || 'page state checks pending'`)
+	return d.probe(`check(typeof window.__guitestPageState==='string' && !window.__guitestPageState.includes('FAIL'),{pageState:window.__guitestPageState ?? null})`)
 }

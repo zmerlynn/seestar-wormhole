@@ -55,13 +55,15 @@ func (d *guiTestDriver) probe(expression string) error {
  const send=m=>{if(window.chrome?.webview) window.chrome.webview.postMessage(m);
  else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
  else if(window.wails?.invoke) window.wails.invoke(m)};
+ const el=id=>document.getElementById(id);
+ const check=(ok,detail)=>ok ? true : detail;
  const probe=` + strconv.Itoa(d.seq) + `;
  const diagnose=detail=>{detail='probe '+probe+': '+detail;
  if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
  send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
  try {const result=(` + expression + `);
  if(result===true) requestAnimationFrame(() => requestAnimationFrame(() => send(` + strconv.Quote("wails:event:emit:"+name) + `)));
- else diagnose(typeof result==='string' ? result : JSON.stringify({result}));
+ else diagnose(typeof result==='string' ? result : JSON.stringify(result));
  } catch(e) {diagnose(JSON.stringify({probeError:String(e)}))}
  finally {send(` + strconv.Quote("wails:event:emit:"+name+":evaluated") + `)}
  })()`
@@ -82,7 +84,7 @@ func (d *guiTestDriver) probe(expression string) error {
 }
 
 func (d *guiTestDriver) click(id string) error {
-	if err := d.probe(`document.getElementById(` + strconv.Quote(id) + `)?.disabled === false`); err != nil {
+	if err := d.probe(`(() => {const id=` + strconv.Quote(id) + `,e=el(id);return check(e?.disabled === false,{id,exists:!!e,disabled:e?.disabled ?? null})})()`); err != nil {
 		return err
 	}
 	d.w.ExecJS(`(() => {const e=document.getElementById(` + strconv.Quote(id) + `); e.scrollIntoView({block:'center'}); e.focus(); e.click();})()`)
@@ -107,29 +109,29 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	}
 
 	// Finish the action's DOM/focus transition before choosing a viewport.
-	if err := d.probe(`document.getElementById('status').textContent === ` + strconv.Quote(want) + ` && document.getElementById('settings').hidden === ` + strconv.FormatBool(active) + ` && (pending === '' || (state.stopping && ['stop','quit'].includes(pending)))`); err != nil {
+	if err := d.probe(`(() => {const want=` + strconv.Quote(want) + `,active=` + strconv.FormatBool(active) + `,status=el('status').textContent,hidden=el('settings').hidden;return check(status===want && hidden===active && (pending==='' || (state.stopping && ['stop','quit'].includes(pending))),{want,status,active,hidden,pending,stopping:state?.stopping ?? null})})()`); err != nil {
 		return err
 	}
 	if shot == "setup" {
 		// Check launch visibility before any driver scrolling can conceal a defect.
-		if err := d.probe(`document.getElementById('start').getBoundingClientRect().top >= 0 && document.getElementById('start').getBoundingClientRect().bottom < innerHeight && document.activeElement === document.getElementById('start')`); err != nil {
+		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),focused=document.activeElement?.id;return check(start.top>=0 && start.bottom<innerHeight && document.activeElement===el('start'),{start,innerHeight,focused})})()`); err != nil {
 			return err
 		}
 	}
 	switch shot {
 	case "details-expanded":
 		d.w.ExecJS(`document.getElementById('copy').scrollIntoView({block:'end'})`)
-		if err := d.probe(`(() => {const events=document.getElementById('events').getBoundingClientRect(),copy=document.getElementById('copy').getBoundingClientRect();return events.top < innerHeight && events.bottom > 0 && copy.top >= 0 && copy.bottom <= innerHeight})()`); err != nil {
+		if err := d.probe(`(() => {const events=document.getElementById('events').getBoundingClientRect(),copy=document.getElementById('copy').getBoundingClientRect();return check(events.top<innerHeight && events.bottom>0 && copy.top>=0 && copy.bottom<=innerHeight,{events,copy,innerHeight})})()`); err != nil {
 			return err
 		}
 	case "classified-error", "credential-rejected", "discovery-incompatible":
 		d.w.ExecJS(`document.querySelector('[aria-invalid="true"]')?.scrollIntoView({block:'center'})`)
-		if err := d.probe(`(() => {const e=document.querySelector('[aria-invalid="true"]');if(!e)return false;const r=e.getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight})()`); err != nil {
+		if err := d.probe(`(() => {const e=document.querySelector('[aria-invalid="true"]');const rect=e?.getBoundingClientRect();return check(!!rect && rect.top>=0 && rect.bottom<=innerHeight,{invalid:e?.id ?? null,rect:rect ?? null,innerHeight})})()`); err != nil {
 			return err
 		}
 	default:
 		d.w.ExecJS(`window.scrollTo(0,0)`)
-		if err := d.probe(`document.getElementById('start').getBoundingClientRect().bottom < innerHeight && document.getElementById('status').getBoundingClientRect().top >= 0`); err != nil {
+		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),status=el('status').getBoundingClientRect();return check(start.bottom<innerHeight && status.top>=0,{start,status,innerHeight})})()`); err != nil {
 			return err
 		}
 	}
@@ -140,7 +142,9 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
  const legend=document.querySelector('#account legend').getBoundingClientRect();
  const email=document.getElementById('email').getBoundingClientRect();
  const disabled=document.getElementById('save-password');
- return select.appearance==='none' && select.backgroundColor===input.backgroundColor && select.color===input.color && Math.abs(legend.left-email.left)<1 && (!disabled.disabled || Number(getComputedStyle(disabled).opacity)<.7);
+ const opacity=Number(getComputedStyle(disabled).opacity);
+ const checks={appearance:select.appearance==='none',background:select.backgroundColor===input.backgroundColor,color:select.color===input.color,legendAligned:Math.abs(legend.left-email.left)<1,disabledDimmed:!disabled.disabled || opacity<.7};
+ return check(Object.values(checks).every(Boolean),{checks,appearance:select.appearance ?? null,webkitAppearance:select.getPropertyValue('-webkit-appearance'),selectBackground:select.backgroundColor,inputBackground:input.backgroundColor,selectColor:select.color,inputColor:input.color,legendLeft:legend.left,emailLeft:email.left,disabled:disabled.disabled,opacity});
  })()`); err != nil {
 			return err
 		}
@@ -173,7 +177,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
     if(ratio<4.5) failures.push({id,disabled:e.matches(':disabled'),color:s.color,background:s.backgroundColor,fg,bg,ratio});
    }
-   return dark===expectDark && (dark ? rootLuminance<.2 : rootLuminance>.5) && failures.length===0 ? true : JSON.stringify({expectDark,dark,root,rootRGB,rootLuminance,failures,colorMix:CSS.supports("color","color-mix(in srgb, red, blue)")});
+   return check(dark===expectDark && (dark ? rootLuminance<.2 : rootLuminance>.5) && failures.length===0,{expectDark,dark,root,rootRGB,rootLuminance,failures,colorMix:CSS.supports("color","color-mix(in srgb, red, blue)")});
    } finally { canvas.remove();resolver.remove(); }
   })()`); err != nil {
 		return err
@@ -241,13 +245,13 @@ func (d *guiTestDriver) drive() error {
 	}
 	if d.scenario == "relaunch" || d.scenario == "dark-relaunch" || d.scenario == "saved-relaunch" {
 		if d.scenario == "saved-relaunch" {
-			if err := d.probe(`document.getElementById('password').readOnly && document.getElementById('password').value==='Saved in keychain'`); err != nil {
+			if err := d.probe(`check(el('password').readOnly && el('password').value==='Saved in keychain',{readOnly:el('password').readOnly,savedPlaceholder:el('password').value==='Saved in keychain'})`); err != nil {
 				return err
 			}
 		}
 		return d.click("quit")
 	}
-	if err := d.probe(`document.getElementById('email').value === '' && document.getElementById('goal').value === 'phone' && !document.getElementById('trust').hidden`); err != nil {
+	if err := d.probe(`check(el('email').value==='' && el('goal').value==='phone' && !el('trust').hidden,{emailLength:el('email').value.length,goal:el('goal').value,trustHidden:el('trust').hidden})`); err != nil {
 		return err
 	}
 	d.w.ExecJS(`for(const [id,value] of [['email','gui@example.invalid'],['password','synthetic-password']]) {const e=document.getElementById(id);e.focus();e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}`)
@@ -262,7 +266,7 @@ func (d *guiTestDriver) drive() error {
 		if err := d.state("Could not connect", false, "classified-error"); err != nil {
 			return err
 		}
-		if err := d.probe(`!document.getElementById('notice').hidden && document.getElementById('advanced').open`); err != nil {
+		if err := d.probe(`check(!el('notice').hidden && el('advanced').open,{noticeHidden:el('notice').hidden,advancedOpen:el('advanced').open})`); err != nil {
 			return err
 		}
 		return d.click("quit")
@@ -349,7 +353,7 @@ func (d *guiTestDriver) drive() error {
 		// about:blank has a different URL origin and requires no network or server.
 		// Use page navigation, not the native SetURL whose recovery we are testing.
 		d.w.ExecJS(`location.href='about:blank'`)
-		if err := d.probe(`location.href === 'about:blank' && location.origin !== ` + strconv.Quote(origin) + ` && !document.getElementById('status')`); err != nil {
+		if err := d.probe(`(() => {const origin=` + strconv.Quote(origin) + `;return check(location.href==='about:blank' && location.origin!==origin && !el('status'),{href:location.href.split('#')[0],origin:location.origin,appOrigin:origin,statusExists:!!el('status')})})()`); err != nil {
 			return err
 		}
 		if err := d.serverState("Connected to your telescope", true); err != nil {
@@ -364,7 +368,7 @@ func (d *guiTestDriver) drive() error {
 		if err := d.mark("trigger"); err != nil {
 			return err
 		}
-		if err := d.probe(`location.origin === ` + strconv.Quote(origin) + ` && document.getElementById('status')?.textContent === 'Connected to your telescope'`); err != nil {
+		if err := d.probe(`(() => {const origin=` + strconv.Quote(origin) + `;return check(location.origin===origin && el('status')?.textContent==='Connected to your telescope',{origin:location.origin,appOrigin:origin,status:el('status')?.textContent ?? null})})()`); err != nil {
 			return err
 		}
 		// Ready in the reloaded DOM requires app.js's authenticated status fetch;
