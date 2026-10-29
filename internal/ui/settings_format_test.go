@@ -20,7 +20,7 @@ import (
 func TestSettingsVersionOneFixture(t *testing.T) {
 	st := testStorage(t)
 	body := []byte(`{
-  "version":1,"bind":"localhost","discovery":false,"idle":"1h30m",
+  "version":1,"bind":"0.0.0.0","discovery":true,"idle":"1h30m",
   "serial":"SYNTHETIC_SERIAL","model":"S50",
   "ports":[{"local":1445,"device":445},{"local":0,"device":80}],
   "email":"synthetic@example.invalid","remember_password":true
@@ -32,7 +32,7 @@ func TestSettingsVersionOneFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := Settings{Version: 1, Bind: "localhost", Idle: "1h30m", Serial: "SYNTHETIC_SERIAL", Model: "S50", Ports: []proxyrun.Port{{Local: 1445, Device: 445}, {Local: 0, Device: 80}}, Email: "synthetic@example.invalid", Remember: true}
+	want := Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "1h30m", Serial: "SYNTHETIC_SERIAL", Model: "S50", Ports: []proxyrun.Port{{Local: 1445, Device: 445}, {Local: 0, Device: 80}}, Email: "synthetic@example.invalid", Remember: true}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("settings = %+v; want %+v", got, want)
 	}
