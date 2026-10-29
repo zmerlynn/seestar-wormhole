@@ -46,11 +46,13 @@ func (d *guiTestDriver) probe(expression string) error {
 		}
 	})
 	defer off()
-	var started, evaluated atomic.Bool
+	var started, evaluated, matched atomic.Bool
 	offStarted := d.app.Event.On(name+":started", func(*application.CustomEvent) { started.Store(true) })
 	offEvaluated := d.app.Event.On(name+":evaluated", func(*application.CustomEvent) { evaluated.Store(true) })
+	offMatched := d.app.Event.On(name+":matched", func(*application.CustomEvent) { matched.Store(true) })
 	defer offStarted()
 	defer offEvaluated()
+	defer offMatched()
 	js := `(() => {
  const send=m=>{if(window.chrome?.webview) window.chrome.webview.postMessage(m);
  else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
@@ -62,7 +64,8 @@ func (d *guiTestDriver) probe(expression string) error {
  if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
  send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
  try {const result=(` + expression + `);
- if(result===true) requestAnimationFrame(() => requestAnimationFrame(() => send(` + strconv.Quote("wails:event:emit:"+name) + `)));
+ if(result===true) {send(` + strconv.Quote("wails:event:emit:"+name+":matched") + `);
+ requestAnimationFrame(() => requestAnimationFrame(() => send(` + strconv.Quote("wails:event:emit:"+name) + `)));}
  else diagnose(typeof result==='string' ? result : JSON.stringify(result));
  } catch(e) {diagnose(JSON.stringify({probeError:String(e)}))}
  finally {send(` + strconv.Quote("wails:event:emit:"+name+":evaluated") + `)}
@@ -78,7 +81,7 @@ func (d *guiTestDriver) probe(expression string) error {
 	})
 	if err != nil {
 		// Native evidence survives a broken bridge, a parse error, or a hung JS call.
-		fmt.Fprintf(d.out, "DOM diagnostics: {\"probe\":%d,\"started\":%t,\"evaluated\":%t,\"timeout\":true}\n", d.seq, started.Load(), evaluated.Load())
+		fmt.Fprintf(d.out, "DOM diagnostics: {\"probe\":%d,\"started\":%t,\"evaluated\":%t,\"matched\":%t,\"timeout\":true}\n", d.seq, started.Load(), evaluated.Load(), matched.Load())
 	}
 	return err
 }
@@ -120,7 +123,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	}
 	switch shot {
 	case "details-expanded":
-		d.w.ExecJS(`document.getElementById('copy').scrollIntoView({block:'end'})`)
+		d.w.ExecJS(`document.getElementById('copy').scrollIntoView({block:'center'})`)
 		if err := d.probe(`(() => {const events=document.getElementById('events').getBoundingClientRect(),copy=document.getElementById('copy').getBoundingClientRect();return check(events.top<innerHeight && events.bottom>0 && copy.top>=0 && copy.bottom<=innerHeight,{events,copy,innerHeight})})()`); err != nil {
 			return err
 		}
