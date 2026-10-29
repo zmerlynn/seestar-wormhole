@@ -44,9 +44,7 @@ Advanced shows ten fixed service rows with Local, Remote, and Purpose columns.
 Leave Local empty to disable a service; enabled local ports must be unique and
 within 1–65535. Phone setup uses local 80 for remote 80; computer setup uses 8080.
 SMB uses local 4445 for remote 445. The CLI retains arbitrary port mappings.
-Schema 1 files with text port overrides are rejected; convert their version and
-port entries to schema 2 before loading. Existing state files are never
-overwritten on a failed load.
+Existing state files are never overwritten on a failed load.
 
 The default state root is `os.UserConfigDir()/seestar-wormhole`: on Linux,
 `$XDG_CONFIG_HOME/seestar-wormhole` or `$HOME/.config/seestar-wormhole`; on macOS,

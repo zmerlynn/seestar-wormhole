@@ -65,7 +65,6 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 }
 func loadSettings(s *storage) (Settings, error) {
 	settings := Settings{Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{}}
-	settings.Version = 0
 	// Decode a fresh struct: absent members have documented defaults; unknown
 	// members are accepted by JSON v2 within this schema version.
 	if err := s.read("config.json", &settings); err != nil {

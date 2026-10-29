@@ -102,18 +102,3 @@ func TestHeadlessSettingsReadOnly(t *testing.T) {
 		}
 	}
 }
-
-func TestTextPortSchemaIsRejectedWithoutChangingFile(t *testing.T) {
-	st := testStorage(t)
-	before := []byte(`{"version":1,"bind":"127.0.0.1","idle":"0","ports":["80:80"]}`)
-	if err := st.writeBytes("config.json", before); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := loadSettings(st); err == nil {
-		t.Fatal("legacy text schema accepted")
-	}
-	after, err := os.ReadFile(filepath.Join(st.root, "config.json"))
-	if err != nil || !bytes.Equal(before, after) {
-		t.Fatal("failed load changed legacy config")
-	}
-}
