@@ -267,11 +267,10 @@ function render(s) {
     else say('');
   }
   const run = s.run_settings;
-  const goal = goalFor(run);
-  $('run-summary').textContent = goalNames[goal] + ' · ' + (run.remember_password ? 'password saved in keychain' : 'password for this launch only') + ' · discovery ' + (s.discovery_started ? 'on' : 'off');
-  $('run-help').textContent = s.cancel ? 'You can cancel while the connection is being established.' : '';
-  $('phone-steps').hidden = !(active && run.discovery && s.discovery_started);
-  $('computer-steps').hidden = !(active && goal === 'computer' && !s.cancel);
+  const listen = run.bind === '0.0.0.0' ? 'all networks' : run.bind === '127.0.0.1' ? 'this computer only' : 'Other';
+  $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle === '0' ? 'Keep connected' : 'Connect when an app needs the telescope');
+  $('phone-steps').hidden = !(active && s.discovery_started);
+  portsTable('running-ports', Object.fromEntries(s.mappings.map(([local, remote]) => [remote, local])));
   $('connection-mode').textContent = 'Connection timing: ' + ((active ? run.idle : settings().idle) === '0' ? 'Keep connected' : 'Connect when an app needs the telescope');
   const map = s.mappings;
   $('mappings').textContent = 'Computer → telescope\n' + map.map(p => p.join(' → ')).join('\n');
