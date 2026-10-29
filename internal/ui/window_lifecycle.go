@@ -61,9 +61,9 @@ func runWindow(ctx context.Context, url string, quit func(), activate <-chan str
 				actions.quit()
 				return
 			case <-activate:
-				actions.setURL(url)
 				actions.unminimise()
 				actions.show()
+				actions.setURL(url)
 				actions.focus()
 			}
 		}

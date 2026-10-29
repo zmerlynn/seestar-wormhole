@@ -65,6 +65,7 @@ func (d *guiTestDriver) probe(expression string) error {
  send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
  try {const result=(` + expression + `);
  if(result===true) {send(` + strconv.Quote("wails:event:emit:"+name+":matched") + `);
+ if(document.hidden) diagnose(JSON.stringify({paintBlocked:'document-hidden',visibility:document.visibilityState,documentFocused:document.hasFocus()}));
  requestAnimationFrame(() => requestAnimationFrame(() => send(` + strconv.Quote("wails:event:emit:"+name) + `)));}
  else diagnose(typeof result==='string' ? result : JSON.stringify(result));
  } catch(e) {diagnose(JSON.stringify({probeError:String(e)}))}

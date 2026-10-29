@@ -108,8 +108,8 @@ func TestNativeActivation(t *testing.T) {
 			show:       func() { calls = append(calls, "show") },
 			focus: func() {
 				calls = append(calls, "focus")
-				if !reflect.DeepEqual(calls, []string{"setURL", "unminimise", "show", "focus"}) {
-					t.Errorf("activation must restore before presenting: %v", calls)
+				if !reflect.DeepEqual(calls, []string{"unminimise", "show", "setURL", "focus"}) {
+					t.Errorf("activation must show the webview before navigating: %v", calls)
 				}
 				close(focused)
 			},
