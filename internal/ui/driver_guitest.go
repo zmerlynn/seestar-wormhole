@@ -142,12 +142,13 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 		if err := d.probe(`(() => {
  const select=getComputedStyle(document.getElementById('goal'));
  const input=getComputedStyle(document.getElementById('email'));
- const legend=document.querySelector('#account legend').getBoundingClientRect();
+ const legendElement=document.querySelector('#account legend'),legend=legendElement.getBoundingClientRect(),legendStyle=getComputedStyle(legendElement);
+ const legendTextLeft=legend.left+parseFloat(legendStyle.paddingLeft)+parseFloat(legendStyle.borderLeftWidth);
  const email=document.getElementById('email').getBoundingClientRect();
  const disabled=document.getElementById('save-password');
  const opacity=Number(getComputedStyle(disabled).opacity);
- const checks={appearance:select.appearance==='none',background:select.backgroundColor===input.backgroundColor,color:select.color===input.color,legendAligned:Math.abs(legend.left-email.left)<1,disabledDimmed:!disabled.disabled || opacity<.7};
- return check(Object.values(checks).every(Boolean),{checks,appearance:select.appearance ?? null,webkitAppearance:select.getPropertyValue('-webkit-appearance'),selectBackground:select.backgroundColor,inputBackground:input.backgroundColor,selectColor:select.color,inputColor:input.color,legendLeft:legend.left,emailLeft:email.left,disabled:disabled.disabled,opacity});
+ const checks={appearance:select.appearance==='none',background:select.backgroundColor===input.backgroundColor,color:select.color===input.color,legendAligned:Math.abs(legendTextLeft-email.left)<1 && parseFloat(legendStyle.paddingLeft)===0,disabledDimmed:!disabled.disabled || opacity<.7};
+ return check(Object.values(checks).every(Boolean),{checks,appearance:select.appearance ?? null,webkitAppearance:select.getPropertyValue('-webkit-appearance'),selectBackground:select.backgroundColor,inputBackground:input.backgroundColor,selectColor:select.color,inputColor:input.color,legendLeft:legend.left,legendTextLeft,legendPadding:legendStyle.paddingLeft,emailLeft:email.left,disabled:disabled.disabled,opacity});
  })()`); err != nil {
 			return err
 		}
@@ -248,7 +249,7 @@ func (d *guiTestDriver) drive() error {
 	}
 	if d.scenario == "relaunch" || d.scenario == "dark-relaunch" || d.scenario == "saved-relaunch" {
 		if d.scenario == "saved-relaunch" {
-			if err := d.probe(`check(el('password').readOnly && el('password').value==='Saved in keychain',{readOnly:el('password').readOnly,savedPlaceholder:el('password').value==='Saved in keychain'})`); err != nil {
+			if err := d.probe(`check(el('password').disabled && el('password').value==='Saved in keychain',{disabled:el('password').disabled,savedPlaceholder:el('password').value==='Saved in keychain'})`); err != nil {
 				return err
 			}
 		}

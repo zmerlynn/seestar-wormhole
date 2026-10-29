@@ -23,9 +23,6 @@ const fieldCopy = {
   email: 'Enter the email address of your Seestar account.', password: 'Enter a password or use a saved password.',
   idle: 'Enter an idle time greater than zero.'
 };
-const goalNames = {
-  phone: 'Phone on this network', computer: 'This computer only', custom: 'Custom'
-};
 async function api(action, body) {
   const options = {
     headers: {
@@ -394,13 +391,12 @@ for (const [id,action] of [['save-password','password/save'],['forget','forget']
 }
 $('email').addEventListener('input', () => {
   $('password').value = '';
-  controls();
 });
 for (const id of ['email','password','idle','bind','serial','model']) $(id).addEventListener('input', () => {
   clearField(id);
   controls();
 });
-for (const id of ['listen','discovery','ports','mode']) $(id).addEventListener('change', () => {
+for (const id of ['listen','discovery','mode']) $(id).addEventListener('change', () => {
   clearField(id === 'listen' ? 'bind' : id === 'mode' ? 'idle' : id);
   controls();
 });
@@ -422,8 +418,6 @@ function customGoal() {
   controls();
 }
 for (const id of ['listen','bind','discovery']) $(id).addEventListener('change', customGoal);
-$('mode').addEventListener('change', controls);
-for (const id of ['serial', 'model']) $(id).addEventListener('input', controls);
 $('copy').addEventListener('click', async () => {
   try {
     await navigator.clipboard.writeText(diagnostic);
@@ -436,5 +430,6 @@ $('copy').addEventListener('click', async () => {
     text('copy-feedback', 'Select and copy the diagnostic summary below.');
   }
 });
+portsTable('ports', {}, true);
 controls();
 poll();

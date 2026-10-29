@@ -57,7 +57,7 @@ func (d *guiTestDriver) uxSetup() error {
 				return err
 			}
 		}
-		if err := d.probe(`check(el('password').readOnly && el('password').value==='Saved in keychain' && !el('forget').disabled,{readOnly:el('password').readOnly,savedPlaceholder:el('password').value==='Saved in keychain',forgetDisabled:el('forget').disabled})`); err != nil {
+		if err := d.probe(`check(el('password').disabled && el('password').value==='Saved in keychain' && getComputedStyle(el('password')).backgroundColor!==getComputedStyle(el('email')).backgroundColor && el('password-note').textContent==='Saved in your OS keychain.' && !el('forget').disabled,{disabled:el('password').disabled,savedPlaceholder:el('password').value==='Saved in keychain',forgetDisabled:el('forget').disabled})`); err != nil {
 			return err
 		}
 		if err := d.state("Not connected", false, "password-saved"); err != nil {
@@ -82,7 +82,7 @@ func (d *guiTestDriver) uxSetup() error {
 			if err := d.click("forget"); err != nil {
 				return err
 			}
-			if err := d.probe(`check(!el('password').readOnly && el('forget').hidden && el('feedback').textContent==='Password removed from keychain and this app.' && el('password-error').hidden && !el('password').hasAttribute('aria-invalid'),{readOnly:el('password').readOnly,forgetHidden:el('forget').hidden,feedback:el('feedback').textContent,errorHidden:el('password-error').hidden,invalid:el('password').getAttribute('aria-invalid')})`); err != nil {
+			if err := d.probe(`check(!el('password').disabled && el('forget').hidden && el('feedback').textContent==='Password removed from keychain and this app.' && el('password-error').hidden && !el('password').hasAttribute('aria-invalid'),{disabled:el('password').disabled,forgetHidden:el('forget').hidden,feedback:el('feedback').textContent,errorHidden:el('password-error').hidden,invalid:el('password').getAttribute('aria-invalid')})`); err != nil {
 				return err
 			}
 			if err := d.state("Not connected", false, "password-removed"); err != nil {
@@ -108,6 +108,9 @@ func (d *guiTestDriver) uxSetup() error {
 	return nil
 }
 func (d *guiTestDriver) uxRunning() error {
+	if err := d.probe(`check(el('running-ports').querySelectorAll('tbody tr').length===10 && !el('running-ports').querySelector('input') && el('run-summary').textContent.startsWith('Listening on ') && !document.getElementById('computer-steps'),{rows:el('running-ports').querySelectorAll('tbody tr').length,summary:el('run-summary').textContent})`); err != nil {
+		return err
+	}
 	switch d.scenario {
 	case "settings-failure":
 		if err := d.probe(`check(!el('retry-storage').hidden && el('notice').textContent.includes('Settings could not be saved'),{retryHidden:el('retry-storage').hidden,notice:el('notice').textContent})`); err != nil {
@@ -127,7 +130,7 @@ func (d *guiTestDriver) uxRunning() error {
 		}
 	case "details":
 		d.js(`document.getElementById('details').open=true;`)
-		if err := d.probe(`check(el('events').textContent.includes('Connected to your telescope') && el('log-path').textContent.includes('gui.log'),{events:el('events').textContent,logPath:el('log-path').textContent})`); err != nil {
+		if err := d.probe(`check(el('events').textContent.includes('Connected to your telescope') && JSON.parse(el('effective-settings').textContent).ports['4700']===4700 && el('log-path').textContent.includes('gui.log'),{events:el('events').textContent,logPath:el('log-path').textContent})`); err != nil {
 			return err
 		}
 		if err := d.state("Connected to your telescope", true, "details-expanded"); err != nil {
