@@ -174,7 +174,7 @@ jobs:
             echo 'PROBE bubblewrap WITHOUT userns relaxation PASS' | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
           else
             log="$RUNNER_TEMP/gui-shots/bubblewrap-probe/relaunch/process.log"
-            grep -F 'WebKit sandbox unavailable: bubblewrap must be installed and permitted to create unprivileged user namespaces' "$log"
+            grep -F 'WebKit sandbox unavailable. Install bubblewrap and allow unprivileged user namespaces.' "$log"
             if grep -E 'SIGTRAP|signal arrived during cgo' "$log"; then exit 1; fi
             # Only relabel after verifying the expected startup error above.
             sed -i 's/^SCENARIO relaunch FAIL:/PROBE restricted bubblewrap EXPECTED:/' "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
