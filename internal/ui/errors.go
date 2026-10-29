@@ -23,6 +23,10 @@ func actionError(err error) *ActionError {
 	if errors.Is(err, errStorage) {
 		return &ActionError{Code: "storage"}
 	}
+	var validation *cloud.ValidationError
+	if errors.As(err, &validation) && errors.Is(err, cloud.ErrConfig) && validation.Field == "email" {
+		return &ActionError{Code: "email", Field: "email"}
+	}
 	phase, reason := diagnostic.Fields(err, "")
 	if phase == "lan_discovery" {
 		return &ActionError{Code: "discovery", Field: "discovery"}
@@ -42,7 +46,7 @@ func actionError(err error) *ActionError {
 func errorCopy(code string) string {
 	switch code {
 	case "email":
-		return "Enter your Seestar account email."
+		return "Enter the email address of your Seestar account."
 	case "password":
 		return "Enter a password or use a saved password."
 	case "idle":

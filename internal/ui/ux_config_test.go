@@ -1,6 +1,7 @@
 package ui
 
 import (
+"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"testing"
 )
@@ -53,4 +54,13 @@ func TestFieldErrorCodes(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestEmailValidationUsesVendorRule(t *testing.T) {
+ for _, email := range []string{"mixed.Case+tag@example.invalid", "name@domain.1"} {
+  s := testSettings(); s.Email = email
+  if _, _, err := s.validate(); err != nil { t.Fatal(err) }
+ }
+ _, err := cloud.EmailCredentials("bad-address", "validation-only")
+ if e := actionError(err); e.Code != "email" || e.Field != "email" { t.Fatalf("email error: %+v", e) }
 }

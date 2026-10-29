@@ -20,7 +20,7 @@ let fieldErrors = {};
 let currentGoal = 'phone', proposedGoal = '', retryRemoval = false, diagnostic = '', noticeCode = '';
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
-  email: 'Enter your Seestar account email.', password: 'Enter a password or use a saved password.',
+  email: 'Enter the email address of your Seestar account.', password: 'Enter a password or use a saved password.',
   idle: 'Enter an idle time greater than zero.'
 };
 const goalNames = {
@@ -51,12 +51,15 @@ async function api(action, body) {
   }
   return response.json();
 }
+function accountEmail() {
+  return $('email').value.replace(/ /g, '').trim();
+}
 function settings() {
   return {
     version: 1, bind: $('listen').value === 'other' ? $('bind').value.trim() : $('listen').value,
     discovery: $('discovery').checked, idle: $('mode').value === 'eager' ? '0' : Number($('idle').value) + 'm',
     serial: $('serial').value.trim(), model: $('model').value.trim(), ports: $('ports').value.split(/\s+/).filter(Boolean),
-    email: $('email').value.trim(), remember_password: usingSaved()
+    email: accountEmail(), remember_password: usingSaved()
   };
 }
 function goalFor(s) {
@@ -79,7 +82,7 @@ function load(s) {
 // The status projection is account-scoped and contains booleans, never a secret.
 // Only an explicit draft/source choice belongs to the page.
 function passwordState() {
-  return state?.settings.email === $('email').value.trim() ? state.password : {};
+  return state?.settings.email === accountEmail() ? state.password : {};
 }
 function usingSaved() {
   return !!passwordState().saved && sourceChoice !== 'typed';
@@ -89,6 +92,7 @@ function editingPassword() {
 }
 function clearField(field) {
   $(field).removeAttribute('aria-invalid');
+  if (field === 'bind') $('listen').removeAttribute('aria-invalid');
   $(field + '-error').hidden = true;
   delete fieldErrors[field];
 }
@@ -139,7 +143,7 @@ function fail(e, focus = false) {
 function validate(passwordSave = false) {
   clearErrors();
   $('listen').removeAttribute('aria-invalid');
-  if (!$('email').value || !$('email').validity.valid) {
+  if (!accountEmail()) {
     actionError = 'email';
     fieldError('email',fieldCopy.email,'email',true);
     return false;
@@ -177,7 +181,7 @@ function controls() {
   $('password').type = editing ? 'password' : 'text';
   if (!editing) $('password').value = selectedSaved ? 'Saved in keychain' : 'This launch only';
   $('save-password').hidden = selectedSaved && !editing;
-  $('save-password').disabled = blocked || !!pending || password.busy || !$('email').validity.valid || !$('email').value || (!editing && !password.memory) || (editing && !$('password').value);
+  $('save-password').disabled = blocked || !!pending || password.busy || !accountEmail() || (!editing && !password.memory) || (editing && !$('password').value);
   $('change-password').hidden = editing;
   text('password-note', editing ? 'Used for this launch unless you save it to your OS keychain.' : selectedSaved ? 'A saved password is selected. Your OS may ask for permission when you connect.' : 'Password available for this launch only.');
   $('use-saved').hidden = !editing || !password.saved;
@@ -215,7 +219,7 @@ function render(s) {
   if (active) lastFailure = '';
   if (pending !== 'quit' && s.password.code && s.password.code !== noticeCode) {
     noticeCode = s.password.code;
-    if (['password_saved','password_removed'].includes(noticeCode) && state.settings.email === $('email').value.trim()) say(s.password.notice);
+    if (['password_saved','password_removed'].includes(noticeCode) && state.settings.email === accountEmail()) say(s.password.notice);
     else say('');
   }
   const run = s.run_settings;
@@ -362,7 +366,14 @@ $('email').addEventListener('input', () => {
   $('password').value = '';
   controls();
 });
-$('password').addEventListener('input', controls);
+for (const id of ['email','password','idle','bind','serial','model']) $(id).addEventListener('input', () => {
+  clearField(id);
+  controls();
+});
+for (const id of ['listen','discovery','ports','mode']) $(id).addEventListener('change', () => {
+  clearField(id === 'listen' ? 'bind' : id === 'mode' ? 'idle' : id);
+  controls();
+});
 function applyGoal(goal) {
   currentGoal = goal;
   $('goal').value = goal;

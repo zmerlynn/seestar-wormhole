@@ -153,6 +153,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest)
 		return
 	}
+	in.Settings.Email = strings.TrimSpace(strings.ReplaceAll(in.Settings.Email, " ", ""))
 	switch r.URL.Path {
 	case "/api/activate":
 		if s.activate == nil {

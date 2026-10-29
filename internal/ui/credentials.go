@@ -56,7 +56,7 @@ func (c *credentialStore) rememberAt(ctx context.Context, s Settings, password s
 	}
 	if password != "" {
 		if _, err := cloud.EmailCredentials(s.Email, password); err != nil {
-			return &ActionError{Code: "password", Field: "password"}
+			return actionError(err)
 		}
 	}
 	c.mu.Lock()
@@ -139,7 +139,7 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 	}
 	credentials, err := cloud.EmailCredentials(s.Email, p)
 	if err != nil {
-		return cloud.Credentials{}, &ActionError{Code: "password", Field: "password"}
+		return cloud.Credentials{}, actionError(err)
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
