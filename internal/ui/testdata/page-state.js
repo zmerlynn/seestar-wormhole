@@ -11,6 +11,7 @@
   });
   const assert = (value, message) => {if (!value) throw new Error(message);};
   const reset = () => {
+    ended = false;
     setup.remember_password = false;
     active = false;
     initialized = true;
@@ -46,6 +47,20 @@
       release({...status(), status: 'Stopped'});
       await old;
       assert(active && $('start').textContent === 'Cancel' && $('options').disabled, 'late idle response restored Connect');
+    });
+    for (const action of ['stop', 'quit']) await check('Release progress during ' + action, async () => {
+      render({...status(), active: true, status: 'Connected to your telescope'});
+      let release;
+      api = async name => name === action ? new Promise(resolve => {release = resolve;}) :
+        {...status(), active: true, stopping: true, status: 'Stopping — releasing the telescope session…'};
+      const finishing = act(action);
+      await poll();
+      assert(pending === action && !ended, 'release completed before its response');
+      assert(state.stopping && $('status').textContent === 'Stopping — releasing the telescope session…' && $('settings').hidden, 'pending action hid release progress');
+      assert($('start').disabled, 'Connect enabled before release joined');
+      release({ok: true});
+      await finishing;
+      assert(pending === '' && ended === (action === 'quit'), 'release response did not finish the action');
     });
     await check('R3 validation precedence', async () => {
       const rejected = {...status(), failure: {code: 'signin', field: 'password'}, failure_message: 'Sign-in was rejected.'};

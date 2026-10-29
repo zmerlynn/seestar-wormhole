@@ -262,7 +262,7 @@ async function refresh() {
 async function poll() {
   if (ended) return;
   try {
-    if (!pending) await refresh();
+    if (!pending || ['stop','quit'].includes(pending)) await refresh();
   } catch (_) {
     if (ended) return;
     connected = false;
