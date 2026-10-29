@@ -77,6 +77,15 @@
       assert(!$('password-error').hidden, 'accepted run with the same failure lost its field error');
     });
     await check('R9 render focus', async () => {
+      initialized = false;
+      api = async () => status();
+      await refresh();
+      await new Promise(requestAnimationFrame);
+      assert(document.activeElement === $('start'), 'initial status did not focus Connect');
+      $('goal').focus();
+      await refresh();
+      await new Promise(requestAnimationFrame);
+      assert(document.activeElement === $('goal'), 'poll stole focus from Use with');
       $('start').focus();
       render({...status(), failure: {code: 'signin', field: 'password'}, failure_message: 'Check the password.'});
       assert(document.activeElement === $('start'), 'render focused a field below Connect');

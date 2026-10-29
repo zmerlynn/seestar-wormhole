@@ -301,7 +301,12 @@ async function refresh() {
     $('password').value = '';
   }
   render(s);
-  if (first) $('start').focus();
+  if (first) {
+    // WKWebView can finish the status fetch before its native window is key.
+    const focusStart = () => requestAnimationFrame(() => $('start').focus());
+    if (document.hasFocus()) focusStart();
+    else window.addEventListener('focus', focusStart, {once: true});
+  }
 }
 async function poll() {
   if (ended) return;

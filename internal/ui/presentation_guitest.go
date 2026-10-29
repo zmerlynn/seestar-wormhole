@@ -108,5 +108,15 @@ func guiTestWindowOptions(scenario string) application.WebviewWindowOptions {
 	if strings.HasPrefix(scenario, "dark") {
 		appearance = application.NSAppearanceNameDarkAqua
 	}
-	return application.WebviewWindowOptions{AllowSimpleEventEmit: true, Mac: application.MacWindow{Appearance: appearance}}
+	return application.WebviewWindowOptions{AllowSimpleEventEmit: true, Mac: application.MacWindow{Appearance: appearance}, JS: `(() => {
+window.__guitestFocus = [];
+const recordFocus = via => {
+ if(window.__guitestFocus.length<16) window.__guitestFocus.push({via,focused:document.activeElement?.id,documentFocused:document.hasFocus(),ready:document.readyState});
+};
+recordFocus('navigation-finished');
+const originalFocus = HTMLElement.prototype.focus;
+HTMLElement.prototype.focus = function(...args) {recordFocus('focus-call:'+this.id);return originalFocus.apply(this,args)};
+window.addEventListener('focus', () => recordFocus('window-focus'));
+document.addEventListener('focusin', () => recordFocus('focusin'));
+})()`}
 }
