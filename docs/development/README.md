@@ -96,6 +96,7 @@ to catch omitted targets:
 | Package | Targets |
 |---|---|
 | `cmd/seestar-wormhole` | `FuzzConfiguration` |
+| `internal/ui` | `FuzzSettings` |
 | `internal/iotc` | `FuzzLicenseJSON`, `FuzzPacket`, `FuzzStream`, `FuzzProtocolParsers`, `FuzzLicense`, `FuzzWireEvents`, `FuzzMetamorphicReceive` |
 | `internal/cloud` | `FuzzJSON`, `FuzzAccountResponses`, `FuzzDevices`, `FuzzOutcomeJoin` |
 | `internal/cloud/cloudhttp` | `FuzzCloudMetamorphic`, `FuzzRejectedResponseDiagnostics` |
