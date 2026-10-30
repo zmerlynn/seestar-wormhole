@@ -190,9 +190,8 @@ select {
 #phone-steps h2 {
   font-size:.95rem;
 }
-#phone-steps ul {
+#phone-steps p {
   font-size:.9rem;
-  padding-left:1.2rem;
 }
 #ports input {
   min-width:5rem;

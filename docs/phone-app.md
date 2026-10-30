@@ -29,7 +29,7 @@ keychain is a separate, optional action. Existing saved setups keep their
 network exposure; choose Phone explicitly if upgrading from computer-only.
 
 Advanced shows a fixed port table; leave a Local cell empty to disable that service. The running page shows the effective ports and Seestar app steps. Keep the computer and phone on the same
-network, use the Seestar app's LAN list, and allow Local Network access if asked.
+network and open the Seestar app.
 Keep seestar-wormhole running. Stop and wait for release before using the app's
 remote mode. Details and logs contains safe diagnostic history. If the GUI
 reports a phone HTTP permission failure, see [port 80 and permissions](#port-80-and-permissions).

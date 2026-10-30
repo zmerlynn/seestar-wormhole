@@ -233,7 +233,7 @@ function controls() {
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
-  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep your phone and this computer on the same network. Select your Seestar in the app\'s LAN list.' : 'Only apps on this computer can connect.';
+  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep your phone and this computer on the same network.' : 'Only apps on this computer can connect.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const code = actionError || (!active && state?.failure?.code) || '';
   $('port-permissions').hidden = code !== 'http_permission';
