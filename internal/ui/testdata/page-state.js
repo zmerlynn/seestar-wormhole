@@ -158,7 +158,7 @@
       initialized = false;
       api = async () => ({...status(), password: {...status().password, memory: true}});
       await refresh();
-      assert(!$('password').disabled && $('password').value === '' && $('save-password').disabled, 'memory reload invented a third password state');
+      assert(!$('password').disabled && $('password').value === '' && !$('save-password').disabled, 'memory reload invented a third password state');
       $('password').value = 'new-synthetic-password';
       $('password').dispatchEvent(new Event('input'));
       await refresh();
@@ -195,6 +195,18 @@
       assert($('forget').hidden && !$('password').disabled && $('password').value === '', 'removal left an obsolete source');
       assert($('feedback').textContent === 'Password removed from keychain and this app.', 'removal feedback missing');
       setup.remember_password = false;
+    });
+    await check('Save retained account password', async () => {
+      state = {...status(), password:{...status().password,memory:true}};
+      controls();
+      assert(!$('save-password').disabled && !$('password').value, 'retained password requires retyping to save');
+      let sent;
+      api = async (name, body) => {if (name === 'password/save') {sent = body; return {ok:true};} return {...status(), password:{...status().password,saved:true}};};
+      await act('password/save');
+      assert(sent && sent.password === '' && sent.settings.email === setup.email && $('password').disabled, 'memory Save did not use the existing account action');
+      $('email').value = 'different@example.invalid';
+      controls();
+      assert($('save-password').disabled, 'retained password crossed accounts');
     });
     await check('Password action focus', async () => {
       $('password').value = 'synthetic-password';

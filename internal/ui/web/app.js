@@ -230,7 +230,7 @@ function controls() {
   $('password').type = selectedSaved ? 'text' : 'password';
   if (selectedSaved) $('password').value = 'Saved in keychain';
   $('save-password').hidden = selectedSaved;
-  $('save-password').disabled = blocked || !!pending || password.busy || !accountEmail() || !$('password').value;
+  $('save-password').disabled = blocked || !!pending || password.busy || !accountEmail() || (!$('password').value && !password.memory);
   text('password-note', selectedSaved ? 'Saved in your keychain.' : 'Kept until you quit. Save to your keychain to use it next time.');
   $('forget').hidden = !password.saved;
   $('forget').disabled = blocked || !!pending || password.busy;
