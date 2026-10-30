@@ -866,10 +866,10 @@ interface. On-link prefix admission and reply/inspection budgets still apply.
 On `proxy`, the option is rejected without `--lan-discovery`; on `discovery`,
 scan replies are already the command's purpose.
 
-Windows discovery uses x/net with Windows control-message support from the
-fork at [github.com/zmerlynn/net](https://github.com/zmerlynn/net/tree/v0.60.1-wormhole.3),
-pinned to `v0.60.1-wormhole.3`. The Windows changes are submitted upstream as
-[internal/socket](https://go.dev/cl/853705) and [ipv4](https://go.dev/cl/853706)
+Windows discovery gets its control messages from
+[github.com/zmerlynn/pktinfo](https://github.com/zmerlynn/pktinfo), which wraps
+x/net's `ipv4.PacketConn`. The same Windows support is submitted upstream to
+x/net as [internal/socket](https://go.dev/cl/853705) and [ipv4](https://go.dev/cl/853706)
 for [golang/go#7175](https://github.com/golang/go/issues/7175). The ingress,
 destination and reply-source checks are the same on every OS; see
 [platform validation status](status.md#platforms).

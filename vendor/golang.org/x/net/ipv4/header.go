@@ -111,9 +111,6 @@ func (h *Header) Parse(b []byte) error {
 		return errHeaderTooShort
 	}
 	hdrlen := int(b[0]&0x0f) << 2
-	if hdrlen < HeaderLen {
-		return errHeaderTooShort
-	}
 	if len(b) < hdrlen {
 		return errExtHeaderTooShort
 	}

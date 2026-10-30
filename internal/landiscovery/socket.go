@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"time"
 
+	"github.com/zmerlynn/pktinfo"
 	"golang.org/x/net/ipv4"
 )
 
@@ -168,7 +169,7 @@ func listen(port int, sources map[int][]netip.Prefix) (*Socket, error) {
 	if err != nil {
 		return nil, err
 	}
-	packet := ipv4.NewPacketConn(conn)
+	packet := pktinfo.NewIPv4PacketConn(conn)
 	if err := packet.SetControlMessage(ipv4.FlagInterface|ipv4.FlagDst, true); err != nil {
 		conn.Close()
 		return nil, err

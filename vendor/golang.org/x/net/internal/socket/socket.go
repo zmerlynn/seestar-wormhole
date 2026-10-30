@@ -109,7 +109,7 @@ type ControlMessage []byte
 // m.
 func (m ControlMessage) Data(dataLen int) []byte {
 	l := controlHeaderLen()
-	if l <= 0 || dataLen < 0 || len(m) < l || dataLen > len(m)-l {
+	if len(m) < l || len(m) < l+dataLen {
 		return nil
 	}
 	return m[l : l+dataLen]
@@ -129,12 +129,8 @@ func (m ControlMessage) Next(dataLen int) ControlMessage {
 // MarshalHeader marshals the header fields of the control message at
 // the head on m.
 func (m ControlMessage) MarshalHeader(lvl, typ, dataLen int) error {
-	l := controlHeaderLen()
-	if l <= 0 || len(m) < l {
+	if len(m) < controlHeaderLen() {
 		return errors.New("short message")
-	}
-	if dataLen < 0 || controlMessageLen(dataLen) < l {
-		return errors.New("invalid message length")
 	}
 	h := (*cmsghdr)(unsafe.Pointer(&m[0]))
 	h.set(controlMessageLen(dataLen), lvl, typ)
@@ -145,21 +141,18 @@ func (m ControlMessage) MarshalHeader(lvl, typ, dataLen int) error {
 // message at the head on m.
 func (m ControlMessage) ParseHeader() (lvl, typ, dataLen int, err error) {
 	l := controlHeaderLen()
-	if l <= 0 || len(m) < l {
+	if len(m) < l {
 		return 0, 0, 0, errors.New("short message")
 	}
 	h := (*cmsghdr)(unsafe.Pointer(&m[0]))
-	if h.len() < l || h.len() > len(m) {
-		return 0, 0, 0, errors.New("invalid message length")
-	}
-	return h.lvl(), h.typ(), h.len() - l, nil
+	return h.lvl(), h.typ(), int(uint64(h.len()) - uint64(l)), nil
 }
 
 // Marshal marshals the control message at the head on m, and returns
 // the next control message.
 func (m ControlMessage) Marshal(lvl, typ int, data []byte) (ControlMessage, error) {
 	l := len(data)
-	if controlHeaderLen() <= 0 || ControlMessageSpace(l) < controlHeaderLen() || len(m) < ControlMessageSpace(l) {
+	if len(m) < ControlMessageSpace(l) {
 		return nil, errors.New("short message")
 	}
 	h := (*cmsghdr)(unsafe.Pointer(&m[0]))
@@ -174,9 +167,6 @@ func (m ControlMessage) Marshal(lvl, typ int, data []byte) (ControlMessage, erro
 //
 // Parse works for both standard and compatible messages.
 func (m ControlMessage) Parse() ([]ControlMessage, error) {
-	if controlHeaderLen() <= 0 {
-		return nil, nil
-	}
 	var ms []ControlMessage
 	for len(m) >= controlHeaderLen() {
 		h := (*cmsghdr)(unsafe.Pointer(&m[0]))
@@ -208,11 +198,10 @@ func (m ControlMessage) Parse() ([]ControlMessage, error) {
 		// +-----+---------------+------+----------+
 		ms = append(ms, ControlMessage(m[:l]))
 		ll := l - controlHeaderLen()
-		if space := ControlMessageSpace(ll); space >= l && len(m) >= space {
-			m = m[space:]
+		if len(m) >= ControlMessageSpace(ll) {
+			m = m[ControlMessageSpace(ll):]
 		} else {
-			// The final record may omit some or all of its data padding.
-			m = nil
+			m = m[controlMessageLen(ll):]
 		}
 	}
 	return ms, nil

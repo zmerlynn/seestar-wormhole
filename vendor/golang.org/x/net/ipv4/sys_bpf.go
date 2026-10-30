@@ -7,8 +7,6 @@
 package ipv4
 
 import (
-	"errors"
-	"math"
 	"unsafe"
 
 	"golang.org/x/net/bpf"
@@ -17,9 +15,6 @@ import (
 )
 
 func (so *sockOpt) setAttachFilter(c *socket.Conn, f []bpf.RawInstruction) error {
-	if len(f) == 0 || len(f) > math.MaxUint16 {
-		return errors.New("invalid filter")
-	}
 	prog := unix.SockFprog{
 		Len:    uint16(len(f)),
 		Filter: (*unix.SockFilter)(unsafe.Pointer(&f[0])),
