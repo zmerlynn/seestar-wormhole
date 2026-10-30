@@ -2,7 +2,27 @@ name: GUI autotest
 
 on:
   push:
-    branches: [lane/gui-autotest, lane/wails-spike]
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/gui-autotest/**'
+      - 'scripts/gui-mac-clang.sh'
+      - 'vendor/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/gui-autotest.yml'
+  pull_request:
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/gui-autotest/**'
+      - 'scripts/gui-mac-clang.sh'
+      - 'vendor/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/gui-autotest.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
