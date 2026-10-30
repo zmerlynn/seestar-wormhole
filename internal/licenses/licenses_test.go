@@ -62,3 +62,34 @@ func TestWailsSourceNotices(t *testing.T) {
 		}
 	}
 }
+
+func TestLinuxGUINativeNotices(t *testing.T) {
+	for _, tc := range []struct {
+		goos, cgo, tags string
+		native          bool
+	}{
+		{"linux", "1", "gui,production", true}, {"linux", "1", "gui", true},
+		{"linux", "0", "", false}, {"linux", "1", "", false},
+		{"darwin", "1", "gui", false}, {"windows", "1", "gui", false},
+	} {
+		info := &debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "GOOS", Value: tc.goos}, {Key: "CGO_ENABLED", Value: tc.cgo}, {Key: "-tags", Value: tc.tags}}}
+		var out bytes.Buffer
+		if err := writeForBuild(&out, info); err != nil {
+			t.Fatal(err)
+		}
+		for _, term := range []string{"Linux native GUI", "GTK 4", "WebKitGTK (webkitgtk-6.0)", "JavaScriptCoreGTK", "libsoup 3", "GLib/GIO", "LGPL-2.1-or-later", "shared libraries the user can replace", "GNU LESSER GENERAL PUBLIC LICENSE", "Version 2.1, February 1999", "END OF TERMS AND CONDITIONS"} {
+			if strings.Contains(out.String(), term) != tc.native {
+				t.Errorf("%s/%s/%s: native notice term %q presence differs", tc.goos, tc.cgo, tc.tags, term)
+			}
+		}
+		if !tc.native {
+			common, err := notices.ReadFile("embed/NOTICE")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(out.Bytes(), common) {
+				t.Fatal("native supplement changed an unrelated build's output")
+			}
+		}
+	}
+}

@@ -129,7 +129,13 @@ func generate(check bool) error {
 		}
 	}
 
-	files := map[string][]byte{"NOTICE": notice}
+	// The native supplement is conditional at runtime; preserve the common
+	// NOTICE output for executables that do not link the Linux GUI libraries.
+	common, native, ok := bytes.Cut(notice, []byte("\nLinux native GUI\n"))
+	if !ok {
+		return errors.New("NOTICE lacks the Linux native GUI supplement")
+	}
+	files := map[string][]byte{"NOTICE": common, "native-linux/NOTICE": append([]byte("\nLinux native GUI\n"), native...)}
 	var entries []module
 	for path, hasPackages := range modules {
 		if !hasPackages {
