@@ -274,10 +274,10 @@ function render(s) {
   const listen = {all_networks: 'all networks', this_computer: 'this computer only', other: 'a selected network address'}[run.listen];
   $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle.mode === 'keep_connected' ? 'Keep connected' : 'Connect when an app needs Seestar');
   $('phone-steps').hidden = !(active && s.discovery_started);
-  const smb = s.mappings.find(([, remote]) => remote === 445);
+  const smb = run.ports['445'];
   $('copy-steps').hidden = !(active && smb);
-  $('copy-port').textContent = smb ? smb[0] : '';
-  portsTable('running-ports', Object.fromEntries(s.mappings.map(([local, remote]) => [remote, local])));
+  $('copy-port').textContent = smb || '';
+  portsTable('running-ports', run.ports);
   $('effective-settings').textContent = JSON.stringify(s.effective, null, 2);
   $('events').replaceChildren(...s.events.map(event => {
     const item = document.createElement('li');

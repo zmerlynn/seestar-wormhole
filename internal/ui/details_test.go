@@ -30,7 +30,7 @@ func TestEffectiveDiagnosticSettings(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != s.version || got.Effective.Listen != "other" || got.Effective.Discovery || got.Effective.Idle.Mode != "on_demand" || got.Effective.Idle.Minutes != 90 || got.Effective.Ports[80] != 0 || got.Effective.Ports[445] != 1234 || len(got.Effective.Ports) != 10 {
+	if got.Version != s.version || got.Effective.Listen != "other" || got.Effective.Discovery || got.Effective.Idle.Mode != "on_demand" || got.Effective.Idle.Minutes != 90 || got.Effective.Ports[80] != 0 || got.Effective.Ports[445] != 1234 || len(got.Effective.Ports) != 10 || got.Effective.Ports[4700] != 4700 {
 		t.Fatalf("effective: %+v", got)
 	}
 	b, _ := json.Marshal(got.Effective)

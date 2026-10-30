@@ -109,13 +109,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		view := s.controller.view()
 		effective := settings
 		if view.Active {
-			effective = view.Settings
+			effective = view.settings
 		}
 		ports, _, _ := effective.validate()
-		mappings := make([][2]uint16, 0, len(ports))
-		for _, p := range ports {
-			mappings = append(mappings, [2]uint16{p.Local, p.Device})
-		}
 		defaults, _ := proxyrun.MergePorts(nil)
 		events, path, logFailed := s.controller.log.snapshot()
 		s.respond(w, struct {
@@ -124,13 +120,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Effective diagnosticSettings `json:"effective"`
 			runView
 			PortDefaults []proxyrun.Port `json:"port_defaults"`
-			Mappings     [][2]uint16     `json:"mappings"`
 			Password     passwordInfo    `json:"password"`
 			Native       bool            `json:"native"`
 			Events       []event         `json:"events"`
 			LogPath      string          `json:"log_path"`
 			LogFailed    bool            `json:"log_failed"`
-		}{pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, mappings, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
+		}{pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
 		return
 	}
 	if r.Method != "POST" {

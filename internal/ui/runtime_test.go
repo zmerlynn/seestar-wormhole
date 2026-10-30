@@ -29,7 +29,7 @@ func TestHeldLockDoesNotReplaceStaleRecord(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := runUI(ctx, st.root, io.Discard, nil, func(string) error { t.Error("opened stale record"); return nil }, &fakeKeychain{}); err != nil {
+	if err := runUIPresented(ctx, st.root, io.Discard, nil, func(string) error { t.Error("opened stale record"); return nil }, &fakeKeychain{}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	var got struct {

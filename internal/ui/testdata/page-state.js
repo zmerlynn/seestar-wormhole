@@ -6,7 +6,7 @@
   const results = [];
   const setup = {...live.settings, email: 'synthetic@example.invalid', remember_password: false};
   const status = () => ({
-    settings: setup, run_settings: setup, mappings: [[80, 80]],
+    settings: setup,
     port_defaults: live.port_defaults, version: 'synthetic-version', effective: live.effective,
     status: 'Not connected', active: false, stopping: false, cancel: false,
     password: {saved: false, memory: false, busy: false, code: '', notice: ''},
@@ -48,6 +48,7 @@
       for (const [id, placeholder] of [['serial', 'From your Seestar account'], ['model', 'e.g. S50 Pro']]) {
         assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && !$(id+'-help') && $(id).getAttribute('aria-describedby').includes('selection-help'), id+' example is not placeholder-only');
       }
+      assert(Array.from($('details').querySelectorAll('h2')).map(e => e.textContent).join('|') === 'Connection settings|Recent events', 'Details headings missing');
       assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Computer port|Seestar port|Purpose', 'ambiguous port headings');
     });
     await check('Version and external links', async () => {
@@ -189,8 +190,7 @@
       assert($('error-code').textContent === 'Error code: signin', 'Details lost the error code');
     });
     await check('Running view uses effective settings', async () => {
-      const run = {...setup, bind: '0.0.0.0', discovery: true, idle: '0'};
-      render({...status(), effective: {...status().effective, listen: 'all_networks', idle: {mode: 'keep_connected'}}, run_settings: run, active: true, discovery_started: true, mappings: [[80,80], [1234,445]]});
+      render({...status(), effective: {...status().effective, listen: 'all_networks', idle: {mode: 'keep_connected'}, ports: {80:80,445:1234}}, active: true, discovery_started: true});
       assert($('run-summary').textContent === 'Listening on all networks · Seestar app discovery on · Keep connected', 'running summary inaccurate');
       const rows = $('running-ports').querySelectorAll('tbody tr');
       assert(rows.length === 10 && !$('running-ports').querySelector('input'), 'running ports must use read-only table');
@@ -198,9 +198,9 @@
       assert(rows[1].cells[0].textContent === '80' && rows[9].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
       assert(!$('copy-steps').hidden && $('copy-port').textContent === '1234' && $('copy-steps').querySelector('h2').textContent === 'Copying files' && $('copy-steps').querySelector('a').href.endsWith('/docs/copying.md#copy-with-a-graphical-app') && $('phone-steps').compareDocumentPosition($('copy-steps')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'copying help missing, wrong port or misplaced');
-      render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}}, run_settings: {...run, bind: '127.0.0.1', discovery: false, idle: '2m'}});
+      render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}}});
       assert($('run-summary').textContent === 'Listening on this computer only · Seestar app discovery off · Connect when an app needs Seestar' && $('phone-steps').hidden && $('copy-steps').hidden, 'computer/idle summary inaccurate');
-      render({...status(), active: true, effective: {...status().effective, listen: 'other'}, run_settings: {...run, bind: 'synthetic-address'}});
+      render({...status(), active: true, effective: {...status().effective, listen: 'other'}});
       assert($('run-summary').textContent.startsWith('Listening on a selected network address ·'), 'Other listen summary missing');
     });
     await check('Custom switches immediately', async () => {

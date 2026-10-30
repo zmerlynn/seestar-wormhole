@@ -85,9 +85,6 @@ func TestSettingsFutureMembersSurviveConnect(t *testing.T) {
 			t.Fatal(w.Body.String())
 		}
 		synctest.Wait()
-		if !s.controller.view().Saved {
-			t.Fatal("Connect did not save settings")
-		}
 		saved, err := os.ReadFile(filepath.Join(s.storage.root, "config.json"))
 		if err != nil {
 			t.Fatal(err)
@@ -149,10 +146,10 @@ func TestSettingsRefusedFileCannotBeSaved(t *testing.T) {
 			}
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
-			err := runUI(ctx, s.storage.root, io.Discard, nil, func(string) error {
+			err := runUIPresented(ctx, s.storage.root, io.Discard, nil, func(string) error {
 				t.Error("opened UI for refused settings")
 				return nil
-			}, &fakeKeychain{})
+			}, &fakeKeychain{}, nil, false)
 			if err == nil || err.Error() != "Could not load saved settings safely. Check config.json in the state directory.\n\n"+filepath.Join(s.storage.root, "config.json")+"\nCheck this file, then reopen seestar-wormhole." {
 				t.Errorf("startup did not explain refusal: %v", err)
 			}

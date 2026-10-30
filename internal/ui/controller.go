@@ -13,23 +13,23 @@ import (
 
 type runFunc func(context.Context, Settings, cloud.Credentials, *proxy.Status) error
 type controller struct {
-	mu                   sync.Mutex
-	parent               context.Context
-	run                  runFunc
-	credentials          *credentialStore
-	done                 chan struct{}
-	cancel               context.CancelFunc
-	status               *proxy.Status
-	stopping, quitting   bool
-	final                string
-	failure              *ActionError
-	save                 func(Settings) error
-	log                  *eventLog
-	runSettings          Settings
-	saved, saveAttempted bool
-	saveMu               sync.Mutex // Serializes snapshot writes, never status or Stop.
-	pendingSave          *Settings
-	lastSaved            Settings
+	mu                 sync.Mutex
+	parent             context.Context
+	run                runFunc
+	credentials        *credentialStore
+	done               chan struct{}
+	cancel             context.CancelFunc
+	status             *proxy.Status
+	stopping, quitting bool
+	final              string
+	failure            *ActionError
+	save               func(Settings) error
+	log                *eventLog
+	runSettings        Settings
+	saveAttempted      bool
+	saveMu             sync.Mutex // Serializes snapshot writes, never status or Stop.
+	pendingSave        *Settings
+	lastSaved          Settings
 }
 
 func (c *controller) start(s Settings, password string) error {
@@ -55,7 +55,7 @@ func (c *controller) start(s Settings, password string) error {
 	c.failure = nil
 	s.Ports = append([]proxyrun.Port(nil), s.Ports...)
 	c.runSettings = s
-	c.saved, c.saveAttempted = false, false
+	c.saveAttempted = false
 	done, status := c.done, c.status
 	go func() {
 		finished := make(chan struct{})
@@ -244,7 +244,6 @@ func (c *controller) persistLocked(s Settings) error {
 	s.Ports = append([]proxyrun.Port(nil), s.Ports...)
 	err := c.save(s)
 	c.mu.Lock()
-	c.saved = err == nil
 	c.pendingSave = nil
 	if err != nil {
 		c.pendingSave = &s
@@ -316,17 +315,16 @@ type runView struct {
 	Stopping       bool         `json:"stopping"`
 	Cancel         bool         `json:"cancel"`
 	Failure        *ActionError `json:"failure,omitempty"`
-	Settings       Settings     `json:"run_settings"`
-	Saved          bool         `json:"settings_saved"`
-	SaveFailed     bool         `json:"save_failed"`
-	Discovery      bool         `json:"discovery_started"`
+	settings       Settings
+	SaveFailed     bool `json:"save_failed"`
+	Discovery      bool `json:"discovery_started"`
 }
 
 func (c *controller) view() runView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	text, active := c.snapshotLocked()
-	v := runView{Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, Settings: c.runSettings, Saved: c.saved, SaveFailed: c.pendingSave != nil}
+	v := runView{Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
 	if active {
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
 		v.Discovery = c.runSettings.Discovery && c.status.SaveBoundary(true)

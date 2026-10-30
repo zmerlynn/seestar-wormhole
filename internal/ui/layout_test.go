@@ -32,32 +32,3 @@ func TestSetupHierarchyAndRunningCopy(t *testing.T) {
 		t.Fatal("product name can break at its hyphen")
 	}
 }
-
-func TestHelpAndServicesGrouping(t *testing.T) {
-	b, err := assets.ReadFile("web/index.html")
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{
-		`id="custom-help" class="help"`, `id="goal" aria-describedby="goal-help custom-help"`,
-		`id="selection-help" class="help"`, `id="serial" placeholder="From your Seestar account"`,
-		`id="model" placeholder="e.g. S50 Pro"`, `aria-describedby="selection-help serial-error"`,
-		`aria-describedby="selection-help model-error"`, `<h2 id="services-title" class="section-start">Services</h2>`,
-		`aria-labelledby="services-title"`, `<h2>Connection settings</h2>`, `<h2>Recent events</h2>`,
-	} {
-		if !strings.Contains(string(b), want) {
-			t.Fatalf("missing grouping: %s", want)
-		}
-	}
-	for _, unwanted := range []string{`id="serial-help"`, `id="model-help"`, `FAKE-SERIAL`, `id="custom-help" class="error"`} {
-		if strings.Contains(string(b), unwanted) {
-			t.Fatalf("unexpected selection/help copy: %s", unwanted)
-		}
-	}
-	css, _ := assets.ReadFile("web/style.css")
-	for _, rule := range []string{".check + .help", ".section-start", "#advanced,#details", "font-variant-numeric:tabular-nums", "overflow-wrap:anywhere"} {
-		if !strings.Contains(string(css), rule) {
-			t.Fatalf("missing grouping style: %s", rule)
-		}
-	}
-}

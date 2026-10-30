@@ -30,7 +30,7 @@ func TestWindowLifetime(t *testing.T) {
 				<-release
 				return nil
 			}
-			err := runUIWithWindow(process, root, io.Discard, run, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(ctx context.Context, url string, closeWindow func(), activate <-chan struct{}) error {
+			err := runUIPresented(process, root, io.Discard, run, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(ctx context.Context, url string, closeWindow func(), activate <-chan struct{}) error {
 				if trigger == "startup failure" {
 					return errStorage
 				}
@@ -54,7 +54,7 @@ func TestWindowLifetime(t *testing.T) {
 					}
 				}
 				// A second launch must activate the owner and return without opening a page.
-				if err := runUIWithWindow(process, root, io.Discard, nil, func(string) error { t.Error("second launch opened browser"); return nil }, &fakeKeychain{}, func(context.Context, string, func(), <-chan struct{}) error { t.Error("second window"); return nil }); err != nil {
+				if err := runUIPresented(process, root, io.Discard, nil, func(string) error { t.Error("second launch opened browser"); return nil }, &fakeKeychain{}, func(context.Context, string, func(), <-chan struct{}) error { t.Error("second window"); return nil }, true); err != nil {
 					t.Fatal(err)
 				}
 				select {
@@ -91,7 +91,7 @@ func TestWindowLifetime(t *testing.T) {
 					<-quitDone
 				}
 				return nil
-			})
+			}, true)
 			if trigger == "startup failure" {
 				if err != errStorage {
 					t.Fatal(err)
@@ -139,7 +139,7 @@ func TestWindowReceivesLaunchVersion(t *testing.T) {
 		if want == "" {
 			want = "development"
 		}
-		err := runUIWithWindow(ctx, t.TempDir()+"/state", io.Discard, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(windowCtx context.Context, url string, quit func(), _ <-chan struct{}) error {
+		err := runUIPresented(ctx, t.TempDir()+"/state", io.Discard, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(windowCtx context.Context, url string, quit func(), _ <-chan struct{}) error {
 			if uiVersion(windowCtx) != want {
 				t.Errorf("window version %q, want %q", uiVersion(windowCtx), want)
 			}
@@ -163,7 +163,7 @@ func TestWindowReceivesLaunchVersion(t *testing.T) {
 			quit()
 			<-windowCtx.Done()
 			return nil
-		})
+		}, true)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -124,7 +124,7 @@ func TestSettingsSaveBoundarySnapshotAndRetry(t *testing.T) {
 					if calls != 1 || !c.view().SaveFailed {
 						t.Fatal("armed boundary missing")
 					}
-					if err := c.retrySave(); err != nil || calls != 2 || !c.view().Saved {
+					if err := c.retrySave(); err != nil || calls != 2 {
 						t.Fatal("retry failed", err)
 					}
 				} else if calls != 0 {

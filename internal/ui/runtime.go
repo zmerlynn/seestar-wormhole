@@ -132,13 +132,6 @@ func Run(ctx context.Context, root string, out io.Writer, run runFunc, version s
 // proxy cleanup and HTTP shutdown; close requests must call quit and wait.
 type windowFunc func(context.Context, string, func(), <-chan struct{}) error
 
-func runUI(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain) error {
-	return runUIWithWindow(ctx, root, out, run, open, chain, nil)
-}
-func runUIWithWindow(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc) error {
-	return runUIPresented(ctx, root, out, run, open, chain, window, window != nil)
-}
-
 func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native bool) (result error) {
 	st, err := openStorage(root)
 	if err != nil {
