@@ -8,7 +8,7 @@ import (
 )
 
 func showUIStartupError(err error) {
-	title, _ := windows.UTF16PtrFromString("seestar-wormhole")
+	title, _ := windows.UTF16PtrFromString(uiStartupErrorTitle)
 	message, _ := windows.UTF16PtrFromString(err.Error())
 	windows.NewLazySystemDLL("user32.dll").NewProc("MessageBoxW").Call(0, uintptr(unsafe.Pointer(message)), uintptr(unsafe.Pointer(title)), 0x10)
 }

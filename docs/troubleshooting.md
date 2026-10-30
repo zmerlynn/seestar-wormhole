@@ -68,6 +68,17 @@ Closing the terminal window also quits; on Windows, cleanup is best effort withi
 the OS deadline. Closing the tab leaves the process running.
 See [browser controls](reference.md#ui).
 
+## Saved settings prevent startup
+
+The native app shows **Could not open seestar-wormhole** with the refused
+settings file's location. Check this file, then reopen seestar-wormhole.
+The app leaves the file untouched. Default locations are:
+
+- macOS: `~/Library/Application Support/seestar-wormhole/config.json`
+- Linux: `$XDG_CONFIG_HOME/seestar-wormhole/config.json`, or
+  `~/.config/seestar-wormhole/config.json` when that variable is unset.
+- Windows: `%AppData%\seestar-wormhole\config.json`
+
 ## The OS keychain is unavailable
 
 A locked keychain, missing desktop session, or unavailable Secret Service can

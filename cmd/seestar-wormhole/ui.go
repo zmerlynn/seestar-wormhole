@@ -19,6 +19,8 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 )
 
+const uiStartupErrorTitle = "Could not open seestar-wormhole"
+
 // Set only by main: headless tests never display a native dialog.
 var reportUIError = func(error) {}
 
