@@ -8,6 +8,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -35,6 +36,9 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 	}
 	if err != nil || idle < 0 {
 		return nil, 0, &ActionError{Code: "idle", Field: "idle"}
+	}
+	if strings.TrimSpace(s.Bind) == "" {
+		return nil, 0, &ActionError{Code: "bind_empty", Field: "bind"}
 	}
 	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
 		return nil, 0, &ActionError{Code: "discovery_bind", Field: "bind"}

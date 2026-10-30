@@ -121,7 +121,7 @@ func TestSettingsPortKeys(t *testing.T) {
 		{"uppercase_local", `{"version":1,"idle":"0","ports":[{"Local":80,"device":80}]}`, proxyrun.Port{Device: 80}, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var got Settings
+			got := Settings{Bind: "127.0.0.1", Idle: "0"}
 			if err := json.Unmarshal([]byte(tc.body), &got); err != nil {
 				t.Fatal(err)
 			}

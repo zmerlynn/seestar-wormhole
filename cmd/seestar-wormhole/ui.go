@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 
@@ -41,6 +42,9 @@ func newUIRunner(root string, logs io.Writer, newSession func(context.Context, p
 }
 func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error), listen func(string, string) (net.Listener, error), discovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) func(context.Context, ui.Settings, cloud.Credentials, *proxy.Status) error {
 	return func(ctx context.Context, s ui.Settings, credentials cloud.Credentials, status *proxy.Status) error {
+		if strings.TrimSpace(s.Bind) == "" {
+			return &ui.ActionError{Code: "bind_empty", Field: "bind"}
+		}
 		idle, err := time.ParseDuration(s.Idle)
 		if err != nil {
 			return err

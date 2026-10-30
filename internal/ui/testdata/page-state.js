@@ -72,6 +72,17 @@
       render(s);
       assert($('port-permissions').hidden, 'permission guide stayed after recovery');
     });
+    await check('Empty Other address', async () => {
+      $('password').value = 'synthetic-password';
+      $('listen').value = 'other';
+      $('bind').value = '  ';
+      $('discovery').checked = false;
+      let calls = 0;
+      api = async () => { calls++; return status(); };
+      await act('start');
+      assert(calls === 0 && fieldErrors.bind === 'bind_empty' && document.activeElement === $('bind'), 'empty Other address submitted');
+      assert($('bind-error').textContent === 'Enter a local network address, or choose This computer only or All networks.', 'empty address recovery missing');
+    });
     await check('R3 stale response', async () => {
       let release;
       api = () => new Promise(resolve => {release = resolve;});

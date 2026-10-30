@@ -63,6 +63,8 @@ func errorCopy(code string) string {
 		return "Use ports 1–65535, with no duplicates. Leave a port empty to turn off its service."
 	case "ports_empty":
 		return "Enter a local port for at least one service in Advanced."
+	case "bind_empty":
+		return "Enter a local network address, or choose This computer only or All networks."
 	case "bind":
 		return "Could not listen on this address. In Advanced, choose an address assigned to this computer."
 	case "discovery_bind":

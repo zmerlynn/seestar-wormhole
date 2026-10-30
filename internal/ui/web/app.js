@@ -186,6 +186,11 @@ function validate(passwordSave = false) {
     fieldError('password',fieldCopy.password,'password',true);
     return false;
   }
+  if ($('listen').value === 'other' && !$('bind').value.trim()) {
+    actionError = 'bind_empty';
+    fieldError('bind', 'Enter a local network address, or choose This computer only or All networks.', 'bind_empty', true);
+    return false;
+  }
   if (passwordSave) return true;
   const locals = new Set();
   for (const [remote] of services) {

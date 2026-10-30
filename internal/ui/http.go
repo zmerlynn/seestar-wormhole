@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"time"
@@ -279,11 +280,15 @@ func diagnosticSettingsFor(s Settings, ports []proxyrun.Port) diagnosticSettings
 	if d > 0 {
 		v.Idle.Mode = "on_demand"
 	}
-	switch s.Bind {
-	case "0.0.0.0":
+	if addr, err := netip.ParseAddr(s.Bind); err == nil {
+		addr = addr.Unmap()
+		if addr.IsUnspecified() {
+			v.Listen = "all_networks"
+		} else if addr.IsLoopback() {
+			v.Listen = "this_computer"
+		}
+	} else if s.Bind == "" {
 		v.Listen = "all_networks"
-	case "127.0.0.1", "::1":
-		v.Listen = "this_computer"
 	}
 	defaults, _ := proxyrun.MergePorts(nil)
 	for _, p := range defaults {
