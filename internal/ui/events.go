@@ -26,7 +26,8 @@ type event struct {
 }
 
 type eventLog struct {
-	mu      sync.Mutex
+	mu      sync.Mutex // Protects only the in-memory projection.
+	diskMu  sync.Mutex // Orders publication and disk appends; never held by status.
 	storage *storage
 	recent  []event
 	failed  bool
@@ -47,31 +48,50 @@ func eventCode(text string) string {
 func (l *eventLog) add(text string) { l.addFailure(text, nil) }
 
 func (l *eventLog) addFailure(text string, err error) {
-	code := eventCode(text)
-	if l == nil || code == "" {
+	if l == nil {
 		return
+	}
+	l.diskMu.Lock()
+	defer l.diskMu.Unlock()
+	l.mu.Lock()
+	entry := l.publishLocked(text, err)
+	l.mu.Unlock()
+	l.write(entry)
+}
+
+// publishLocked records an immutable event in memory, without disk I/O.
+func (l *eventLog) publishLocked(text string, err error) *event {
+	code := eventCode(text)
+	if code == "" {
+		return nil
 	}
 	entry := event{Time: time.Now().UTC(), Message: text, Code: code}
 	if err != nil {
 		entry.Phase, entry.Reason = diagnostic.Fields(err, "connect")
 	}
-	l.mu.Lock()
-	defer l.mu.Unlock()
 	if len(l.recent) > 0 {
 		last := l.recent[len(l.recent)-1]
 		if last.Message == entry.Message && last.Phase == entry.Phase && last.Reason == entry.Reason {
-			return
+			return nil
 		}
 	}
 	l.recent = append(l.recent, entry)
 	if len(l.recent) > eventLimit {
 		l.recent = append([]event(nil), l.recent[len(l.recent)-eventLimit:]...)
 	}
-	if l.storage == nil {
+	return &entry
+}
+
+// The caller holds diskMu, preserving the memory publication order on disk.
+func (l *eventLog) write(entry *event) {
+	if entry == nil || l.storage == nil {
 		return
 	}
 	line, err := json.Marshal(entry)
-	l.failed = err != nil || l.appendLine(append(line, '\n')) != nil
+	failed := err != nil || l.appendLine(append(line, '\n')) != nil
+	l.mu.Lock()
+	l.failed = failed
+	l.mu.Unlock()
 }
 
 // Disk history is opaque: append without reading or projecting prior content.

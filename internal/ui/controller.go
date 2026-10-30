@@ -84,7 +84,6 @@ func (c *controller) start(s Settings, password string) error {
 		close(finished)
 		<-watched
 		c.mu.Lock()
-		defer c.mu.Unlock()
 		if ctx.Err() != nil && err == nil {
 			err = ctx.Err()
 		}
@@ -96,10 +95,14 @@ func (c *controller) start(s Settings, password string) error {
 		if c.final == "Stopped" {
 			c.final = "Stopped. Seestar may still be releasing the session."
 		}
-		c.log.addFailure(c.final, err)
+		final := c.final
+		c.mu.Unlock()
+		c.log.addFailure(final, err)
+		c.mu.Lock()
 		c.done = nil
 		c.cancel = nil
 		close(done)
+		c.mu.Unlock()
 	}()
 	return nil
 }
@@ -187,11 +190,23 @@ func runObserved(cancel context.CancelFunc, rejected <-chan struct{}, run func()
 
 // A queued Ready update must not announce a new connection during Stop.
 func (c *controller) recordProgress(text string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if !c.stopping {
-		c.record(text)
+	l := c.log
+	if l == nil {
+		return
 	}
+	// Wait for the event owner before taking the Stop/status mutex. Publication
+	// and Stop are ordered in memory; the subsequent disk append holds neither.
+	l.diskMu.Lock()
+	defer l.diskMu.Unlock()
+	l.mu.Lock()
+	c.mu.Lock()
+	var entry *event
+	if !c.stopping {
+		entry = l.publishLocked(text, nil)
+	}
+	c.mu.Unlock()
+	l.mu.Unlock()
+	l.write(entry)
 }
 func (c *controller) record(text string) {
 	if c.log != nil {
