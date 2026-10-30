@@ -52,7 +52,7 @@ func TestKeychainUnavailableMemoryOnly(t *testing.T) {
 	c := &credentialStore{chain: chain}
 	s := testSettings()
 	s.Remember = true
-	if err := c.remember(t.Context(), s, testPassword); err == nil {
+	if err := c.rememberAt(t.Context(), s, testPassword, c.nextGeneration()); err == nil {
 		t.Fatal("keychain denial reported success")
 	}
 	if available, notice := c.info(); !available || !strings.Contains(notice, "until you quit") {
@@ -69,7 +69,7 @@ func TestKeychainUnavailableMemoryOnly(t *testing.T) {
 	if bytes.Contains(b, []byte(testPassword)) {
 		t.Fatal("password persisted")
 	}
-	c.forget(t.Context(), s.Email)
+	c.forgetAt(t.Context(), s.Email, c.nextGeneration())
 	if available, _ := c.info(); available {
 		t.Fatal("Forget retained memory password")
 	}
@@ -88,7 +88,7 @@ func TestKeychainOptInAndGet(t *testing.T) {
 		t.Fatal("unchecked remember accessed keychain")
 	}
 	s.Remember = true
-	if err := c.remember(t.Context(), s, ""); err != nil {
+	if err := c.rememberAt(t.Context(), s, "", c.nextGeneration()); err != nil {
 		t.Fatal(err)
 	}
 	if chain.calls != 1 || chain.value != testPassword {
@@ -98,7 +98,7 @@ func TestKeychainOptInAndGet(t *testing.T) {
 	if _, err := loaded.credentials(t.Context(), s, ""); err != nil {
 		t.Fatal(err)
 	}
-	loaded.forget(t.Context(), s.Email)
+	loaded.forgetAt(t.Context(), s.Email, loaded.nextGeneration())
 	if chain.value != "" {
 		t.Fatal("Forget did not delete")
 	}
@@ -114,7 +114,7 @@ func TestForgetInvalidatesPendingGet(t *testing.T) {
 		go func() { _, err := c.credentials(t.Context(), s, ""); got <- err }()
 		<-chain.entered
 		forgotten := make(chan struct{})
-		go func() { c.forget(t.Context(), s.Email); close(forgotten) }()
+		go func() { c.forgetAt(t.Context(), s.Email, c.nextGeneration()); close(forgotten) }()
 		synctest.Wait() // Forget has cleared memory and is waiting for Get's native gate.
 		close(chain.release)
 		err := <-got
@@ -150,7 +150,7 @@ func TestKeychainRecordSize(t *testing.T) {
 			c := &credentialStore{chain: chain, email: tc.email, password: tc.password}
 			s := testSettings()
 			s.Email, s.Remember = tc.email, true
-			if err := c.remember(t.Context(), s, ""); (err == nil) != tc.wantSet {
+			if err := c.rememberAt(t.Context(), s, "", c.nextGeneration()); (err == nil) != tc.wantSet {
 				t.Fatalf("save error=%v, wantSet=%v", err, tc.wantSet)
 			}
 			if (chain.calls == 1) != tc.wantSet || chain.calls > 1 {

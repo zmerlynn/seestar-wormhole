@@ -23,7 +23,7 @@ func TestRemoveFailureCanRetryRepeatedly(t *testing.T) {
 	chain := &fakeKeychain{value: testPassword, err: errors.New("private")}
 	c := &credentialStore{chain: chain, savedEmail: testSettings().Email, email: testSettings().Email, password: testPassword}
 	for range 2 {
-		if err := c.forget(t.Context(), testSettings().Email); err == nil {
+		if err := c.forgetAt(t.Context(), testSettings().Email, c.nextGeneration()); err == nil {
 			t.Fatal("denial claimed success")
 		}
 		state := c.state(testSettings().Email)
@@ -32,13 +32,13 @@ func TestRemoveFailureCanRetryRepeatedly(t *testing.T) {
 		}
 	}
 	chain.err = nil
-	if err := c.forget(t.Context(), testSettings().Email); err != nil {
+	if err := c.forgetAt(t.Context(), testSettings().Email, c.nextGeneration()); err != nil {
 		t.Fatal(err)
 	}
 	if state := c.state(testSettings().Email); state.Saved || state.Memory {
 		t.Fatalf("not removed: %+v", state)
 	}
-	if err := c.forget(t.Context(), testSettings().Email); err != nil {
+	if err := c.forgetAt(t.Context(), testSettings().Email, c.nextGeneration()); err != nil {
 		t.Fatal("repeated removal", err)
 	}
 }
@@ -175,7 +175,7 @@ func TestRemoveTimeoutDoesNotConfirmDeletion(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		chain := &blockedDelete{release: make(chan struct{})}
 		c := &credentialStore{chain: chain, savedEmail: testSettings().Email}
-		err := c.forget(t.Context(), testSettings().Email)
+		err := c.forgetAt(t.Context(), testSettings().Email, c.nextGeneration())
 		if actionError(err).Code != "keychain_timeout" || !c.state(testSettings().Email).Saved || !c.state(testSettings().Email).Busy {
 			t.Fatal("uncertain deletion misrepresented")
 		}
@@ -184,7 +184,7 @@ func TestRemoveTimeoutDoesNotConfirmDeletion(t *testing.T) {
 		if c.state(testSettings().Email).Busy {
 			t.Fatal("native operation did not reconcile")
 		}
-		if err := c.forget(t.Context(), testSettings().Email); err != nil {
+		if err := c.forgetAt(t.Context(), testSettings().Email, c.nextGeneration()); err != nil {
 			t.Fatal(err)
 		}
 	})
@@ -212,7 +212,7 @@ func TestSaveTimeoutRetainsMemoryWithoutClaimingSaved(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		release := make(chan struct{})
 		c := &credentialStore{chain: &blockedSave{release: release}}
-		if err := c.remember(t.Context(), testSettings(), testPassword); actionError(err).Code != "keychain_timeout" {
+		if err := c.rememberAt(t.Context(), testSettings(), testPassword, c.nextGeneration()); actionError(err).Code != "keychain_timeout" {
 			t.Fatal(err)
 		}
 		state := c.state(testSettings().Email)
@@ -224,7 +224,7 @@ func TestSaveTimeoutRetainsMemoryWithoutClaimingSaved(t *testing.T) {
 		if c.state(testSettings().Email).Saved {
 			t.Fatal("late operation claimed association without acknowledged save")
 		}
-		if err := c.remember(t.Context(), testSettings(), ""); err != nil {
+		if err := c.rememberAt(t.Context(), testSettings(), "", c.nextGeneration()); err != nil {
 			t.Fatal(err)
 		}
 		if !c.state(testSettings().Email).Saved {

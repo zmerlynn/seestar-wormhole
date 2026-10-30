@@ -57,9 +57,9 @@ func TestRemoveSupersedesEarlierPendingSave(t *testing.T) {
 		c := &credentialStore{chain: f}
 		saved := make(chan error, 1)
 		removed := make(chan error, 1)
-		go func() { saved <- c.remember(context.Background(), a, testPassword) }()
+		go func() { saved <- c.rememberAt(context.Background(), a, testPassword, c.nextGeneration()) }()
 		<-f.entered
-		go func() { removed <- c.forget(context.Background(), a.Email) }()
+		go func() { removed <- c.forgetAt(context.Background(), a.Email, c.nextGeneration()) }()
 		synctest.Wait()
 		close(f.release)
 		<-saved // A superseded Save may correctly return an error.

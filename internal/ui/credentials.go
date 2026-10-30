@@ -46,10 +46,6 @@ type credentialStore struct {
 	code, savedEmail string
 }
 
-// remember is used only by the explicit Save password action.
-func (c *credentialStore) remember(ctx context.Context, s Settings, password string) error {
-	return c.rememberAt(ctx, s, password, c.generationID())
-}
 func (c *credentialStore) rememberAt(ctx context.Context, s Settings, password string, generation uint64) error {
 	if s.Email == "" {
 		return &ActionError{Code: "email", Field: "email"}
@@ -73,9 +69,19 @@ func (c *credentialStore) rememberAt(ctx context.Context, s Settings, password s
 		return &ActionError{Code: "password", Field: "password"}
 	}
 	if len(email) > 1024 || len(p) > 1024 {
-		return c.outcome("password_save")
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.generation != generation {
+			return &ActionError{Code: "password", Field: "password"}
+		}
+		return c.outcomeLocked("password_save")
 	}
-	_, err := keychainCall(ctx, c, func() (string, error) { return "", c.chain.Set(keyringService, email, p) })
+	_, err := keychainCall(ctx, c, func() (string, error) {
+		if c.generationID() != generation {
+			return "", &ActionError{Code: "password", Field: "password"}
+		}
+		return "", c.chain.Set(keyringService, email, p)
+	})
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.generation != generation {
@@ -91,11 +97,6 @@ func (c *credentialStore) rememberAt(ctx context.Context, s Settings, password s
 	c.code = "password_saved"
 	c.notice = "Password saved to keychain. Checked when you connect."
 	return nil
-}
-func (c *credentialStore) outcome(code string) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.outcomeLocked(code)
 }
 func (c *credentialStore) outcomeLocked(code string) error {
 	c.code = code
@@ -115,6 +116,10 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 		p = password
 	} else if s.Remember {
 		c.mu.Lock()
+		if c.generation != generation {
+			c.mu.Unlock()
+			return cloud.Credentials{}, &ActionError{Code: "password", Field: "password"}
+		}
 		c.notice = "Reading saved password…"
 		c.code = "password_reading"
 		c.mu.Unlock()
@@ -122,6 +127,10 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				c.mu.Lock()
+				if c.generation != generation {
+					c.mu.Unlock()
+					return cloud.Credentials{}, &ActionError{Code: "password", Field: "password"}
+				}
 				c.code = ""
 				c.notice = "Saved in your keychain."
 				c.mu.Unlock()
@@ -133,7 +142,12 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 			} else if errors.Is(err, context.DeadlineExceeded) {
 				code = "keychain_timeout"
 			}
-			return cloud.Credentials{}, c.outcome(code)
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.generation != generation {
+				return cloud.Credentials{}, &ActionError{Code: "password", Field: "password"}
+			}
+			return cloud.Credentials{}, c.outcomeLocked(code)
 		}
 		p = saved
 	}
@@ -155,20 +169,34 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 	}
 	return credentials, nil
 }
-func (c *credentialStore) forget(ctx context.Context, email string) error {
+func (c *credentialStore) forgetAt(ctx context.Context, email string, generation uint64) error {
 	c.mu.Lock()
-	c.generation++
+	if c.generation != generation {
+		c.mu.Unlock()
+		return &ActionError{Code: "password", Field: "password"}
+	}
 	c.email, c.password = "", ""
 	c.mu.Unlock()
-	_, err := keychainCall(ctx, c, func() (string, error) { return "", c.chain.Delete(keyringService, email) })
-	if err != nil && !errors.Is(err, keyring.ErrNotFound) {
-		if errors.Is(err, context.DeadlineExceeded) {
-			return c.outcome("keychain_timeout")
+	_, err := keychainCall(ctx, c, func() (string, error) {
+		if c.generationID() != generation {
+			return "", &ActionError{Code: "password", Field: "password"}
 		}
-		return c.outcome("password_remove")
-	}
+		return "", c.chain.Delete(keyringService, email)
+	})
+	// Classify outside the memory mutex; provider errors may implement Is.
+	missing := errors.Is(err, keyring.ErrNotFound)
+	timeout := errors.Is(err, context.DeadlineExceeded)
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.generation != generation {
+		return &ActionError{Code: "password", Field: "password"}
+	}
+	if err != nil && !missing {
+		if timeout {
+			return c.outcomeLocked("keychain_timeout")
+		}
+		return c.outcomeLocked("password_remove")
+	}
 	if c.savedEmail == email {
 		c.savedEmail = ""
 	}
@@ -241,5 +269,13 @@ func keychainCall(ctx context.Context, c *credentialStore, call func() (string, 
 func (c *credentialStore) generationID() uint64 {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	return c.generation
+}
+
+// Each explicit mutation invalidates older provider results and disk commits.
+func (c *credentialStore) nextGeneration() uint64 {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.generation++
 	return c.generation
 }

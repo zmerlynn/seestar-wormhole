@@ -248,20 +248,23 @@ func (c *controller) retrySave() error {
 	}
 	return c.persistLocked(*c.pendingSave)
 }
-func (c *controller) persistRemoval(email string) error {
+func (c *controller) persistRemoval(generation uint64) error {
 	c.saveMu.Lock()
 	defer c.saveMu.Unlock()
+	if c.credentials.generationID() != generation {
+		return &ActionError{Code: "password", Field: "password"}
+	}
 	// Remove edits only the last valid persisted snapshot, never the form draft.
 	// A first-launch removal uses the same valid defaults as initial setup.
 	s := c.lastSaved
 	if s.Version == 0 {
 		s = defaultSettings()
 	}
-	// A pending snapshot must never restore the removed association.
-	if c.pendingSave != nil && c.pendingSave.Email == email {
-		c.pendingSave.Remember = false
+	err := c.persistLocked(s)
+	if c.credentials.generationID() != generation {
+		return &ActionError{Code: "password", Field: "password"}
 	}
-	return c.persistLocked(s)
+	return err
 }
 func uiText(text string) string {
 	switch text {

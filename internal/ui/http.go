@@ -179,7 +179,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case "/api/password/save":
 		if _, _, err = in.Settings.validate(); err == nil {
-			generation := s.controller.credentials.generationID()
+			generation := s.controller.credentials.nextGeneration()
 			err = s.controller.credentials.rememberAt(r.Context(), in.Settings, in.Password, generation)
 			if err == nil {
 				err = s.controller.persistPassword(in.Settings, generation)
@@ -190,12 +190,15 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	case "/api/forget":
-		err = s.controller.credentials.forget(r.Context(), in.Settings.Email)
+		generation := s.controller.credentials.nextGeneration()
+		err = s.controller.credentials.forgetAt(r.Context(), in.Settings.Email, generation)
 		if err == nil {
-			err = s.controller.persistRemoval(in.Settings.Email)
+			err = s.controller.persistRemoval(generation)
 		}
-		_, notice := s.controller.credentials.info()
-		s.controller.record(notice)
+		if s.controller.credentials.generationID() == generation {
+			_, notice := s.controller.credentials.info()
+			s.controller.record(notice)
+		}
 	case "/api/retry-storage":
 		err = s.controller.retrySave()
 	case "/api/quit":
