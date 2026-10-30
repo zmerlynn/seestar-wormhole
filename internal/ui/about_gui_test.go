@@ -46,7 +46,7 @@ func TestNativeProjectMenuPreservesRoles(t *testing.T) {
 }
 
 func TestNativePageLinksUseFixedDestinations(t *testing.T) {
-	for _, url := range []string{releasesURL, licenseURL, portPermissionsURL} {
+	for _, url := range []string{releasesURL, licenseURL, portPermissionsURL, copyingURL} {
 		var got string
 		openPageLink("seestar:open:"+url, func(s string) error { got = s; return nil })
 		if got != url {

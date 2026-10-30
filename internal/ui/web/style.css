@@ -187,10 +187,10 @@ select {
   background-repeat:no-repeat;
 }
 
-#phone-steps h2 {
+#phone-steps h2, #copy-steps h2 {
   font-size:.95rem;
 }
-#phone-steps p {
+#phone-steps p, #copy-steps p {
   font-size:.9rem;
 }
 #ports input {

@@ -85,7 +85,7 @@ container, and on Windows.
 ## Copy images while you keep observing
 
 rclone copies images through the proxy's SMB listener while control clients
-share the session. See [Copy images with rclone](docs/copying.md) for setup,
+share the session. See [Copy images](docs/copying.md) for setup,
 transfer settings, and byte verification on Linux, macOS, and Windows.
 
 ## Keep it on your own network
@@ -129,7 +129,7 @@ See [internal package boundary](docs/development/README.md).
 
 - [Phone app guide](docs/phone-app.md)
 - [Always-on guide](docs/always-on.md)
-- [Copy images with rclone](docs/copying.md)
+- [Copy images](docs/copying.md)
 - [seestar_alp and other clients](docs/clients.md)
 - [Command reference](docs/reference.md): every flag, exit code and log message
 - [How the proxy speaks the protocol](docs/protocol.md)

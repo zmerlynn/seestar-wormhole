@@ -186,8 +186,9 @@
       assert(!$('running-ports-box').open && $('running-ports-box').querySelector('summary').textContent === 'Ports forwarded to your Seestar' && $('phone-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'running ports must sit closed below the Seestar app steps');
       assert(rows[1].cells[0].textContent === '80' && rows[9].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
+      assert(!$('copy-steps').hidden && $('copy-port').textContent === '1234' && $('copy-steps').querySelector('h2').textContent === 'Copying files' && $('copy-steps').querySelector('a').href.endsWith('/docs/copying.md') && $('phone-steps').compareDocumentPosition($('copy-steps')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'copying help missing, wrong port or misplaced');
       render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}}, run_settings: {...run, bind: '127.0.0.1', discovery: false, idle: '2m'}});
-      assert($('run-summary').textContent === 'Listening on this computer only · Seestar app discovery off · Connect when an app needs Seestar' && $('phone-steps').hidden, 'computer/idle summary inaccurate');
+      assert($('run-summary').textContent === 'Listening on this computer only · Seestar app discovery off · Connect when an app needs Seestar' && $('phone-steps').hidden && $('copy-steps').hidden, 'computer/idle summary inaccurate');
       render({...status(), active: true, effective: {...status().effective, listen: 'other'}, run_settings: {...run, bind: 'synthetic-address'}});
       assert($('run-summary').textContent.startsWith('Listening on a selected network address ·'), 'Other listen summary missing');
     });
