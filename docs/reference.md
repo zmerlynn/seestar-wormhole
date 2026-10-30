@@ -41,7 +41,7 @@ the native window forward or reopen the browser page. A separately running `prox
 conflicting forwarding ports must be freed before starting another run.
 
 Advanced shows ten fixed service rows with Local port, Seestar port, and
-Purpose columns. Local ports are on this computer. Leave **Local port** empty
+Purpose columns. Local ports are on your computer. Leave **Local port** empty
 to turn off a service. Each enabled local port must be unique and between 1 and
 65535. **Phone on this network** uses local port 80 for Seestar port 80;
 **This computer only** uses 8080. SMB uses local port 4445 for Seestar port 445.
