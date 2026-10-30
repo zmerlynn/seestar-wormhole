@@ -80,6 +80,9 @@ We use rclone (above); any SMB app should work with these settings.
 | Password | Empty |
 | Path | `/EMMC Images/MyWorks` |
 
+If **Listen on** is set to **Other…**, use that address for Server, even when
+copying on the same computer.
+
 To copy images to another computer, use the network address of the one running
 seestar-wormhole. In seestar-wormhole, set **Listen on** to **All networks** or
 that address.

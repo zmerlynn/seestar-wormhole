@@ -83,7 +83,7 @@ local port 80. Another port does not work for app images.
 - **Windows GUI:** Port 80 must be free. Stop another app using it, and allow
   seestar-wormhole through the firewall when prompted.
 - **Linux GUI:** An administrator must allow seestar-wormhole to use port 80.
-  If that is not available, choose **This computer only** for apps on this
+  If that is not available, choose **This computer only** for apps on your
   computer.
 
 ### Command-line proxy
