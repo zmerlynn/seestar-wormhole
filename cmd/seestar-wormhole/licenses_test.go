@@ -54,12 +54,18 @@ func TestLicensesBinary(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if path == "NOTICE" {
+			want, _, _ = bytes.Cut(want, []byte("\nLinux native GUI\n"))
+		}
 		if !bytes.Contains(stdout.Bytes(), want) {
 			t.Errorf("licenses output missing full text of %s", path)
 		}
 		if path == "NOTICE" && !bytes.HasPrefix(stdout.Bytes(), want) {
 			t.Error("project NOTICE must appear first")
 		}
+	}
+	if strings.Contains(text, "Linux native GUI") {
+		t.Fatal("CLI gained Linux GUI notices")
 	}
 	// Compare Go's target-specific dependency set with actual module entries,
 	// rather than accepting module names that merely appear in the NOTICE table.
