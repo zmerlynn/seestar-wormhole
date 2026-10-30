@@ -69,8 +69,8 @@ rclone hashsum sha256 ./MyWorks --checkfile MyWorks.sha256
 ## Copy with a graphical app
 
 To copy on the computer running seestar-wormhole, keep it connected and use
-the connection settings below. These graphical apps are **not tested through
-seestar-wormhole**; rclone above is the verified route.
+the connection settings below. We use rclone (above); any SMB app should work
+with these settings.
 
 | Setting | Value |
 | --- | --- |
