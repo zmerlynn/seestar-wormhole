@@ -68,30 +68,42 @@ rclone hashsum sha256 ./MyWorks --checkfile MyWorks.sha256
 
 ## Copy with a graphical app
 
-These apps connect to the same SMB listener as rclone, without a terminal.
-**None has been tested with a Seestar through this proxy;** rclone above is
-the verified route. Each uses the proxy address, port 4445, user `guest`, an
-empty password, and the folder `EMMC Images/MyWorks`.
+To copy on the computer running seestar-wormhole, keep it connected and use
+the connection settings below. These graphical apps are **not tested through
+seestar-wormhole**; rclone above is the verified route.
+
+| Setting | Value |
+| --- | --- |
+| Protocol/profile | SMB (No Encryption) |
+| Server | `127.0.0.1` — This computer (the computer running seestar-wormhole) |
+| Port | The port shown under **Copying files** (`4445` by default) |
+| Username | `guest` |
+| Password | Empty |
+| Path | `/EMMC Images/MyWorks` |
+
+To copy from another computer, use the address of the computer running
+seestar-wormhole; it must Listen on **All networks** or that address.
 
 - **macOS: [Cyberduck](https://cyberduck.io/)** (free). In Preferences →
   Profiles, enable **SMB (No Encryption)**. Open Connection, choose that
-  profile, and enter the proxy address as Server, `4445` as Port and `guest`
-  as Username, leaving Password empty. Under More Options, set Path to
-  `/EMMC Images/MyWorks`. Connect, select files or folders, and choose
-  Download.
+  profile, and enter the connection settings above, including Path under
+  More Options. Connect, select an image, and choose Download to a local folder.
 - **Windows: [Mountain Duck 5](https://mountainduck.io/)** (paid, with a
-  trial). Its per-user installer needs no administrator rights; choose
-  the **Integrated** connect mode. Add a bookmark with the same SMB (No
-  Encryption) settings, open it in File Explorer, and copy the images to a
-  local folder.
-- **Linux: Files (Nautilus) or Dolphin.** Press Ctrl+L, enter
-  `smb://<bind>:4445/EMMC%20Images/MyWorks/`, sign in as `guest` with a blank
-  password, and copy the images to a local folder. The file manager's SMB
-  support (GVfs or KIO) must be installed.
+  trial). Its per-user installer needs no administrator rights. Install
+  Mountain Duck 5 and choose **Integrated** mode. Create an **SMB (No
+  Encryption)** bookmark using the connection settings above. Open it in
+  File Explorer, then copy an image to a local folder.
+- **Linux: Files (Nautilus) or Dolphin.** The file manager's SMB support
+  (GVfs or KIO) must be installed. Press Ctrl+L and enter
+  `smb://<Server>:<Port>/EMMC%20Images/MyWorks/`, replacing Server and Port
+  with the values from the connection settings above. Sign in with that
+  Username and empty Password, then copy an image to a local folder.
 - **Any system: rclone's built-in GUI.** With the configuration from
   [Configure the SMB connection](#configure-the-smb-connection), run
   `rclone --config seestar-rclone.conf gui`, browse the `seestar` remote, and
-  download from `EMMC Images/MyWorks`.
+  download an image from `EMMC Images/MyWorks` to a local folder.
+
+Open the downloaded image from your local folder to check the copy.
 
 As with rclone, a large copy delays status replies to control clients.
 

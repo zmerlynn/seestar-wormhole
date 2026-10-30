@@ -7,7 +7,7 @@ import "github.com/wailsapp/wails/v3/pkg/application"
 const releasesURL = "https://github.com/zmerlynn/seestar-wormhole/releases"
 const licenseURL = "https://unlicense.org/"
 const portPermissionsURL = "https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/phone-app.md#port-80-and-permissions"
-const copyingURL = "https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/copying.md"
+const copyingURL = "https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/copying.md#copy-with-a-graphical-app"
 
 func aboutDescription(version string) string {
 	return "Version " + version + "\nThe Unlicense (public domain)\n" + releasesURL

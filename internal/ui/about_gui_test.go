@@ -57,7 +57,7 @@ func TestNativePageLinksUseFixedDestinations(t *testing.T) {
 			t.Fatalf("missing external link: %s", url)
 		}
 	}
-	for _, message := range []string{"https://example.invalid/", "seestar:open:https://example.invalid/", "seestar:open:" + releasesURL + "?extra", "seestar:open:file:///synthetic"} {
+	for _, message := range []string{"https://example.invalid/", "seestar:open:https://example.invalid/", "seestar:open:" + releasesURL + "?extra", "seestar:open:file:///synthetic", "seestar:open:https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/copying.md"} {
 		openPageLink(message, func(string) error { t.Fatalf("unexpected external destination: %q", message); return nil })
 	}
 }
