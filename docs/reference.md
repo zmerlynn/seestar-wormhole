@@ -176,11 +176,12 @@ Headless Linux/systemd usually has no Secret Service session; supply
 `SEESTAR_PASSWORD` through the [credentials-file recipe](always-on.md#credentials-for-a-service),
 while the email can still come from `config.json`.
 
-The status distinguishes **Connected to your telescope** from **Waiting for an
+The status distinguishes **Connected to your Seestar** from **Waiting for an
 app to connect**. Busy and transport recovery say **Retrying automatically**.
-Cancel remains available during first connection; Stop joins release. A confirmed
-release says **Stopped. You can use remote mode in the Seestar app again.**
-An uncertain release advises waiting a minute if a later Connect fails as busy. Sign-in rejection reopens
+Cancel remains available during first connection; Stop joins cleanup.
+Ordinary completion says **Stopped. Seestar may still be releasing the session.**
+An uncertain release says **Session release could not be confirmed. If Seestar
+is occupied, wait and try Connect again.** Sign-in rejection reopens
 credential correction without deleting a saved password. Bind, discovery, HTTP
 permission, and port-conflict failures have separate safe error codes.
 
