@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 )
@@ -23,18 +24,38 @@ import (
 func savedConfigRoot(t *testing.T) string {
 	t.Helper()
 	root := filepath.Join(t.TempDir(), "state")
-	if err := os.Mkdir(root, 0700); err != nil {
+	d, err := privatefile.Directory(root)
+	if err != nil {
 		t.Fatal(err)
 	}
+	d.Close()
 	s := ui.Settings{Version: 1, Bind: "127.0.0.2", Idle: "2m", Serial: "SYNTHETIC_SERIAL", Model: "S50", Ports: []proxyrun.Port{{Local: 1445, Device: 445}, {Local: 0, Device: 80}}, Email: "saved@example.invalid"}
 	b, err := json.Marshal(s)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = os.WriteFile(filepath.Join(root, "config.json"), b, 0600); err != nil {
+	writeSavedConfig(t, root, b)
+	return root
+}
+
+// writeSavedConfig replaces config.json the way the UI creates it, so Windows sees a private DACL.
+func writeSavedConfig(t *testing.T, root string, b []byte) {
+	t.Helper()
+	path := filepath.Join(root, "config.json")
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)
 	}
-	return root
+	f, err := privatefile.Open(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.Write(b); err != nil {
+		f.Close()
+		t.Fatal(err)
+	}
+	if err = f.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestSavedConfigOptions(t *testing.T) {
@@ -197,9 +218,7 @@ func TestSavedConfigMissingPasswordBeforeStartup(t *testing.T) {
 
 func TestSavedConfigRefusesUnknownVersion(t *testing.T) {
 	root := savedConfigRoot(t)
-	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(`{"version":999,"email":"PRIVATE"}`), 0600); err != nil {
-		t.Fatal(err)
-	}
+	writeSavedConfig(t, root, []byte(`{"version":999,"email":"PRIVATE"}`))
 	var out, logs bytes.Buffer
 	err := runWithListener(t.Context(), []string{"proxy", "--config", "--state-dir", root}, &out, &logs, func(context.Context, proxy.Config) (commandSession, error) {
 		t.Fatal("config refusal constructed session")
@@ -233,9 +252,7 @@ func TestSavedPhoneDiscoveryAndExplicitOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, "config.json"), b, 0600); err != nil {
-		t.Fatal(err)
-	}
+	writeSavedConfig(t, root, b)
 	for _, disable := range []bool{false, true} {
 		args := []string{"proxy", "--config", "--state-dir", root}
 		if disable {
