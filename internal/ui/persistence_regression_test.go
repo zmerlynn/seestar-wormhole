@@ -88,3 +88,12 @@ func TestStorageWriteDoesNotBlockStopOrStatus(t *testing.T) {
 		c.quit()
 	})
 }
+
+func TestStaleStorageRetryIsAcknowledgedWithoutWriting(t *testing.T) {
+	s := testServer(t)
+	s.controller.save = func(Settings) error { t.Fatal("obsolete retry wrote settings"); return nil }
+	w := doPost(s, "/api/retry-storage", `{}`)
+	if w.Code != 200 || w.Body.String() != `{"ok":true}` {
+		t.Fatal("obsolete retry did not acknowledge that settings need no save", w.Code)
+	}
+}

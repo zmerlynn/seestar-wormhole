@@ -262,7 +262,7 @@ func (c *controller) retrySave() error {
 	c.saveMu.Lock()
 	defer c.saveMu.Unlock()
 	if c.pendingSave == nil {
-		return &ActionError{Code: "settings"}
+		return nil
 	}
 	return c.persistLocked(*c.pendingSave)
 }
