@@ -73,9 +73,9 @@ See [browser controls](reference.md#ui).
 A locked keychain, missing desktop session, or unavailable Secret Service can
 prevent password storage. The page says when it keeps the password in memory;
 there is no plaintext fallback. Enter it again after restarting, or unlock your
-normal OS keychain and retry Save settings with Remember password selected.
-Forget clears the memory copy; if the OS deletion fails, unlock the provider
-and retry Forget for the same email. Saved settings never contain the password.
+normal OS keychain and choose Save password to keychain. Remove saved password
+clears the memory copy and requests keychain deletion. If deletion fails, unlock
+the keychain and choose Retry removal. Saved settings never contain the password.
 
 ### Linux native window
 
