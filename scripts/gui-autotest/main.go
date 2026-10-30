@@ -238,7 +238,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 				return fmt.Errorf("Apple quit must be accepted, got %v: %s", quitErr, receipt)
 			}
 		default:
-			// CloseMainWindow sends WM_CLOSE, the same path as the spike workflow.
+			// CloseMainWindow sends WM_CLOSE to the fixture window.
 			script := `$p=Get-Process -Id ` + strconv.Itoa(cmd.Process.Pid) + `; if (-not $p.CloseMainWindow()) { throw 'WM_CLOSE failed' }`
 			b, e := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
 			if e != nil {

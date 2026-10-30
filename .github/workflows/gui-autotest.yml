@@ -8,6 +8,7 @@ on:
       - 'internal/**'
       - 'scripts/gui-autotest/**'
       - 'scripts/gui-mac-clang.sh'
+      - 'scripts/build-gui-mac.sh'
       - 'vendor/**'
       - 'go.mod'
       - 'go.sum'
@@ -18,6 +19,7 @@ on:
       - 'internal/**'
       - 'scripts/gui-autotest/**'
       - 'scripts/gui-mac-clang.sh'
+      - 'scripts/build-gui-mac.sh'
       - 'vendor/**'
       - 'go.mod'
       - 'go.sum'
@@ -94,7 +96,7 @@ jobs:
           app="$RUNNER_TEMP/GUIFixture.app/Contents"
           mkdir -p "$app/MacOS"
           cp "$RUNNER_TEMP/gui-fixture" "$app/MacOS/seestar-wormhole"
-          # Reuse the spike's bundle metadata, including the Apple-event ID.
+          # Reuse the Mac build's bundle metadata, including the Apple-event ID.
           sed -n '/^<?xml/,/^PLIST/p' scripts/build-gui-mac.sh | sed '$d' > "$app/Info.plist"
           plutil -replace CFBundleVersion -string 1 "$app/Info.plist"
           plutil -replace CFBundleShortVersionString -string 0.0.0 "$app/Info.plist"
@@ -205,7 +207,8 @@ jobs:
             echo 'PROBE restricted bubblewrap: clear startup error PASS' | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
           fi
           cat "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
-          # CI-only workaround retained from the spike.
+          # Ubuntu restricts unprivileged user namespaces, which WebKit's sandbox
+          # needs; lift that for the fixture suite (CI only).
           sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
           sudo unshare --net bash "$RUNNER_TEMP/gui-linux.sh" "$USER" "$RUNNER_TEMP" "$PATH"
       - name: Restore Windows firewall and theme
