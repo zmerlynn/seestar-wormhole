@@ -73,8 +73,8 @@ For discovery over VPN or virtual adapters, see `--lan-discovery-all-interfaces`
 
 ## Port 80 and permissions
 
-Phone on this network needs computer port 80 for Seestar app images. Changing
-it to another port does not provide the same image access.
+The Seestar app loads images from port 80, so Phone setup needs computer port
+80. Another port does not work for app images.
 
 - **macOS GUI:** Choose **Listen on → All networks**. A bind restricted to a
   specific address may be refused. Allow incoming connections if macOS asks.

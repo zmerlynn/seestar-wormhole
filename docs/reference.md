@@ -42,8 +42,8 @@ conflicting forwarding ports must be freed before starting another run.
 
 Advanced shows ten fixed service rows with Computer port, Seestar port, and
 Purpose columns. Leave Computer port empty to disable a service; enabled
-computer ports must be unique and within 1–65535. Phone setup uses local 80 for remote 80; computer setup uses 8080.
-SMB uses local 4445 for remote 445. The CLI retains arbitrary port mappings.
+computer ports must be unique and within 1–65535. Phone setup uses computer port 80 for Seestar port 80; computer setup uses 8080.
+SMB uses computer port 4445 for Seestar port 445. The CLI retains arbitrary port mappings.
 Existing state files are never overwritten on a failed load.
 
 The default state root is `os.UserConfigDir()/seestar-wormhole`: on Linux,

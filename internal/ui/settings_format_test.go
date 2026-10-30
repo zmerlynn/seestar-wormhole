@@ -151,7 +151,7 @@ func TestSettingsRefusedFileCannotBeSaved(t *testing.T) {
 				t.Error("opened UI for refused settings")
 				return nil
 			}, &fakeKeychain{}, nil, false)
-			if err == nil || err.Error() != "Could not load saved settings safely. Check config.json in the state directory.\n\n"+filepath.Join(s.storage.root, "config.json")+"\nCheck this file, then reopen seestar-wormhole." {
+			if err == nil || err.Error() != "Could not load saved settings safely.\n\n"+filepath.Join(s.storage.root, "config.json")+"\n\nCheck this file, then reopen seestar-wormhole." {
 				t.Errorf("startup did not explain refusal: %v", err)
 			}
 			if _, err := loadSettings(s.storage); err == nil || actionError(err).Code != "settings" {

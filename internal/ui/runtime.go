@@ -165,7 +165,7 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 		if absolute, err := filepath.Abs(settingsPath); err == nil {
 			settingsPath = absolute
 		}
-		return errors.New("Could not load saved settings safely. Check config.json in the state directory.\n\n" + settingsPath + "\nCheck this file, then reopen seestar-wormhole.")
+		return errors.New("Could not load saved settings safely.\n\n" + settingsPath + "\n\nCheck this file, then reopen seestar-wormhole.")
 	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
