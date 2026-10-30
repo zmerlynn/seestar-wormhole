@@ -76,7 +76,11 @@ jobs:
           cp "$RUNNER_TEMP/gui-fixture" "$app/MacOS/seestar-wormhole"
           # Reuse the spike's bundle metadata, including the Apple-event ID.
           sed -n '/^<?xml/,/^PLIST/p' scripts/build-gui-mac.sh | sed '$d' > "$app/Info.plist"
+          plutil -replace CFBundleVersion -string 1 "$app/Info.plist"
+          plutil -replace CFBundleShortVersionString -string 0.0.0 "$app/Info.plist"
           plutil -lint "$app/Info.plist"
+          test "$(plutil -extract CFBundleVersion raw -o - "$app/Info.plist")" = 1
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Info.plist")" = 0.0.0
           /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$RUNNER_TEMP/GUIFixture.app"
       - name: Windows network guard
         if: runner.os == 'Windows'
