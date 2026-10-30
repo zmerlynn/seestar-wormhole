@@ -26,17 +26,7 @@ it, and check it runs:
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
 
-For browser controls, run `./seestar-wormhole` on macOS or Linux, or
-`.\seestar-wormhole.exe` in PowerShell on Windows. Add `ui` to the command to open
-the controls explicitly. Enter your account and choose Connect. First run selects
-Phone on this network and shows its network trust warning. Successful connection
-saves non-secret settings; Save password to keychain is a separate choice.
-Stop releases the session; Quit exits. See [GUI controls](docs/reference.md#ui).
-
-![seestar-wormhole connected to a Seestar, with the phone-app and copying steps](docs/images/gui-connected.png)
-
-It's a single executable; browser controls need a browser, and optional password
-storage needs an available OS keychain.
+It's a single executable; saving the password needs an available OS keychain.
 
 To build from source, install Go 1.27 or newer and run the command below; see [building from source](docs/development/README.md#build-and-run).
 
@@ -47,7 +37,34 @@ CGO_ENABLED=0 go build -mod=vendor -o seestar-wormhole ./cmd/seestar-wormhole
 ## Before you start: your account and your site
 
 seestar-wormhole signs in with your Seestar account, the same one the app
-uses. The `proxy` command reads the email and password from `SEESTAR_EMAIL` and
+uses.
+
+[The device keeps the site and clock it has.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#overview) The proxy drops the app's location
+and time setters, so your phone cannot move the telescope into your living
+room. From a few thousand miles away, that matters: the wrong site makes the
+telescope compute the wrong sky, miss targets, and fail to plate solve. A plan
+in the wrong time zone starts at the wrong hour, too.
+
+Before using the proxy, make sure the telescope has the right site. To change it, connect the app directly to the device; the device keeps its own clock. See [site protection](docs/reference.md#site-protection).
+
+## Use the UI
+
+Run `seestar-wormhole` (`seestar-wormhole.exe` on Windows) and a window opens.
+Enter your Seestar account and choose **Connect**. It starts set up for a phone
+on the same network; once connected, it shows how to select the telescope in
+the phone app and how to copy images.
+
+![seestar-wormhole connected to a Seestar, with the phone-app and copying steps](docs/images/gui-connected.png)
+
+Settings other than the password are saved after a successful connection;
+**Save password to keychain** is optional. **Stop** releases the telescope so the
+app's Remote mode can use it; **Quit app** exits. See [the UI reference](docs/reference.md#ui).
+
+## Use the command line
+
+### Sign in
+
+The `proxy` command reads the email and password from `SEESTAR_EMAIL` and
 `SEESTAR_PASSWORD` and keeps them in memory only. Typing them in like this
 (in bash or zsh) keeps them out of your shell history:
 
@@ -59,15 +76,7 @@ export SEESTAR_EMAIL SEESTAR_PASSWORD
 
 When you're done, `unset SEESTAR_EMAIL SEESTAR_PASSWORD`.
 
-[The device keeps the site and clock it has.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#overview) The proxy drops the app's location
-and time setters, so your phone cannot move the telescope into your living
-room. From a few thousand miles away, that matters: the wrong site makes the
-telescope compute the wrong sky, miss targets, and fail to plate solve. A plan
-in the wrong time zone starts at the wrong hour, too.
-
-Before using the proxy, make sure the telescope has the right site. To change it, connect the app directly to the device; the device keeps its own clock. See [site protection](docs/reference.md#site-protection).
-
-## Use the phone app from home
+### Use the phone app from home
 
 Run seestar-wormhole on the same Wi-Fi network as your phone. Turn on LAN discovery and map local port 80:
 
@@ -77,14 +86,14 @@ Run seestar-wormhole on the same Wi-Fi network as your phone. Turn on LAN discov
 
 Then open the Seestar app and select the telescope from its **LAN** tab, not Remote. The [phone setup guide](docs/phone-app.md#start-the-proxy) covers permissions and troubleshooting. See [platform coverage](docs/status.md#platforms) for discovery validation.
 
-## Keep it running
+### Keep it running
 
 By default the proxy connects at startup and holds the session until stopped; stop it and wait for it to exit before switching to the app’s remote mode. Add `--idle 2m` to connect only when a client arrives. See [session availability and handover](docs/reference.md#availability-and-busy-devices).
 
 The [always-on guide](docs/always-on.md) covers running it as a service, in a
 container, and on Windows.
 
-## Copy images while you keep observing
+### Copy images while you keep observing
 
 rclone copies images through the proxy's SMB listener while control clients
 share the session. See [Copy images](docs/copying.md) for setup,
