@@ -28,7 +28,7 @@ A successful connection saves non-secret settings. Saving the password to
 keychain is a separate, optional action. Existing saved setups keep their
 network exposure; choose Phone explicitly if upgrading from computer-only.
 
-Advanced shows a fixed port table; leave a Local cell empty to disable that service. The running page shows the effective ports and Seestar app steps. Keep the computer and phone on the same
+Advanced shows a fixed port table; leave a Computer port cell empty to disable that service. The running page shows the effective ports and Seestar app steps. Keep the computer and phone on the same
 network and open the Seestar app.
 Keep seestar-wormhole running. Stop and wait for release before using the app's
 remote mode. Details and logs contains safe diagnostic history. If the GUI

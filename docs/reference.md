@@ -40,9 +40,9 @@ shorter shutdown deadline. Launch again with the same state directory to bring
 the native window forward or reopen the browser page. A separately running `proxy` command is independent;
 conflicting forwarding ports must be freed before starting another run.
 
-Advanced shows ten fixed service rows with Local, Remote, and Purpose columns.
-Leave Local empty to disable a service; enabled local ports must be unique and
-within 1–65535. Phone setup uses local 80 for remote 80; computer setup uses 8080.
+Advanced shows ten fixed service rows with Computer port, Seestar port, and
+Purpose columns. Leave Computer port empty to disable a service; enabled
+computer ports must be unique and within 1–65535. Phone setup uses local 80 for remote 80; computer setup uses 8080.
 SMB uses local 4445 for remote 445. The CLI retains arbitrary port mappings.
 Existing state files are never overwritten on a failed load.
 
