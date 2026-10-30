@@ -268,12 +268,23 @@
       const rows = $('ports').querySelectorAll('tbody tr');
       assert(rows.length === 10 && rows[0].cells[1].textContent === '4700' && rows[9].cells[2].textContent === 'File sharing (SMB)', 'port rows or order');
       assert([...$('ports').querySelectorAll('input')].every(input => input.type === 'number' && input.min === '1' && input.max === '65535'), 'port number bounds');
-      for (const value of ['0', '-1', '65536', '1.5', $('port-4700').value]) {
+      for (const value of ['0', '-1', '65536', '1.5']) {
         $('port-80').value = value;
-        assert(!validate() && !$('ports-error').hidden && $('port-80').getAttribute('aria-invalid') === 'true', 'accepted invalid/duplicate local ' + value);
+        assert(!validate() && !$('ports-error').hidden && $('port-80').getAttribute('aria-invalid') === 'true', 'accepted invalid local ' + value);
         $('port-80').dispatchEvent(new Event('input'));
         assert($('ports-error').hidden && !$('port-80').hasAttribute('aria-invalid'), 'port error persists during edit');
       }
+      for (const action of ['start','password/save']) {
+        $('port-80').value = '1.5';
+        let calls = 0;
+        api = async () => {calls++; return status();};
+        await act(action);
+        assert(calls === 0 && fieldErrors.ports === 'ports' && connected && document.activeElement === $('port-80'), action + ' skipped numeric validation');
+      }
+      $('port-80').value = $('port-4700').value;
+      api = async () => {throw {code:'ports',field:'ports',message:'Use ports 1–65535, with no duplicates. Leave a port empty to turn off its service.'};};
+      await act('password/save');
+      assert(connected && fieldErrors.ports === 'ports' && !$('ports-error').hidden, 'server mapping semantics became lost controls');
       $('port-80').value = '';
       assert(validate() && settings().ports.find(p => p.device === 80).local === 0, 'empty local did not disable service');
       assert(settings().ports.length === 10 && settings().ports.every(p => typeof p.local === 'number' && typeof p.device === 'number'), 'ports became text');

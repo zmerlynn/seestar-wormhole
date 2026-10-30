@@ -173,7 +173,7 @@ function fail(e, focus = false) {
   }
   if (code === 'controls') connected = false;
 }
-function validate(passwordSave = false) {
+function validate() {
   clearErrors();
   $('listen').removeAttribute('aria-invalid');
   if (!accountEmail()) {
@@ -191,18 +191,15 @@ function validate(passwordSave = false) {
     fieldError('bind', 'Enter a local network address, or choose This computer only or All networks.', 'bind_empty', true);
     return false;
   }
-  if (passwordSave) return true;
-  const locals = new Set();
   for (const [remote] of services) {
-    const input = $('port-' + remote), value = Number(input.value);
-    if (!input.validity.valid || (value && locals.has(value))) {
+    const input = $('port-' + remote);
+    if (!input.validity.valid) {
       actionError = 'ports';
-      fieldError('ports', 'Use ports 1–65535, with no duplicates. Leave a port empty to turn off its service.', 'ports');
+      fieldError('ports', input.validationMessage, 'ports');
       input.setAttribute('aria-invalid', 'true');
       input.focus();
       return false;
     }
-    if (value) locals.add(value);
   }
   if ($('mode').value === 'idle' && !(Number($('idle').value) > 0)) {
     actionError = 'idle';
@@ -334,7 +331,7 @@ async function poll() {
 }
 async function act(action) {
   if (pending && !['stop','quit'].includes(action)) return;
-  if (['start','password/save'].includes(action) && !validate(action === 'password/save')) return;
+  if (['start','password/save'].includes(action) && !validate()) return;
   ++statusGeneration;
   actionError = '';
   pending = action;

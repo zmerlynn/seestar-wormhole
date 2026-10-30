@@ -4,6 +4,7 @@ import (
 	"crypto/subtle"
 	"embed"
 	"encoding/json/v2"
+	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
@@ -152,7 +153,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	var in input
 	if err = json.Unmarshal(b, &in); err != nil {
-		fail(http.StatusBadRequest)
+		var numeric *json.SemanticError
+		if errors.As(err, &numeric) && strings.HasPrefix(string(numeric.JSONPointer), "/settings/ports/") {
+			s.rejectAction(w, &ActionError{Code: "ports", Field: "ports"})
+		} else {
+			fail(http.StatusBadRequest)
+		}
 		return
 	}
 	in.Settings.Email = strings.TrimSpace(strings.ReplaceAll(in.Settings.Email, " ", ""))
@@ -213,19 +219,23 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err != nil {
-		s.controller.log.addFailure(errorCopy(actionError(err).Code), err)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		s.respond(w, struct {
-			*ActionError
-			Message string `json:"message"`
-		}{actionError(err), errorCopy(actionError(err).Code)})
+		s.rejectAction(w, err)
 		return
 	}
 	s.respond(w, struct {
 		OK bool `json:"ok"`
 	}{true})
 }
+func (s *server) rejectAction(w http.ResponseWriter, err error) {
+	s.controller.log.addFailure(errorCopy(actionError(err).Code), err)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusBadRequest)
+	s.respond(w, struct {
+		*ActionError
+		Message string `json:"message"`
+	}{actionError(err), errorCopy(actionError(err).Code)})
+}
+
 func (s *server) respond(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	b, err := json.Marshal(v)
