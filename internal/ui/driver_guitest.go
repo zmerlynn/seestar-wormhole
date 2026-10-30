@@ -478,10 +478,11 @@ func (d *guiTestDriver) serverState(want string, active bool) error {
 		}
 		defer resp.Body.Close()
 		var s struct {
-			Status string `json:"status"`
-			Active bool   `json:"active"`
+			Status  string `json:"status"`
+			Active  bool   `json:"active"`
+			LogPath string `json:"log_path"`
 		}
-		return resp.StatusCode == 200 && json.UnmarshalRead(io.LimitReader(resp.Body, maxJSON), &s) == nil && s.Status == want && s.Active == active
+		return resp.StatusCode == 200 && json.UnmarshalRead(io.LimitReader(resp.Body, maxJSON), &s) == nil && s.Status == want && s.Active == active && s.LogPath == filepath.Join(d.root, "gui.log")
 	}); err != nil {
 		return err
 	}

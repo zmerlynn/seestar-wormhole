@@ -109,6 +109,15 @@ func guiTestWindowOptions(scenario string) application.WebviewWindowOptions {
 		appearance = application.NSAppearanceNameDarkAqua
 	}
 	return application.WebviewWindowOptions{AllowSimpleEventEmit: true, Mac: application.MacWindow{Appearance: appearance}, JS: `(() => {
+// Fixture captures use a stable display path. The Go driver independently
+// verifies the actual status path against its disposable state root.
+const fixtureFetch=window.fetch;
+window.fetch=async function(...args) {
+ const response=await fixtureFetch.apply(this,args);
+ if(!response.ok || new URL(args[0],location.href).pathname!=='/api/status') return response;
+ const status=await response.json();
+ return new Response(JSON.stringify({...status,log_path:'state/gui.log'}),{status:response.status,headers:response.headers});
+};
 window.__guitestFocus = [];
 const recordFocus = via => {
  if(window.__guitestFocus.length<16) window.__guitestFocus.push({via,focused:document.activeElement?.id,documentFocused:document.hasFocus(),ready:document.readyState});

@@ -6,6 +6,7 @@ import (
 	"debug/buildinfo"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -30,7 +31,7 @@ func verifyIsolation(paths []string) error {
 		if err != nil {
 			return fmt.Errorf("build metadata: %w", err)
 		}
-		fmt.Print(string(metadata))
+		fmt.Print(strings.Replace(string(metadata), path, filepath.Base(path), 1))
 		symbols, err := exec.Command("go", "tool", "nm", path).CombinedOutput()
 		if err != nil {
 			return fmt.Errorf("symbol scan (build without stripping): %w", err)
@@ -52,10 +53,10 @@ func verifyIsolation(paths []string) error {
 			return fmt.Errorf("fixture positive control missing tag/symbols")
 		}
 		if i != 0 && (tagged || found) {
-			return fmt.Errorf("guitest leaked into %s", path)
+			return fmt.Errorf("guitest leaked into %s", filepath.Base(path))
 		}
 		if !strings.Contains(tags, "gui") {
-			return fmt.Errorf("missing gui tag: %s", path)
+			return fmt.Errorf("missing gui tag: %s", filepath.Base(path))
 		}
 		if i == 1 && !strings.Contains(tags, "production") {
 			return fmt.Errorf("missing production tag")
