@@ -105,3 +105,44 @@ func TestReviewRemoveSupersedesGetErrorPublication(t *testing.T) {
 		})
 	}
 }
+
+// Pause Remove before gate acquisition, complete a newer Save, then resume
+// the obsolete Remove. It must not enter the provider's Delete method.
+func TestReviewNewSaveSupersedesDeleteBeforeGate(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := testServer(t)
+		chain := &fakeKeychain{}
+		s.controller.credentials.chain = chain
+		a := testSettings()
+		body, _ := json.Marshal(input{a, testPassword})
+		ctx := reviewPausedContext{context.Background(), make(chan struct{}), make(chan struct{})}
+		removed := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			r := request(s, "POST", "/api/forget", string(body)).WithContext(ctx)
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, r)
+			removed <- w
+		}()
+		<-ctx.reached
+		if w := doPost(s, "/api/password/save", string(body)); w.Code != 200 {
+			t.Fatal("newer Save failed")
+		}
+		close(ctx.resume)
+		if w := <-removed; w.Code == 200 {
+			t.Error("obsolete Remove acknowledged")
+		}
+		chain.mu.Lock()
+		present := chain.value == testPassword
+		chain.mu.Unlock()
+		if !present {
+			t.Error("obsolete Remove deleted the newer saved secret")
+		}
+		if p := s.controller.credentials.state(a.Email); !p.Saved || p.Code != "password_saved" {
+			t.Error("newer Save association or feedback lost")
+		}
+		disk, err := loadSettings(s.storage)
+		if err != nil || !disk.Remember {
+			t.Error("newer Save association lost on disk", err)
+		}
+	})
+}
