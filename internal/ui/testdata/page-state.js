@@ -246,7 +246,7 @@
       assert($('phone-steps').querySelector('p').textContent === "On this computer's network, open the Seestar app and select your Seestar from the LAN tab.", 'phone instructions omit the LAN tab');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
       assert(!$('copy-steps').hidden && $('copy-port').textContent === '1234' && $('copy-steps').querySelector('h2').textContent === 'Copying files' && $('copy-steps').querySelector('a').href.endsWith('/docs/copying.md#copy-with-a-graphical-app') && $('phone-steps').compareDocumentPosition($('copy-steps')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'copying help missing, wrong port or misplaced');
-      render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}}});
+      render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}, ports: {80:8080}}});
       assert($('run-summary').textContent === 'Listening on this computer only · Seestar app discovery off · Connect when an app needs Seestar' && $('phone-steps').hidden && $('copy-steps').hidden, 'computer/idle summary inaccurate');
       render({...status(), active: true, effective: {...status().effective, listen: 'other'}});
       assert($('run-summary').textContent.startsWith('Listening on a selected network address ·'), 'Other listen summary missing');
