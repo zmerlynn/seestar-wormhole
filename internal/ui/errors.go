@@ -66,9 +66,9 @@ func errorCopy(code string) string {
 	case "bind_empty":
 		return "Enter a local network address, or choose This computer only or All networks."
 	case "bind":
-		return "Could not listen on this address. In Advanced, choose an address assigned to this computer."
+		return "Could not listen on this address. In Advanced, choose one of this computer's network addresses."
 	case "discovery_bind":
-		return "Seestar app discovery needs All networks or an IPv4 address on this computer."
+		return "For Seestar app discovery, choose All networks or enter this computer's IPv4 address."
 	case "discovery":
 		return "Could not start Seestar app discovery. Check the network address or stop another discovery service."
 	case "http_permission":

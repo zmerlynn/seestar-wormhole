@@ -58,7 +58,7 @@ func TestAllServicesDisabledExplainsRecovery(t *testing.T) {
 
 func TestOwnerCopy(t *testing.T) {
 	b, _ := assets.ReadFile("web/index.html")
-	for _, want := range []string{"Your remote Seestar, as if it were on your network.", "Enter an IPv4 address assigned to this computer.", "Let the Seestar app find your Seestar", "All networks</option>", "This computer only"} {
+	for _, want := range []string{"Your remote Seestar, as if it were on your network.", "Enter this computer's IPv4 address.", "Let the Seestar app find your Seestar", "All networks</option>", "This computer only"} {
 		if !strings.Contains(string(b), want) {
 			t.Fatalf("missing copy %q", want)
 		}

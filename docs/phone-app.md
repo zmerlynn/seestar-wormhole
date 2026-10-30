@@ -22,14 +22,16 @@ Phone use requires LAN discovery; the tested phone platforms and paths are liste
 
 In the GUI, leave **Use with → Phone on this network** selected, enter your
 Seestar account email and password, and choose **Connect**. This enables LAN
-discovery and computer port 80 for album/image access. Use only a trusted
-network: other devices on it can control the telescope through this computer.
+discovery and local port 80 for album/image access. Use a trusted network.
+Other devices on it can control your Seestar.
 A successful connection saves non-secret settings. Saving the password to
 keychain is a separate, optional action. Existing saved setups keep their
-network exposure; choose Phone explicitly if upgrading from computer-only.
+network exposure; choose **Phone on this network** explicitly if upgrading from **This computer only**.
 
-Advanced shows a fixed port table; leave a Computer port cell empty to disable that service. The running page shows the effective ports and Seestar app steps. Keep the computer and phone on the same
-network and open the Seestar app.
+Advanced shows a fixed port table. Local ports are on this computer; leave a
+**Local port** cell empty to turn off that service. The running page shows the
+effective ports and Seestar app steps. Connect your phone to the same network
+as this computer and open the Seestar app.
 Keep seestar-wormhole running. Stop and wait for release before using the app's
 remote mode. Details and logs contains safe diagnostic history. If the GUI
 reports a phone HTTP permission failure, see [port 80 and permissions](#port-80-and-permissions).
@@ -73,8 +75,8 @@ For discovery over VPN or virtual adapters, see `--lan-discovery-all-interfaces`
 
 ## Port 80 and permissions
 
-The Seestar app loads images from port 80, so Phone setup needs computer port
-80. Another port does not work for app images.
+The Seestar app loads images from port 80, so **Phone on this network** needs
+local port 80. Another port does not work for app images.
 
 - **macOS GUI:** Choose **Listen on → All networks**. A bind restricted to a
   specific address may be refused. Allow incoming connections if macOS asks.

@@ -68,21 +68,21 @@ rclone hashsum sha256 ./MyWorks --checkfile MyWorks.sha256
 
 ## Copy with a graphical app
 
-To copy on the computer running seestar-wormhole, keep it connected and use
-the connection settings below. We use rclone (above); any SMB app should work
-with these settings.
+Keep seestar-wormhole connected. To copy images here, use the settings below.
+We use rclone (above); any SMB app should work with these settings.
 
 | Setting | Value |
 | --- | --- |
 | Protocol/profile | SMB (No Encryption) |
-| Server | `127.0.0.1` — This computer (the computer running seestar-wormhole) |
+| Server | `127.0.0.1` — Use this when copying on the same computer as seestar-wormhole. |
 | Port | The port shown under **Copying files** (`4445` by default) |
 | Username | `guest` |
 | Password | Empty |
 | Path | `/EMMC Images/MyWorks` |
 
-To copy from another computer, use the address of the computer running
-seestar-wormhole; it must Listen on **All networks** or that address.
+To copy images to another computer, use the network address of the one running
+seestar-wormhole. In seestar-wormhole, set **Listen on** to **All networks** or
+that address.
 
 - **macOS: [Cyberduck](https://cyberduck.io/)** (free). In Preferences →
   Profiles, enable **SMB (No Encryption)**. Open Connection, choose that

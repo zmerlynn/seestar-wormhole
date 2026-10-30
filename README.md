@@ -67,7 +67,7 @@ Before using the proxy, make sure the telescope has the right site. To change it
 
 ## Use the phone app from home
 
-Run the proxy on a computer on the same Wi-Fi as your phone, with LAN discovery and port 80 mapped:
+Run seestar-wormhole on the same Wi-Fi network as your phone. Turn on LAN discovery and map local port 80:
 
 ```sh
 ./seestar-wormhole proxy --bind 0.0.0.0 --lan-discovery -p 80:80

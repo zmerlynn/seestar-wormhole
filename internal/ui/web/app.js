@@ -74,7 +74,7 @@ function portValues(s) {
 function portsTable(id, ports, editable = false) {
   const table = document.createElement('table');
   const head = table.createTHead().insertRow();
-  for (const name of ['Computer port', 'Seestar port', 'Purpose']) {
+  for (const name of ['Local port', 'Seestar port', 'Purpose']) {
     const th = document.createElement('th');
     th.textContent = name;
     head.append(th);
@@ -235,7 +235,7 @@ function controls() {
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
-  $('goal-help').textContent = currentGoal === 'phone' ? 'Keep your phone and this computer on the same network.' : 'Only apps on this computer can connect.';
+  $('goal-help').textContent = currentGoal === 'phone' ? 'Connect your phone to the same network as this computer.' : 'Only apps running here can connect.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const code = actionError || (!active && state?.failure?.code) || '';
   $('port-permissions').hidden = code !== 'http_permission';
@@ -257,7 +257,7 @@ function render(s) {
   if (s.failure && !active && !actionError) {
     const newFailure = lastFailure !== s.failure.code;
     alertText(s.failure.code === 'release' || s.failure.field ? '' : s.failure_message);
-    if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer port ' + s.failure.local + ' → Seestar port ' + s.failure.service + '.' : ''),s.failure.code);
+    if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Local port ' + s.failure.local + ' → Seestar port ' + s.failure.service + '.' : ''),s.failure.code);
     lastFailure = s.failure.code;
 
   }

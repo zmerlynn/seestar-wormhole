@@ -24,7 +24,7 @@ func (d *guiTestDriver) uxSetup() error {
 		if err := d.click("start"); err != nil {
 			return err
 		}
-		if err := d.probe(`check(el('bind-error').textContent.includes('Seestar app discovery needs All networks or an IPv4 address on this computer.') && !el('bind-error').hidden,{bindError:el('bind-error').textContent,hidden:el('bind-error').hidden})`); err != nil {
+		if err := d.probe(`check(el('bind-error').textContent.includes("For Seestar app discovery, choose All networks or enter this computer's IPv4 address.") && !el('bind-error').hidden,{bindError:el('bind-error').textContent,hidden:el('bind-error').hidden})`); err != nil {
 			return err
 		}
 		if err := d.state("Not connected", false, "discovery-incompatible"); err != nil {

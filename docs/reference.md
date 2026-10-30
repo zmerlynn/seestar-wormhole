@@ -40,10 +40,12 @@ shorter shutdown deadline. Launch again with the same state directory to bring
 the native window forward or reopen the browser page. A separately running `proxy` command is independent;
 conflicting forwarding ports must be freed before starting another run.
 
-Advanced shows ten fixed service rows with Computer port, Seestar port, and
-Purpose columns. Leave Computer port empty to disable a service; enabled
-computer ports must be unique and within 1–65535. Phone setup uses computer port 80 for Seestar port 80; computer setup uses 8080.
-SMB uses computer port 4445 for Seestar port 445. The CLI retains arbitrary port mappings.
+Advanced shows ten fixed service rows with Local port, Seestar port, and
+Purpose columns. Local ports are on this computer. Leave **Local port** empty
+to turn off a service. Each enabled local port must be unique and between 1 and
+65535. **Phone on this network** uses local port 80 for Seestar port 80;
+**This computer only** uses 8080. SMB uses local port 4445 for Seestar port 445.
+The CLI retains arbitrary port mappings.
 Existing state files are never overwritten on a failed load.
 
 The default state root is `os.UserConfigDir()/seestar-wormhole`: on Linux,
@@ -111,10 +113,10 @@ no cookies or localStorage; no-store headers do not guarantee that an engine
 writes no session/cache data. Engine file retention needs native verification.
 
 First run selects **Phone on this network**: all-network listening, LAN
-discovery, and computer port 80 to telescope port 80. The trust warning appears
+discovery, and local port 80 to Seestar port 80. The trust warning appears
 before Connect; loading never starts a session. **This computer only** selects
-loopback, disables discovery, and uses computer port 8080 for HTTP. Existing
-saved settings retain their exposure and appear as computer-only or Custom.
+loopback, disables discovery, and uses local port 8080 for HTTP. Existing
+saved settings retain their exposure and appear as **This computer only** or Custom.
 Advanced contains telescope serial/model selection, connection timing and idle
 minutes, Listen on, discovery, and the fixed port table. Editing network or port
 choices selects Custom. Choosing another setup immediately replaces those

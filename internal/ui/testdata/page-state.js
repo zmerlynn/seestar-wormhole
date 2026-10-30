@@ -50,7 +50,8 @@
         assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && !$(id+'-help') && $(id).getAttribute('aria-describedby').includes('selection-help'), id+' example is not placeholder-only');
       }
       assert(Array.from($('details').querySelectorAll('h2')).map(e => e.textContent).join('|') === 'Connection settings|Recent events', 'Details headings missing');
-      assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Computer port|Seestar port|Purpose', 'ambiguous port headings');
+      assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous port headings');
+      assert($('ports-help').textContent === 'Local ports are on this computer. Leave a port empty to turn off that service.', 'local port definition missing');
     });
     await check('Version and external links', async () => {
       const s = status();
@@ -241,9 +242,10 @@
       assert($('run-summary').textContent === 'Listening on all networks · Seestar app discovery on · Keep connected', 'running summary inaccurate');
       const rows = $('running-ports').querySelectorAll('tbody tr');
       assert(rows.length === 10 && !$('running-ports').querySelector('input'), 'running ports must use read-only table');
+      assert(Array.from($('running-ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous running port headings');
       assert(!$('running-ports-box').open && $('running-ports-box').querySelector('summary').textContent === 'Ports forwarded to your Seestar' && $('phone-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'running ports must sit closed below the Seestar app steps');
       assert(rows[1].cells[0].textContent === '80' && rows[9].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
-      assert($('phone-steps').querySelector('p').textContent === "On this computer's network, open the Seestar app and select your Seestar from the LAN tab.", 'phone instructions omit the LAN tab');
+      assert($('phone-steps').querySelector('p').textContent === "On your phone, open the Seestar app and select your Seestar from the LAN tab.", 'phone instructions omit the LAN tab');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
       assert(!$('copy-steps').hidden && $('copy-port').textContent === '1234' && $('copy-steps').querySelector('h2').textContent === 'Copying files' && $('copy-steps').querySelector('a').href.endsWith('/docs/copying.md#copy-with-a-graphical-app') && $('phone-steps').compareDocumentPosition($('copy-steps')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'copying help missing, wrong port or misplaced');
       render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}, ports: {80:8080}}});
