@@ -193,6 +193,9 @@ select {
 #phone-steps p, #copy-steps p {
   font-size:.9rem;
 }
+#copy-steps a {
+  white-space:nowrap;
+}
 #ports input {
   min-width:5rem;
 }
