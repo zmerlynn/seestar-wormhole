@@ -289,7 +289,7 @@ func TestStorageRetryKeepsSnapshotAfterAnotherAttempt(t *testing.T) {
 		t.Fatal(err)
 	}
 	original := testSettings()
-	if err := s.controller.persist(original); err == nil {
+	if err := s.controller.persistPassword(original, s.controller.credentials.generationID()); err == nil {
 		t.Fatal("storage failure missing")
 	}
 	// A later failed Start updates page settings but must not replace the retry snapshot.

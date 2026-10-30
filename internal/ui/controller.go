@@ -231,11 +231,6 @@ func (c *controller) saveAtBoundary(status *proxy.Status, s Settings) {
 
 // One owner retains the failed snapshot across later unsuccessful Starts.
 // Explicit saves supersede it; retries never accept a page's draft settings.
-func (c *controller) persist(s Settings) error {
-	c.saveMu.Lock()
-	defer c.saveMu.Unlock()
-	return c.persistLocked(s)
-}
 func (c *controller) persistLocked(s Settings) error {
 	if c.save == nil {
 		return nil
