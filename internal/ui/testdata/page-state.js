@@ -196,6 +196,22 @@
       assert($('feedback').textContent === 'Password removed from keychain and this app.', 'removal feedback missing');
       setup.remember_password = false;
     });
+    await check('Password action focus', async () => {
+      $('password').value = 'synthetic-password';
+      const saved = {...status(), password:{...status().password,saved:true,code:'password_saved'}};
+      api = async name => name === 'status' ? saved : {ok:true};
+      await act('password/save');
+      assert(document.activeElement === $('forget') && !$('forget').disabled, 'Save did not focus Remove');
+      api = async () => {throw {code:'password_remove',field:'password',message:'Unlock and retry removal.'};};
+      await act('forget');
+      assert(document.activeElement === $('forget') && !$('forget').disabled && $('forget').textContent === 'Retry removal', 'failed Remove lost focus');
+      api = async name => name === 'status' ? status() : {ok:true};
+      await act('forget');
+      assert(document.activeElement === $('password') && !$('password').disabled, 'Remove did not focus Password');
+      $('email').focus();
+      render(status());
+      assert(document.activeElement === $('email'), 'routine render moved focus');
+    });
     await check('U3 diagnostic-only codes', async () => {
       $('email').value = '';
       await act('start');

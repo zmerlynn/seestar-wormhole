@@ -346,7 +346,7 @@ async function act(action) {
   if (action === 'forget') say('Removing saved password…');
   if (action === 'quit') say('Quitting — releasing the Seestar session…');
   controls();
-  let errorField = '';
+  let errorField = '', focusTarget = '';
   try {
     const typed = usingSaved() ? '' : $('password').value;
     await api(action, {
@@ -369,7 +369,10 @@ async function act(action) {
       return;
     }
     await refresh();
-    if (['password/save','forget'].includes(action)) say(passwordState().notice || '');
+    if (['password/save','forget'].includes(action)) {
+      say(passwordState().notice || '');
+      focusTarget = action === 'password/save' ? 'forget' : 'password';
+    }
   } catch (e) {
     if (ended || pending !== action) return;
     if (['password/save','forget'].includes(action)) say('');
@@ -389,9 +392,11 @@ async function act(action) {
     if (pending === action) pending = '';
     controls();
     if (errorField && !$('options').disabled) {
-      const field = errorField === 'bind' && $('listen').value !== 'other' ? 'listen' : errorField;
-      $(field).focus();
-    } else if (action === 'start' && active && !$('start').disabled) $('start').focus();
+      let field = errorField === 'bind' && $('listen').value !== 'other' ? 'listen' : errorField;
+      if (field === 'password' && $('password').disabled) field = 'forget';
+      if (!$(field).disabled) $(field).focus();
+    } else if (focusTarget && !$(focusTarget).disabled && !$(focusTarget).hidden) $(focusTarget).focus();
+    else if (action === 'start' && active && !$('start').disabled) $('start').focus();
   }
 }
 $('settings').addEventListener('submit', e => {
