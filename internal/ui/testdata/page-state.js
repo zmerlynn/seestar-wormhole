@@ -84,6 +84,24 @@
       assert(calls === 0 && fieldErrors.bind === 'bind_empty' && document.activeElement === $('bind'), 'empty Other address submitted');
       assert($('bind-error').textContent === 'Enter a local network address, or choose This computer only or All networks.', 'empty address recovery missing');
     });
+    await check('Actionable field announcements', async () => {
+      for (const id of ['email','password','idle','bind','discovery','ports','serial','model']) {
+        assert($(id + '-error').getAttribute('role') === 'alert', id + ' recovery is not an alert');
+      }
+      const focus = $('email').focus;
+      try {
+        $('email').focus = () => {
+          assert(!$('email-error').hidden && $('email-error').textContent === fieldCopy.email, 'focused before revealing recovery');
+          focus.call($('email'));
+        };
+        fieldError('email', fieldCopy.email, 'email', true);
+      } finally { $('email').focus = focus; }
+      fail({code:'signin', field:'password', message:'Check your account password.'});
+      assert($('notice').hidden && $('password-error').textContent === 'Check your account password.' && !$('password-error').hidden, 'generic pointer displaced actionable recovery');
+      actionError = '';
+      render({...status(), failure:{code:'http_permission',field:'ports'}, failure_message:'See the port permissions guide.'});
+      assert($('notice').hidden && !$('ports-error').hidden, 'async field failure lacks its own announcement');
+    });
     await check('R3 stale response', async () => {
       let release;
       api = () => new Promise(resolve => {release = resolve;});

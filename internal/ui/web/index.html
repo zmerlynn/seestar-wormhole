@@ -17,25 +17,25 @@
 <p id="trust">Use a trusted network. Other devices can control your Seestar through this computer.</p>
 <fieldset id="account">
 <legend>Account</legend>
-<label for="email">Seestar account email</label><input id="email" type="text" inputmode="email" autocomplete="username" maxlength="4096" required aria-describedby="email-error"><p id="email-error" class="error" hidden></p>
-<label for="password">Password</label><input id="password" type="password" autocomplete="off" aria-describedby="password-note password-error"><p id="password-error" class="error" hidden></p>
+<label for="email">Seestar account email</label><input id="email" type="text" inputmode="email" autocomplete="username" maxlength="4096" required aria-describedby="email-error"><p id="email-error" class="error" role="alert" hidden></p>
+<label for="password">Password</label><input id="password" type="password" autocomplete="off" aria-describedby="password-note password-error"><p id="password-error" class="error" role="alert" hidden></p>
 <p id="password-note" class="help">Kept until you quit. Save to your keychain to use it next time.</p>
 <div class="actions"><button id="save-password" type="button" disabled>Save password to keychain</button><button id="forget" type="button" hidden>Remove saved password</button></div>
 </fieldset>
 <details id="advanced"><summary tabindex="-1">Advanced</summary>
 <p>Seestar: <strong id="telescope-selection">Automatic</strong></p>
 <p id="selection-help" class="help">Leave both fields empty if your account has one Seestar.</p>
-<label for="serial">Serial number (optional)</label><input id="serial" placeholder="From your Seestar account" type="text" maxlength="4096" spellcheck="false" aria-describedby="selection-help serial-error"><p id="serial-error" class="error" hidden></p>
-<label for="model">Model (optional)</label><input id="model" placeholder="e.g. S50 Pro" type="text" maxlength="4096" spellcheck="false" aria-describedby="selection-help model-error"><p id="model-error" class="error" hidden></p>
+<label for="serial">Serial number (optional)</label><input id="serial" placeholder="From your Seestar account" type="text" maxlength="4096" spellcheck="false" aria-describedby="selection-help serial-error"><p id="serial-error" class="error" role="alert" hidden></p>
+<label for="model">Model (optional)</label><input id="model" placeholder="e.g. S50 Pro" type="text" maxlength="4096" spellcheck="false" aria-describedby="selection-help model-error"><p id="model-error" class="error" role="alert" hidden></p>
 <label for="mode" class="section-start">Connection timing</label><select id="mode"><option value="eager">Keep connected</option><option value="idle">Connect when an app needs Seestar</option></select>
-<div id="idle-options" hidden><label for="idle">Release after apps disconnect (minutes)</label><input id="idle" value="2" type="number" min="0.01" step="any" aria-describedby="idle-help idle-error"><p id="idle-help" class="help">Releases the session after this wait. An app connection starts it again.</p><p id="idle-error" class="error" hidden></p></div>
+<div id="idle-options" hidden><label for="idle">Release after apps disconnect (minutes)</label><input id="idle" value="2" type="number" min="0.01" step="any" aria-describedby="idle-help idle-error"><p id="idle-help" class="help">Releases the session after this wait. An app connection starts it again.</p><p id="idle-error" class="error" role="alert" hidden></p></div>
 <label for="listen" class="section-start">Listen on</label><select id="listen" aria-describedby="bind-error"><option value="0.0.0.0">All networks</option><option value="127.0.0.1">This computer only</option><option value="other">Other…</option></select>
-<div id="other-address" hidden><label for="bind">Local network address</label><input id="bind" type="text" spellcheck="false" aria-describedby="bind-help bind-error"><p id="bind-help" class="help">Enter an IPv4 address assigned to this computer.</p></div><p id="bind-error" class="error" hidden></p>
+<div id="other-address" hidden><label for="bind">Local network address</label><input id="bind" type="text" spellcheck="false" aria-describedby="bind-help bind-error"><p id="bind-help" class="help">Enter an IPv4 address assigned to this computer.</p></div><p id="bind-error" class="error" role="alert" hidden></p>
 <label class="check"><input id="discovery" type="checkbox" aria-describedby="discovery-help discovery-error"> Let the Seestar app find your Seestar</label>
-<p id="discovery-help" class="help">Answers discovery requests on this network.</p><p id="discovery-error" class="error" hidden></p>
+<p id="discovery-help" class="help">Answers discovery requests on this network.</p><p id="discovery-error" class="error" role="alert" hidden></p>
 <h2 id="services-title" class="section-start">Services</h2>
 <p id="ports-help" class="help">Leave a local port empty to turn off that service.</p>
-<div id="ports" tabindex="-1" aria-labelledby="services-title" aria-describedby="ports-help ports-error"></div><p id="ports-error" class="error" hidden></p>
+<div id="ports" tabindex="-1" aria-labelledby="services-title" aria-describedby="ports-help ports-error"></div><p id="ports-error" class="error" role="alert" hidden></p>
 <p id="port-permissions" hidden><a href="https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/phone-app.md#port-80-and-permissions" target="_blank" rel="noreferrer">Port permissions guide</a></p>
 </details>
 <p>Settings save when the connection is ready.</p>

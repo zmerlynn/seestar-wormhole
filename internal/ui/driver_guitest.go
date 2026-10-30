@@ -295,7 +295,7 @@ func (d *guiTestDriver) drive() error {
 		if err := d.state("Could not connect", false, "classified-error"); err != nil {
 			return err
 		}
-		if err := d.probe(`check(!el('notice').hidden && el('advanced').open,{noticeHidden:el('notice').hidden,advancedOpen:el('advanced').open})`); err != nil {
+		if err := d.probe(`check(!!document.querySelector('p.error[role="alert"]:not([hidden])') && el('advanced').open,{advancedOpen:el('advanced').open})`); err != nil {
 			return err
 		}
 		return d.click("quit")

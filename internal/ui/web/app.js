@@ -156,17 +156,17 @@ function fieldError(field, message, code, focus = false) {
   const target = field === 'bind' && $('listen').value !== 'other' ? $('listen') : e;
   target.setAttribute('aria-invalid','true');
   fieldErrors[field] = code;
+  text(field + '-error', message);
+  help.hidden = false;
   if (focus) {
     controls();
     target.focus();
   }
-  help.textContent = message;
-  help.hidden = false;
 }
 function fail(e, focus = false) {
   const code = e.code || 'controls';
   actionError = code;
-  alertText(e.field ? 'Check the highlighted setting.' : (e.message || fieldCopy[code] || lostCopy));
+  alertText(e.field ? '' : (e.message || fieldCopy[code] || lostCopy));
   if (e.field) fieldError(e.field, e.message || fieldCopy[code] || 'Check this setting.', code, focus);
   if (code === 'password_remove') {
     retryRemoval = true;
@@ -259,7 +259,7 @@ function render(s) {
   if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Settings could not be saved; they may reset next time.');
   if (s.failure && !active && !actionError) {
     const newFailure = lastFailure !== s.failure.code;
-    alertText(s.failure.code === 'release' ? '' : s.failure.field ? 'Check the highlighted setting.' : s.failure_message);
+    alertText(s.failure.code === 'release' || s.failure.field ? '' : s.failure_message);
     if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Computer port ' + s.failure.local + ' → Seestar port ' + s.failure.service + '.' : ''),s.failure.code);
     lastFailure = s.failure.code;
 

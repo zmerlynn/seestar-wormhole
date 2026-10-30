@@ -47,7 +47,7 @@ func (d *guiTestDriver) uxSetup() error {
 			return err
 		}
 		if d.scenario == "save-denied" || d.scenario == "save-timeout" {
-			if err := d.probe(`check(!el('notice').hidden && !el('save-password').disabled,{noticeHidden:el('notice').hidden,saveDisabled:el('save-password').disabled})`); err != nil {
+			if err := d.probe(`check(!el('password-error').hidden && !el('save-password').disabled,{errorHidden:el('password-error').hidden,saveDisabled:el('save-password').disabled})`); err != nil {
 				return err
 			}
 			if err := d.state("Not connected", false, d.scenario); err != nil {
@@ -72,7 +72,7 @@ func (d *guiTestDriver) uxSetup() error {
 				if err := d.click("forget"); err != nil {
 					return err
 				}
-				if err := d.probe(`check(!el('notice').hidden && !el('forget').disabled,{noticeHidden:el('notice').hidden,forgetDisabled:el('forget').disabled})`); err != nil {
+				if err := d.probe(`check(!el('password-error').hidden && !el('forget').disabled,{errorHidden:el('password-error').hidden,forgetDisabled:el('forget').disabled})`); err != nil {
 					return err
 				}
 				if err := d.state("Not connected", false, "removal-retry-"+strconv.Itoa(i+1)); err != nil {
