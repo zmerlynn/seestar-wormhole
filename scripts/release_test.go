@@ -107,6 +107,16 @@ func TestReleaseArchiveContents(t *testing.T) {
 			if !slices.Equal(names, want) {
 				t.Errorf("archive entries = %v, want exact checkout file set %v", names, want)
 			}
+			icon, err := os.ReadFile("internal/icon/icon.svg")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(contents["internal/icon/icon.svg"], icon) {
+				t.Fatal("heading icon missing or changed in archive")
+			}
+			if !bytes.Contains(contents["docs/README.md"], []byte("[Development](https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md)")) {
+				t.Fatal("packaged documentation links to an absent development guide")
+			}
 			checkPackagedDevelopmentLinks(t, contents)
 			t.Logf("checked exact release archive file set: %v", names)
 		})
@@ -128,7 +138,7 @@ func checkPackagedDevelopmentLinks(t *testing.T, contents map[string][]byte) {
 
 func checkoutReleaseFiles(t *testing.T, binary string) []string {
 	t.Helper()
-	names := []string{"LICENSE", "NOTICE", "README.md", binary}
+	names := []string{"LICENSE", "NOTICE", "README.md", "internal/icon/icon.svg", binary}
 	err := filepath.WalkDir("docs", func(name string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -169,7 +179,7 @@ func TestReleaseFilesRecursive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"LICENSE", "NOTICE", "README.md", "docs/nested/guide.md", "docs/nested/image.png", "seestar-wormhole"}
+	want := []string{"LICENSE", "NOTICE", "README.md", "docs/nested/guide.md", "docs/nested/image.png", "internal/icon/icon.svg", "seestar-wormhole"}
 	if !slices.Equal(names, want) {
 		t.Fatalf("release files = %v, want %v", names, want)
 	}
