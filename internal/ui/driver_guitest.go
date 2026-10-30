@@ -141,8 +141,14 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 			return err
 		}
 	case "classified-error", "credential-rejected", "discovery-incompatible":
-		d.w.ExecJS(`document.querySelector('[aria-invalid="true"]')?.scrollIntoView({block:'center'})`)
-		if err := d.probe(`(() => {const e=document.querySelector('[aria-invalid="true"]');const rect=e?.getBoundingClientRect();return check(!!rect && rect.top>=0 && rect.bottom<=innerHeight,{invalid:e?.id ?? null,rect:rect ?? null,innerHeight})})()`); err != nil {
+		d.w.ExecJS(`document.querySelector('p.error[role="alert"]:not([hidden])')?.scrollIntoView({block:'center'})`)
+		if err := d.probe(`(() => {
+   const error=document.querySelector('p.error[role="alert"]:not([hidden])'),invalid=document.querySelector('[aria-invalid="true"]');
+   const control=invalid?.id==='ports' ? invalid.querySelector('input') : invalid;
+   const rect=error?.getBoundingClientRect(),controlRect=control?.getBoundingClientRect(),guide=el('port-permissions');
+   const visible=r=>!!r && r.top>=0 && r.bottom<=innerHeight;
+   return check(!!error?.textContent && visible(rect) && visible(controlRect) && (guide.hidden || visible(guide.getBoundingClientRect())),{error:error?.id ?? null,rect:rect ?? null,control:control?.id ?? null,controlRect:controlRect ?? null,innerHeight});
+  })()`); err != nil {
 			return err
 		}
 	default:

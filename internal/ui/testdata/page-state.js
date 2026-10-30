@@ -44,6 +44,7 @@
       assert(!custom.hidden && custom.classList.contains('help') && !custom.classList.contains('error') && !custom.hasAttribute('aria-invalid') && !$('goal').hasAttribute('aria-invalid'), 'Custom is styled as an error');
       assert($('goal').getAttribute('aria-describedby') === 'goal-help custom-help', 'Use with help association missing');
       assert(discovery.previousElementSibling === $('discovery').closest('label') && discovery.classList.contains('help') && parseFloat(getComputedStyle(discovery).marginLeft) > 0, 'discovery help detached or not indented');
+      assert($('ports-error').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING && $('port-permissions').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING, 'port recovery follows the ten-row table');
       assert($('services-title').tagName === 'H2' && $('services-title').textContent === 'Services' && $('ports').getAttribute('aria-labelledby') === 'services-title', 'Services heading missing');
       for (const [id, placeholder] of [['serial', 'From your Seestar account'], ['model', 'e.g. S50 Pro']]) {
         assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && !$(id+'-help') && $(id).getAttribute('aria-describedby').includes('selection-help'), id+' example is not placeholder-only');

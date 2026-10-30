@@ -73,11 +73,24 @@ For discovery over VPN or virtual adapters, see `--lan-discovery-all-interfaces`
 
 ## Port 80 and permissions
 
-Port 80 is a "privileged" port. On a Mac, `--bind 0.0.0.0` can use it without
-admin rights, but binding a specific address like `192.168.1.20` may fail with
-a permission error. On Linux, you'll need `sudo` or the
-`cap_net_bind_service` capability. Plain `sudo` drops your exported
-credentials; `sudo --preserve-env=SEESTAR_EMAIL,SEESTAR_PASSWORD` keeps them.
+Phone on this network needs computer port 80 for Seestar app images. Changing
+it to another port does not provide the same image access.
+
+- **macOS GUI:** Choose **Listen on → All networks**. A bind restricted to a
+  specific address may be refused. Allow incoming connections if macOS asks.
+- **Windows GUI:** Port 80 must be free. Stop another app using it, and allow
+  seestar-wormhole through the firewall when prompted.
+- **Linux GUI:** An administrator must allow seestar-wormhole to use port 80.
+  If that is not available, choose **This computer only** for apps on this
+  computer.
+
+### Command-line proxy
+
+Port 80 is a privileged port. On macOS, `--bind 0.0.0.0` can use it without
+administrator rights; binding a specific address may fail with a permission
+error. On Linux, use `sudo` or the `cap_net_bind_service` capability. Plain
+`sudo` drops exported credentials;
+`sudo --preserve-env=SEESTAR_EMAIL,SEESTAR_PASSWORD` keeps them.
 
 Anyone who can reach the listener can use it, so keep the proxy on a trusted network; see [network trust](reference.md#proxy).
 
