@@ -1,0 +1,238 @@
+:root {
+  font-family:system-ui,sans-serif;
+  color-scheme:light dark;
+  line-height:1.5;
+  background:#fff;
+  color:#18202b;
+  --surface:#fff;
+  --text:#18202b;
+  --border:#68717c;
+  --focus:#075bb5;
+  --muted:#485362;
+  --error:#a51f24
+}
+@media(prefers-color-scheme:dark) {
+  :root {
+    background:#121b29;
+    color:#eef4ff;
+    --surface:#192638;
+    --text:#eef4ff;
+    --border:#93a2b8;
+    --focus:#83c7ff;
+    --muted:#c0ccdc;
+    --error:#ffb0b0
+  }
+}
+* {
+  box-sizing:border-box
+}
+body {
+  margin:0
+}
+main {
+  max-width:42rem;
+  margin:auto;
+  padding:1.25rem
+}
+h1 {
+  font-size:1.6rem;
+  display:flex;
+  gap:.6rem;
+  align-items:center;
+  overflow-wrap:anywhere
+}
+h1 img {
+  flex:none
+}
+h2 {
+  font-size:1.15rem
+}
+#announcements {
+  font-weight:600
+}
+#status {
+  margin-bottom:.5rem
+}
+#feedback:empty {
+  display:none
+}
+fieldset {
+  border:0;
+  padding:0;
+  margin:1.5rem 0
+}
+legend {
+  padding:0;
+  font-weight:600
+}
+label {
+  display:block;
+  margin:.8rem 0 .3rem
+}
+input:not([type=checkbox]),select,textarea {
+  display:block;
+  width:100%;
+  max-width:100%;
+  padding:.55rem;
+  font:inherit;
+  border:1px solid var(--border);
+  border-radius:.3rem;
+  background:var(--surface);
+  color:var(--text)
+}
+#password:disabled {
+  color:var(--muted);
+  background:color-mix(in srgb, var(--border) 20%, var(--surface));
+  outline:none;
+  cursor:default
+}
+input[type=checkbox] {
+  width:1.1rem;
+  height:1.1rem;
+  accent-color:var(--focus)
+}
+.check {
+  display:flex;
+  align-items:center;
+  gap:.5rem
+}
+p {
+  font-size:.9rem
+}
+button {
+  font:inherit;
+  padding:.55rem .85rem;
+  cursor:pointer;
+  color:var(--text);
+  background:var(--surface);
+  border:1px solid var(--border);
+  border-radius:.3rem
+}
+button:disabled {
+  cursor:default;
+  opacity:.6
+}
+#start {
+  font-weight:600;
+  min-width:7rem;
+  border:2px solid var(--focus)
+}
+.actions {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.5rem
+}
+summary {
+  cursor:pointer;
+  font-weight:600;
+  padding:.6rem 0
+}
+details {
+  margin:1rem 0
+}
+footer {
+  margin-top:1.5rem;
+  color:var(--muted)
+}
+footer button {
+  font-size:.9rem
+}
+table {
+  border-collapse:collapse;
+  font-size:.85rem;
+  width:100%
+}
+th,td {
+  text-align:left;
+  vertical-align:top;
+  border-bottom:1px solid var(--border);
+  padding:.5rem
+}
+caption {
+  text-align:left;
+  font-weight:600
+}
+pre {
+  white-space:pre-wrap;
+  overflow-wrap:normal;
+  font: .85rem/1.5 ui-monospace,monospace
+}
+#notice,.error {
+  color:var(--error)
+}
+[aria-invalid=true] {
+  border:2px solid var(--error)
+}
+:focus-visible {
+  outline:3px solid var(--focus);
+  outline-offset:3px
+}
+[hidden] {
+  display:none!important
+}
+#options {
+  margin-top:0;
+}
+.muted {
+  color:var(--muted);
+}
+select {
+  appearance:none;
+  padding-right:2rem;
+  background-color:var(--surface);
+  color:var(--text);
+  background-image:linear-gradient(45deg, transparent 50%, var(--text) 50%), linear-gradient(135deg, var(--text) 50%, transparent 50%);
+  background-position:calc(100% - 1rem) center, calc(100% - .7rem) center;
+  background-size:.3rem .3rem;
+  background-repeat:no-repeat;
+}
+
+#phone-steps h2, #copy-steps h2 {
+  font-size:.95rem;
+}
+#phone-steps p, #copy-steps p {
+  font-size:.9rem;
+}
+#copy-steps a {
+  white-space:nowrap;
+}
+#ports input {
+  min-width:5rem;
+}
+
+#events {
+  list-style:none;
+  white-space:pre-wrap;
+  background:var(--surface);
+  color:var(--text);
+  border:1px solid var(--border);
+  border-radius:.3rem;
+  padding:.75rem;
+  font:.9rem/1.6 ui-monospace,monospace;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere
+}
+
+.help {
+  margin:.2rem 0 .85rem;
+  font-size:.85rem;
+  color:var(--muted)
+}
+.check + .help {
+  margin-left:1.6rem
+}
+.section-start {
+  border-top:1px solid var(--border);
+  margin-top:1.4rem;
+  padding-top:1rem
+}
+#advanced,#details {
+  border-top:1px solid var(--border);
+  padding-top:.4rem
+}
+#events li + li {
+  margin-top:.35rem
+}
+footer a,#port-permissions a {
+  color:var(--focus)
+}

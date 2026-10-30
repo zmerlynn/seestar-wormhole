@@ -1,4 +1,4 @@
-# seestar-wormhole
+# <img src="internal/icon/icon.svg" width="48" height="48" alt=""> seestar-wormhole
 
 A Seestar kept at a remote site is reachable from the phone app through ZWO's
 cloud, but nothing else can reach it: not
@@ -26,7 +26,15 @@ it, and check it runs:
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
 
-It's a single file with no dependencies.
+For browser controls, run `./seestar-wormhole` on macOS or Linux, or
+`.\seestar-wormhole.exe` in PowerShell on Windows. Add `ui` to the command to open
+the controls explicitly. Enter your account and choose Connect. First run selects
+Phone on this network and shows its network trust warning. Successful connection
+saves non-secret settings; Save password to keychain is a separate choice.
+Stop releases the session; Quit exits. See [GUI controls](docs/reference.md#ui).
+
+It's a single executable; browser controls need a browser, and optional password
+storage needs an available OS keychain.
 
 To build from source, install Go 1.27 or newer and run the command below; see [building from source](docs/development/README.md#build-and-run).
 
@@ -37,7 +45,7 @@ CGO_ENABLED=0 go build -mod=vendor -o seestar-wormhole ./cmd/seestar-wormhole
 ## Before you start: your account and your site
 
 seestar-wormhole signs in with your Seestar account, the same one the app
-uses. It reads the email and password from `SEESTAR_EMAIL` and
+uses. The `proxy` command reads the email and password from `SEESTAR_EMAIL` and
 `SEESTAR_PASSWORD` and keeps them in memory only. Typing them in like this
 (in bash or zsh) keeps them out of your shell history:
 
@@ -59,13 +67,13 @@ Before using the proxy, make sure the telescope has the right site. To change it
 
 ## Use the phone app from home
 
-Run the proxy on a computer on the same Wi-Fi as your phone, with LAN discovery and port 80 mapped:
+Run seestar-wormhole on the same Wi-Fi network as your phone. Turn on LAN discovery and map local port 80:
 
 ```sh
 ./seestar-wormhole proxy --bind 0.0.0.0 --lan-discovery -p 80:80
 ```
 
-Then open the Seestar app and select the telescope from its **LAN** list, not Remote. The [phone setup guide](docs/phone-app.md#start-the-proxy) covers permissions and troubleshooting. See [platform coverage](docs/status.md#platforms) for discovery validation.
+Then open the Seestar app and select the telescope from its **LAN** tab, not Remote. The [phone setup guide](docs/phone-app.md#start-the-proxy) covers permissions and troubleshooting. See [platform coverage](docs/status.md#platforms) for discovery validation.
 
 ## Keep it running
 
@@ -77,7 +85,7 @@ container, and on Windows.
 ## Copy images while you keep observing
 
 rclone copies images through the proxy's SMB listener while control clients
-share the session. See [Copy images with rclone](docs/copying.md) for setup,
+share the session. See [Copy images](docs/copying.md) for setup,
 transfer settings, and byte verification on Linux, macOS, and Windows.
 
 ## Keep it on your own network
@@ -121,7 +129,7 @@ See [internal package boundary](docs/development/README.md).
 
 - [Phone app guide](docs/phone-app.md)
 - [Always-on guide](docs/always-on.md)
-- [Copy images with rclone](docs/copying.md)
+- [Copy images](docs/copying.md)
 - [seestar_alp and other clients](docs/clients.md)
 - [Command reference](docs/reference.md): every flag, exit code and log message
 - [How the proxy speaks the protocol](docs/protocol.md)

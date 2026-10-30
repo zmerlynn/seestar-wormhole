@@ -21,6 +21,7 @@ const (
 	commandProxy
 	commandLicenses
 	commandDiscoveryOnly
+	commandUI
 )
 
 type commandOutcome uint8
@@ -51,7 +52,8 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 			if o.version {
 				return nil
 			}
-			return cmd.Help()
+			o.command = commandUI
+			return nil
 		},
 	}
 	root.SetOut(out)
@@ -65,13 +67,17 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 	})
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return flagParseError(err) })
 	root.Flags().BoolVar(&o.version, "version", false, "print version, revision and platform")
+	uiCommand := &cobra.Command{Use: "ui", Short: "Open local controls (native window in GUI builds, browser otherwise)", Args: noArguments, RunE: func(*cobra.Command, []string) error { return nil }}
+	uiCommand.Flags().StringVar(&o.stateDir, "state-dir", "", "private UI settings and shared installation identity directory")
+	root.AddCommand(uiCommand)
 	proxyCommand := &cobra.Command{
 		Use:   "proxy",
 		Short: "Forward local TCP ports through one shared Seestar session",
 		Long: `Forward local TCP ports through one shared Seestar session.
 Zero idle duration eagerly acquires and holds the session; a positive duration
 opens on client demand and releases when idle. Stop with Ctrl+C.
-Credentials use SEESTAR_EMAIL and SEESTAR_PASSWORD from the environment only.
+Credentials use SEESTAR_EMAIL and SEESTAR_PASSWORD from the environment.
+With --config, load saved UI settings and read the OS keychain if no password is set.
 The app cannot change the device's site, clock or time zone through the proxy.
 Durations use Go units, e.g. 2m or 1h30m, and must be nonnegative (no d unit).
 Logs and errors go to stderr; help and version go to stdout.
@@ -81,10 +87,16 @@ or 1 on other runtime errors including failed release.`,
 		Example: "  seestar-wormhole proxy --idle 2m --state-dir /private/seestar",
 		Args:    noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if o.config {
+				if err := loadProxySettings(o, cmd.Flags()); err != nil {
+					return err
+				}
+			}
 			return validateOptions(o)
 		},
 	}
 	f := proxyCommand.Flags()
+	f.BoolVar(&o.config, "config", false, "read saved UI settings and share its installation identity; environment password or OS keychain")
 	registerSharedOptions(f, o)
 	f.StringVar(&o.bind, "bind", defaultBind, "local bind address (use 0.0.0.0 for a container)")
 	f.VarP(&o.ports, "port", "p", "override a device listener with local:device; local 0 disables; repeatable (defaults 4700:4700, SMB 4445:445, HTTP 8080:80; 4350:4350,4554:4554,4555:4555,4801:4801,4800:4800,4804:4804,4361:4361)")
@@ -117,6 +129,8 @@ func parse(args []string, out io.Writer) (options, error) {
 	// Preserve Cobra's resolution even when parsing or validation fails, so
 	// diagnostics and exit policy belong to the same command as execution.
 	switch executed.Name() {
+	case "ui":
+		o.command = commandUI
 	case "proxy":
 		o.command = commandProxy
 	case "licenses":
@@ -136,7 +150,7 @@ func parse(args []string, out io.Writer) (options, error) {
 	case o.version:
 		o.outcome = commandVersion
 	case executed == command:
-		o.outcome = commandHelp
+		o.command = commandUI
 	}
 	if o.outcome == commandHelp || o.outcome == commandCompletion {
 		return o, errHelp

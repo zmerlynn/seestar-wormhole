@@ -32,12 +32,24 @@ import (
 // The selected catalog pair supplies both fields. Lazy mode still defers
 // device-session allocation.
 func New(ctx context.Context, cfg Config) (*Session, error) {
-	d := cloudhttp.Device{Serial: cfg.Serial, Model: cfg.Model}
 	c, err := cloudhttp.NewFromEnvironment(cloudhttp.Config{Logger: diagnostic.Lifecycle(cfg.Logger), StateDir: cfg.StateDir})
 	if err != nil {
 		return nil, err
 	}
-	d, err = selectDevice(ctx, c, d, cfg.Logger, mathrand.NewPCG(mathrand.Uint64(), mathrand.Uint64()))
+	return newWithClient(ctx, cfg, c)
+}
+
+// NewWithCredentials uses in-memory credentials without changing the environment.
+func NewWithCredentials(ctx context.Context, cfg Config, credentials cloud.Credentials) (*Session, error) {
+	c, err := cloudhttp.NewWithCredentials(cloudhttp.Config{Logger: diagnostic.Lifecycle(cfg.Logger), StateDir: cfg.StateDir}, credentials)
+	if err != nil {
+		return nil, err
+	}
+	return newWithClient(ctx, cfg, c)
+}
+
+func newWithClient(ctx context.Context, cfg Config, c *cloudhttp.Client) (*Session, error) {
+	d, err := selectDevice(ctx, c, cloudhttp.Device{Serial: cfg.Serial, Model: cfg.Model}, cfg.Logger, mathrand.NewPCG(mathrand.Uint64(), mathrand.Uint64()))
 	if err != nil {
 		return nil, closeStartupCloud(ctx, c, err)
 	}

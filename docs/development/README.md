@@ -96,6 +96,7 @@ to catch omitted targets:
 | Package | Targets |
 |---|---|
 | `cmd/seestar-wormhole` | `FuzzConfiguration` |
+| `internal/ui` | `FuzzSettings` |
 | `internal/iotc` | `FuzzLicenseJSON`, `FuzzPacket`, `FuzzStream`, `FuzzProtocolParsers`, `FuzzLicense`, `FuzzWireEvents`, `FuzzMetamorphicReceive` |
 | `internal/cloud` | `FuzzJSON`, `FuzzAccountResponses`, `FuzzDevices`, `FuzzOutcomeJoin` |
 | `internal/cloud/cloudhttp` | `FuzzCloudMetamorphic`, `FuzzRejectedResponseDiagnostics` |
@@ -201,6 +202,13 @@ These apply to every change, whoever writes it.
   line it protects.
 - **Commit to the new path.** Don't keep a fallback to old behavior unless a
   named configuration still needs it.
+- **Files on disk stay downgradable.** A settings or state file written by a
+  newer release must still load in an older one, and an older release that
+  saves it must not lose what the newer one wrote. Add optional members with a
+  documented default for when they are absent, keep unknown members on a
+  rewrite, and never rewrite a file just because it was read. The format's
+  version changes only for a change an older release cannot read, and such a
+  one-way change needs the maintainer's approval before it is written.
 - **Every public flag, format, exit code and log record is a promise.** Add
   one only for a current need, and document it in the
   [reference](../reference.md) in the same change.

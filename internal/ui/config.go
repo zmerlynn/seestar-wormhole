@@ -1,0 +1,111 @@
+package ui
+
+import (
+	"encoding/json/jsontext"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
+	"os"
+	"strings"
+	"time"
+)
+
+// Settings contains only saved nonsecret choices. Ports contains overrides only.
+type Settings struct {
+	Discovery bool            `json:"discovery"`
+	Version   int             `json:"version"`
+	Bind      string          `json:"bind"`
+	Idle      string          `json:"idle"`
+	Serial    string          `json:"serial"`
+	Model     string          `json:"model"`
+	Ports     []proxyrun.Port `json:"ports"`
+	Email     string          `json:"email"`
+	Remember  bool            `json:"remember_password"`
+	Unknown   jsontext.Value  `json:",embed"`
+}
+
+func defaultSettings() Settings {
+	return Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []proxyrun.Port{{Local: 80, Device: 80}}}
+}
+func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
+	idle, err := time.ParseDuration(s.Idle)
+	if s.Version != 1 {
+		return nil, 0, &ActionError{Code: "settings"}
+	}
+	if err != nil || idle < 0 {
+		return nil, 0, &ActionError{Code: "idle", Field: "idle"}
+	}
+	if strings.TrimSpace(s.Bind) == "" {
+		return nil, 0, &ActionError{Code: "bind_empty", Field: "bind"}
+	}
+	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
+		return nil, 0, &ActionError{Code: "discovery_bind", Field: "bind"}
+	}
+	if s.Serial != "" && !cloudhttp.ValidSerial(s.Serial) {
+		return nil, 0, &ActionError{Code: "serial", Field: "serial"}
+	}
+	if s.Model != "" && !cloudhttp.ValidModel(s.Model) {
+		return nil, 0, &ActionError{Code: "model", Field: "model"}
+	}
+	if s.Email != "" {
+		if _, err := cloud.EmailCredentials(s.Email, "validation-only"); err != nil {
+			return nil, 0, &ActionError{Code: "email", Field: "email"}
+		}
+	}
+	seen := make(map[uint16]bool)
+	for _, p := range s.Ports {
+		if !guiPort(p.Device) || seen[p.Device] {
+			return nil, 0, &ActionError{Code: "ports", Field: "ports"}
+		}
+		seen[p.Device] = true
+	}
+	ports, err := proxyrun.MergePorts(s.Ports)
+	if err != nil {
+		return nil, 0, &ActionError{Code: "ports", Field: "ports"}
+	}
+	if len(ports) == 0 {
+		return nil, 0, &ActionError{Code: "ports_empty", Field: "ports"}
+	}
+	return ports, idle, nil
+}
+func loadSettings(s *storage) (Settings, error) {
+	settings := Settings{Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{}}
+	// Decode a fresh struct: absent members have documented defaults; unknown
+	// members are retained by JSON v2 within this schema version.
+	if err := s.read("config.json", &settings); err != nil {
+		if !os.IsNotExist(err) {
+			s.settingsRefused = true
+		}
+		return Settings{}, err
+	}
+	if _, _, err := settings.validate(); err != nil {
+		s.settingsRefused = true
+		return Settings{}, err
+	}
+	s.settingsUnknown = settings
+	return settings, nil
+}
+
+// LoadSettings reads the UI's saved settings without writing files or taking ui.lock.
+// The root is also the installation identity root for a headless run.
+func LoadSettings(root string) (Settings, error) {
+	d, err := privatefile.ReadDirectory(root)
+	if err != nil {
+		return Settings{}, errStorage
+	}
+	defer d.Close()
+	return loadSettings(&storage{root: root, directory: d})
+}
+
+func (s Settings) lazy() bool { d, _ := time.ParseDuration(s.Idle); return d > 0 }
+
+// The GUI edits only the ten standard services. CLI mappings remain unrestricted.
+func guiPort(remote uint16) bool {
+	switch remote {
+	case 4700, 80, 4800, 4804, 4801, 4554, 4555, 4350, 4361, 445:
+		return true
+	}
+	return false
+}

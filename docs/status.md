@@ -79,5 +79,5 @@ test the command's version and help output.
 
 ## SMB copying
 
-See [Copy images with rclone](copying.md) for the recipe and its verification status.
+See [Copy images](copying.md) for the recipe and its verification status.
 With public SMB clients through this proxy, the device selects SMB 3.1.1 when offered; it also accepts SMB 3.0.2 and 2.1 when each is the highest dialect offered. These observations establish the tested proxy interoperability.

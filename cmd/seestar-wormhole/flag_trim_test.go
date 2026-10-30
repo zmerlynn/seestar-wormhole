@@ -25,8 +25,8 @@ func TestPortOverrides(t *testing.T) {
 		}
 		var http uint16
 		for _, p := range o.ports {
-			if p.device == 80 {
-				http = p.local
+			if p.Device == 80 {
+				http = p.Local
 			}
 		}
 		if http != tc.http {
@@ -73,7 +73,7 @@ func TestNewOptionsAndRetiredFlags(t *testing.T) {
 	}
 	var help bytes.Buffer
 	_, err = parse(append([]string{"proxy"}, []string{"--help"}...), &help)
-	if !errors.Is(err, errHelp) || !strings.Contains(help.String(), "default empty: memory only") {
+	if !errors.Is(err, errHelp) || !strings.Contains(help.String(), "default: memory only; UI state root with --config") {
 		t.Fatal("missing visible state default")
 	}
 	for _, name := range []string{"--app-ports", "--lan-template"} {

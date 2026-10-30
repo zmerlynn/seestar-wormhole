@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="icon" type="image/svg+xml" href="/icon.svg"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<body><main>
+<h1><img src="/icon.svg" width="40" height="40" alt="">seestar‑wormhole</h1>
+<p>Your remote Seestar, as if it were on your network.</p>
+<div id="announcements" role="status" aria-live="polite" aria-atomic="true"><p id="status">Loading…</p><p id="feedback"></p></div>
+<button id="start" type="submit" form="settings" disabled>Connect</button>
+<p id="notice" role="alert" hidden></p>
+<p id="last-known" hidden></p>
+<button id="retry-storage" type="button" hidden>Retry saving settings</button>
+<form id="settings" novalidate>
+<fieldset id="options" disabled>
+<label for="goal">Use with</label><select id="goal" aria-describedby="goal-help custom-help"><option value="phone">Phone on this network</option><option value="computer">This computer only</option><option value="custom">Custom</option></select>
+<p id="custom-help" class="help" hidden>Set in Advanced. Choosing another setup replaces these settings.</p>
+<p id="goal-help" class="help">Connect your phone to the same network as this computer.</p>
+<p id="trust">Use a trusted network. Other devices on it can control your Seestar.</p>
+<fieldset id="account">
+<legend>Account</legend>
+<label for="email">Seestar account email</label><input id="email" type="text" inputmode="email" autocomplete="username" maxlength="4096" required aria-describedby="email-error"><p id="email-error" class="error" role="alert" hidden></p>
+<label for="password">Password</label><input id="password" type="password" autocomplete="off" aria-describedby="password-note password-error"><p id="password-error" class="error" role="alert" hidden></p>
+<p id="password-note" class="help">Kept until you quit. Save to your keychain to use it next time.</p>
+<div class="actions"><button id="save-password" type="button" disabled>Save password to keychain</button><button id="forget" type="button" hidden>Remove saved password</button></div>
+</fieldset>
+<details id="advanced"><summary tabindex="-1">Advanced</summary>
+<p>Seestar: <strong id="telescope-selection">Automatic</strong></p>
+<p id="selection-help" class="help">Leave both fields empty if your account has one Seestar.</p>
+<label for="serial">Serial number (optional)</label><input id="serial" placeholder="From your Seestar account" type="text" maxlength="4096" spellcheck="false" aria-describedby="selection-help serial-error"><p id="serial-error" class="error" role="alert" hidden></p>
+<label for="model">Model (optional)</label><input id="model" placeholder="e.g. S50 Pro" type="text" maxlength="4096" spellcheck="false" aria-describedby="selection-help model-error"><p id="model-error" class="error" role="alert" hidden></p>
+<label for="mode" class="section-start">Connection timing</label><select id="mode"><option value="eager">Keep connected</option><option value="idle">Connect when an app needs Seestar</option></select>
+<div id="idle-options" hidden><label for="idle">Release after apps disconnect (minutes)</label><input id="idle" value="2" type="number" min="0.01" step="any" aria-describedby="idle-help idle-error"><p id="idle-help" class="help">Releases the session after this wait. An app connection starts it again.</p><p id="idle-error" class="error" role="alert" hidden></p></div>
+<label for="listen" class="section-start">Listen on</label><select id="listen" aria-describedby="bind-error"><option value="0.0.0.0">All networks</option><option value="127.0.0.1">This computer only</option><option value="other">Other…</option></select>
+<div id="other-address" hidden><label for="bind">Local network address</label><input id="bind" type="text" spellcheck="false" aria-describedby="bind-help bind-error"><p id="bind-help" class="help">Enter this computer's IPv4 address.</p></div><p id="bind-error" class="error" role="alert" hidden></p>
+<label class="check"><input id="discovery" type="checkbox" aria-describedby="discovery-help discovery-error"> Let the Seestar app find your Seestar</label>
+<p id="discovery-help" class="help">Answers discovery requests on this network.</p><p id="discovery-error" class="error" role="alert" hidden></p>
+<h2 id="services-title" class="section-start">Services</h2>
+<p id="ports-help" class="help">Local ports are on this computer. Leave a port empty to turn off that service.</p>
+<p id="ports-error" class="error" role="alert" hidden></p>
+<p id="port-permissions" hidden><a href="https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/phone-app.md#port-80-and-permissions" target="_blank" rel="noreferrer">Port permissions guide</a></p>
+<div id="ports" tabindex="-1" aria-labelledby="services-title" aria-describedby="ports-help ports-error"></div>
+</details>
+<p>Settings save when the connection is ready.</p>
+</fieldset>
+</form>
+<section id="running" hidden aria-label="Connection">
+<p id="run-summary" class="muted"></p>
+<div id="phone-steps" hidden><h2>Using the Seestar app</h2><p>On your phone, open the Seestar app and select your Seestar from the LAN tab.</p></div>
+<div id="copy-steps" hidden><h2>Copying files</h2><p>To copy images, connect a file-sharing (SMB) app to this computer on port <span id="copy-port"></span>. <a href="https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/copying.md#copy-with-a-graphical-app" target="_blank" rel="noreferrer">Copying guide</a></p></div>
+<details id="running-ports-box"><summary>Ports forwarded to your Seestar</summary><div id="running-ports"></div></details>
+<p>Keep this app open while you use your Seestar.</p>
+</section>
+<details id="details"><summary>Details and logs</summary><h2>Connection settings</h2><pre id="effective-settings"></pre><h2>Recent events</h2><ul id="events"></ul><p id="error-code" hidden></p><p id="log-path"></p><p id="log-error" hidden>Could not write the private log.</p><button id="copy" type="button">Copy diagnostic summary</button> <span id="copy-feedback" role="status" aria-live="polite"></span><textarea id="diagnostic-copy" aria-label="Diagnostic summary" readonly hidden></textarea></details>
+<footer><button id="quit" type="button" disabled>Quit app</button><p id="quit-help"></p>
+<p>seestar-wormhole <span id="version"></span> · <a href="https://unlicense.org/" target="_blank" rel="noreferrer">The Unlicense</a> · <a id="releases-link" href="https://github.com/zmerlynn/seestar-wormhole/releases" target="_blank" rel="noreferrer">Releases</a></p></footer>
+</main></body></html>

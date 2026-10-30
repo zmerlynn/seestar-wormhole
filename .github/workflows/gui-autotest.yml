@@ -1,0 +1,228 @@
+name: GUI autotest
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/gui-autotest/**'
+      - 'scripts/gui-mac-clang.sh'
+      - 'scripts/build-gui-mac.sh'
+      - 'vendor/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/gui-autotest.yml'
+  pull_request:
+    paths:
+      - 'cmd/**'
+      - 'internal/**'
+      - 'scripts/gui-autotest/**'
+      - 'scripts/gui-mac-clang.sh'
+      - 'scripts/build-gui-mac.sh'
+      - 'vendor/**'
+      - 'go.mod'
+      - 'go.sum'
+      - '.github/workflows/gui-autotest.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=vendor -p=2
+  GOMAXPROCS: '2'
+  GOTOOLCHAIN: local
+  GOPROXY: 'off'
+  GOSUMDB: 'off'
+
+jobs:
+  native:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-2025, ubuntu-24.04]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev bubblewrap xvfb xauth imagemagick dbus-x11 openbox
+      - name: Build fixture and prove build isolation
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gui-shots"
+          ext=''; flags=''
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            export CGO_ENABLED=0
+            ext=.exe; flags='-H windowsgui'
+          else
+            export CGO_ENABLED=1
+            if [[ "$RUNNER_OS" == macOS ]]; then
+              export CC="$PWD/scripts/gui-mac-clang.sh" MACOSX_DEPLOYMENT_TARGET=13.0
+            fi
+          fi
+          # Keep symbols: scan the actual executables, with a positive control.
+          for variant in fixture production plain; do
+            case "$variant" in
+              fixture) tags=gui,guitest,production ;;
+              production) tags=gui,production ;;
+              plain) tags=gui ;;
+            esac
+            go build -tags "$tags" -trimpath -buildvcs=false -ldflags="$flags" \
+              -o "$RUNNER_TEMP/gui-$variant$ext" ./cmd/seestar-wormhole
+          done
+          go build -tags guitest -o "$RUNNER_TEMP/gui-harness$ext" ./scripts/gui-autotest
+          "$RUNNER_TEMP/gui-harness$ext" -verify "$RUNNER_TEMP/gui-fixture$ext,$RUNNER_TEMP/gui-production$ext,$RUNNER_TEMP/gui-plain$ext" \
+            | tee "$RUNNER_TEMP/gui-shots/build-isolation.log"
+          go test -tags gui,guitest,production ./internal/ui ./internal/guitest ./scripts/gui-autotest \
+            | tee "$RUNNER_TEMP/gui-shots/tagged-tests.log"
+      - name: Prepare Mac fixture bundle
+        if: runner.os == 'macOS'
+        run: |
+          app="$RUNNER_TEMP/GUIFixture.app/Contents"
+          mkdir -p "$app/MacOS"
+          cp "$RUNNER_TEMP/gui-fixture" "$app/MacOS/seestar-wormhole"
+          # Reuse the Mac build's bundle metadata, including the Apple-event ID.
+          sed -n '/^<?xml/,/^PLIST/p' scripts/build-gui-mac.sh | sed '$d' > "$app/Info.plist"
+          plutil -replace CFBundleVersion -string 1 "$app/Info.plist"
+          plutil -replace CFBundleShortVersionString -string 0.0.0 "$app/Info.plist"
+          plutil -lint "$app/Info.plist"
+          test "$(plutil -extract CFBundleVersion raw -o - "$app/Info.plist")" = 1
+          test "$(plutil -extract CFBundleShortVersionString raw -o - "$app/Info.plist")" = 0.0.0
+          /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$RUNNER_TEMP/GUIFixture.app"
+      - name: Windows network guard
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Loopback is exempt from Windows Firewall filtering. Block external
+          # traffic from the fixture and the engine, including background work.
+          New-NetFirewallRule -DisplayName GUIAutotestFixture -Direction Outbound -Action Block -Program "$env:RUNNER_TEMP\gui-fixture.exe"
+          Get-ChildItem "${env:ProgramFiles(x86)}\Microsoft\EdgeWebView\Application" -Filter msedgewebview2.exe -Recurse | ForEach-Object {
+            New-NetFirewallRule -DisplayName GUIAutotestEngine -Direction Outbound -Action Block -Program $_.FullName
+          }
+      - name: Windows light and dark scenarios
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $theme='HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+          New-Item -Path $theme -Force | Out-Null
+          Set-ItemProperty $theme AppsUseLightTheme 1
+          & "$env:RUNNER_TEMP\gui-harness.exe" -binary "$env:RUNNER_TEMP\gui-fixture.exe" -out "$env:RUNNER_TEMP\gui-shots\light" 2>&1 | Tee-Object "$env:RUNNER_TEMP\gui-shots\light.log"
+          $light=$LASTEXITCODE
+          Set-ItemProperty $theme AppsUseLightTheme 0
+          & "$env:RUNNER_TEMP\gui-harness.exe" -binary "$env:RUNNER_TEMP\gui-fixture.exe" -out "$env:RUNNER_TEMP\gui-shots\dark" -scenarios dark 2>&1 | Tee-Object "$env:RUNNER_TEMP\gui-shots\dark.log"
+          if ($light -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }
+      - name: Mac light and dark scenarios
+        if: runner.os == 'macOS'
+        run: |
+          set -uo pipefail
+          # sandbox-exec also confines Apple-event senders, even with allow
+          # default. Keep osascript in the harness outside that sandbox, while
+          # the fixture and engine retain the outbound network restriction.
+          binary="$RUNNER_TEMP/gui-fixture-sandbox"
+          cat > "$binary" <<'SCRIPT'
+          #!/bin/bash
+          profile='(version 1)(allow default)(deny network-outbound (remote ip "*:*"))(allow network-outbound (remote ip "localhost:*"))'
+          exec sandbox-exec -p "$profile" "$RUNNER_TEMP/GUIFixture.app/Contents/MacOS/seestar-wormhole" "$@"
+          SCRIPT
+          chmod +x "$binary"
+          defaults delete -g AppleInterfaceStyle 2>/dev/null || true
+          "$RUNNER_TEMP/gui-harness" -binary "$binary" \
+            -out "$RUNNER_TEMP/gui-shots/light" -scenarios fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,strand,errors,term,interrupt,apple,computer,incompatible,http-permission,http-conflict,bind-error,discovery-error,saved-password,save-denied,save-timeout,remove-denied,remove-timeout,settings-failure,release-uncertain,browser-copy,details,lost-controls \
+            2>&1 | tee "$RUNNER_TEMP/gui-shots/light.log"
+          light=${PIPESTATUS[0]}
+          defaults write -g AppleInterfaceStyle Dark
+          "$RUNNER_TEMP/gui-harness" -binary "$binary" \
+            -out "$RUNNER_TEMP/gui-shots/dark" -scenarios dark 2>&1 | tee "$RUNNER_TEMP/gui-shots/dark.log"
+          dark=${PIPESTATUS[0]}
+          test "$light" = 0 && test "$dark" = 0
+      - name: Linux sandbox probe and light and dark scenarios
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          # Use a private network namespace with loopback only. Xvfb and D-Bus
+          # use Unix sockets; neither the fixture nor WebKit can reach a service.
+          cat > "$RUNNER_TEMP/gui-linux.sh" <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          ip link set lo up
+          exec runuser -u "$1" -- env RUNNER_TEMP="$2" PATH="$3" \
+            GDK_BACKEND=x11 GTK_A11Y=none \
+            dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' bash "$2/gui-linux-session.sh"
+          SCRIPT
+          cat > "$RUNNER_TEMP/gui-linux-session.sh" <<'SCRIPT'
+          #!/usr/bin/env bash
+          set -uo pipefail
+          openbox > "$RUNNER_TEMP/gui-shots/window-manager.log" 2>&1 &
+          wm=$!
+          trap 'kill "$wm" 2>/dev/null || true' EXIT
+          mode=${1:-light}
+          if [[ "$mode" == probe ]]; then
+            "$RUNNER_TEMP/gui-harness" -binary "$RUNNER_TEMP/gui-fixture" \
+              -out "$RUNNER_TEMP/gui-shots/bubblewrap-probe" -scenarios relaunch -timeout 35s
+            exit $?
+          fi
+          export GTK_THEME=Adwaita
+          gsettings set org.gnome.desktop.interface color-scheme prefer-light
+          "$RUNNER_TEMP/gui-harness" -binary "$RUNNER_TEMP/gui-fixture" \
+            -out "$RUNNER_TEMP/gui-shots/light" 2>&1 | tee "$RUNNER_TEMP/gui-shots/light.log"
+          light=${PIPESTATUS[0]}
+          export GTK_THEME=Adwaita:dark
+          gsettings set org.gnome.desktop.interface color-scheme prefer-dark
+          "$RUNNER_TEMP/gui-harness" -binary "$RUNNER_TEMP/gui-fixture" \
+            -out "$RUNNER_TEMP/gui-shots/dark" -scenarios dark 2>&1 | tee "$RUNNER_TEMP/gui-shots/dark.log"
+          dark=${PIPESTATUS[0]}
+          test "$light" = 0 && test "$dark" = 0
+          SCRIPT
+          # Record the distro package/profile and explicitly test the restricted
+          # setting first. Probe failure is evidence, not a waiver for the suite.
+          dpkg-query -W bubblewrap libwebkitgtk-6.0-4 | tee "$RUNNER_TEMP/gui-shots/bubblewrap-package.log"
+          dpkg -L bubblewrap | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-package.log"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=1
+          # The same namespace/display path, with only the short probe selected.
+          sed 's@bash "$2/gui-linux-session.sh"@bash "$2/gui-linux-session.sh" probe@' "$RUNNER_TEMP/gui-linux.sh" > "$RUNNER_TEMP/gui-probe.sh"
+          if sudo unshare --net bash "$RUNNER_TEMP/gui-probe.sh" "$USER" "$RUNNER_TEMP" "$PATH" \
+            > "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log" 2>&1; then
+            echo 'PROBE bubblewrap WITHOUT userns relaxation PASS' | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
+          else
+            log="$RUNNER_TEMP/gui-shots/bubblewrap-probe/relaunch/process.log"
+            grep -F 'WebKit sandbox unavailable. Install bubblewrap and allow unprivileged user namespaces.' "$log"
+            if grep -E 'SIGTRAP|signal arrived during cgo' "$log"; then exit 1; fi
+            # Only relabel after verifying the expected startup error above.
+            sed -i 's/^SCENARIO relaunch FAIL:/PROBE restricted bubblewrap EXPECTED:/' "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
+            echo 'PROBE restricted bubblewrap: clear startup error PASS' | tee -a "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
+          fi
+          cat "$RUNNER_TEMP/gui-shots/bubblewrap-probe.log"
+          # Ubuntu restricts unprivileged user namespaces, which WebKit's sandbox
+          # needs; lift that for the fixture suite (CI only).
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          sudo unshare --net bash "$RUNNER_TEMP/gui-linux.sh" "$USER" "$RUNNER_TEMP" "$PATH"
+      - name: Restore Windows firewall and theme
+        if: always() && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-NetFirewallRule -DisplayName GUIAutotestFixture,GUIAutotestEngine -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+          Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' AppsUseLightTheme 1
+      - name: Restore Mac theme
+        if: always() && runner.os == 'macOS'
+        run: defaults delete -g AppleInterfaceStyle 2>/dev/null || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: gui-autotest-${{ runner.os }}
+          path: ${{ runner.temp }}/gui-shots/
+          retention-days: 7

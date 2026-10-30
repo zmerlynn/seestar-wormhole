@@ -1,9 +1,58 @@
 [
   {
+    "Path": "github.com/adrg/xdg",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/adrg/xdg/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/coder/websocket",
+    "SPDX": "ISC",
+    "Files": [
+      "vendor/github.com/coder/websocket/LICENSE.txt"
+    ]
+  },
+  {
+    "Path": "github.com/danieljoos/wincred",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/danieljoos/wincred/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-ole/go-ole",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/go-ole/go-ole/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/godbus/dbus/v5",
+    "SPDX": "BSD-2-Clause",
+    "Files": [
+      "vendor/github.com/godbus/dbus/v5/LICENSE"
+    ]
+  },
+  {
     "Path": "github.com/inconshreveable/mousetrap",
     "SPDX": "Apache-2.0",
     "Files": [
       "vendor/github.com/inconshreveable/mousetrap/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/mattn/go-colorable",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/mattn/go-colorable/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/mattn/go-isatty",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/mattn/go-isatty/LICENSE"
     ]
   },
   {
@@ -39,6 +88,32 @@
     "SPDX": "BSD-3-Clause",
     "Files": [
       "vendor/github.com/spf13/pflag/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/wailsapp/wails/v3",
+    "SPDX": "MIT AND ISC AND BSD-3-Clause AND Apache-2.0",
+    "Files": [
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/fyne-systray.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/guid-MIT.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/internal-assetserver-ringqueue.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-clipboard.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-guid.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-user32.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-winc.txt",
+      "vendor/github.com/wailsapp/wails/v3/LICENSE",
+      "vendor/github.com/wailsapp/wails/v3/internal/go-common-file-dialog/LICENSE",
+      "vendor/github.com/wailsapp/wails/v3/internal/webview2/webviewloader/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/zalando/go-keyring",
+    "SPDX": "MIT AND Apache-2.0",
+    "Files": [
+      "internal/licenses/notices/github.com/zalando/go-keyring/LICENSE-Apache-2.0",
+      "internal/licenses/notices/github.com/zalando/go-keyring/NOTICE",
+      "vendor/github.com/zalando/go-keyring/LICENSE",
+      "vendor/github.com/zalando/go-keyring/internal/shellescape/LICENSE"
     ]
   },
   {

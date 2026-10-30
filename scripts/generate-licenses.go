@@ -129,7 +129,13 @@ func generate(check bool) error {
 		}
 	}
 
-	files := map[string][]byte{"NOTICE": notice}
+	// The native supplement is conditional at runtime; preserve the common
+	// NOTICE output for executables that do not link the Linux GUI libraries.
+	common, native, ok := bytes.Cut(notice, []byte("\nLinux native GUI\n"))
+	if !ok {
+		return errors.New("NOTICE lacks the Linux native GUI supplement")
+	}
+	files := map[string][]byte{"NOTICE": common, "native-linux/NOTICE": append([]byte("\nLinux native GUI\n"), native...)}
 	var entries []module
 	for path, hasPackages := range modules {
 		if !hasPackages {
@@ -172,6 +178,21 @@ func generate(check bool) error {
 		}
 		if licenseCount == 0 {
 			return fmt.Errorf("vendored module %s has no license file", path)
+		}
+		// Supplemental notices cover source-file terms that upstream does not
+		// supply as separate license files. Keep vendor output unmodified.
+		supplements, err := filepath.Glob(filepath.Join("internal/licenses/notices", path, "*"))
+		if err != nil {
+			return err
+		}
+		for _, name := range supplements {
+			name = filepath.ToSlash(name)
+			content, err := read(name)
+			if err != nil {
+				return err
+			}
+			files[name] = content
+			entry.Files = append(entry.Files, name)
 		}
 		sort.Strings(entry.Files)
 		for _, name := range entry.Files {

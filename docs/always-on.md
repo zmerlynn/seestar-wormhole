@@ -38,6 +38,22 @@ systemd would otherwise drop or reinterpret those characters. A single quote
 inside the password needs systemd's escaping rules, described in
 `man systemd.exec` under `EnvironmentFile=`.
 
+Once the app has saved your settings (it does when it connects, or when you
+choose Save password to keychain), run `seestar-wormhole proxy --config`, with `--state-dir PATH` for a custom UI root.
+Flags override saved settings, `SEESTAR_EMAIL` overrides the saved email, and
+`SEESTAR_PASSWORD` takes precedence over a read-only OS keychain lookup;
+see [Use saved settings headless](reference.md#ui).
+
+A macOS launchd user agent can use the keychain in the user's login session;
+it may prompt once to allow access (choose Always Allow for later reads).
+Windows scheduled tasks work as the same user while logged on; “Run whether
+user is logged on or not” uses a batch logon, where password-backed tasks can
+read persistent same-user credentials but S4U (“Do not store password”) cannot
+access encrypted credentials.
+Headless Linux/systemd usually has no Secret Service session, so use
+`SEESTAR_PASSWORD` from the credentials file above; with `--config`, the file's
+email can still come from `config.json`.
+
 ## A systemd service
 
 Put the binary somewhere permanent:

@@ -14,3 +14,13 @@ JSON v2 packages.
 The catalog includes all source-carrying vendored modules so cross-builds work
 without regeneration. At runtime, `debug.ReadBuildInfo` selects the modules
 linked into that binary. Module order and file order are deterministic.
+
+Supplemental source-file notices live under `notices/<module>/`. The generator
+includes them verbatim with that module's vendored notices. This preserves the
+Apache-2.0 terms in go-keyring's macOS source without editing generated vendor
+files; its root license covers the remaining code under MIT.
+
+The Linux native GUI supplement and LGPL-2.1 text in NOTICE are generated as
+`embed/native-linux/NOTICE`. The notice writer selects that supplement only
+for Linux builds with `gui` and cgo enabled, using the target build settings.
+It is independent of Go module coverage.

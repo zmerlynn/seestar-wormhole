@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"runtime/debug"
+	"slices"
+	"strings"
 )
 
 // The catalog includes platform-specific dependencies so the same source tree
@@ -28,6 +30,11 @@ func Write(out io.Writer) error {
 	if !ok {
 		return fmt.Errorf("licenses: Go build information is unavailable")
 	}
+	return writeForBuild(out, info)
+}
+
+// writeForBuild also permits offline notice verification of cross-built executables.
+func writeForBuild(out io.Writer, info *debug.BuildInfo) error {
 	manifest, err := notices.ReadFile("embed/modules.json")
 	if err != nil {
 		return err
@@ -67,6 +74,22 @@ func Write(out io.Writer) error {
 				return err
 			}
 		}
+	}
+	// Go module metadata does not inventory native libraries. Select this
+	// supplement from the target's actual compiler settings instead.
+	var goos, cgo, tags string
+	for _, setting := range info.Settings {
+		switch setting.Key {
+		case "GOOS":
+			goos = setting.Value
+		case "CGO_ENABLED":
+			cgo = setting.Value
+		case "-tags":
+			tags = setting.Value
+		}
+	}
+	if goos == "linux" && cgo == "1" && slices.Contains(strings.Split(tags, ","), "gui") {
+		return writeText(out, "native-linux/NOTICE")
 	}
 	return nil
 }

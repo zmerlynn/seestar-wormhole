@@ -111,7 +111,7 @@ func release(version, revision string) error {
 }
 
 func releaseFiles(binary string) ([]string, error) {
-	names := []string{"LICENSE", "NOTICE", "README.md", binary}
+	names := []string{"LICENSE", "NOTICE", "README.md", "internal/icon/icon.svg", binary}
 	err := filepath.WalkDir("docs", func(path string, entry fs.DirEntry, err error) error {
 		if err != nil {
 			return err

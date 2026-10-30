@@ -1,8 +1,8 @@
 # Using the phone app from home
 
 The trick here is that the phone app has [two ways to find a telescope](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#address-entry-saved-devices-and-lan-versus-remote): over
-the cloud (remote mode) and on the local Wi-Fi (the LAN list). seestar-wormhole
-holds the cloud connection itself and then shows up in the LAN list, so the app
+the cloud (remote mode) and on the local Wi-Fi (the LAN tab). seestar-wormhole
+holds the cloud connection itself and then shows up in the LAN tab, so the app
 treats a telescope thousands of miles away as if it were in the next room.
 
 Phone use requires LAN discovery; the tested phone platforms and paths are listed in [phone coverage](status.md#phone-app).
@@ -20,9 +20,23 @@ Phone use requires LAN discovery; the tested phone platforms and paths are liste
 
 ## Start the proxy
 
-Enter the account credentials as described in the [README](../README.md#before-you-start-your-account-and-your-site), then start the proxy with discovery enabled:
+In the GUI, leave **Use with → Phone on this network** selected, enter your
+Seestar account email and password, and choose **Connect**. This enables LAN
+discovery and local port 80 for album/image access. Use a trusted network.
+Other devices on it can control your Seestar.
+A successful connection saves non-secret settings. Saving the password to
+keychain is a separate, optional action. Existing saved setups keep their
+network exposure; choose **Phone on this network** explicitly if upgrading from **This computer only**.
 
-Then start the proxy with discovery turned on:
+Advanced shows a fixed port table. Local ports are on your computer; leave a
+**Local port** cell empty to turn off that service. The running page shows the
+effective ports and Seestar app steps. Connect your phone to the same network
+as your computer and open the Seestar app.
+Keep seestar-wormhole running. Stop and wait for release before using the app's
+remote mode. Details and logs contains safe diagnostic history. If the GUI
+reports a phone HTTP permission failure, see [port 80 and permissions](#port-80-and-permissions).
+
+For the CLI, start with discovery enabled:
 
 ```sh
 ./seestar-wormhole proxy --bind 0.0.0.0 --lan-discovery -p 80:80
@@ -37,7 +51,7 @@ Leave it running. If your account has more than one telescope, add
 
 1. On the phone, give the Seestar app **Local Network** permission if it
    asks (on iOS: Settings → Privacy & Security → Local Network).
-2. Open the app and look at the **LAN** device list. Your telescope should
+2. Open the app and go to the **LAN** tab. Your telescope should
    appear under its usual name.
 3. Pick it. From here on it behaves like any local connection.
 
@@ -61,11 +75,24 @@ For discovery over VPN or virtual adapters, see `--lan-discovery-all-interfaces`
 
 ## Port 80 and permissions
 
-Port 80 is a "privileged" port. On a Mac, `--bind 0.0.0.0` can use it without
-admin rights, but binding a specific address like `192.168.1.20` may fail with
-a permission error. On Linux, you'll need `sudo` or the
-`cap_net_bind_service` capability. Plain `sudo` drops your exported
-credentials; `sudo --preserve-env=SEESTAR_EMAIL,SEESTAR_PASSWORD` keeps them.
+The Seestar app loads images from port 80, so **Phone on this network** needs
+local port 80. Another port does not work for app images.
+
+- **macOS GUI:** Choose **Listen on → All networks**. A bind restricted to a
+  specific address may be refused. Allow incoming connections if macOS asks.
+- **Windows GUI:** Port 80 must be free. Stop another app using it, and allow
+  seestar-wormhole through the firewall when prompted.
+- **Linux GUI:** An administrator must allow seestar-wormhole to use port 80.
+  If that is not available, choose **This computer only** for apps on your
+  computer.
+
+### Command-line proxy
+
+Port 80 is a privileged port. On macOS, `--bind 0.0.0.0` can use it without
+administrator rights; binding a specific address may fail with a permission
+error. On Linux, use `sudo` or the `cap_net_bind_service` capability. Plain
+`sudo` drops exported credentials;
+`sudo --preserve-env=SEESTAR_EMAIL,SEESTAR_PASSWORD` keeps them.
 
 Anyone who can reach the listener can use it, so keep the proxy on a trusted network; see [network trust](reference.md#proxy).
 

@@ -123,8 +123,8 @@ func TestLANHTTPStartupWarning(t *testing.T) {
 			}
 			if tc.http == "" {
 				for _, p := range o.ports {
-					if p.device == 80 {
-						t.Fatalf("disabled HTTP mapping retained: %d:80", p.local)
+					if p.Device == 80 {
+						t.Fatalf("disabled HTTP mapping retained: %d:80", p.Local)
 					}
 				}
 			}

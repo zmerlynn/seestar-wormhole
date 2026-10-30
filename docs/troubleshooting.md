@@ -56,3 +56,50 @@ telescope model and firmware, and the log lines around the problem. The logs
 leave out your credentials, and errors leave out file paths, but some lines
 include a partly masked serial number or your network addresses. Read them over and remove anything you'd
 rather keep before posting.
+
+## The browser didn't open
+
+Run `seestar-wormhole ui` from a terminal. If the default browser opener fails,
+the command prints a private URL; copy the whole URL, including its fragment,
+into a browser on that computer. Keep it private. Launching again with the same
+state directory reopens the running page. If another instance is still starting,
+wait briefly and try again. Ctrl+C releases the session and exits.
+Closing the terminal window also quits; on Windows, cleanup is best effort within
+the OS deadline. Closing the tab leaves the process running.
+See [browser controls](reference.md#ui).
+
+## Saved settings prevent startup
+
+The native app shows **Could not open seestar-wormhole** with the refused
+settings file's location. Check this file, then reopen seestar-wormhole.
+The app leaves the file untouched. Default locations are:
+
+- macOS: `~/Library/Application Support/seestar-wormhole/config.json`
+- Linux: `$XDG_CONFIG_HOME/seestar-wormhole/config.json`, or
+  `~/.config/seestar-wormhole/config.json` when that variable is unset.
+- Windows: `%AppData%\seestar-wormhole\config.json`
+
+## The OS keychain is unavailable
+
+A locked keychain, missing desktop session, or unavailable Secret Service can
+prevent password storage. The page says when it keeps the password in memory;
+there is no plaintext fallback. Enter it again after restarting, or unlock your
+normal OS keychain and choose Save password to keychain. Remove saved password
+clears the memory copy and requests keychain deletion. If deletion fails, unlock
+the keychain and choose Retry removal. Saved settings never contain the password.
+
+### Linux native window
+
+The GUI build requires GTK 4, WebKitGTK 6.0, and bubblewrap (on Ubuntu:
+`libgtk-4-1`, `libwebkitgtk-6.0-4`, and `bubblewrap`). WebKit's sandbox needs
+permission to create unprivileged user namespaces. Ubuntu 24.04's AppArmor
+restriction can deny bubblewrap's uid-map setup even with the distro package
+installed. The app checks bubblewrap before starting WebKit and reports
+“WebKit sandbox unavailable” if this prerequisite fails.
+
+Use a distribution-supported AppArmor profile that permits the sandbox for
+this application, or ask the administrator to supply one. The product never
+disables the WebKit sandbox. A global user-namespace policy relaxation is
+not the recommended setup. The browser presentation remains available in
+the default build. CI probes the restricted policy before using a disposable
+runner policy relaxation for its native rendering tests.
