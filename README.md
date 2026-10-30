@@ -33,6 +33,8 @@ Phone on this network and shows its network trust warning. Successful connection
 saves non-secret settings; Save password to keychain is a separate choice.
 Stop releases the session; Quit exits. See [GUI controls](docs/reference.md#ui).
 
+![seestar-wormhole connected to a Seestar, with the phone-app and copying steps](docs/images/gui-connected.png)
+
 It's a single executable; browser controls need a browser, and optional password
 storage needs an available OS keychain.
 

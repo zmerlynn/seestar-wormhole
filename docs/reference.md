@@ -25,6 +25,8 @@ seestar-wormhole
 seestar-wormhole ui [--state-dir PATH]
 ```
 
+![The controls before connecting: Connect, Use with, and the account fields](images/gui-setup.png)
+
 Bare launch opens the local controls, as does `ui`. Builds with the `gui` tag
 use a native window; default builds open a browser. Enter credentials and
 options, then press Connect. Loading settings never starts a proxy. Stop releases
