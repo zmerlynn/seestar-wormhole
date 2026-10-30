@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"encoding/json/v2"
+	"github.com/zalando/go-keyring"
 	"net/http/httptest"
 	"sync"
 	"testing"
@@ -58,13 +59,14 @@ func TestReviewRemoveCannotBeUndoneByEarlierSave(t *testing.T) {
 // Delay only error classification, after Get has released the provider gate.
 type reviewPausedError struct {
 	once            sync.Once
+	match           error
 	reached, resume chan struct{}
 }
 
 func (e *reviewPausedError) Error() string { return "synthetic denial" }
-func (e *reviewPausedError) Is(error) bool {
+func (e *reviewPausedError) Is(target error) bool {
 	e.once.Do(func() { close(e.reached); <-e.resume })
-	return false
+	return e.match != nil && e.match == target
 }
 
 type reviewErrorKeychain struct{ err error }
@@ -73,24 +75,33 @@ func (f reviewErrorKeychain) Get(string, string) (string, error) { return "", f.
 func (f reviewErrorKeychain) Set(string, string, string) error   { return nil }
 func (f reviewErrorKeychain) Delete(string, string) error        { return nil }
 func TestReviewRemoveSupersedesGetErrorPublication(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		a := testSettings()
-		a.Remember = true
-		failure := &reviewPausedError{reached: make(chan struct{}), resume: make(chan struct{})}
-		c := &credentialStore{chain: reviewErrorKeychain{failure}, savedEmail: a.Email}
-		get := make(chan error, 1)
-		go func() { _, err := c.credentials(context.Background(), a, ""); get <- err }()
-		<-failure.reached
-		if err := c.forgetAt(context.Background(), a.Email, c.nextGeneration()); err != nil {
-			t.Fatal(err)
-		}
-		if c.state(a.Email).Code != "password_removed" {
-			t.Fatal("missing removal success")
-		}
-		close(failure.resume)
-		<-get
-		if c.state(a.Email).Code != "password_removed" {
-			t.Fatal("older failed Get replaced successful Remove feedback")
-		}
-	})
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"denied", nil}, {"canceled", context.Canceled}, {"timeout", context.DeadlineExceeded}, {"missing", keyring.ErrNotFound},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				a := testSettings()
+				a.Remember = true
+				failure := &reviewPausedError{reached: make(chan struct{}), resume: make(chan struct{}), match: tc.err}
+				c := &credentialStore{chain: reviewErrorKeychain{failure}, savedEmail: a.Email}
+				get := make(chan error, 1)
+				go func() { _, err := c.credentials(context.Background(), a, ""); get <- err }()
+				<-failure.reached
+				if err := c.forgetAt(context.Background(), a.Email, c.nextGeneration()); err != nil {
+					t.Fatal(err)
+				}
+				if c.state(a.Email).Code != "password_removed" {
+					t.Fatal("missing removal success")
+				}
+				close(failure.resume)
+				<-get
+				if c.state(a.Email).Code != "password_removed" {
+					t.Fatal("older failed Get replaced successful Remove feedback")
+				}
+			})
+		})
+	}
 }

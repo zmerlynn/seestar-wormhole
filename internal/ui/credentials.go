@@ -152,13 +152,13 @@ func (c *credentialStore) credentials(ctx context.Context, s Settings, password 
 		p = saved
 	}
 	credentials, err := cloud.EmailCredentials(s.Email, p)
-	if err != nil {
-		return cloud.Credentials{}, actionError(err)
-	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.generation != generation {
 		return cloud.Credentials{}, &ActionError{Code: "password", Field: "password"}
+	}
+	if err != nil {
+		return cloud.Credentials{}, actionError(err)
 	}
 	c.email, c.password = s.Email, p
 	c.code = ""
