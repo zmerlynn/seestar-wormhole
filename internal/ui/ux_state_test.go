@@ -98,7 +98,7 @@ func TestSettingsSaveBoundarySnapshotAndRetry(t *testing.T) {
 				calls := 0
 				c.save = func(got Settings) error {
 					calls++
-					if got.Email != testSettings().Email || got.Ports[0] != (proxyrun.Port{Local: 80, Device: 80}) {
+					if got.Email != testSettings().Email || (got.Ports[0].Local != 80 || got.Ports[0].Device != 80) {
 						t.Errorf("wrong snapshot: %+v", got)
 					}
 					if calls == 1 {

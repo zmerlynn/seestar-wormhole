@@ -2,14 +2,16 @@
 package proxyrun
 
 import (
+	"encoding/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"strconv"
 	"strings"
 )
 
 type Port struct {
-	Local  uint16 `json:"local"`
-	Device uint16 `json:"device"`
+	Local   uint16         `json:"local"`
+	Device  uint16         `json:"device"`
+	Unknown jsontext.Value `json:",embed"`
 }
 
 func ParsePort(existing []Port, s string) ([]Port, error) {
@@ -36,18 +38,18 @@ func ParsePort(existing []Port, s string) ([]Port, error) {
 			return nil, &diagnostic.OptionError{Option: "--port", Rule: "local ports must be unique"}
 		}
 	}
-	return append(existing, Port{uint16(a), uint16(b)}), nil
+	return append(existing, Port{Local: uint16(a), Device: uint16(b)}), nil
 }
 
 // MergePorts applies only explicit overrides to the standard service defaults.
 func MergePorts(ports []Port) ([]Port, error) {
-	defaults := []Port{{4700, 4700}, {4445, 445}, {8080, 80}, {4350, 4350}, {4554, 4554}, {4555, 4555}, {4801, 4801}, {4800, 4800}, {4804, 4804}, {4361, 4361}}
+	defaults := []Port{{Local: 4700, Device: 4700}, {Local: 4445, Device: 445}, {Local: 8080, Device: 80}, {Local: 4350, Device: 4350}, {Local: 4554, Device: 4554}, {Local: 4555, Device: 4555}, {Local: 4801, Device: 4801}, {Local: 4800, Device: 4800}, {Local: 4804, Device: 4804}, {Local: 4361, Device: 4361}}
 	overrides := ports
 	ports = nil
 	for _, p := range defaults {
 		for _, v := range overrides {
 			if p.Device == v.Device {
-				p = v
+				p = Port{Local: v.Local, Device: v.Device}
 				break
 			}
 		}
@@ -64,7 +66,7 @@ func MergePorts(ports []Port) ([]Port, error) {
 			}
 		}
 		if !known && v.Local != 0 {
-			ports = append(ports, v)
+			ports = append(ports, Port{Local: v.Local, Device: v.Device})
 		}
 	}
 	if len(ports) > 128 {

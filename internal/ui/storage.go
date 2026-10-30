@@ -3,7 +3,6 @@ package ui
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -20,7 +19,7 @@ var errStorage = errors.New("Settings storage unavailable. Use a private state d
 type storage struct {
 	root            string
 	directory       *os.File
-	settingsUnknown jsontext.Value
+	settingsUnknown Settings
 	settingsRefused bool // A failed load disables settings writes for this run.
 }
 

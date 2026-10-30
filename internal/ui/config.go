@@ -84,7 +84,7 @@ func loadSettings(s *storage) (Settings, error) {
 		s.settingsRefused = true
 		return Settings{}, err
 	}
-	s.settingsUnknown = settings.Unknown
+	s.settingsUnknown = settings
 	return settings, nil
 }
 

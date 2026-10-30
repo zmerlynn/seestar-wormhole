@@ -14,7 +14,7 @@ func TestFirstRunPhoneAndSavedExposure(t *testing.T) {
 	}
 	found := false
 	for _, p := range ports {
-		if p == (proxyrun.Port{Local: 80, Device: 80}) {
+		if p.Local == 80 && p.Device == 80 {
 			found = true
 		}
 	}

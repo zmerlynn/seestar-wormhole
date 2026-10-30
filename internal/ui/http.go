@@ -243,7 +243,16 @@ func (s *server) respond(w http.ResponseWriter, v any) {
 
 func (s *server) saveSettings(settings Settings) error {
 	// The page submits known choices only; retain the file's future members.
-	settings.Unknown = s.storage.settingsUnknown
+	settings.Unknown = s.storage.settingsUnknown.Unknown
+	settings.Ports = append([]proxyrun.Port(nil), settings.Ports...)
+	for i, port := range settings.Ports {
+		for _, saved := range s.storage.settingsUnknown.Ports {
+			if saved.Device == port.Device {
+				settings.Ports[i].Unknown = saved.Unknown
+				break
+			}
+		}
+	}
 	err := s.storage.write("config.json", settings)
 	s.mu.Lock()
 	s.settings = settings

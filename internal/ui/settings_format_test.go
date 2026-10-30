@@ -125,7 +125,7 @@ func TestSettingsPortKeys(t *testing.T) {
 			if err := json.Unmarshal([]byte(tc.body), &got); err != nil {
 				t.Fatal(err)
 			}
-			if len(got.Ports) != 1 || got.Ports[0] != tc.want {
+			if len(got.Ports) != 1 || got.Ports[0].Local != tc.want.Local || got.Ports[0].Device != tc.want.Device {
 				t.Fatalf("ports = %+v; want %+v", got.Ports, tc.want)
 			}
 			_, _, err := got.validate()
