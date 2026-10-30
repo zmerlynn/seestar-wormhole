@@ -73,7 +73,7 @@ Run the proxy on a computer on the same Wi-Fi as your phone, with LAN discovery 
 ./seestar-wormhole proxy --bind 0.0.0.0 --lan-discovery -p 80:80
 ```
 
-Then open the Seestar app and select the telescope from its **LAN** list, not Remote. The [phone setup guide](docs/phone-app.md#start-the-proxy) covers permissions and troubleshooting. See [platform coverage](docs/status.md#platforms) for discovery validation.
+Then open the Seestar app and select the telescope from its **LAN** tab, not Remote. The [phone setup guide](docs/phone-app.md#start-the-proxy) covers permissions and troubleshooting. See [platform coverage](docs/status.md#platforms) for discovery validation.
 
 ## Keep it running
 

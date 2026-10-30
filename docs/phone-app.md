@@ -1,8 +1,8 @@
 # Using the phone app from home
 
 The trick here is that the phone app has [two ways to find a telescope](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#address-entry-saved-devices-and-lan-versus-remote): over
-the cloud (remote mode) and on the local Wi-Fi (the LAN list). seestar-wormhole
-holds the cloud connection itself and then shows up in the LAN list, so the app
+the cloud (remote mode) and on the local Wi-Fi (the LAN tab). seestar-wormhole
+holds the cloud connection itself and then shows up in the LAN tab, so the app
 treats a telescope thousands of miles away as if it were in the next room.
 
 Phone use requires LAN discovery; the tested phone platforms and paths are listed in [phone coverage](status.md#phone-app).
@@ -49,7 +49,7 @@ Leave it running. If your account has more than one telescope, add
 
 1. On the phone, give the Seestar app **Local Network** permission if it
    asks (on iOS: Settings → Privacy & Security → Local Network).
-2. Open the app and look at the **LAN** device list. Your telescope should
+2. Open the app and go to the **LAN** tab. Your telescope should
    appear under its usual name.
 3. Pick it. From here on it behaves like any local connection.
 
