@@ -39,6 +39,8 @@ func (c *controller) start(s Settings, password string) error {
 	if _, _, err := s.validate(); err != nil {
 		return err
 	}
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.done != nil || c.quitting {
@@ -200,6 +202,8 @@ func (c *controller) saveAtBoundary(status *proxy.Status, s Settings) {
 	if !status.SaveBoundary(s.lazy()) {
 		return
 	}
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
 	c.mu.Lock()
 	if c.saveAttempted {
 		c.mu.Unlock()
@@ -207,7 +211,7 @@ func (c *controller) saveAtBoundary(status *proxy.Status, s Settings) {
 	}
 	c.saveAttempted = true
 	c.mu.Unlock()
-	c.persist(s)
+	c.persistLocked(s)
 }
 
 // One owner retains the failed snapshot across later unsuccessful Starts.
@@ -328,6 +332,11 @@ func (c *controller) persistPassword(s Settings, generation uint64) error {
 		return &ActionError{Code: "password", Field: "password"}
 	}
 	err := c.persistLocked(s)
+	if err == nil {
+		c.mu.Lock()
+		c.saveAttempted = true
+		c.mu.Unlock()
+	}
 	if c.credentials.generationID() != generation {
 		return &ActionError{Code: "password", Field: "password"}
 	}
