@@ -92,8 +92,9 @@
   },
   {
     "Path": "github.com/wailsapp/wails/v3",
-    "SPDX": "MIT AND ISC AND BSD-3-Clause",
+    "SPDX": "MIT AND ISC AND BSD-3-Clause AND Apache-2.0",
     "Files": [
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/fyne-systray.txt",
       "internal/licenses/notices/github.com/wailsapp/wails/v3/guid-MIT.txt",
       "internal/licenses/notices/github.com/wailsapp/wails/v3/internal-assetserver-ringqueue.go.txt",
       "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-clipboard.go.txt",

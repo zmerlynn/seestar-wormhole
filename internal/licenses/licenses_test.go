@@ -56,7 +56,7 @@ func TestWailsSourceNotices(t *testing.T) {
 	if err := writeForBuild(&out, info); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"MIT AND ISC AND BSD-3-Clause", "The Winc Authors", "Copyright (c) 2013 Ato Araki", "Neither the name of @atotto.", "THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS"} {
+	for _, want := range []string{"MIT AND ISC AND BSD-3-Clause AND Apache-2.0", "fyne-io/systray", "getlantern/systray", "The Winc Authors", "Copyright (c) 2013 Ato Araki", "Neither the name of @atotto.", "THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS"} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("missing attribution or license term %q", want)
 		}
