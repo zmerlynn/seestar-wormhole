@@ -69,5 +69,5 @@ ditto "$1/arm64/seestar-wormhole.app" "$task_universal"
 lipo -create "$1/arm64/seestar-wormhole.app/Contents/MacOS/seestar-wormhole" \
  "$1/amd64/seestar-wormhole.app/Contents/MacOS/seestar-wormhole" \
  -output "$task_universal/Contents/MacOS/seestar-wormhole"
-lipo -verify_arch arm64 x86_64 "$task_universal/Contents/MacOS/seestar-wormhole"
+lipo "$task_universal/Contents/MacOS/seestar-wormhole" -verify_arch arm64 x86_64
 scripts/package-gui-mac.sh "$task_universal" "$1/seestar-wormhole_${task_version}_darwin_universal.dmg"
