@@ -7,23 +7,37 @@ as long as you point it at the right address and port.
 
 ## seestar_alp
 
-[seestar_alp](https://github.com/smart-underworld/seestar_alp) expects the
-telescope's control port on 4700 and its imaging port on 4800. Give it exactly
-those:
+[seestar_alp](https://github.com/smart-underworld/seestar_alp) connects to the
+telescope's control port (4700), imaging port (4800) and log port (4801). The
+proxy forwards all three by default, so it needs no `-p` flags:
 
 ```sh
-./seestar-wormhole-cli proxy --bind 127.0.0.1 -p 4700:4700 -p 4800:4800
+./seestar-wormhole-cli proxy
 ```
 
 Then, in seestar_alp's configuration, set the telescope's address to
 `127.0.0.1`. Field names vary between seestar_alp versions, so check its own
 instructions for where that goes.
 
+seestar_alp's live view asks for RTSP over UDP by default (`rtsp_udp = true`
+under `[network]`). The proxy forwards TCP only, so set `rtsp_udp = false`.
+Video through the proxy has not been tested.
+
 The proxy forwards ordinary client traffic and inspects selected control requests for site protection; see [the protocol boundary](reference.md#proxy).
 
 Not every seestar_alp feature has been tested this way. If something
 doesn't work through the proxy that works on the local network, please file
 an issue.
+
+## NINA and other Alpaca clients
+
+Point them at seestar_alp's own Alpaca server. It runs on your computer and
+reaches the telescope through the proxy.
+
+The telescope's built-in Alpaca server, on port 32323 when it is enabled in
+the telescope's settings, isn't forwarded by default; `-p 32323:32323` adds
+it. Alpaca discovery doesn't pass through the proxy, so enter the address and
+port by hand. Neither route has been tested.
 
 ## Your own scripts
 
