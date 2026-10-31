@@ -51,22 +51,22 @@ pasting them into a command line.
 
 ## Filing an issue
 
-Include the version (`seestar-wormhole --version`), your platform, the
+Include the version (`seestar-wormhole-cli --version`), your platform, the
 telescope model and firmware, and the log lines around the problem. The logs
 leave out your credentials, and errors leave out file paths, but some lines
 include a partly masked serial number or your network addresses. Read them over and remove anything you'd
 rather keep before posting.
 
-## The browser didn't open
+## The native window didn't open
 
-Run `seestar-wormhole ui` from a terminal. If the default browser opener fails,
-the command prints a private URL; copy the whole URL, including its fragment,
-into a browser on that computer. Keep it private. Launching again with the same
-state directory reopens the running page. If another instance is still starting,
-wait briefly and try again. Ctrl+C releases the session and exits.
-Closing the terminal window also quits; on Windows, cleanup is best effort within
-the OS deadline. Closing the tab leaves the process running.
-See [browser controls](reference.md#ui).
+Launch the UI download, `seestar-wormhole` (or the Mac app), and check any
+startup error. `seestar-wormhole-cli` has no UI command or browser fallback.
+On Linux, see [native window prerequisites](#linux-native-window) below. If a
+headless host reports a loader error about `libgtk` or WebKit, download
+`seestar-wormhole-cli` and update the service's executable path.
+On macOS, use Gatekeeper's right-click Open until signed releases are available.
+Launching the UI again with the same state directory brings its window forward.
+See [native controls](reference.md#ui).
 
 ## Saved settings prevent startup
 
@@ -100,6 +100,6 @@ installed. The app checks bubblewrap before starting WebKit and reports
 Use a distribution-supported AppArmor profile that permits the sandbox for
 this application, or ask the administrator to supply one. The product never
 disables the WebKit sandbox. A global user-namespace policy relaxation is
-not the recommended setup. The browser presentation remains available in
-the default build. CI probes the restricted policy before using a disposable
+not the recommended setup. Use `seestar-wormhole-cli` for headless operation.
+CI probes the restricted policy before using a disposable
 runner policy relaxation for its native rendering tests.

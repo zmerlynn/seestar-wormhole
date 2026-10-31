@@ -16,30 +16,44 @@ Daily-use coverage is on firmware 9.31, with control testing on 9.75; see [devic
 
 ## Install
 
-Download the archive for your system from the
-[Releases page](https://github.com/zmerlynn/seestar-wormhole/releases), unpack
-it, and check it runs:
+Download the one you want for your system from the
+[Releases page](https://github.com/zmerlynn/seestar-wormhole/releases):
+
+- **UI:** `seestar-wormhole` opens a native window. On macOS, open the universal
+  `.dmg` and drag `seestar-wormhole.app` to Applications. Until signed releases
+  are available, use Gatekeeper's right-click **Open** on first launch.
+  Linux UI needs GTK 4 and WebKitGTK 6.0 (on Ubuntu, `libgtk-4-1` and
+  `libwebkitgtk-6.0-4`), plus the [sandbox prerequisites](docs/troubleshooting.md#linux-native-window).
+- **Command line:** `seestar-wormhole-cli` is a static executable for terminals,
+  scripts, and services. No arguments prints help and exits. It has no UI.
+  Use `seestar-wormhole-cli.exe` on Windows, where the shell can wait for it
+  and scripts can read its exit code.
+
+Executable downloads are bare files. Rename the download to the program name
+above (keep `.exe` on Windows); on Linux and macOS, make it executable with
+`chmod +x seestar-wormhole-cli` (or `chmod +x seestar-wormhole` for Linux UI).
+Check a CLI download with:
 
 ```sh
-./seestar-wormhole --version
+./seestar-wormhole-cli --version
 ```
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
 
-For browser controls, run `./seestar-wormhole` on macOS or Linux, or
+For local controls, open `seestar-wormhole.app` on macOS, run
+`./seestar-wormhole` on Linux, or
 `.\seestar-wormhole.exe` in PowerShell on Windows. Add `ui` to the command to open
 the controls explicitly. Enter your account and choose Connect. First run selects
 Phone on this network and shows its network trust warning. Successful connection
 saves non-secret settings; Save password to keychain is a separate choice.
 Stop releases the session; Quit exits. See [GUI controls](docs/reference.md#ui).
 
-It's a single executable; browser controls need a browser, and optional password
-storage needs an available OS keychain.
+Optional password storage needs an available OS keychain.
 
-To build from source, install Go 1.27 or newer and run the command below; see [building from source](docs/development/README.md#build-and-run).
+To build from source, install Go 1.27 or newer and build the CLI with the command below; see [building from source](docs/development/README.md#build-and-run).
 
 ```sh
-CGO_ENABLED=0 go build -mod=vendor -o seestar-wormhole ./cmd/seestar-wormhole
+CGO_ENABLED=0 go build -mod=vendor -o seestar-wormhole-cli ./cmd/seestar-wormhole
 ```
 
 ## Before you start: your account and your site
@@ -70,7 +84,7 @@ Before using the proxy, make sure the telescope has the right site. To change it
 Run seestar-wormhole on the same Wi-Fi network as your phone. Turn on LAN discovery and map local port 80:
 
 ```sh
-./seestar-wormhole proxy --bind 0.0.0.0 --lan-discovery -p 80:80
+./seestar-wormhole-cli proxy --bind 0.0.0.0 --lan-discovery -p 80:80
 ```
 
 Then open the Seestar app and select the telescope from its **LAN** tab, not Remote. The [phone setup guide](docs/phone-app.md#start-the-proxy) covers permissions and troubleshooting. See [platform coverage](docs/status.md#platforms) for discovery validation.

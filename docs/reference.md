@@ -6,7 +6,7 @@ failure rule. For setup examples, see [phone app](phone-app.md),
 [other clients](clients.md). The [protocol guide](protocol.md) connects the
 proxy's wire behavior and local policy to the v1 specification.
 
-- [ui](#ui): local window or browser controls
+- [ui](#ui): native local controls
 - [proxy](#proxy): listeners and flags
 - [discovery](#discovery): scan replies without a cloud session
 - [licenses](#licenses)
@@ -25,19 +25,19 @@ seestar-wormhole
 seestar-wormhole ui [--state-dir PATH]
 ```
 
-Bare launch opens the local controls, as does `ui`. Builds with the `gui` tag
-use a native window; default builds open a browser. Enter credentials and
+Bare launch of the UI executable opens the local controls, as does `ui`.
+Only UI builds (`gui,production` in releases) expose `ui`, in a native window.
+The CLI has no UI command and never opens a browser. Enter credentials and
 options, then press Connect. Loading settings never starts a proxy. Stop releases
 the session and leaves the page usable; Quit or Ctrl+C releases it and exits.
 Closing the terminal window also quits; on Windows, cleanup is best effort within
 the OS deadline.
 A credential or authorization rejection ends the run after cleanup. Correct the
-credentials and press Connect again. Closing a browser tab leaves the process
-running. Closing the native window requests quit and waits for bounded release.
+credentials and press Connect again. Closing the native window requests quit and waits for bounded release.
 Native application quit and confirmed Windows session end also join release;
 a canceled Windows session end leaves the app running. The OS can impose a
 shorter shutdown deadline. Launch again with the same state directory to bring
-the native window forward or reopen the browser page. A separately running `proxy` command is independent;
+the native window forward. A separately running `proxy` command is independent;
 conflicting forwarding ports must be freed before starting another run.
 
 Advanced shows ten fixed service rows with Local port, Seestar port, and
@@ -150,14 +150,13 @@ files must pass the private-file checks and remain within the size cap; an
 oversized file is refused without modification. Only events from this launch
 appear in the page and copied summary.
 
-Native **Quit app** stops the proxy and closes the app; closing the window also
-quits. Browser **Quit service** stops the process; closing the tab alone leaves
-it running. Field errors identify the setting to correct. Lost controls retain
+**Quit app** stops the proxy and closes the app; closing the window also
+quits. Field errors identify the setting to correct. Lost controls retain
 the last known state and warn that the proxy may still run.
 Linux sandbox prerequisites are in [troubleshooting](troubleshooting.md#linux-native-window).
 
 **Use saved settings headless:** after successful Connect or explicit password
-save, run `seestar-wormhole proxy --config` (add `--state-dir PATH` for a custom
+save, run `seestar-wormhole-cli proxy --config` (add `--state-dir PATH` for a custom
 UI root). It reads the same [version 1 `config.json`](#ui) without rewriting it and shares the installation identity.
 Explicit flags override saved choices, including discovery; each `-p` replaces the saved override for
 that telescope port. `SEESTAR_EMAIL` overrides the saved email. The password
@@ -190,10 +189,10 @@ permission, and port-conflict failures have separate safe error codes.
 ## proxy
 
 ```sh
-seestar-wormhole proxy
+seestar-wormhole-cli proxy
 ```
 
-For browser controls, use [ui](#ui).
+For native controls, use [ui](#ui).
 
 The app cannot set the device's site, clock or time zone through the proxy.
 See [site protection](#site-protection). The command takes no positional arguments. It forwards TCP through one shared
@@ -267,7 +266,7 @@ See [copying images](copying.md) for transfer settings.
 ## discovery
 
 ```sh
-seestar-wormhole discovery --bind '<home-lan-ip>' \
+seestar-wormhole-cli discovery --bind '<home-lan-ip>' \
   --advertise-serial '<serial>' --advertise-model '<model-label>' \
   --advertise-name '<device-name>'
 ```
@@ -321,7 +320,7 @@ logging-loss handling. No serial, name, model, or credentials are logged.
 ## licenses
 
 ```sh
-seestar-wormhole licenses
+seestar-wormhole-cli licenses
 ```
 
 Prints the project NOTICE, then module paths, SPDX identifiers, and full
@@ -333,9 +332,11 @@ exits 1. See [NOTICE](../NOTICE) for attribution.
 ## Global command behavior
 
 Bare `seestar-wormhole` opens [ui](#ui) and stays running until Quit or Ctrl+C.
+Bare `seestar-wormhole-cli` prints help and exits 0 without opening a UI or browser.
 Use `help [command]` or
 `--help`/`-h` for help. Root `--version` prints
-`seestar-wormhole <version> (<revision>, <os>/<arch>)`; unset build metadata is
+`<program> <version> (<revision>, <os>/<arch>)` (`<program>` is
+`seestar-wormhole` or `seestar-wormhole-cli`); unset build metadata is
 `development`. Help/version require no credentials or network. Version still
 validates other supplied flags.
 See the [versioning policy](versioning.md) for the release contract.
@@ -797,15 +798,20 @@ request count. These prose diagnostics are outside the versioned log contract.
 
 ## Verifying a release
 
-Each release lists a SHA-256 checksum for every archive in `SHA256SUMS`.
-Releases after v0.1.0 also carry a GitHub build provenance attestation for
-every archive. With the downloaded archives and `SHA256SUMS` in one
-directory:
+Each release lists a SHA-256 checksum for every executable and DMG in
+`SHA256SUMS`, and carries a GitHub build provenance attestation for every asset.
+With the downloaded assets and `SHA256SUMS` in one directory:
 
 ```sh
 sha256sum --check --ignore-missing SHA256SUMS
-gh attestation verify <archive> --repo zmerlynn/seestar-wormhole
+gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-wormhole
 ```
+
+CLI downloads have a byte-for-byte reproducible build promise: identical source,
+version, revision, and Go toolchain produce identical executables. See
+[release build mechanics](development/releasing.md). UI downloads are verified
+by SHA256SUMS and attestation only; they do not carry a byte-for-byte
+reproducibility promise. Native toolchains, packaging, and signing affect them.
 
 ## Containers
 
@@ -813,7 +819,7 @@ The scratch image runs as UID/GID `65532:65532`, with a static binary and CA
 certificates. Its entrypoint is:
 
 ```text
-/seestar-wormhole proxy --bind 0.0.0.0 --state-dir /state
+/seestar-wormhole-cli proxy --bind 0.0.0.0 --state-dir /state
 ```
 
 Mount `/state` writable by that identity. Only the installation UUID lives
@@ -822,6 +828,12 @@ defaults, including `--state-dir ""` for memory-only identity. Container/VM netw
 the phone's actual LAN broadcasts for discovery. See [always-on hosts](always-on.md).
 
 ## Windows
+
+The Windows UI executable uses the GUI subsystem. With arguments it attaches to
+the parent console and restores missing stdout/stderr handles; valid file and
+pipe redirections are preserved. With no arguments it opens no console. The
+shell does not wait for a GUI executable and its exit codes do not reach scripts.
+Scripts and services must use `seestar-wormhole-cli.exe`.
 
 TCP forwarding requires Windows 10 version 1703 or later, or Windows Server
 2016 or later, for non-consuming reset detection (`SIO_TCP_INFO`).

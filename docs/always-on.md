@@ -39,7 +39,7 @@ inside the password needs systemd's escaping rules, described in
 `man systemd.exec` under `EnvironmentFile=`.
 
 Once the app has saved your settings (it does when it connects, or when you
-choose Save password to keychain), run `seestar-wormhole proxy --config`, with `--state-dir PATH` for a custom UI root.
+choose Save password to keychain), run `seestar-wormhole-cli proxy --config`, with `--state-dir PATH` for a custom UI root.
 Flags override saved settings, `SEESTAR_EMAIL` overrides the saved email, and
 `SEESTAR_PASSWORD` takes precedence over a read-only OS keychain lookup;
 see [Use saved settings headless](reference.md#ui).
@@ -56,11 +56,11 @@ email can still come from `config.json`.
 
 ## A systemd service
 
-Put the binary somewhere permanent:
+Download the CLI executable and rename it to `seestar-wormhole-cli`, then put it somewhere permanent:
 
 ```sh
 mkdir -p ~/bin ~/.config/systemd/user
-install -m 755 ./seestar-wormhole ~/bin/seestar-wormhole
+install -m 755 ./seestar-wormhole-cli ~/bin/seestar-wormhole-cli
 ```
 
 Here's an example user service. Adjust the paths if you put
@@ -69,7 +69,7 @@ things elsewhere:
 ```ini
 # ~/.config/systemd/user/seestar-wormhole.service
 [Unit]
-Description=seestar-wormhole proxy
+Description=seestar-wormhole-cli proxy
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=2d
@@ -77,7 +77,7 @@ StartLimitBurst=1800
 
 [Service]
 EnvironmentFile=%h/.config/seestar-wormhole.env
-ExecStart=%h/bin/seestar-wormhole proxy --bind 127.0.0.1 \
+ExecStart=%h/bin/seestar-wormhole-cli proxy --bind 127.0.0.1 \
   --state-dir %h/.local/state/seestar-wormhole --log-level warn
 KillSignal=SIGINT
 TimeoutStopSec=150
@@ -149,13 +149,17 @@ has not been tested.
 
 ## On Windows
 
+Use `seestar-wormhole-cli.exe` for scripts, services, and scheduled tasks. The
+Windows UI executable has GUI subsystem behavior: the shell does not wait for it,
+and exit codes do not reach scripts.
+
 See [Windows coverage](status.md#platforms) and [requirements](reference.md#windows). In PowerShell:
 
 ```powershell
 $env:SEESTAR_EMAIL = Read-Host "Seestar email"
 $password = Read-Host "Seestar password" -AsSecureString
 $env:SEESTAR_PASSWORD = [System.Net.NetworkCredential]::new("", $password).Password
-.\seestar-wormhole.exe proxy
+.\seestar-wormhole-cli.exe proxy
 ```
 
 Afterwards, clear the credentials with `Remove-Item Env:SEESTAR_EMAIL, Env:SEESTAR_PASSWORD`.

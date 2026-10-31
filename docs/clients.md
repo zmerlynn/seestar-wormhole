@@ -12,7 +12,7 @@ telescope's control port on 4700 and its imaging port on 4800. Give it exactly
 those:
 
 ```sh
-./seestar-wormhole proxy --bind 127.0.0.1 -p 4700:4700 -p 4800:4800
+./seestar-wormhole-cli proxy --bind 127.0.0.1 -p 4700:4700 -p 4800:4800
 ```
 
 Then, in seestar_alp's configuration, set the telescope's address to
