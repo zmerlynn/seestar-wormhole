@@ -121,7 +121,9 @@ func TestSiteCLIToFakeDevice(t *testing.T) {
 					if err := <-done; err != nil {
 						t.Error(err)
 					}
-					for _, secret := range []string{"12.345", "67.891", "Pacific/Kiritimati", "-71.23456", "81.98765", "America/Los_Angeles", "private-params"} {
+					// Check values actually sent by siteWireFrames. Short unused
+					// coordinates can also occur in the logger's wall-clock time.
+					for _, secret := range []string{"-71.23456", "81.98765", "America/Los_Angeles", "private-params"} {
 						if strings.Contains(logs.String(), secret) {
 							t.Errorf("log leaks %q", secret)
 						}
