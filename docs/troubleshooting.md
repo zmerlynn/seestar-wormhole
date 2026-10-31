@@ -59,11 +59,7 @@ rather keep before posting.
 
 ## The native window didn't open
 
-Launch the UI download, `seestar-wormhole` (or the Mac app), and check any
-startup error. `seestar-wormhole-cli` has no UI command or browser fallback.
-On Linux, see [native window prerequisites](#linux-native-window) below. If a
-headless host reports a loader error about `libgtk` or WebKit, download
-`seestar-wormhole-cli` and update the service's executable path.
+Launch `seestar-wormhole` from the unpacked archive (or the Mac app), and check any startup error. `seestar-wormhole-cli` has no UI command or browser fallback. On Linux, see [native window prerequisites](#linux-native-window) below. If a headless host reports a loader error about `libgtk` or WebKit, use `seestar-wormhole-cli` from the same archive and update the service's executable path.
 On macOS, use Gatekeeper's right-click Open until signed releases are available.
 Launching the UI again with the same state directory brings its window forward.
 See [native controls](reference.md#ui).

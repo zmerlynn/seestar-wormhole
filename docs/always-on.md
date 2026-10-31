@@ -56,7 +56,7 @@ email can still come from `config.json`.
 
 ## A systemd service
 
-Download the CLI executable and rename it to `seestar-wormhole-cli`, then put it somewhere permanent:
+Unpack the Linux archive and put `seestar-wormhole-cli` somewhere permanent:
 
 ```sh
 mkdir -p ~/bin ~/.config/systemd/user
