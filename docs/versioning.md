@@ -11,14 +11,15 @@ carried forward from earlier evidence.
 
 ## The release unit
 
-A release is the six archives (linux, darwin, windows x amd64, arm64) and the release `SHA256SUMS`, built by
-`scripts/release.sh` from an annotated tag. The Containerfile is a build-it-yourself example with no contract. If a
+A release is four archives (linux and windows x amd64, arm64), one universal macOS DMG,
+and `SHA256SUMS`, built by the
+release workflow from an annotated tag. The Containerfile is a build-it-yourself example with no contract. If a
 container image is ever published, its executable path, entrypoint arguments, UID/GID 65532, writable `/state` and
 tag scheme join the contract from that release, with the image tagged by the binary's version.
 
 ## The contract
 
-1. **Commands and flags.** `proxy`, `discovery`, `licenses`; flag names, meanings and grammar; defaults that change what is
+1. **Commands and flags.** `proxy`, `discovery`, `licenses`, and GUI-only `ui`; flag names, meanings and grammar; defaults that change what is
    written or sent; and the rules about which combinations are refused.
 2. **Runtime inputs.** `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` and how they are interpreted. The binary discovers no config or credential file (a systemd EnvironmentFile is the service manager's,
    not ours). Adding opt-in config discovery later is additive and must not override explicit flags or variables.
@@ -38,9 +39,19 @@ tag scheme join the contract from that release, with the image tagged by the bin
 8. **What the proxy does to the device by default.** A new default that writes device state, or a default that stops
     protecting something it used to (a pin, a setter drop), is breaking. A new read-only request or a new startup
     refusal is minor and is listed in the notes, including its side effects on the device where known.
-9. **Distribution.** Archive names `seestar-wormhole_<version>_<os>_<arch>` (`.tar.gz`, `.zip` on Windows), the
-    executable at the archive root, the release `SHA256SUMS` syntax, and the six targets. Removing a target is breaking;
-    adding one, or adding documents to the archive, is not.
+9. **Distribution.** Linux archives are named `seestar-wormhole_<version>_linux_<arch>.tar.gz`
+    and Windows archives `seestar-wormhole_<version>_windows_<arch>.zip`, for amd64 and arm64.
+    Each contains `seestar-wormhole` and `seestar-wormhole-cli` (both with `.exe` on Windows),
+    LICENSE and NOTICE at the archive root. The macOS download is
+    `seestar-wormhole_<version>_darwin_universal.dmg`, containing `seestar-wormhole.app`,
+    an `Applications` symlink to `/Applications`, a universal `seestar-wormhole-cli`, LICENSE and NOTICE.
+    The single release `SHA256SUMS` lists exactly these five downloads as lowercase SHA-256,
+    two spaces, filename, newline. Names, contents, checksum syntax, and these targets are promises.
+    Removing a target is breaking; adding one is not. Linux and Windows CLI executables are
+    byte-for-byte reproducible with identical source, version, revision and Go toolchain;
+    verify by rebuilding and comparing with the executable unpacked from the archive.
+    The Mac CLI is combined with lipo and signed, so it is not byte-reproducible.
+    UI executables and the DMG are verified by SHA256SUMS and attestation only.
 10. **`--version`.** An extractable version, revision and platform; the exact surrounding text is not promised.
 
 ## Not in the contract

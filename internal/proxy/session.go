@@ -22,6 +22,14 @@ import (
 // MaxPauseThreshold retains at least 8 MiB of channel burst headroom.
 const MaxPauseThreshold = 8 << 20
 
+const sessionDialTimeout = 120 * time.Second
+
+// ShutdownTimeout is the session owner's maximum wait for joining an attempt
+// and its release, including cancellation during dialing.
+func ShutdownTimeout() time.Duration {
+	return sessionDialTimeout + session.DefaultConfig().StopTimeout
+}
+
 // Config is local session policy. Zero Idle holds a session eagerly; a positive
 // Idle allocates on first demand and releases after the last client leaves.
 type Config struct {
@@ -84,7 +92,7 @@ func startWithRNG(ctx context.Context, cfg Config, factory func(*Session) sessio
 	c.LazyBusyWindow = session.LazyBusyWindow
 	c.RetryBusy = true
 	c.MaxClients = 128
-	c.DialTimeout = 120 * time.Second
+	c.DialTimeout = sessionDialTimeout
 	// The work queue can hold 128 byte completions of at most 8192 bytes, in
 	// addition to fixed-size commands/results. All are covered by this reservation.
 	c.Budgets.Inbox.Bytes = 2 << 20

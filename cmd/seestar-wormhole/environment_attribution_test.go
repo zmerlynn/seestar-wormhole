@@ -45,7 +45,7 @@ func TestEnvironmentAttribution(t *testing.T) {
 			if setting == "SEESTAR_PASSWORD" {
 				rule = "use a valid UTF-8 password of 8..32 UTF-16 units"
 			}
-			if record["option"] != setting || record["rule"] != rule || record["help"] != "seestar-wormhole proxy --help" || record["phase"] != "arguments" || record["reason"] != "invalid_option" {
+			if record["option"] != setting || record["rule"] != rule || record["help"] != programName+" proxy --help" || record["phase"] != "arguments" || record["reason"] != "invalid_option" {
 				t.Errorf("wrong environment diagnostic: %v", record)
 			}
 			var detail *diagnostic.OptionError

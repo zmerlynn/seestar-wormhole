@@ -58,7 +58,7 @@ func TestInvalidOptions(t *testing.T) {
 			if e := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); e != nil {
 				t.Fatalf("want single JSON record: %v, %q", e, logs.String())
 			}
-			if record["option"] != tc.option || record["rule"] != tc.rule || record["phase"] != "arguments" || record["reason"] != "invalid_option" || record["help"] != "seestar-wormhole proxy --help" {
+			if record["option"] != tc.option || record["rule"] != tc.rule || record["phase"] != "arguments" || record["reason"] != "invalid_option" || record["help"] != programName+" proxy --help" {
 				t.Errorf("got %v, want %s: %s", record, tc.option, tc.rule)
 			}
 			if out.Len() != 0 {

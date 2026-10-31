@@ -34,14 +34,14 @@ const (
 )
 
 func versionString() string {
-	return "seestar-wormhole " + version + " (" + revision + ", " + runtime.GOOS + "/" + runtime.GOARCH + ")"
+	return programName + " " + version + " (" + revision + ", " + runtime.GOOS + "/" + runtime.GOARCH + ")"
 }
 
 // newCommand keeps parsing and pure validation ahead of every runtime resource.
 // Flags are local to each command, including logging and connection options.
 func newCommand(o *options, out io.Writer) *cobra.Command {
 	root := &cobra.Command{
-		Use:                "seestar-wormhole",
+		Use:                programName,
 		Short:              "Remote access to Seestar devices",
 		SilenceErrors:      true,
 		SilenceUsage:       true,
@@ -52,8 +52,12 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 			if o.version {
 				return nil
 			}
-			o.command = commandUI
-			return nil
+			if guiEnabled {
+				o.command = commandUI
+				return nil
+			}
+			o.outcome = commandHelp
+			return cmd.Help()
 		},
 	}
 	root.SetOut(out)
@@ -62,14 +66,12 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 	root.SetHelpFunc(func(cmd *cobra.Command, args []string) {
 		defaultHelp(cmd, args)
 		if cmd == root {
-			fmt.Fprintln(cmd.OutOrStdout(), "Third-party license information: seestar-wormhole licenses")
+			fmt.Fprintln(cmd.OutOrStdout(), "Third-party license information: "+programName+" licenses")
 		}
 	})
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return flagParseError(err) })
 	root.Flags().BoolVar(&o.version, "version", false, "print version, revision and platform")
-	uiCommand := &cobra.Command{Use: "ui", Short: "Open local controls (native window in GUI builds, browser otherwise)", Args: noArguments, RunE: func(*cobra.Command, []string) error { return nil }}
-	uiCommand.Flags().StringVar(&o.stateDir, "state-dir", "", "private UI settings and shared installation identity directory")
-	root.AddCommand(uiCommand)
+	addUICommand(root, o)
 	proxyCommand := &cobra.Command{
 		Use:   "proxy",
 		Short: "Forward local TCP ports through one shared Seestar session",
@@ -84,7 +86,7 @@ Logs and errors go to stderr; help and version go to stdout.
 Exit 0 on orderly release, 2 on usage/configuration errors,
 3 on terminal cloud credential or authorization rejection,
 or 1 on other runtime errors including failed release.`,
-		Example: "  seestar-wormhole proxy --idle 2m --state-dir /private/seestar",
+		Example: "  " + programName + " proxy --idle 2m --state-dir /private/seestar",
 		Args:    noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if o.config {
@@ -143,13 +145,13 @@ func parse(args []string, out io.Writer) (options, error) {
 	}
 	help, _ := executed.Flags().GetBool("help")
 	switch {
-	case help || executed.Name() == "help":
+	case o.outcome == commandHelp || help || executed.Name() == "help":
 		o.outcome = commandHelp
 	case executed.Name() == cobra.ShellCompRequestCmd:
 		o.outcome = commandCompletion
 	case o.version:
 		o.outcome = commandVersion
-	case executed == command:
+	case executed == command && guiEnabled:
 		o.command = commandUI
 	}
 	if o.outcome == commandHelp || o.outcome == commandCompletion {

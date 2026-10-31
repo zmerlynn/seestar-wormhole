@@ -46,7 +46,7 @@ for task_arch in arm64 amd64; do
    -e SEESTAR_PASSWORD=fixture-password "$task_image" --serial fixture --idle 2m)
   for task_try in {1..100}; do
    podman logs "$task_container" > "$task_tmp/smoke.log" 2>&1
-   if podman exec "$task_container" /seestar-wormhole --version >/dev/null 2>&1 && podman unshare test -s "$task_tmp/state/InterProcessKV/device_uuid"; then break; fi
+   if podman exec "$task_container" /seestar-wormhole-cli --version >/dev/null 2>&1 && podman unshare test -s "$task_tmp/state/InterProcessKV/device_uuid"; then break; fi
    sleep 0.1
   done
   podman unshare test -s "$task_tmp/state/InterProcessKV/device_uuid"

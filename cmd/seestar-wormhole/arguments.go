@@ -42,7 +42,7 @@ func flagParseError(err error) error {
 // shared by parser and runtime configuration failures, regardless of log options.
 func configurationLogger(out io.Writer, command string, detail *argumentError) *slog.Logger {
 	return newLogger("json", out).With("option", detail.Option, "rule", detail.Rule,
-		"help", "seestar-wormhole "+command+" --help")
+		"help", programName+" "+command+" --help")
 }
 
 func logConfigurationError(out io.Writer, command string, err error) {

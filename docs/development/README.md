@@ -38,17 +38,17 @@ Run commands from the repository root. You need Go 1.27 or newer. Dependencies
 are pinned in `go.mod`/`go.sum` and checked into `vendor/`.
 
 ```sh
-CGO_ENABLED=0 go build -mod=vendor -o seestar-wormhole ./cmd/seestar-wormhole
-./seestar-wormhole --version
-./seestar-wormhole proxy --help
+CGO_ENABLED=0 go build -mod=vendor -o seestar-wormhole-cli ./cmd/seestar-wormhole
+./seestar-wormhole-cli --version
+./seestar-wormhole-cli proxy --help
 ```
 
 Use `GOOS`/`GOARCH` for cross-builds. The container script builds Linux amd64
 and arm64; macOS and Windows have platform-specific source for both architectures. For example, on a build host:
 
 ```sh
-CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -mod=vendor -p 2 -o seestar-wormhole ./cmd/seestar-wormhole
-CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -mod=vendor -p 2 -o seestar-wormhole.exe ./cmd/seestar-wormhole
+CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -mod=vendor -p 2 -o seestar-wormhole-cli ./cmd/seestar-wormhole
+CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -mod=vendor -p 2 -o seestar-wormhole-cli.exe ./cmd/seestar-wormhole
 ```
 
 See [runtime site rules](../reference.md#site-protection).
@@ -60,7 +60,7 @@ rejects pushes to `main`. It is enabled once per clone with:
 git config core.hooksPath .githooks
 ```
 
-Release archives for every platform come from `scripts/release.sh`; see
+Release downloads come from the release workflow and `scripts/release.sh`; see
 [cutting a release](releasing.md).
 
 ## Offline validation

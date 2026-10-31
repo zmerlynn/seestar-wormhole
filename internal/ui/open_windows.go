@@ -1,3 +1,5 @@
+//go:build gui
+
 package ui
 
 import "golang.org/x/sys/windows"

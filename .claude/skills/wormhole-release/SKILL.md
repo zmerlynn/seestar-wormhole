@@ -1,6 +1,6 @@
 ---
 name: wormhole-release
-description: Cut a seestar-wormhole release - gates, a reproducible build, release notes with a compatibility record, the tag, and a checked draft with notes - ending with one owner check before publishing.
+description: Cut a seestar-wormhole release - gates, reproducible CLI builds and native UI assets, release notes with a compatibility record, the tag, and a checked draft with notes - ending with one owner check before publishing.
 ---
 
 # Releasing seestar-wormhole
@@ -24,8 +24,10 @@ Run these in a clean worktree at that SHA, in `golang:1.27.3` with
 `--network none`. Follow steps 1-4 of [releasing.md](../../../docs/development/releasing.md):
 
 - [ ] build, vet and test pass, along with the release test and `./scripts/test-check.sh`;
-- [ ] `./scripts/release.sh vX.Y.Z` produces six archives, and `sha256sum --check` passes;
-- [ ] a second run produces byte-identical archives (`cmp` each file);
+- [ ] `./scripts/release.sh vX.Y.Z` produces six CLI and two Windows UI parts, plus two Windows ZIP archives;
+- [ ] a second run produces byte-identical portable outputs; compare rebuilt Linux/Windows CLIs with those unpacked from the archives;
+- [ ] an artifact-only workflow dispatch produces all five downloads and the single
+  `SHA256SUMS`; checksums and attestation cover the four archives and DMG;
 - [ ] `--version` prints the version, commit and platform, and `licenses` lists `github.com/pion/dtls/v3`.
 
 ## 3. Check the compatibility record
@@ -33,8 +35,8 @@ Run these in a clean worktree at that SHA, in `golang:1.27.3` with
 - [ ] `docs/status.md` on that commit records a run with a real telescope on
   the current firmware. If it doesn't, run a smoke test and land the status
   update first. Return to step 1 with the merge's SHA once its CI is green,
-  and repeat all of step 2 at that SHA: the archives include
-  `docs/status.md` and the commit, so the earlier build no longer matches.
+  and repeat all of step 2 at that SHA: the executables stamp the
+  commit, so the earlier build no longer matches.
 - [ ] Keep track of what was tested with this build, what is carried forward
   from older runs, and what was never tested.
 
@@ -49,7 +51,8 @@ developers:
    section that has the detail. Leave out internals such as forks, suite
    names and log record names.
 3. **Breaking changes**, or "No breaking changes."
-4. **Install:** download, unpack, `--version`, the account variables, and
+4. **Install:** unpack the platform archive or install from the Mac DMG; each
+   download includes both programs. Check `seestar-wormhole-cli --version`, the account variables, and
    the no-authentication warning. Point to
    [verifying a release](../../../SECURITY.md#verifying-a-release) without
    repeating its commands.
@@ -80,11 +83,13 @@ Never move or delete a pushed tag. A broken release is fixed with a new patch ve
 
 When the release workflow finishes, check:
 
-- [ ] the run succeeded, and the draft has six archives plus `SHA256SUMS`;
-- [ ] the downloaded archives pass `sha256sum --check`, and the published
-  `SHA256SUMS` is byte-identical to the local one;
-- [ ] `gh attestation verify <archive> --repo zmerlynn/seestar-wormhole`
-  passes for every archive.
+- [ ] the run succeeded, and the draft has five downloads plus `SHA256SUMS`;
+- [ ] the downloaded assets pass `sha256sum --check`, and unpacked Linux/Windows
+  CLIs match the local reproducible build; the Mac CLI is lipo-combined and signed,
+  so it is not byte-reproducible; UI executables and the DMG have no local
+  byte-equality requirement;
+- [ ] `gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-wormhole`
+  passes for each of the four archives and the DMG.
 
 Then apply the notes, leaving the release a draft:
 

@@ -62,7 +62,7 @@ func TestRuntimeFailures(t *testing.T) {
 			if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
 				t.Fatal(e, &logs)
 			}
-			if rec["option"] != option || rec["rule"] == nil || rec["help"] != "seestar-wormhole proxy --help" || out.Len() != 0 {
+			if rec["option"] != option || rec["rule"] == nil || rec["help"] != programName+" proxy --help" || out.Len() != 0 {
 				t.Errorf("missing safe diagnostic: stdout=%q log=%s", out.String(), &logs)
 			}
 			assertNoSensitiveErrorDetails(t, err, "PRIVATE_FILE_PATH", "PRIVATE_TARGET", "13459")

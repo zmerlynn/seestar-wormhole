@@ -29,6 +29,9 @@ func TestCommandShutdownSignals(t *testing.T) {
 		{"Windows proxy", []string{"proxy"}, true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if !guiEnabled && (len(tc.args) == 0 || tc.args[0] == "ui") {
+				t.Skip("GUI only")
+			}
 			want := []os.Signal{os.Interrupt, syscall.SIGTERM}
 			if tc.wantHUP {
 				want = append(want, syscall.SIGHUP)
@@ -114,7 +117,7 @@ func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 			if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
 				t.Fatalf("want one JSON diagnostic, got %q: %v", &logs, err)
 			}
-			if code != 2 || out.Len() != 0 || record.Phase != "arguments" || record.Reason != "invalid_option" || record.Option != tc.option || record.Rule != tc.rule || record.Help != "seestar-wormhole proxy --help" {
+			if code != 2 || out.Len() != 0 || record.Phase != "arguments" || record.Reason != "invalid_option" || record.Option != tc.option || record.Rule != tc.rule || record.Help != programName+" proxy --help" {
 				t.Fatalf("refusal: code=%d out=%q diagnostic=%+v; want arguments/invalid_option, option=%q rule=%q and help hint", code, &out, record, tc.option, tc.rule)
 			}
 			if strings.Contains(logs.String(), "PRIVATE_MARKER") {

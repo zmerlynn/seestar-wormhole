@@ -8,7 +8,7 @@ Report security problems privately through GitHub's private vulnerability report
 
 Use the same route if you find sensitive data published in this repository, its history or its releases.
 
-Include the seestar-wormhole version (`seestar-wormhole --version`), your OS, the steps to reproduce and what an
+Include the seestar-wormhole version (`seestar-wormhole-cli --version`), your OS, the steps to reproduce and what an
 attacker gains. Leave out the things listed under [What never goes in](CONTRIBUTING.md#what-never-goes-in): no
 passwords, tokens, account names, device serials or UIDs, real IP addresses, coordinates or packet captures. A report
 that needs one of these should describe the need without including the material; sharing is then arranged privately.
@@ -22,7 +22,7 @@ Only the latest release receives fixes.
 
 ## Scope
 
-In scope: the `seestar-wormhole` binary and Containerfile, its handling of credentials, cloud and device traffic,
+In scope: the `seestar-wormhole` and `seestar-wormhole-cli` binaries and Containerfile, its handling of credentials, cloud and device traffic,
 and its local listeners; the release workflow and its artifacts.
 
 Out of scope:

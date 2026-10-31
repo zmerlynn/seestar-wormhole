@@ -177,7 +177,7 @@ func TestDispatchUsageErrors(t *testing.T) {
 						t.Fatalf("exit=%d stdout=%q logs=%q; want 2, no summary, diagnostic", code, &out, &logs)
 					}
 					if subcommand == "proxy" {
-						if !strings.Contains(logs.String(), "seestar-wormhole "+subcommand+" --help") {
+						if !strings.Contains(logs.String(), programName+" "+subcommand+" --help") {
 							t.Fatalf("wrong command diagnostic: %q", &logs)
 						}
 					}

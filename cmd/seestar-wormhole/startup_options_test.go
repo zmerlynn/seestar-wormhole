@@ -67,7 +67,7 @@ func assertStartupOptionFailure(t *testing.T, err error, out, logs *bytes.Buffer
 	if e := json.Unmarshal(lines[len(lines)-1], &record, json.MatchCaseInsensitiveNames(true)); e != nil {
 		t.Fatalf("want one JSON diagnostic, got %q: %v", logs.String(), e)
 	}
-	if record["option"] != option || record["rule"] != rule || record["phase"] != "arguments" || record["reason"] != "invalid_option" || record["help"] != "seestar-wormhole proxy --help" {
+	if record["option"] != option || record["rule"] != rule || record["phase"] != "arguments" || record["reason"] != "invalid_option" || record["help"] != programName+" proxy --help" {
 		t.Errorf("got %v, want %s: %s with argument help", record, option, rule)
 	}
 	if record["cleanup_reason"] != "none" {

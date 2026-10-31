@@ -5,11 +5,12 @@ export GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOMAXPROCS=2
 [[ $(uname -s) == Darwin ]] || { echo 'Run on macOS with Xcode Command Line Tools' >&2; exit 1; }
 [[ $(go env GOVERSION) == go1.27.3 ]] || { echo 'Go 1.27.3 required' >&2; exit 1; }
 xcode-select -p >/dev/null
-: "${1:?Usage: scripts/build-gui-mac.sh /absolute/output/directory [version]}"
+: "${1:?Usage: scripts/build-gui-mac.sh /absolute/output/directory [version] [revision]}"
 task_version=${2:-development}
+task_revision=${3:-development}
 task_bundle_version=
 if [[ "$task_version" != development ]]; then
- [[ "$task_version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]] || { echo 'Version must be vMAJOR.MINOR.PATCH or vMAJOR.MINOR.PATCH-rc.N' >&2; exit 1; }
+ "$(dirname "$0")/release.sh" --validate-only "$task_version"
  task_bundle_version=${task_version#v}
  task_bundle_version=${task_bundle_version%-rc.*}
 fi
@@ -36,7 +37,7 @@ for task_arch in arm64 amd64; do
  iconutil -c icns "$task_iconset" -o "$task_app/Resources/wormhole.icns"
  rm -r "$task_iconset"
  GOARCH="$task_arch" go build -mod=vendor -p 2 -tags gui,production -trimpath -buildvcs=false \
-  -ldflags="-s -w -X main.version=$task_version" -o "$task_app/MacOS/seestar-wormhole" ./cmd/seestar-wormhole
+  -ldflags="-s -w -X main.version=$task_version -X main.revision=$task_revision" -o "$task_app/MacOS/seestar-wormhole" ./cmd/seestar-wormhole
  cat > "$task_app/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -59,3 +60,28 @@ PLIST
  plutil -lint "$task_app/Info.plist"
  shasum -a 256 "$task_app/MacOS/seestar-wormhole"
 done
+
+# Both slices share the same bundle metadata and resources. Sign only after lipo.
+task_universal="$1/universal/seestar-wormhole.app"
+rm -rf "$task_universal"
+mkdir -p "$(dirname "$task_universal")"
+ditto "$1/arm64/seestar-wormhole.app" "$task_universal"
+lipo -create "$1/arm64/seestar-wormhole.app/Contents/MacOS/seestar-wormhole" \
+ "$1/amd64/seestar-wormhole.app/Contents/MacOS/seestar-wormhole" \
+ -output "$task_universal/Contents/MacOS/seestar-wormhole"
+lipo "$task_universal/Contents/MacOS/seestar-wormhole" -verify_arch arm64 x86_64
+# CI downloads the reproducible portable Darwin parts here. A local build
+# creates them with the same CLI build settings when no parts were supplied.
+if [[ ! -d "$1/cli" ]]; then
+ mkdir -p "$1/cli"
+ for task_arch in arm64 amd64; do
+  CGO_ENABLED=0 GOARCH="$task_arch" GOENV=off GOWORK=off GOEXPERIMENT= go build -mod=vendor -p 2 -trimpath -buildvcs=false \
+   -ldflags="-s -w -X main.version=$task_version -X main.revision=$task_revision" \
+   -o "$1/cli/seestar-wormhole-cli_${task_version}_darwin_${task_arch}" ./cmd/seestar-wormhole
+ done
+fi
+lipo -create "$1/cli/seestar-wormhole-cli_${task_version}_darwin_arm64" \
+ "$1/cli/seestar-wormhole-cli_${task_version}_darwin_amd64" \
+ -output "$1/universal/seestar-wormhole-cli"
+lipo "$1/universal/seestar-wormhole-cli" -verify_arch arm64 x86_64
+scripts/package-gui-mac.sh "$task_universal" "$1/seestar-wormhole_${task_version}_darwin_universal.dmg"

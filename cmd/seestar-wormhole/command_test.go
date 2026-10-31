@@ -15,6 +15,9 @@ import (
 )
 
 func TestBareInvocationDispatchesUI(t *testing.T) {
+	if !guiEnabled {
+		t.Skip("GUI dispatch is tested in GUI builds")
+	}
 	for _, args := range [][]string{nil, {"ui"}, {"ui", "--state-dir", "private-state"}, {"--version=false"}} {
 		o, err := parse(args, io.Discard)
 		if err != nil || o.command != commandUI || o.outcome != commandRun {
@@ -43,7 +46,7 @@ func TestBareInvocationDispatchesUI(t *testing.T) {
 
 func TestRootVersion(t *testing.T) {
 	var out bytes.Buffer
-	if err := run(context.Background(), []string{"--version"}, &out, io.Discard); err != nil || !strings.Contains(out.String(), "seestar-wormhole ") {
+	if err := run(context.Background(), []string{"--version"}, &out, io.Discard); err != nil || !strings.Contains(out.String(), programName+" ") {
 		t.Fatalf("version: err=%v stdout=%q", err, &out)
 	}
 }
@@ -52,7 +55,11 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	var o options
 	root := newCommand(&o, io.Discard)
 	commands := root.Commands()
-	if len(commands) != 4 || commands[0].Name() != "discovery" || commands[1].Name() != "licenses" || commands[2].Name() != "proxy" || len(commands[2].Aliases) != 0 || commands[3].Name() != "ui" {
+	wantCount := 3
+	if guiEnabled {
+		wantCount++
+	}
+	if len(commands) != wantCount || commands[0].Name() != "discovery" || commands[1].Name() != "licenses" || commands[2].Name() != "proxy" || len(commands[2].Aliases) != 0 || (guiEnabled && commands[3].Name() != "ui") {
 		t.Fatalf("commands = %v, want discovery, licenses and proxy with no aliases", commands)
 	}
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {

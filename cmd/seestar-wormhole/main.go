@@ -10,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"os"
-	"os/signal"
 	"runtime"
 	"strconv"
 	"strings"
@@ -328,7 +327,7 @@ func main() {
 // Keep descriptor and signal cleanup inside a returning function: os.Exit does
 // not run defers, including restoration of Darwin inherited stderr flags.
 func mainExitCode() int {
-	return mainExitCodeWithBootstrap(os.Args[1:], os.Stdout, os.Stderr, signal.NotifyContext, logWriter)
+	return mainExitCodeWithBootstrap(os.Args[1:], os.Stdout, os.Stderr, notifyContext, logWriter)
 }
 
 func mainExitCodeWithBootstrap(args []string, out, logOutput io.Writer, notify func(context.Context, ...os.Signal) (context.Context, context.CancelFunc), newLog func() (io.Writer, func())) int {
@@ -363,9 +362,9 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 		return commandExitCode(o, err)
 	}
 
-	// Go maps Windows Ctrl+C/Ctrl+Break to Interrupt and console close/logoff
-	// to SIGTERM. Console close still has an OS termination deadline: cleanup
-	// is best effort there; Ctrl+C lets the normal bounded release finish.
+	// Console builds use Go's signal handler. Windows GUI builds that attach a
+	// console supply their own cancellation source, since attachment resets the
+	// handler table. Windows can still impose an earlier termination deadline.
 	signals := []os.Signal{os.Interrupt, syscall.SIGTERM}
 	if o.command == commandUI && !windows {
 		// Closing a Unix terminal must release the UI's session before exit.

@@ -62,7 +62,7 @@ func TestArgumentRulesAndRedaction(t *testing.T) {
 			if e := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); e != nil {
 				t.Fatalf("want one JSON diagnostic, got %q: %v", logs.String(), e)
 			}
-			if record.Phase != "arguments" || record.Reason != "invalid_option" || record.Option != tt.option || record.Rule != tt.rule || record.Help != "seestar-wormhole proxy --help" {
+			if record.Phase != "arguments" || record.Reason != "invalid_option" || record.Option != tt.option || record.Rule != tt.rule || record.Help != programName+" proxy --help" {
 				t.Fatalf("got %+v, want option %q and rule %q with help hint", record, tt.option, tt.rule)
 			}
 			if out.Len() != 0 {

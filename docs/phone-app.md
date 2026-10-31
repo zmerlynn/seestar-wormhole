@@ -39,7 +39,7 @@ reports a phone HTTP permission failure, see [port 80 and permissions](#port-80-
 For the CLI, start with discovery enabled:
 
 ```sh
-./seestar-wormhole proxy --bind 0.0.0.0 --lan-discovery -p 80:80
+./seestar-wormhole-cli proxy --bind 0.0.0.0 --lan-discovery -p 80:80
 ```
 
 The command enables LAN discovery and maps local port 80 to the device’s HTTP port; see [discovery and HTTP mappings](reference.md#port-mappings).
@@ -112,7 +112,7 @@ On the primary, keep the existing instance and mappings used by other
 clients; a default example is:
 
 ```sh
-seestar-wormhole proxy --bind 127.0.0.1 --state-dir '<primary-private-state-dir>'
+seestar-wormhole-cli proxy --bind 127.0.0.1 --state-dir '<primary-private-state-dir>'
 ```
 
 Run that instance as the [primary systemd user service](always-on.md#a-systemd-service),
@@ -154,7 +154,7 @@ SSH as root or adding broad capabilities to the SSH executable.
 In another terminal on the home machine:
 
 ```sh
-seestar-wormhole discovery --bind '<home-lan-ip>' \
+seestar-wormhole-cli discovery --bind '<home-lan-ip>' \
   --advertise-serial '<serial>' --advertise-model '<model-label>' \
   --advertise-name '<device-name>'
 ```
@@ -236,7 +236,7 @@ PartOf=seestar-home.target
 [Service]
 Restart=always
 RestartSec=5
-ExecStart=%h/bin/seestar-wormhole discovery --bind <home-lan-ip> \
+ExecStart=%h/bin/seestar-wormhole-cli discovery --bind <home-lan-ip> \
   --advertise-serial <serial> --advertise-model "<model-label>" \
   --advertise-name "<device-name>"
 KillSignal=SIGINT
