@@ -279,7 +279,8 @@ everything else.
    break in style, a foreign copyright line, or a comment naming another
    project.
 6. Non-code assets have a known author and terms.
-7. Release archives contain `LICENSE` and `NOTICE`.
+7. Executable downloads expose notices through `licenses`; the Mac DMG contains
+   `LICENSE` and `NOTICE`.
 8. ZWO and Seestar are named only descriptively, consistent with the
    not-affiliated paragraph.
 
@@ -289,12 +290,13 @@ attribution, or a stale embedded license set.
 ## build-release
 
 1. Build-tag and `GOOS`-specific changes compile on every release target
-   (`scripts/release.go` lists them). The macOS cross-builds in
+   (the release workflow and `scripts/release.go` list them). The macOS cross-builds in
    `./scripts/check.sh` are a minimum.
 2. Release script and test:
-   - the archive layout, names and checksums are right;
-   - the archive contents match the file-set test;
-   - the build is reproducible: two builds of one commit are byte-identical;
+   - bare executable names, universal DMG contents and checksums are right;
+   - the complete download inventory matches the release asset test;
+   - CLI builds of one commit are byte-identical; UI downloads use SHA256SUMS
+     and attestation only;
    - the embedded version is correct.
 3. Workflows pin actions by SHA, grant minimal permissions, keep secrets out
    of logs, and do what `docs/development/releasing.md` says.
@@ -305,8 +307,8 @@ attribution, or a stale embedded license set.
 6. Someone following `docs/development/README.md` from scratch can build and
    test.
 
-Must fix: a broken build on a release target, a release that isn't
-reproducible or is assembled wrong, or a CI change that grants new
+Must fix: a broken build on a release target, a CLI release that isn't
+reproducible or any download assembled wrong, or a CI change that grants new
 permissions or leaks secrets.
 
 ## public-hygiene
