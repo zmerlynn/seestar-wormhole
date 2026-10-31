@@ -126,7 +126,10 @@ func TestConsoleTerminatingEventsJoinCleanup(t *testing.T) {
 	for _, event := range []uint32{windows.CTRL_CLOSE_EVENT, windows.CTRL_LOGOFF_EVENT, windows.CTRL_SHUTDOWN_EVENT} {
 		t.Run(string(rune('0'+event)), func(t *testing.T) {
 			previous := attachedConsole
-			c := newConsoleControl()
+			c, err := newConsoleControl()
+			if err != nil {
+				t.Fatal(err)
+			}
 			attachedConsole = c
 			defer func() { attachedConsole = previous }()
 			ctx, stop := notifyContext(t.Context(), os.Interrupt, syscall.SIGTERM)
@@ -158,7 +161,10 @@ func TestConsoleTerminatingEventsJoinCleanup(t *testing.T) {
 
 func TestConsoleEarlyControlEvent(t *testing.T) {
 	previous := attachedConsole
-	c := newConsoleControl()
+	c, err := newConsoleControl()
+	if err != nil {
+		t.Fatal(err)
+	}
 	attachedConsole = c
 	defer func() { attachedConsole = previous }()
 	if c.handle(99) != 0 {

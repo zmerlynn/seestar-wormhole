@@ -17,22 +17,34 @@ import (
 var attachedConsole *consoleControl
 
 type consoleControl struct {
-	requested chan struct{}
+	// requested is a manual-reset Win32 event, not a channel: a goroutine
+	// blocked in WaitForMultipleObjects is in a syscall, so the runtime does not
+	// declare a deadlock while the only waker is the console's handler thread.
+	requested windows.Handle
+	stopped   windows.Handle
 	finished  chan struct{}
-	request   sync.Once
 	finish    sync.Once
 }
 
-func newConsoleControl() *consoleControl {
-	return &consoleControl{requested: make(chan struct{}), finished: make(chan struct{})}
+func newConsoleControl() (*consoleControl, error) {
+	requested, err := windows.CreateEvent(nil, 1, 0, nil)
+	if err != nil {
+		return nil, err
+	}
+	stopped, err := windows.CreateEvent(nil, 1, 0, nil)
+	if err != nil {
+		windows.CloseHandle(requested)
+		return nil, err
+	}
+	return &consoleControl{requested: requested, stopped: stopped, finished: make(chan struct{})}, nil
 }
 
 func (c *consoleControl) handle(event uint32) uintptr {
 	switch event {
 	case windows.CTRL_C_EVENT, windows.CTRL_BREAK_EVENT:
-		c.request.Do(func() { close(c.requested) })
+		_ = windows.SetEvent(c.requested)
 	case windows.CTRL_CLOSE_EVENT, windows.CTRL_LOGOFF_EVENT, windows.CTRL_SHUTDOWN_EVENT:
-		c.request.Do(func() { close(c.requested) })
+		_ = windows.SetEvent(c.requested)
 		// Returning from these events terminates the process. Keep the handler
 		// alive until the command's deferred release and log cleanup have joined,
 		// using the same bound as the session owner. Windows may kill us sooner.
@@ -54,15 +66,21 @@ func notifyContext(parent context.Context, signals ...os.Signal) (context.Contex
 	}
 	c := attachedConsole
 	ctx, cancel := context.WithCancel(parent)
+	waited := make(chan struct{})
 	go func() {
-		select {
-		case <-c.requested:
+		defer close(waited)
+		event, _ := windows.WaitForMultipleObjects([]windows.Handle{c.requested, c.stopped}, false, windows.INFINITE)
+		if event == windows.WAIT_OBJECT_0 {
 			cancel()
-		case <-ctx.Done():
 		}
+	}()
+	go func() {
+		<-ctx.Done()
+		_ = windows.SetEvent(c.stopped)
 	}()
 	return ctx, func() {
 		cancel()
+		<-waited
 		c.finish.Do(func() { close(c.finished) })
 	}
 }
@@ -82,11 +100,13 @@ func init() {
 	if attached != 0 {
 		// AttachConsole resets the handler table, including Go's runtime handler.
 		// Register once, after successful attachment, without runtime internals.
-		attachedConsole = newConsoleControl()
-		setHandler := windows.NewLazySystemDLL("kernel32.dll").NewProc("SetConsoleCtrlHandler")
-		ok, _, err := setHandler.Call(windows.NewCallback(attachedConsole.handle), 1)
-		if ok == 0 {
-			handlerErr = err
+		attachedConsole, handlerErr = newConsoleControl()
+		if handlerErr == nil {
+			setHandler := windows.NewLazySystemDLL("kernel32.dll").NewProc("SetConsoleCtrlHandler")
+			ok, _, err := setHandler.Call(windows.NewCallback(attachedConsole.handle), 1)
+			if ok == 0 {
+				handlerErr = err
+			}
 		}
 	}
 	restoreConsoleOutput(windows.STD_OUTPUT_HANDLE, stdout, stdoutValid, &os.Stdout)
