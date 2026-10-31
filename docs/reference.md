@@ -6,7 +6,7 @@ failure rule. For setup examples, see [phone app](phone-app.md),
 [other clients](clients.md). The [protocol guide](protocol.md) connects the
 proxy's wire behavior and local policy to the v1 specification.
 
-- [ui](#ui): the UI, in a native window
+- [Using the app](ui.md): setup and native controls
 - [proxy](#proxy): listeners and flags
 - [discovery](#discovery): scan replies without a cloud session
 - [licenses](#licenses)
@@ -25,9 +25,43 @@ seestar-wormhole
 seestar-wormhole ui [--state-dir PATH]
 ```
 
-**Use saved settings headless:** after successful Connect or explicit password
-save, run `seestar-wormhole-cli proxy --config` (add `--state-dir PATH` for a custom
-UI root). It reads the same [version 1 `config.json`](#ui) without rewriting it and shares the installation identity.
+Open the app in a native window; see [Using the app](ui.md) for setup and controls.
+
+## proxy
+
+```sh
+seestar-wormhole-cli proxy
+```
+
+For native controls, see [Using the app](ui.md).
+
+The app cannot set the device's site, clock or time zone through the proxy.
+See [site protection](#site-protection). The command takes no positional arguments. It forwards TCP through one shared
+remote session. Clients can issue device commands and read files; there is no
+local authentication or read-only command whitelist. Local connections are
+plaintext. This is not an ALPACA server. Keep listeners on
+loopback or a trusted network behind a firewall.
+
+### Proxy flags
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `--config` | `false` | Read the [app's saved settings](ui.md#where-settings-live) and share its state root and installation identity. Flags and environment credentials override saved choices. |
+| `--bind` | `127.0.0.1` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
+| `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
+| `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
+| `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
+| `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. |
+| `--lan-discovery-all-interfaces` | `false` | Include VPN and virtual adapters; requires `--lan-discovery`. |
+
+See also [identity and logging flags](#identity-and-logging-flags).
+
+### Use saved settings headless
+
+After a successful connection or explicit password save in the app, run
+`seestar-wormhole-cli proxy --config` (add `--state-dir PATH` for a custom
+app state root). It reads the same [version 1 `config.json`](ui.md#configjson-version-1)
+without rewriting it and shares the installation identity.
 Explicit flags override saved choices, including discovery; each `-p` replaces the saved override for
 that telescope port. `SEESTAR_EMAIL` overrides the saved email. The password
 comes from `SEESTAR_PASSWORD` when set, otherwise the OS keychain entry for that
@@ -46,35 +80,6 @@ S4U (“Do not store password”) cannot access encrypted credentials: use
 Headless Linux/systemd usually has no Secret Service session; supply
 `SEESTAR_PASSWORD` through the [credentials-file recipe](always-on.md#credentials-for-a-service),
 while the email can still come from `config.json`.
-
-## proxy
-
-```sh
-seestar-wormhole-cli proxy
-```
-
-For native controls, use [ui](#ui).
-
-The app cannot set the device's site, clock or time zone through the proxy.
-See [site protection](#site-protection). The command takes no positional arguments. It forwards TCP through one shared
-remote session. Clients can issue device commands and read files; there is no
-local authentication or read-only command whitelist. Local connections are
-plaintext. This is not an ALPACA server. Keep listeners on
-loopback or a trusted network behind a firewall.
-
-### Proxy flags
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `--config` | `false` | Read the [UI's saved settings](#ui) and share its state root and installation identity. Flags and environment credentials override saved choices. |
-| `--bind` | `127.0.0.1` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
-| `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
-| `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
-| `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
-| `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. |
-| `--lan-discovery-all-interfaces` | `false` | Include VPN and virtual adapters; requires `--lan-discovery`. |
-
-See also [identity and logging flags](#identity-and-logging-flags).
 
 ### Port mappings
 
@@ -192,7 +197,7 @@ exits 1. See [NOTICE](../NOTICE) for attribution.
 
 ## Global command behavior
 
-Bare `seestar-wormhole` opens [ui](#ui) and stays running until Quit or Ctrl+C.
+Bare `seestar-wormhole` opens [the app](ui.md) and stays running until you quit or press Ctrl+C.
 Bare `seestar-wormhole-cli` prints help and exits 0 without opening a UI or browser.
 Use `help [command]` or
 `--help`/`-h` for help. Root `--version` prints
@@ -431,7 +436,7 @@ must be regular with mode exactly `0600`; new directories use `0700`.
 The identity file refuses symlinks. First creation/empty-file repair is locked
 with a one-second acquisition bound. Existing nonempty valid identifiers are
 retained. On Windows, protected owner/SYSTEM ACLs and reparse checks apply.
-Supply trusted parent directories. The [UI](#ui) uses its persistent state root
+Supply trusted parent directories. The [app](ui.md#where-settings-live) uses its persistent state root
 by default and shares this exact identity format.
 
 ## Logs

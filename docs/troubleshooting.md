@@ -63,7 +63,7 @@ rather keep before posting.
 
 Launch `seestar-wormhole` from the unpacked archive (or the Mac app), and check any startup error. `seestar-wormhole-cli` has no UI command or browser fallback. On Linux, see [native window prerequisites](#linux-native-window) below. If a headless host reports a loader error about `libgtk` or WebKit, use `seestar-wormhole-cli` from the same archive and update the service's executable path.
 Launching the UI again with the same state directory brings its window forward.
-See [native controls](reference.md#ui).
+See [Using the app](ui.md).
 
 ## Saved settings prevent startup
 
