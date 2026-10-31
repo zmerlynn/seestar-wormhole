@@ -46,7 +46,7 @@ A `local_closed` poller event is often a client that closed after one reply; dev
 
 **Sign-in fails.** Check `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` by signing in
 to the phone app with the same values. Type them at the `read` prompt from the
-[README](../README.md#before-you-start-your-account-and-your-site) rather than
+[README](../README.md#sign-in) rather than
 pasting them into a command line.
 
 ## Filing an issue

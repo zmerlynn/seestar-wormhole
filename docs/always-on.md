@@ -13,7 +13,7 @@ Alert on persistent `session_unavailable` or blocking failure records in the
 
 ## Credentials for a service
 
-Set `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` in the service environment; see [account setup](../README.md#before-you-start-your-account-and-your-site).
+Set `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` in the service environment; see [signing in](../README.md#sign-in).
 
 ```sh
 env_file=~/.config/seestar-wormhole.env
@@ -136,7 +136,7 @@ podman run -d --name seestar-wormhole --network host \
 ```
 
 Enter your credentials first with the prompt from the
-[README](../README.md#before-you-start-your-account-and-your-site); `--env`
+[README](../README.md#sign-in); `--env`
 with just a name passes that variable through. (Podman's `--env-file` reads
 quotes literally, so the systemd file above isn't safe to reuse for a
 password with quotes in it.) The image starts the proxy with a wildcard bind and state directory; explicit flags override those defaults. See [container settings](reference.md#containers).

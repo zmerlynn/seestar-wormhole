@@ -6,7 +6,7 @@ failure rule. For setup examples, see [phone app](phone-app.md),
 [other clients](clients.md). The [protocol guide](protocol.md) connects the
 proxy's wire behavior and local policy to the v1 specification.
 
-- [ui](#ui): native local controls
+- [ui](#ui): the UI, in a native window
 - [proxy](#proxy): listeners and flags
 - [discovery](#discovery): scan replies without a cloud session
 - [licenses](#licenses)
@@ -25,8 +25,10 @@ seestar-wormhole
 seestar-wormhole ui [--state-dir PATH]
 ```
 
-Bare launch of the UI executable opens the local controls, as does `ui`.
-Only UI builds (`gui,production` in releases) expose `ui`, in a native window.
+![The UI before connecting: Connect, Use with, and the account fields](images/gui-setup.png)
+
+Bare launch of the UI executable opens the UI, as does `ui`. Only UI builds
+(`gui,production` in releases) have `ui`, and they show it in a native window.
 The CLI has no UI command and never opens a browser. Enter credentials and
 options, then press Connect. Loading settings never starts a proxy. Stop releases
 the session and leaves the page usable; Quit or Ctrl+C releases it and exits.
