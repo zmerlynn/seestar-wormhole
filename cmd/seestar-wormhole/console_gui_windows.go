@@ -69,9 +69,16 @@ func notifyContext(parent context.Context, signals ...os.Signal) (context.Contex
 	waited := make(chan struct{})
 	go func() {
 		defer close(waited)
-		event, _ := windows.WaitForMultipleObjects([]windows.Handle{c.requested, c.stopped}, false, windows.INFINITE)
-		if event == windows.WAIT_OBJECT_0 {
+		event, err := windows.WaitForMultipleObjects([]windows.Handle{c.requested, c.stopped}, false, windows.INFINITE)
+		switch {
+		case err == nil && event == windows.WAIT_OBJECT_0:
 			cancel()
+		case err == nil && event == windows.WAIT_OBJECT_0+1:
+		default:
+			cancel()
+			output, closeLog := logWriter()
+			defer closeLog()
+			newLogger("json", output).Error("console control failed", "phase", "console_control", "reason", "operation_failed")
 		}
 	}()
 	go func() {

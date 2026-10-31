@@ -620,6 +620,7 @@ selection masks serials.
 | `diagnostics_lost` | WARN | Rule and cumulative loss count for startup or stderr rules; stderr failure uses stdout |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
+| `console control failed` | ERROR, JSON | Windows console event wait failed or returned an unexpected result; `phase=console_control`, `reason=operation_failed`. Cancels the command so release and cleanup proceed. |
 | `ui failed` | ERROR, JSON | UI command argument refusal; fixed `option`, `rule`, help hint, `phase=arguments`, `reason=invalid_option`. UI startup/storage failures use fixed stderr messages; browser actions report sanitized errors in the page. |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
 | `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions; direct/relay and UDP/TCP path |

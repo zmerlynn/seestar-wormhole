@@ -181,3 +181,54 @@ func TestConsoleEarlyControlEvent(t *testing.T) {
 		t.Fatal("event received before bootstrap was lost")
 	}
 }
+
+func TestConsoleWaitFailureCancels(t *testing.T) {
+	previous := attachedConsole
+	// Start with invalid handles; never close or replace a handle during a wait.
+	c := &consoleControl{
+		requested: windows.InvalidHandle,
+		stopped:   windows.InvalidHandle,
+		finished:  make(chan struct{}),
+	}
+	attachedConsole = c
+	defer func() { attachedConsole = previous }()
+	stderr, err := windows.GetStdHandle(windows.STD_ERROR_HANDLE)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer windows.SetStdHandle(windows.STD_ERROR_HANDLE, stderr)
+	output, err := os.CreateTemp(t.TempDir(), "stderr")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer output.Close()
+	if err := windows.SetStdHandle(windows.STD_ERROR_HANDLE, windows.Handle(output.Fd())); err != nil {
+		t.Fatal(err)
+	}
+	ctx, stop := notifyContext(t.Context(), os.Interrupt)
+	defer stop()
+	select {
+	case <-ctx.Done():
+	case <-time.After(5 * time.Second):
+		t.Fatal("failed console wait did not cancel the command")
+	}
+	stop()
+	select {
+	case <-c.finished:
+	default:
+		t.Fatal("failed console wait did not join cleanup")
+	}
+	data, err := os.ReadFile(output.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record struct {
+		Level, Msg, Phase, Reason string
+	}
+	if err := json.Unmarshal(data, &record); err != nil {
+		t.Fatalf("console diagnostic = %q: %v", data, err)
+	}
+	if record.Level != "ERROR" || record.Msg != "console control failed" || record.Phase != "console_control" || record.Reason != "operation_failed" {
+		t.Fatalf("console diagnostic = %+v", record)
+	}
+}
