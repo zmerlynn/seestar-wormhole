@@ -24,10 +24,10 @@ Run these in a clean worktree at that SHA, in `golang:1.27.3` with
 `--network none`. Follow steps 1-4 of [releasing.md](../../../docs/development/releasing.md):
 
 - [ ] build, vet and test pass, along with the release test and `./scripts/test-check.sh`;
-- [ ] `./scripts/release.sh vX.Y.Z` produces six CLI and two Windows UI executables, and `sha256sum --check` passes;
-- [ ] a second run produces byte-identical CLI executables (`cmp` each CLI file);
-- [ ] an artifact-only workflow dispatch produces all eleven downloads and full
-  checksums; UI downloads are verified by SHA256SUMS and attestation only;
+- [ ] `./scripts/release.sh vX.Y.Z` produces six CLI and two Windows UI parts, plus two Windows ZIP archives;
+- [ ] a second run produces byte-identical portable outputs; compare rebuilt Linux/Windows CLIs with those unpacked from the archives;
+- [ ] an artifact-only workflow dispatch produces all five downloads and the single
+  `SHA256SUMS`; checksums and attestation cover the four archives and DMG;
 - [ ] `--version` prints the version, commit and platform, and `licenses` lists `github.com/pion/dtls/v3`.
 
 ## 3. Check the compatibility record
@@ -51,8 +51,8 @@ developers:
    section that has the detail. Leave out internals such as forks, suite
    names and log record names.
 3. **Breaking changes**, or "No breaking changes."
-4. **Install:** choose UI or CLI, rename the bare executable or install the Mac
-   app from its DMG, check `seestar-wormhole-cli --version`, the account variables, and
+4. **Install:** unpack the platform archive or install from the Mac DMG; each
+   download includes both programs. Check `seestar-wormhole-cli --version`, the account variables, and
    the no-authentication warning. Point to
    [verifying a release](../../../SECURITY.md#verifying-a-release) without
    repeating its commands.
@@ -83,12 +83,13 @@ Never move or delete a pushed tag. A broken release is fixed with a new patch ve
 
 When the release workflow finishes, check:
 
-- [ ] the run succeeded, and the draft has eleven downloads plus `SHA256SUMS`;
-- [ ] the downloaded assets pass `sha256sum --check`, and the CLI checksum
-  entries match the local reproducible build; UI checksums come from the workflow
-  after signing and stapling, without a local byte-equality requirement;
+- [ ] the run succeeded, and the draft has five downloads plus `SHA256SUMS`;
+- [ ] the downloaded assets pass `sha256sum --check`, and unpacked Linux/Windows
+  CLIs match the local reproducible build; the Mac CLI is lipo-combined and signed,
+  so it is not byte-reproducible; UI executables and the DMG have no local
+  byte-equality requirement;
 - [ ] `gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-wormhole`
-  passes for every executable and DMG.
+  passes for each of the four archives and the DMG.
 
 Then apply the notes, leaving the release a draft:
 

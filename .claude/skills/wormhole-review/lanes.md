@@ -293,10 +293,11 @@ attribution, or a stale embedded license set.
    (the release workflow and `scripts/release.go` list them). The macOS cross-builds in
    `./scripts/check.sh` are a minimum.
 2. Release script and test:
-   - bare executable names, universal DMG contents and checksums are right;
+   - archive names, root members/modes, universal DMG contents and checksums are right;
    - the complete download inventory matches the release asset test;
-   - CLI builds of one commit are byte-identical; UI downloads use SHA256SUMS
-     and attestation only;
+   - rebuilt Linux/Windows CLIs match executables unpacked from the archives;
+     the lipo-combined, signed Mac CLI is not byte-reproducible; UI executables
+     and the DMG use SHA256SUMS and attestation only;
    - the embedded version is correct.
 3. Workflows pin actions by SHA, grant minimal permissions, keep secrets out
    of logs, and do what `docs/development/releasing.md` says.

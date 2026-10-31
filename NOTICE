@@ -3,8 +3,8 @@ seestar-wormhole NOTICE
 
 The project's own code is released under the Unlicense. Files under vendor/ retain their upstream licenses.
 
-Run `seestar-wormhole licenses` for the notices of the libraries linked into
-this build.
+Run `seestar-wormhole licenses` or `seestar-wormhole-cli licenses`
+for the notices of the libraries linked into that build.
 
 Vendored modules and the license files copied into vendor/:
 

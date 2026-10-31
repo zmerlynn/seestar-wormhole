@@ -16,19 +16,18 @@ Daily-use coverage is on firmware 9.31, with control testing on 9.75; see [devic
 
 ## Install
 
-Download what you want from the
-[Releases page](https://github.com/zmerlynn/seestar-wormhole/releases):
+Download the archive for your platform (or the `.dmg` on macOS) from the
+[Releases page](https://github.com/zmerlynn/seestar-wormhole/releases) and unpack it.
+Each download includes both programs:
 
 - **The app.** On macOS, open the `.dmg` and drag seestar-wormhole to
   Applications; until releases are signed, right-click it and choose **Open**
-  the first time. On Windows, run the `.exe`. On Linux, it needs GTK 4 and
-  WebKitGTK 6.0.
-- **The command line.** `seestar-wormhole-cli` is a single static executable for
-  terminals, scripts and services.
+  the first time. On Windows and Linux, run `seestar-wormhole` (`.exe` on
+  Windows). On Linux, it needs GTK 4 and WebKitGTK 6.0.
+- **The command line.** Run `seestar-wormhole-cli` (`.exe` on Windows) for
+  terminals, scripts and services. The Linux CLI does not need GTK or WebKitGTK.
 
-The examples below call the downloads `seestar-wormhole` and
-`seestar-wormhole-cli`; rename them to match, and on Linux and macOS run
-`chmod +x` on them. Check the command line with:
+Check the command line with:
 
 ```sh
 ./seestar-wormhole-cli --version

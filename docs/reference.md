@@ -800,8 +800,9 @@ request count. These prose diagnostics are outside the versioned log contract.
 
 ## Verifying a release
 
-Each release lists a SHA-256 checksum for every executable and DMG in
-`SHA256SUMS`, and carries a GitHub build provenance attestation for every asset.
+Each release lists a SHA-256 checksum for its four archives and universal Mac DMG
+in the single `SHA256SUMS`, and carries a GitHub build provenance attestation for
+each of those five downloads.
 With the downloaded assets and `SHA256SUMS` in one directory:
 
 ```sh
@@ -809,11 +810,13 @@ sha256sum --check --ignore-missing SHA256SUMS
 gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-wormhole
 ```
 
-CLI downloads have a byte-for-byte reproducible build promise: identical source,
-version, revision, and Go toolchain produce identical executables. See
-[release build mechanics](development/releasing.md). UI downloads are verified
-by SHA256SUMS and attestation only; they do not carry a byte-for-byte
-reproducibility promise. Native toolchains, packaging, and signing affect them.
+Linux and Windows CLI executables are byte-for-byte reproducible with identical
+source, version, revision, and Go toolchain: rebuild and compare against
+`seestar-wormhole-cli` (with `.exe` on Windows) unpacked from the archive. See
+[release build mechanics](development/releasing.md). The Mac CLI is combined
+with lipo and signed, so it is not byte-reproducible. UI executables and the DMG
+are verified by SHA256SUMS and attestation only; native toolchains, packaging,
+and signing affect their bytes.
 
 ## Containers
 
