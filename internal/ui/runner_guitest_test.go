@@ -89,6 +89,34 @@ func TestGUITestFailsClosed(t *testing.T) {
 	}
 }
 
+func TestGUITestRemoveTimeoutRetry(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		chain := &guiTestKeychain{root: t.TempDir(), scenario: "remove-timeout"}
+		email := testSettings().Email
+		if err := chain.Set(keyringService, email, testPassword); err != nil {
+			t.Fatal(err)
+		}
+		c := &credentialStore{chain: chain, savedEmail: email}
+		if err := c.forgetAt(t.Context(), email, c.nextGeneration()); actionError(err).Code != "keychain_timeout" {
+			t.Fatal(err)
+		}
+		if state := c.state(email); !state.Busy || !state.Saved {
+			t.Fatalf("late native removal was not exposed: %+v", state)
+		}
+		// A dispatched retry queues behind the first native call and treats
+		// its late deletion as success. No GUI or real keychain is involved.
+		if err := c.forgetAt(t.Context(), email, c.nextGeneration()); err != nil {
+			t.Fatal(err)
+		}
+		if state := c.state(email); state.Busy || state.Saved || state.Code != "password_removed" {
+			t.Fatalf("retry did not confirm removal: %+v", state)
+		}
+		if chain.removes != 2 {
+			t.Fatalf("native Delete calls = %d, want 2", chain.removes)
+		}
+	})
+}
+
 func TestEagerSettingsSaveOnlyOnFirstReady(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newGUITestRunner()

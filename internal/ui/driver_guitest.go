@@ -36,6 +36,10 @@ type guiTestDriver struct {
 // Each probe has a distinct acknowledgment, so late JS cannot satisfy the next
 // assertion. The native postMessage bridge needs no HTTP runtime or CSP change.
 func (d *guiTestDriver) probe(expression string) error {
+	return d.runProbe(guiTestProbeScript(expression, d.seq+1, true))
+}
+
+func (d *guiTestDriver) runProbe(js string) error {
 	d.seq++
 	name := "guitest:probe:" + strconv.Itoa(d.seq)
 	ack := make(chan struct{}, 1)
@@ -53,24 +57,7 @@ func (d *guiTestDriver) probe(expression string) error {
 	defer offStarted()
 	defer offEvaluated()
 	defer offMatched()
-	js := `(() => {
- const send=m=>{if(window.chrome?.webview) window.chrome.webview.postMessage(m);
- else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
- else if(window.wails?.invoke) window.wails.invoke(m)};
- const el=id=>document.getElementById(id);
- const check=(ok,detail)=>ok ? true : detail;
- const probe=` + strconv.Itoa(d.seq) + `;
- const diagnose=detail=>{detail='probe '+probe+': '+detail;
- if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
- send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
- try {const result=(` + expression + `);
- if(result===true) {send(` + strconv.Quote("wails:event:emit:"+name+":matched") + `);
- if(document.hidden) diagnose(JSON.stringify({paintBlocked:'document-hidden',visibility:document.visibilityState,documentFocused:document.hasFocus()}));
- requestAnimationFrame(() => requestAnimationFrame(() => send(` + strconv.Quote("wails:event:emit:"+name) + `)));}
- else diagnose(typeof result==='string' ? result : JSON.stringify(result));
- } catch(e) {diagnose(JSON.stringify({probeError:String(e)}))}
- finally {send(` + strconv.Quote("wails:event:emit:"+name+":evaluated") + `)}
- })()`
+
 	err := guitest.Wait(d.ctx, "DOM probe "+strconv.Itoa(d.seq), func() bool {
 		select {
 		case <-ack:
@@ -87,12 +74,59 @@ func (d *guiTestDriver) probe(expression string) error {
 	return err
 }
 
-func (d *guiTestDriver) click(id string) error {
-	if err := d.probe(`(() => {const id=` + strconv.Quote(id) + `,e=el(id);return check(e?.disabled === false,{id,exists:!!e,disabled:e?.disabled ?? null})})()`); err != nil {
-		return err
+// State assertions wait for paint; dispatch receipts must survive a click that
+// starts native shutdown before the next animation frame.
+func guiTestProbeScript(expression string, sequence int, waitForPaint bool) string {
+	name := "guitest:probe:" + strconv.Itoa(sequence)
+	acknowledge := `send(` + strconv.Quote("wails:event:emit:"+name) + `);`
+	if waitForPaint {
+		acknowledge = `if(document.hidden) diagnose(JSON.stringify({paintBlocked:'document-hidden',visibility:document.visibilityState,documentFocused:document.hasFocus()}));
+ requestAnimationFrame(() => requestAnimationFrame(() => {` + acknowledge + `}));`
 	}
-	d.w.ExecJS(`(() => {const e=document.getElementById(` + strconv.Quote(id) + `); e.scrollIntoView({block:'center'}); e.focus(); e.click();})()`)
-	return nil
+	return `(() => {
+ const send=m=>{if(window.chrome?.webview) window.chrome.webview.postMessage(m);
+ else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
+ else if(window.wails?.invoke) window.wails.invoke(m)};
+ const el=id=>document.getElementById(id);
+ const check=(ok,detail)=>ok ? true : detail;
+ const probe=` + strconv.Itoa(sequence) + `;
+ const diagnose=detail=>{detail='probe '+probe+': '+detail;
+ if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
+ send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
+ try {const result=(` + expression + `);
+ if(result===true) {send(` + strconv.Quote("wails:event:emit:"+name+":matched") + `);
+ ` + acknowledge + `}
+ else diagnose(typeof result==='string' ? result : JSON.stringify(result));
+ } catch(e) {diagnose(JSON.stringify({probeError:String(e)}))}
+ finally {send(` + strconv.Quote("wails:event:emit:"+name+":evaluated") + `)}
+ })()`
+}
+
+func (d *guiTestDriver) click(id string) error {
+	return d.runProbe(guiTestClickProbeScript(id, d.seq+1))
+}
+
+func guiTestClickProbeScript(id string, sequence int) string {
+	return guiTestProbeScript(guiTestClickExpression(id, sequence), sequence, false)
+}
+
+func guiTestClickExpression(id string, sequence int) string {
+	// A status poll can disable the control during the probe's paint wait.
+	// Check and click in one JS turn, and acknowledge dispatch rather than
+	// readiness. Repeated or late evaluations must never dispatch it twice.
+	return `(() => {
+ const click=` + strconv.Itoa(sequence) + `,id=` + strconv.Quote(id) + `;
+ if((window.__guitestClick ?? 0)>=click) return true;
+ const e=el(id);
+ const ready=()=>e?.disabled===false && !e.matches(':disabled');
+ const detail=()=>({id,exists:!!e,disabled:e?.disabled ?? null});
+ if(!ready()) return check(false,detail());
+ e.scrollIntoView({block:'center'}); e.focus();
+ if(!ready()) return check(false,detail());
+ window.__guitestClick=click;
+ e.click();
+ return true;
+ })()`
 }
 
 func (d *guiTestDriver) start() error {
