@@ -92,6 +92,24 @@ func TestReleaseBareAssetsAndChecksums(t *testing.T) {
 	}
 }
 
+func TestChecksumsHashEachFileAndSortByName(t *testing.T) {
+	dir := t.TempDir()
+	for name, data := range map[string]string{"a": "abc", "z": ""} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(data), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := writeChecksums(dir, []string{"z", "a"}); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "SHA256SUMS"))
+	want := "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad  a\n" +
+		"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  z\n"
+	if err != nil || string(data) != want {
+		t.Fatalf("SHA256SUMS=%q err=%v", data, err)
+	}
+}
+
 func TestReleaseDoesNotPublishFailedBuilds(t *testing.T) {
 	t.Chdir(t.TempDir())
 	err := release("v0.5.0", "revision", func(_, _, _, _ string, _ bool, path string) error {
@@ -199,9 +217,9 @@ func mustWorkingDirectory(t *testing.T) string {
 }
 
 type workflowStep struct {
-	Name, Uses, Run string
-	Env             map[string]string
-	With            map[string]string
+	Name, Uses, Run, If string
+	Env                 map[string]string
+	With                map[string]string
 }
 
 // Execute the workflow's actual run steps: validate alone, then release for each
@@ -292,6 +310,41 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 				t.Fatalf("release exit=%d build=%t want exit=97 build=true: %s", code, err == nil, output)
 			}
 		})
+	}
+}
+
+func TestWorkflowDispatchOnlyUploadsArtifacts(t *testing.T) {
+	if _, err := os.Stat(".github/workflows/release.yml"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	data, err := os.ReadFile(".github/workflows/release.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		On   map[string]any
+		Jobs map[string]struct{ Steps []workflowStep }
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := workflow.On["workflow_dispatch"]; !ok {
+		t.Fatal("missing artifact-only dispatch")
+	}
+	upload, publish := false, false
+	for _, step := range workflow.Jobs["release"].Steps {
+		if strings.HasPrefix(step.Uses, "actions/upload-artifact@") {
+			upload = true
+		}
+		if strings.Contains(step.With["script"], "createRelease") {
+			publish = true
+			if step.If != "github.event_name == 'push'" {
+				t.Fatal("manual dispatch can create a release")
+			}
+		}
+	}
+	if !upload || !publish {
+		t.Fatal("missing final artifact upload or guarded release creation")
 	}
 }
 

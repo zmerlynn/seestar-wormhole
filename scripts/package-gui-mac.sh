@@ -54,9 +54,12 @@ else
 fi
 codesign --verify --strict --verbose=2 "$task_app"
 mkdir -p "$task_temp/image" "$(dirname "$task_dmg")"
+# Credentials stay private; the mounted payload must be readable by every user.
+chmod 0755 "$task_temp/image"
 ditto "$task_app" "$task_temp/image/seestar-wormhole.app"
 ln -s /Applications "$task_temp/image/Applications"
 cp "$task_scripts/../LICENSE" "$task_scripts/../NOTICE" "$task_temp/image/"
+chmod 0644 "$task_temp/image/LICENSE" "$task_temp/image/NOTICE"
 hdiutil create -volname seestar-wormhole -srcfolder "$task_temp/image" -ov -format UDZO "$task_dmg"
 if [[ $task_present != 0 ]]; then
  codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$task_keychain" --timestamp "$task_dmg"

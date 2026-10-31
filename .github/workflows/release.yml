@@ -62,10 +62,11 @@ jobs:
           # Windows Authenticode signing would go here.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-portable
+          name: release-part-portable
           path: dist/*
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
 
   linux-ui:
     needs: [validate, verify]
@@ -105,10 +106,11 @@ jobs:
             -o "dist/seestar-wormhole_${RELEASE_VERSION}_linux_${GOARCH}" ./cmd/seestar-wormhole
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-linux-${{ matrix.arch }}
+          name: release-part-linux-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
 
   macos-ui:
     needs: [validate, verify]
@@ -143,10 +145,11 @@ jobs:
           if [[ -e "$keychain" ]]; then security delete-keychain "$keychain"; fi
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: release-macos
+          name: release-part-macos
           path: ${{ runner.temp }}/mac-ui/*.dmg
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
 
   release:
     needs: [validate, verify, portable, linux-ui, macos-ui]
@@ -162,7 +165,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
-          pattern: release-*
+          pattern: release-part-*
           path: dist
           merge-multiple: true
       - name: Verify complete inventory and write checksums
@@ -183,6 +186,7 @@ jobs:
           path: dist/*
           if-no-files-found: error
           retention-days: 7
+          overwrite: true
       - name: Create draft release and upload executables, DMG and checksums
         if: github.event_name == 'push'
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
