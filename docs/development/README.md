@@ -167,11 +167,11 @@ Build from the checked-in vendor tree with `-mod=vendor`. The vendor tree is
 exactly what `go mod tidy` and `go mod vendor` produce; CI regenerates it and
 fails on any difference, so vendored files are never edited by hand.
 
-The [Windows discovery dependency](../reference.md#lan-discovery) is carried
-as an x/net fork.
-The `replace` directive in `go.mod` pins a tagged fork release, so module and
-vendoring commands resolve it through the module proxy like any other
-dependency. The fork retains the `golang.org/x/net` module path and BSD license.
+[Windows discovery](../reference.md#lan-discovery) uses
+[github.com/zmerlynn/pktinfo](https://github.com/zmerlynn/pktinfo), a small
+BSD-licensed module that adds Windows packet information controls to x/net's
+`ipv4.PacketConn` until x/net supports them. It is an ordinary requirement, with
+no `replace` directive, so x/net updates like any other dependency.
 
 ## Licenses and generated notices
 

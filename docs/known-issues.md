@@ -47,12 +47,12 @@ without new evidence will be closed with a link to this page.
   and reinstalling the binary is manual; see [supported
   versions](../SECURITY.md#supported-versions) and the [system service
   setup](always-on.md#a-systemd-service).
-- The x/net fork remains pinned while upstream CLs [853705](https://go.dev/cl/853705)
-  and [853706](https://go.dev/cl/853706) are pending, and needs maintenance until then. Its Windows
-  successful-send-count workaround goes once the minimum supported Go version
-  includes the fix. The fork's CI was run on a
-  child commit that changed workflow triggers only; there has been no native
-  Windows arm64 run. See [Windows discovery](reference.md#windows).
+- Windows discovery depends on the pktinfo module until upstream CLs
+  [853705](https://go.dev/cl/853705) and [853706](https://go.dev/cl/853706)
+  land in x/net. Its Windows successful-send-count workaround goes once the
+  minimum supported Go version includes the fix. Its CI runs Windows amd64 and
+  386; there has been no native Windows arm64 run. See [Windows
+  discovery](reference.md#windows).
 
 ## Platforms and testing
 

@@ -117,6 +117,13 @@
     ]
   },
   {
+    "Path": "github.com/zmerlynn/pktinfo",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/zmerlynn/pktinfo/LICENSE"
+    ]
+  },
+  {
     "Path": "go.yaml.in/yaml/v3",
     "SPDX": "MIT AND Apache-2.0",
     "Files": [

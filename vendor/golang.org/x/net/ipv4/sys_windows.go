@@ -29,12 +29,9 @@ type ipMreqSource struct {
 
 // See http://msdn.microsoft.com/en-us/library/windows/desktop/ms738586(v=vs.85).aspx
 var (
-	ctlOpts = [ctlMax]ctlOpt{
-		ctlPacketInfo: {name: windows.IP_PKTINFO, length: sizeofInetPktinfo, marshal: marshalPacketInfo, parse: parsePacketInfo},
-	}
+	ctlOpts = [ctlMax]ctlOpt{}
 
 	sockOpts = map[int]*sockOpt{
-		ssoPacketInfo:         {Option: socket.Option{Level: windows.IPPROTO_IP, Name: windows.IP_PKTINFO, Len: 4}},
 		ssoTOS:                {Option: socket.Option{Level: iana.ProtocolIP, Name: windows.IP_TOS, Len: 4}},
 		ssoTTL:                {Option: socket.Option{Level: iana.ProtocolIP, Name: windows.IP_TTL, Len: 4}},
 		ssoMulticastTTL:       {Option: socket.Option{Level: iana.ProtocolIP, Name: windows.IP_MULTICAST_TTL, Len: 4}},
