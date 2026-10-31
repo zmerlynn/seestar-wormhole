@@ -3,92 +3,251 @@
 package main
 
 import (
+	"archive/tar"
+	"archive/zip"
 	"bytes"
+	"compress/gzip"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"go.yaml.in/yaml/v3"
 )
 
+var archiveTime = time.Unix(1793441237, 0).UTC()
+
 func TestReleaseAssetNames(t *testing.T) {
 	want := []string{
-		"seestar-wormhole-cli_v0.5.0_darwin_amd64", "seestar-wormhole-cli_v0.5.0_darwin_arm64",
-		"seestar-wormhole-cli_v0.5.0_linux_amd64", "seestar-wormhole-cli_v0.5.0_linux_arm64",
-		"seestar-wormhole-cli_v0.5.0_windows_amd64.exe", "seestar-wormhole-cli_v0.5.0_windows_arm64.exe",
 		"seestar-wormhole_v0.5.0_darwin_universal.dmg",
-		"seestar-wormhole_v0.5.0_linux_amd64", "seestar-wormhole_v0.5.0_linux_arm64",
-		"seestar-wormhole_v0.5.0_windows_amd64.exe", "seestar-wormhole_v0.5.0_windows_arm64.exe",
+		"seestar-wormhole_v0.5.0_linux_amd64.tar.gz", "seestar-wormhole_v0.5.0_linux_arm64.tar.gz",
+		"seestar-wormhole_v0.5.0_windows_amd64.zip", "seestar-wormhole_v0.5.0_windows_arm64.zip",
 	}
 	if got := expectedAssets("v0.5.0"); !slices.Equal(got, want) {
 		t.Fatalf("assets=%v, want %v", got, want)
 	}
-	if got := assetName("v0.5.0-rc.1", "windows", "arm64", false); got != "seestar-wormhole-cli_v0.5.0-rc.1_windows_arm64.exe" {
+	if got := archiveName("v0.5.0-rc.1", "windows", "arm64"); got != "seestar-wormhole_v0.5.0-rc.1_windows_arm64.zip" {
 		t.Fatal(got)
 	}
 }
 
-func TestReleaseBareAssetsAndChecksums(t *testing.T) {
+func archiveFixtures(t *testing.T) {
+	t.Helper()
+	for _, name := range []string{"LICENSE", "NOTICE"} {
+		if err := os.WriteFile(name, []byte(name+" fixture"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func fakeBuild(version, revision, goos, arch string, gui bool, path string) error {
+	return os.WriteFile(path, []byte(fmt.Sprintf("%s %s %s %s gui=%t", version, revision, goos, arch, gui)), 0600)
+}
+
+func nativeParts(t *testing.T) {
+	t.Helper()
+	for _, arch := range []string{"amd64", "arm64"} {
+		if err := fakeBuild("v0.5.0", "revision", "linux", arch, true, filepath.Join("dist/parts", assetName("v0.5.0", "linux", arch, true))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile("dist/parts/seestar-wormhole_v0.5.0_darwin_universal.dmg", []byte("synthetic dmg"), 0600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestReleaseArchivesAndChecksums(t *testing.T) {
 	t.Chdir(t.TempDir())
+	archiveFixtures(t)
 	builds := 0
-	err := release("v0.5.0", "revision", func(version, revision, goos, arch string, gui bool, path string) error {
+	if err := release("v0.5.0", "revision", archiveTime, func(v, r, goos, arch string, gui bool, path string) error {
 		builds++
 		if gui && goos != "windows" {
 			t.Fatal("container attempted native UI build")
 		}
-		return os.WriteFile(path, []byte("abc"), 0755)
-	})
-	if err != nil {
+		return fakeBuild(v, r, goos, arch, gui, path)
+	}); err != nil {
 		t.Fatal(err)
 	}
 	if builds != 8 {
 		t.Fatalf("builds=%d, want eight", builds)
 	}
-	check := func(want int) {
-		t.Helper()
-		data, err := os.ReadFile("dist/SHA256SUMS")
-		if err != nil {
-			t.Fatal(err)
-		}
-		lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
-		if len(lines) != want || !slices.IsSorted(lines) {
-			t.Fatalf("checksums=%s", data)
-		}
-		for _, line := range lines {
-			hash, name, ok := strings.Cut(line, "  ")
-			// Literal known SHA-256 for abc: no checksum helper shared with production.
-			if !ok || hash != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" {
-				t.Fatalf("checksum line %q", line)
-			}
-			data, err := os.ReadFile(filepath.Join("dist", name))
-			if err != nil || string(data) != "abc" {
-				t.Fatalf("bare asset %s: %q %v", name, data, err)
-			}
-		}
+	if _, err := os.Stat("dist/SHA256SUMS"); !os.IsNotExist(err) {
+		t.Fatal("portable build must not publish a partial checksum file")
 	}
-	check(8)
-	if err := finalChecksums("v0.5.0"); err == nil {
+	if err := finalChecksums("v0.5.0", archiveTime); err == nil {
 		t.Fatal("accepted incomplete release")
 	}
-	for _, name := range expectedAssets("v0.5.0") {
-		if err := os.WriteFile(filepath.Join("dist", name), []byte("abc"), 0755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := finalChecksums("v0.5.0"); err != nil {
+	nativeParts(t)
+	if err := os.WriteFile("dist/parts/unexpected", nil, 0644); err != nil {
 		t.Fatal(err)
 	}
-	check(11)
+	if err := finalChecksums("v0.5.0", archiveTime); err == nil {
+		t.Fatal("accepted unexpected part")
+	}
+	if err := os.Remove("dist/parts/unexpected"); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile("dist/unexpected", nil, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := finalChecksums("v0.5.0"); err == nil {
+	if err := finalChecksums("v0.5.0", archiveTime); err == nil {
 		t.Fatal("accepted unexpected asset")
+	}
+	if err := os.Remove("dist/unexpected"); err != nil {
+		t.Fatal(err)
+	}
+	if err := finalChecksums("v0.5.0", archiveTime); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir("dist")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"SHA256SUMS", "seestar-wormhole_v0.5.0_darwin_universal.dmg", "seestar-wormhole_v0.5.0_linux_amd64.tar.gz", "seestar-wormhole_v0.5.0_linux_arm64.tar.gz", "seestar-wormhole_v0.5.0_windows_amd64.zip", "seestar-wormhole_v0.5.0_windows_arm64.zip"}
+	var got []string
+	for _, entry := range entries {
+		got = append(got, entry.Name())
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("final inventory=%v", got)
+	}
+	var sums strings.Builder
+	for _, name := range want[1:] {
+		data, err := os.ReadFile(filepath.Join("dist", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(&sums, "%x  %s\n", sha256.Sum256(data), name)
+	}
+	data, err := os.ReadFile("dist/SHA256SUMS")
+	if err != nil || string(data) != sums.String() {
+		t.Fatalf("checksums=%s err=%v", data, err)
+	}
+}
+
+func TestArchiveContentsModesAndDeterminism(t *testing.T) {
+	t.Chdir(t.TempDir())
+	archiveFixtures(t)
+	if err := os.Mkdir("parts", 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, goos := range []string{"linux", "windows"} {
+		for _, arch := range []string{"amd64", "arm64"} {
+			for _, gui := range []bool{false, true} {
+				if err := fakeBuild("v0.5.0", "revision", goos, arch, gui, filepath.Join("parts", assetName("v0.5.0", goos, arch, gui))); err != nil {
+					t.Fatal(err)
+				}
+			}
+			name := archiveName("v0.5.0", goos, arch)
+			var first []byte
+			for run := range 2 {
+				// Change source metadata: the archive must ignore it.
+				for _, input := range []string{"LICENSE", "NOTICE", filepath.Join("parts", assetName("v0.5.0", goos, arch, true)), filepath.Join("parts", assetName("v0.5.0", goos, arch, false))} {
+					if err := os.Chtimes(input, archiveTime.Add(time.Duration(run)*time.Hour), archiveTime.Add(time.Duration(run)*time.Hour)); err != nil {
+						t.Fatal(err)
+					}
+					if err := os.Chmod(input, os.FileMode(0600+run*4)); err != nil {
+						t.Fatal(err)
+					}
+				}
+				if err := writeArchive(".", "parts", "v0.5.0", goos, arch, archiveTime); err != nil {
+					t.Fatal(err)
+				}
+				data, err := os.ReadFile(name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if run == 0 {
+					first = data
+				} else if !bytes.Equal(first, data) {
+					t.Fatalf("%s is not deterministic", name)
+				}
+			}
+			ext := ""
+			if goos == "windows" {
+				ext = ".exe"
+			}
+			wantNames := []string{"LICENSE", "NOTICE", "seestar-wormhole" + ext, "seestar-wormhole-cli" + ext}
+			if goos == "windows" {
+				wantNames = []string{"LICENSE", "NOTICE", "seestar-wormhole-cli.exe", "seestar-wormhole.exe"}
+			}
+			var names []string
+			check := func(name string, mode os.FileMode, stamp time.Time, data []byte) {
+				t.Helper()
+				names = append(names, name)
+				wantMode, wantData := os.FileMode(0644), name+" fixture"
+				if strings.HasPrefix(name, "seestar-wormhole") {
+					wantMode = 0755
+					wantData = fmt.Sprintf("v0.5.0 revision %s %s gui=%t", goos, arch, !strings.Contains(name, "-cli"))
+				}
+				if mode != wantMode || !stamp.Equal(archiveTime) || string(data) != wantData {
+					t.Fatalf("%s mode=%v time=%v data=%q", name, mode, stamp, data)
+				}
+			}
+			if goos == "windows" {
+				zr, err := zip.NewReader(bytes.NewReader(first), int64(len(first)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, f := range zr.File {
+					if f.Method != zip.Deflate {
+						t.Fatal("zip must use deflate")
+					}
+					r, err := f.Open()
+					if err != nil {
+						t.Fatal(err)
+					}
+					data, err := io.ReadAll(r)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if err := r.Close(); err != nil {
+						t.Fatal(err)
+					}
+					check(f.Name, f.Mode(), f.Modified, data)
+				}
+			} else {
+				gz, err := gzip.NewReader(bytes.NewReader(first))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if gz.Name != "" || !gz.ModTime.IsZero() || len(gz.Extra) != 0 || gz.Comment != "" {
+					t.Fatal("nonempty gzip metadata")
+				}
+				tr := tar.NewReader(gz)
+				for {
+					h, err := tr.Next()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						t.Fatal(err)
+					}
+					if h.Uid != 0 || h.Gid != 0 || h.Uname != "" || h.Gname != "" || h.Typeflag != tar.TypeReg || !h.AccessTime.IsZero() || !h.ChangeTime.IsZero() {
+						t.Fatalf("tar metadata: %+v", h)
+					}
+					data, err := io.ReadAll(tr)
+					if err != nil {
+						t.Fatal(err)
+					}
+					check(h.Name, os.FileMode(h.Mode), h.ModTime, data)
+				}
+				if err := gz.Close(); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if !slices.Equal(names, wantNames) {
+				t.Fatalf("members=%v, want %v", names, wantNames)
+			}
+		}
 	}
 }
 
@@ -112,7 +271,7 @@ func TestChecksumsHashEachFileAndSortByName(t *testing.T) {
 
 func TestReleaseDoesNotPublishFailedBuilds(t *testing.T) {
 	t.Chdir(t.TempDir())
-	err := release("v0.5.0", "revision", func(_, _, _, _ string, _ bool, path string) error {
+	err := release("v0.5.0", "revision", archiveTime, func(_, _, _, _ string, _ bool, path string) error {
 		if strings.Contains(path, "arm64") {
 			return errors.New("build failed")
 		}
@@ -124,6 +283,40 @@ func TestReleaseDoesNotPublishFailedBuilds(t *testing.T) {
 	entries, err := os.ReadDir("dist")
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("published incomplete output: %v %v", entries, err)
+	}
+}
+
+func TestFinalAssemblyFailureKeepsParts(t *testing.T) {
+	t.Chdir(t.TempDir())
+	archiveFixtures(t)
+	if err := release("v0.5.0", "revision", archiveTime, fakeBuild); err != nil {
+		t.Fatal(err)
+	}
+	nativeParts(t)
+	name := "dist/seestar-wormhole_v0.5.0_windows_amd64.zip"
+	before, err := os.ReadFile(name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove("NOTICE"); err != nil {
+		t.Fatal(err)
+	}
+	if err := finalChecksums("v0.5.0", archiveTime); err == nil {
+		t.Fatal("ignored archive failure")
+	}
+	after, err := os.ReadFile(name)
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatal("failed assembly replaced published output")
+	}
+	if _, err := os.Stat("dist/SHA256SUMS"); !os.IsNotExist(err) {
+		t.Fatal("failed assembly published checksums")
+	}
+	if _, err := os.Stat("dist/parts/seestar-wormhole-cli_v0.5.0_linux_amd64"); err != nil {
+		t.Fatal("failed assembly lost parts")
+	}
+	stages, err := filepath.Glob("dist/.release-*")
+	if err != nil || len(stages) != 0 {
+		t.Fatalf("staging leak: %v %v", stages, err)
 	}
 }
 

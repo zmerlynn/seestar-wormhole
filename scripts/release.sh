@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run with the same Go toolchain for byte-identical CLI downloads.
+# Run with the same Go toolchain for byte-identical CLI executables.
 set -euo pipefail
 task_validate_only=false
 task_mode=build
