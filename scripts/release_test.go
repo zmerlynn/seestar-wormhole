@@ -541,6 +541,63 @@ func TestWorkflowDispatchOnlyUploadsArtifacts(t *testing.T) {
 	}
 }
 
+func TestWorkflowArchiveAssembly(t *testing.T) {
+	if _, err := os.Stat(".github/workflows/release.yml"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	data, err := os.ReadFile(".github/workflows/release.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Needs []string
+			Steps []workflowStep
+		}
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(workflow.Jobs["macos-ui"].Needs, "portable") {
+		t.Fatal("Mac must reuse portable Darwin CLIs")
+	}
+	downloaded := false
+	for _, step := range workflow.Jobs["macos-ui"].Steps {
+		if strings.HasPrefix(step.Uses, "actions/download-artifact@") && step.With["name"] == "release-part-portable" && step.With["path"] == "${{ runner.temp }}/mac-ui/cli" {
+			downloaded = true
+		}
+	}
+	if !downloaded {
+		t.Fatal("missing Mac CLI parts dependency")
+	}
+	for _, step := range workflow.Jobs["portable"].Steps {
+		if strings.HasPrefix(step.Uses, "actions/upload-artifact@") && step.With["path"] != "dist/parts/*" {
+			t.Fatal("portable must transfer raw parts")
+		}
+	}
+	assembled, attested := false, false
+	for _, step := range workflow.Jobs["release"].Steps {
+		if strings.HasPrefix(step.Uses, "actions/download-artifact@") && (step.With["path"] != "dist/parts" || step.With["pattern"] != "release-part-*") {
+			t.Fatal("final job must gather only builder parts")
+		}
+		if strings.Contains(step.Run, "./scripts/release.sh --checksums") && strings.Contains(step.Run, "sha256sum --check SHA256SUMS") {
+			assembled = true
+		}
+		if strings.HasPrefix(step.Uses, "actions/attest-build-provenance@") {
+			if !assembled || step.With["subject-checksums"] != "dist/SHA256SUMS" {
+				t.Fatal("attest only assembled downloads using the single checksum file")
+			}
+			attested = true
+		}
+		if strings.Contains(step.With["script"], "createRelease") && !strings.Contains(step.With["script"], "files.length !== 6") {
+			t.Fatal("release must contain five downloads plus SHA256SUMS")
+		}
+	}
+	if !assembled || !attested {
+		t.Fatal("missing final assembly or attestation")
+	}
+}
+
 func TestWorkflowYAML(t *testing.T) {
 	if _, err := os.Stat(".github/workflows"); os.IsNotExist(err) {
 		t.Chdir("..")
