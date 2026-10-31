@@ -19,8 +19,11 @@ Daily-use coverage is on firmware 9.31, with control testing on 9.75; see [devic
 Download the archive for your platform from the
 [Releases page](https://github.com/zmerlynn/seestar-wormhole/releases) and
 unpack it. On macOS, open the `.dmg` and drag seestar-wormhole to
-Applications; until releases are signed, right-click it and choose **Open**
-the first time.
+Applications.
+
+Windows downloads are not code-signed, so Windows may show
+"Windows protected your PC". Choose **More info**, then
+**Run anyway**.
 
 Every download has both programs: `seestar-wormhole` is the UI, and
 `seestar-wormhole-cli` is for terminals, scripts and services. On Linux the
@@ -64,8 +67,8 @@ the phone app and how to copy images.
 ![seestar-wormhole connected to a Seestar, with the phone-app and copying steps](docs/images/gui-connected.png)
 
 Settings other than the password are saved after a successful connection;
-**Save password to keychain** is optional. **Stop** releases the telescope so the
-app's Remote mode can use it; **Quit app** exits. See [the UI reference](docs/reference.md#ui).
+**Save password to keychain** is optional. **Stop** releases the telescope so
+the Seestar app's Remote mode can use it; **Quit** exits. See [Using the UI](docs/ui.md).
 
 ## Use the command line
 

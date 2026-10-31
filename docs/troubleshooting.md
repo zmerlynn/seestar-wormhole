@@ -4,9 +4,11 @@
 
 When the proxy exits with failure, inspect the final `proxy failed` record and its `reason`; see [failure diagnosis](reference.md#proxy-final-failure).
 
-**macOS won't run it.** It came from the internet, so macOS quarantines it.
-Allow it under System Settings → Privacy & Security, or run
-`xattr -d com.apple.quarantine seestar-wormhole`.
+**macOS won't run it.** A notarized download opens after macOS's one-time
+"downloaded from the Internet" prompt. If a copy still refuses to run (for
+example, the CLI copied somewhere unusual), allow it under System Settings →
+Privacy & Security, or run `xattr -d com.apple.quarantine seestar-wormhole-cli`
+on that copy.
 
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
 `busy` means the [cloud reports remote allocation as busy](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#observed-single-session-enforcement).
@@ -60,15 +62,14 @@ rather keep before posting.
 ## The native window didn't open
 
 Launch `seestar-wormhole` from the unpacked archive (or the Mac app), and check any startup error. `seestar-wormhole-cli` has no UI command or browser fallback. On Linux, see [native window prerequisites](#linux-native-window) below. If a headless host reports a loader error about `libgtk` or WebKit, use `seestar-wormhole-cli` from the same archive and update the service's executable path.
-On macOS, use Gatekeeper's right-click Open until signed releases are available.
 Launching the UI again with the same state directory brings its window forward.
-See [native controls](reference.md#ui).
+See [Using the UI](ui.md).
 
 ## Saved settings prevent startup
 
-The native app shows **Could not open seestar-wormhole** with the refused
+The UI shows **Could not open seestar-wormhole** with the refused
 settings file's location. Check this file, then reopen seestar-wormhole.
-The app leaves the file untouched. Default locations are:
+seestar-wormhole leaves the file untouched. Default locations are:
 
 - macOS: `~/Library/Application Support/seestar-wormhole/config.json`
 - Linux: `$XDG_CONFIG_HOME/seestar-wormhole/config.json`, or
@@ -90,7 +91,7 @@ The GUI build requires GTK 4, WebKitGTK 6.0, and bubblewrap (on Ubuntu:
 `libgtk-4-1`, `libwebkitgtk-6.0-4`, and `bubblewrap`). WebKit's sandbox needs
 permission to create unprivileged user namespaces. Ubuntu 24.04's AppArmor
 restriction can deny bubblewrap's uid-map setup even with the distro package
-installed. The app checks bubblewrap before starting WebKit and reports
+installed. The UI checks bubblewrap before starting WebKit and reports
 “WebKit sandbox unavailable” if this prerequisite fails.
 
 Use a distribution-supported AppArmor profile that permits the sandbox for

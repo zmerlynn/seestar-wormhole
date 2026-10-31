@@ -250,7 +250,7 @@ function render(s) {
   active = s.active;
   text('status',s.status);
   $('last-known').hidden = true;
-  $('quit').textContent = s.native ? 'Quit app' : 'Quit service';
+  $('quit').textContent = s.native ? 'Quit' : 'Quit service';
   $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';
   $('retry-storage').hidden = !s.save_failed;
   if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Settings could not be saved; they may reset next time.');

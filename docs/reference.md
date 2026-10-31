@@ -6,7 +6,7 @@ failure rule. For setup examples, see [phone app](phone-app.md),
 [other clients](clients.md). The [protocol guide](protocol.md) connects the
 proxy's wire behavior and local policy to the v1 specification.
 
-- [ui](#ui): the UI, in a native window
+- [Using the UI](ui.md): setup and controls
 - [proxy](#proxy): listeners and flags
 - [discovery](#discovery): scan replies without a cloud session
 - [licenses](#licenses)
@@ -25,141 +25,43 @@ seestar-wormhole
 seestar-wormhole ui [--state-dir PATH]
 ```
 
-![The UI before connecting: Connect, Use with, and the account fields](images/gui-setup.png)
+Open the UI; see [Using the UI](ui.md) for setup and controls.
 
-Bare launch of the UI executable opens the UI, as does `ui`. Only UI builds
-(`gui,production` in releases) have `ui`, and they show it in a native window.
-The CLI has no UI command and never opens a browser. Enter credentials and
-options, then press Connect. Loading settings never starts a proxy. Stop releases
-the session and leaves the page usable; Quit or Ctrl+C releases it and exits.
-Closing the terminal window also quits; on Windows, cleanup is best effort within
-the OS deadline.
-A credential or authorization rejection ends the run after cleanup. Correct the
-credentials and press Connect again. Closing the native window requests quit and waits for bounded release.
-Native application quit and confirmed Windows session end also join release;
-a canceled Windows session end leaves the app running. The OS can impose a
-shorter shutdown deadline. Launch again with the same state directory to bring
-the native window forward. A separately running `proxy` command is independent;
-conflicting forwarding ports must be freed before starting another run.
+## proxy
 
-Advanced shows ten fixed service rows with Local port, Seestar port, and
-Purpose columns. Local ports are on your computer. Leave **Local port** empty
-to turn off a service. Each enabled local port must be unique and between 1 and
-65535. **Phone on this network** uses local port 80 for Seestar port 80;
-**This computer only** uses 8080. SMB uses local port 4445 for Seestar port 445.
-The CLI retains arbitrary port mappings.
-Existing state files are never overwritten on a failed load.
+```sh
+seestar-wormhole-cli proxy
+```
 
-The default state root is `os.UserConfigDir()/seestar-wormhole`: on Linux,
-`$XDG_CONFIG_HOME/seestar-wormhole` or `$HOME/.config/seestar-wormhole`; on macOS,
-`$HOME/Library/Application Support/seestar-wormhole`; on Windows,
-`%APPDATA%\seestar-wormhole`. `--state-dir PATH` selects an existing installation
-root without moving or copying its identity. The files are:
+For the desktop controls, see [Using the UI](ui.md).
 
-| File | Purpose |
-|---|---|
-| `config.json` | Non-secret settings; see the version 1 format below. |
-| `InterProcessKV/device_uuid` | The existing [installation identity](#installation-identity), shared with `proxy --state-dir PATH`. No second identity or migration. |
-| `gui.log`, `gui.log.1` | Sanitized GUI events as JSON lines (UTC time, message, code, classified phase/reason), at most 64 KiB each, with one rotation. |
-| `ui.lock` | Process-lifetime UI lock. |
-| `ui-runtime.json` | Private port and per-process control token; removed on orderly exit. |
-| `webview-<random>/` | Fresh private Windows GUI engine profile for each launch. Best-effort removal after window shutdown and on later launches; locked stale profiles never block startup. |
-| `ui-open.html` | Private browser bootstrap with the control capability; the opener receives only its path. Removed when the owning process exits normally. |
+The app cannot set the device's site, clock or time zone through the proxy.
+See [site protection](#site-protection). The command takes no positional arguments. It forwards TCP through one shared
+remote session. Clients can issue device commands and read files; there is no
+local authentication or read-only command whitelist. Local connections are
+plaintext. This is not an ALPACA server. Keep listeners on
+loopback or a trusted network behind a firewall.
 
-`config.json` uses version 1: `version` is required and must be `1`; absent members default to `bind: "127.0.0.1"`, `discovery: false`, `idle: "0"` (a nonnegative Go duration string, such as `"2m"`), `serial: ""`, `model: ""`, `ports: []` (standard service mappings), `email: ""`, and `remember_password: false`. Port overrides are objects with lowercase numeric `local` and `device` members (0–65535; local 0 disables a service, device must name a standard service). Unknown members are preserved on save. Reads are limited to 64 KiB and never rewrite the file; a missing or unsupported version, including a newer version, is refused and left untouched.
+### Proxy flags
 
-Successful Connect saves its non-secret settings snapshot atomically: after the first Ready state with local listeners/discovery initialized in Keep connected mode, or after authentication, telescope selection, and local initialization in connect-when-needed mode. Failed attempts preserve the last saved settings. A storage failure keeps the connection running and offers Retry saving settings for that snapshot. A newer successful save supersedes an older retry. On Unix the directory must be
-private (`0700`) and files `0600`; unsafe existing permissions or links are
-refused. Windows uses the same protected current-user/SYSTEM ACL policy as
-installation identity. Parent directories must be trusted. The CLI's default
-identity remains memory-only; pass the same state root explicitly to share it.
+| Flag | Default | Meaning |
+|---|---|---|
+| `--config` | `false` | Read the [UI's saved settings](ui.md#where-settings-live) and share its state root and installation identity. Flags and environment credentials override saved choices. |
+| `--bind` | `127.0.0.1` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
+| `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
+| `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
+| `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
+| `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. |
+| `--lan-discovery-all-interfaces` | `false` | Include VPN and virtual adapters; requires `--lan-discovery`. |
 
-Details shows effective settings as JSON and recent events in local time. Copy
-diagnostic summary copies one JSON object with app/version, those settings, and
-events in UTC. It excludes account/device identifiers, addresses, secrets, and
-paths. The private log path remains visible on the page.
+See also [identity and logging flags](#identity-and-logging-flags).
 
-The page uses an independent `127.0.0.1:0` listener even when the proxy bind is
-wider, with a random 256-bit token in the URL fragment and a token header on every
-API request. Exact Host checks, exact Origin checks on JSON POST writes, bounded
-requests, no framing, a restrictive content policy, and no-store/no-referrer
-headers protect the control page from other websites; local processes running
-as the same user remain trusted. Treat the private URL as a control capability.
-Browser openers receive a private HTML file that redirects to the page, so the
-capability is absent from opener arguments. If opening fails, the app prints
-the private URL for manual use; keep that output private. The bootstrap can
-remain after a crash and is replaced on the next browser launch.
+### Use saved settings headless
 
-Known native-window limitation: Wails currently exposes no cancellable policy
-hooks for navigation, new windows, or external drops on all three platforms.
-Dropping a file or link can replace the controls with another page; an engine
-popup can open another view or browser window. A page from another origin cannot
-read the control capability from the original page or make authenticated control
-requests. The Wails command bridge is blocked: its separate asset/runtime
-transport returns 404. These protections do not prevent navigation or popups;
-relaunch the app to return to its controls. A second launch restores the original
-control page before showing and focusing the existing window. Native context menus
-retain the engine defaults.
-
-The native engines also manage browser data. Windows uses `webview-<random>/` above
-and waits up to two seconds for profile cleanup, printing a warning if files
-remain locked without changing the normal exit status. Each launch uses a new
-profile and attempts to remove older profiles, including the former `webview/`.
-Leftover engine cache and session files remain under the private state root
-until a later launch finds them unlocked (or the user removes them after exit).
-Profiles with unsafe permissions or links are left untouched for manual removal.
-macOS WKWebView and Linux WebKitGTK use their default persistent stores: the vendored Wails options expose no nonpersistent data store or
-ephemeral network session. Those stores are outside the state root and are not
-cleared on exit. The page uses sessionStorage for reload authorization and sets
-no cookies or localStorage; no-store headers do not guarantee that an engine
-writes no session/cache data. Engine file retention needs native verification.
-
-First run selects **Phone on this network**: all-network listening, LAN
-discovery, and local port 80 to Seestar port 80. The trust warning appears
-before Connect; loading never starts a session. **This computer only** selects
-loopback, disables discovery, and uses local port 8080 for HTTP. Existing
-saved settings retain their exposure and appear as **This computer only** or Custom.
-Advanced contains telescope serial/model selection, connection timing and idle
-minutes, Listen on, discovery, and the fixed port table. Editing network or port
-choices selects Custom. Choosing another setup immediately replaces those
-network and port settings.
-
-Passwords stay in memory unless **Save password to keychain** is explicitly
-chosen. Connect never writes a typed password to keychain. A successful save
-immediately persists the email and saved-password association, without signing
-in. Relaunch shows **Saved in keychain** without reading the secret or prompting.
-Connect reads it with the existing three-second bound. The saved input is
-disabled and gray. To change the password, remove the saved password, then type
-and optionally save its replacement.
-**Remove saved password** clears memory and requests keychain deletion; failure
-retains the association and permits **Retry removal**. Removal updates the last saved settings without committing unrelated form edits. A timeout is uncertain:
-the OS request may still finish, and further keychain mutations wait for it.
-There is no plaintext fallback and no secret is returned to the page.
-
-One primary button changes from **Connect** to **Cancel**, **Stop**, or disabled
-**Stopping…**. Running replaces setup with effective read-only ports, a muted
-listen/discovery/timing summary, and small Seestar app instructions when discovery
-is on. **Details and logs** contains effective settings JSON, bounded sanitized
-events in local time, the private log path, and **Copy diagnostic summary**.
-The copied JSON excludes addresses, paths, credentials, tokens, account/device
-identifiers, and payloads. Logs contain fixed messages and categories with UTC
-time and classified failure phase/reason; no raw protocol traces. Startup errors also
-use the existing native error presentation. Windows window-engine failures
-explain that WebView2 Runtime is required.
-
-The rolling log appends fixed events without decoding prior disk history. Existing
-files must pass the private-file checks and remain within the size cap; an
-oversized file is refused without modification. Only events from this launch
-appear in the page and copied summary.
-
-**Quit app** stops the proxy and closes the app; closing the window also
-quits. Field errors identify the setting to correct. Lost controls retain
-the last known state and warn that the proxy may still run.
-Linux sandbox prerequisites are in [troubleshooting](troubleshooting.md#linux-native-window).
-
-**Use saved settings headless:** after successful Connect or explicit password
-save, run `seestar-wormhole-cli proxy --config` (add `--state-dir PATH` for a custom
-UI root). It reads the same [version 1 `config.json`](#ui) without rewriting it and shares the installation identity.
+After a successful connection or explicit password save in the UI, run
+`seestar-wormhole-cli proxy --config` (add `--state-dir PATH` for a custom
+UI state root). It reads the same [version 1 `config.json`](ui.md#configjson-version-1)
+without rewriting it and shares the installation identity.
 Explicit flags override saved choices, including discovery; each `-p` replaces the saved override for
 that telescope port. `SEESTAR_EMAIL` overrides the saved email. The password
 comes from `SEESTAR_PASSWORD` when set, otherwise the OS keychain entry for that
@@ -178,44 +80,6 @@ S4U (“Do not store password”) cannot access encrypted credentials: use
 Headless Linux/systemd usually has no Secret Service session; supply
 `SEESTAR_PASSWORD` through the [credentials-file recipe](always-on.md#credentials-for-a-service),
 while the email can still come from `config.json`.
-
-The status distinguishes **Connected to your Seestar** from **Waiting for an
-app to connect**. Busy and transport recovery say **Retrying automatically**.
-Cancel remains available during first connection; Stop joins cleanup.
-Ordinary completion says **Stopped. Seestar may still be releasing the session.**
-An uncertain release says **Session release could not be confirmed. If Seestar
-is occupied, wait and try Connect again.** Sign-in rejection reopens
-credential correction without deleting a saved password. Bind, discovery, HTTP
-permission, and port-conflict failures have separate safe error codes.
-
-## proxy
-
-```sh
-seestar-wormhole-cli proxy
-```
-
-For native controls, use [ui](#ui).
-
-The app cannot set the device's site, clock or time zone through the proxy.
-See [site protection](#site-protection). The command takes no positional arguments. It forwards TCP through one shared
-remote session. Clients can issue device commands and read files; there is no
-local authentication or read-only command whitelist. Local connections are
-plaintext. This is not an ALPACA server. Keep listeners on
-loopback or a trusted network behind a firewall.
-
-### Proxy flags
-
-| Flag | Default | Meaning |
-|---|---|---|
-| `--config` | `false` | Read the [UI's saved settings](#ui) and share its state root and installation identity. Flags and environment credentials override saved choices. |
-| `--bind` | `127.0.0.1` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
-| `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
-| `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
-| `--pause-threshold` | `4194304` | Per-channel receive-pressure high water in bytes, from `2` through `8388608`. See [flow control](#flow-control). |
-| `--lan-discovery` | `false` | Answer UDP 4720 scans on selected LAN interfaces. |
-| `--lan-discovery-all-interfaces` | `false` | Include VPN and virtual adapters; requires `--lan-discovery`. |
-
-See also [identity and logging flags](#identity-and-logging-flags).
 
 ### Port mappings
 
@@ -333,7 +197,7 @@ exits 1. See [NOTICE](../NOTICE) for attribution.
 
 ## Global command behavior
 
-Bare `seestar-wormhole` opens [ui](#ui) and stays running until Quit or Ctrl+C.
+Bare `seestar-wormhole` opens [the UI](ui.md) and stays running until you quit or press Ctrl+C.
 Bare `seestar-wormhole-cli` prints help and exits 0 without opening a UI or browser.
 Use `help [command]` or
 `--help`/`-h` for help. Root `--version` prints
@@ -572,7 +436,7 @@ must be regular with mode exactly `0600`; new directories use `0700`.
 The identity file refuses symlinks. First creation/empty-file repair is locked
 with a one-second acquisition bound. Existing nonempty valid identifiers are
 retained. On Windows, protected owner/SYSTEM ACLs and reparse checks apply.
-Supply trusted parent directories. The [UI](#ui) uses its persistent state root
+Supply trusted parent directories. The [UI](ui.md#where-settings-live) uses its persistent state root
 by default and shares this exact identity format.
 
 ## Logs
