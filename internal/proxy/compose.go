@@ -227,6 +227,8 @@ func (x *stack) iotcAction(a iotc.Action) {
 		switch {
 		case a.Reason == "liveness timeout":
 			reason = "liveness_timeout"
+		case a.Failures&(iotc.DeviceOffline|iotc.DeviceAsleep) != 0:
+			reason = "device_offline"
 		case a.Failures&iotc.ConnectionTimeout != 0:
 			reason = "connection_timeout"
 		case a.Failures&iotc.ServerRefused != 0:

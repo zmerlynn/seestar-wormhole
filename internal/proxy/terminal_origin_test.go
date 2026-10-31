@@ -15,6 +15,42 @@ import (
 	"testing/synctest"
 )
 
+func TestStackUnreachableStatus(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		failures iotc.FailureReason
+		reason   string
+		want     string
+	}{
+		{"offline", iotc.DeviceOffline, "", "Seestar not reachable"},
+		{"asleep", iotc.DeviceAsleep, "", "Seestar not reachable"},
+		{"offline with timeout", iotc.DeviceOffline | iotc.ConnectionTimeout, "", "Seestar not reachable"},
+		{"never answered", iotc.ConnectionTimeout, "", "Seestar not reachable"},
+		{"server refusal", iotc.ServerRefused, "", "Reconnecting"},
+		{"untyped text", 0, "device offline", "Reconnecting"},
+		{"established liveness", 0, "liveness timeout", "Reconnecting"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			x := &stack{ctx: ctx, cancel: cancel, f: &factory{s: &Session{}}}
+			for i := range x.handles {
+				x.handles[i] = &layerHandle{notices: make(chan session.Event, 1)}
+			}
+			for i := range x.phases {
+				x.phases[i] = make(chan error, 1)
+			}
+			x.iotcAction(iotc.Action{Kind: iotc.Failed, Failures: tc.failures, Reason: tc.reason})
+			s := NewStatus()
+			s.observe(session.Event{Kind: session.Failed, Err: x.wait(t.Context(), 0)}, session.Snapshot{State: session.Dialing}, session.Snapshot{State: session.Releasing})
+			s.observe(session.Event{Kind: session.Released}, session.Snapshot{State: session.Releasing}, session.Snapshot{State: session.Backoff})
+			if got := s.Text(); got != tc.want {
+				t.Fatalf("status=%q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestStackFailureHasSingleOrigin(t *testing.T) {
 	for _, phase := range []string{"rendezvous", "dtls", "rdt", "tunnel", "stack"} {
 		t.Run(phase, func(t *testing.T) {

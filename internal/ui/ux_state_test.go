@@ -19,6 +19,21 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
+func TestUnreachableStatusCopyAndEvent(t *testing.T) {
+	want := "Seestar isn't reachable. Check that it's on and connected to Wi-Fi. Retrying automatically."
+	got := uiText("Seestar not reachable")
+	if got != want {
+		t.Errorf("unreachable status=%q, want %q", got, want)
+	}
+	c := testController(nil)
+	c.log = &eventLog{}
+	c.recordProgress(got)
+	events, _, _ := c.log.snapshot()
+	if len(events) != 1 || events[0].Message != want || events[0].Code != "lifecycle" {
+		t.Errorf("unreachable event lost: %+v", events)
+	}
+}
+
 func TestRemoveFailureCanRetryRepeatedly(t *testing.T) {
 	chain := &fakeKeychain{value: testPassword, err: errors.New("private")}
 	c := &credentialStore{chain: chain, savedEmail: testSettings().Email, email: testSettings().Email, password: testPassword}

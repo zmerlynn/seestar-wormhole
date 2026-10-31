@@ -48,7 +48,7 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 	if (e.Kind == session.Failed || e.Kind == session.Released) && e.Attempt != before.Attempt && !(e.Kind == session.Released && e.Attempt == 0 && before == after) {
 		return
 	}
-	_, reason := diagnostic.Fields(e.Err, "")
+	phase, reason := diagnostic.Fields(e.Err, "")
 	if e.Kind == session.Failed || e.Kind == session.Released {
 		permanent := false
 		diagnostic.EachTerminal(e.Err, func(t *diagnostic.Terminal) { permanent = permanent || t.Permanent })
@@ -67,6 +67,11 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 			s.reason = "cleanup"
 		case errors.Is(e.Err, session.ErrBusy):
 			s.reason = "busy"
+		case (phase == "cloud" && reason == "device_offline") ||
+			(phase == "rendezvous" && (reason == "device_offline" || reason == "connection_timeout")):
+			// Retain positive evidence through cleanup, backoff and the next
+			// dial. A fresh run has no evidence and starts with Connecting.
+			s.reason = "unreachable"
 		default:
 			s.reason = "transport"
 		}
@@ -79,7 +84,7 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 		s.everReady = true
 		s.reason = ""
 	}
-	if after.State == session.Dormant && (s.reason == "busy" || s.reason == "idle" || s.reason == "transport") {
+	if after.State == session.Dormant && (s.reason == "busy" || s.reason == "idle" || s.reason == "transport" || s.reason == "unreachable") {
 		s.reason = ""
 	}
 	text := "Connecting"
@@ -98,6 +103,8 @@ func (s *Status) observe(e session.Event, before, after session.Snapshot) {
 		text = "Releasing idle session"
 	case after.State == session.Closed:
 		text = "Stopped"
+	case s.reason == "unreachable":
+		text = "Seestar not reachable"
 	case after.State == session.Backoff || s.everReady:
 		text = "Reconnecting"
 	}

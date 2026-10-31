@@ -8,10 +8,159 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
+	"net/http"
+	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 )
+
+// Delay the existing synthetic cloud's offline answer so each retry has a
+// visible dialing interval. No HTTP client or socket is used by this peer.
+type offlineStatusCloud struct {
+	r3Cloud
+	checks int
+}
+
+func (c *offlineStatusCloud) RoundTrip(r *http.Request) (*http.Response, error) {
+	if r.URL.Path == "/v1/my-device/detail" {
+		c.mu.Lock()
+		c.checks++
+		c.mu.Unlock()
+		time.Sleep(2 * time.Second)
+		return r3Response(200, `{"code":300406,"data":null}`, false), nil
+	}
+	return c.r3Cloud.RoundTrip(r)
+}
+
+func TestStatusOfflineRetries(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		peer := &offlineStatusCloud{}
+		client, err := newFixtureClient(t, cloudhttp.Config{Transport: peer})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer client.Close()
+		device, err := client.SelectDevice(t.Context(), cloudhttp.Device{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		status := NewStatus()
+		s, err := startWithRNG(t.Context(), Config{Status: status}, func(s *Session) sessionedge.Factory {
+			return &factory{s: s, cloud: client, device: device}
+		}, zeroRetryRNG{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer s.Close()
+		synctest.Wait()
+		if got := status.Text(); got != "Connecting" {
+			t.Fatalf("before evidence: %q", got)
+		}
+		begin := time.Now()
+		for _, elapsed := range []time.Duration{2 * time.Second, 3 * time.Second, time.Minute, 5 * time.Minute} {
+			time.Sleep(elapsed - time.Since(begin))
+			synctest.Wait()
+			got := status.Text()
+			t.Logf("at %v: %q", elapsed, got)
+			if got != "Seestar not reachable" {
+				t.Errorf("offline evidence lost: %q", got)
+			}
+		}
+		peer.mu.Lock()
+		checks := peer.checks
+		peer.mu.Unlock()
+		if checks < 3 {
+			t.Errorf("automatic retries stopped: checks=%d", checks)
+		}
+		select {
+		case <-status.Rejected():
+			t.Error("offline evidence rejected the UI run")
+		default:
+		}
+	})
+}
+
+func TestStatusSilentDeviceRetries(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		status := NewStatus()
+		var offline atomic.Bool
+		offline.Store(true)
+		s, stacks, _ := workloadSession(t, t.Context(), func(p *simulatedWire) {
+			p.outage = offline.Load
+		}, Config{Status: status})
+		defer s.Close()
+		<-stacks
+		synctest.Wait()
+		begin := time.Now()
+		for _, elapsed := range []time.Duration{59 * time.Second, 60 * time.Second, 61 * time.Second, 5 * time.Minute} {
+			time.Sleep(elapsed - time.Since(begin))
+			synctest.Wait()
+			want := "Seestar not reachable"
+			if elapsed < time.Minute {
+				want = "Connecting"
+			}
+			got := status.Text()
+			t.Logf("at %v: %q", elapsed, got)
+			if got != want {
+				t.Errorf("silent device status=%q, want %q", got, want)
+			}
+		}
+		if len(stacks) < 1 {
+			t.Error("silent device was not retried")
+		}
+		offline.Store(false)
+		ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+		defer cancel()
+		conn, err := dialAfterRecovery(ctx, s)
+		if err != nil {
+			t.Fatal("device did not recover", err)
+		}
+		defer conn.Close()
+		if got := status.Text(); got != "Ready" {
+			t.Errorf("recovery retained unreachable hint: %q", got)
+		}
+	})
+}
+
+func TestStatusUnreachableTransitions(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		err   error
+		state session.State
+		want  string
+	}{
+		{"retry", nil, session.Dialing, "Seestar not reachable"},
+		{"ready", nil, session.Ready, "Ready"},
+		{"no demand", nil, session.Dormant, "Waiting for a local client"},
+		{"stop", nil, session.Closed, "Stopped"},
+		{"busy", session.ErrBusy, session.Backoff, "Busy — waiting for the other session"},
+		{"cleanup", session.ErrStop, session.Backoff, "Reconnecting — waiting for cleanup/retry"},
+		{"sign-in", diagnostic.NewTerminal(session.Cloud, "unauthorized", session.ErrUncertain), session.Backoff, "Sign-in required — correct credentials and Start again"},
+		{"other failure", session.ErrTransport, session.Backoff, "Reconnecting"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewStatus()
+			snap := session.Snapshot{State: session.Backoff, Attempt: 2}
+			s.observe(session.Event{Kind: session.Failed, Attempt: 2, Err: cloudTerminal(cloud.ErrOffline)}, snap, snap)
+			if got := s.Text(); got != "Seestar not reachable" {
+				t.Fatal(got)
+			}
+			// A stale failure cannot replace the current evidence.
+			s.observe(session.Event{Kind: session.Failed, Attempt: 1, Err: session.ErrBusy}, snap, snap)
+			s.observe(session.Event{Err: tc.err}, snap, session.Snapshot{State: tc.state, Attempt: 2})
+			if got := s.Text(); got != tc.want {
+				t.Fatalf("status=%q, want %q", got, tc.want)
+			}
+			if tc.state == session.Ready || tc.state == session.Dormant {
+				s.observe(session.Event{}, session.Snapshot{}, session.Snapshot{State: session.Dialing})
+				if got := s.Text(); got == "Seestar not reachable" {
+					t.Fatal("stale unreachable evidence on later dial")
+				}
+			}
+		})
+	}
+}
 
 func TestStatusProjection(t *testing.T) {
 	for _, tc := range []struct {
