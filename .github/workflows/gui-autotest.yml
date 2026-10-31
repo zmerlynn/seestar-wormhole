@@ -90,6 +90,9 @@ jobs:
             | tee "$RUNNER_TEMP/gui-shots/build-isolation.log"
           go test -tags gui,guitest,production ./internal/ui ./internal/guitest ./scripts/gui-autotest \
             | tee "$RUNNER_TEMP/gui-shots/tagged-tests.log"
+      - name: Test Windows UI console redirections
+        if: runner.os == 'Windows'
+        run: go test -tags gui,production ./cmd/seestar-wormhole -run '^TestConsolePreservesRedirectedOutput$'
       - name: Prepare Mac fixture bundle
         if: runner.os == 'macOS'
         run: |
