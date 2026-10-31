@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Sign and package a built universal app and its sibling universal CLI. Usable locally and in release.yml.
+# Install scripts/dmg-requirements.txt in an active Python venv before packaging.
 # Never trace credentials, even when invoked by a shell with xtrace enabled.
 set +x
 set -euo pipefail
@@ -7,6 +8,10 @@ set -euo pipefail
 [[ $# == 2 && $1 == /* && $2 == /* && $1 == *.app && $2 == *.dmg ]] || {
  echo 'Usage: scripts/package-gui-mac.sh /absolute/seestar-wormhole.app /absolute/output.dmg' >&2
  exit 2
+}
+command -v dmgbuild >/dev/null 2>&1 || {
+ echo 'dmgbuild is required: python3 -m pip install --require-hashes --only-binary :all: -r scripts/dmg-requirements.txt' >&2
+ exit 1
 }
 task_app=$1
 task_dmg=$2
@@ -29,7 +34,9 @@ umask 077
 task_temp=$(mktemp -d "${TMPDIR:-/tmp}/wormhole-package.XXXXXX")
 task_keychain=${MACOS_KEYCHAIN_PATH:-"$task_temp/signing.keychain-db"}
 task_created_keychain=false
+task_old_keychains=()
 cleanup() {
+ if (( ${#task_old_keychains[@]} )); then security list-keychains -d user -s "${task_old_keychains[@]}" || true; fi
  if "$task_created_keychain"; then security delete-keychain "$task_keychain" >/dev/null 2>&1 || true; fi
  rm -rf "$task_temp"
 }
@@ -46,6 +53,10 @@ if [[ $task_present != 0 ]]; then
  security set-keychain-settings -lut 21600 "$task_keychain"
  security unlock-keychain -p "$task_password" "$task_keychain"
  security import "$task_temp/certificate.p12" -k "$task_keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign >/dev/null
+ # codesign looks up the identity through the user search list; cleanup restores the list.
+ while IFS= read -r task_entry; do task_entry=${task_entry#*\"}; task_old_keychains+=("${task_entry%\"}"); done \
+  < <(security list-keychains -d user)
+ security list-keychains -d user -s "$task_keychain" ${task_old_keychains[@]+"${task_old_keychains[@]}"}
  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$task_password" "$task_keychain" >/dev/null
  for task_program in "$task_app" "$task_cli"; do
   codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$task_keychain" \
@@ -66,10 +77,12 @@ chmod 0755 "$task_temp/image"
 ditto "$task_app" "$task_temp/image/seestar-wormhole.app"
 cp "$task_cli" "$task_temp/image/seestar-wormhole-cli"
 chmod 0755 "$task_temp/image/seestar-wormhole-cli"
-ln -s /Applications "$task_temp/image/Applications"
 cp "$task_scripts/../LICENSE" "$task_scripts/../NOTICE" "$task_temp/image/"
 chmod 0644 "$task_temp/image/LICENSE" "$task_temp/image/NOTICE"
-hdiutil create -volname seestar-wormhole -srcfolder "$task_temp/image" -ov -format UDZO "$task_dmg"
+(
+ umask 022
+ dmgbuild -s "$task_scripts/dmg-settings.py" -D "stage=$task_temp/image" seestar-wormhole "$task_dmg"
+)
 if [[ $task_present != 0 ]]; then
  codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$task_keychain" --timestamp "$task_dmg"
  xcrun notarytool submit "$task_dmg" --key "$task_temp/notary.p8" \
