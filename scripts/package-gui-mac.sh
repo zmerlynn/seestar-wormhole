@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Sign and package a built universal app and its sibling universal CLI. Usable locally and in release.yml.
+# Install scripts/dmg-requirements.txt in an active Python venv before packaging.
 # Never trace credentials, even when invoked by a shell with xtrace enabled.
 set +x
 set -euo pipefail
@@ -7,6 +8,10 @@ set -euo pipefail
 [[ $# == 2 && $1 == /* && $2 == /* && $1 == *.app && $2 == *.dmg ]] || {
  echo 'Usage: scripts/package-gui-mac.sh /absolute/seestar-wormhole.app /absolute/output.dmg' >&2
  exit 2
+}
+command -v dmgbuild >/dev/null 2>&1 || {
+ echo 'dmgbuild is required: python3 -m pip install --require-hashes --only-binary :all: -r scripts/dmg-requirements.txt' >&2
+ exit 1
 }
 task_app=$1
 task_dmg=$2
@@ -66,10 +71,12 @@ chmod 0755 "$task_temp/image"
 ditto "$task_app" "$task_temp/image/seestar-wormhole.app"
 cp "$task_cli" "$task_temp/image/seestar-wormhole-cli"
 chmod 0755 "$task_temp/image/seestar-wormhole-cli"
-ln -s /Applications "$task_temp/image/Applications"
 cp "$task_scripts/../LICENSE" "$task_scripts/../NOTICE" "$task_temp/image/"
 chmod 0644 "$task_temp/image/LICENSE" "$task_temp/image/NOTICE"
-hdiutil create -volname seestar-wormhole -srcfolder "$task_temp/image" -ov -format UDZO "$task_dmg"
+(
+ umask 022
+ dmgbuild -s "$task_scripts/dmg-settings.py" -D "stage=$task_temp/image" seestar-wormhole "$task_dmg"
+)
 if [[ $task_present != 0 ]]; then
  codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$task_keychain" --timestamp "$task_dmg"
  xcrun notarytool submit "$task_dmg" --key "$task_temp/notary.p8" \

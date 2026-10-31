@@ -561,14 +561,26 @@ func TestWorkflowArchiveAssembly(t *testing.T) {
 	if !slices.Contains(workflow.Jobs["macos-ui"].Needs, "portable") {
 		t.Fatal("Mac must reuse portable Darwin CLIs")
 	}
-	downloaded := false
+	downloaded, dmgDependencies := false, false
 	for _, step := range workflow.Jobs["macos-ui"].Steps {
+		if strings.Contains(step.Run, `python3 -m venv "$RUNNER_TEMP/dmg-venv"`) &&
+			strings.Contains(step.Run, `source "$RUNNER_TEMP/dmg-venv/bin/activate"`) &&
+			strings.Contains(step.Run, "python3 -m pip install --require-hashes --only-binary :all: -r scripts/dmg-requirements.txt") &&
+			strings.Contains(step.Run, `echo "$RUNNER_TEMP/dmg-venv/bin" >> "$GITHUB_PATH"`) {
+			dmgDependencies = true
+		}
+		if strings.Contains(step.Run, "./scripts/build-gui-mac.sh") && !dmgDependencies {
+			t.Fatal("install pinned DMG dependencies in a venv before the Mac build")
+		}
 		if strings.HasPrefix(step.Uses, "actions/download-artifact@") && step.With["name"] == "release-part-portable" && step.With["path"] == "${{ runner.temp }}/mac-ui/cli" {
 			downloaded = true
 		}
 	}
 	if !downloaded {
 		t.Fatal("missing Mac CLI parts dependency")
+	}
+	if !dmgDependencies {
+		t.Fatal("missing pinned DMG dependencies")
 	}
 	for _, step := range workflow.Jobs["portable"].Steps {
 		if strings.HasPrefix(step.Uses, "actions/upload-artifact@") && step.With["path"] != "dist/parts/*" {

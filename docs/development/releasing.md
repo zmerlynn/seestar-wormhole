@@ -73,6 +73,9 @@ native SDKs, packaging, signatures and notarization can change their bytes.
 
 ## Mac signing and notarization
 
+Before building or packaging locally, activate a Python venv and run
+`python3 -m pip install --require-hashes --only-binary :all: -r scripts/dmg-requirements.txt`.
+
 Run `./scripts/build-gui-mac.sh /absolute/output v0.5.0 <12-character-revision>`
 on a Mac to build both slices, check deployment target 13.0 and bundle metadata,
 combine them with `lipo`, build and combine both CLI slices, and package the

@@ -127,6 +127,12 @@ jobs:
         with:
           name: release-part-portable
           path: ${{ runner.temp }}/mac-ui/cli
+      - name: Install DMG build dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dmg-venv"
+          source "$RUNNER_TEMP/dmg-venv/bin/activate"
+          python3 -m pip install --require-hashes --only-binary :all: -r scripts/dmg-requirements.txt
+          echo "$RUNNER_TEMP/dmg-venv/bin" >> "$GITHUB_PATH"
       - name: Build universal Mac UI, sign and package DMG
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
