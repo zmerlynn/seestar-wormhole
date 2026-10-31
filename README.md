@@ -67,8 +67,8 @@ the phone app and how to copy images.
 ![seestar-wormhole connected to a Seestar, with the phone-app and copying steps](docs/images/gui-connected.png)
 
 Settings other than the password are saved after a successful connection;
-**Save password to keychain** is optional. **Stop** releases the telescope so the
-app's Remote mode can use it; **Quit app** exits. See [Using the UI](docs/ui.md).
+**Save password to keychain** is optional. **Stop** releases the telescope so
+the Seestar app's Remote mode can use it; **Quit** exits. See [Using the UI](docs/ui.md).
 
 ## Use the command line
 

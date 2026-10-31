@@ -70,7 +70,7 @@ Keep seestar-wormhole open while you use the telescope.
 ## Stopping and quitting
 
 **Stop** releases the telescope and leaves the window ready to connect again.
-**Quit app** stops the connection and exits. Closing the window does the same
+**Quit** stops the connection and exits. Closing the window does the same
 and waits for the release. Logging out or shutting down also stops the
 connection first, as far as your system allows.
 
