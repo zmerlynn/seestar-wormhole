@@ -80,4 +80,4 @@ test the command's version and help output.
 ## SMB copying
 
 See [Copy images](copying.md) for the recipe and its verification status.
-With public SMB clients through this proxy, the device selects SMB 3.1.1 when offered; it also accepts SMB 3.0.2 and 2.1 when each is the highest dialect offered. These observations establish the tested proxy interoperability.
+With public SMB clients through this proxy, the device selects SMB 3.1.1 when offered; it also accepts SMB 3.0.2 and 2.1 when each is the highest dialect offered. Observed October 16, 2026 with smbclient through this proxy, capped in turn at 3.1.1, 3.0.2 and 2.1; each was negotiated. This doesn't establish the device's configured minimum or maximum.
