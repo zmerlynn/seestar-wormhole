@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
 // Runtime bind forms, state paths, and startup diagnostics remain bounded and safe.
@@ -22,9 +23,21 @@ func TestOSBindForms(t *testing.T) {
 			if e != nil {
 				t.Skipf("OS does not accept form: %v", e)
 			}
-			l.Close()
+			defer l.Close()
+			// Verify the command passes the accepted form through to its listener.
+			// Every actual command listener uses an ephemeral loopback socket:
+			// overriding one mapping would still open the other default ports,
+			// and closing a port probe cannot reserve it for a later bind.
+			listen := func(network, address string) (net.Listener, error) {
+				host, _, err := net.SplitHostPort(address)
+				if err != nil || host != bind || network != "tcp" {
+					t.Fatalf("listener received %q %q for bind %q", network, address, bind)
+				}
+				return net.Listen("tcp", "127.0.0.1:0")
+			}
 			var out, logs bytes.Buffer
-			err := run(context.Background(), append([]string{"proxy"}, []string{"--bind", bind, "--port", availableCommandPort(t) + ":445"}...), &out, &logs)
+			err := runWithListener(context.Background(), []string{"proxy", "--bind", bind}, &out, &logs,
+				func(ctx context.Context, cfg proxy.Config) (commandSession, error) { return proxy.New(ctx, cfg) }, listen)
 			if !errors.Is(err, cloud.ErrConfig) {
 				t.Fatalf("OS-accepted bind rejected before credentials: %v log=%s", err, &logs)
 			}
