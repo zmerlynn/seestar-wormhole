@@ -19,7 +19,7 @@ func TestUIStartupErrorReporter(t *testing.T) {
 			func() (io.Writer, func()) { return io.Discard, func() {} }, true,
 			func(context.Context, options, io.Writer, io.Writer) error { return errors.New("startup failed") })
 		want := 1
-		if args[0] == "proxy" {
+		if !guiEnabled || args[0] == "proxy" {
 			want = 0
 		}
 		if calls != want {

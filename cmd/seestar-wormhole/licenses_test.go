@@ -96,7 +96,7 @@ func TestLicensesHelpAndArguments(t *testing.T) {
 		if _, err := parse(args, &out); !errors.Is(err, errHelp) {
 			t.Fatalf("root help: %v", err)
 		}
-		if !strings.HasSuffix(out.String(), "Third-party license information: seestar-wormhole licenses\n") {
+		if !strings.HasSuffix(out.String(), "Third-party license information: "+programName+" licenses\n") {
 			t.Fatalf("root help lacks final license notice: %s", &out)
 		}
 	}
@@ -104,7 +104,7 @@ func TestLicensesHelpAndArguments(t *testing.T) {
 		var out, logs bytes.Buffer
 		err := run(context.Background(), args, &out, &logs)
 		if err == nil || commandExitCode(options{command: commandLicenses}, err) != 2 || out.Len() != 0 ||
-			!strings.Contains(logs.String(), "seestar-wormhole licenses --help") || strings.Contains(logs.String(), "PRIVATE_") {
+			!strings.Contains(logs.String(), programName+" licenses --help") || strings.Contains(logs.String(), "PRIVATE_") {
 			t.Fatalf("args=%v err=%v stdout=%s stderr=%s", args, err, &out, &logs)
 		}
 	}

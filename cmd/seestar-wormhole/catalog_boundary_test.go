@@ -145,7 +145,7 @@ func TestCatalogBoundary(t *testing.T) {
 					var rec map[string]any
 					if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
 						t.Errorf("want exactly one attributed JSON error before dependencies: %v", e)
-					} else if rec["option"] != wantOption || rec["rule"] != wantRule || rec["level"] != "ERROR" || rec["reason"] != "invalid_option" || rec["phase"] != "arguments" || rec["help"] != "seestar-wormhole proxy --help" || out.Len() != 0 {
+					} else if rec["option"] != wantOption || rec["rule"] != wantRule || rec["level"] != "ERROR" || rec["reason"] != "invalid_option" || rec["phase"] != "arguments" || rec["help"] != programName+" proxy --help" || out.Len() != 0 {
 						t.Errorf("wrong final diagnostic: %v", rec)
 					}
 				})

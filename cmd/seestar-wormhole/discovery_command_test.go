@@ -72,7 +72,7 @@ func TestDiscoveryInvalidOptions(t *testing.T) {
 			if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
 				t.Fatalf("want one JSON diagnostic: %v, logs=%q", e, &logs)
 			}
-			if out.Len() != 0 || rec.Msg != "discovery failed" || rec.Phase != "arguments" || rec.Reason != "invalid_option" || rec.Option != tc.option || rec.Help != "seestar-wormhole discovery --help" || strings.Contains(logs.String(), "PRIVATE_") {
+			if out.Len() != 0 || rec.Msg != "discovery failed" || rec.Phase != "arguments" || rec.Reason != "invalid_option" || rec.Option != tc.option || rec.Help != programName+" discovery --help" || strings.Contains(logs.String(), "PRIVATE_") {
 				t.Fatalf("configuration diagnostic: stdout=%q logs=%q", &out, &logs)
 			}
 		})
