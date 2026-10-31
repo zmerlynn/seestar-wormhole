@@ -17,18 +17,19 @@ import (
 
 func TestStackUnreachableStatus(t *testing.T) {
 	for _, tc := range []struct {
-		name     string
-		failures iotc.FailureReason
-		reason   string
-		want     string
+		name       string
+		failures   iotc.FailureReason
+		reason     string
+		want       string
+		wantReason string
 	}{
-		{"offline", iotc.DeviceOffline, "", "Seestar not reachable"},
-		{"asleep", iotc.DeviceAsleep, "", "Seestar not reachable"},
-		{"offline with timeout", iotc.DeviceOffline | iotc.ConnectionTimeout, "", "Seestar not reachable"},
-		{"never answered", iotc.ConnectionTimeout, "", "Seestar not reachable"},
-		{"server refusal", iotc.ServerRefused, "", "Reconnecting"},
-		{"untyped text", 0, "device offline", "Reconnecting"},
-		{"established liveness", 0, "liveness timeout", "Reconnecting"},
+		{"offline", iotc.DeviceOffline, "", "Seestar not reachable", "device_offline"},
+		{"asleep", iotc.DeviceAsleep, "", "Seestar not reachable", "device_offline"},
+		{"offline with timeout", iotc.DeviceOffline | iotc.ConnectionTimeout, "", "Seestar not reachable", "device_offline"},
+		{"never answered", iotc.ConnectionTimeout, "", "Seestar not reachable", "connection_timeout"},
+		{"server refusal", iotc.ServerRefused, "", "Reconnecting", "server_refused"},
+		{"untyped text", 0, "device offline", "Reconnecting", "transport_failed"},
+		{"established liveness", 0, "liveness timeout", "Reconnecting", "liveness_timeout"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
@@ -41,8 +42,13 @@ func TestStackUnreachableStatus(t *testing.T) {
 				x.phases[i] = make(chan error, 1)
 			}
 			x.iotcAction(iotc.Action{Kind: iotc.Failed, Failures: tc.failures, Reason: tc.reason})
+			err := x.wait(t.Context(), 0)
+			phase, reason := diagnostic.Fields(err, "")
+			if phase != "rendezvous" || reason != tc.wantReason {
+				t.Fatalf("diagnostic=%s/%s, want rendezvous/%s", phase, reason, tc.wantReason)
+			}
 			s := NewStatus()
-			s.observe(session.Event{Kind: session.Failed, Err: x.wait(t.Context(), 0)}, session.Snapshot{State: session.Dialing}, session.Snapshot{State: session.Releasing})
+			s.observe(session.Event{Kind: session.Failed, Err: err}, session.Snapshot{State: session.Dialing}, session.Snapshot{State: session.Releasing})
 			s.observe(session.Event{Kind: session.Released}, session.Snapshot{State: session.Releasing}, session.Snapshot{State: session.Backoff})
 			if got := s.Text(); got != tc.want {
 				t.Fatalf("status=%q, want %q", got, tc.want)
