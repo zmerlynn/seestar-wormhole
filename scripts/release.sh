@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
-# Run with the same Go toolchain for byte-identical release archives.
+# Run with the same Go toolchain for byte-identical CLI downloads.
 set -euo pipefail
 task_validate_only=false
+task_mode=()
 if [[ ${1:-} == --validate-only ]]; then
  task_validate_only=true
+ shift
+elif [[ ${1:-} == --checksums ]]; then
+ task_mode=(checksums)
  shift
 fi
 if [[ $# != 1 || ! $1 =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$ ]]; then
@@ -20,4 +24,4 @@ task_sha=$(git rev-parse --short=12 HEAD)
 export CGO_ENABLED=0 GOENV=off GOWORK=off GOTOOLCHAIN=local
 export GOFLAGS=-mod=vendor GOPROXY=off GOSUMDB=off GOEXPERIMENT=
 export GOAMD64=v1 GOARM64=v8.0
-exec go run -mod=vendor -trimpath ./scripts/release.go "$1" "$task_sha"
+exec go run -mod=vendor -trimpath ./scripts/release.go "$1" "$task_sha" "${task_mode[@]}"

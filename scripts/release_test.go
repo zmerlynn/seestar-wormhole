@@ -3,13 +3,9 @@
 package main
 
 import (
-	"archive/tar"
-	"archive/zip"
 	"bytes"
-	"compress/gzip"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -20,168 +16,96 @@ import (
 	"go.yaml.in/yaml/v3"
 )
 
-func TestReleaseArchiveContents(t *testing.T) {
-	// Named-file tests run from the caller's directory; also support scripts/.
-	if _, err := os.Stat("README.md"); os.IsNotExist(err) {
-		t.Chdir("..")
+func TestReleaseAssetNames(t *testing.T) {
+	want := []string{
+		"seestar-wormhole-cli_v0.5.0_darwin_amd64", "seestar-wormhole-cli_v0.5.0_darwin_arm64",
+		"seestar-wormhole-cli_v0.5.0_linux_amd64", "seestar-wormhole-cli_v0.5.0_linux_arm64",
+		"seestar-wormhole-cli_v0.5.0_windows_amd64.exe", "seestar-wormhole-cli_v0.5.0_windows_arm64.exe",
+		"seestar-wormhole_v0.5.0_darwin_universal.dmg",
+		"seestar-wormhole_v0.5.0_linux_amd64", "seestar-wormhole_v0.5.0_linux_arm64",
+		"seestar-wormhole_v0.5.0_windows_amd64.exe", "seestar-wormhole_v0.5.0_windows_arm64.exe",
 	}
-	for _, windows := range []bool{false, true} {
-		t.Run(fmt.Sprintf("windows=%t", windows), func(t *testing.T) {
-			binary := "seestar-wormhole"
-			if windows {
-				binary += ".exe"
-			}
-			want := checkoutReleaseFiles(t, binary)
-			dir := t.TempDir()
-			binaryPath := filepath.Join(dir, binary)
-			if err := os.WriteFile(binaryPath, []byte("test executable"), 0600); err != nil {
-				t.Fatal(err)
-			}
-			archivePath := filepath.Join(dir, "archive")
-			if err := archive(archivePath, binaryPath, binary, windows); err != nil {
-				t.Fatal(err)
-			}
-			var names []string
-			contents := map[string][]byte{}
-			add := func(name string, mode os.FileMode, r io.Reader) {
-				t.Helper()
-				wantMode := os.FileMode(0644)
-				if name == binary {
-					wantMode = 0755
-				}
-				if mode.Perm() != wantMode {
-					t.Errorf("%s: mode %o, want %o", name, mode.Perm(), wantMode)
-				}
-				data, err := io.ReadAll(r)
-				if err != nil {
-					t.Fatal(err)
-				}
-				contents[name] = data
-				names = append(names, name)
-			}
-			if windows {
-				zr, err := zip.OpenReader(archivePath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer zr.Close()
-				for _, f := range zr.File {
-					if !f.Modified.Equal(archiveTime) {
-						t.Errorf("%s: timestamp %v, want %v", f.Name, f.Modified, archiveTime)
-					}
-					r, err := f.Open()
-					if err != nil {
-						t.Fatal(err)
-					}
-					add(f.Name, f.Mode(), r)
-					if err := r.Close(); err != nil {
-						t.Fatal(err)
-					}
-				}
-			} else {
-				f, err := os.Open(archivePath)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer f.Close()
-				gz, err := gzip.NewReader(f)
-				if err != nil {
-					t.Fatal(err)
-				}
-				defer gz.Close()
-				tr := tar.NewReader(gz)
-				for {
-					h, err := tr.Next()
-					if err == io.EOF {
-						break
-					}
-					if err != nil {
-						t.Fatal(err)
-					}
-					if !h.ModTime.Equal(archiveTime) || h.Uid != 0 || h.Gid != 0 {
-						t.Errorf("%s: noncanonical timestamp/ownership: %+v", h.Name, h)
-					}
-					add(h.Name, h.FileInfo().Mode(), tr)
-				}
-			}
-			if !slices.Equal(names, want) {
-				t.Errorf("archive entries = %v, want exact checkout file set %v", names, want)
-			}
-			icon, err := os.ReadFile("internal/icon/icon.svg")
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(contents["internal/icon/icon.svg"], icon) {
-				t.Fatal("heading icon missing or changed in archive")
-			}
-			if !bytes.Contains(contents["docs/README.md"], []byte("[Development](https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md)")) {
-				t.Fatal("packaged documentation links to an absent development guide")
-			}
-			checkPackagedDevelopmentLinks(t, contents)
-			t.Logf("checked exact release archive file set: %v", names)
-		})
+	if got := expectedAssets("v0.5.0"); !slices.Equal(got, want) {
+		t.Fatalf("assets=%v, want %v", got, want)
+	}
+	if got := assetName("v0.5.0-rc.1", "windows", "arm64", false); got != "seestar-wormhole-cli_v0.5.0-rc.1_windows_arm64.exe" {
+		t.Fatal(got)
 	}
 }
 
-func checkPackagedDevelopmentLinks(t *testing.T, contents map[string][]byte) {
-	t.Helper()
-	// No Markdown parser is vendored. Check only the literal development link
-	// that the release writes, rather than implementing a Markdown parser.
-	const span = "[How it works and how to hack on it](https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md)"
-	if got := bytes.Count(contents["README.md"], []byte(span)); got != 1 {
-		t.Errorf("README.md: source-repository development links=%d want 1", got)
-	}
-	if _, ok := contents["docs/development/README.md"]; ok {
-		t.Fatal("development guide unexpectedly included in release")
-	}
-}
-
-func checkoutReleaseFiles(t *testing.T, binary string) []string {
-	t.Helper()
-	names := []string{"LICENSE", "NOTICE", "README.md", "internal/icon/icon.svg", binary}
-	err := filepath.WalkDir("docs", func(name string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
+func TestReleaseBareAssetsAndChecksums(t *testing.T) {
+	t.Chdir(t.TempDir())
+	builds := 0
+	err := release("v0.5.0", "revision", func(version, revision, goos, arch string, gui bool, path string) error {
+		builds++
+		if gui && goos != "windows" {
+			t.Fatal("container attempted native UI build")
 		}
-		if name == filepath.Join("docs", "development") {
-			return filepath.SkipDir
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode().IsRegular() {
-			names = append(names, filepath.ToSlash(name))
-		}
-		return nil
+		return os.WriteFile(path, []byte("abc"), 0755)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	slices.Sort(names)
-	return names
-}
-
-func TestReleaseFilesRecursive(t *testing.T) {
-	t.Chdir(t.TempDir())
-	for _, name := range []string{"docs/nested/guide.md", "docs/nested/image.png", "docs/development/private.md"} {
-		if err := os.MkdirAll(filepath.Dir(name), 0755); err != nil {
+	if builds != 8 {
+		t.Fatalf("builds=%d, want eight", builds)
+	}
+	check := func(want int) {
+		t.Helper()
+		data, err := os.ReadFile("dist/SHA256SUMS")
+		if err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(name, nil, 0644); err != nil {
+		lines := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n")
+		if len(lines) != want || !slices.IsSorted(lines) {
+			t.Fatalf("checksums=%s", data)
+		}
+		for _, line := range lines {
+			hash, name, ok := strings.Cut(line, "  ")
+			// Literal known SHA-256 for abc: no checksum helper shared with production.
+			if !ok || hash != "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" {
+				t.Fatalf("checksum line %q", line)
+			}
+			data, err := os.ReadFile(filepath.Join("dist", name))
+			if err != nil || string(data) != "abc" {
+				t.Fatalf("bare asset %s: %q %v", name, data, err)
+			}
+		}
+	}
+	check(8)
+	if err := finalChecksums("v0.5.0"); err == nil {
+		t.Fatal("accepted incomplete release")
+	}
+	for _, name := range expectedAssets("v0.5.0") {
+		if err := os.WriteFile(filepath.Join("dist", name), []byte("abc"), 0755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	names, err := releaseFiles("seestar-wormhole")
-	if err != nil {
+	if err := finalChecksums("v0.5.0"); err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"LICENSE", "NOTICE", "README.md", "docs/nested/guide.md", "docs/nested/image.png", "internal/icon/icon.svg", "seestar-wormhole"}
-	if !slices.Equal(names, want) {
-		t.Fatalf("release files = %v, want %v", names, want)
+	check(11)
+	if err := os.WriteFile("dist/unexpected", nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := finalChecksums("v0.5.0"); err == nil {
+		t.Fatal("accepted unexpected asset")
+	}
+}
+
+func TestReleaseDoesNotPublishFailedBuilds(t *testing.T) {
+	t.Chdir(t.TempDir())
+	err := release("v0.5.0", "revision", func(_, _, _, _ string, _ bool, path string) error {
+		if strings.Contains(path, "arm64") {
+			return errors.New("build failed")
+		}
+		return os.WriteFile(path, []byte("abc"), 0755)
+	})
+	if err == nil {
+		t.Fatal("ignored failed build")
+	}
+	entries, err := os.ReadDir("dist")
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("published incomplete output: %v %v", entries, err)
 	}
 }
 
@@ -265,6 +189,15 @@ func TestReleaseVersions(t *testing.T) {
 	}
 }
 
+func mustWorkingDirectory(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
 type workflowStep struct {
 	Name, Uses, Run string
 	Env             map[string]string
@@ -295,13 +228,13 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 	if len(validate) != 2 || !strings.HasPrefix(validate[0].Uses, "actions/checkout@") {
 		t.Fatal("validate must be checkout followed by validation")
 	}
-	if validate[1].Env["RELEASE_VERSION"] != "${{ github.ref_name }}" {
+	if validate[1].Env["RELEASE_VERSION"] != "${{ github.event_name == 'workflow_dispatch' && inputs.version || github.ref_name }}" {
 		t.Fatal("validation must receive ref_name through environment immediately after checkout")
 	}
-	if !slices.Contains(workflow.Jobs["release"].Needs, "validate") {
+	if !slices.Contains(workflow.Jobs["portable"].Needs, "validate") {
 		t.Fatal("release must need validate")
 	}
-	release := workflow.Jobs["release"].Steps
+	release := workflow.Jobs["portable"].Steps
 	bin := t.TempDir()
 	marker := filepath.Join(bin, "build-called")
 	if err := os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\ntouch \"$BUILD_MARKER\"\nexit 97\n"), 0700); err != nil {
@@ -314,9 +247,9 @@ func TestWorkflowVerifyOrdering(t *testing.T) {
 				continue
 			}
 			cmd := exec.Command("bash", "-e", "-o", "pipefail", "-c", step.Run)
-			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "BUILD_MARKER="+marker)
+			cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"), "BUILD_MARKER="+marker, "GITHUB_OUTPUT="+filepath.Join(bin, "outputs"), "GITHUB_WORKSPACE="+mustWorkingDirectory(t))
 			for key, value := range step.Env {
-				if value == "${{ github.ref_name }}" {
+				if strings.Contains(value, "github.ref_name") || value == "${{ needs.validate.outputs.version }}" {
 					value = version
 				}
 				cmd.Env = append(cmd.Env, key+"="+value)
