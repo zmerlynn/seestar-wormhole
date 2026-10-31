@@ -34,7 +34,9 @@ umask 077
 task_temp=$(mktemp -d "${TMPDIR:-/tmp}/wormhole-package.XXXXXX")
 task_keychain=${MACOS_KEYCHAIN_PATH:-"$task_temp/signing.keychain-db"}
 task_created_keychain=false
+task_old_keychains=()
 cleanup() {
+ if (( ${#task_old_keychains[@]} )); then security list-keychains -d user -s "${task_old_keychains[@]}" || true; fi
  if "$task_created_keychain"; then security delete-keychain "$task_keychain" >/dev/null 2>&1 || true; fi
  rm -rf "$task_temp"
 }
@@ -51,6 +53,10 @@ if [[ $task_present != 0 ]]; then
  security set-keychain-settings -lut 21600 "$task_keychain"
  security unlock-keychain -p "$task_password" "$task_keychain"
  security import "$task_temp/certificate.p12" -k "$task_keychain" -P "$MACOS_CERT_PASSWORD" -T /usr/bin/codesign >/dev/null
+ # codesign looks up the identity through the user search list; cleanup restores the list.
+ while IFS= read -r task_entry; do task_entry=${task_entry#*\"}; task_old_keychains+=("${task_entry%\"}"); done \
+  < <(security list-keychains -d user)
+ security list-keychains -d user -s "$task_keychain" ${task_old_keychains[@]+"${task_old_keychains[@]}"}
  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$task_password" "$task_keychain" >/dev/null
  for task_program in "$task_app" "$task_cli"; do
   codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$task_keychain" \
