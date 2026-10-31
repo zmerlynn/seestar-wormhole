@@ -11,6 +11,12 @@ Privacy & Security, or run `xattr -d com.apple.quarantine seestar-wormhole-cli`
 on that copy.
 
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
+`device_offline` means the cloud or connection service reports the telescope
+offline or asleep. `connection_timeout` means the connection attempt received
+no usable answer before its existing deadline. Check that your Seestar is on
+and connected to Wi-Fi. The UI shows **Seestar isn't reachable** and keeps
+retrying automatically.
+
 `busy` means the [cloud reports remote allocation as busy](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#observed-single-session-enforcement).
 Another remote session may still be active, such as the app or another proxy.
 Close the app's remote session or stop the other proxy, and this one keeps
