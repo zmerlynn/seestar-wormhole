@@ -3,7 +3,7 @@
 seestar-wormhole connects your remote Seestar to apps on your computer and phone.
 They share one connection to the telescope.
 
-![The app before connecting: Connect, Use with, and the account fields](images/gui-setup.png)
+![Choose who can connect, then enter your Seestar account details](images/gui-setup.png)
 
 ## Setting up
 
@@ -18,32 +18,22 @@ Choose who can connect under **Use with**:
 - **Custom** lets you choose network and port settings in **Advanced**. Editing
   those settings selects **Custom**. Choosing another setup replaces them.
 
-Your saved settings keep their network exposure and appear as
-**This computer only** or **Custom**. Opening the app loads settings; it does not
+Next time, the app opens with your saved choices. Opening the app does not
 connect to the telescope.
 
 Enter your Seestar account email and password. The password stays in memory
-until you quit unless you choose **Save password to keychain**. **Connect** never
-saves a typed password to the keychain. There is no plaintext fallback, and the
-controls never receive a saved secret.
+until you quit. Choose **Save password to keychain** to skip typing it next
+time; the password field then shows **Saved in keychain**. Your password is
+never saved in plain text.
 
-Saving a password also saves your email and its keychain association, without
-signing in. Next time, the disabled password field says **Saved in keychain**.
-Opening the app does not read the secret or prompt for it; **Connect** reads it,
-with a three-second wait limit.
-
-To change it, choose **Remove saved password**, then type and optionally save
-its replacement. Removal clears the memory copy and asks the keychain to delete
-its copy. If deletion fails, the app keeps the saved association; unlock the
-keychain and choose **Retry removal**. Removal updates your last saved settings
-without saving other form edits. If a keychain request times out, it may still
-finish. Wait before trying again; further keychain changes wait for that request.
+To change it, choose **Remove saved password** and type the new one. If removal
+fails, unlock the keychain and choose **Retry removal**. See
+[keychain troubleshooting](troubleshooting.md#the-os-keychain-is-unavailable)
+for help.
 
 ## Connecting
 
-Choose **Connect**. With **Keep connected**, the same button becomes **Cancel**
-during the first connection, then **Stop**. In on-demand mode, it becomes
-**Stop**. While cleanup runs, it becomes disabled and says **Stopping…**.
+**Connect** turns into **Cancel** or **Stop** while connected.
 
 The status tells you what is happening:
 
@@ -56,20 +46,14 @@ The status tells you what is happening:
 | **Waiting before retrying the connection…** | Wait for cleanup and the retry delay. |
 | **Stopped. Seestar may still be releasing the session.** | Allow time for release before using another remote session. |
 | **Session release could not be confirmed. If Seestar is occupied, wait and try Connect again.** | Wait, then choose **Connect** again. |
-| Could not sign in. Check your Seestar account email and password, then connect again. | Correct your account details and choose **Connect**. A rejected sign-in ends the run after cleanup and leaves any saved password in place. |
+| Could not sign in. Check your Seestar account email and password, then connect again. | Correct your account details and choose **Connect**. |
 
-Field errors point to the setting to correct. Address, discovery, port-permission,
-and port-conflict errors have separate error codes. If the controls lose their
+Field errors point to the setting to correct. If the controls lose their
 connection, they show the last known state and warn that the proxy may still be
 running. Reopen the app to reconnect to the controls.
 
-Settings save after a successful connection. With **Keep connected**, that means
-the first ready connection with local listeners and discovery initialized. With
-**Connect when an app needs Seestar**, settings save after sign-in, telescope
-selection, and local setup. Failed connection attempts keep the last saved
-settings. If saving fails, the connection keeps running. Choose
-**Retry saving settings** to save that connection's settings. A newer successful
-save replaces an older pending retry.
+The app saves your settings once a connection succeeds. If saving fails, the
+connection keeps running and **Retry saving settings** appears.
 
 ## While connected
 
@@ -128,25 +112,18 @@ tokens, account and device identifiers, and payloads.
 
 The private logs use fixed messages and categories, UTC timestamps, and
 classified failure phases and reasons. They contain no raw protocol traces.
-The app appends events without loading earlier log history into the window or
-copied summary. It refuses unsafe or oversized existing log files without
-changing them. Startup failures also appear in the native error display;
-Windows window-engine errors explain when WebView2 Runtime is required.
+Startup failures also appear in the native error display; Windows
+window-engine errors explain when WebView2 Runtime is required.
 
 ## Stopping and quitting
 
 **Stop** releases the telescope session and leaves the window ready for another
 connection. **Quit app** stops the connection and exits. Closing the window
-also quits and waits for release. Native application quit and confirmed Windows
-session end wait for release too; canceling Windows session end leaves the app
-running. The OS can impose a shorter shutdown deadline.
-
-If you started from a terminal, Ctrl+C quits too. Closing that terminal also
-quits; on Windows, cleanup is best effort within the OS deadline.
+also quits and waits for release. Logging out or shutting down also stops the
+connection first, as far as the OS allows.
 
 Launch again with the same state directory to bring the existing window forward.
-A separately running `proxy` command is independent. Free any conflicting
-forwarding ports before starting another connection.
+If `seestar-wormhole-cli proxy` is already using the same ports, stop it first.
 
 ## Running without the window
 
@@ -247,5 +224,5 @@ permissions or links stay untouched for manual removal.
 macOS WKWebView and Linux WebKitGTK use their default persistent stores outside
 the state directory. They are not cleared on exit. The page uses sessionStorage
 to authorize reloads and sets no cookies or localStorage. No-store headers do
-not guarantee that the engine writes no session or cache data. Engine file
-retention still needs native verification.
+not guarantee that the engine writes no session or cache data. What the engines
+keep on disk has not been checked on each platform.
