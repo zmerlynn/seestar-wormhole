@@ -450,6 +450,12 @@ not dependency error text, forwarded payloads, or session secrets. Device
 selection masks serials.
 `wildcard_bind_warning` intentionally includes interface/address exposure.
 
+The UI records its unreachable-Seestar hint as a `lifecycle` event in `gui.log` and the copied diagnostic
+summary. It can follow a cloud or connection-service offline/asleep report, or a rendezvous connection
+timeout. A timeout does not identify the faulty component. The hint remains during automatic retries until
+the connection succeeds, the UI returns to waiting for an app, the run stops, or a different failure
+replaces it. CLI logs keep their classified phase and reason rather than this UI message.
+
 | Record | Level | Meaning and useful fields |
 |---|---|---|
 | `proxy_started` | INFO | Revision, listener count, lazy flag, pause threshold; process serving, not necessarily remote ready |
