@@ -39,7 +39,7 @@ or **Stop**. The status tells you what's happening:
 | **Connected to your Seestar** | Start using your apps. |
 | **Waiting for an app to connect** | Connect an app to a forwarded port. The session starts when one does. |
 | **Seestar is occupied. Retrying automatically.** | Disconnect any other remote session, or wait for it to let go. |
-| **Seestar isn't reachable. Check that it's on and connected to Wi-Fi. Retrying automatically.** | Check the telescope's power and Wi-Fi connection; seestar-wormhole keeps trying. |
+| **Seestar isn't reachable. Check this computer's internet connection and make sure Seestar is awake and connected to Wi-Fi. Retrying automatically.** | Check this computer's internet connection and make sure Seestar is awake and connected to Wi-Fi; seestar-wormhole keeps trying. |
 | **Connection interrupted. Retrying automatically.** | Wait; seestar-wormhole reconnects on its own. |
 | **Waiting before retrying the connection…** | Wait for cleanup and the retry delay. |
 | **Stopped. Seestar may still be releasing the session.** | Give it time before using another remote session. |

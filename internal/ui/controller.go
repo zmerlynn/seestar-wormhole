@@ -288,7 +288,7 @@ func uiText(text string) string {
 	case "Busy — waiting for the other session":
 		return "Seestar is occupied. Retrying automatically."
 	case "Seestar not reachable":
-		return "Seestar isn't reachable. Check that it's on and connected to Wi-Fi. Retrying automatically."
+		return "Seestar isn't reachable. Check this computer's internet connection and make sure Seestar is awake and connected to Wi-Fi. Retrying automatically."
 	case "Reconnecting":
 		return "Connection interrupted. Retrying automatically."
 	case "Releasing idle session":

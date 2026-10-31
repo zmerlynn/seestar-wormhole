@@ -20,7 +20,7 @@ import (
 )
 
 func TestUnreachableStatusCopyAndEvent(t *testing.T) {
-	want := "Seestar isn't reachable. Check that it's on and connected to Wi-Fi. Retrying automatically."
+	want := "Seestar isn't reachable. Check this computer's internet connection and make sure Seestar is awake and connected to Wi-Fi. Retrying automatically."
 	got := uiText("Seestar not reachable")
 	if got != want {
 		t.Errorf("unreachable status=%q, want %q", got, want)
