@@ -4,9 +4,11 @@
 
 When the proxy exits with failure, inspect the final `proxy failed` record and its `reason`; see [failure diagnosis](reference.md#proxy-final-failure).
 
-**macOS won't run it.** It came from the internet, so macOS quarantines it.
-Allow it under System Settings → Privacy & Security, or run
-`xattr -d com.apple.quarantine seestar-wormhole`.
+**macOS won't run it.** A notarized download opens after macOS's one-time
+"downloaded from the Internet" prompt. If a copy still refuses to run (for
+example, the CLI copied somewhere unusual), allow it under System Settings →
+Privacy & Security, or run `xattr -d com.apple.quarantine seestar-wormhole-cli`
+on that copy.
 
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
 `busy` means the [cloud reports remote allocation as busy](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#observed-single-session-enforcement).
@@ -60,7 +62,6 @@ rather keep before posting.
 ## The native window didn't open
 
 Launch `seestar-wormhole` from the unpacked archive (or the Mac app), and check any startup error. `seestar-wormhole-cli` has no UI command or browser fallback. On Linux, see [native window prerequisites](#linux-native-window) below. If a headless host reports a loader error about `libgtk` or WebKit, use `seestar-wormhole-cli` from the same archive and update the service's executable path.
-On macOS, use Gatekeeper's right-click Open until signed releases are available.
 Launching the UI again with the same state directory brings its window forward.
 See [native controls](reference.md#ui).
 
