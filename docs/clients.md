@@ -37,7 +37,9 @@ reaches the telescope through the proxy.
 The telescope's built-in Alpaca server, on port 32323 when it is enabled in
 the telescope's settings, isn't forwarded by default; `-p 32323:32323` adds
 it. Alpaca discovery doesn't pass through the proxy, so enter the address and
-port by hand. Neither route has been tested.
+port by hand. The built-in server answered Alpaca management requests
+through the proxy (S50 Pro, firmware 9.75, October 31, 2026); neither route
+has been tested with NINA.
 
 ## Your own scripts
 
