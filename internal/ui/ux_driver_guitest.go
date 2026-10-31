@@ -82,7 +82,7 @@ func (d *guiTestDriver) uxSetup() error {
 			if err := d.click("forget"); err != nil {
 				return err
 			}
-			if err := d.probe(`check(!el('password').disabled && el('forget').hidden && el('feedback').textContent==='Password removed from keychain and this app.' && el('password-error').hidden && !el('password').hasAttribute('aria-invalid'),{disabled:el('password').disabled,forgetHidden:el('forget').hidden,feedback:el('feedback').textContent,errorHidden:el('password-error').hidden,invalid:el('password').getAttribute('aria-invalid')})`); err != nil {
+			if err := d.probe(`check(!el('password').disabled && el('forget').hidden && el('feedback').textContent==='Password removed from keychain and this app.' && el('password-error').hidden && !el('password').hasAttribute('aria-invalid'),{disabled:el('password').disabled,forgetHidden:el('forget').hidden,feedback:el('feedback').textContent,errorHidden:el('password-error').hidden,invalid:el('password').getAttribute('aria-invalid'),pending,retryRemoval,actionError,fieldError:fieldErrors.password ?? null,busy:state?.password?.busy ?? null,saved:state?.password?.saved ?? null,code:state?.password?.code ?? null,error:el('password-error').textContent})`); err != nil {
 				return err
 			}
 			if err := d.state("Not connected", false, "password-removed"); err != nil {

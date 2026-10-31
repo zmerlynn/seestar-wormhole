@@ -1,7 +1,18 @@
 (async () => {
-  const live = state;
   const liveAPI = api;
   const liveTimeout = window.setTimeout;
+  // Join the live poll at its scheduling boundary before replacing its API.
+  // Otherwise it can run against a synthetic status and lose its next timer.
+  await new Promise(resolve => {
+    window.setTimeout = (callback, ...args) => {
+      if (callback === poll) {
+        resolve();
+        return;
+      }
+      return liveTimeout(callback, ...args);
+    };
+  });
+  const live = state;
   window.setTimeout = () => {};
   const results = [];
   const setup = {...live.settings, email: 'synthetic@example.invalid', remember_password: false};
@@ -363,6 +374,9 @@
     render(live);
     $('advanced').open = false;
     $('start').focus();
+    // The live loop is parked, and synthetic poll calls did not schedule work.
+    // Resume exactly one loop with the real API after restoring the page.
+    poll();
   }
   window.__guitestPageState = results.join('\n');
 })()
