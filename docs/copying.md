@@ -87,15 +87,11 @@ To copy images to another computer, use the network address of the one running
 seestar-wormhole. In seestar-wormhole, set **Listen on** to **All networks** or
 that address.
 
-- **macOS: [Cyberduck](https://cyberduck.io/)** (free). In Preferences →
-  Profiles, enable **SMB (No Encryption)**. Open Connection, choose that
-  profile, and enter the connection settings above, including Path under
-  More Options. Connect, select an image, and choose Download to a local folder.
-- **Windows: [Mountain Duck 5](https://mountainduck.io/)** (paid, with a
-  trial). Its per-user installer needs no administrator rights. Install
-  Mountain Duck 5 and choose **Integrated** mode. Create an **SMB (No
-  Encryption)** bookmark using the connection settings above. Open it in
-  File Explorer, then copy an image to a local folder.
+- **macOS and Windows: [Cyberduck](https://cyberduck.io/)** (free). In
+  Preferences → Profiles, enable **SMB (No Encryption)**. Open Connection,
+  choose that profile, and enter the connection settings above, including
+  Path under More Options. Connect, select an image, and choose Download to
+  a local folder.
 - **Linux: Files (Nautilus) or Dolphin.** The file manager's SMB support
   (GVfs or KIO) must be installed. Press Ctrl+L and enter
   `smb://<Server>:<Port>/EMMC%20Images/MyWorks/`, replacing Server and Port
