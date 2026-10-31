@@ -63,13 +63,13 @@ rather keep before posting.
 
 Launch `seestar-wormhole` from the unpacked archive (or the Mac app), and check any startup error. `seestar-wormhole-cli` has no UI command or browser fallback. On Linux, see [native window prerequisites](#linux-native-window) below. If a headless host reports a loader error about `libgtk` or WebKit, use `seestar-wormhole-cli` from the same archive and update the service's executable path.
 Launching the UI again with the same state directory brings its window forward.
-See [Using the app](ui.md).
+See [Using the UI](ui.md).
 
 ## Saved settings prevent startup
 
-The native app shows **Could not open seestar-wormhole** with the refused
+The UI shows **Could not open seestar-wormhole** with the refused
 settings file's location. Check this file, then reopen seestar-wormhole.
-The app leaves the file untouched. Default locations are:
+seestar-wormhole leaves the file untouched. Default locations are:
 
 - macOS: `~/Library/Application Support/seestar-wormhole/config.json`
 - Linux: `$XDG_CONFIG_HOME/seestar-wormhole/config.json`, or
@@ -91,7 +91,7 @@ The GUI build requires GTK 4, WebKitGTK 6.0, and bubblewrap (on Ubuntu:
 `libgtk-4-1`, `libwebkitgtk-6.0-4`, and `bubblewrap`). WebKit's sandbox needs
 permission to create unprivileged user namespaces. Ubuntu 24.04's AppArmor
 restriction can deny bubblewrap's uid-map setup even with the distro package
-installed. The app checks bubblewrap before starting WebKit and reports
+installed. The UI checks bubblewrap before starting WebKit and reports
 “WebKit sandbox unavailable” if this prerequisite fails.
 
 Use a distribution-supported AppArmor profile that permits the sandbox for

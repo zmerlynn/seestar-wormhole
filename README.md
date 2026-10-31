@@ -68,7 +68,7 @@ the phone app and how to copy images.
 
 Settings other than the password are saved after a successful connection;
 **Save password to keychain** is optional. **Stop** releases the telescope so the
-app's Remote mode can use it; **Quit app** exits. See [Using the app](docs/ui.md).
+app's Remote mode can use it; **Quit app** exits. See [Using the UI](docs/ui.md).
 
 ## Use the command line
 

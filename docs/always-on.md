@@ -38,7 +38,7 @@ systemd would otherwise drop or reinterpret those characters. A single quote
 inside the password needs systemd's escaping rules, described in
 `man systemd.exec` under `EnvironmentFile=`.
 
-Once the app has saved your settings (it does when it connects, or when you
+Once the UI has saved your settings (it does when it connects, or when you
 choose Save password to keychain), run `seestar-wormhole-cli proxy --config`, with `--state-dir PATH` for a custom UI root.
 Flags override saved settings, `SEESTAR_EMAIL` overrides the saved email, and
 `SEESTAR_PASSWORD` takes precedence over a read-only OS keychain lookup;
