@@ -1,6 +1,6 @@
 # Using the app
 
-seestar-wormhole connects your remote Seestar to apps on your computer and phone.
+seestar-wormhole connects apps on your computer and phone to your remote Seestar.
 They share one connection to the telescope.
 
 ![Choose who can connect, then enter your Seestar account details](images/gui-setup.png)
