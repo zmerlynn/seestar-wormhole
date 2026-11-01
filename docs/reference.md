@@ -436,8 +436,11 @@ the pair. Its associated help reads **Connect uses your only telescope, or asks 
 After several telescopes are found for the current account, the empty
 option reads **Choose a telescope…** until that selection step clears or the
 account changes. In that step, **Your account has several telescopes. Choose one, then Connect.**
-replaces the discovery help; only one picker help line appears at a time. Connect remains explicit; Custom… reveals manual
-Serial and Model fields. A saved pair is selected on load. Received choices
+replaces the discovery help; only one picker help line appears at a time. Connect remains explicit; Enter manually… reveals manual
+Serial and Model fields, with Connect after them in DOM and visual order. In the
+selection step, empty manual Serial shows **Enter a serial number.**, associated
+with Serial, and is validated locally without a request. A usable serial shows
+**Ready to connect**; Model remains optional. A saved pair is selected on load. Received choices
 remain in memory for this app run and are never added to the settings file.
 After a successful Change telescope clear/save, current-account received choices
 open the choosing step with **Stopped. Choose a telescope, then Connect.**, focus

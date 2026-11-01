@@ -251,9 +251,12 @@ function controls() {
   $('error-code').hidden = !code;
   text('selection-help', selectionStep ? 'Your account has several telescopes. Choose one, then Connect.' : 'Connect uses your only telescope, or asks which one if there are several.');
   if ($('device-choice').children.length) textOptionLabel();
-  const actionArea = $(selectionStep ? 'picker-action' : 'primary-action');
+  const manual = $('device-choice').value === 'custom';
+  const needsSerial = selectionStep && manual && !$('serial').value.trim();
+  $('serial-help').hidden = !needsSerial;
+  const actionArea = $(selectionStep || manual ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
-  const statusText = selectionStep && state?.failure?.code !== 'release' ? ($('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
+  const statusText = selectionStep && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
   text('status', statusText);
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
   if (pickerFocusPending && !$('options').disabled) {
@@ -295,7 +298,7 @@ function devicePicker(devices) {
     picker.append(option);
   });
   const option = document.createElement('option');
-  option.textContent = 'Custom…';
+  option.textContent = 'Enter manually…';
   option.value = 'custom';
   picker.append(option);
   selectPair();
@@ -423,6 +426,11 @@ async function act(action) {
   if (pending && !['stop','quit'].includes(action)) return;
   if (action === 'start' && accountEmail() === state?.devices_email && selectionStep && $('device-choice').value === '') {
     $('device-choice').focus();
+    return;
+  }
+  if (action === 'start' && selectionStep && $('device-choice').value === 'custom' && !$('serial').value.trim()) {
+    actionError = 'serial';
+    fieldError('serial', 'Enter a serial number.', 'serial', true);
     return;
   }
   if (['start','password/save'].includes(action) && !validate()) return;

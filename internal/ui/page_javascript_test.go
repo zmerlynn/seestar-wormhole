@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -156,6 +157,14 @@ func TestChangeTelescopeChoosingPage(t *testing.T) {
 	for _, uncertain := range []string{"false", "true"} {
 		t.Run(uncertain, func(t *testing.T) {
 			runPageRegression(t, "change-telescope-test.js", "checkChangeTelescope("+uncertain+", true)")
+		})
+	}
+}
+
+func TestManualPickerPage(t *testing.T) {
+	for _, scenario := range []string{"label", "order", "initial order", "empty status", "serial help", "validation", "optional model"} {
+		t.Run(scenario, func(t *testing.T) {
+			runPageRegression(t, "picker-ux-test.js", "checkManualPicker("+strconv.Quote(scenario)+")")
 		})
 	}
 }

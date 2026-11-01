@@ -24,11 +24,11 @@
 </fieldset>
 <div id="device-picker"><label for="device-choice">Telescope</label><select id="device-choice" aria-describedby="selection-help"></select>
 <p id="selection-help" class="help">Connect uses your only telescope, or asks which one if there are several.</p>
-<div id="picker-action"></div></div>
 <div id="custom-device" hidden>
-<label for="serial">Serial number (optional)</label><input id="serial" placeholder="From your Seestar account" type="text" maxlength="4096" spellcheck="false" aria-describedby="serial-error"><p id="serial-error" class="error" role="alert" hidden></p>
+<label for="serial">Serial number (optional)</label><input id="serial" placeholder="From your Seestar account" type="text" maxlength="4096" spellcheck="false" aria-describedby="serial-help serial-error"><p id="serial-help" class="help" hidden>Enter a serial number.</p><p id="serial-error" class="error" role="alert" hidden></p>
 <label for="model">Model (optional)</label><input id="model" placeholder="e.g. S50 Pro" type="text" maxlength="4096" spellcheck="false" aria-describedby="model-error"><p id="model-error" class="error" role="alert" hidden></p>
 </div>
+<div id="picker-action"></div></div>
 <details id="advanced"><summary tabindex="-1">Advanced</summary>
 <label for="mode" class="section-start">Connection timing</label><select id="mode"><option value="eager">Keep connected</option><option value="idle">Connect when an app needs Seestar</option></select>
 <div id="idle-options" hidden><label for="idle">Release after apps disconnect (minutes)</label><input id="idle" value="2" type="number" min="0.01" step="any" aria-describedby="idle-help idle-error"><p id="idle-help" class="help">Releases the session after this wait. An app connection starts it again.</p><p id="idle-error" class="error" role="alert" hidden></p></div>
