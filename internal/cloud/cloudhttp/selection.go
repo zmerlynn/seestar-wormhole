@@ -102,7 +102,7 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 
 func (c *Client) selectedDevice(v cloud.Detail) Device {
 	if c.logger != nil {
-		c.logger.Info("device_selected", "model", displayModel(v.Model()), "serial", maskedSerial(v.Serial()))
+		c.logger.Info("device_selected", "model", displayModel(v.Model()), "serial", displayModel(v.Serial()))
 	}
 	return Device{Serial: v.Serial(), Model: v.Model()}
 }
@@ -177,9 +177,13 @@ func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete,
 	return devices, false, received != len(devices), nil
 }
 
-// DisplayName is the public model label and masked serial used for selection.
+// DisplayName is the escaped, bounded model and full serial used for status.
 func (d Device) DisplayName() string {
-	return displayModel(d.Model) + " " + maskedSerial(d.Serial)
+	model := d.Model
+	if model == "" {
+		model = "Seestar"
+	}
+	return displayModel(model) + " " + displayModel(d.Serial)
 }
 
 // displayModel uses Go's ASCII string escaping for all server-supplied labels.
@@ -203,17 +207,4 @@ func displayModel(model string) string {
 		truncated = true
 		r = r[:len(r)-1]
 	}
-}
-func maskedSerial(serial string) string {
-	// Never expose a complete short identifier or untrusted suffix characters.
-	if len(serial) <= 8 {
-		return "***"
-	}
-	tail := serial[len(serial)-4:]
-	for _, c := range tail {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-			return "***"
-		}
-	}
-	return "***" + tail
 }

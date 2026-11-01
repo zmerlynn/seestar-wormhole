@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json/v2"
 	"log/slog"
-	"strings"
 	"testing"
 	"time"
 
@@ -14,10 +13,10 @@ import (
 
 func TestSelectedDeviceStatusAndReady(t *testing.T) {
 	for _, tc := range []struct{ serial, model, label string }{
-		{"serial-sentinel-secret-1234", "S50 Pro", "S50 Pro ***1234"},
-		{"serial-sentinel-secret-1234", "Seestar S50 Pro", "Seestar S50 Pro ***1234"},
-		{"tiny", "S30", "S30 ***"},
-		{"serial-sentinel-secret-1234", "private-model", "private-model ***1234"},
+		{"serial-sentinel-secret-1234", "S50 Pro", "S50 Pro serial-sentinel-secret-1234"},
+		{"serial-sentinel-secret-1234", "Seestar S50 Pro", "Seestar S50 Pro serial-sentinel-secret-1234"},
+		{"tiny", "S30", "S30 tiny"},
+		{"serial-sentinel-secret-1234", "private-model", "private-model serial-sentinel-secret-1234"},
 	} {
 		t.Run(tc.label, func(t *testing.T) {
 			var logs bytes.Buffer
@@ -50,9 +49,6 @@ func TestSelectedDeviceStatusAndReady(t *testing.T) {
 			}
 			if record.Phase != "ready" || record.Telescope != tc.label {
 				t.Fatalf("ready=%s", &logs)
-			}
-			if strings.Contains(logs.String()+status.SelectedDevice(), tc.serial) {
-				t.Fatal("private identity escaped")
 			}
 			if peer.allocs.Load() != 0 || peer.details.Load() != 0 {
 				t.Fatal("lazy selection allocated or queried detail")

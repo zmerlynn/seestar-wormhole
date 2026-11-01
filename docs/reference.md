@@ -471,11 +471,11 @@ Missing, null, zero, understated totals, page-limit exhaustion, or any exact
 pair duplicate require `--model`. Select a received exact pair with serial and
 model when completeness cannot be proven. Detail must then match both identity
 fields before allocation; mismatch stops the dial. Selection itself makes no
-device-session allocation. INFO reports only a public model label and masked
-serial; all cloud model labels are escaped without control or format characters
+device-session allocation. INFO reports a public model label and full
+serial; both are escaped without control or format characters
 and capped at 64 display characters, including escapes and a `...` truncation
 marker. The desktop status shows
-`Telescope: <public model> <masked serial>` once selection succeeds. The CLI's
+`Telescope: <public model> <full serial>` once selection succeeds. The CLI's
 existing ready records include the same label in `telescope`; the INFO
 `device_selected` record keeps its separate `model` and `serial` fields.
 Public labels include the [spec's exact catalog names](https://github.com/zmerlynn/seestar-spec/blob/384340c4e37d9fd1acd230fe0a9f9fe3ceac11e7/spec/auth/cloud-auth/http-api.md#device-selection): `Seestar S50`,
@@ -508,9 +508,10 @@ Use WARN for quieter long-running service logs.
 Rejected startup suppresses pending dependency records and reports their loss at WARN; diagnostic loss makes the final command result fail.
 Most diagnostic records contain fixed classifications and numeric context,
 not dependency error text, forwarded payloads, or session secrets. Device
-selection masks serials in logs. The CLI's multiple-device list and the desktop
-picker show full serials for account-owner selection; they are outside the log
-contract and are excluded from the copied diagnostic summary.
+selection includes full serials in logs, escaped and capped like model labels.
+The selected telescope also appears in lifecycle events and the copied diagnostic
+summary. The CLI's multiple-device list and the desktop picker remain outside
+the log contract; the unselected choices are excluded from the summary.
 `wildcard_bind_warning` intentionally includes interface/address exposure.
 
 The UI records its unreachable-Seestar hint as a `lifecycle` event in `gui.log` and the copied diagnostic
@@ -522,8 +523,8 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 | Record | Level | Meaning and useful fields |
 |---|---|---|
 | `proxy_started` | INFO | Revision, listener count, lazy flag, pause threshold; process serving, not necessarily remote ready |
-| `installation_id_ephemeral`, `device_selected` | INFO | Identity storage mode; selected public model and masked serial |
-| `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy; ready records include selected public model and masked serial in `telescope` |
+| `installation_id_ephemeral`, `device_selected` | INFO | Identity storage mode; selected public model and full serial |
+| `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy; ready records include selected public model and full serial in `telescope` |
 | `lazy_open_attempt` | INFO | New client-triggered attempt and fixed cause |
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |
 | `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy, recovery after ready, or ownership/cleanup recovery, including initial acquisition |

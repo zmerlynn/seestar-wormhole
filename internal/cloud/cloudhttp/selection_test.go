@@ -80,7 +80,7 @@ func selectionClient(t *testing.T, f *selectionCloud, logs *bytes.Buffer, level 
 }
 func assertSelectionSecrets(t *testing.T, s string) {
 	t.Helper()
-	for _, secret := range []string{"token-sentinel-secret", "serial-sentinel-secret-1234", "other-serial-sentinel-5678", "fixture@example.invalid", "fixture-password", "profile-sentinel"} {
+	for _, secret := range []string{"token-sentinel-secret", "fixture@example.invalid", "fixture-password", "profile-sentinel"} {
 		if strings.Contains(s, secret) {
 			t.Fatal("secret escaped selection diagnostics")
 		}
@@ -131,7 +131,7 @@ func TestDeviceSelection(t *testing.T) {
 						t.Fatalf("want fixed catalog option/rule, got %v", err)
 					}
 					if tc.reason == "multiple devices on account" {
-						for _, s := range []string{"S50 Pro", "***1234", "S30", "***5678"} {
+						for _, s := range []string{"S50 Pro", "serial-sentinel-secret-1234", "S30", "other-serial-sentinel-5678"} {
 							if strings.Contains(logs.String(), s) {
 								t.Fatalf("catalog label %q escaped ambiguous rejection", s)
 							}
@@ -148,7 +148,7 @@ func TestDeviceSelection(t *testing.T) {
 					t.Fatal("explicit selection performed discovery")
 				}
 				if tc.reason == "" && tc.listed {
-					for _, s := range []string{`"level":"INFO"`, `"msg":"device_selected"`, tc.want.Model, "***"} {
+					for _, s := range []string{`"level":"INFO"`, `"msg":"device_selected"`, tc.want.Model, tc.want.Serial} {
 						if !strings.Contains(logs.String(), s) {
 							t.Fatalf("missing selection log %s", &logs)
 						}
@@ -198,7 +198,7 @@ func TestDeviceSelectionPagination(t *testing.T) {
 	}
 	assertSelectionSecrets(t, logs.String())
 }
-func TestDeviceSelectionMaskedShortSerialAndUntrustedModel(t *testing.T) {
+func TestDeviceSelectionFullShortSerialAndUntrustedModel(t *testing.T) {
 	for _, serial := range []string{"x", "1234", "12345"} {
 		var logs bytes.Buffer
 		body := strings.Replace(oneDevice, "serial-sentinel-secret-1234", serial, 1)
@@ -207,8 +207,8 @@ func TestDeviceSelectionMaskedShortSerialAndUntrustedModel(t *testing.T) {
 		if _, err := c.SelectDevice(t.Context(), Device{}); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(logs.String(), serial) {
-			t.Fatal("full short serial in logs")
+		if !strings.Contains(logs.String(), `"serial":"`+serial+`"`) {
+			t.Fatal("full short serial missing from logs")
 		}
 		assertSelectionSecrets(t, logs.String())
 	}

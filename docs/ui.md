@@ -115,7 +115,7 @@ Absence from the catalog alone does not invalidate a saved pair; the detail
 fallback still applies. The list is excluded from
 logs and Copy diagnostic summary.
 
-After selection, status shows `Telescope: <public model> <masked serial>`.
+After selection, status shows `Telescope: <public model> <full serial>`.
 The **Change telescope** button and its description **Stops the session.**
 wrap together as a unit.
 It stops the session and waits for release; while waiting, status reads
