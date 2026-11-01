@@ -185,3 +185,11 @@ func TestPickerChoicesAppLifetime(t *testing.T) {
 		t.Fatal("picker metadata persisted", string(disk))
 	}
 }
+
+func TestChosenPairRecoveryCopy(t *testing.T) {
+	for _, code := range []string{"selection", "serial", "model"} {
+		if got := errorCopy(code); got != "Choose “Find on my account” to reload telescopes, or check Serial and Model." {
+			t.Fatalf("%s recovery: %s", code, got)
+		}
+	}
+}

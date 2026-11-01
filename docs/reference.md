@@ -440,7 +440,14 @@ replaces the discovery help; only one picker help line appears at a time. Connec
 Serial and Model fields, with Connect after them in DOM and visual order. In the
 selection step, empty manual Serial shows **Enter a serial number.**, associated
 with Serial, and is validated locally without a request. A usable serial shows
-**Ready to connect**; Model remains optional. A saved pair is selected on load. Received choices
+**Ready to connect**; Model remains optional. A saved pair is selected on load. An entry found only in settings is labeled
+**Saved: {model} {serial}**, using the same escaping and capping as received
+labels. If it is the only identity entry, **Choose “Find on my account”, then Connect to load other telescopes.**
+replaces the picker help. A saved pair also received from the current account
+appears once with its received label. Selection failures for a chosen pair say
+**Choose “Find on my account” to reload telescopes, or check Serial and Model.**
+Absence from the catalog alone is not invalid; the detail fallback above remains.
+Received choices
 remain in memory for this app run and are never added to the settings file.
 After a successful Change telescope clear/save, current-account received choices
 open the choosing step with **Stopped. Choose a telescope, then Connect.**, focus

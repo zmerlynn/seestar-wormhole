@@ -21,7 +21,7 @@ async function checkDevicePicker() {
   assert($('custom-device').hidden && $('serial').value === '' && $('model').value === '', 'Find on my account did not hide and clear exact pair');
   const saved = {...original,serial:'synthetic-saved-9999',model:'Future telescope',choice_label:'Future telescope synthetic-saved-9999'};
   load(saved); render({...idle,settings:saved});
-  assert(picker.children.length === 3 && picker.children[1].textContent === saved.choice_label && picker.value === '0', 'saved entry label and selection');
+  assert(picker.children.length === 3 && picker.children[1].textContent === 'Saved: '+saved.choice_label && picker.value === '0', 'saved entry label and selection');
   assert($('serial').value === saved.serial && $('model').value === saved.model && $('custom-device').hidden, 'saved pair projection');
   load(original);
   pending = 'start';
@@ -48,9 +48,9 @@ async function checkDevicePicker() {
   assert(picker.value === '1' && $('status').textContent === 'Ready to connect', 'poll reset choice or status');
   render({...idle,active:true}); render(idle);
   assert(picker.children.length === 4, 'received list lost during app run');
-  fieldError('serial','Check this setting.','selection',true);
+  fieldError('serial','Choose “Find on my account” to reload telescopes, or check Serial and Model.','selection',true);
   assert(picker.value === 'custom' && !$('custom-device').hidden && $('serial').attributes['aria-invalid'] === 'true' && document.activeElement === $('serial'), 'real mismatch did not target Custom fields');
-  fieldError('model','Check this setting.','model');
+  fieldError('model','Choose “Find on my account” to reload telescopes, or check Serial and Model.','model');
   picker.value = ''; picker.onchange();
   assert($('serial-error').hidden && $('model-error').hidden, 'entry choice retained field error');
   assert(!diagnostic.includes('synthetic-choice-') && !diagnostic.includes('<img') && !diagnostic.includes('devices'), 'full choices in diagnostic summary');

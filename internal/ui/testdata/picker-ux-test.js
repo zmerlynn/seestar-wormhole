@@ -73,3 +73,28 @@ async function checkManualPicker(scenario) {
   uxAssert(submitted?.settings.serial === 'synthetic-manual' && submitted.settings.model === '', 'manual serial with optional Model was not submitted');
  }
 }
+
+async function checkSavedChoice(scenario) {
+ const {idle}=uxFixture();
+ const saved={...idle.settings,serial:'synthetic-saved',model:'<img>\tmodel',choice_label:'<img>\\tmodel synthetic-saved'};
+ const response={...idle,settings:saved,devices:[]};
+ load(saved); render(response);
+ if(scenario === 'label') {
+  uxAssert($('device-choice').children[1].textContent === 'Saved: '+saved.choice_label, 'saved-only label provenance or escaping');
+  uxAssert(settings().serial === saved.serial && settings().model === saved.model, 'saved label changed the wire pair');
+ } else if(scenario === 'help') {
+  uxAssert(!$('selection-help').hidden && $('selection-help').textContent === 'Choose “Find on my account”, then Connect to load other telescopes.', 'saved-only reload help');
+  $('device-choice').value=''; $('device-choice').onchange();
+  uxAssert($('selection-help').textContent === 'Choose “Find on my account”, then Connect to load other telescopes.', 'saved reload help lost on empty choice');
+ } else if(scenario === 'received') {
+  render({...response,devices:[{serial:saved.serial,model:saved.model,label:saved.choice_label}]});
+  uxAssert(pickerDevices.length === 1 && $('device-choice').children[1].textContent === saved.choice_label, 'received match still labeled Saved or duplicated');
+  checkDiscoveryHelp('received saved pair');
+  render(response);
+  uxAssert($('device-choice').children[1].textContent === 'Saved: '+saved.choice_label, 'saved provenance did not return after received list cleared');
+ } else if(scenario === 'account') {
+  $('email').value='other@example.invalid'; $('email').dispatchEvent({type:'input'});
+  uxAssert(!pickerDevices.length, 'other account retained saved-only option');
+  checkDiscoveryHelp('saved account edit');
+ }
+}

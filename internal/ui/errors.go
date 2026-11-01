@@ -89,7 +89,7 @@ func errorCopy(code string) string {
 	case "selection_multiple":
 		return "Your account has several telescopes. Choose one, then Connect."
 	case "selection", "serial", "model":
-		return "Check this setting."
+		return "Choose “Find on my account” to reload telescopes, or check Serial and Model."
 	case "release":
 		return "Session release could not be confirmed. If Seestar is occupied, wait and try Connect again."
 	case "storage":

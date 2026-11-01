@@ -249,7 +249,7 @@ function controls() {
   $('port-permissions').hidden = code !== 'http_permission';
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
-  text('selection-help', selectionStep ? 'Your account has several telescopes. Choose one, then Connect.' : 'Connect uses your only telescope, or asks which one if there are several.');
+  text('selection-help', selectionStep ? 'Your account has several telescopes. Choose one, then Connect.' : savedDevice && !receivedDevices.length ? 'Choose “Find on my account”, then Connect to load other telescopes.' : 'Connect uses your only telescope, or asks which one if there are several.');
   if ($('device-choice').children.length) textOptionLabel();
   const manual = $('device-choice').value === 'custom';
   const needsSerial = selectionStep && manual && !$('serial').value.trim();
@@ -279,7 +279,7 @@ function selectPair() {
 function devicePicker(devices) {
   if (devices) receivedDevices = devices;
   const all = [...receivedDevices];
-  if (savedDevice && !all.some(d => d.serial === savedDevice.serial && d.model === savedDevice.model)) all.unshift(savedDevice);
+  if (savedDevice && !all.some(d => d.serial === savedDevice.serial && d.model === savedDevice.model)) all.unshift({...savedDevice, label: 'Saved: ' + savedDevice.label});
   const key = JSON.stringify(all);
   if (key === pickerKey) return;
   pickerKey = key;
@@ -329,7 +329,7 @@ function accountChoices(s) {
 // Settings carry the last successfully saved pair, independently of form drafts.
 function projectPicker(s) {
   const pair = s.settings;
-  savedDevice = pair.serial || pair.model ? {serial: pair.serial || '', model: pair.model || '', label: pair.choice_label} : null;
+  savedDevice = pair.email === accountEmail() && (pair.serial || pair.model) ? {serial: pair.serial || '', model: pair.model || '', label: pair.choice_label} : null;
   accountChoices(s);
 }
 function render(s) {
@@ -521,7 +521,7 @@ for (const [id,action] of [['change-telescope','change-telescope'],['save-passwo
 }
 $('email').addEventListener('input', () => {
   $('password').value = '';
-  if (state) accountChoices(state);
+  if (state) projectPicker(state);
 });
 for (const id of ['email','password','idle','bind','serial','model']) $(id).addEventListener('input', () => {
   clearField(id);

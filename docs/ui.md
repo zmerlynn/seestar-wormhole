@@ -83,7 +83,12 @@ same ports, stop it first.
 
 The **Telescope** picker sits below the account fields. **Find on my account** is the
 default: with one telescope on the account, Connect selects it. A saved Serial
-and Model pair appears as a selected entry with its model and full serial number.
+and Model pair appears as a selected entry. If it is absent from the current
+account's received list, its label is **Saved: {model} {serial}**, using the same
+escaping and capping as received labels. When that is the only identity entry,
+the picker help reads **Choose “Find on my account”, then Connect to load other telescopes.**
+This replaces the discovery help. A received match has its normal label and
+appears only once.
 
 If the account has several telescopes, Connect shows **Choose a telescope**
 and adds each model and full serial number to the picker. Its help reads
@@ -104,7 +109,10 @@ and Connect validates it locally without an account request. A usable serial
 shows **Ready to connect**; Model remains optional. Choosing another entry hides these fields and
 fills its exact pair; Find on my account clears both. The received list stays in memory
 for this app run, including when the controls page is reopened. Only Serial and
-Model are saved in the existing settings format. The list is excluded from
+Model are saved in the existing settings format. A selection failure for a
+chosen pair says **Choose “Find on my account” to reload telescopes, or check Serial and Model.**
+Absence from the catalog alone does not invalidate a saved pair; the detail
+fallback still applies. The list is excluded from
 logs and Copy diagnostic summary.
 
 After selection, status shows `Telescope: <public model> <masked serial>`.

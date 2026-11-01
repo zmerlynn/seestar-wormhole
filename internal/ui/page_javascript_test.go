@@ -168,3 +168,11 @@ func TestManualPickerPage(t *testing.T) {
 		})
 	}
 }
+
+func TestSavedChoicePage(t *testing.T) {
+	for _, scenario := range []string{"label", "help", "received", "account"} {
+		t.Run(scenario, func(t *testing.T) {
+			runPageRegression(t, "picker-ux-test.js", "checkSavedChoice("+strconv.Quote(scenario)+")")
+		})
+	}
+}
