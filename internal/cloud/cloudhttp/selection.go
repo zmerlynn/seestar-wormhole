@@ -73,7 +73,7 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 		}
 		// Keep this catalog refusal outside OptionError: startup discards its
 		// pending dependency logs for option-validation errors.
-		return Device{}, fmt.Errorf("model_mismatch: --model %q differs from catalog model %q: %w", d.Model, v.Model(), cloud.ErrConfig)
+		return Device{}, fmt.Errorf("model_mismatch: --model %q differs from catalog model %q: %w", displayModel(d.Model), displayModel(v.Model()), cloud.ErrConfig)
 	}
 	if len(matches) > 1 || (!complete && len(matches) == 1) {
 		if d.Model == "" {
@@ -182,17 +182,27 @@ func (d Device) DisplayName() string {
 	return displayModel(d.Model) + " " + maskedSerial(d.Serial)
 }
 
-// Model is server-supplied text, so only public product labels enter logs. An
-// unknown value still selects correctly but is displayed as [unknown model].
+// displayModel uses Go's ASCII string escaping for all server-supplied labels.
+// The 64-character limit includes escapes and a truncation marker. Wire values
+// remain untouched for selection. Dropping whole runes preserves whole escapes.
 func displayModel(model string) string {
-	switch model {
-	// Full catalog names are READ in app 3.3.2; retain the existing short labels.
-	// https://github.com/zmerlynn/seestar-spec/blob/384340c4e37d9fd1acd230fe0a9f9fe3ceac11e7/spec/auth/cloud-auth/http-api.md#device-selection
-	case "S50 Pro", "S50", "S30", "S30 Pro",
-		"Seestar S50", "Seestar S50 Pro", "Seestar S30", "Seestar S30 Pro", "Seestar S30 Plus", "Seestar S80":
-		return model
+	r := []rune(model)
+	truncated := len(r) > 64
+	if truncated {
+		r = r[:64]
 	}
-	return "[unknown model]"
+	for {
+		quoted := strconv.QuoteToASCII(string(r))
+		label := quoted[1 : len(quoted)-1]
+		if !truncated && len(label) <= 64 {
+			return label
+		}
+		if len(label) <= 61 {
+			return label + "..."
+		}
+		truncated = true
+		r = r[:len(r)-1]
+	}
 }
 func maskedSerial(serial string) string {
 	// Never expose a complete short identifier or untrusted suffix characters.

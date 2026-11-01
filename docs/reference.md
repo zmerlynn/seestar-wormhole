@@ -427,8 +427,9 @@ model then **full serial**. Pass `--serial`; also pass `--model` when a serial
 appears under more than one model. Incomplete-catalog, duplicate, and ambiguous
 serial refusals also list the received pairs. These lists are command output,
 not log records. Invalid serials are omitted using the command's serial rules;
-unknown model labels are quoted, escaped, and limited to 96 characters before
-escaping. Control characters in serial display are escaped too. The desktop
+all model labels use Go ASCII string escaping (without enclosing quotes) and
+are capped at 64 display characters, including escapes and a `...` truncation
+marker. Control characters in serial display are escaped too. The desktop
 exposes the choices structurally only for multiple devices without a serial;
 its picker fills the exact wire serial and model in Advanced for the next try.
 
@@ -448,7 +449,9 @@ pair duplicate require `--model`. Select a received exact pair with serial and
 model when completeness cannot be proven. Detail must then match both identity
 fields before allocation; mismatch stops the dial. Selection itself makes no
 device-session allocation. INFO reports only a public model label and masked
-serial; unknown model labels are redacted. The desktop status shows
+serial; all cloud model labels are escaped without control or format characters
+and capped at 64 display characters, including escapes and a `...` truncation
+marker. The desktop status shows
 `Telescope: <public model> <masked serial>` once selection succeeds. The CLI's
 existing ready records include the same label in `telescope`; the INFO
 `device_selected` record keeps its separate `model` and `serial` fields.

@@ -76,7 +76,7 @@ func TestSelectionChoiceUntrustedText(t *testing.T) {
 		t.Fatal("no structured list")
 	}
 	choices := selection.Choices()
-	if len(choices) != 1 || choices[0].Serial != "serial-sentinel-secret-1234" || choices[0].Model != hostile || choices[0].Label != `"<img src=x>\x1b\t\n" serial-sentinel-secret-1234` {
+	if len(choices) != 1 || choices[0].Serial != "serial-sentinel-secret-1234" || choices[0].Model != hostile || choices[0].Label != `<img src=x>\x1b\t\n serial-sentinel-secret-1234` {
 		t.Fatalf("untrusted choices=%q", choices)
 	}
 	if strings.Contains(err.Error(), "invalid") || strings.ContainsAny(choices[0].Label, "\x1b\t\n") {
@@ -89,7 +89,7 @@ func TestSelectionChoiceUntrustedText(t *testing.T) {
 		t.Fatal(parseErr)
 	}
 	bounded := selectionChoices(devices)
-	if bounded[0].Model != long || bounded[0].Label != `"`+strings.Repeat("x", 96)+`\u2026" serial-sentinel-secret-1234` {
+	if bounded[0].Model != long || bounded[0].Label != strings.Repeat("x", 61)+`... serial-sentinel-secret-1234` {
 		t.Fatal("model bound or wire value lost")
 	}
 }

@@ -52,9 +52,6 @@ func selectionChoices(devices []cloud.Detail) []DeviceChoice {
 			continue
 		}
 		model := displayModel(d.Model())
-		if model == "[unknown model]" {
-			model = escapedChoiceText(d.Model(), 96)
-		}
 		serial := d.Serial()
 		if strings.ContainsFunc(serial, unicode.IsControl) {
 			serial = strconv.QuoteToASCII(serial)
@@ -62,11 +59,4 @@ func selectionChoices(devices []cloud.Detail) []DeviceChoice {
 		choices = append(choices, DeviceChoice{Serial: d.Serial(), Model: d.Model(), Label: model + " " + serial})
 	}
 	return choices
-}
-func escapedChoiceText(s string, limit int) string {
-	r := []rune(s)
-	if len(r) > limit {
-		s = string(r[:limit]) + "…"
-	}
-	return strconv.QuoteToASCII(s)
 }

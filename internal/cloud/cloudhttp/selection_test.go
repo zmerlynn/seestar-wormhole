@@ -202,7 +202,7 @@ func TestDeviceSelectionMaskedShortSerialAndUntrustedModel(t *testing.T) {
 	for _, serial := range []string{"x", "1234", "12345"} {
 		var logs bytes.Buffer
 		body := strings.Replace(oneDevice, "serial-sentinel-secret-1234", serial, 1)
-		body = strings.Replace(body, "S50 Pro", "token-sentinel-secret", 1)
+		body = strings.Replace(body, "S50 Pro", "Future telescope", 1)
 		c := selectionClient(t, &selectionCloud{bodies: []string{body}}, &logs, slog.LevelInfo)
 		if _, err := c.SelectDevice(t.Context(), Device{}); err != nil {
 			t.Fatal(err)

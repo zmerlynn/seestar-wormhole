@@ -89,7 +89,7 @@ func TestDeviceChoicesUIAPI(t *testing.T) {
 				t.Fatalf("choices: %s", w.Body.String())
 			}
 			if tc.count > 0 {
-				if got.Failure.Code != "selection_multiple" || got.Failure.Devices[1].Serial != "synthetic-choice-5678" || got.Failure.Devices[1].Model != " <img>\t " || got.Failure.Devices[1].Label != `" <img>\t " synthetic-choice-5678` {
+				if got.Failure.Code != "selection_multiple" || got.Failure.Devices[1].Serial != "synthetic-choice-5678" || got.Failure.Devices[1].Model != " <img>\t " || got.Failure.Devices[1].Label != ` <img>\t  synthetic-choice-5678` {
 					t.Fatalf("wire or display identity: %s", w.Body.String())
 				}
 				if len(got.Events) == 0 || got.Events[len(got.Events)-1].Code != "selection_multiple" {
