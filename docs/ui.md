@@ -116,7 +116,8 @@ fallback still applies. The list is excluded from
 logs and Copy diagnostic summary.
 
 After selection, status shows `Telescope: <public model> <masked serial>`.
-The **Change telescope** button has the description **Stops the session.**
+The **Change telescope** button and its description **Stops the session.**
+wrap together as a unit.
 It stops the session and waits for release; while waiting, status reads
 **Stopping — releasing the Seestar session…**. After the choice is cleared and
 saved, received choices for the current account lead to **Stopped. Choose a

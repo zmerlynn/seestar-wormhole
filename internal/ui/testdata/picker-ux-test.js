@@ -98,3 +98,11 @@ async function checkSavedChoice(scenario) {
   checkDiscoveryHelp('saved account edit');
  }
 }
+
+async function checkChangeGroup() {
+ const {idle}=uxFixture(); render({...idle,active:true,selected_device:'Synthetic ***1234'});
+ uxAssert($('change-telescope').parentElement === $('change-telescope-group') && $('change-telescope-help').parentElement === $('change-telescope-group'), 'Change telescope and consequence must share a wrap group');
+ uxAssert(!$('change-telescope-group').hidden, 'Change telescope group hidden with selection');
+ render(idle);
+ uxAssert($('change-telescope-group').hidden, 'orphaned Change telescope group');
+}

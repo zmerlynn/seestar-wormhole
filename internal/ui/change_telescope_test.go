@@ -161,7 +161,7 @@ func TestChangeTelescopeRequiresSelection(t *testing.T) {
 
 func TestChangeTelescopeControlBinding(t *testing.T) {
 	html, _ := assets.ReadFile("web/index.html")
-	if !strings.Contains(string(html), `<div class="telescope-status"><p id="selected-device" hidden></p><button id="change-telescope" type="button" aria-describedby="change-telescope-help" hidden>Change telescope</button><span id="change-telescope-help" class="help" hidden>Stops the session.</span></div>`) {
+	if !strings.Contains(string(html), `<div class="telescope-status"><p id="selected-device" hidden></p><span id="change-telescope-group" class="change-telescope-group" hidden><button id="change-telescope" type="button" aria-describedby="change-telescope-help" hidden>Change telescope</button><span id="change-telescope-help" class="help" hidden>Stops the session.</span></span></div>`) {
 		t.Fatal("Change telescope control not beside selected status")
 	}
 	js, _ := assets.ReadFile("web/app.js")

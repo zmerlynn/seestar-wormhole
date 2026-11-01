@@ -176,3 +176,7 @@ func TestSavedChoicePage(t *testing.T) {
 		})
 	}
 }
+
+func TestChangeTelescopeGroupPage(t *testing.T) {
+	runPageRegression(t, "picker-ux-test.js", "checkChangeGroup()")
+}

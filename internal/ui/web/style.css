@@ -243,3 +243,12 @@ footer a,#port-permissions a {
   gap: .75rem;
   flex-wrap: wrap;
 }
+
+.change-telescope-group {
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
+}
+.change-telescope-group .help {
+  margin: 0;
+}

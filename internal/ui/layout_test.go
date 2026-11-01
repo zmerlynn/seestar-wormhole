@@ -32,3 +32,13 @@ func TestSetupHierarchyAndRunningCopy(t *testing.T) {
 		t.Fatal("product name can break at its hyphen")
 	}
 }
+
+func TestChangeTelescopeWrapStyle(t *testing.T) {
+	css, err := assets.ReadFile("web/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), ".change-telescope-group {\n  display: inline-flex;\n  align-items: center;\n  gap: .5rem;\n}") {
+		t.Fatal("Change telescope group must wrap as one flex item")
+	}
+}

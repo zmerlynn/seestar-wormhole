@@ -236,6 +236,7 @@ function controls() {
   $('forget').hidden = !password.saved;
   $('forget').disabled = blocked || !!pending || password.busy;
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
+  $('change-telescope-group').hidden = !state?.selected_device;
   $('change-telescope').hidden = !state?.selected_device;
   $('change-telescope-help').hidden = $('change-telescope').hidden;
   $('change-telescope').disabled = blocked || !!pending || !!state?.stopping;
