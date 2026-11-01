@@ -205,6 +205,12 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
   })()`); err != nil {
 			return err
 		}
+	case "telescope-stopped":
+		// Connect follows the picker here, so only the top of the page is checked.
+		d.w.ExecJS(`window.scrollTo(0,0)`)
+		if err := d.probe(`(() => {const status=el('status').getBoundingClientRect();return check(status.top>=0 && status.bottom<=innerHeight,{status,innerHeight})})()`); err != nil {
+			return err
+		}
 	default:
 		d.w.ExecJS(`window.scrollTo(0,0)`)
 		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),status=el('status').getBoundingClientRect();return check(start.bottom<innerHeight && status.top>=0,{start,status,innerHeight})})()`); err != nil {

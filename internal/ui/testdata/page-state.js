@@ -58,7 +58,8 @@
       assert($('ports-error').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING && $('port-permissions').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING, 'port recovery follows the ten-row table');
       assert($('services-title').tagName === 'H2' && $('services-title').textContent === 'Services' && $('ports').getAttribute('aria-labelledby') === 'services-title', 'Services heading missing');
       for (const [id, placeholder] of [['serial', 'From your Seestar account'], ['model', 'e.g. S50 Pro']]) {
-        assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && !$(id+'-help') && $(id).getAttribute('aria-describedby') === id+'-error', id+' example is not placeholder-only');
+        const described = id === 'serial' ? 'serial-help serial-error' : id+'-error';
+        assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && (id === 'serial' ? $('serial-help').hidden : !$(id+'-help')) && $(id).getAttribute('aria-describedby') === described, id+' example is not placeholder-only');
       }
       assert(Array.from($('details').querySelectorAll('h2')).map(e => e.textContent).join('|') === 'Connection settings|Recent events', 'Details headings missing');
       assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous port headings');
