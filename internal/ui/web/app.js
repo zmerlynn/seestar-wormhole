@@ -252,7 +252,7 @@ function controls() {
   $('selection-help').hidden = !selectionStep;
   const actionArea = $(selectionStep ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
-  if (selectionStep) text('status', $('device-choice').value === '' ? 'Choose a telescope' : 'Ready to connect');
+  text('status', selectionStep ? ($('device-choice').value === '' ? 'Choose a telescope' : 'Ready to connect') : state?.status || 'Loading…');
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
   if (pickerFocusPending && !$('options').disabled) {
     pickerFocusPending = false;
@@ -327,7 +327,6 @@ function render(s) {
   projectPicker(s);
   text('version',s.version);
   active = s.active;
-  text('status',s.status);
   text('selected-device',s.selected_device ? 'Telescope: ' + s.selected_device : '');
   $('selected-device').hidden = !s.selected_device;
   $('last-known').hidden = true;

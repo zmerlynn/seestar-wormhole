@@ -143,3 +143,7 @@ func pageDOM(t *testing.T) string {
  if(e.Parent) document.getElementById(e.Parent).append(el);
  }`
 }
+
+func TestPickerStatusWrites(t *testing.T) {
+	runPageRegression(t, "picker-ux-test.js", "checkStatusWrites()")
+}
