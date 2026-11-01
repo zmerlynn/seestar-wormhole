@@ -161,10 +161,11 @@ local time, error codes, and the private log's location.
 
 **Copy diagnostic summary** copies one JSON object with the program name,
 version, connection settings, and this launch's events in UTC. It leaves out
-addresses, paths, credentials, tokens, account and device identifiers, and
-payloads.
+addresses, paths, credentials, tokens, account identifiers, and payloads.
+Lifecycle events include the selected telescope model and full serial with the
+same escaping and display caps as status.
 
-The private logs use fixed messages and categories, UTC timestamps, and
+The private logs use fixed message templates and categories, UTC timestamps, and
 classified failure phases and reasons, with no raw protocol traces.
 
 If seestar-wormhole fails to start, your system shows the error. On Windows,
