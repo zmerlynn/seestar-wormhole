@@ -149,8 +149,8 @@ func (d deviceIdentity) detail() (Detail, error) {
 	if d.SSID == nil {
 		return Detail{}, invalid("data.ssid", "string")
 	}
-	if !validString(d.Serial) {
-		return Detail{}, invalid("data.deviceSn", "nonblank_string_without_nul")
+	if !ValidSerial(d.Serial) {
+		return Detail{}, invalid("data.deviceSn", "serial_ascii_1_64")
 	}
 	if !validString(d.Model) {
 		return Detail{}, invalid("data.deviceModel", "nonblank_string_without_nul")
@@ -180,7 +180,7 @@ func ParseDetail(b []byte) (Detail, error) {
 		Model  string `json:"deviceModel"`
 	}
 	var identity Detail
-	if decodeJSON(r.Data, &pair) == nil && validString(pair.Serial) && validString(pair.Model) {
+	if decodeJSON(r.Data, &pair) == nil && ValidSerial(pair.Serial) && validString(pair.Model) {
 		identity = Detail{serial: pair.Serial, model: pair.Model}
 	}
 	var d deviceIdentity

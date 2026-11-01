@@ -76,6 +76,12 @@ func TestSerialBoundCatalogChoices(t *testing.T) {
 			}
 			body := strings.Replace(twoDevices, `"other-serial-sentinel-5678"`, string(encoded), 1)
 			devices, _, err := cloud.ParseDevices([]byte(body))
+			if tc.count == 1 {
+				if !errors.Is(err, cloud.ErrInvalid) {
+					t.Fatalf("invalid catalog serial accepted: %v", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}

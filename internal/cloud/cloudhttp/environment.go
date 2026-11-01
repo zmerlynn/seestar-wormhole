@@ -20,17 +20,7 @@ func environmentInputError(setting, rule string) error {
 }
 
 // ValidSerial accepts 1-64 printable ASCII bytes, excluding space.
-func ValidSerial(serial string) bool {
-	if len(serial) == 0 || len(serial) > 64 {
-		return false
-	}
-	for i := range len(serial) {
-		if serial[i] < 0x21 || serial[i] > 0x7e {
-			return false
-		}
-	}
-	return true
-}
+func ValidSerial(serial string) bool { return cloud.ValidSerial(serial) }
 
 // ValidModel applies the same opaque model bounds as device detail requests.
 func ValidModel(model string) bool { return validInput(model) }
