@@ -42,3 +42,15 @@ func TestChangeTelescopeWrapStyle(t *testing.T) {
 		t.Fatal("Change telescope group must wrap as one flex item")
 	}
 }
+
+func TestManualSerialLabel(t *testing.T) {
+	b, err := assets.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range []string{`<label for="serial">Serial number</label>`, `<label for="model">Model (optional)</label>`} {
+		if !strings.Contains(string(b), label) {
+			t.Fatal("manual field label missing", label)
+		}
+	}
+}

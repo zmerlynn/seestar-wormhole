@@ -57,6 +57,8 @@
       assert(discovery.previousElementSibling === $('discovery').closest('label') && discovery.classList.contains('help') && parseFloat(getComputedStyle(discovery).marginLeft) > 0, 'discovery help detached or not indented');
       assert($('ports-error').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING && $('port-permissions').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING, 'port recovery follows the ten-row table');
       assert($('services-title').tagName === 'H2' && $('services-title').textContent === 'Services' && $('ports').getAttribute('aria-labelledby') === 'services-title', 'Services heading missing');
+      assert(document.querySelector('label[for="serial"]').textContent === 'Serial number', 'Serial label');
+      assert(document.querySelector('label[for="model"]').textContent === 'Model (optional)', 'Model label');
       for (const [id, placeholder] of [['serial', 'From your Seestar account'], ['model', 'e.g. S50 Pro']]) {
         const described = id === 'serial' ? 'serial-help serial-error' : id+'-error';
         assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && (id === 'serial' ? $('serial-help').hidden : !$(id+'-help')) && $(id).getAttribute('aria-describedby') === described, id+' example is not placeholder-only');

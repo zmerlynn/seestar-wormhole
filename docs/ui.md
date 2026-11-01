@@ -101,11 +101,11 @@ the picker focused without another account request. Outside this step, including
 a changed account, it reverts to **Find on my account**. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
 The selection-step help replaces that line; only one picker help line appears at a time.
 
-**Enter manually…** reveals **Serial number (optional)** and **Model (optional)** below
+**Enter manually…** reveals **Serial number** and **Model (optional)** below
 the picker for manual entry. Connect follows the revealed fields in visual and
-keyboard order; Tab from the picker reaches Serial next. In the selection step,
-an empty manual Serial shows **Enter a serial number.**, associated with Serial,
-and Connect validates it locally without an account request. A usable serial
+keyboard order; Tab from the picker reaches Serial next. In manual entry, an
+empty Serial shows **Enter a serial number.** Connect validates it locally without
+an account request. The instruction and validation error are associated with Serial. A usable serial
 shows **Ready to connect**; Model remains optional. Choosing another entry hides these fields and
 fills its exact pair; Find on my account clears both. The received list stays in memory
 for this app run, including when the controls page is reopened. Only Serial and

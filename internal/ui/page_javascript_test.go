@@ -180,3 +180,13 @@ func TestSavedChoicePage(t *testing.T) {
 func TestChangeTelescopeGroupPage(t *testing.T) {
 	runPageRegression(t, "picker-ux-test.js", "checkChangeGroup()")
 }
+
+func TestManualSerialRequired(t *testing.T) {
+	for _, discovered := range []bool{false, true} {
+		for _, value := range []string{"", "   ", "model only"} {
+			t.Run(strconv.FormatBool(discovered)+"/"+value, func(t *testing.T) {
+				runPageRegression(t, "picker-ux-test.js", "checkManualSerialRequired("+strconv.FormatBool(discovered)+","+strconv.Quote(value)+")")
+			})
+		}
+	}
+}

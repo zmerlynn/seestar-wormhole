@@ -254,11 +254,12 @@ function controls() {
   text('selection-help', selectionStep ? 'Your account has several telescopes. Choose one, then Connect.' : savedDevice && !receivedDevices.length ? 'Choose “Find on my account”, then Connect to load other telescopes.' : 'Connect uses your only telescope, or asks which one if there are several.');
   if ($('device-choice').children.length) textOptionLabel();
   const manual = $('device-choice').value === 'custom';
-  const needsSerial = selectionStep && $('device-choice').value !== '' && !$('serial').value.trim();
+  const choosing = selectionStep || (!active && manual);
+  const needsSerial = choosing && $('device-choice').value !== '' && !$('serial').value.trim();
   $('serial-help').hidden = !needsSerial;
-  const actionArea = $(selectionStep || (!active && manual) ? 'picker-action' : 'primary-action');
+  const actionArea = $(choosing ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
-  const statusText = ended ? (state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.') : selectionStep && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
+  const statusText = ended ? (state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.') : choosing && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
   text('status', statusText);
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
   if (pickerFocusPending && !$('options').disabled) {
@@ -430,7 +431,7 @@ async function act(action) {
     $('device-choice').focus();
     return;
   }
-  if (action === 'start' && selectionStep && $('device-choice').value !== '' && !$('serial').value.trim()) {
+  if (action === 'start' && ($('device-choice').value === 'custom' || (selectionStep && $('device-choice').value !== '')) && !$('serial').value.trim()) {
     actionError = 'serial';
     fieldError('serial', 'Enter a serial number.', 'serial', true);
     return;

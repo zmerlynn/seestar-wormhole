@@ -437,9 +437,9 @@ After several telescopes are found for the current account, the empty
 option reads **Choose a telescope…** until that selection step clears or the
 account changes. In that step, **Your account has several telescopes. Choose one, then Connect.**
 replaces the discovery help; only one picker help line appears at a time. Connect remains explicit; Enter manually… reveals manual
-Serial and Model fields, with Connect after them in DOM and visual order. In the
-selection step, empty manual Serial shows **Enter a serial number.**, associated
-with Serial, and is validated locally without a request. A usable serial shows
+Serial and Model fields, with Connect after them in DOM and visual order. In manual
+entry, an empty Serial shows **Enter a serial number.** Connect validates it locally
+without an account request. The instruction and validation error are associated with Serial. A usable serial shows
 **Ready to connect**; Model remains optional. A saved pair is selected on load. An entry found only in settings is labeled
 **Saved: {model} {serial}**, using the same escaping and capping as received
 labels. If it is the only identity entry, **Choose “Find on my account”, then Connect to load other telescopes.**

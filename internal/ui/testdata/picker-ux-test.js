@@ -120,3 +120,51 @@ async function checkChangeGroup() {
  render(idle);
  uxAssert($('change-telescope-group').hidden, 'orphaned Change telescope group');
 }
+
+async function checkManualSerialRequired(discovered, value) {
+ const {idle,multiple}=uxFixture();
+ const response=discovered ? multiple : {...idle,devices:[]};
+ render(response);
+ const before=settings(),requests=[];
+ api=async(name,body)=>{requests.push({name,body});return name==='status'?response:{ok:true};};
+ const picker=$('device-choice');
+ picker.value='custom';picker.dispatchEvent({type:'change'});
+ $('serial').value=value==='model only'?'':value;
+ $('model').value=value==='model only'?'S30':'';
+ $('serial').dispatchEvent({type:'input'});
+ const expected={...before,serial:$('serial').value,model:$('model').value};
+ const failures=[];
+ const check=(ok,message)=>{if(!ok)failures.push(message);};
+ check(!$('serial-help').hidden && $('serial-help').textContent==='Enter a serial number.', 'manual instruction missing');
+ check($('serial').getAttribute('aria-describedby').split(' ').includes('serial-help'), 'manual instruction association');
+ check($('status').textContent==='Enter a serial number.', 'manual empty status');
+ await act('start');
+ check(JSON.stringify(requests)==='[]', 'empty manual requests: '+JSON.stringify(requests));
+ check(JSON.stringify(settings())===JSON.stringify(expected), 'local validation changed settings');
+ check(document.activeElement===$('serial') && $('serial').getAttribute('aria-invalid')==='true', 'Serial focus or invalid state missing');
+ check(!$('serial-error').hidden && $('serial-error').textContent==='Enter a serial number.' && $('serial').getAttribute('aria-describedby').split(' ').includes('serial-error'), 'Serial error or association missing');
+ // Find on my account must still submit the exact empty pair before discovery.
+ picker.value='';picker.dispatchEvent({type:'change'});requests.length=0;
+ await act('start');
+ const discovery={...before,serial:'',model:''};
+ const want=discovered?[]:[{name:'start',body:{settings:discovery,password:''}},{name:'status'}];
+ check(JSON.stringify(requests)===JSON.stringify(want), 'discovery requests: '+JSON.stringify(requests)+' want '+JSON.stringify(want));
+ check(JSON.stringify(settings())===JSON.stringify(discovery), 'discovery settings changed');
+ if(discovered)check(document.activeElement===picker,'incomplete-choice guard lost focus');
+ // A usable serial still submits with optional Model, using exact settings.
+ picker.value='custom';picker.dispatchEvent({type:'change'});
+ $('serial').value='synthetic-manual';$('serial').dispatchEvent({type:'input'});
+ requests.length=0;
+ await act('start');
+ const usable={...before,serial:'synthetic-manual',model:''};
+ const wantUsable=[{name:'start',body:{settings:usable,password:''}},{name:'status'}];
+ check(JSON.stringify(requests)===JSON.stringify(wantUsable), 'manual exact requests: '+JSON.stringify(requests)+' want '+JSON.stringify(wantUsable));
+ // Release uncertainty must outrank both manual and usable draft statuses.
+ const uncertain={...response,failure:{code:'release'},status:'Session release could not be confirmed.'};
+ render(uncertain);
+ for(const serial of ['', 'synthetic-manual']) {
+  $('serial').value=serial;$('serial').dispatchEvent({type:'input'});
+  check($('status').textContent===uncertain.status,'manual draft hid release uncertainty');
+ }
+ if(failures.length)throw new Error(failures.join('; '));
+}
