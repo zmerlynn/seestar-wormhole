@@ -100,6 +100,9 @@ shell history:
 | `APPLE_NOTARY_ISSUER_ID` | API key issuer UUID |
 | `APPLE_NOTARY_KEY_P8_BASE64` | Base64 contents of the API key's `.p8` private key |
 
+Weekly Vulncheck reads the certificate from these two secrets and fails from
+28 days before it expires. Renew it and replace both secrets before then.
+
 With all credentials present, the packaging script imports into a temporary
 keychain, signs the app and universal CLI with the same identity, hardened
 runtime, secure timestamps and the minimal
