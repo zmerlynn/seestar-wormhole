@@ -258,7 +258,7 @@ function controls() {
   $('serial-help').hidden = !needsSerial;
   const actionArea = $(selectionStep || (!active && manual) ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
-  const statusText = selectionStep && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
+  const statusText = ended ? (state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.') : selectionStep && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
   text('status', statusText);
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
   if (pickerFocusPending && !$('options').disabled) {
@@ -465,7 +465,6 @@ async function act(action) {
     if (action === 'quit') {
       ended = true;
       say('');
-      $('status').textContent = state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.';
       controls();
       return;
     }
