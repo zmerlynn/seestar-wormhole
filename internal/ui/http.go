@@ -175,8 +175,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			s.mu.Lock()
 			// Accepting Connect is not a successful save. Keep the authoritative
-			// pair until the run reaches its save boundary.
-			in.Settings.Serial, in.Settings.Model = s.settings.Serial, s.settings.Model
+			// pair for its account until the run reaches its save boundary.
+			s.retainSavedPair(&in.Settings)
 			s.settings = in.Settings
 			s.mu.Unlock()
 		}
@@ -267,15 +267,26 @@ func (s *server) saveSettings(settings Settings) error {
 	}
 	err := s.storage.write("config.json", settings)
 	s.mu.Lock()
-	// A failed clear keeps the prior selection visible. Other fields still
-	// project the current account, including a successful native password save
+	// A failed clear keeps the same account's prior selection visible.
+	// Other fields still project the current account, including a successful native password save
 	// whose settings write failed. The controller owns the retry snapshot.
 	if err != nil {
-		settings.Serial, settings.Model = s.settings.Serial, s.settings.Model
+		s.retainSavedPair(&settings)
 	}
 	s.settings = settings
 	s.mu.Unlock()
 	return err
+}
+
+// retainSavedPair projects only a pair already saved for this normalized account.
+// The caller holds s.mu; accepting a draft or a failed write cannot save a pair.
+func (s *server) retainSavedPair(settings *Settings) {
+	normalize := func(email string) string { return strings.TrimSpace(strings.ReplaceAll(email, " ", "")) }
+	if normalize(settings.Email) == normalize(s.settings.Email) {
+		settings.Serial, settings.Model = s.settings.Serial, s.settings.Model
+	} else {
+		settings.Serial, settings.Model = "", ""
+	}
 }
 
 type pageSettings struct {
