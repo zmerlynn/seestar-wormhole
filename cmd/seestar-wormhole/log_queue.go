@@ -9,7 +9,9 @@ import (
 )
 
 const logQueueSize = 32
-const maxLogLine = 16 << 10
+
+// A 4096-byte serial can expand to 20 KiB after display and log escaping.
+const maxLogLine = 32 << 10
 const logDrainBound = 250 * time.Millisecond
 
 // Windows has no sound nonblocking WriteFile equivalent for an inherited

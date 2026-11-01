@@ -102,7 +102,7 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 
 func (c *Client) selectedDevice(v cloud.Detail) Device {
 	if c.logger != nil {
-		c.logger.Info("device_selected", "model", displayModel(v.Model()), "serial", displayModel(v.Serial()))
+		c.logger.Info("device_selected", "model", displayModel(v.Model()), "serial", displaySerial(v.Serial()))
 	}
 	return Device{Serial: v.Serial(), Model: v.Model()}
 }
@@ -195,10 +195,16 @@ func (d Device) DisplayName() string {
 	if model == "" {
 		model = "Seestar"
 	}
-	return displayModel(model) + " " + displayModel(d.Serial)
+	return displayModel(model) + " " + displaySerial(d.Serial)
 }
 
-// displayModel uses Go's ASCII string escaping for all server-supplied labels.
+// displaySerial preserves the complete identity with Go ASCII string escaping.
+func displaySerial(serial string) string {
+	quoted := strconv.QuoteToASCII(serial)
+	return quoted[1 : len(quoted)-1]
+}
+
+// displayModel uses Go's ASCII string escaping for model labels.
 // The 64-character limit includes escapes and a truncation marker. Wire values
 // remain untouched for selection. Dropping whole runes preserves whole escapes.
 func displayModel(model string) string {

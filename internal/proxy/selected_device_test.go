@@ -3,7 +3,9 @@ package proxy
 import (
 	"bytes"
 	"encoding/json/v2"
+	"fmt"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -16,11 +18,18 @@ func TestSelectedDeviceStatusAndReady(t *testing.T) {
 		{"serial-sentinel-secret-1234", "S50 Pro", "S50 Pro serial-sentinel-secret-1234"},
 		{"serial-sentinel-secret-1234", "Seestar S50 Pro", "Seestar S50 Pro serial-sentinel-secret-1234"},
 		{"tiny", "S30", "S30 tiny"},
+		{strings.Repeat("s", 65), "S30", "S30 " + strings.Repeat("s", 65)},
+		{strings.Repeat("\u202e", 11), "S30", "S30 " + strings.Repeat(`\u202e`, 11)},
+		{strings.Repeat("\x01", 4096), "S30", "S30 " + strings.Repeat(`\x01`, 4096)},
 		{"serial-sentinel-secret-1234", "private-model", "private-model serial-sentinel-secret-1234"},
 	} {
-		t.Run(tc.label, func(t *testing.T) {
+		t.Run(tc.model+"/"+fmt.Sprint(len(tc.serial)), func(t *testing.T) {
 			var logs bytes.Buffer
-			peer := &pairAllocationCloud{t: t, list: `{"data":{"total":1,"items":[{"deviceSn":"` + tc.serial + `","deviceModel":"` + tc.model + `","deviceStatus":1,"ssid":"synthetic"}]}}`}
+			encodedSerial, err := json.Marshal(tc.serial)
+			if err != nil {
+				t.Fatal(err)
+			}
+			peer := &pairAllocationCloud{t: t, list: `{"data":{"total":1,"items":[{"deviceSn":` + string(encodedSerial) + `,"deviceModel":"` + tc.model + `","deviceStatus":1,"ssid":"synthetic"}]}}`}
 			client, err := newFixtureClient(t, cloudhttp.Config{Transport: peer})
 			if err != nil {
 				t.Fatal(err)
@@ -47,6 +56,7 @@ func TestSelectedDeviceStatusAndReady(t *testing.T) {
 			if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &record); err != nil {
 				t.Fatal(err)
 			}
+			t.Logf("ready record bytes=%d", logs.Len())
 			if record.Phase != "ready" || record.Telescope != tc.label {
 				t.Fatalf("ready=%s", &logs)
 			}

@@ -3,7 +3,6 @@ package cloudhttp
 import (
 	"fmt"
 	"log/slog"
-	"strconv"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 )
@@ -53,8 +52,7 @@ func (e *SelectionError) Format(s fmt.State, verb rune) { fmt.Fprint(s, e.Error(
 
 // ChoiceLabel is the full, escaped account-owner picker label. It is not a log label.
 func (d Device) ChoiceLabel() string {
-	serial := strconv.QuoteToASCII(d.Serial)
-	return displayModel(d.Model) + " " + serial[1:len(serial)-1]
+	return displayModel(d.Model) + " " + displaySerial(d.Serial)
 }
 
 func selectionChoices(devices []cloud.Detail) []DeviceChoice {

@@ -468,10 +468,7 @@ Missing, null, zero, understated totals, page-limit exhaustion, or any exact
 pair duplicate require `--model`. Select a received exact pair with serial and
 model when completeness cannot be proven. Detail must then match both identity
 fields before allocation; mismatch stops the dial. Selection itself makes no
-device-session allocation. INFO reports a public model label and full
-serial; both are escaped without control or format characters
-and capped at 64 display characters, including escapes and a `...` truncation
-marker. The desktop status includes `<public model> <full serial>` once
+device-session allocation. INFO reports a model label and full serial. Both use Go ASCII string escaping without control or format characters. Only the model is capped at 64 display characters, including escapes and a `...` truncation marker. The desktop status includes `<public model> <full serial>` once
 selection succeeds, for example `Connected to Seestar S50 Pro {serial}`.
 An empty model uses `Seestar {serial}`. The CLI's
 existing ready records include the same label in `telescope`; the INFO
@@ -507,7 +504,7 @@ Rejected startup suppresses pending dependency records except `device_catalog`
 and reports their loss at WARN; diagnostic loss makes the final command result fail.
 Most diagnostic records contain fixed classifications and numeric context,
 not dependency error text, forwarded payloads, or session secrets. Device
-selection includes full serials in logs, escaped and capped like model labels.
+selection includes full serials in logs, escaped without truncation; model labels retain their 64-character display cap.
 The selected telescope also appears in lifecycle events and the copied diagnostic
 summary. Each catalog fetch also records the account's received telescope pairs,
 including a single telescope, before selection succeeds or fails. Recent events
@@ -530,7 +527,7 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 |---|---|---|
 | `proxy_started` | INFO | Revision, listener count, lazy flag, pause threshold; process serving, not necessarily remote ready |
 | `installation_id_ephemeral`, `device_selected` | INFO | Identity storage mode; selected public model and full serial |
-| `device_catalog` | INFO | Every catalog fetch, including selection refusals: `devices` contains escaped `model`/full `serial` pairs; `count` is the received distinct-pair count and `complete` states whether completeness was proven without duplicates. `omitted` counts pairs cut to keep the encoded array within 12 KiB and the record within the 16 KiB log-sink bound. Failed fetches retain successfully received pairs with `complete=false`. The private GUI log also records this schema. |
+| `device_catalog` | INFO | Every catalog fetch, including selection refusals: `devices` contains escaped `model`/full `serial` pairs; `count` is the received distinct-pair count and `complete` states whether completeness was proven without duplicates. `omitted` counts pairs cut to keep the encoded array within 12 KiB and the record within 16 KiB. The log sink accepts records up to 32 KiB to retain maximum-length selected/ready identities. Failed fetches retain successfully received pairs with `complete=false`. The private GUI log also records this schema. |
 | `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy; ready records include selected public model and full serial in `telescope` |
 | `lazy_open_attempt` | INFO | New client-triggered attempt and fixed cause |
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |

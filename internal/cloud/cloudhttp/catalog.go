@@ -22,7 +22,7 @@ type Catalog struct {
 func newCatalog(devices []Device, complete bool) Catalog {
 	c := Catalog{Pairs: []CatalogPair{}, Count: len(devices), Complete: complete}
 	for _, d := range devices {
-		pair := CatalogPair{Model: displayModel(d.Model), Serial: displayModel(d.Serial)}
+		pair := CatalogPair{Model: displayModel(d.Model), Serial: displaySerial(d.Serial)}
 		candidate := append(c.Pairs, pair)
 		b, _ := json.Marshal(candidate)
 		if len(b) > 12<<10 {

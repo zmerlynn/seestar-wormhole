@@ -76,7 +76,7 @@ func TestCatalogEscapingAndBounds(t *testing.T) {
 		devices[i] = Device{Model: strings.Repeat("\u202e", 64), Serial: strings.Repeat("\"", 64)}
 	}
 	c = newCatalog(devices, true)
-	if len(c.Message()) > 4096 || !strings.HasSuffix(c.Message(), "… and 225 more") || c.Omitted == 0 || c.Count != 256 || len(c.Pairs)+c.Omitted != 256 {
+	if len(c.Message()) > 4096 || !strings.HasSuffix(c.Message(), "… and 236 more") || c.Omitted == 0 || c.Count != 256 || len(c.Pairs)+c.Omitted != 256 || c.Omitted != 222 {
 		t.Fatalf("unbounded catalog or missing omitted count: %q %+v", c.Message(), c)
 	}
 	for _, jsonFormat := range []bool{false, true} {

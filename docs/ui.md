@@ -115,8 +115,7 @@ Absence from the catalog alone does not invalidate a saved pair; the detail
 fallback still applies. The list is excluded from
 logs and Copy diagnostic summary.
 
-After selection, status includes the model and full serial, escaped and capped
-at 64 display characters per field, for example **Connected to Seestar S50 Pro {serial}**.
+After selection, status includes the model and full serial, both escaped. Only the model is capped at 64 display characters. For example: **Connected to Seestar S50 Pro {serial}**.
 An empty model uses **Seestar {serial}**. Recent events and Copy diagnostic
 summary carry the same status text.
 Stop is the only action below the running status. To switch telescopes, choose
@@ -163,7 +162,7 @@ local time, error codes, and the private log's location.
 version, connection settings, and this launch's events in UTC. It leaves out
 addresses, paths, credentials, tokens, account identifiers, and payloads.
 Lifecycle events include the selected telescope model and full serial with the
-same escaping and display caps as status. Each Connect that reads the account
+same escaping and model display cap as status. Each Connect that reads the account
 catalog also records its telescope list, even for a single telescope:
 `Account telescopes: {telescope}, …`. Unproven lists use
 `Account telescopes (list may be incomplete): {telescope}, …`; empty lists
