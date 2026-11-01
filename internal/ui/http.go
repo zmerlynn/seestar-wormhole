@@ -174,6 +174,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = s.controller.start(in.Settings, in.Password)
 		if err == nil {
 			s.mu.Lock()
+			// Accepting Connect is not a successful save. Keep the authoritative
+			// pair until the run reaches its save boundary.
+			in.Settings.Serial, in.Settings.Model = s.settings.Serial, s.settings.Model
 			s.settings = in.Settings
 			s.mu.Unlock()
 		}

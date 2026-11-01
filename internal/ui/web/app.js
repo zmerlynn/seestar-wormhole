@@ -109,9 +109,6 @@ function goalFor(s) {
 }
 function load(s) {
   for (const name of ['email', 'bind', 'serial', 'model']) $(name).value = s[name] || '';
-  savedDevice = s.serial || s.model ? {serial: s.serial || '', model: s.model || '', label: s.choice_label} : null;
-  devicePicker();
-  selectPair();
   $('listen').value = ['0.0.0.0', '127.0.0.1'].includes(s.bind) ? s.bind : 'other';
   $('discovery').checked = !!s.discovery;
   $('mode').value = s.idle_minutes > 0 ? 'idle' : 'eager';
@@ -319,9 +316,15 @@ function accountChoices(s) {
   if (!selectionStep) pickerFocusPending = false;
   devicePicker(accountEmail() === s.devices_email ? s.devices || (selectionStep ? s.failure.devices : undefined) : []);
 }
+// Settings carry the last successfully saved pair, independently of form drafts.
+function projectPicker(s) {
+  const pair = s.settings;
+  savedDevice = pair.serial || pair.model ? {serial: pair.serial || '', model: pair.model || '', label: pair.choice_label} : null;
+  accountChoices(s);
+}
 function render(s) {
   state = s;
-  accountChoices(s);
+  projectPicker(s);
   text('version',s.version);
   active = s.active;
   text('status',s.status);
@@ -455,8 +458,7 @@ async function act(action) {
     if (action === 'change-telescope' || action === 'retry-storage') {
       $('serial').value = refreshed.settings.serial || '';
       $('model').value = refreshed.settings.model || '';
-      savedDevice = refreshed.settings.serial || refreshed.settings.model ? {serial: refreshed.settings.serial || '', model: refreshed.settings.model || '', label: refreshed.settings.choice_label} : null;
-      devicePicker(refreshed.devices);
+      projectPicker(refreshed);
       selectPair();
       clearField('serial');
       clearField('model');
