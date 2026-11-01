@@ -435,7 +435,10 @@ pair duplicate require `--model`. Select a received exact pair with serial and
 model when completeness cannot be proven. Detail must then match both identity
 fields before allocation; mismatch stops the dial. Selection itself makes no
 device-session allocation. INFO reports only a public model label and masked
-serial; unknown model labels are redacted. Duplicate counts appear at DEBUG.
+serial; unknown model labels are redacted. The desktop status shows
+`Selected: <public model> <masked serial>` once selection succeeds. The CLI's
+existing ready records include the same label in `telescope`; the INFO
+`device_selected` record keeps its separate `model` and `serial` fields. Duplicate counts appear at DEBUG.
 
 ## Installation identity
 
@@ -475,7 +478,7 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 |---|---|---|
 | `proxy_started` | INFO | Revision, listener count, lazy flag, pause threshold; process serving, not necessarily remote ready |
 | `installation_id_ephemeral`, `device_selected` | INFO | Identity storage mode; selected public model and masked serial |
-| `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy |
+| `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy; ready records include selected public model and masked serial in `telescope` |
 | `lazy_open_attempt` | INFO | New client-triggered attempt and fixed cause |
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |
 | `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy, recovery after ready, or ownership/cleanup recovery, including initial acquisition |

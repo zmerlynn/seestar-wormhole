@@ -163,6 +163,11 @@ func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete,
 	return devices, false, received != len(devices), nil
 }
 
+// DisplayName is the public model label and masked serial used for selection.
+func (d Device) DisplayName() string {
+	return displayModel(d.Model) + " " + maskedSerial(d.Serial)
+}
+
 // Model is server-supplied text, so only public product labels enter logs. An
 // unknown value still selects correctly but is displayed as [unknown model].
 func displayModel(model string) string {

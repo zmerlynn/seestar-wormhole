@@ -249,6 +249,8 @@ function render(s) {
   text('version',s.version);
   active = s.active;
   text('status',s.status);
+  text('selected-device',s.selected_device ? 'Selected: ' + s.selected_device : '');
+  $('selected-device').hidden = !s.selected_device;
   $('last-known').hidden = true;
   $('quit').textContent = s.native ? 'Quit' : 'Quit service';
   $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';

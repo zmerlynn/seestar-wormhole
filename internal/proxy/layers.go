@@ -29,7 +29,7 @@ import (
 // SEESTAR_EMAIL/SEESTAR_PASSWORD supply account login. New resolves the device
 // from the account catalog before starting the owner, even when Config.Serial
 // selects an entry; Config.Model disambiguates several models for that serial.
-// The selected catalog pair supplies both fields. Lazy mode still defers
+// The selected catalog or verified detail pair supplies both fields. Lazy mode still defers
 // device-session allocation.
 func New(ctx context.Context, cfg Config) (*Session, error) {
 	c, err := cloudhttp.NewFromEnvironment(cloudhttp.Config{Logger: diagnostic.Lifecycle(cfg.Logger), StateDir: cfg.StateDir})
@@ -53,6 +53,7 @@ func newWithClient(ctx context.Context, cfg Config, c *cloudhttp.Client) (*Sessi
 	if err != nil {
 		return nil, closeStartupCloud(ctx, c, err)
 	}
+	cfg.Status.SetSelectedDevice(d)
 	var detail cloud.Detail
 	if cfg.LANDiscovery {
 		detail, err = c.DetailForLAN(ctx, d)
@@ -62,6 +63,7 @@ func newWithClient(ctx context.Context, cfg Config, c *cloudhttp.Client) (*Sessi
 	}
 	s, err := startSelected(ctx, cfg, detail, func(s *Session) sessionedge.Factory {
 		s.deviceDetail = detail
+		s.telescope = d.DisplayName()
 		return &factory{s: s, cloud: c, device: d, verify: iotcedge.VerifyIOTCLicense, wire: func(l iotc.License) wireRunner { return &iotcedge.IOTCIO{Mask: l.Mask, Logger: cfg.Logger} }}
 	})
 	if err != nil {

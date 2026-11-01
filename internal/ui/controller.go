@@ -308,6 +308,7 @@ func uiText(text string) string {
 type runView struct {
 	FailureMessage string       `json:"failure_message,omitempty"`
 	Status         string       `json:"status"`
+	SelectedDevice string       `json:"selected_device,omitempty"`
 	Active         bool         `json:"active"`
 	Stopping       bool         `json:"stopping"`
 	Cancel         bool         `json:"cancel"`
@@ -323,6 +324,7 @@ func (c *controller) view() runView {
 	text, active := c.snapshotLocked()
 	v := runView{Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
 	if active {
+		v.SelectedDevice = c.status.SelectedDevice()
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
 		v.Discovery = c.runSettings.Discovery && c.status.SaveBoundary(true)
 	}
