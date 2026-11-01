@@ -158,13 +158,17 @@ func (c *controller) changeTelescope() error {
 	}
 	c.changing = true
 	done := c.done
-	s := c.runSettings
 	c.mu.Unlock()
 	defer func() { c.mu.Lock(); c.changing = false; c.mu.Unlock() }()
 	c.stop()
 	<-done
 	c.saveMu.Lock()
 	defer c.saveMu.Unlock()
+	// Explicit saves can finish while release is pending. Clear only the pair
+	// in the latest successful snapshot while holding the persistence lock.
+	c.mu.Lock()
+	s := c.lastSaved
+	c.mu.Unlock()
 	s.Serial, s.Model = "", ""
 	return c.persistTelescopeClearLocked(s)
 }
