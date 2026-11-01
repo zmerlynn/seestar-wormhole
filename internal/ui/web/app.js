@@ -109,6 +109,9 @@ function goalFor(s) {
 }
 function load(s) {
   for (const name of ['email', 'bind', 'serial', 'model']) $(name).value = s[name] || '';
+  savedDevice = s.serial || s.model ? {serial: s.serial || '', model: s.model || '', label: s.choice_label} : null;
+  devicePicker();
+  selectPair();
   $('listen').value = ['0.0.0.0', '127.0.0.1'].includes(s.bind) ? s.bind : 'other';
   $('discovery').checked = !!s.discovery;
   $('mode').value = s.idle_minutes > 0 ? 'idle' : 'eager';
@@ -152,6 +155,10 @@ function clearErrors() {
 function fieldError(field, message, code, focus = false) {
   const e = $(field), help = $(field + '-error');
   if (!e || !help) return;
+  if (['serial','model'].includes(field)) {
+    $('device-choice').value = 'custom';
+    $('custom-device').hidden = false;
+  }
   if (e.closest('details')) $('advanced').open = true;
   const target = field === 'bind' && $('listen').value !== 'other' ? $('listen') : e;
   target.setAttribute('aria-invalid','true');
@@ -233,52 +240,85 @@ function controls() {
   $('forget').disabled = blocked || !!pending || password.busy;
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
   $('change-telescope').hidden = !state?.selected_device;
+  $('change-telescope-help').hidden = $('change-telescope').hidden;
   $('change-telescope').disabled = blocked || !!pending || !!state?.stopping;
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
   $('goal-help').textContent = currentGoal === 'phone' ? 'Connect your phone to the same network as this computer.' : 'Only apps running here can connect.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
-  const code = actionError || (!active && state?.failure?.code) || '';
+  const failureCode = actionError || (!active && state?.failure?.code) || '';
+  const code = failureCode === 'selection_multiple' ? '' : failureCode;
   $('port-permissions').hidden = code !== 'http_permission';
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
-  text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selection entered' : 'Automatic');
+  $('selection-help').hidden = !selectionStep;
+  const actionArea = $(selectionStep ? 'picker-action' : 'primary-action');
+  if ($('start').parentElement !== actionArea) actionArea.append($('start'));
+  if (selectionStep) text('status', $('device-choice').value === '' ? 'Choose a telescope' : 'Ready to connect');
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
+  if (pickerFocusPending && !$('options').disabled) {
+    pickerFocusPending = false;
+    $('device-choice').focus();
+  }
 }
-let pickerKey = '';
+let pickerKey = '', receivedDevices = [], savedDevice = null;
+let pickerDevices = [], selectionStep = false, pickerFocusPending = false;
+function selectPair() {
+  const index = pickerDevices.findIndex(d => d.serial === $('serial').value && d.model === $('model').value);
+  $('device-choice').value = index >= 0 ? String(index) : $('serial').value || $('model').value ? 'custom' : '';
+  $('custom-device').hidden = $('device-choice').value !== 'custom';
+}
 function devicePicker(devices) {
-  const key = JSON.stringify(devices);
+  if (devices) receivedDevices = devices;
+  const all = [...receivedDevices];
+  if (savedDevice && !all.some(d => d.serial === savedDevice.serial && d.model === savedDevice.model)) all.unshift(savedDevice);
+  const key = JSON.stringify(all);
   if (key === pickerKey) return;
   pickerKey = key;
-  $('device-picker').hidden = !devices.length;
-  $('device-choice').replaceChildren();
-  const prompt = document.createElement('option');
-  prompt.textContent = 'Choose a telescope…';
-  prompt.value = '';
-  $('device-choice').append(prompt);
-  devices.forEach((device, index) => {
+  pickerDevices = all;
+  const picker = $('device-choice');
+  const custom = picker.value === 'custom';
+  picker.replaceChildren();
+  const automatic = document.createElement('option');
+  automatic.textContent = 'Automatic';
+  automatic.value = '';
+  picker.append(automatic);
+  all.forEach((device, index) => {
     const option = document.createElement('option');
     option.textContent = device.label;
     option.value = String(index);
-    $('device-choice').append(option);
+    picker.append(option);
   });
-  $('device-choice').onchange = () => {
-    if ($('device-choice').value === '') return;
-    const device = devices[Number($('device-choice').value)];
-    if (!device) return;
-    $('serial').value = device.serial;
-    $('model').value = device.model;
+  const option = document.createElement('option');
+  option.textContent = 'Custom…';
+  option.value = 'custom';
+  picker.append(option);
+  selectPair();
+  if (custom) {picker.value = 'custom'; $('custom-device').hidden = false;}
+  picker.onchange = () => {
+    $('custom-device').hidden = picker.value !== 'custom';
+    if (picker.value !== 'custom') {
+      const device = pickerDevices[Number(picker.value)];
+      $('serial').value = picker.value === '' ? '' : device.serial;
+      $('model').value = picker.value === '' ? '' : device.model;
+    }
     clearField('serial');
     clearField('model');
-    $('advanced').open = true;
-    say('Telescope selection filled in Advanced. Choose Connect to try again.');
     controls();
   };
 }
 function render(s) {
   state = s;
-  devicePicker(!s.active && s.failure?.code === 'selection_multiple' ? s.failure.devices || [] : []);
+  const nextSelectionStep = !s.active && s.failure?.code === 'selection_multiple';
+  if (nextSelectionStep && !selectionStep) {
+    pickerFocusPending = true;
+    clearField('serial');
+    clearField('model');
+  }
+  selectionStep = nextSelectionStep;
+  if (!selectionStep) pickerFocusPending = false;
+  devicePicker(s.devices || (selectionStep ? s.failure.devices : undefined));
   text('version',s.version);
   active = s.active;
   text('status',s.status);
@@ -289,7 +329,8 @@ function render(s) {
   $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';
   $('retry-storage').hidden = !s.save_failed;
   if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Settings could not be saved; they may reset next time.');
-  if (s.failure && !active && !actionError) {
+  if (selectionStep) alertText('');
+  if (s.failure && !active && !actionError && !selectionStep) {
     const newFailure = lastFailure !== s.failure.code;
     alertText(s.failure.code === 'release' || s.failure.field ? '' : s.failure_message);
     if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Local port ' + s.failure.local + ' → Seestar port ' + s.failure.service + '.' : ''),s.failure.code);
@@ -344,7 +385,7 @@ async function refresh() {
     $('password').value = '';
   }
   render(s);
-  if (first) {
+  if (first && !selectionStep) {
     // WKWebView can finish the status fetch before its native window is key.
     const focusStart = () => requestAnimationFrame(() => $('start').focus());
     if (document.hasFocus()) focusStart();
@@ -368,6 +409,10 @@ async function poll() {
 }
 async function act(action) {
   if (pending && !['stop','quit'].includes(action)) return;
+  if (action === 'start' && selectionStep && $('device-choice').value === '') {
+    $('device-choice').focus();
+    return;
+  }
   if (['start','password/save'].includes(action) && !validate()) return;
   ++statusGeneration;
   actionError = '';
@@ -407,6 +452,9 @@ async function act(action) {
     if (action === 'change-telescope' || action === 'retry-storage') {
       $('serial').value = refreshed.settings.serial || '';
       $('model').value = refreshed.settings.model || '';
+      savedDevice = refreshed.settings.serial || refreshed.settings.model ? {serial: refreshed.settings.serial || '', model: refreshed.settings.model || '', label: refreshed.settings.choice_label} : null;
+      devicePicker(refreshed.devices);
+      selectPair();
       clearField('serial');
       clearField('model');
       alertText('');

@@ -1,18 +1,18 @@
 // Minimal DOM for executing app.js's picker and diagnostic projection without
 // a browser. HTML bindings are checked separately by the Go asset test.
 class TestElement {
-  constructor() {this.value = ''; this.hidden = true; this.children = []; this.attributes = {}; this.disabled = false; this.validity = {valid: true};}
+  constructor() {this.value = ''; this.hidden = true; this.children = []; this.attributes = {}; this.disabled = false; this.validity = {valid: true}; this.focusCount = 0;}
   set innerHTML(_) {throw new Error('HTML insertion is forbidden');}
   set outerHTML(_) {throw new Error('HTML insertion is forbidden');}
   insertAdjacentHTML() {throw new Error('HTML insertion is forbidden');}
-  append(...children) {this.children.push(...children);}
+  append(...children) {for (const child of children) {if (child.parentElement) child.parentElement.children = child.parentElement.children.filter(e => e !== child); child.parentElement = this; this.children.push(child);}}
   replaceChildren(...children) {this.children = children; this.value = '';}
   addEventListener() {}
-  focus() {document.activeElement = this;}
+  focus() {if (this === document.getElementById('device-choice') && document.getElementById('options').disabled) throw new Error('focus in disabled form'); this.focusCount++; document.activeElement = this;}
   removeAttribute(name) {delete this.attributes[name];}
   setAttribute(name, value) {this.attributes[name] = value;}
   querySelector() {return new TestElement();}
-  closest() {return new TestElement();}
+  closest() {return null;}
   createTHead() {return new TestElement();}
   createTBody() {return new TestElement();}
   insertRow() {return new TestElement();}

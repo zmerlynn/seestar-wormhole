@@ -4,8 +4,8 @@
 <body><main>
 <h1><img src="/icon.svg" width="40" height="40" alt="">seestar‑wormhole</h1>
 <p>Your remote Seestar, as if it were on your network.</p>
-<div id="announcements" role="status" aria-live="polite" aria-atomic="true"><p id="status">Loading…</p><div class="telescope-status"><p id="selected-device" hidden></p><button id="change-telescope" type="button" hidden>Change telescope</button></div><p id="feedback"></p></div>
-<button id="start" type="submit" form="settings" disabled>Connect</button>
+<div id="announcements" role="status" aria-live="polite" aria-atomic="true"><p id="status">Loading…</p><div class="telescope-status"><p id="selected-device" hidden></p><button id="change-telescope" type="button" aria-describedby="change-telescope-help" hidden>Change telescope</button><span id="change-telescope-help" class="help" hidden>Stops the session.</span></div><p id="feedback"></p></div>
+<div id="primary-action"><button id="start" type="submit" form="settings" disabled>Connect</button></div>
 <p id="notice" role="alert" hidden></p>
 <p id="last-known" hidden></p>
 <button id="retry-storage" type="button" hidden>Retry saving settings</button>
@@ -22,12 +22,14 @@
 <p id="password-note" class="help">Kept until you quit. Save to your keychain to use it next time.</p>
 <div class="actions"><button id="save-password" type="button" disabled>Save password to keychain</button><button id="forget" type="button" hidden>Remove saved password</button></div>
 </fieldset>
-<div id="device-picker" hidden><label for="device-choice">Telescope (full serial number)</label><select id="device-choice"></select></div>
+<div id="device-picker"><label for="device-choice">Telescope</label><select id="device-choice" aria-describedby="selection-help"></select>
+<p id="selection-help" class="help" hidden>Your account has several telescopes. Choose one, then Connect.</p>
+<div id="picker-action"></div></div>
+<div id="custom-device" hidden>
+<label for="serial">Serial number (optional)</label><input id="serial" placeholder="From your Seestar account" type="text" maxlength="4096" spellcheck="false" aria-describedby="serial-error"><p id="serial-error" class="error" role="alert" hidden></p>
+<label for="model">Model (optional)</label><input id="model" placeholder="e.g. S50 Pro" type="text" maxlength="4096" spellcheck="false" aria-describedby="model-error"><p id="model-error" class="error" role="alert" hidden></p>
+</div>
 <details id="advanced"><summary tabindex="-1">Advanced</summary>
-<p>Seestar: <strong id="telescope-selection">Automatic</strong></p>
-<p id="selection-help" class="help">Leave both fields empty if your account has one Seestar.</p>
-<label for="serial">Serial number (optional)</label><input id="serial" placeholder="From your Seestar account" type="text" maxlength="4096" spellcheck="false" aria-describedby="selection-help serial-error"><p id="serial-error" class="error" role="alert" hidden></p>
-<label for="model">Model (optional)</label><input id="model" placeholder="e.g. S50 Pro" type="text" maxlength="4096" spellcheck="false" aria-describedby="selection-help model-error"><p id="model-error" class="error" role="alert" hidden></p>
 <label for="mode" class="section-start">Connection timing</label><select id="mode"><option value="eager">Keep connected</option><option value="idle">Connect when an app needs Seestar</option></select>
 <div id="idle-options" hidden><label for="idle">Release after apps disconnect (minutes)</label><input id="idle" value="2" type="number" min="0.01" step="any" aria-describedby="idle-help idle-error"><p id="idle-help" class="help">Releases the session after this wait. An app connection starts it again.</p><p id="idle-error" class="error" role="alert" hidden></p></div>
 <label for="listen" class="section-start">Listen on</label><select id="listen" aria-describedby="bind-error"><option value="0.0.0.0">All networks</option><option value="127.0.0.1">This computer only</option><option value="other">Other…</option></select>

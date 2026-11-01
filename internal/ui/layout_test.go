@@ -13,7 +13,7 @@ func TestSetupHierarchyAndRunningCopy(t *testing.T) {
 	// Pin the small setup fixture directly; the native driver also checks its
 	// rendered control styling and Account alignment in both themes.
 	last := -1
-	for _, id := range []string{"start", "goal", "trust", "account", "email", "advanced"} {
+	for _, id := range []string{"start", "goal", "trust", "account", "email", "device-picker", "custom-device", "advanced"} {
 		position := strings.Index(string(b), `id="`+id+`"`)
 		if position < 0 || position <= last {
 			t.Fatalf("setup order misplaced %s", id)
