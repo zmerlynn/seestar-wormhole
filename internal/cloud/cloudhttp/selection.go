@@ -76,7 +76,10 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 	return Device{}, diagnostic.Wrap("device_selection", "--serial not found on account; check --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"}))
 }
 
-// devices pages the catalog: use positive reply current (otherwise the
+// devices requests isContainShared=3 on every page, matching the app 3.3.2
+// connect screen (READ), not an observed difference for shared accounts:
+// https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection
+// It pages the catalog: use positive reply current (otherwise the
 // requested page), count wire items including duplicates, and load current+1
 // only while the accumulated count is below total. Null items count as empty.
 // Local client policy proves completeness only at a positive, exact total;
@@ -97,7 +100,7 @@ func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete,
 	previousTotal := -1
 	received, current := 0, 1
 	for requests := 1; requests <= 16; requests++ {
-		q := url.Values{"current": {strconv.Itoa(current)}, "pageSize": {"100"}}
+		q := url.Values{"current": {strconv.Itoa(current)}, "pageSize": {"100"}, "isContainShared": {"3"}}
 		info, b, e := c.exchange(ctx, "/v1/my-device", q, nil, nil)
 		page, parseErr := cloud.ParseDevicePageWithLogger(b, c.logger)
 		err = responseError(info, b, parseErr, e)

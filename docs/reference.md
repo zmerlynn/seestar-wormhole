@@ -409,6 +409,11 @@ one matching entry in a complete catalog, a differing explicit `--model` fails
 with `model_mismatch`. Unmatched serials or multiple pairs without a serial identify
 `--serial` in diagnostics without exposing catalog labels or serials.
 
+Every catalog page requests `isContainShared=3` (all), the mode sent by the
+app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).
+This follows the app's request; it is not an observation that mode 3 adds
+shared devices. The omitted parameter's default remains unknown.
+
 The proxy requests 100 items per page (local policy), at most 16 pages and
 256 distinct pairs, with one 30-second per-catalog-operation timeout,
 following the

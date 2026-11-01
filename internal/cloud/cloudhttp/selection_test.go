@@ -15,10 +15,11 @@ import (
 )
 
 type selectionCloud struct {
-	bodies  []string
-	status  int
-	paths   []string
-	queries []string
+	bodies     []string
+	sharedOnly bool
+	status     int
+	paths      []string
+	queries    []string
 }
 
 func (f *selectionCloud) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -39,6 +40,10 @@ func (f *selectionCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 		}
 		if len(f.bodies) == 0 {
 			return nil, errors.New("serial-sentinel-secret: unexpected list")
+		}
+		if f.sharedOnly && r.URL.Query().Get("isContainShared") != "3" {
+			b = emptyDevices
+			break
 		}
 		b = f.bodies[0]
 		f.bodies = f.bodies[1:]
@@ -180,7 +185,7 @@ func TestDeviceSelectionPagination(t *testing.T) {
 	if err != nil || got.Model != "S30" {
 		t.Fatalf("second page lookup failed: %v", err)
 	}
-	if len(f.queries) != 4 || f.queries[2] != "current=1&pageSize=100" || f.queries[3] != "current=2&pageSize=100" {
+	if len(f.queries) != 4 || f.queries[2] != "current=1&isContainShared=3&pageSize=100" || f.queries[3] != "current=2&isContainShared=3&pageSize=100" {
 		t.Fatalf("queries=%v", f.queries)
 	}
 	assertSelectionSecrets(t, logs.String())
@@ -220,4 +225,16 @@ func TestDeviceSelectionTransportFailure(t *testing.T) {
 		t.Fatalf("got %v, want transport failure", err)
 	}
 	assertSelectionSecrets(t, logs.String()+err.Error())
+}
+
+// The fake exposes its shared-only telescope only in connect-screen list mode.
+// This models the contract; it is not an observation of server filtering.
+func TestSharedOnlySelection(t *testing.T) {
+	var logs bytes.Buffer
+	f := &selectionCloud{bodies: []string{oneDevice}, sharedOnly: true}
+	c := selectionClient(t, f, &logs, slog.LevelInfo)
+	got, err := c.SelectDevice(t.Context(), Device{})
+	if err != nil || got != (Device{"serial-sentinel-secret-1234", "S50 Pro"}) {
+		t.Fatalf("shared-only selection=%v error=%v", got, err)
+	}
 }

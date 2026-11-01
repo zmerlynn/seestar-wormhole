@@ -212,7 +212,7 @@ func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int) {
 	wantPaths := []string{"/v1/user/login", "/v1/user/current-profile"}
 	for page := 1; page <= pages; page++ {
 		wantPaths = append(wantPaths, "/v1/my-device")
-		if len(f.queries) <= page+1 || f.queries[page+1] != fmt.Sprintf("current=%d&pageSize=100", page) {
+		if len(f.queries) <= page+1 || f.queries[page+1] != fmt.Sprintf("current=%d&isContainShared=3&pageSize=100", page) {
 			t.Fatalf("queries=%v, want sequential current and pageSize=100", f.queries)
 		}
 	}

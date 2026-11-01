@@ -82,8 +82,8 @@ func TestCatalogOverstatedTotalWithEmptyPages(t *testing.T) {
 
 func TestCatalogCurrentBackwardAndNegativeFallback(t *testing.T) {
 	for _, tc := range []struct{ name, second, next string }{
-		{"backward", `{"data":{"current":1,"total":3,"items":null}}`, "current=2&pageSize=100"},
-		{"negative fallback", `{"data":{"current":-7,"total":3,"items":null}}`, "current=9&pageSize=100"},
+		{"backward", `{"data":{"current":1,"total":3,"items":null}}`, "current=2&isContainShared=3&pageSize=100"},
+		{"negative fallback", `{"data":{"current":-7,"total":3,"items":null}}`, "current=9&isContainShared=3&pageSize=100"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
@@ -95,7 +95,7 @@ func TestCatalogCurrentBackwardAndNegativeFallback(t *testing.T) {
 			c := selectionClient(t, f, &logs, slog.LevelDebug)
 			got, err := c.SelectDevice(t.Context(), Device{Serial: "private-a"})
 			assertCatalogModelRequired(t, got, err)
-			if len(f.queries) != 5 || f.queries[2] != "current=1&pageSize=100" || f.queries[3] != "current=8&pageSize=100" || f.queries[4] != tc.next || len(f.bodies) != 0 {
+			if len(f.queries) != 5 || f.queries[2] != "current=1&isContainShared=3&pageSize=100" || f.queries[3] != "current=8&isContainShared=3&pageSize=100" || f.queries[4] != tc.next || len(f.bodies) != 0 {
 				t.Fatalf("queries=%v, want literal current sequence ending in %s", f.queries, tc.next)
 			}
 			assertCatalogPagePrivacy(t, logs.String())

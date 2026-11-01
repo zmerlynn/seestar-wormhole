@@ -85,7 +85,7 @@ func TestCatalogPageDeadlineAndCancellation(t *testing.T) {
 					if elapsed := time.Since(start); elapsed != wantElapsed {
 						t.Fatalf("elapsed=%v, want %v", elapsed, wantElapsed)
 					}
-					wantPaths := []string{"/v1/user/login", "/v1/user/current-profile", "/v1/my-device?current=1&pageSize=100", "/v1/my-device?current=2&pageSize=100", "/v1/my-device?current=3&pageSize=100"}
+					wantPaths := []string{"/v1/user/login", "/v1/user/current-profile", "/v1/my-device?current=1&isContainShared=3&pageSize=100", "/v1/my-device?current=2&isContainShared=3&pageSize=100", "/v1/my-device?current=3&isContainShared=3&pageSize=100"}
 					if !reflect.DeepEqual(f.paths, wantPaths) {
 						t.Fatalf("paths=%v, want %v (no allocation)", f.paths, wantPaths)
 					}
