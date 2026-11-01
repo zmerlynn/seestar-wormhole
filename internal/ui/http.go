@@ -261,13 +261,14 @@ func (s *server) saveSettings(settings Settings) error {
 			}
 		}
 	}
-	// Publish saved fields only after persistence succeeds. Failed writes retain
-	// the last visible values while the controller owns the retry snapshot.
 	err := s.storage.write("config.json", settings)
-	if err != nil {
-		return err
-	}
 	s.mu.Lock()
+	// A failed clear keeps the prior selection visible. Other fields still
+	// project the current account, including a successful native password save
+	// whose settings write failed. The controller owns the retry snapshot.
+	if err != nil {
+		settings.Serial, settings.Model = s.settings.Serial, s.settings.Model
+	}
 	s.settings = settings
 	s.mu.Unlock()
 	return err
