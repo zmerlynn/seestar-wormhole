@@ -81,7 +81,7 @@ same ports, stop it first.
 
 ## Telescope selection
 
-The **Telescope** picker sits below the account fields. **Automatic** is the
+The **Telescope** picker sits below the account fields. **Find on my account** is the
 default: with one telescope on the account, Connect selects it. A saved Serial
 and Model pair appears as a selected entry with its model and full serial number.
 
@@ -90,12 +90,15 @@ and adds each model and full serial number to the picker. Its help reads
 **Your account has several telescopes. Choose one, then Connect.** The picker
 receives focus once, with Connect next in keyboard order. Choosing an entry
 fills the exact account pair and shows **Ready to connect**; choose Connect
-to start the session. Connect with Automatic still selected in this step keeps
-the picker focused without another account request.
+to start the session. The empty option now reads **Choose a telescope…**;
+Connect with it still selected in this step keeps
+the picker focused without another account request. Outside this step, including
+a changed account, it reverts to **Find on my account**. There is no extra help
+line before discovery.
 
 **Custom…** reveals **Serial number (optional)** and **Model (optional)** below
 the picker for manual entry. Choosing another entry hides these fields and
-fills its exact pair; Automatic clears both. The received list stays in memory
+fills its exact pair; Find on my account clears both. The received list stays in memory
 for this app run, including when the controls page is reopened. Only Serial and
 Model are saved in the existing settings format. The list is excluded from
 logs and Copy diagnostic summary.
@@ -106,7 +109,7 @@ It stops the session and waits for release; while waiting, status reads
 **Stopping — releasing the Seestar session…**. After the choice is cleared and
 saved, status reads **Stopped. Choose Connect to pick a telescope.** The
 release-uncertainty message takes precedence if release could not be confirmed.
-The telescope line and button disappear, and Automatic is selected. Connect
+The telescope line and button disappear, and Find on my account is selected. Connect
 can list the account's telescopes again, or connect automatically to a single
 telescope. The button is disabled during a stop or save.
 

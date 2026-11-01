@@ -20,3 +20,18 @@ async function checkStatusWrites() {
  writes=[]; render(multiple);
  uxAssert(writes.length===0, 'unchanged empty poll mutated status');
 }
+
+async function checkPickerLabels() {
+ const {idle,multiple}=uxFixture(); render({...idle,devices:[]});
+ const label=()=>$('device-choice').children[0].textContent;
+ uxAssert(label()==='Find on my account', 'initial empty label');
+ uxAssert($('selection-help').hidden, 'help before discovery');
+ render(multiple);
+ uxAssert(label()==='Choose a telescope…', 'selection empty label');
+ $('email').value='other@example.invalid'; $('email').dispatchEvent({type:'input'});
+ uxAssert(label()==='Find on my account', 'account edit did not reset label');
+ $('email').value=idle.settings.email; $('email').dispatchEvent({type:'input'});
+ uxAssert(label()==='Choose a telescope…', 'same account selection label');
+ render(idle);
+ uxAssert(label()==='Find on my account', 'cleared step did not reset label');
+}

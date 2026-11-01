@@ -250,6 +250,7 @@ function controls() {
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
   $('selection-help').hidden = !selectionStep;
+  if ($('device-choice').children.length) textOptionLabel();
   const actionArea = $(selectionStep ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
   text('status', selectionStep ? ($('device-choice').value === '' ? 'Choose a telescope' : 'Ready to connect') : state?.status || 'Loading…');
@@ -261,6 +262,11 @@ function controls() {
 }
 let pickerKey = '', receivedDevices = [], savedDevice = null;
 let pickerDevices = [], selectionStep = false, pickerFocusPending = false;
+function textOptionLabel() {
+  const option = $('device-choice').children[0];
+  const label = selectionStep ? 'Choose a telescope…' : 'Find on my account';
+  if (option.textContent !== label) option.textContent = label;
+}
 function selectPair() {
   const index = pickerDevices.findIndex(d => d.serial === $('serial').value && d.model === $('model').value);
   $('device-choice').value = index >= 0 ? String(index) : $('serial').value || $('model').value ? 'custom' : '';
@@ -278,7 +284,7 @@ function devicePicker(devices) {
   const custom = picker.value === 'custom';
   picker.replaceChildren();
   const automatic = document.createElement('option');
-  automatic.textContent = 'Automatic';
+  automatic.textContent = 'Find on my account';
   automatic.value = '';
   picker.append(automatic);
   all.forEach((device, index) => {

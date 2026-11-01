@@ -147,3 +147,7 @@ func pageDOM(t *testing.T) string {
 func TestPickerStatusWrites(t *testing.T) {
 	runPageRegression(t, "picker-ux-test.js", "checkStatusWrites()")
 }
+
+func TestPickerLabels(t *testing.T) {
+	runPageRegression(t, "picker-ux-test.js", "checkPickerLabels()")
+}

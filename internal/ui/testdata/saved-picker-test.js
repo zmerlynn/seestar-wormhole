@@ -36,11 +36,11 @@ async function checkSavedPicker(scenario) {
  for(const device of devices) assert(count(device)===1,'received entry lost or duplicated');
  assert($('idle').value===7,'saved projection overwrote unrelated draft');
  if(!['change','retry'].includes(scenario)) assert($('serial').value===current.serial&&$('model').value===current.model,'saved projection overwrote Custom draft');
- // Automatic does not discard the saved entry; selecting it fills the current pair.
+ // Find on my account does not discard the saved entry; selecting it fills the current pair.
  $('device-choice').value='';$('device-choice').onchange();
  const index=pickerDevices.findIndex(d=>d.serial===saved.serial&&d.model===saved.model);
  if(saved.serial) {
-  assert(index>=0,'Automatic lost the current saved choice');
+  assert(index>=0,'Find on my account lost the current saved choice');
   if(index>=0) {$('device-choice').value=String(index);$('device-choice').onchange();
    assert($('serial').value===saved.serial&&$('model').value===saved.model,'saved choice fills stale pair');}
  }

@@ -42,7 +42,7 @@ async function checkChangeTelescope(uncertain = false) {
   assert(!active && $('change-telescope').hidden && $('selected-device').hidden, 'successful change left run or selection');
   assert(document.activeElement === $('start'), 'change did not focus Connect');
   assert($('status').textContent === finalStatus, 'change completion status');
-  assert($('device-choice').value === '' && $('custom-device').hidden, 'change did not select Automatic');
+  assert($('device-choice').value === '' && $('custom-device').hidden, 'change did not select Find on my account');
   load({...original,bind:'127.0.0.1'}); render(selected);
   $('device-choice').value = 'custom'; $('device-choice').onchange();
   api = async () => {throw {code:'storage',message:'Settings could not be saved; they may reset next time.'};};
@@ -56,5 +56,5 @@ async function checkChangeTelescope(uncertain = false) {
   await act('retry-storage');
   assert(!$('serial').value && !$('model').value && $('notice').hidden, 'save retry left fields or error');
   assert($('status').textContent === finalStatus, 'retry completion status');
-  assert($('device-choice').value === '' && $('custom-device').hidden, 'retry did not select Automatic');
+  assert($('device-choice').value === '' && $('custom-device').hidden, 'retry did not select Find on my account');
 }

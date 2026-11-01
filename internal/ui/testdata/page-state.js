@@ -362,7 +362,7 @@
       $('model').value = 'synthetic';
       $('device-choice').value = '';
       $('device-choice').dispatchEvent(new Event('change'));
-      assert($('custom-device').hidden && $('serial').value === '' && $('model').value === '', 'Automatic retained Custom pair');
+      assert($('custom-device').hidden && $('serial').value === '' && $('model').value === '', 'Find on my account retained Custom pair');
     });
   } finally {
     window.setTimeout = liveTimeout;

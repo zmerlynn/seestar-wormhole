@@ -21,7 +21,7 @@ async function checkAccountPicker() {
  let submitted=false;
  api=async name=>{if(name==='start')submitted=true; return name==='status'?{...idle,devices:[],failure:undefined,settings:{...original,email:'second@example.invalid'}}:{ok:true};};
  await act('start');
- if(!submitted) failures.push('new account cannot Connect with Automatic: old selectionStep intercepted the action');
+ if(!submitted) failures.push('new account cannot Connect with Find on my account: old selectionStep intercepted the action');
  if (selectionStep || pickerDevices.length) failures.push('new account retained old choices after start');
  // Reopening B's controls while an A status response exists must suppress it.
  load({...original,email:'second@example.invalid'}); render(idle);

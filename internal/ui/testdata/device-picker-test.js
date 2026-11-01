@@ -11,14 +11,14 @@ async function checkDevicePicker() {
   load(original); render(idle);
   const picker = $('device-choice');
   assert(!$('device-picker').hidden && picker.children.length === 2, 'always-visible picker entries');
-  assert(picker.children[0].value === '' && picker.children[0].textContent === 'Automatic' && picker.value === '', 'Automatic default entry');
+  assert(picker.children[0].value === '' && picker.children[0].textContent === 'Find on my account' && picker.value === '', 'Find on my account default entry');
   assert(picker.children[1].value === 'custom' && picker.children[1].textContent === 'Custom…', 'Custom entry');
-  assert($('custom-device').hidden, 'Automatic exposed Custom fields');
+  assert($('custom-device').hidden, 'Find on my account exposed Custom fields');
   picker.value = 'custom'; picker.onchange();
   assert(!$('custom-device').hidden, 'Custom did not reveal fields');
   $('serial').value = 'manual'; $('model').value = 'manual model';
   picker.value = ''; picker.onchange();
-  assert($('custom-device').hidden && $('serial').value === '' && $('model').value === '', 'Automatic did not hide and clear exact pair');
+  assert($('custom-device').hidden && $('serial').value === '' && $('model').value === '', 'Find on my account did not hide and clear exact pair');
   const saved = {...original,serial:'synthetic-saved-9999',model:'Future telescope',choice_label:'Future telescope synthetic-saved-9999'};
   load(saved); render({...idle,settings:saved});
   assert(picker.children.length === 3 && picker.children[1].textContent === saved.choice_label && picker.value === '0', 'saved entry label and selection');
@@ -39,7 +39,7 @@ async function checkDevicePicker() {
   let requests = 0;
   api = async () => {requests++; throw new Error('unexpected account request');};
   await act('start');
-  assert(requests === 0 && document.activeElement === picker, 'Automatic Connect made an account request');
+  assert(requests === 0 && document.activeElement === picker, 'Find on my account Connect made an account request');
   picker.value = '1'; picker.onchange();
   assert($('serial').value === choices[1].serial && $('model').value === choices[1].model, 'received exact fill');
   assert(settings().serial === choices[1].serial && settings().model === choices[1].model, 'exact wire submission');

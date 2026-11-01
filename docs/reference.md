@@ -431,7 +431,10 @@ are capped at 64 display characters, including escapes and a `...` truncation
 marker. Serial labels use the same ASCII escaping without truncation. The desktop
 exposes the choices structurally only for multiple devices without a serial;
 its Telescope picker below the account fields fills the exact wire serial and
-model for the next Connect. Automatic clears the pair; Custom… reveals manual
+model for the next Connect. **Find on my account** is the default and clears
+the pair. After several telescopes are found for the current account, the empty
+option reads **Choose a telescope…** until that selection step clears or the
+account changes. Connect remains explicit; Custom… reveals manual
 Serial and Model fields. A saved pair is selected on load. Received choices
 remain in memory for this app run and are never added to the settings file.
 
