@@ -31,6 +31,9 @@ type guiTestDriver struct {
 	url, dir, scenario, root string
 	out                      io.Writer
 	seq                      int
+	// Headless tests replace only the native script and event boundaries.
+	execJS func(string)
+	on     func(string, func(*application.CustomEvent)) func()
 }
 
 // Each probe has a distinct acknowledgment, so late JS cannot satisfy the next
@@ -40,10 +43,17 @@ func (d *guiTestDriver) probe(expression string) error {
 }
 
 func (d *guiTestDriver) runProbe(js string) error {
+	execJS, on := d.execJS, d.on
+	if execJS == nil {
+		execJS = d.w.ExecJS
+	}
+	if on == nil {
+		on = d.app.Event.On
+	}
 	d.seq++
 	name := "guitest:probe:" + strconv.Itoa(d.seq)
 	ack := make(chan struct{}, 1)
-	off := d.app.Event.On(name, func(*application.CustomEvent) {
+	off := on(name, func(*application.CustomEvent) {
 		select {
 		case ack <- struct{}{}:
 		default:
@@ -51,9 +61,9 @@ func (d *guiTestDriver) runProbe(js string) error {
 	})
 	defer off()
 	var started, evaluated, matched atomic.Bool
-	offStarted := d.app.Event.On(name+":started", func(*application.CustomEvent) { started.Store(true) })
-	offEvaluated := d.app.Event.On(name+":evaluated", func(*application.CustomEvent) { evaluated.Store(true) })
-	offMatched := d.app.Event.On(name+":matched", func(*application.CustomEvent) { matched.Store(true) })
+	offStarted := on(name+":started", func(*application.CustomEvent) { started.Store(true) })
+	offEvaluated := on(name+":evaluated", func(*application.CustomEvent) { evaluated.Store(true) })
+	offMatched := on(name+":matched", func(*application.CustomEvent) { matched.Store(true) })
 	defer offStarted()
 	defer offEvaluated()
 	defer offMatched()
@@ -63,7 +73,7 @@ func (d *guiTestDriver) runProbe(js string) error {
 		case <-ack:
 			return true
 		default:
-			d.w.ExecJS(js)
+			execJS(js)
 			return false
 		}
 	})
