@@ -7,7 +7,7 @@ import (
 )
 
 // Catalog contains only escaped display identity, never wire or account data.
-// Pairs are bounded to keep one encoded log record below the 16 KiB sink limit.
+// Pairs are bounded to keep one encoded log record below the 16 KiB catalog record budget.
 type CatalogPair struct {
 	Model  string `json:"model"`
 	Serial string `json:"serial"`
