@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json/v2"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
@@ -277,11 +278,12 @@ func (s *server) saveSettings(settings Settings) error {
 type pageSettings struct {
 	Settings
 	IdleMinutes float64 `json:"idle_minutes"`
+	ChoiceLabel string  `json:"choice_label"`
 }
 
 func pageSettingsFor(s Settings) pageSettings {
 	d, _ := time.ParseDuration(s.Idle)
-	return pageSettings{s, d.Minutes()}
+	return pageSettings{s, d.Minutes(), (cloudhttp.Device{Serial: s.Serial, Model: s.Model}).ChoiceLabel()}
 }
 
 // One allowlisted projection feeds both Settings and the copied summary.

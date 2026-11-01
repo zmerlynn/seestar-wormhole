@@ -42,7 +42,7 @@ func actionError(err error) *ActionError {
 	}
 	var selection *cloudhttp.SelectionError
 	if errors.As(err, &selection) && selection.Multiple {
-		return &ActionError{Code: "selection_multiple", Field: "serial", Devices: selection.Choices()}
+		return &ActionError{Code: "selection_multiple", Devices: selection.Choices()}
 	}
 	if phase == "device_selection" {
 		return &ActionError{Code: "selection", Field: "serial"}
@@ -87,13 +87,9 @@ func errorCopy(code string) string {
 	case "signin":
 		return "Could not sign in. Check your Seestar account email and password, then connect again."
 	case "selection_multiple":
-		return "Choose a telescope from the list, then choose Connect again."
-	case "selection":
-		return "In Advanced, enter your Seestar's serial and model exactly as shown in your account."
-	case "serial":
-		return "Check the serial number in Advanced."
-	case "model":
-		return "Check the model in Advanced."
+		return "Your account has several telescopes. Choose one, then Connect."
+	case "selection", "serial", "model":
+		return "Check this setting."
 	case "release":
 		return "Session release could not be confirmed. If Seestar is occupied, wait and try Connect again."
 	case "storage":

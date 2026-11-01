@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
@@ -24,6 +25,7 @@ type controller struct {
 	changing           bool
 	final              string
 	failure            *ActionError
+	devices            []cloudhttp.DeviceChoice
 	save               func(Settings) error
 	log                *eventLog
 	runSettings        Settings
@@ -90,6 +92,9 @@ func (c *controller) start(s Settings, password string) error {
 		}
 		c.final = finalStatus(err)
 		c.failure = runFailure(err)
+		if c.failure != nil && c.failure.Code == "selection_multiple" {
+			c.devices = append([]cloudhttp.DeviceChoice(nil), c.failure.Devices...)
+		}
 		if diagnostic.CleanupError(err) != nil {
 			c.failure = &ActionError{Code: "release"}
 		}
@@ -328,13 +333,14 @@ func uiText(text string) string {
 
 // The control model is independent of pending HTTP/keychain actions in the page.
 type runView struct {
-	FailureMessage string       `json:"failure_message,omitempty"`
-	Status         string       `json:"status"`
-	SelectedDevice string       `json:"selected_device,omitempty"`
-	Active         bool         `json:"active"`
-	Stopping       bool         `json:"stopping"`
-	Cancel         bool         `json:"cancel"`
-	Failure        *ActionError `json:"failure,omitempty"`
+	Devices        []cloudhttp.DeviceChoice `json:"devices,omitempty"`
+	FailureMessage string                   `json:"failure_message,omitempty"`
+	Status         string                   `json:"status"`
+	SelectedDevice string                   `json:"selected_device,omitempty"`
+	Active         bool                     `json:"active"`
+	Stopping       bool                     `json:"stopping"`
+	Cancel         bool                     `json:"cancel"`
+	Failure        *ActionError             `json:"failure,omitempty"`
 	settings       Settings
 	SaveFailed     bool `json:"save_failed"`
 	Discovery      bool `json:"discovery_started"`
@@ -344,7 +350,7 @@ func (c *controller) view() runView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	text, active := c.snapshotLocked()
-	v := runView{Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
+	v := runView{Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
 	if active {
 		v.SelectedDevice = c.status.SelectedDevice()
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
@@ -354,7 +360,11 @@ func (c *controller) view() runView {
 		v.FailureMessage = errorCopy(c.failure.Code)
 	}
 	if !active && c.failure != nil && c.failure.Code != "release" {
-		v.Status = "Could not connect"
+		if c.failure.Code == "selection_multiple" {
+			v.Status = "Choose a telescope"
+		} else {
+			v.Status = "Could not connect"
+		}
 	}
 	return v
 }

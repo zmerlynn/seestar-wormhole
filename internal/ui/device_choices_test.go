@@ -75,7 +75,9 @@ func TestDeviceChoicesUIAPI(t *testing.T) {
 			w := httptest.NewRecorder()
 			s.ServeHTTP(w, request(s, "GET", "/api/status", ""))
 			var got struct {
+				Status  string `json:"status"`
 				Failure struct {
+					Field   string                   `json:"field"`
 					Code    string                   `json:"code"`
 					Devices []cloudhttp.DeviceChoice `json:"devices"`
 				} `json:"failure"`
@@ -89,6 +91,9 @@ func TestDeviceChoicesUIAPI(t *testing.T) {
 				t.Fatalf("choices: %s", w.Body.String())
 			}
 			if tc.count > 0 {
+				if got.Status != "Choose a telescope" || got.Failure.Field != "" {
+					t.Fatal("selection step presented as an error", w.Body.String())
+				}
 				if got.Failure.Code != "selection_multiple" || got.Failure.Devices[1].Serial != "synthetic-choice-5678" || got.Failure.Devices[1].Model != " <img>\t " || got.Failure.Devices[1].Label != ` <img>\t  synthetic-choice-5678` {
 					t.Fatalf("wire or display identity: %s", w.Body.String())
 				}
@@ -120,7 +125,63 @@ func TestDevicePickerBindings(t *testing.T) {
 			t.Fatalf("picker binding missing: %s", want)
 		}
 	}
-	if got := errorCopy("selection_multiple"); got != "Choose a telescope from the list, then choose Connect again." {
+	if got := errorCopy("selection_multiple"); got != "Your account has several telescopes. Choose one, then Connect." {
 		t.Fatal(got)
+	}
+}
+
+func TestSavedPickerChoiceLabel(t *testing.T) {
+	s := testSettings()
+	s.Serial = "synthetic-\u200b-望-choice"
+	s.Model = "Future\tmodel"
+	got := pageSettingsFor(s)
+	if got.ChoiceLabel != `Future\tmodel synthetic-\u200b-\u671b-choice` || got.Serial != s.Serial || got.Model != s.Model {
+		t.Fatalf("saved picker label or wire pair: %#v", got)
+	}
+}
+
+func TestPickerChoicesAppLifetime(t *testing.T) {
+	s := testServer(t)
+	failure := choiceFailure(t, cloudhttp.Device{})
+	s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { return failure }
+	run := func() {
+		t.Helper()
+		if err := s.controller.start(testSettings(), testPassword); err != nil {
+			t.Fatal(err)
+		}
+		s.controller.mu.Lock()
+		done := s.controller.done
+		s.controller.mu.Unlock()
+		if done != nil {
+			<-done
+		}
+	}
+	run()
+	choices := s.controller.view().Devices
+	if len(choices) != 2 || choices[1].Serial != "synthetic-choice-5678" {
+		t.Fatal("received list not retained", choices)
+	}
+	s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { return nil }
+	run()
+	w := httptest.NewRecorder()
+	s.ServeHTTP(w, request(s, "GET", "/api/status", ""))
+	var view struct {
+		Devices []cloudhttp.DeviceChoice `json:"devices"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &view); err != nil {
+		t.Fatal(err)
+	}
+	if len(view.Devices) != 2 || view.Devices[1] != choices[1] {
+		t.Fatal("list lost after next run or controls reload", w.Body.String())
+	}
+	if err := s.controller.persistLocked(testSettings()); err != nil {
+		t.Fatal(err)
+	}
+	disk, err := os.ReadFile(filepath.Join(s.storage.root, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(disk), "synthetic-choice-") || strings.Contains(string(disk), "devices") || strings.Contains(string(disk), "choice_label") {
+		t.Fatal("picker metadata persisted", string(disk))
 	}
 }
