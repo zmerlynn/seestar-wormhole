@@ -2,6 +2,7 @@ package cloudhttp
 
 import (
 	"encoding/json/v2"
+	"errors"
 	"strings"
 	"testing"
 
@@ -34,16 +35,16 @@ func TestSerialLabelASCIIEscaping(t *testing.T) {
 			}
 			body := strings.Replace(twoDevices, `"other-serial-sentinel-5678"`, string(encoded), 1)
 			devices, _, err := cloud.ParseDevices([]byte(body))
+			if !tc.valid {
+				if !errors.Is(err, cloud.ErrInvalid) {
+					t.Fatalf("invalid cloud serial accepted: %v", err)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatal(err)
 			}
 			choices := selectionChoices(devices)
-			if !tc.valid {
-				if len(choices) != 1 {
-					t.Fatal("invalid serial retained")
-				}
-				return
-			}
 			if len(choices) != 2 {
 				t.Fatal("valid serial omitted")
 			}

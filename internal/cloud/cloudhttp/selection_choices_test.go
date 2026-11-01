@@ -70,7 +70,6 @@ func TestSelectionChoices(t *testing.T) {
 func TestSelectionChoiceUntrustedText(t *testing.T) {
 	const hostile = "<img src=x>\x1b\t\n" // synthetic server text; exact model is selection authority
 	body := strings.Replace(twoDevices, `"S50 Pro"`, `"<img src=x>\u001b\t\n"`, 1)
-	body = strings.Replace(body, "other-serial-sentinel-5678", `invalid\nserial`, 1)
 	var logs bytes.Buffer
 	c := selectionClient(t, &selectionCloud{bodies: []string{body}}, &logs, slog.LevelInfo)
 	_, err := c.SelectDevice(t.Context(), Device{})
@@ -79,10 +78,10 @@ func TestSelectionChoiceUntrustedText(t *testing.T) {
 		t.Fatal("no structured list")
 	}
 	choices := selection.Choices()
-	if len(choices) != 1 || choices[0].Serial != "serial-sentinel-secret-1234" || choices[0].Model != hostile || choices[0].Label != `<img src=x>\x1b\t\n serial-sentinel-secret-1234` {
+	if len(choices) != 2 || choices[0].Serial != "serial-sentinel-secret-1234" || choices[0].Model != hostile || choices[0].Label != `<img src=x>\x1b\t\n serial-sentinel-secret-1234` {
 		t.Fatalf("untrusted choices=%q", choices)
 	}
-	if strings.Contains(selection.CLIMessage(), "invalid") || strings.ContainsAny(choices[0].Label, "\x1b\t\n") {
+	if strings.ContainsAny(choices[0].Label, "\x1b\t\n") {
 		t.Fatal("unsafe choice text")
 	}
 	// Also bound unknown model display, preserving its complete wire value.
@@ -97,31 +96,20 @@ func TestSelectionChoiceUntrustedText(t *testing.T) {
 	}
 }
 
-func TestSelectionChoiceSerialDisplay(t *testing.T) {
-	for _, tc := range []struct {
-		serial string
-		count  int
-		label  string
-	}{
-		{"synthetic-serial\r", 1, ""},
-		{strings.Repeat("x", 4097), 1, ""},
-		{"synthetic-serial\x1b", 1, ""},
+func TestSelectionChoiceSerialRejection(t *testing.T) {
+	for _, serial := range []string{
+		"synthetic-serial\r",
+		strings.Repeat("x", 4097),
+		"synthetic-serial\x1b",
 	} {
-		encoded, err := json.Marshal(tc.serial)
+		encoded, err := json.Marshal(serial)
 		if err != nil {
 			t.Fatal(err)
 		}
 		body := strings.Replace(twoDevices, `"other-serial-sentinel-5678"`, string(encoded), 1)
-		devices, _, err := cloud.ParseDevices([]byte(body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		choices := selectionChoices(devices)
-		if len(choices) != tc.count {
-			t.Fatalf("invalid serial retained: count=%d", len(choices))
-		}
-		if tc.label != "" && (choices[1].Label != tc.label || choices[1].Serial != tc.serial) {
-			t.Fatalf("serial display or wire value lost: %q", choices[1])
+		_, _, err = cloud.ParseDevices([]byte(body))
+		if !errors.Is(err, cloud.ErrInvalid) {
+			t.Fatalf("invalid cloud serial accepted: %v", err)
 		}
 	}
 }
