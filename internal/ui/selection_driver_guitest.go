@@ -97,3 +97,15 @@ const guiTestManualGapProbe = `(() => {
  const action=el('picker-action'),margin=parseFloat(getComputedStyle(action).marginTop),expected=.75*parseFloat(getComputedStyle(document.documentElement).fontSize),gap=el('start').getBoundingClientRect().top-el('custom-device').getBoundingClientRect().bottom;
  return check(!el('custom-device').hidden && Math.abs(margin-expected)<.5 && gap>=expected-.5,{margin,expected,gap});
 })()`
+
+// This predicate only observes the natural post-Change viewport.
+const guiTestPickerTransitionViewportProbe = `(() => {
+ const picker=el('device-choice'),style=getComputedStyle(picker),ring=(parseFloat(style.outlineWidth)||0)+Math.max(0,parseFloat(style.outlineOffset)||0);
+ const expand=e=>{const r=e.getBoundingClientRect();return {top:r.top-ring,bottom:r.bottom+ring,left:r.left-ring,right:r.right+ring};};
+ const rect=expand(picker),start=expand(el('start')),help=el('selection-help').getBoundingClientRect();
+ const group={top:rect.top,bottom:Math.max(help.bottom,start.bottom),left:Math.min(rect.left,start.left),right:Math.max(rect.right,start.right)};
+ const fits=group.bottom-group.top<=innerHeight && group.right-group.left<=innerWidth;
+ const visible=r=>r.top>=0 && r.bottom<=innerHeight && r.left>=0 && r.right<=innerWidth;
+ const focused=document.activeElement===picker;
+ return check(focused && !el('device-picker').hidden && visible(rect) && (!fits || (visible(help) && visible(start))),{focused,ring,fits,rect,help,start,innerHeight,innerWidth});
+})()`

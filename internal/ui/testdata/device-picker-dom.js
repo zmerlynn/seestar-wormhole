@@ -30,3 +30,6 @@ const location = {hash: ''}, sessionStorage = {getItem() {return '';}};
 const window = {}, history = {};
 const fetch = () => new Promise(() => {});
 function setTimeout() {}
+
+const testFrames = [];
+function requestAnimationFrame(callback) {testFrames.push(callback);}

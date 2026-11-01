@@ -190,3 +190,7 @@ func TestManualSerialRequired(t *testing.T) {
 		}
 	}
 }
+
+func TestPickerLayoutReveal(t *testing.T) {
+	runPageRegression(t, "picker-reveal-test.js", "checkPickerLayoutReveal()")
+}

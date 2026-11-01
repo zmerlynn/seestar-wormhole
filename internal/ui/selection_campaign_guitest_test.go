@@ -25,6 +25,14 @@ func TestPickerScreenshotCampaign(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	transition := strings.Index(string(viewport), "d.probe(guiTestPickerTransitionViewportProbe)")
+	scroll := strings.Index(string(viewport), "\n\tswitch shot {")
+	if transition < 0 || scroll < 0 || transition >= scroll {
+		t.Fatal("post-Change geometry must be checked before driver scrolling")
+	}
+	if strings.Contains(guiTestPickerTransitionViewportProbe, "scroll") {
+		t.Fatal("post-Change predicate must only observe the viewport")
+	}
 	if !strings.Contains(string(viewport), `"telescope-manual", "telescope-choosing"`) {
 		t.Fatal("new picker screenshots must use the repeated scrolling probe")
 	}
@@ -123,5 +131,39 @@ assert(probe(),'valid manual gap rejected');
 margin=0;assert(!probe(),'missing manual margin accepted');
 margin=12;gap=0;assert(!probe(),'touching Connect accepted');
 gap=12;hidden=true;assert(!probe(),'hidden manual fields accepted');
+`)
+}
+
+func TestPickerTransitionViewportProbe(t *testing.T) {
+	runGUIJavaScript(t, `
+const innerHeight=600,innerWidth=800;
+let focus=true,hidden=false;
+const boxes={'device-choice':{top:400,bottom:444,left:20,right:740},'selection-help':{top:450,bottom:480,left:20,right:740},start:{top:500,bottom:544,left:20,right:140}};
+const elements=Object.fromEntries(Object.keys(boxes).concat(['device-picker']).map(id=>[id,{get hidden(){return hidden;},getBoundingClientRect(){return {...boxes[id]};}}]));
+const el=id=>elements[id];
+const document={get activeElement(){return focus?el('device-choice'):el('start');}};
+const getComputedStyle=()=>({outlineWidth:'3px',outlineOffset:'3px'});
+const check=ok=>!!ok;
+const assert=(ok,message)=>{if(!ok)throw new Error(message);};
+const probe=()=>`+guiTestPickerTransitionViewportProbe+`;
+assert(probe(),'valid natural viewport rejected');
+for(const id of ['device-choice','start']) {
+ for(const [axis,value] of [['top',2],['bottom',598],['left',2],['right',798]]) {
+  const original={...boxes[id]};
+  // Move the whole control, preserving its size and a group that still fits.
+  const other={top:'bottom',bottom:'top',left:'right',right:'left'}[axis];
+  const delta=value-boxes[id][axis];boxes[id][axis]+=delta;boxes[id][other]+=delta;
+  assert(!probe(),'clipped focus outline accepted: '+id+' '+axis);
+  boxes[id]=original;
+ }
+}
+const help={...boxes['selection-help']};boxes['selection-help'].left=-1;
+assert(!probe(),'offscreen help accepted for fitted group');boxes['selection-help']=help;
+focus=false;assert(!probe(),'unfocused picker accepted');focus=true;
+hidden=true;assert(!probe(),'hidden picker accepted');hidden=false;
+boxes.start.top=1100;boxes.start.bottom=1144;
+assert(probe(),'oversized group must only require picker outline');
+boxes['device-choice'].top=2;boxes['device-choice'].bottom=46;
+assert(!probe(),'oversized group accepted clipped picker outline');
 `)
 }

@@ -165,6 +165,12 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	if err := d.probe(`(() => {const want=` + strconv.Quote(want) + `,active=` + strconv.FormatBool(active) + `,status=el('status').textContent,hidden=el('settings').hidden;return check(status===want && hidden===active && (pending==='' || (state.stopping && ['stop','quit','change-telescope'].includes(pending))),{want,status,active,hidden,pending,stopping:state?.stopping ?? null})})()`); err != nil {
 		return err
 	}
+	if shot == "telescope-stopped" {
+		// Observe the app's reveal before any screenshot positioning can mask it.
+		if err := d.probe(guiTestPickerTransitionViewportProbe); err != nil {
+			return err
+		}
+	}
 	if shot == "setup" {
 		// Check launch visibility before any driver scrolling can conceal a defect.
 		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),focused=document.activeElement?.id;return check(start.top>=0 && start.bottom<innerHeight && document.activeElement===el('start'),{start,innerHeight,focused,documentFocused:document.hasFocus(),focusTrace:window.__guitestFocus ?? null})})()`); err != nil {

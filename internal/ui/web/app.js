@@ -264,7 +264,21 @@ function controls() {
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
   if (pickerFocusPending && !$('options').disabled) {
     pickerFocusPending = false;
-    $('device-choice').focus();
+    const picker = $('device-choice');
+    picker.focus();
+    // The action has moved and fields may have changed height. Reveal their
+    // final layout once, while preserving any focus the user moves meanwhile.
+    requestAnimationFrame(() => {
+      if (document.activeElement !== picker || $('options').disabled || $('settings').hidden || !selectionStep) return;
+      const style = getComputedStyle(picker);
+      const ring = (parseFloat(style.outlineWidth) || 0) + Math.max(0, parseFloat(style.outlineOffset) || 0);
+      const rect = picker.getBoundingClientRect(), help = $('selection-help').getBoundingClientRect(), start = $('start').getBoundingClientRect();
+      const group = {top: rect.top - ring, bottom: Math.max(help.bottom, start.bottom + ring), left: Math.min(rect.left, start.left) - ring, right: Math.max(rect.right, start.right) + ring};
+      const target = group.bottom - group.top <= innerHeight && group.right - group.left <= innerWidth ? group : {top: rect.top - ring, bottom: rect.bottom + ring, left: rect.left - ring, right: rect.right + ring};
+      const dy = target.top < 0 ? Math.floor(target.top) : Math.max(0, Math.ceil(target.bottom - innerHeight));
+      const dx = target.left < 0 ? Math.floor(target.left) : Math.max(0, Math.ceil(target.right - innerWidth));
+      if (dx || dy) window.scrollBy(dx, dy);
+    });
   }
 }
 let pickerKey = '', receivedDevices = [], savedDevice = null;

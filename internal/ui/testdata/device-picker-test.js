@@ -66,7 +66,6 @@ async function checkPickerInitialStep() {
  const assert = (ok, message) => {if (!ok) throw new Error(message);};
  const initial = {devices_email:'synthetic@example.invalid',active:false,status:'Choose a telescope',settings:{email:'synthetic@example.invalid',bind:'127.0.0.1',serial:'',model:''},port_defaults:[],version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[],failure:{code:'selection_multiple',devices:[{serial:'synthetic-choice-1234',model:'S30',label:'S30 synthetic-choice-1234'}]}};
  document.hasFocus = () => true;
- globalThis.requestAnimationFrame = callback => callback();
  api = async () => initial;
  await refresh();
  assert(document.activeElement === $('device-choice') && $('device-choice').focusCount === 1, 'reopened selection step focused Connect');
