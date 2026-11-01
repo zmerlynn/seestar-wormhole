@@ -15,10 +15,10 @@ class TestElement {
   setAttribute(name, value) {this.attributes[name] = value;}
   querySelector() {return new TestElement();}
   closest() {return null;}
-  createTHead() {return new TestElement();}
-  createTBody() {return new TestElement();}
-  insertRow() {return new TestElement();}
-  insertCell() {return new TestElement();}
+  createTHead() {const e=new TestElement();this.append(e);return e;}
+  createTBody() {const e=new TestElement();this.append(e);return e;}
+  insertRow() {const e=new TestElement();this.append(e);return e;}
+  insertCell() {const e=new TestElement();this.append(e);return e;}
 }
 const testElements = new Map();
 const document = {

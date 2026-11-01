@@ -351,6 +351,12 @@
       assert($('effective-settings').textContent === JSON.stringify(effective, null, 2), 'Settings is not pretty JSON');
       const localTime = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
       assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  Account telescopes: S30 synthetic-details', 'event category or UTC leaked into local list');
+      const detailsNodes = ['effective-settings','events','log-path','running-ports','ports'].map(id => $(id));
+      const detailsObserver = new MutationObserver(() => {});
+      for (const node of detailsNodes) detailsObserver.observe(node, {subtree: true, childList: true, characterData: true, attributes: true});
+      render({...status(), effective: JSON.parse(JSON.stringify(effective)), events: [{...event}], log_path: 'synthetic-private-path'});
+      assert(detailsObserver.takeRecords().length === 0, 'unchanged poll mutated Details or ports');
+      detailsObserver.disconnect();
       const copied = JSON.parse(diagnostic);
       assert(Object.keys(copied).join() === 'app,version,settings,events' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && copied.events[0].message === event.message && !diagnostic.includes('synthetic-private-path') && !$('mappings'), 'copied object schema/privacy');
       const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');

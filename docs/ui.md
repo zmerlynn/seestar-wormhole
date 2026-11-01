@@ -171,6 +171,9 @@ read `Account telescopes: none`. Long lists end with `… and N more`.
 The private log includes an INFO `device_catalog` record with the pairs, count,
 and completeness; see the [log reference](reference.md#logs).
 
+Unchanged status polls preserve the text and nodes in Details and the service
+tables so selected text stays selected. Changed content updates on the next poll.
+
 The private logs use fixed message templates and categories, UTC timestamps, and
 classified failure phases and reasons, with no raw protocol traces.
 

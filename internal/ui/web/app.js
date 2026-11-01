@@ -72,6 +72,8 @@ function portValues(s) {
   return ports;
 }
 function portsTable(id, ports, editable = false) {
+  const key = JSON.stringify(services.map(([remote]) => ports[remote] || 'Off'));
+  if (!editable && $(id).portsKey === key) return;
   const table = document.createElement('table');
   const head = table.createTHead().insertRow();
   for (const name of ['Local port', 'Seestar port', 'Purpose']) {
@@ -99,6 +101,7 @@ function portsTable(id, ports, editable = false) {
     row.insertCell().textContent = purpose;
   }
   $(id).replaceChildren(table);
+  if (!editable) $(id).portsKey = key;
 }
 function goalFor(s) {
   const ports = portValues(s);
@@ -377,13 +380,17 @@ function render(s) {
   $('copy-steps').hidden = !(active && smb);
   $('copy-port').textContent = smb || '';
   portsTable('running-ports', run.ports);
-  $('effective-settings').textContent = JSON.stringify(s.effective, null, 2);
-  $('events').replaceChildren(...s.events.map(event => {
-    const item = document.createElement('li');
-    item.textContent = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + event.message;
-    return item;
-  }));
-  $('log-path').textContent = s.log_path ? 'Private log: ' + s.log_path : '';
+  text('effective-settings', JSON.stringify(s.effective, null, 2));
+  const eventLines = s.events.map(event => new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + event.message);
+  const eventNodes = Array.from($('events').children);
+  if (eventLines.length !== eventNodes.length || eventLines.some((line, i) => line !== eventNodes[i].textContent)) {
+    $('events').replaceChildren(...eventLines.map(line => {
+      const item = document.createElement('li');
+      item.textContent = line;
+      return item;
+    }));
+  }
+  text('log-path', s.log_path ? 'Private log: ' + s.log_path : '');
   $('log-error').hidden = !s.log_failed;
   diagnostic = JSON.stringify({app: 'seestar-wormhole', version: s.version, settings: s.effective, events: s.events}, null, 2);
   controls();
