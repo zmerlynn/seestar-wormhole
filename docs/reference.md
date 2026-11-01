@@ -428,7 +428,7 @@ serial refusals also list the received pairs. These lists are command output,
 not log records. Invalid serials are omitted using the command's serial rules;
 all model labels use Go ASCII string escaping (without enclosing quotes) and
 are capped at 64 display characters, including escapes and a `...` truncation
-marker. Control characters in serial display are escaped too. The desktop
+marker. Serial labels use the same ASCII escaping without truncation. The desktop
 exposes the choices structurally only for multiple devices without a serial;
 its picker fills the exact wire serial and model in Advanced for the next try.
 

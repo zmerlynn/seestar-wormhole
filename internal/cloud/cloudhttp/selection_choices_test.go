@@ -105,7 +105,7 @@ func TestSelectionChoiceSerialDisplay(t *testing.T) {
 	}{
 		{"synthetic-serial\r", 1, ""},
 		{strings.Repeat("x", 4097), 1, ""},
-		{"synthetic-serial\x1b", 2, `S30 "synthetic-serial\x1b"`},
+		{"synthetic-serial\x1b", 2, `S30 synthetic-serial\x1b`},
 	} {
 		encoded, err := json.Marshal(tc.serial)
 		if err != nil {

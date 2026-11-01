@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"strings"
-	"unicode"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 )
@@ -59,10 +57,8 @@ func selectionChoices(devices []cloud.Detail) []DeviceChoice {
 			continue
 		}
 		model := displayModel(d.Model())
-		serial := d.Serial()
-		if strings.ContainsFunc(serial, unicode.IsControl) {
-			serial = strconv.QuoteToASCII(serial)
-		}
+		serial := strconv.QuoteToASCII(d.Serial())
+		serial = serial[1 : len(serial)-1]
 		choices = append(choices, DeviceChoice{Serial: d.Serial(), Model: d.Model(), Label: model + " " + serial})
 	}
 	return choices
