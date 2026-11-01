@@ -16,7 +16,7 @@ if (token) {
 }
 let initialized = false, ended = false, connected = false, pending = '', active = false;
 let lastFailure = '', state = null, statusGeneration = 0, actionError = '';
-let fieldErrors = {}, portDefaults = [];
+let fieldErrors = {}, portDefaults = [], draftEmail = '';
 let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '';
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
@@ -109,6 +109,7 @@ function goalFor(s) {
 }
 function load(s) {
   for (const name of ['email', 'bind', 'serial', 'model']) $(name).value = s[name] || '';
+  draftEmail = accountEmail();
   $('listen').value = ['0.0.0.0', '127.0.0.1'].includes(s.bind) ? s.bind : 'other';
   $('discovery').checked = !!s.discovery;
   $('mode').value = s.idle_minutes > 0 ? 'idle' : 'eager';
@@ -522,6 +523,18 @@ for (const [id,action] of [['change-telescope','change-telescope'],['save-passwo
 }
 $('email').addEventListener('input', () => {
   $('password').value = '';
+  const email = accountEmail();
+  if (email !== draftEmail) {
+    // The draft belongs to the account being edited, which may be newer than
+    // the latest status response. Clear once; later manual entry stays local.
+    $('serial').value = '';
+    $('model').value = '';
+    $('device-choice').value = '';
+    $('custom-device').hidden = true;
+    clearField('serial');
+    clearField('model');
+    draftEmail = email;
+  }
   if (state) projectPicker(state);
 });
 for (const id of ['email','password','idle','bind','serial','model']) $(id).addEventListener('input', () => {
