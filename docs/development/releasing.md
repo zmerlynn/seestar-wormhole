@@ -100,6 +100,15 @@ shell history:
 | `APPLE_NOTARY_ISSUER_ID` | API key issuer UUID |
 | `APPLE_NOTARY_KEY_P8_BASE64` | Base64 contents of the API key's `.p8` private key |
 
+When `MACOS_CERT_P12_BASE64` is configured, Weekly Vulncheck reads it using
+`MACOS_CERT_PASSWORD` and fails from 28 days before the signing certificate
+expires. Renew the certificate and replace both secrets before then.
+Without `MACOS_CERT_P12_BASE64`, the check reports a notice and passes.
+
+The check selects the leaf matching `MACOS_SIGN_IDENTITY` when that is a SHA-1
+fingerprint (case-insensitive, with or without colons). With a name or no identity,
+the export must contain exactly one leaf certificate.
+
 With all credentials present, the packaging script imports into a temporary
 keychain, signs the app and universal CLI with the same identity, hardened
 runtime, secure timestamps and the minimal

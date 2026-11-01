@@ -120,6 +120,9 @@ CI uses the runner's `curl` and `jq` to check the Go release series in `go.mod`
 network access. Weekly Vulncheck also fails when that series is
 the older supported series, giving time to upgrade, and after 45 days without a
 default-branch commit, giving time to prevent GitHub's 60-day schedule shutdown.
+When `MACOS_CERT_P12_BASE64` is configured, it also checks the Mac signing
+certificate selected by `MACOS_SIGN_IDENTITY` and fails from 28 days before expiry.
+See [certificate selection and renewal](releasing.md#mac-signing-and-notarization).
 `./scripts/test-go-support.sh` tests the support check offline with synthetic responses.
 
 ### Optional integration checks

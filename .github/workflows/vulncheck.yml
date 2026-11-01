@@ -28,6 +28,79 @@ jobs:
       - name: Check Go support before end of support
         if: ${{ !cancelled() }}
         run: ./scripts/check-go-support.sh latest
+      - name: Check Mac signing certificate before it expires
+        if: ${{ !cancelled() }}
+        shell: bash
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+          MACOS_SIGN_IDENTITY: ${{ secrets.MACOS_SIGN_IDENTITY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${MACOS_CERT_P12_BASE64:-}" ]; then
+            echo "::notice::No Mac signing certificate is configured."
+            exit 0
+          fi
+          fail() { echo "::error::$1"; exit 1; }
+          metadata_error() { fail "Could not read Mac signing certificate metadata. Check the PKCS#12 export."; }
+          umask 077
+          cert_dir=$(mktemp -d "$RUNNER_TEMP/signing-cert.XXXXXX")
+          trap 'rm -rf "$cert_dir"' EXIT
+          p12="$cert_dir/certificate.p12"
+          printf '%s' "$MACOS_CERT_P12_BASE64" | base64 -d > "$p12" ||
+            fail "Could not decode MACOS_CERT_P12_BASE64. Replace it with a base64 PKCS#12 export."
+          # A PKCS#12 exported with older ciphers needs OpenSSL's legacy provider.
+          if ! openssl pkcs12 -in "$p12" -clcerts -nokeys -passin env:MACOS_CERT_PASSWORD -out "$cert_dir/leaves.pem" 2>/dev/null; then
+            openssl pkcs12 -legacy -in "$p12" -clcerts -nokeys -passin env:MACOS_CERT_PASSWORD -out "$cert_dir/leaves.pem" ||
+              fail "Could not extract Mac signing certificates. Check MACOS_CERT_P12_BASE64 and MACOS_CERT_PASSWORD."
+          fi
+          # OpenSSL 3.0's storeutl and pkcs7 emit bundles, not separate PEM files.
+          # Split only their boundaries; OpenSSL parses each certificate below.
+          awk -v dir="$cert_dir" '
+            /^-----BEGIN CERTIFICATE-----$/ { file = dir "/leaf-" ++n ".pem" }
+            file { print > file }
+            /^-----END CERTIFICATE-----$/ { close(file); file = "" }
+          ' "$cert_dir/leaves.pem"
+          shopt -s nullglob
+          certs=("$cert_dir"/leaf-*.pem)
+          [ "${#certs[@]}" -gt 0 ] ||
+            fail "No leaf certificate was extracted. Export the signing identity with its private key as PKCS#12."
+          identity=${MACOS_SIGN_IDENTITY:-}
+          identity=${identity//:/}
+          identity=${identity^^}
+          if [[ "$identity" =~ ^[0-9A-F]{40}$ ]]; then
+            matches=0
+            for cert in "${certs[@]}"; do
+              fingerprint=$(openssl x509 -in "$cert" -noout -sha1 -fingerprint) || metadata_error
+              fingerprint=${fingerprint#*=}
+              fingerprint=${fingerprint//:/}
+              fingerprint=${fingerprint^^}
+              [[ "$fingerprint" =~ ^[0-9A-F]{40}$ ]] || metadata_error
+              if [ "$fingerprint" = "$identity" ]; then
+                selected=$cert
+                matches=$((matches + 1))
+              fi
+            done
+            [ "$matches" -gt 0 ] ||
+              fail "No leaf certificate matches MACOS_SIGN_IDENTITY. Check its SHA-1 fingerprint and export the matching signing identity."
+            [ "$matches" -eq 1 ] ||
+              fail "Multiple leaf certificates match MACOS_SIGN_IDENTITY. Export only the signing identity."
+          else
+            [ "${#certs[@]}" -eq 1 ] ||
+              fail "Multiple leaf certificates were extracted. Export only the signing identity, or set MACOS_SIGN_IDENTITY to its SHA-1 fingerprint."
+            selected=${certs[0]}
+          fi
+          expires=$(openssl x509 -in "$selected" -noout -enddate) || metadata_error
+          [[ "$expires" == notAfter=?* ]] || metadata_error
+          expires=${expires#notAfter=}
+          if expiry_check=$(openssl x509 -in "$selected" -noout -checkend "$((28 * 24 * 60 * 60))"); then
+            echo "Mac signing certificate expires $expires."
+          elif [ "$expiry_check" = "Certificate will expire" ]; then
+            echo "::error::The Mac signing certificate expires $expires. Renew the Developer ID Application certificate and replace MACOS_CERT_P12_BASE64 and MACOS_CERT_PASSWORD."
+            exit 1
+          else
+            metadata_error
+          fi
 
   govulncheck:
     runs-on: ubuntu-24.04
