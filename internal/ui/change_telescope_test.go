@@ -195,3 +195,66 @@ func TestFailedSaveKeepsPasswordAccountProjection(t *testing.T) {
 		t.Fatal("failed settings write hid the saved password account", w.Body.String())
 	}
 }
+
+func TestChangeChoosingProjection(t *testing.T) {
+	for _, scenario := range []string{"received", "other account", "none", "uncertain", "failed save"} {
+		t.Run(scenario, func(t *testing.T) {
+			s := testServer(t)
+			c := s.controller
+			pair := testSettings()
+			c.devicesEmail = pair.Email
+			if scenario != "none" {
+				c.devices = []cloudhttp.DeviceChoice{{Serial: "synthetic-choice", Model: "S30"}}
+			}
+			if scenario == "other account" {
+				c.devicesEmail = "other@example.invalid"
+			}
+			if scenario == "uncertain" {
+				c.failure = &ActionError{Code: "release"}
+				c.final = errorCopy("release")
+			}
+			if scenario == "failed save" {
+				if err := os.Mkdir(filepath.Join(s.storage.root, "config.json"), 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			err := c.persistTelescopeClearLocked(pair)
+			if (err != nil) != (scenario == "failed save") {
+				t.Fatal(err)
+			}
+			w := httptest.NewRecorder()
+			s.ServeHTTP(w, request(s, "GET", "/api/status", ""))
+			var v struct {
+				Choosing bool   `json:"choosing"`
+				Status   string `json:"status"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
+				t.Fatal(err)
+			}
+			want := scenario == "received" || scenario == "uncertain"
+			if v.Choosing != want {
+				t.Fatalf("choosing: got %v want %v", v.Choosing, want)
+			}
+			if scenario == "received" && v.Status != "Stopped. Choose a telescope, then Connect." {
+				t.Fatal("retained-choice status", v.Status)
+			}
+			if scenario == "uncertain" && v.Status != errorCopy("release") {
+				t.Fatal("release precedence", v.Status)
+			}
+			if scenario == "none" || scenario == "other account" {
+				if v.Status != "Stopped. Choose Connect to pick a telescope." {
+					t.Fatal("fetch status", v.Status)
+				}
+			}
+			if scenario == "received" {
+				if err := c.start(pair, testPassword); err != nil {
+					t.Fatal(err)
+				}
+				c.quit()
+				if c.view().Choosing {
+					t.Fatal("Connect retained choosing state")
+				}
+			}
+		})
+	}
+}

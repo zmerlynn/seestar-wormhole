@@ -253,7 +253,8 @@ function controls() {
   if ($('device-choice').children.length) textOptionLabel();
   const actionArea = $(selectionStep ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
-  text('status', selectionStep ? ($('device-choice').value === '' ? 'Choose a telescope' : 'Ready to connect') : state?.status || 'Loading…');
+  const statusText = selectionStep && state?.failure?.code !== 'release' ? ($('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
+  text('status', statusText);
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
   if (pickerFocusPending && !$('options').disabled) {
     pickerFocusPending = false;
@@ -312,7 +313,7 @@ function devicePicker(devices) {
   };
 }
 function accountChoices(s) {
-  const nextSelectionStep = accountEmail() === s.devices_email && !s.active && s.failure?.code === 'selection_multiple';
+  const nextSelectionStep = accountEmail() === s.devices_email && !s.active && (s.choosing || s.failure?.code === 'selection_multiple');
   if (nextSelectionStep && !selectionStep) {
     pickerFocusPending = true;
     clearField('serial');
@@ -468,7 +469,7 @@ async function act(action) {
       clearField('serial');
       clearField('model');
       alertText('');
-      focusTarget = 'start';
+      focusTarget = selectionStep ? '' : 'start';
     }
     if (['password/save','forget'].includes(action)) {
       say(passwordState().notice || '');

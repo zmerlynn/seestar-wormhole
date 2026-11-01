@@ -151,3 +151,11 @@ func TestPickerStatusWrites(t *testing.T) {
 func TestPickerLabels(t *testing.T) {
 	runPageRegression(t, "picker-ux-test.js", "checkPickerLabels()")
 }
+
+func TestChangeTelescopeChoosingPage(t *testing.T) {
+	for _, uncertain := range []string{"false", "true"} {
+		t.Run(uncertain, func(t *testing.T) {
+			runPageRegression(t, "change-telescope-test.js", "checkChangeTelescope("+uncertain+", true)")
+		})
+	}
+}

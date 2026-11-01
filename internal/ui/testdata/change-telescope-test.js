@@ -1,13 +1,14 @@
 // Shared by the native page-state regression and the headless JavaScript check.
-async function checkChangeTelescope(uncertain = false) {
+async function checkChangeTelescope(uncertain = false, received = false) {
   const assert = (ok, message) => {if (!ok) throw new Error(message);};
   const original = {email:'synthetic@example.invalid',serial:'synthetic-change-1234',model:'Future telescope'};
-  const finalStatus = uncertain ? 'Session release could not be confirmed. If Seestar is occupied, wait and try Connect again.' : 'Stopped. Choose Connect to pick a telescope.';
+  const finalStatus = uncertain ? 'Session release could not be confirmed. If Seestar is occupied, wait and try Connect again.' : received ? 'Stopped. Choose a telescope, then Connect.' : 'Stopped. Choose Connect to pick a telescope.';
   const stopped = {active:false,status:finalStatus,settings:{...original,serial:'',model:''},version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[]};
+  if (received) {stopped.devices_email=original.email; stopped.devices=[{serial:original.serial,model:original.model,label:'Future telescope synthetic-change-1234'}]; stopped.choosing=true;}
   initialized = connected = true;
   $('start').hidden = false;
   load({...original,bind:'127.0.0.1'});
-  const selected = {...stopped,active:true,selected_device:'Future telescope ***1234'};
+  const selected = {...stopped,active:true,selected_device:'Future telescope ***1234',choosing:false};
   render(selected);
   assert(!$('change-telescope').hidden && !$('change-telescope').disabled, 'selected change control unavailable');
   for (const action of ['stop','password/save','retry-storage','change-telescope']) {
@@ -40,8 +41,16 @@ async function checkChangeTelescope(uncertain = false) {
   finish(); await changing;
   assert(!$('serial').value && !$('model').value, 'successful change left fields');
   assert(!active && $('change-telescope').hidden && $('selected-device').hidden, 'successful change left run or selection');
-  assert(document.activeElement === $('start'), 'change did not focus Connect');
+  assert(document.activeElement === $(received ? 'device-choice' : 'start'), 'change focus target');
+  assert($('start').parentElement === $(received ? 'picker-action' : 'primary-action'), 'change action order');
+  const focused = $('device-choice').focusCount; $('password').focus(); render(stopped);
+  assert($('device-choice').focusCount === focused && document.activeElement === $('password'), 'post-change poll stole focus');
   assert($('status').textContent === finalStatus, 'change completion status');
+  if (received && uncertain) {
+    $('device-choice').value='0'; $('device-choice').onchange();
+    assert($('status').textContent === finalStatus, 'chosen draft hid release uncertainty');
+    $('device-choice').value=''; $('device-choice').onchange();
+  }
   assert($('device-choice').value === '' && $('custom-device').hidden, 'change did not select Find on my account');
   load({...original,bind:'127.0.0.1'}); render(selected);
   $('device-choice').value = 'custom'; $('device-choice').onchange();
@@ -56,5 +65,6 @@ async function checkChangeTelescope(uncertain = false) {
   await act('retry-storage');
   assert(!$('serial').value && !$('model').value && $('notice').hidden, 'save retry left fields or error');
   assert($('status').textContent === finalStatus, 'retry completion status');
+  assert(document.activeElement === $(received ? 'device-choice' : 'start'), 'retry focus target');
   assert($('device-choice').value === '' && $('custom-device').hidden, 'retry did not select Find on my account');
 }

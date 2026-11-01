@@ -107,11 +107,13 @@ After selection, status shows `Telescope: <public model> <masked serial>`.
 The **Change telescope** button has the description **Stops the session.**
 It stops the session and waits for release; while waiting, status reads
 **Stopping — releasing the Seestar session…**. After the choice is cleared and
-saved, status reads **Stopped. Choose Connect to pick a telescope.** The
-release-uncertainty message takes precedence if release could not be confirmed.
-The telescope line and button disappear, and Find on my account is selected. Connect
-can list the account's telescopes again, or connect automatically to a single
-telescope. The button is disabled during a stop or save.
+saved, received choices for the current account lead to **Stopped. Choose a
+telescope, then Connect.** The picker receives focus once, and Connect follows
+it. With no received choices, status reads **Stopped. Choose Connect to pick a
+telescope.** and Connect receives focus to load the list. The release-uncertainty
+message takes precedence if release could not be confirmed. The telescope line
+and Change telescope button disappear, and the empty option is selected. The
+button is disabled during a stop or save.
 
 If saving fails, the session stays stopped and the fields stay filled;
 **Retry saving settings** retries that saved snapshot. A successful retry

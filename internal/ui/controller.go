@@ -28,6 +28,7 @@ type controller struct {
 	failure            *ActionError
 	devices            []cloudhttp.DeviceChoice
 	devicesEmail       string
+	choosing           bool
 	pendingClear       bool
 	save               func(Settings) error
 	log                *eventLog
@@ -59,6 +60,7 @@ func (c *controller) start(s Settings, password string) error {
 	c.status = proxy.NewStatus()
 	c.stopping = false
 	c.final = ""
+	c.choosing = false
 	c.failure = nil
 	s.Ports = append([]proxyrun.Port(nil), s.Ports...)
 	if c.devicesEmail != s.Email {
@@ -179,9 +181,15 @@ func (c *controller) persistTelescopeClearLocked(s Settings) error {
 	err := c.persistLocked(s)
 	c.mu.Lock()
 	c.pendingClear = err != nil
-	if err == nil && c.done == nil && (c.failure == nil || c.failure.Code != "release") {
-		c.final = "Stopped. Choose Connect to pick a telescope."
-		c.failure = nil
+	if err == nil && c.done == nil {
+		c.choosing = c.devicesEmail == s.Email && len(c.devices) > 0
+		if c.failure == nil || c.failure.Code != "release" {
+			c.final = "Stopped. Choose Connect to pick a telescope."
+			if c.choosing {
+				c.final = "Stopped. Choose a telescope, then Connect."
+			}
+			c.failure = nil
+		}
 	}
 	c.mu.Unlock()
 	return err
@@ -363,6 +371,7 @@ func uiText(text string) string {
 
 // The control model is independent of pending HTTP/keychain actions in the page.
 type runView struct {
+	Choosing       bool                     `json:"choosing"`
 	DevicesEmail   string                   `json:"devices_email"`
 	Devices        []cloudhttp.DeviceChoice `json:"devices,omitempty"`
 	FailureMessage string                   `json:"failure_message,omitempty"`
@@ -381,7 +390,7 @@ func (c *controller) view() runView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	text, active := c.snapshotLocked()
-	v := runView{DevicesEmail: c.devicesEmail, Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
+	v := runView{Choosing: c.choosing, DevicesEmail: c.devicesEmail, Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
 	if active {
 		v.SelectedDevice = c.status.SelectedDevice()
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()

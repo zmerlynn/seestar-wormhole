@@ -439,6 +439,11 @@ account changes. In that step, **Your account has several telescopes. Choose one
 replaces the discovery help; only one picker help line appears at a time. Connect remains explicit; Custom… reveals manual
 Serial and Model fields. A saved pair is selected on load. Received choices
 remain in memory for this app run and are never added to the settings file.
+After a successful Change telescope clear/save, current-account received choices
+open the choosing step with **Stopped. Choose a telescope, then Connect.**, focus
+the picker once, and place Connect after it. With no received choices, **Stopped.
+Choose Connect to pick a telescope.** focuses Connect to load choices. Release
+uncertainty takes precedence; a failed save retains the pair and its retry.
 
 Every catalog page requests `isContainShared=3`, the mode sent by the
 app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).
