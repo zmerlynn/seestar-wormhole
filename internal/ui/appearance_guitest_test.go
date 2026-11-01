@@ -9,9 +9,9 @@ import (
 )
 
 func TestFixtureNativeAppearance(t *testing.T) {
-	for _, scenario := range []string{"fresh", "relaunch", "dark", "dark-relaunch"} {
+	for _, scenario := range []string{"fresh", "relaunch", "dark", "dark-relaunch", "dark-telescope-picker"} {
 		want := application.NSAppearanceNameAqua
-		if scenario == "dark" || scenario == "dark-relaunch" {
+		if scenario == "dark" || scenario == "dark-relaunch" || scenario == "dark-telescope-picker" {
 			want = application.NSAppearanceNameDarkAqua
 		}
 		options := guiTestWindowOptions(scenario)

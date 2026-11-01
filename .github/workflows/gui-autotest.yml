@@ -127,7 +127,7 @@ jobs:
           & "$env:RUNNER_TEMP\gui-harness.exe" -binary "$env:RUNNER_TEMP\gui-fixture.exe" -out "$env:RUNNER_TEMP\gui-shots\light" 2>&1 | Tee-Object "$env:RUNNER_TEMP\gui-shots\light.log"
           $light=$LASTEXITCODE
           Set-ItemProperty $theme AppsUseLightTheme 0
-          & "$env:RUNNER_TEMP\gui-harness.exe" -binary "$env:RUNNER_TEMP\gui-fixture.exe" -out "$env:RUNNER_TEMP\gui-shots\dark" -scenarios dark 2>&1 | Tee-Object "$env:RUNNER_TEMP\gui-shots\dark.log"
+          & "$env:RUNNER_TEMP\gui-harness.exe" -binary "$env:RUNNER_TEMP\gui-fixture.exe" -out "$env:RUNNER_TEMP\gui-shots\dark" -scenarios dark,dark-telescope-picker 2>&1 | Tee-Object "$env:RUNNER_TEMP\gui-shots\dark.log"
           if ($light -ne 0 -or $LASTEXITCODE -ne 0) { exit 1 }
       - name: Mac light and dark scenarios
         if: runner.os == 'macOS'
@@ -150,7 +150,7 @@ jobs:
           light=${PIPESTATUS[0]}
           defaults write -g AppleInterfaceStyle Dark
           "$RUNNER_TEMP/gui-harness" -binary "$binary" \
-            -out "$RUNNER_TEMP/gui-shots/dark" -scenarios dark 2>&1 | tee "$RUNNER_TEMP/gui-shots/dark.log"
+            -out "$RUNNER_TEMP/gui-shots/dark" -scenarios dark,dark-telescope-picker 2>&1 | tee "$RUNNER_TEMP/gui-shots/dark.log"
           dark=${PIPESTATUS[0]}
           test "$light" = 0 && test "$dark" = 0
       - name: Linux sandbox probe and light and dark scenarios
@@ -187,7 +187,7 @@ jobs:
           export GTK_THEME=Adwaita:dark
           gsettings set org.gnome.desktop.interface color-scheme prefer-dark
           "$RUNNER_TEMP/gui-harness" -binary "$RUNNER_TEMP/gui-fixture" \
-            -out "$RUNNER_TEMP/gui-shots/dark" -scenarios dark 2>&1 | tee "$RUNNER_TEMP/gui-shots/dark.log"
+            -out "$RUNNER_TEMP/gui-shots/dark" -scenarios dark,dark-telescope-picker 2>&1 | tee "$RUNNER_TEMP/gui-shots/dark.log"
           dark=${PIPESTATUS[0]}
           test "$light" = 0 && test "$dark" = 0
           SCRIPT

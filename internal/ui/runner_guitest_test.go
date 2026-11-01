@@ -147,3 +147,44 @@ func TestEagerSettingsSaveOnlyOnFirstReady(t *testing.T) {
 		c.quit()
 	})
 }
+
+func TestGUITestTelescopeSelection(t *testing.T) {
+	for _, scenario := range []string{"telescope-picker", "dark-telescope-picker"} {
+		t.Run(scenario, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				f := newGUITestRunner()
+				f.scenario = scenario
+				c := testController(f.run)
+				original := testSettings()
+				if err := c.start(original, testPassword); err != nil {
+					t.Fatal(err)
+				}
+				<-f.entered
+				synctest.Wait()
+				if view := c.view(); view.Active || view.Failure == nil || view.Failure.Code != "selection_multiple" || len(view.Failure.Devices) != 2 {
+					t.Fatal("runner failed to expose catalog", view)
+				}
+				original.Serial = "synthetic-choice-5678"
+				original.Model = "Future telescope\tmodel"
+				if err := c.start(original, testPassword); err != nil {
+					t.Fatal(err)
+				}
+				<-f.entered
+				synctest.Wait()
+				if view := c.view(); view.SelectedDevice != `Future telescope\tmodel ***5678` {
+					t.Fatal("runner failed to publish selected label", view)
+				}
+				f.steps <- session.Event{Kind: session.Progress}
+				synctest.Wait()
+				if err := c.changeTelescope(); err != nil {
+					t.Fatal(err)
+				}
+				if view := c.view(); view.Active || view.SelectedDevice != "" {
+					t.Fatal("runner survived Change telescope", view)
+				}
+				<-f.releasing
+				<-f.released
+			})
+		})
+	}
+}

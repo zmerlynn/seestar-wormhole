@@ -12,13 +12,15 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/guitest"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
-// No sockets, cloud adapter, ports, or OS credential provider exist in this
-// runner. Progress is gated by the driver so each rendered state is observed.
+// No sockets, real cloud transport, ports, or OS credential provider exist in
+// this runner. Progress is gated by the driver so each rendered state is observed.
 type guiTestRunner struct {
 	scenario  string
 	steps     chan session.Event
@@ -31,7 +33,7 @@ func newGUITestRunner() *guiTestRunner {
 	return &guiTestRunner{steps: make(chan session.Event), entered: make(chan struct{}, 8), releasing: make(chan struct{}, 8), released: make(chan struct{}, 8)}
 }
 
-func (f *guiTestRunner) run(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+func (f *guiTestRunner) run(ctx context.Context, settings Settings, _ cloud.Credentials, status *proxy.Status) error {
 	f.entered <- struct{}{}
 	switch f.scenario {
 	case "bind-error":
@@ -42,6 +44,13 @@ func (f *guiTestRunner) run(ctx context.Context, _ Settings, _ cloud.Credentials
 		return &ActionError{Code: "http_conflict", Field: "ports"}
 	case "discovery-error":
 		return &ActionError{Code: "discovery", Field: "discovery"}
+	}
+	if f.scenario == "telescope-picker" || f.scenario == "dark-telescope-picker" {
+		device, err := guitest.SelectTelescope(ctx, cloudhttp.Device{Serial: settings.Serial, Model: settings.Model})
+		if err != nil {
+			return err
+		}
+		status.SetSelectedDevice(device)
 	}
 	status.MarkArmed()
 	before := session.Snapshot{State: session.Dialing}
