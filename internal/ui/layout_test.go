@@ -54,3 +54,13 @@ func TestManualSerialLabel(t *testing.T) {
 		}
 	}
 }
+
+func TestManualConnectGapStyle(t *testing.T) {
+	css, err := assets.ReadFile("web/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), "#custom-device:not([hidden]) + #picker-action {\n  margin-top: .75rem;\n}") {
+		t.Fatal("Connect needs a gap only below visible manual fields")
+	}
+}

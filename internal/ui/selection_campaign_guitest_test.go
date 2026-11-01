@@ -109,3 +109,19 @@ assert(probe(),'hidden manual fields should not block a received-choice capture'
 `
 	runGUIJavaScript(t, script)
 }
+
+func TestPickerManualGapProbe(t *testing.T) {
+	runGUIJavaScript(t, `
+let margin=12,gap=12,hidden=false;
+const document={documentElement:{}};
+const getComputedStyle=e=>({marginTop:margin+'px',fontSize:'16px'});
+const el=id=>({hidden,getBoundingClientRect(){return {top:id==='start'?100+gap:0,bottom:100};}});
+const check=ok=>!!ok;
+const assert=(ok,message)=>{if(!ok)throw new Error(message);};
+const probe=()=>`+guiTestManualGapProbe+`;
+assert(probe(),'valid manual gap rejected');
+margin=0;assert(!probe(),'missing manual margin accepted');
+margin=12;gap=0;assert(!probe(),'touching Connect accepted');
+gap=12;hidden=true;assert(!probe(),'hidden manual fields accepted');
+`)
+}

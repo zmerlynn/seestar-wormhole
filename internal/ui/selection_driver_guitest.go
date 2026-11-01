@@ -21,6 +21,9 @@ func (d *guiTestDriver) telescopePicker() error {
 	if err := d.probe(guiTestManualPickerProbe); err != nil {
 		return err
 	}
+	if err := d.probe(guiTestManualGapProbe); err != nil {
+		return err
+	}
 	if err := d.state("Enter a serial number.", false, "telescope-manual"); err != nil {
 		return err
 	}
@@ -89,3 +92,8 @@ const guiTestChoosingPickerProbe = `check(el('device-choice').value==='' && el('
 
 // Scrolling stays inside the repeated probe, including after layout shifts.
 const guiTestPickerViewportProbe = `(() => {const top=el('status').getBoundingClientRect().top+scrollY,bottom=el('device-picker').getBoundingClientRect().bottom+scrollY; const fits=bottom-top<=innerHeight; if(fits) window.scrollTo(0,Math.max(0,Math.ceil(bottom-innerHeight))); else el('device-picker').scrollIntoView({block:'center'}); const ids=fits ? ['status','device-choice'] : ['device-choice']; if(!el('custom-device').hidden) ids.push('serial','model','start'); const visible=ids.every(id=>{const r=el(id).getBoundingClientRect();return r.top>=-1 && r.bottom<=innerHeight+1});return check(visible,{ids,innerHeight,rects:ids.map(id=>el(id).getBoundingClientRect())})})()`
+
+const guiTestManualGapProbe = `(() => {
+ const action=el('picker-action'),margin=parseFloat(getComputedStyle(action).marginTop),expected=.75*parseFloat(getComputedStyle(document.documentElement).fontSize),gap=el('start').getBoundingClientRect().top-el('custom-device').getBoundingClientRect().bottom;
+ return check(!el('custom-device').hidden && Math.abs(margin-expected)<.5 && gap>=expected-.5,{margin,expected,gap});
+})()`
