@@ -331,7 +331,8 @@ async function refresh() {
     if (ended || generation !== statusGeneration) return;
     throw e;
   }
-  if (ended || generation !== statusGeneration) return;
+  // A superseding poll may own rendering, but the action still needs its reply.
+  if (ended || generation !== statusGeneration) return s;
   if (!connected && initialized) alertText('');
   connected = true;
   const first = !initialized;
@@ -350,6 +351,7 @@ async function refresh() {
     if (document.hasFocus()) focusStart();
     else window.addEventListener('focus', focusStart, {once: true});
   }
+  return s;
 }
 async function poll() {
   if (ended) return;
@@ -402,10 +404,11 @@ async function act(action) {
       controls();
       return;
     }
-    await refresh();
+    const refreshed = await refresh();
+    if (ended || pending !== action || !refreshed) return;
     if (action === 'change-telescope' || (action === 'retry-storage' && retryTelescopeChange)) {
-      $('serial').value = state.settings.serial || '';
-      $('model').value = state.settings.model || '';
+      $('serial').value = refreshed.settings.serial || '';
+      $('model').value = refreshed.settings.model || '';
       clearField('serial');
       clearField('model');
       retryTelescopeChange = false;
