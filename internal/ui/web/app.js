@@ -249,7 +249,7 @@ function render(s) {
   text('version',s.version);
   active = s.active;
   text('status',s.status);
-  text('selected-device',s.selected_device ? 'Selected: ' + s.selected_device : '');
+  text('selected-device',s.selected_device ? 'Telescope: ' + s.selected_device : '');
   $('selected-device').hidden = !s.selected_device;
   $('last-known').hidden = true;
   $('quit').textContent = s.native ? 'Quit' : 'Quit service';

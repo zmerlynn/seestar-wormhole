@@ -81,6 +81,8 @@ same ports, stop it first.
 
 ## Advanced
 
+The status shows `Telescope: <public model> <masked serial>` after selection.
+
 ### Telescope selection
 
 If your account has one Seestar, leave **Serial number (optional)** and

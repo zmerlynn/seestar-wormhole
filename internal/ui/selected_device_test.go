@@ -60,7 +60,7 @@ func TestSelectedDeviceUIBinding(t *testing.T) {
 		t.Fatal("selected telescope has no display")
 	}
 	// Pin the textContent binding: the value is text, never HTML or settings input.
-	if !strings.Contains(string(js), "text('selected-device',s.selected_device ? 'Selected: ' + s.selected_device : '');") ||
+	if !strings.Contains(string(js), "text('selected-device',s.selected_device ? 'Telescope: ' + s.selected_device : '');") ||
 		!strings.Contains(string(js), "$('selected-device').hidden = !s.selected_device;") {
 		t.Fatal("selected telescope is not rendered")
 	}
