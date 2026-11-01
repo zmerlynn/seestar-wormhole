@@ -77,6 +77,7 @@ func TestSelectionMismatchRequiresSuccessfulExchange(t *testing.T) {
 		want   error
 	}{
 		{"definite mismatch", 200, nil, cloud.ErrConfig},
+		{"HTTP bad request", http.StatusBadRequest, nil, cloud.ErrRejected},
 		{"HTTP not found", 404, nil, cloud.ErrRejected},
 		{"server mismatch", 500, nil, cloud.ErrRejected},
 		{"transport with mismatch", 200, errors.New("synthetic I/O"), cloud.ErrTransport},
