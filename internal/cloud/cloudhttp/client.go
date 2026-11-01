@@ -339,6 +339,12 @@ func responseError(info responseInfo, body []byte, parseErr, errorIO error) erro
 
 func query(d Device) url.Values { return url.Values{"deviceSn": {d.Serial}, "deviceModel": {d.Model}} }
 
+// detailIdentityMismatch marks a definite mismatch from a complete successful
+// exchange. Other failures must retain Detail's classification during selection.
+type detailIdentityMismatch struct{ error }
+
+func (e *detailIdentityMismatch) Unwrap() error { return e.error }
+
 // Detail obtains and verifies the requested device, including busy/offline state.
 func (c *Client) Detail(ctx context.Context, d Device) (cloud.Detail, error) {
 	return c.detail(ctx, d, cloud.ParseDetail)
@@ -379,6 +385,9 @@ func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud
 	err = responseError(info, b, parseErr, e)
 	if inconsistent {
 		err = diagnostic.Wrap("device_detail", "inconsistent server answer: detail identity differs from requested pair", err)
+		if info.status >= 200 && info.status < 300 && info.complete && e == nil {
+			err = &detailIdentityMismatch{err}
+		}
 	}
 	c.rejected(ctx, "device_detail", info, b, cloud.JoinOutcomes(err, parseErr))
 	if err != nil {

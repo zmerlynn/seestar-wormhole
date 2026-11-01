@@ -35,8 +35,13 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 			found = found || v.Serial() == d.Serial
 		}
 		if !found {
-			if v, detailErr := c.Detail(ctx, d); detailErr == nil {
+			v, detailErr := c.Detail(ctx, d)
+			if detailErr == nil {
 				return c.selectedDevice(v), nil
+			}
+			var mismatch *detailIdentityMismatch
+			if !errors.As(detailErr, &mismatch) {
+				return Device{}, detailErr
 			}
 		}
 	}

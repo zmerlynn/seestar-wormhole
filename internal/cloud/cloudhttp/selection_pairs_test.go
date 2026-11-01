@@ -34,7 +34,7 @@ func TestCatalogPairSelection(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%s/%d pages", tc.name, len(pages)), func(t *testing.T) {
 				var logs bytes.Buffer
-				f := &selectionCloud{bodies: append([]string(nil), pages...)}
+				f := &selectionCloud{bodies: append([]string(nil), pages...), detailBody: detail}
 				c := selectionClient(t, f, &logs, slog.LevelDebug)
 				got, err := c.SelectDevice(t.Context(), tc.input)
 				if got != tc.want {

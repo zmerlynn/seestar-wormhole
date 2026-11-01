@@ -409,7 +409,11 @@ one matching entry in a complete catalog, a differing explicit `--model` fails
 with `model_mismatch`. If an explicit serial is absent from the catalog and
 `--model` is also supplied, selection tries detail with that pair and
 `onlyQueryOwner=false`. Only a successful detail reply matching both fields
-selects it; otherwise the catalog selection failure remains. Serial-only detail
+selects it. A definite identity mismatch in a complete successful exchange keeps
+the catalog not-found failure. Transport, timeout, authentication, server,
+busy/offline, and malformed or null detail errors retain Detail's classification.
+No documented vendor code establishes a missing device; an envelope code of
+`404` alone does not establish one. Serial-only detail
 lookup is not established by the spec, so an absent serial without `--model`
 still fails. A catalog model mismatch never uses this fallback.
 

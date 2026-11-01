@@ -25,7 +25,7 @@ func TestSelectionDetailFallback(t *testing.T) {
 			{"matching", good, Device{serial, "S50 Pro"}, true, true},
 			{"wrong serial", strings.Replace(good, serial, "other-serial-sentinel-5678", 1), Device{serial, "S50 Pro"}, false, true},
 			{"wrong model", strings.Replace(good, "S50 Pro", "S30", 1), Device{serial, "S50 Pro"}, false, true},
-			{"missing", `{"code":404,"data":null}`, Device{serial, "S50 Pro"}, false, true},
+
 			{"model required", good, Device{Serial: serial}, false, false},
 			{"serial required", good, Device{Model: "S50 Pro"}, false, false},
 		} {

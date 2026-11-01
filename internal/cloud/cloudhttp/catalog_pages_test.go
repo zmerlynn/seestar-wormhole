@@ -52,7 +52,7 @@ func TestCatalogPageLiterals(t *testing.T) {
 	for _, tc := range catalogPageLiterals {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
-			f := &selectionCloud{bodies: append([]string(nil), tc.pages...)}
+			f := &selectionCloud{bodies: append([]string(nil), tc.pages...), detailBody: detail}
 			c := selectionClient(t, f, &logs, slog.LevelDebug)
 			got, complete, _, err := c.devices(t.Context())
 			if err != nil {
@@ -90,7 +90,7 @@ func TestCatalogPageSelection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
-			f := &selectionCloud{bodies: append([]string(nil), tc.pages...)}
+			f := &selectionCloud{bodies: append([]string(nil), tc.pages...), detailBody: detail}
 			c := selectionClient(t, f, &logs, slog.LevelDebug)
 			got, err := c.SelectDevice(t.Context(), tc.input)
 			if got != tc.want {
@@ -140,7 +140,7 @@ func TestCatalogPageSafety(t *testing.T) {
 		for _, input := range []Device{{}, {Serial: "private-a"}} {
 			t.Run(tc.name+"/"+input.Serial, func(t *testing.T) {
 				var logs bytes.Buffer
-				f := &selectionCloud{bodies: append([]string(nil), tc.pages...)}
+				f := &selectionCloud{bodies: append([]string(nil), tc.pages...), detailBody: detail}
 				c := selectionClient(t, f, &logs, slog.LevelDebug)
 				got, err := c.SelectDevice(t.Context(), input)
 				if !errors.Is(err, tc.want) || got != (Device{}) {
@@ -188,7 +188,7 @@ func TestCatalogPageCapacity(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
-			f := &selectionCloud{bodies: append([]string(nil), tc.pages...)}
+			f := &selectionCloud{bodies: append([]string(nil), tc.pages...), detailBody: detail}
 			c := selectionClient(t, f, &logs, slog.LevelDebug)
 			got, _, _, err := c.devices(t.Context())
 			if tc.invalid {
