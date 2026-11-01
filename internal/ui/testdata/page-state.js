@@ -58,6 +58,14 @@
       assert($('start').textContent === 'Stop' && $('start').parentElement === $('primary-action') && $('announcements').nextElementSibling === $('primary-action') && $('settings').hidden, 'Stop must be directly below running status');
       assert($('events').children[0].textContent.endsWith('  '+message) && JSON.parse(diagnostic).events[0].message === message, 'selected status lost in events or copied summary');
     });
+    await check('Buttons share font size', async () => {
+      const size = getComputedStyle($('quit')).fontSize;
+      for (const id of ['start','save-password','forget','retry-storage','copy']) {
+        assert(getComputedStyle($(id)).fontSize === size, 'Quit size differs from '+id);
+      }
+      const primary = getComputedStyle($('start'));
+      assert(Number(primary.fontWeight) >= 600 && primary.borderTopWidth === '2px', 'Connect/Stop lost bold text or border');
+    });
     await check('Setup help and services grouping', async () => {
       applyGoal('custom');
       const custom = $('custom-help'), discovery = $('discovery-help');

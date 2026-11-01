@@ -225,3 +225,45 @@ func TestNativeConnectedRowAssertions(t *testing.T) {
 		})
 	}
 }
+
+func TestNativeButtonStyleAssertions(t *testing.T) {
+	const marker = "await check('Buttons share font size', async () => {"
+	start := strings.Index(pageStateChecks, marker)
+	if start < 0 {
+		t.Fatal("native button style assertions missing")
+	}
+	body := pageStateChecks[start+len(marker):]
+	end := strings.Index(body, "\n    });")
+	if end < 0 {
+		t.Fatal("native button style assertions not terminated")
+	}
+	body = body[:end]
+	for name, mutation := range map[string]string{
+		"valid":        "",
+		"Quit size":    `styles.quit.fontSize='14.4px';`,
+		"Connect size": `styles.start.fontSize='14.4px';`,
+		"Save size":    `styles['save-password'].fontSize='14.4px';`,
+		"Remove size":  `styles.forget.fontSize='14.4px';`,
+		"Retry size":   `styles['retry-storage'].fontSize='14.4px';`,
+		"Copy size":    `styles.copy.fontSize='14.4px';`,
+		"weight":       `styles.start.fontWeight='400';`,
+		"border width": `styles.start.borderTopWidth='1px';`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			expected := "true"
+			if name == "valid" {
+				expected = "false"
+			}
+			script := `(async()=>{
+    const styles=Object.fromEntries(['quit','start','save-password','forget','retry-storage','copy'].map(id=>[id,{fontSize:'16px',fontWeight:'600',borderTopWidth:'2px'}]));
+    const getComputedStyle=e=>styles[e.id];
+    const assert=(ok,message)=>{if(!ok)throw new Error(message);};
+    let failed=false;
+    ` + mutation + `
+    try {` + body + `} catch(e){failed=true;}
+    if(failed!==` + expected + `)throw new Error('native style assertions accepted corruption or rejected valid style');
+   })()`
+			runPageRegression(t, "picker-ux-test.js", script)
+		})
+	}
+}

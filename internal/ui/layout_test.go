@@ -54,3 +54,19 @@ func TestManualConnectGapStyle(t *testing.T) {
 		t.Fatal("Connect needs a gap only below visible manual fields")
 	}
 }
+
+func TestButtonsShareFontSize(t *testing.T) {
+	css, err := assets.ReadFile("web/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(css), "footer button") {
+		t.Fatal("Quit must inherit the shared button font size")
+	}
+	if !strings.Contains(string(css), "button {\n  font:inherit;") {
+		t.Fatal("buttons must inherit the shared font")
+	}
+	if !strings.Contains(string(css), "#start {\n  font-weight:600;\n  min-width:7rem;\n  border:2px solid var(--focus)\n}") {
+		t.Fatal("Connect/Stop must retain bold text and blue border")
+	}
+}

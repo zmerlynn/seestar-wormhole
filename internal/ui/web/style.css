@@ -137,9 +137,6 @@ footer {
   margin-top:1.5rem;
   color:var(--muted)
 }
-footer button {
-  font-size:.9rem
-}
 table {
   border-collapse:collapse;
   font-size:.85rem;
