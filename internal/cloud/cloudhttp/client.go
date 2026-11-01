@@ -372,8 +372,8 @@ func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud
 	q := query(d)
 	q.Set("onlyQueryOwner", "false")
 	info, b, e := c.exchange(ctx, "/v1/my-device/detail", q, nil, nil)
-	detail, err := parse(b)
-	parseErr := err
+	detail, parseErr := parse(b)
+	parsedSuccessfully := parseErr == nil
 	// Local client policy: correlate both identity fields
 	// before allocation. Correlate decoded identity before interpreting availability. A status
 	// belonging to another device is never busy/offline for this request;
@@ -385,7 +385,7 @@ func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud
 	err = responseError(info, b, parseErr, e)
 	if inconsistent {
 		err = diagnostic.Wrap("device_detail", "inconsistent server answer: detail identity differs from requested pair", err)
-		if info.status >= 200 && info.status < 300 && info.complete && e == nil {
+		if parsedSuccessfully && info.status >= 200 && info.status < 300 && info.complete && e == nil {
 			err = &detailIdentityMismatch{err}
 		}
 	}
