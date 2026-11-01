@@ -12,6 +12,18 @@ func TestChangeTelescopeAcrossStatusPoll(t *testing.T) {
 	runPageRegression(t, "change-telescope-poll-test.js", "checkChangeTelescopeAcrossPoll()")
 }
 
+func TestChangeTelescopeRetryAfterReload(t *testing.T) {
+	for _, pair := range []string{"cleared", "saved pair"} {
+		t.Run(pair, func(t *testing.T) {
+			call := "checkChangeTelescopeRetryAfterReload(false)"
+			if pair == "saved pair" {
+				call = "checkChangeTelescopeRetryAfterReload(true)"
+			}
+			runPageRegression(t, "change-telescope-reload-test.js", call)
+		})
+	}
+}
+
 // Execute the complete production script without a browser, HTTP, or keychain.
 func runPageRegression(t *testing.T, file, call string) {
 	t.Helper()

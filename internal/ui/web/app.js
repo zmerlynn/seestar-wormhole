@@ -246,7 +246,6 @@ function controls() {
   text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selection entered' : 'Automatic');
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
 }
-let retryTelescopeChange = false;
 let pickerKey = '';
 function devicePicker(devices) {
   const key = JSON.stringify(devices);
@@ -389,7 +388,6 @@ async function act(action) {
     });
     if (ended || pending !== action) return;
     if (action === 'start') lastFailure = '';
-    if (['start','password/save'].includes(action)) retryTelescopeChange = false;
     if (action === 'password/save' || action === 'forget') {
       $('password').value = '';
       if (action === 'forget') {
@@ -406,12 +404,11 @@ async function act(action) {
     }
     const refreshed = await refresh();
     if (ended || pending !== action || !refreshed) return;
-    if (action === 'change-telescope' || (action === 'retry-storage' && retryTelescopeChange)) {
+    if (action === 'change-telescope' || action === 'retry-storage') {
       $('serial').value = refreshed.settings.serial || '';
       $('model').value = refreshed.settings.model || '';
       clearField('serial');
       clearField('model');
-      retryTelescopeChange = false;
       alertText('');
       focusTarget = 'start';
     }
@@ -432,7 +429,6 @@ async function act(action) {
       } catch (_) {
       }
     }
-    if (action === 'change-telescope' && e.code === 'storage') retryTelescopeChange = true;
     fail(e);
     errorField = e.field || '';
   } finally {
