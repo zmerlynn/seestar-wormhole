@@ -117,7 +117,11 @@ func TestCatalogPageSelection(t *testing.T) {
 				}
 				assertCatalogPagePrivacy(t, err.Error())
 			}
-			assertCatalogPageRequests(t, f, len(tc.pages))
+			if tc.name == "explicit absent" {
+				assertCatalogPageRequests(t, f, len(tc.pages), "/v1/my-device/detail")
+			} else {
+				assertCatalogPageRequests(t, f, len(tc.pages))
+			}
 			assertCatalogPagePrivacy(t, logs.String())
 		})
 	}
@@ -207,7 +211,7 @@ func repeatCatalogPage(page string, n int) []string {
 	return pages
 }
 
-func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int) {
+func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int, following ...string) {
 	t.Helper()
 	wantPaths := []string{"/v1/user/login", "/v1/user/current-profile"}
 	for page := 1; page <= pages; page++ {
@@ -216,6 +220,7 @@ func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int) {
 			t.Fatalf("queries=%v, want sequential current and pageSize=100", f.queries)
 		}
 	}
+	wantPaths = append(wantPaths, following...)
 	if !reflect.DeepEqual(f.paths, wantPaths) || len(f.bodies) != 0 {
 		t.Fatalf("paths=%v remaining=%d, want %v and no remaining pages (no allocation)", f.paths, len(f.bodies), wantPaths)
 	}

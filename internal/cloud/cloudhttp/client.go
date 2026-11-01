@@ -361,7 +361,11 @@ func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	info, b, e := c.exchange(ctx, "/v1/my-device/detail", query(d), nil, nil)
+	// READ: the app's pre-allocation detail request includes shared devices.
+	// https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection
+	q := query(d)
+	q.Set("onlyQueryOwner", "false")
+	info, b, e := c.exchange(ctx, "/v1/my-device/detail", q, nil, nil)
 	detail, err := parse(b)
 	parseErr := err
 	// Local client policy: correlate both identity fields

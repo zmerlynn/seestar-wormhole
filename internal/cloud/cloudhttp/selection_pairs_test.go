@@ -58,7 +58,11 @@ func TestCatalogPairSelection(t *testing.T) {
 					}
 					assertCatalogPagePrivacy(t, err.Error())
 				}
-				assertCatalogPageRequests(t, f, len(pages))
+				if tc.name == "absent serial" {
+					assertCatalogPageRequests(t, f, len(pages), "/v1/my-device/detail")
+				} else {
+					assertCatalogPageRequests(t, f, len(pages))
+				}
 				assertCatalogPagePrivacy(t, logs.String())
 			})
 		}

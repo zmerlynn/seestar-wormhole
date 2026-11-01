@@ -12,7 +12,8 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// SelectDevice resolves serial and model from the account catalog. With no
+// SelectDevice resolves serial and model from the account catalog, or verifies
+// an explicit pair through detail when its serial is absent. With no
 // serial, exactly one pair must exist. Local client policy
 // requires a model to disambiguate multiple models for one serial. For a single
 // matching entry, an explicit model must agree with the catalog.
@@ -25,6 +26,19 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 	devices, complete, duplicates, err := c.devices(ctx)
 	if err != nil {
 		return Device{}, err
+	}
+	// The spec's detail workflow supplies both identity fields; serial-only
+	// detail lookup is not established. Never bypass a catalog model mismatch.
+	if d.Serial != "" && d.Model != "" {
+		found := false
+		for _, v := range devices {
+			found = found || v.Serial() == d.Serial
+		}
+		if !found {
+			if v, detailErr := c.Detail(ctx, d); detailErr == nil {
+				return c.selectedDevice(v), nil
+			}
+		}
 	}
 	if (!complete || duplicates) && d.Model == "" {
 		return Device{}, diagnostic.Wrap("device_selection", "incomplete catalog; name --model to select a received pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "incomplete catalog; name --model to select a received pair"}))
@@ -67,13 +81,16 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 		}
 	}
 	if len(matches) == 1 {
-		v := matches[0]
-		if c.logger != nil {
-			c.logger.Info("device_selected", "model", displayModel(v.Model()), "serial", maskedSerial(v.Serial()))
-		}
-		return Device{Serial: v.Serial(), Model: v.Model()}, nil
+		return c.selectedDevice(matches[0]), nil
 	}
 	return Device{}, diagnostic.Wrap("device_selection", "--serial not found on account; check --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"}))
+}
+
+func (c *Client) selectedDevice(v cloud.Detail) Device {
+	if c.logger != nil {
+		c.logger.Info("device_selected", "model", displayModel(v.Model()), "serial", maskedSerial(v.Serial()))
+	}
+	return Device{Serial: v.Serial(), Model: v.Model()}
 }
 
 // devices requests isContainShared=3 on every page, matching the app 3.3.2

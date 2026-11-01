@@ -16,6 +16,7 @@ import (
 
 type selectionCloud struct {
 	bodies     []string
+	detailBody string
 	sharedOnly bool
 	status     int
 	paths      []string
@@ -34,6 +35,11 @@ func (f *selectionCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 		b = `{"code":0,"data":{"accessToken":"token-sentinel-secret"}}`
 	case "/v1/user/current-profile":
 		b = `{"code":0,"data":{"id":"profile-sentinel"}}`
+	case "/v1/my-device/detail":
+		if f.detailBody == "" {
+			return nil, errors.New("unexpected detail")
+		}
+		b = f.detailBody
 	case "/v1/my-device":
 		if r.Header.Get("Authorization") != "token-sentinel-secret" {
 			return nil, errors.New("token-sentinel-secret: missing auth")

@@ -406,7 +406,17 @@ List status does not determine availability; detail is authoritative.
 
 A serial shared by models requires an exact `--serial`/`--model` pair. With
 one matching entry in a complete catalog, a differing explicit `--model` fails
-with `model_mismatch`. Unmatched serials or multiple pairs without a serial identify
+with `model_mismatch`. If an explicit serial is absent from the catalog and
+`--model` is also supplied, selection tries detail with that pair and
+`onlyQueryOwner=false`. Only a successful detail reply matching both fields
+selects it; otherwise the catalog selection failure remains. Serial-only detail
+lookup is not established by the spec, so an absent serial without `--model`
+still fails. A catalog model mismatch never uses this fallback.
+
+All detail requests, including the pre-allocation check, send
+`onlyQueryOwner=false`, as the app's connect workflow does in the
+[spec](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection).
+Unmatched serials or multiple pairs without a serial identify
 `--serial` in diagnostics without exposing catalog labels or serials.
 
 Every catalog page requests `isContainShared=3` (all), the mode sent by the
