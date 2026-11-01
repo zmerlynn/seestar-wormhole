@@ -183,8 +183,8 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 			return err
 		}
 	case "telescope-picker", "telescope-chosen", "telescope-cleared", "telescope-picker-again":
-		d.js(`(() => {const el=id=>document.getElementById(id); const top=el('status').getBoundingClientRect().top+scrollY,bottom=el('device-picker').getBoundingClientRect().bottom+scrollY; if(bottom-top<=innerHeight) window.scrollTo(0,Math.max(0,bottom-innerHeight)); else el('device-picker').scrollIntoView({block:'center'});})()`)
-		if err := d.probe(`(() => {const span=el('device-picker').getBoundingClientRect().bottom-el('status').getBoundingClientRect().top; const ids=span<=innerHeight ? ['status','device-choice'] : ['device-choice']; const visible=ids.every(id=>{const r=el(id).getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight});return check(visible,{ids,innerHeight})})()`); err != nil {
+		// Scroll on every poll: the page can still shift after the state change.
+		if err := d.probe(`(() => {const top=el('status').getBoundingClientRect().top+scrollY,bottom=el('device-picker').getBoundingClientRect().bottom+scrollY; const fits=bottom-top<=innerHeight; if(fits) window.scrollTo(0,Math.max(0,Math.ceil(bottom-innerHeight))); else el('device-picker').scrollIntoView({block:'center'}); const ids=fits ? ['status','device-choice'] : ['device-choice']; const visible=ids.every(id=>{const r=el(id).getBoundingClientRect();return r.top>=-1 && r.bottom<=innerHeight+1});return check(visible,{ids,innerHeight,rects:ids.map(id=>el(id).getBoundingClientRect())})})()`); err != nil {
 			return err
 		}
 	case "advanced-top", "advanced-network":
