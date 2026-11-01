@@ -28,6 +28,7 @@ async function checkChangeTelescope() {
   };
   const changing = act('change-telescope');
   assert(pending === 'change-telescope' && $('change-telescope').disabled, 'change not blocked during request');
+  assert($('start').disabled && $('start').textContent === 'Stopping…', 'Stop can interrupt pending change');
   assert($('serial').value === original.serial && $('model').value === original.model, 'fields cleared before response');
   assert(sent.password === '', 'change sent password');
   const actionAPI = api;

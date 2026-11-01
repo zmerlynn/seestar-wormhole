@@ -214,8 +214,8 @@ function controls() {
   $('settings').hidden = active;
   $('running').hidden = !active;
   $('start').type = active ? 'button' : 'submit';
-  $('start').textContent = state?.stopping || pending === 'stop' ? 'Stopping…' : active ? (state?.cancel ? 'Cancel' : 'Stop') : 'Connect';
-  $('start').disabled = blocked || state?.stopping || pending === 'stop' || pending === 'quit' || (!active && !!pending);
+  $('start').textContent = state?.stopping || ['stop','change-telescope'].includes(pending) ? 'Stopping…' : active ? (state?.cancel ? 'Cancel' : 'Stop') : 'Connect';
+  $('start').disabled = blocked || state?.stopping || ['stop','change-telescope'].includes(pending) || pending === 'quit' || (!active && !!pending);
   $('quit').disabled = !initialized || ended || pending === 'quit';
   $('idle-options').hidden = $('mode').value !== 'idle';
   $('idle').disabled = $('mode').value !== 'idle';
