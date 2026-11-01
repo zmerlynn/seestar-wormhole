@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
+	"strings"
 	"sync"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
@@ -26,6 +27,7 @@ type controller struct {
 	final              string
 	failure            *ActionError
 	devices            []cloudhttp.DeviceChoice
+	devicesEmail       string
 	pendingClear       bool
 	save               func(Settings) error
 	log                *eventLog
@@ -37,6 +39,7 @@ type controller struct {
 }
 
 func (c *controller) start(s Settings, password string) error {
+	s.Email = strings.TrimSpace(strings.ReplaceAll(s.Email, " ", ""))
 	if s.Email == "" {
 		return &ActionError{Code: "email", Field: "email"}
 	}
@@ -58,6 +61,10 @@ func (c *controller) start(s Settings, password string) error {
 	c.final = ""
 	c.failure = nil
 	s.Ports = append([]proxyrun.Port(nil), s.Ports...)
+	if c.devicesEmail != s.Email {
+		c.devices = nil
+	}
+	c.devicesEmail = s.Email
 	c.runSettings = s
 	c.saveAttempted = false
 	done, status := c.done, c.status
@@ -352,6 +359,7 @@ func uiText(text string) string {
 
 // The control model is independent of pending HTTP/keychain actions in the page.
 type runView struct {
+	DevicesEmail   string                   `json:"devices_email"`
 	Devices        []cloudhttp.DeviceChoice `json:"devices,omitempty"`
 	FailureMessage string                   `json:"failure_message,omitempty"`
 	Status         string                   `json:"status"`
@@ -369,7 +377,7 @@ func (c *controller) view() runView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	text, active := c.snapshotLocked()
-	v := runView{Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
+	v := runView{DevicesEmail: c.devicesEmail, Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
 	if active {
 		v.SelectedDevice = c.status.SelectedDevice()
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()

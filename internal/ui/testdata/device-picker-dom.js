@@ -7,7 +7,8 @@ class TestElement {
   insertAdjacentHTML() {throw new Error('HTML insertion is forbidden');}
   append(...children) {for (const child of children) {if (child.parentElement) child.parentElement.children = child.parentElement.children.filter(e => e !== child); child.parentElement = this; this.children.push(child);}}
   replaceChildren(...children) {this.children = children; this.value = '';}
-  addEventListener() {}
+  addEventListener(name, callback) {this.listeners ||= {}; (this.listeners[name] ||= []).push(callback);}
+  dispatchEvent(event) {for (const callback of this.listeners?.[event.type] || []) callback(event); if (event.type === 'change' && this.onchange) this.onchange(event);}
   focus() {if (this === document.getElementById('device-choice') && document.getElementById('options').disabled) throw new Error('focus in disabled form'); this.focusCount++; document.activeElement = this;}
   removeAttribute(name) {delete this.attributes[name];}
   setAttribute(name, value) {this.attributes[name] = value;}

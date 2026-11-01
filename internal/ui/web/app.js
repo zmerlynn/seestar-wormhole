@@ -308,9 +308,8 @@ function devicePicker(devices) {
     controls();
   };
 }
-function render(s) {
-  state = s;
-  const nextSelectionStep = !s.active && s.failure?.code === 'selection_multiple';
+function accountChoices(s) {
+  const nextSelectionStep = accountEmail() === s.devices_email && !s.active && s.failure?.code === 'selection_multiple';
   if (nextSelectionStep && !selectionStep) {
     pickerFocusPending = true;
     clearField('serial');
@@ -318,7 +317,11 @@ function render(s) {
   }
   selectionStep = nextSelectionStep;
   if (!selectionStep) pickerFocusPending = false;
-  devicePicker(s.devices || (selectionStep ? s.failure.devices : undefined));
+  devicePicker(accountEmail() === s.devices_email ? s.devices || (selectionStep ? s.failure.devices : undefined) : []);
+}
+function render(s) {
+  state = s;
+  accountChoices(s);
   text('version',s.version);
   active = s.active;
   text('status',s.status);
@@ -409,7 +412,7 @@ async function poll() {
 }
 async function act(action) {
   if (pending && !['stop','quit'].includes(action)) return;
-  if (action === 'start' && selectionStep && $('device-choice').value === '') {
+  if (action === 'start' && accountEmail() === state?.devices_email && selectionStep && $('device-choice').value === '') {
     $('device-choice').focus();
     return;
   }
@@ -502,6 +505,7 @@ for (const [id,action] of [['change-telescope','change-telescope'],['save-passwo
 }
 $('email').addEventListener('input', () => {
   $('password').value = '';
+  if (state) accountChoices(state);
 });
 for (const id of ['email','password','idle','bind','serial','model']) $(id).addEventListener('input', () => {
   clearField(id);

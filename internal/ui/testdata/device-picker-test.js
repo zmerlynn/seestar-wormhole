@@ -7,7 +7,7 @@ async function checkDevicePicker() {
     {serial:'synthetic-choice-1234',model:'Seestar S50 Pro',label:'Seestar S50 Pro synthetic-choice-1234'},
     {serial:' synthetic-choice-5678 ',model:' <img>\t ',label:' <img>\\t   synthetic-choice-5678 '}
   ];
-  const idle = {active:false,status:'Not connected',settings:original,version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[]};
+  const idle = {devices_email:original.email,active:false,status:'Not connected',settings:original,version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[]};
   load(original); render(idle);
   const picker = $('device-choice');
   assert(!$('device-picker').hidden && picker.children.length === 2, 'always-visible picker entries');
@@ -64,7 +64,7 @@ async function checkDevicePicker() {
 
 async function checkPickerInitialStep() {
  const assert = (ok, message) => {if (!ok) throw new Error(message);};
- const initial = {active:false,status:'Choose a telescope',settings:{email:'synthetic@example.invalid',bind:'127.0.0.1',serial:'',model:''},port_defaults:[],version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[],failure:{code:'selection_multiple',devices:[{serial:'synthetic-choice-1234',model:'S30',label:'S30 synthetic-choice-1234'}]}};
+ const initial = {devices_email:'synthetic@example.invalid',active:false,status:'Choose a telescope',settings:{email:'synthetic@example.invalid',bind:'127.0.0.1',serial:'',model:''},port_defaults:[],version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[],failure:{code:'selection_multiple',devices:[{serial:'synthetic-choice-1234',model:'S30',label:'S30 synthetic-choice-1234'}]}};
  document.hasFocus = () => true;
  globalThis.requestAnimationFrame = callback => callback();
  api = async () => initial;
