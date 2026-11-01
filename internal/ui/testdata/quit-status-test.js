@@ -14,4 +14,3 @@ async function checkQuitStatus(native) {
  writes=[];controls();render(connectedState);
  if(writes.length)throw new Error('unchanged terminal controls/poll wrote status: '+JSON.stringify(writes));
 }
-
