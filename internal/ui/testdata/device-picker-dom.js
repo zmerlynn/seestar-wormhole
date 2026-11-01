@@ -27,3 +27,4 @@ const document = {
 const location = {hash: ''}, sessionStorage = {getItem() {return '';}};
 const window = {}, history = {};
 const fetch = () => new Promise(() => {});
+function setTimeout() {}

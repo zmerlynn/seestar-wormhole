@@ -31,10 +31,10 @@ func TestChangeTelescope(t *testing.T) {
 				if err := s.saveSettings(original); err != nil {
 					t.Fatal(err)
 				}
-				entered, release := make(chan struct{}), make(chan struct{})
+				entered, release := make(chan struct{}, 2), make(chan struct{})
 				s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
 					status.SetSelectedDevice(cloudhttp.Device{Serial: original.Serial, Model: original.Model})
-					close(entered)
+					entered <- struct{}{}
 					<-ctx.Done()
 					<-release
 					return ctx.Err()
@@ -85,7 +85,7 @@ func TestChangeTelescope(t *testing.T) {
 					if err := json.Unmarshal(w.Body.Bytes(), &failure); err != nil {
 						t.Fatal(err)
 					}
-					if failure.Code != "storage" || failure.Message != errorCopy("storage") {
+					if failure.Code != "storage" || failure.Message != "Settings could not be saved; they may reset next time." {
 						t.Fatal("save failure not reported", w.Body.String())
 					}
 					if s.settings.Serial != original.Serial || s.settings.Model != original.Model {

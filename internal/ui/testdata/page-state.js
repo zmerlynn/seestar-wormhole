@@ -354,6 +354,7 @@
       assert(parseFloat(style.paddingLeft) === 0 && Math.abs(textLeft - inputLeft) < 1, 'Account text is indented from inputs');
       results.push('Account computed style: padding-left=' + style.paddingLeft + ', text-left=' + textLeft + ', input-left=' + inputLeft);
     });
+    await check('Change telescope release and persistence', checkChangeTelescope);
     await check('S5 explicit selection copy', async () => {
       $('model').value = 'synthetic';
       $('model').dispatchEvent(new Event('input'));

@@ -1,7 +1,5 @@
-// Execute after device-picker-dom.js and app.js in a JavaScript engine, no window.
-var changeTestDone = false;
-var changeTestError = '';
-(async () => {
+// Shared by the native page-state regression and the headless JavaScript check.
+async function checkChangeTelescope() {
   const assert = (ok, message) => {if (!ok) throw new Error(message);};
   const original = {email:'synthetic@example.invalid',serial:'synthetic-change-1234',model:'Future telescope'};
   const stopped = {active:false,status:'Stopped. Seestar may still be releasing the session.',settings:{...original,serial:'',model:''},version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[]};
@@ -32,6 +30,11 @@ var changeTestError = '';
   assert(pending === 'change-telescope' && $('change-telescope').disabled, 'change not blocked during request');
   assert($('serial').value === original.serial && $('model').value === original.model, 'fields cleared before response');
   assert(sent.password === '', 'change sent password');
+  const actionAPI = api;
+  api = async () => ({...selected, stopping:true, status:'Stopping — releasing the Seestar session…'});
+  await poll();
+  assert($('status').textContent === 'Stopping — releasing the Seestar session…', 'change did not poll release status');
+  api = actionAPI;
   finish(); await changing;
   assert(!$('serial').value && !$('model').value, 'successful change left fields');
   assert(!active && $('change-telescope').hidden && $('selected-device').hidden, 'successful change left run or selection');
@@ -41,7 +44,10 @@ var changeTestError = '';
   await act('change-telescope');
   assert($('serial').value === original.serial && $('model').value === original.model, 'failed save cleared fields');
   assert($('notice').textContent === 'Settings could not be saved; they may reset next time.' && !$('notice').hidden, 'failed save not reported');
+  api = async () => ({...stopped,save_failed:true,settings:original});
+  await refresh();
+  assert(!$('retry-storage').hidden && $('serial').value === original.serial && $('model').value === original.model, 'failed change did not offer retry with fields retained');
   api = async name => name === 'status' ? stopped : {ok:true};
   await act('retry-storage');
   assert(!$('serial').value && !$('model').value && $('notice').hidden, 'save retry left fields or error');
-})().then(() => {changeTestDone = true;}, e => {changeTestError = e.message; changeTestDone = true;});
+}
