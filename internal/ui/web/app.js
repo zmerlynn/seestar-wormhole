@@ -48,8 +48,8 @@ async function api(action, body) {
   }
   return response.json();
 }
-function accountEmail() {
-  return $('email').value.replace(/ /g, '').trim();
+function accountEmail(value = $('email').value) {
+  return value.replace(/ /g, '').trim();
 }
 function settings() {
   return {
@@ -486,8 +486,11 @@ async function act(action) {
     const refreshed = await refresh();
     if (ended || pending !== action || !refreshed) return;
     if (action === 'change-telescope' || action === 'retry-storage') {
-      $('serial').value = refreshed.settings.serial || '';
-      $('model').value = refreshed.settings.model || '';
+      // The action may finish for a different account than the current draft.
+      if (accountEmail(refreshed.settings.email) === accountEmail()) {
+        $('serial').value = refreshed.settings.serial || '';
+        $('model').value = refreshed.settings.model || '';
+      }
       projectPicker(refreshed);
       selectPair();
       clearField('serial');
