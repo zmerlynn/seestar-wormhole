@@ -15,6 +15,7 @@ import (
 func TestSelectedDeviceStatusAndReady(t *testing.T) {
 	for _, tc := range []struct{ serial, model, label string }{
 		{"serial-sentinel-secret-1234", "S50 Pro", "S50 Pro ***1234"},
+		{"serial-sentinel-secret-1234", "Seestar S50 Pro", "Seestar S50 Pro ***1234"},
 		{"tiny", "S30", "S30 ***"},
 		{"serial-sentinel-secret-1234", "private-model", "[unknown model] ***1234"},
 	} {

@@ -438,7 +438,11 @@ device-session allocation. INFO reports only a public model label and masked
 serial; unknown model labels are redacted. The desktop status shows
 `Selected: <public model> <masked serial>` once selection succeeds. The CLI's
 existing ready records include the same label in `telescope`; the INFO
-`device_selected` record keeps its separate `model` and `serial` fields. Duplicate counts appear at DEBUG.
+`device_selected` record keeps its separate `model` and `serial` fields.
+Public labels include the [spec's exact catalog names](https://github.com/zmerlynn/seestar-spec/blob/384340c4e37d9fd1acd230fe0a9f9fe3ceac11e7/spec/auth/cloud-auth/http-api.md#device-selection): `Seestar S50`,
+`Seestar S50 Pro`, `Seestar S30`, `Seestar S30 Pro`, `Seestar S30 Plus`, and
+`Seestar S80`, alongside the existing short labels. Wire model values are
+preserved. Duplicate counts appear at DEBUG.
 
 ## Installation identity
 

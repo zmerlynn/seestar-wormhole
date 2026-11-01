@@ -172,7 +172,10 @@ func (d Device) DisplayName() string {
 // unknown value still selects correctly but is displayed as [unknown model].
 func displayModel(model string) string {
 	switch model {
-	case "S50 Pro", "S50", "S30", "S30 Pro":
+	// Full catalog names are READ in app 3.3.2; retain the existing short labels.
+	// https://github.com/zmerlynn/seestar-spec/blob/384340c4e37d9fd1acd230fe0a9f9fe3ceac11e7/spec/auth/cloud-auth/http-api.md#device-selection
+	case "S50 Pro", "S50", "S30", "S30 Pro",
+		"Seestar S50", "Seestar S50 Pro", "Seestar S30", "Seestar S30 Pro", "Seestar S30 Plus", "Seestar S80":
 		return model
 	}
 	return "[unknown model]"
