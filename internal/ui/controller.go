@@ -26,6 +26,7 @@ type controller struct {
 	final              string
 	failure            *ActionError
 	devices            []cloudhttp.DeviceChoice
+	pendingClear       bool
 	save               func(Settings) error
 	log                *eventLog
 	runSettings        Settings
@@ -158,7 +159,21 @@ func (c *controller) changeTelescope() error {
 	c.saveMu.Lock()
 	defer c.saveMu.Unlock()
 	s.Serial, s.Model = "", ""
-	return c.persistLocked(s)
+	return c.persistTelescopeClearLocked(s)
+}
+
+// Only a successful clear/save changes the stopped prompt. A failed clear
+// keeps its retry intent in memory alongside the controller's pending snapshot.
+func (c *controller) persistTelescopeClearLocked(s Settings) error {
+	err := c.persistLocked(s)
+	c.mu.Lock()
+	c.pendingClear = err != nil
+	if err == nil && c.done == nil && (c.failure == nil || c.failure.Code != "release") {
+		c.final = "Stopped. Choose Connect to pick a telescope."
+		c.failure = nil
+	}
+	c.mu.Unlock()
+	return err
 }
 
 // quit joins cleanup even when startup has not yet returned a session.
@@ -267,6 +282,7 @@ func (c *controller) persistLocked(s Settings) error {
 	err := c.save(s)
 	c.mu.Lock()
 	c.pendingSave = nil
+	c.pendingClear = false
 	if err != nil {
 		c.pendingSave = &s
 	} else {
@@ -285,6 +301,9 @@ func (c *controller) retrySave() error {
 	defer c.saveMu.Unlock()
 	if c.pendingSave == nil {
 		return nil
+	}
+	if c.pendingClear {
+		return c.persistTelescopeClearLocked(*c.pendingSave)
 	}
 	return c.persistLocked(*c.pendingSave)
 }

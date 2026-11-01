@@ -13,114 +13,136 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
 func TestChangeTelescope(t *testing.T) {
-	for _, failSave := range []bool{false, true} {
-		name := "success"
-		if failSave {
-			name = "save failure"
-		}
-		t.Run(name, func(t *testing.T) {
-			synctest.Test(t, func(t *testing.T) {
-				s := testServer(t)
-				original := testSettings()
-				original.Serial = "synthetic-change-1234"
-				original.Model = "Future telescope"
-				s.settings = original
-				if err := s.saveSettings(original); err != nil {
-					t.Fatal(err)
-				}
-				entered, release := make(chan struct{}, 2), make(chan struct{})
-				s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
-					status.SetSelectedDevice(cloudhttp.Device{Serial: original.Serial, Model: original.Model})
-					entered <- struct{}{}
-					<-ctx.Done()
-					<-release
-					return ctx.Err()
-				}
-				if err := s.controller.start(original, testPassword); err != nil {
-					t.Fatal(err)
-				}
-				<-entered
-				if failSave {
-					if err := os.Remove(filepath.Join(s.storage.root, "config.json")); err != nil {
+	for _, uncertain := range []bool{false, true} {
+		for _, failSave := range []bool{false, true} {
+			name := "success"
+			if failSave {
+				name = "save failure"
+			}
+			if uncertain {
+				name += " uncertain release"
+			}
+			t.Run(name, func(t *testing.T) {
+				synctest.Test(t, func(t *testing.T) {
+					s := testServer(t)
+					original := testSettings()
+					original.Serial = "synthetic-change-1234"
+					original.Model = "Future telescope"
+					s.settings = original
+					if err := s.saveSettings(original); err != nil {
 						t.Fatal(err)
 					}
-					if err := os.Mkdir(filepath.Join(s.storage.root, "config.json"), 0700); err != nil {
+					entered, release := make(chan struct{}, 2), make(chan struct{})
+					s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+						status.SetSelectedDevice(cloudhttp.Device{Serial: original.Serial, Model: original.Model})
+						entered <- struct{}{}
+						<-ctx.Done()
+						<-release
+						if uncertain {
+							return session.ErrStop
+						}
+						return ctx.Err()
+					}
+					if err := s.controller.start(original, testPassword); err != nil {
 						t.Fatal(err)
 					}
-				}
-				response := make(chan *httptest.ResponseRecorder, 1)
-				go func() { response <- doPost(s, "/api/change-telescope", `{}`) }()
-				synctest.Wait()
-				view := s.controller.view()
-				if !view.Active || !view.Stopping || view.Status != "Stopping — releasing the Seestar session…" {
-					t.Fatal("change did not stop the session", view)
-				}
-				select {
-				case <-response:
-					t.Fatal("change returned before release joined")
-				default:
-				}
-				if s.settings.Serial != original.Serial || s.settings.Model != original.Model {
-					t.Fatal("cleared before release")
-				}
-				if err := s.controller.start(original, testPassword); err == nil {
-					t.Fatal("start accepted during change")
-				}
-				close(release)
-				w := <-response
-				if s.controller.view().Active || s.controller.view().SelectedDevice != "" {
-					t.Fatal("session or identity survived change")
-				}
-				if failSave {
-					if w.Code != 400 {
-						t.Fatal("save failure accepted", w.Code)
+					<-entered
+					if failSave {
+						if err := os.Remove(filepath.Join(s.storage.root, "config.json")); err != nil {
+							t.Fatal(err)
+						}
+						if err := os.Mkdir(filepath.Join(s.storage.root, "config.json"), 0700); err != nil {
+							t.Fatal(err)
+						}
 					}
-					var failure struct {
-						Code    string `json:"code"`
-						Message string `json:"message"`
+					response := make(chan *httptest.ResponseRecorder, 1)
+					go func() { response <- doPost(s, "/api/change-telescope", `{}`) }()
+					synctest.Wait()
+					view := s.controller.view()
+					if !view.Active || !view.Stopping || view.Status != "Stopping — releasing the Seestar session…" {
+						t.Fatal("change did not stop the session", view)
 					}
-					if err := json.Unmarshal(w.Body.Bytes(), &failure); err != nil {
-						t.Fatal(err)
-					}
-					if failure.Code != "storage" || failure.Message != "Settings could not be saved; they may reset next time." {
-						t.Fatal("save failure not reported", w.Body.String())
+					select {
+					case <-response:
+						t.Fatal("change returned before release joined")
+					default:
 					}
 					if s.settings.Serial != original.Serial || s.settings.Model != original.Model {
-						t.Fatal("failed save cleared fields")
+						t.Fatal("cleared before release")
 					}
-					if !s.controller.view().SaveFailed {
-						t.Fatal("failed save lost retry")
+					if err := s.controller.start(original, testPassword); err == nil {
+						t.Fatal("start accepted during change")
 					}
-					if err := os.Remove(filepath.Join(s.storage.root, "config.json")); err != nil {
+					close(release)
+					w := <-response
+					if s.controller.view().Active || s.controller.view().SelectedDevice != "" {
+						t.Fatal("session or identity survived change")
+					}
+					if failSave {
+						if w.Code != 400 {
+							t.Fatal("save failure accepted", w.Code)
+						}
+						var failure struct {
+							Code    string `json:"code"`
+							Message string `json:"message"`
+						}
+						if err := json.Unmarshal(w.Body.Bytes(), &failure); err != nil {
+							t.Fatal(err)
+						}
+						if failure.Code != "storage" || failure.Message != "Settings could not be saved; they may reset next time." {
+							t.Fatal("save failure not reported", w.Body.String())
+						}
+						if s.settings.Serial != original.Serial || s.settings.Model != original.Model {
+							t.Fatal("failed save cleared fields")
+						}
+						if !s.controller.view().SaveFailed {
+							t.Fatal("failed save lost retry")
+						}
+						if s.controller.view().Status == "Stopped. Choose Connect to pick a telescope." {
+							t.Fatal("failed clear announced completion")
+						}
+						if retry := doPost(s, "/api/retry-storage", `{}`); retry.Code != 400 {
+							t.Fatal("failed retry accepted", retry.Code)
+						}
+						if err := os.Remove(filepath.Join(s.storage.root, "config.json")); err != nil {
+							t.Fatal(err)
+						}
+						if retry := doPost(s, "/api/retry-storage", `{}`); retry.Code != 200 {
+							t.Fatal("retry failed", retry.Body.String())
+						}
+					} else if w.Code != 200 {
+						t.Fatal(w.Body.String())
+					}
+					saved, err := loadSettings(s.storage)
+					if err != nil {
 						t.Fatal(err)
 					}
-					if retry := doPost(s, "/api/retry-storage", `{}`); retry.Code != 200 {
-						t.Fatal("retry failed", retry.Body.String())
+					if saved.Serial != "" || saved.Model != "" || s.settings.Serial != "" || s.settings.Model != "" {
+						t.Fatal("selection not cleared and persisted")
 					}
-				} else if w.Code != 200 {
-					t.Fatal(w.Body.String())
-				}
-				saved, err := loadSettings(s.storage)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if saved.Serial != "" || saved.Model != "" || s.settings.Serial != "" || s.settings.Model != "" {
-					t.Fatal("selection not cleared and persisted")
-				}
-				if saved.Email != original.Email || saved.Bind != original.Bind || saved.Idle != original.Idle {
-					t.Fatal("unrelated settings changed")
-				}
-				if s.controller.view().SaveFailed {
-					t.Fatal("successful save left retry")
-				}
-				if s.controller.changing {
-					t.Fatal("change remained busy")
-				}
+					if saved.Email != original.Email || saved.Bind != original.Bind || saved.Idle != original.Idle {
+						t.Fatal("unrelated settings changed")
+					}
+					if s.controller.view().SaveFailed {
+						t.Fatal("successful save left retry")
+					}
+					wantStatus := "Stopped. Choose Connect to pick a telescope."
+					if uncertain {
+						wantStatus = errorCopy("release")
+					}
+					if got := s.controller.view().Status; got != wantStatus {
+						t.Fatalf("change status: got %q want %q", got, wantStatus)
+					}
+					if s.controller.changing {
+						t.Fatal("change remained busy")
+					}
+				})
 			})
-		})
+		}
 	}
 }
 

@@ -66,6 +66,14 @@ func TestPickerInitialStep(t *testing.T) {
 	runPageRegression(t, "device-picker-test.js", "checkPickerInitialStep()")
 }
 
+func TestChangeTelescopePage(t *testing.T) {
+	for _, uncertain := range []string{"false", "true"} {
+		t.Run(uncertain, func(t *testing.T) {
+			runPageRegression(t, "change-telescope-test.js", "checkChangeTelescope("+uncertain+")")
+		})
+	}
+}
+
 // Seed the DOM double from the actual HTML so descriptions, visibility, and
 // control order are tested against markup rather than copied fixture values.
 func pageDOM(t *testing.T) string {

@@ -1,8 +1,9 @@
 // Shared by the native page-state regression and the headless JavaScript check.
-async function checkChangeTelescope() {
+async function checkChangeTelescope(uncertain = false) {
   const assert = (ok, message) => {if (!ok) throw new Error(message);};
   const original = {email:'synthetic@example.invalid',serial:'synthetic-change-1234',model:'Future telescope'};
-  const stopped = {active:false,status:'Stopped. Seestar may still be releasing the session.',settings:{...original,serial:'',model:''},version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[]};
+  const finalStatus = uncertain ? 'Session release could not be confirmed. If Seestar is occupied, wait and try Connect again.' : 'Stopped. Choose Connect to pick a telescope.';
+  const stopped = {active:false,status:finalStatus,settings:{...original,serial:'',model:''},version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[]};
   initialized = connected = true;
   $('start').hidden = false;
   load({...original,bind:'127.0.0.1'});
@@ -40,7 +41,10 @@ async function checkChangeTelescope() {
   assert(!$('serial').value && !$('model').value, 'successful change left fields');
   assert(!active && $('change-telescope').hidden && $('selected-device').hidden, 'successful change left run or selection');
   assert(document.activeElement === $('start'), 'change did not focus Connect');
+  assert($('status').textContent === finalStatus, 'change completion status');
+  assert($('device-choice').value === '' && $('custom-device').hidden, 'change did not select Automatic');
   load({...original,bind:'127.0.0.1'}); render(selected);
+  $('device-choice').value = 'custom'; $('device-choice').onchange();
   api = async () => {throw {code:'storage',message:'Settings could not be saved; they may reset next time.'};};
   await act('change-telescope');
   assert($('serial').value === original.serial && $('model').value === original.model, 'failed save cleared fields');
@@ -51,4 +55,6 @@ async function checkChangeTelescope() {
   api = async name => name === 'status' ? stopped : {ok:true};
   await act('retry-storage');
   assert(!$('serial').value && !$('model').value && $('notice').hidden, 'save retry left fields or error');
+  assert($('status').textContent === finalStatus, 'retry completion status');
+  assert($('device-choice').value === '' && $('custom-device').hidden, 'retry did not select Automatic');
 }
