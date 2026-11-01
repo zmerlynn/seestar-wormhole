@@ -145,7 +145,7 @@ jobs:
           chmod +x "$binary"
           defaults delete -g AppleInterfaceStyle 2>/dev/null || true
           "$RUNNER_TEMP/gui-harness" -binary "$binary" \
-            -out "$RUNNER_TEMP/gui-shots/light" -scenarios fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,strand,errors,term,interrupt,apple,computer,incompatible,http-permission,http-conflict,bind-error,discovery-error,saved-password,save-denied,save-timeout,remove-denied,remove-timeout,settings-failure,release-uncertain,browser-copy,details,lost-controls \
+            -out "$RUNNER_TEMP/gui-shots/light" -scenarios fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,strand,errors,term,interrupt,apple,computer,incompatible,http-permission,http-conflict,bind-error,discovery-error,saved-password,save-denied,save-timeout,remove-denied,remove-timeout,settings-failure,release-uncertain,browser-copy,details,lost-controls,telescope-picker \
             2>&1 | tee "$RUNNER_TEMP/gui-shots/light.log"
           light=${PIPESTATUS[0]}
           defaults write -g AppleInterfaceStyle Dark
