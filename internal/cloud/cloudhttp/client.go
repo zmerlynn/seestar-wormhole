@@ -360,7 +360,7 @@ func (c *Client) DetailForLAN(ctx context.Context, d Device) (cloud.Detail, erro
 func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud.Detail, error)) (result cloud.Detail, err error) {
 	finish := diagnostic.Operation(c.logger, "device_detail")
 	defer func() { finish(err) }()
-	if !validInput(d.Serial) {
+	if !ValidSerial(d.Serial) {
 		return cloud.Detail{}, environmentInputError("--serial", SerialRule)
 	}
 	if !validInput(d.Model) {
@@ -446,7 +446,7 @@ func (c *Client) Acquire(ctx context.Context, d Device) (lease *Lease, err error
 	defer func() { err = cloud.JoinOutcomes(err) }()
 	finish := diagnostic.Operation(c.logger, "allocation")
 	defer func() { finish(err) }()
-	if !validInput(d.Serial) || !validInput(d.Model) {
+	if !ValidSerial(d.Serial) || !validInput(d.Model) {
 		return nil, cloud.ErrConfig
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
