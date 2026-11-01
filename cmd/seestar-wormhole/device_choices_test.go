@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"strings"
@@ -45,7 +47,8 @@ func TestDeviceChoicesCLIOutput(t *testing.T) {
 	if err == nil {
 		t.Fatal("selection failure lost")
 	}
-	if out.String() != selection.Error()+"\n" {
+	assertSafeReturnedSelection(t, err)
+	if out.String() != typed.CLIMessage()+"\n" {
 		t.Fatalf("CLI lost choice error: %q", out.String())
 	}
 	for _, line := range []string{"\nS30 synthetic-choice-1234\n", "\nSeestar S50 Pro synthetic-choice-5678\n"} {
@@ -58,5 +61,34 @@ func TestDeviceChoicesCLIOutput(t *testing.T) {
 	}
 	if !strings.Contains(logs.String(), `"reason":"invalid_option"`) {
 		t.Fatal("selection lost config classification")
+	}
+}
+
+// The command returns a joined startup error even though stdout has full pairs.
+func assertSafeReturnedSelection(t *testing.T, err error) {
+	t.Helper()
+	for _, format := range []string{"%v", "%+v", "%#v"} {
+		t.Run("returned/"+format, func(t *testing.T) {
+			if strings.Contains(fmt.Sprintf(format, err), "synthetic-choice-") {
+				t.Fatal("returned error exposed full serials")
+			}
+		})
+	}
+	for _, json := range []bool{false, true} {
+		name := "text"
+		if json {
+			name = "JSON"
+		}
+		t.Run("returned/"+name, func(t *testing.T) {
+			var output bytes.Buffer
+			var handler slog.Handler = slog.NewTextHandler(&output, nil)
+			if json {
+				handler = slog.NewJSONHandler(&output, nil)
+			}
+			slog.New(handler).Error("synthetic startup failure", "err", err)
+			if strings.Contains(output.String(), "synthetic-choice-") {
+				t.Fatal("returned error exposed full serials through slog")
+			}
+		})
 	}
 }

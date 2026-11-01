@@ -184,7 +184,7 @@ func runParsedWithConfigRuntime(ctx context.Context, o options, out, logs io.Wri
 	err := runProxy(ctx, o, logs, newSession, listen, listenDiscovery, proxy.CheckTCPStateSupport)
 	var selection *cloudhttp.SelectionError
 	if errors.As(err, &selection) {
-		fmt.Fprintln(out, selection.Error())
+		fmt.Fprintln(out, selection.CLIMessage())
 	}
 	return err
 }

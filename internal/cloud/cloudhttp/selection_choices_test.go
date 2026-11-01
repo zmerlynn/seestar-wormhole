@@ -48,14 +48,14 @@ func TestSelectionChoices(t *testing.T) {
 				t.Fatalf("choices=%v", choices)
 			}
 			for i, line := range want {
-				if choices[i].Label != line || !strings.Contains(err.Error(), "\n"+line) {
-					t.Fatalf("missing full pair %q in %s", line, err.Error())
+				if choices[i].Label != line || !strings.Contains(selection.CLIMessage(), "\n"+line) {
+					t.Fatalf("missing full pair %q in %s", line, selection.CLIMessage())
 				}
 			}
-			if !strings.Contains(err.Error(), "\nReceived telescopes (full serials):\n") {
+			if !strings.Contains(selection.CLIMessage(), "\nReceived telescopes (full serials):\n") {
 				t.Fatal("missing selection list")
 			}
-			if strings.Contains(err.Error(), "Pass --serial with one of these.") != selection.Multiple {
+			if strings.Contains(selection.CLIMessage(), "Pass --serial with one of these.") != selection.Multiple {
 				t.Fatalf("serial guidance with Multiple=%v", selection.Multiple)
 			}
 			diagnostic.Log(c.logger, "failure", "", err)
@@ -82,7 +82,7 @@ func TestSelectionChoiceUntrustedText(t *testing.T) {
 	if len(choices) != 1 || choices[0].Serial != "serial-sentinel-secret-1234" || choices[0].Model != hostile || choices[0].Label != `<img src=x>\x1b\t\n serial-sentinel-secret-1234` {
 		t.Fatalf("untrusted choices=%q", choices)
 	}
-	if strings.Contains(err.Error(), "invalid") || strings.ContainsAny(choices[0].Label, "\x1b\t\n") {
+	if strings.Contains(selection.CLIMessage(), "invalid") || strings.ContainsAny(choices[0].Label, "\x1b\t\n") {
 		t.Fatal("unsafe choice text")
 	}
 	// Also bound unknown model display, preserving its complete wire value.

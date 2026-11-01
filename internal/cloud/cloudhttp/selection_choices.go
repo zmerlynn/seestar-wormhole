@@ -20,7 +20,7 @@ type DeviceChoice struct {
 
 // SelectionError adds received catalog pairs to an actionable selection failure.
 // Only Multiple permits the GUI to offer a picker. Logs must classify Unwrap,
-// rather than format Error, which deliberately contains full serials for the CLI.
+// rather than include choices. Generic error projections never include account data.
 type SelectionError struct {
 	cause    error
 	choices  []DeviceChoice
@@ -29,7 +29,11 @@ type SelectionError struct {
 
 func (e *SelectionError) Unwrap() error           { return e.cause }
 func (e *SelectionError) Choices() []DeviceChoice { return append([]DeviceChoice(nil), e.choices...) }
-func (e *SelectionError) Error() string {
+func (*SelectionError) Error() string             { return "[device selection required]" }
+
+// CLIMessage explicitly includes full received pairs for account-owner stdout.
+// It must never be used for diagnostics or generic error formatting.
+func (e *SelectionError) CLIMessage() string {
 	s := e.cause.Error()
 	if len(e.choices) == 0 {
 		return s
