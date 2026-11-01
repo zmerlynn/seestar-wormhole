@@ -91,3 +91,23 @@ func TestFullSerialBoundedLog(t *testing.T) {
 		}
 	}
 }
+
+func TestLogRecordBound(t *testing.T) {
+	sink := &serialLogSink{}
+	queue := newQueuedLog(sink)
+	// Literal limits keep this regression independent of the implementation constant.
+	record := bytes.Repeat([]byte{'x'}, 16<<10)
+	n, err := queue.Write(record)
+	if n != len(record) || err != nil {
+		t.Errorf("16 KiB record rejected: n=%d err=%v", n, err)
+	}
+	n, err = queue.Write(append(record, 'x'))
+	if n != 0 || err != io.ErrShortWrite {
+		t.Errorf("16 KiB + 1 record accepted: n=%d err=%v", n, err)
+	}
+	queue.close()
+	<-queue.done
+	if sink.Len() != 16<<10 || queue.Dropped() != 1 {
+		t.Fatalf("delivered=%d dropped=%d", sink.Len(), queue.Dropped())
+	}
+}
