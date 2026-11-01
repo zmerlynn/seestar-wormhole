@@ -163,8 +163,8 @@ Use the already verified serial and exact model label from the primary's
 configuration (`--serial` and `--model`, if explicitly configured). The
 app's device list provides the display name; omitting `--advertise-name`
 uses the model instead. There is no existing CLI export of all three
-values for an automatically selected device. Logs mask serials, so they
-are not a provisioning source; obtain a verified configuration before using
+values for an automatically selected device. Logs escape and cap serials
+and model labels, so they are not a provisioning source; obtain a verified configuration before using
 this recipe. Values in flags are visible in shell history and process
 arguments. See [discovery flags and validation](reference.md#discovery).
 

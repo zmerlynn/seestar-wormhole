@@ -21,7 +21,7 @@ func assertCloudSecretSafe(t *testing.T, err error, logs string) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	logger.Error("failure", "error", err)
-	text := logs + out.String() + fmt.Sprintf("%v %+v %#v", err, err, err)
+	text := withoutSelectedSerialLog(t, logs) + out.String() + fmt.Sprintf("%v %+v %#v", err, err, err)
 	for _, secret := range []string{"sentinel", "SYNTHETICUID", "Example-Only", "reader@example.invalid"} {
 		if strings.Contains(text, secret) {
 			t.Fatal("secret or identity entered error/log output")
@@ -190,7 +190,7 @@ func TestCloudMetamorphicSelectionSafety(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
 			c, err := newAuthenticatedFixture(t, Config{
-				Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+				Logger: slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 				Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 					body := tc.body
 					if r.URL.Query().Get("current") != "1" {

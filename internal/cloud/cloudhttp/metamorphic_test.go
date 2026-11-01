@@ -247,7 +247,7 @@ func TestCloudMetamorphicHTTP(t *testing.T) {
 				body := mutateCloudFixture(t, family, controls)
 				var logs bytes.Buffer
 				c, err := newAuthenticatedFixture(t, Config{
-					Logger: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
+					Logger: slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 					Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
 						b := body
 						if r.URL.Path == "/v1/my-device" && r.URL.Query().Get("current") != "1" {
@@ -293,7 +293,8 @@ func TestCloudMetamorphicHTTP(t *testing.T) {
 						t.Fatal(e)
 					}
 				}
-				if strings.Contains(logs.String(), "sentinel") || strings.Contains(logs.String(), "SYNTHETICUID") {
+				safeLogs := withoutSelectedSerialLog(t, logs.String())
+				if strings.Contains(safeLogs, "sentinel") || strings.Contains(safeLogs, "SYNTHETICUID") {
 					t.Fatal("identity or secret entered logs")
 				}
 			})

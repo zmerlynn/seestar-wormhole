@@ -228,6 +228,7 @@ func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int, follo
 
 func assertCatalogPagePrivacy(t *testing.T, s string) {
 	t.Helper()
+	s = withoutSelectedSerialLog(t, s)
 	assertSelectionSecrets(t, s)
 	for _, private := range []string{"private-a", "private-b", "private-missing", "private-secret"} {
 		if strings.Contains(s, private) {
@@ -270,4 +271,24 @@ func TestCatalogPageDiagnostics(t *testing.T) {
 			t.Fatalf("pagination diagnostics=%v, want %v", got, want)
 		}
 	}
+}
+
+// The selected serial is public log context. Keep checking every other field,
+// record, and error for catalog data and credentials.
+func withoutSelectedSerialLog(t *testing.T, text string) string {
+	t.Helper()
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		var record map[string]any
+		if json.Unmarshal([]byte(line), &record) != nil || record["msg"] != "device_selected" {
+			continue
+		}
+		delete(record, "serial")
+		encoded, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines[i] = string(encoded)
+	}
+	return strings.Join(lines, "\n")
 }
