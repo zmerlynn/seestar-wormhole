@@ -503,13 +503,21 @@ by default and shares this exact identity format.
 Help, version, license text, and received telescope lists go to stdout.
 Classified logs/errors go to stderr. Normal logging uses the selected format and level.
 Use WARN for quieter long-running service logs.
-Rejected startup suppresses pending dependency records and reports their loss at WARN; diagnostic loss makes the final command result fail.
+Rejected startup suppresses pending dependency records except `device_catalog`
+and reports their loss at WARN; diagnostic loss makes the final command result fail.
 Most diagnostic records contain fixed classifications and numeric context,
 not dependency error text, forwarded payloads, or session secrets. Device
 selection includes full serials in logs, escaped and capped like model labels.
 The selected telescope also appears in lifecycle events and the copied diagnostic
-summary. The CLI's multiple-device list and the desktop picker remain outside
-the log contract; the unselected choices are excluded from the summary.
+summary. Each catalog fetch also records the account's received telescope pairs,
+including a single telescope, before selection succeeds or fails. Recent events
+and the copied summary include `Account telescopes: {telescope}, …`, using
+the same escaped labels as status, or `Account telescopes (list may be incomplete):
+{telescope}, …` when completeness is unproven (including duplicate evidence).
+An empty catalog reads `Account telescopes: none`. The line is capped at 4096
+bytes at whole-label boundaries, ending with `… and N more` when cut; the
+existing 80-event history and private-log rotation bounds still apply.
+The CLI's multiple-device stdout list is unchanged.
 `wildcard_bind_warning` intentionally includes interface/address exposure.
 
 The UI records its unreachable-Seestar hint as a `lifecycle` event in `gui.log` and the copied diagnostic
@@ -522,6 +530,7 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 |---|---|---|
 | `proxy_started` | INFO | Revision, listener count, lazy flag, pause threshold; process serving, not necessarily remote ready |
 | `installation_id_ephemeral`, `device_selected` | INFO | Identity storage mode; selected public model and full serial |
+| `device_catalog` | INFO | Every catalog fetch, including selection refusals: `devices` contains escaped `model`/full `serial` pairs; `count` is the received distinct-pair count and `complete` states whether completeness was proven without duplicates. `omitted` counts pairs cut to keep the encoded array within 12 KiB and the record within the 16 KiB log-sink bound. Failed fetches retain successfully received pairs with `complete=false`. The private GUI log also records this schema. |
 | `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy; ready records include selected public model and full serial in `telescope` |
 | `lazy_open_attempt` | INFO | New client-triggered attempt and fixed cause |
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |

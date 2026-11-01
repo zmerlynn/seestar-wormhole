@@ -15,7 +15,7 @@ import (
 
 // SelectTelescope exercises the real account selection adapter with an in-memory
 // fake cloud. There are no sockets, environment credentials, or persisted tokens.
-func SelectTelescope(ctx context.Context, d cloudhttp.Device) (cloudhttp.Device, error) {
+func SelectTelescope(ctx context.Context, d cloudhttp.Device, observers ...func(cloudhttp.Catalog)) (cloudhttp.Device, error) {
 	credentials, err := cloud.EmailCredentials("gui@example.invalid", "synthetic-password")
 	if err != nil {
 		return cloudhttp.Device{}, err
@@ -28,6 +28,9 @@ func SelectTelescope(ctx context.Context, d cloudhttp.Device) (cloudhttp.Device,
 		return cloudhttp.Device{}, err
 	}
 	defer client.Close()
+	if len(observers) > 0 {
+		client.SetCatalogObserver(observers[0])
+	}
 	return client.SelectDevice(ctx, d)
 }
 

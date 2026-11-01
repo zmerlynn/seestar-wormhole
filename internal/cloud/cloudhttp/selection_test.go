@@ -131,8 +131,9 @@ func TestDeviceSelection(t *testing.T) {
 						t.Fatalf("want fixed catalog option/rule, got %v", err)
 					}
 					if tc.reason == "multiple devices on account" {
+						assertCloudSecretSafe(t, err, logs.String())
 						for _, s := range []string{"S50 Pro", "serial-sentinel-secret-1234", "S30", "other-serial-sentinel-5678"} {
-							if strings.Contains(logs.String(), s) {
+							if strings.Contains(err.Error(), s) {
 								t.Fatalf("catalog label %q escaped ambiguous rejection", s)
 							}
 						}

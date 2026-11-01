@@ -55,6 +55,7 @@ func (c *controller) start(s Settings, password string) error {
 	c.cancel = cancel
 	c.done = make(chan struct{})
 	c.status = proxy.NewStatus()
+	c.status.Catalog = c.log.addCatalog
 	c.stopping = false
 	c.final = ""
 	c.failure = nil

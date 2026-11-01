@@ -123,6 +123,17 @@ func (c *Client) selectedDevice(v cloud.Detail) Device {
 // R13c/R13d are inferred guidance; duplicate veto and enumeration budgets are additional local policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#device-selection
 func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete, hasDuplicates bool, err error) {
+	var receivedPairs []Device
+	defer func() {
+		catalog := newCatalog(receivedPairs, err == nil && complete && !hasDuplicates)
+		if c.logger != nil {
+			c.logger.InfoContext(ctx, "device_catalog", "devices", catalog.Pairs, "count", catalog.Count, "complete", catalog.Complete, "omitted", catalog.Omitted)
+		}
+		if c.catalogObserver != nil {
+			c.catalogObserver(catalog)
+		}
+	}()
+
 	finish := diagnostic.Operation(c.logger, "device_list")
 	defer func() { finish(err) }()
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
@@ -156,6 +167,7 @@ func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete,
 			}
 			seen[pair] = true
 			devices = append(devices, v)
+			receivedPairs = append(receivedPairs, pair)
 		}
 		changedTotal := requests > 1 && page.Total != previousTotal
 		if c.logger != nil && (page.Total > 256 || changedTotal || duplicates > 0) {

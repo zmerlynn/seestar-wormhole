@@ -82,6 +82,7 @@ func (Device) Format(s fmt.State, verb rune) { io.WriteString(s, "[cloud device 
 // Client contains ephemeral environment credentials; do not copy after use.
 type Client struct {
 	logger               *slog.Logger
+	catalogObserver      func(Catalog)
 	oddityRecords        *atomic.Uint32 // shared bounded diagnostics, safe across client snapshots
 	base                 *url.URL
 	account              *accountOwner

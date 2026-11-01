@@ -228,7 +228,7 @@ func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int, follo
 
 func assertCatalogPagePrivacy(t *testing.T, s string) {
 	t.Helper()
-	s = withoutSelectedSerialLog(t, s)
+	s = withoutIdentitySerialLogs(t, s)
 	assertSelectionSecrets(t, s)
 	for _, private := range []string{"private-a", "private-b", "private-missing", "private-secret"} {
 		if strings.Contains(s, private) {
@@ -273,17 +273,28 @@ func TestCatalogPageDiagnostics(t *testing.T) {
 	}
 }
 
-// The selected serial is public log context. Keep checking every other field,
+// Selected and catalog serial fields are public log context. Check every other field,
 // record, and error for catalog data and credentials.
-func withoutSelectedSerialLog(t *testing.T, text string) string {
+func withoutIdentitySerialLogs(t *testing.T, text string) string {
 	t.Helper()
 	lines := strings.Split(text, "\n")
 	for i, line := range lines {
 		var record map[string]any
-		if json.Unmarshal([]byte(line), &record) != nil || record["msg"] != "device_selected" {
+		if json.Unmarshal([]byte(line), &record) != nil || (record["msg"] != "device_selected" && record["msg"] != "device_catalog") {
 			continue
 		}
-		delete(record, "serial")
+		if record["msg"] == "device_selected" {
+			delete(record, "serial")
+		}
+		if record["msg"] == "device_catalog" {
+			if pairs, ok := record["devices"].([]any); ok {
+				for _, pair := range pairs {
+					if fields, ok := pair.(map[string]any); ok {
+						delete(fields, "serial")
+					}
+				}
+			}
+		}
 		encoded, err := json.Marshal(record)
 		if err != nil {
 			t.Fatal(err)

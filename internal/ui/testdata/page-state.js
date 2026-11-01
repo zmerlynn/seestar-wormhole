@@ -345,14 +345,14 @@
       assert(!validate() && $('email-error').textContent === 'Enter your Seestar account email.', 'empty email copy');
     });
     await check('Details and copied summary are JSON', async () => {
-      const event = {time: '2026-01-01T19:16:00Z', message: 'App opened.', code: 'lifecycle', phase: '', reason: ''};
+      const event = {time: '2026-01-01T19:16:00Z', message: 'Account telescopes: S30 synthetic-details', code: 'lifecycle', phase: '', reason: ''};
       const effective = {idle: {mode: 'keep_connected', minutes: 0}, listen: 'all_networks', discovery: true, ports: {'80': 80}};
       render({...status(), effective, events: [event], log_path: 'synthetic-private-path'});
       assert($('effective-settings').textContent === JSON.stringify(effective, null, 2), 'Settings is not pretty JSON');
       const localTime = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
-      assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  App opened.', 'event category or UTC leaked into local list');
+      assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  Account telescopes: S30 synthetic-details', 'event category or UTC leaked into local list');
       const copied = JSON.parse(diagnostic);
-      assert(Object.keys(copied).join() === 'app,version,settings,events' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && !diagnostic.includes('synthetic-private-path') && !$('mappings'), 'copied object schema/privacy');
+      assert(Object.keys(copied).join() === 'app,version,settings,events' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && copied.events[0].message === event.message && !diagnostic.includes('synthetic-private-path') && !$('mappings'), 'copied object schema/privacy');
       const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
       let clipboard = '';
       Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async value => {clipboard = value;}}});

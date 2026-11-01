@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json/v2"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"io"
 	"os"
@@ -33,7 +34,10 @@ type eventLog struct {
 	failed  bool
 }
 
-func eventCode(text, telescope string) string {
+func eventCode(text, telescope string, catalogs ...cloudhttp.Catalog) string {
+	if len(catalogs) == 1 && text == catalogs[0].Message() {
+		return "lifecycle"
+	}
 	// Dynamic messages require explicit selection context and an exact template.
 	if telescope != "" {
 		for _, state := range []string{"Ready", "Waiting for a local client", "Busy — waiting for the other session", "Seestar not reachable", "Reconnecting", "Releasing idle session", "Reconnecting — waiting for cleanup/retry"} {
@@ -68,8 +72,8 @@ func (l *eventLog) addFailure(text string, err error) {
 }
 
 // publishLocked records an immutable event in memory, without disk I/O.
-func (l *eventLog) publishLocked(text string, err error, telescope string) *event {
-	code := eventCode(text, telescope)
+func (l *eventLog) publishLocked(text string, err error, telescope string, catalogs ...cloudhttp.Catalog) *event {
+	code := eventCode(text, telescope, catalogs...)
 	if code == "" {
 		return nil
 	}
@@ -77,7 +81,7 @@ func (l *eventLog) publishLocked(text string, err error, telescope string) *even
 	if err != nil {
 		entry.Phase, entry.Reason = diagnostic.Fields(err, "connect")
 	}
-	if len(l.recent) > 0 {
+	if len(catalogs) == 0 && len(l.recent) > 0 {
 		last := l.recent[len(l.recent)-1]
 		if last.Message == entry.Message && last.Phase == entry.Phase && last.Reason == entry.Reason {
 			return nil
@@ -172,4 +176,30 @@ func (l *eventLog) snapshot() ([]event, string, bool) {
 		path = filepath.Join(l.storage.root, "gui.log")
 	}
 	return append([]event{}, l.recent...), path, l.failed
+}
+
+// addCatalog records every fetch, including consecutive identical catalogs.
+func (l *eventLog) addCatalog(c cloudhttp.Catalog) {
+	if l == nil {
+		return
+	}
+	l.diskMu.Lock()
+	defer l.diskMu.Unlock()
+	l.mu.Lock()
+	entry := l.publishLocked(c.Message(), nil, "", c)
+	l.mu.Unlock()
+	l.write(entry)
+	record := struct {
+		Time  time.Time `json:"time"`
+		Level string    `json:"level"`
+		Msg   string    `json:"msg"`
+		cloudhttp.Catalog
+	}{time.Now().UTC(), "INFO", "device_catalog", c}
+	if l.storage != nil {
+		line, err := json.Marshal(record)
+		failed := err != nil || l.appendLine(append(line, '\n')) != nil
+		l.mu.Lock()
+		l.failed = l.failed || failed
+		l.mu.Unlock()
+	}
 }

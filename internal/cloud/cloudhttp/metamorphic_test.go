@@ -293,7 +293,7 @@ func TestCloudMetamorphicHTTP(t *testing.T) {
 						t.Fatal(e)
 					}
 				}
-				safeLogs := withoutSelectedSerialLog(t, logs.String())
+				safeLogs := withoutIdentitySerialLogs(t, logs.String())
 				if strings.Contains(safeLogs, "sentinel") || strings.Contains(safeLogs, "SYNTHETICUID") {
 					t.Fatal("identity or secret entered logs")
 				}

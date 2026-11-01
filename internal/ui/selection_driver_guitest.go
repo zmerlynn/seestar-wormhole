@@ -14,6 +14,9 @@ func (d *guiTestDriver) telescopePicker() error {
 	if err := d.probe(`check(!el('device-picker').hidden && el('device-choice').options.length===4 && el('device-choice').options[1].textContent==='Seestar S50 Pro synthetic-choice-1234' && el('device-choice').options[2].textContent==='Future telescope\\tmodel synthetic-choice-5678' && el('serial').value==='' && el('model').value==='' && el('device-choice').options[0].textContent==='Choose a telescope…' && el('device-choice').options[3].textContent==='Enter manually…' && el('serial-error').hidden && el('error-code').hidden && el('selection-help').textContent==='Your account has several telescopes. Choose one, then Connect.' && el('device-choice').getAttribute('aria-describedby')==='selection-help' && document.activeElement===el('device-choice'),{pickerHidden:el('device-picker').hidden,options:el('device-choice').options.length})`); err != nil {
 		return err
 	}
+	if err := d.probe(guiTestCatalogEventProbe); err != nil {
+		return err
+	}
 	if err := d.probe(guiTestSelectionPickerProbe); err != nil {
 		return err
 	}
@@ -116,3 +119,5 @@ const guiTestPickerTransitionViewportProbe = `(() => {
 })()`
 
 const guiTestConnectedTelescopeProbe = `check(el('status').textContent==='Connected to Seestar S50 Pro synthetic-choice-1234' && !el('selected-device') && !el('change-telescope') && !el('change-telescope-help') && el('start').textContent==='Stop' && el('start').parentElement===el('primary-action') && el('settings').hidden,{status:el('status').textContent})`
+
+const guiTestCatalogEventProbe = `check(el('events').textContent.includes('Account telescopes: Seestar S50 Pro synthetic-choice-1234, Future telescope\\tmodel synthetic-choice-5678'),{events:el('events').textContent})`

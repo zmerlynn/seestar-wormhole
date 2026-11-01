@@ -49,6 +49,7 @@ func NewWithCredentials(ctx context.Context, cfg Config, credentials cloud.Crede
 }
 
 func newWithClient(ctx context.Context, cfg Config, c *cloudhttp.Client) (*Session, error) {
+	c.SetCatalogObserver(cfg.Status.RecordCatalog)
 	d, err := selectDevice(ctx, c, cloudhttp.Device{Serial: cfg.Serial, Model: cfg.Model}, cfg.Logger, mathrand.NewPCG(mathrand.Uint64(), mathrand.Uint64()))
 	if err != nil {
 		return nil, closeStartupCloud(ctx, c, err)

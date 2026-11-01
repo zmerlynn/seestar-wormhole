@@ -46,11 +46,14 @@ func (f *guiTestRunner) run(ctx context.Context, settings Settings, _ cloud.Cred
 		return &ActionError{Code: "discovery", Field: "discovery"}
 	}
 	if f.scenario == "telescope-picker" || f.scenario == "dark-telescope-picker" {
-		device, err := guitest.SelectTelescope(ctx, cloudhttp.Device{Serial: settings.Serial, Model: settings.Model})
+		device, err := guitest.SelectTelescope(ctx, cloudhttp.Device{Serial: settings.Serial, Model: settings.Model}, status.RecordCatalog)
 		if err != nil {
 			return err
 		}
 		status.SetSelectedDevice(device)
+	}
+	if f.scenario == "details" {
+		status.RecordCatalog(cloudhttp.Catalog{Pairs: []cloudhttp.CatalogPair{{Model: "S30", Serial: "synthetic-details"}}, Count: 1, Complete: true})
 	}
 	status.MarkArmed()
 	before := session.Snapshot{State: session.Dialing}

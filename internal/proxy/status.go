@@ -14,6 +14,8 @@ import (
 // events, dependency errors, or private cloud material.
 // One session owner writes; any number of readers may load.
 type Status struct {
+	// Catalog is installed before a run starts and receives each catalog fetch.
+	Catalog   func(cloudhttp.Catalog)
 	text      atomic.Pointer[string]
 	selected  atomic.Pointer[string]
 	ready     atomic.Bool
@@ -154,4 +156,10 @@ func (s *Status) SelectedDevice() string {
 		}
 	}
 	return ""
+}
+
+func (s *Status) RecordCatalog(c cloudhttp.Catalog) {
+	if s != nil && s.Catalog != nil {
+		s.Catalog(c)
+	}
 }

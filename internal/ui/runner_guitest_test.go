@@ -182,6 +182,15 @@ func TestGUITestTelescopeSelection(t *testing.T) {
 					t.Fatalf("connected status=%q", view.Status)
 				}
 				events, _, _ := c.log.snapshot()
+				catalogs := 0
+				for _, event := range events {
+					if event.Message == `Account telescopes: Seestar S50 Pro synthetic-choice-1234, Future telescope\tmodel synthetic-choice-5678` && event.Code == "lifecycle" {
+						catalogs++
+					}
+				}
+				if catalogs != 2 {
+					t.Fatalf("each Connect must record catalog: %+v", events)
+				}
 				found := false
 				for _, event := range events {
 					if event.Message == want && event.Code == "lifecycle" {

@@ -60,7 +60,7 @@ func TestSelectionChoices(t *testing.T) {
 			}
 			diagnostic.Log(c.logger, "failure", "", err)
 			assertSelectionSecrets(t, logs.String())
-			if strings.Contains(logs.String(), "private-a") {
+			if strings.Contains(withoutIdentitySerialLogs(t, logs.String()), "private-a") {
 				t.Fatal("catalog in logs")
 			}
 		})

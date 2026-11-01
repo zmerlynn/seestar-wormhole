@@ -163,7 +163,13 @@ local time, error codes, and the private log's location.
 version, connection settings, and this launch's events in UTC. It leaves out
 addresses, paths, credentials, tokens, account identifiers, and payloads.
 Lifecycle events include the selected telescope model and full serial with the
-same escaping and display caps as status.
+same escaping and display caps as status. Each Connect that reads the account
+catalog also records its telescope list, even for a single telescope:
+`Account telescopes: {telescope}, …`. Unproven lists use
+`Account telescopes (list may be incomplete): {telescope}, …`; empty lists
+read `Account telescopes: none`. Long lists end with `… and N more`.
+The private log includes an INFO `device_catalog` record with the pairs, count,
+and completeness; see the [log reference](reference.md#logs).
 
 The private logs use fixed message templates and categories, UTC timestamps, and
 classified failure phases and reasons, with no raw protocol traces.

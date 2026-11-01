@@ -21,7 +21,7 @@ func assertCloudSecretSafe(t *testing.T, err error, logs string) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	logger.Error("failure", "error", err)
-	text := withoutSelectedSerialLog(t, logs) + out.String() + fmt.Sprintf("%v %+v %#v", err, err, err)
+	text := withoutIdentitySerialLogs(t, logs) + out.String() + fmt.Sprintf("%v %+v %#v", err, err, err)
 	for _, secret := range []string{"sentinel", "SYNTHETICUID", "Example-Only", "reader@example.invalid"} {
 		if strings.Contains(text, secret) {
 			t.Fatal("secret or identity entered error/log output")
