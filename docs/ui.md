@@ -112,8 +112,7 @@ for this app run, including when the controls page is reopened. Only Serial and
 Model are saved in the existing settings format. A selection failure for a
 chosen pair says **Choose “Find on my account” to reload telescopes, or check Serial and Model.**
 Absence from the catalog alone does not invalidate a saved pair; the detail
-fallback still applies. The list is excluded from
-logs and Copy diagnostic summary.
+fallback still applies. The received telescope list is included in Recent events, the private log, and Copy diagnostic summary; see [Details and logs](#details-and-logs).
 
 After selection, status includes the model and full serial, both escaped. Only the model is capped at 64 display characters. For example: **Connected to Seestar S50 Pro {serial}**.
 An empty model uses **Seestar {serial}**. Recent events and Copy diagnostic
