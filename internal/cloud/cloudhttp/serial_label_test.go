@@ -9,19 +9,22 @@ import (
 )
 
 func TestSerialLabelASCIIEscaping(t *testing.T) {
-	for _, tc := range []struct{ name, character, escaped string }{
-		{"bidi override", "\u202e", `\u202e`},
-		{"bidi isolate", "\u2066", `\u2066`},
-		{"zero width space", "\u200b", `\u200b`},
-		{"zero width joiner", "\u200d", `\u200d`},
-		{"line separator", "\u2028", `\u2028`},
-		{"paragraph separator", "\u2029", `\u2029`},
-		{"nonbreaking space", "\u00a0", `\u00a0`},
-		{"byte order mark", "\ufeff", `\ufeff`},
-		{"nonprinting", "\u0085", `\u0085`},
-		{"non ASCII printable", "\u00e9", `\u00e9`},
-		{"quote", "\"", `\"`},
-		{"backslash", "\\", `\\`},
+	for _, tc := range []struct {
+		name, character, escaped string
+		valid                    bool
+	}{
+		{"bidi override", "\u202e", `\u202e`, false},
+		{"bidi isolate", "\u2066", `\u2066`, false},
+		{"zero width space", "\u200b", `\u200b`, false},
+		{"zero width joiner", "\u200d", `\u200d`, false},
+		{"line separator", "\u2028", `\u2028`, false},
+		{"paragraph separator", "\u2029", `\u2029`, false},
+		{"nonbreaking space", "\u00a0", `\u00a0`, false},
+		{"byte order mark", "\ufeff", `\ufeff`, false},
+		{"nonprinting", "\u0085", `\u0085`, false},
+		{"non ASCII printable", "\u00e9", `\u00e9`, false},
+		{"quote", "\"", `\"`, true},
+		{"backslash", "\\", `\\`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			serial := "synthetic-label-" + tc.character + "1234"
@@ -35,6 +38,12 @@ func TestSerialLabelASCIIEscaping(t *testing.T) {
 				t.Fatal(err)
 			}
 			choices := selectionChoices(devices)
+			if !tc.valid {
+				if len(choices) != 1 {
+					t.Fatal("invalid serial retained")
+				}
+				return
+			}
 			if len(choices) != 2 {
 				t.Fatal("valid serial omitted")
 			}

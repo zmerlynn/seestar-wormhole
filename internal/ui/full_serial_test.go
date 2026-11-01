@@ -12,9 +12,9 @@ import (
 )
 
 func TestLifecycleFullSerial(t *testing.T) {
-	for _, serial := range []string{strings.Repeat("s", 65), strings.Repeat("\u202e", 11)} {
-		escaped := strconv.QuoteToASCII(serial)
-		escaped = escaped[1 : len(escaped)-1]
+	for _, tc := range []struct{ serial, display string }{{strings.Repeat("s", 64), strings.Repeat("s", 64)}, {strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2), strings.Repeat("!\\\"#$%&'()*+,-./:;<=>?@[\\\\]^_`{|}~", 2)}} {
+		serial := tc.serial
+		escaped := tc.display
 		for _, model := range []string{"S30", ""} {
 			t.Run(model, func(t *testing.T) {
 				c := testController(nil)

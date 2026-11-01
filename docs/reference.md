@@ -232,7 +232,7 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serial/model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. Invalid saved serials refuse loading without rewriting the file. Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.

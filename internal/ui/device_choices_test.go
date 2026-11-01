@@ -132,10 +132,10 @@ func TestDevicePickerBindings(t *testing.T) {
 
 func TestSavedPickerChoiceLabel(t *testing.T) {
 	s := testSettings()
-	s.Serial = "synthetic-\u200b-望-choice"
+	s.Serial = "synthetic-\"\\-choice"
 	s.Model = "Future\tmodel"
 	got := pageSettingsFor(s)
-	if got.ChoiceLabel != `Future\tmodel synthetic-\u200b-\u671b-choice` || got.Serial != s.Serial || got.Model != s.Model {
+	if got.ChoiceLabel != `Future\tmodel synthetic-\"\\-choice` || got.Serial != s.Serial || got.Model != s.Model {
 		t.Fatalf("saved picker label or wire pair: %#v", got)
 	}
 }

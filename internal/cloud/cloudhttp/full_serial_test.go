@@ -10,7 +10,8 @@ import (
 )
 
 func TestFullSerialSurfaces(t *testing.T) {
-	for _, serial := range []string{strings.Repeat("s", 65), strings.Repeat("\u202e", 11)} {
+	for _, tc := range []struct{ serial, display string }{{strings.Repeat("s", 64), strings.Repeat("s", 64)}, {strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2), strings.Repeat("!\\\"#$%&'()*+,-./:;<=>?@[\\\\]^_`{|}~", 2)}} {
+		serial := tc.serial
 		t.Run(strconv.QuoteToASCII(serial), func(t *testing.T) {
 			if !ValidSerial(serial) {
 				t.Fatal("fixture must be accepted")
@@ -27,8 +28,7 @@ func TestFullSerialSurfaces(t *testing.T) {
 			if err != nil || got.Serial != serial {
 				t.Fatalf("selection: %v", err)
 			}
-			quoted := strconv.QuoteToASCII(serial)
-			escaped := quoted[1 : len(quoted)-1]
+			escaped := tc.display
 			if got.ChoiceLabel() != "S30 "+escaped {
 				t.Error("picker lost serial")
 			}
@@ -77,8 +77,8 @@ func TestFullSerialCatalogBudgets(t *testing.T) {
 		pairs        int
 		omitted      int
 	}{
-		{"maximum ASCII", strings.Repeat("s", 4096), 2, 0},
-		{"maximum escaping", strings.Repeat("\x01", 4096), 0, 2},
+		{"maximum ASCII", strings.Repeat("s", 64), 2, 0},
+		{"maximum escaping", strings.Repeat("\"", 64), 2, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if !ValidSerial(tc.serial) {
@@ -88,11 +88,20 @@ func TestFullSerialCatalogBudgets(t *testing.T) {
 			if c.Count != 2 || !c.Complete || len(c.Pairs) != tc.pairs || c.Omitted != tc.omitted {
 				t.Fatalf("catalog count=%d pairs=%d omitted=%d", c.Count, len(c.Pairs), c.Omitted)
 			}
-			if tc.pairs > 0 && c.Pairs[0].Serial != tc.serial {
+			if c.Pairs[0].Serial != displaySerial(tc.serial) {
 				t.Fatal("catalog cut serial")
 			}
-			if c.Message() != "Account telescopes: … and 2 more" {
+			if c.Message() != "Account telescopes: S30 "+displaySerial(tc.serial)+", S30 synthetic-tail" {
 				t.Fatalf("message=%q", c.Message())
+			}
+
+			devices := make([]Device, 256)
+			for i := range devices {
+				devices[i] = Device{Model: "S30", Serial: tc.serial}
+			}
+			c = newCatalog(devices, true)
+			if c.Omitted == 0 || c.Count != 256 || len(c.Pairs)+c.Omitted != 256 || len(c.Message()) > 4096 || !strings.Contains(c.Message(), " more") {
+				t.Fatal("catalog budgets not enforced")
 			}
 			b, err := json.Marshal(c.Pairs)
 			if err != nil {
