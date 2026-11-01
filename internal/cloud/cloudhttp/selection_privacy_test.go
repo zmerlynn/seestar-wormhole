@@ -17,8 +17,8 @@ func TestSelectionErrorGenericProjections(t *testing.T) {
 		t.Fatal("fixture did not refuse selection")
 	}
 	t.Run("Error", func(t *testing.T) {
-		if err.Error() != "[device selection required]" {
-			t.Fatal("unsafe Error text")
+		if err.Error() != "device_selection: multiple devices on account; set --serial" {
+			t.Fatal("Error lost the sanitized selection reason")
 		}
 	})
 	joined := errors.Join(err)
@@ -30,15 +30,19 @@ func TestSelectionErrorGenericProjections(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			for _, format := range []string{"%v", "%+v", "%#v", "%s", "%q"} {
 				t.Run(format, func(t *testing.T) {
-					assertSafeSelectionProjection(t, fmt.Sprintf(format, value))
+					text := fmt.Sprintf(format, value)
+					assertSafeSelectionProjection(t, text)
+					if name == "direct" && text != "device_selection: multiple devices on account; set --serial" {
+						t.Fatal("generic formatting lost the sanitized selection reason")
+					}
 				})
 			}
 			for _, json := range []bool{false, true} {
-				name := "text"
+				handlerName := "text"
 				if json {
-					name = "JSON"
+					handlerName = "JSON"
 				}
-				t.Run(name, func(t *testing.T) {
+				t.Run(handlerName, func(t *testing.T) {
 					var output bytes.Buffer
 					var handler slog.Handler = slog.NewTextHandler(&output, nil)
 					if json {
@@ -46,6 +50,9 @@ func TestSelectionErrorGenericProjections(t *testing.T) {
 					}
 					slog.New(handler).Error("synthetic failure", "err", value)
 					assertSafeSelectionProjection(t, output.String())
+					if name == "direct" && !strings.Contains(output.String(), "device_selection: multiple devices on account; set --serial") {
+						t.Fatal("slog lost the sanitized selection reason")
+					}
 				})
 			}
 		})

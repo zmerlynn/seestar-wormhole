@@ -19,6 +19,7 @@ type DeviceChoice struct {
 // SelectionError adds received catalog pairs to an actionable selection failure.
 // Only Multiple permits the GUI to offer a picker. Logs must classify Unwrap,
 // rather than include choices. Generic error projections never include account data.
+// The private cause carries fixed guidance; received identities live in choices.
 type SelectionError struct {
 	cause    error
 	choices  []DeviceChoice
@@ -27,7 +28,7 @@ type SelectionError struct {
 
 func (e *SelectionError) Unwrap() error           { return e.cause }
 func (e *SelectionError) Choices() []DeviceChoice { return append([]DeviceChoice(nil), e.choices...) }
-func (*SelectionError) Error() string             { return "[device selection required]" }
+func (e *SelectionError) Error() string           { return e.cause.Error() }
 
 // CLIMessage explicitly includes full received pairs for account-owner stdout.
 // It must never be used for diagnostics or generic error formatting.
@@ -46,9 +47,9 @@ func (e *SelectionError) CLIMessage() string {
 	return s
 }
 
-// Accidental structured logging still uses a fixed label, never Error().
-func (*SelectionError) LogValue() slog.Value          { return slog.StringValue("[device selection required]") }
-func (*SelectionError) Format(s fmt.State, verb rune) { fmt.Fprint(s, "[device selection required]") }
+// Generic formatting and logging share the sanitized message, never the list.
+func (e *SelectionError) LogValue() slog.Value          { return slog.StringValue(e.Error()) }
+func (e *SelectionError) Format(s fmt.State, verb rune) { fmt.Fprint(s, e.Error()) }
 
 func selectionChoices(devices []cloud.Detail) []DeviceChoice {
 	var choices []DeviceChoice
