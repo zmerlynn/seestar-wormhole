@@ -423,8 +423,7 @@ All detail requests, including the pre-allocation check, send
 Unmatched serials or multiple pairs without a serial identify `--serial` in
 classified diagnostics. For multiple devices without a serial, the CLI prints
 an error to standard output listing every received distinct pair, one per line:
-model then **full serial**. Pass `--serial`; also pass `--model` when a serial
-appears under more than one model. Incomplete-catalog, duplicate, and ambiguous
+model then **full serial**. Pass `--serial` with one of them. Incomplete-catalog, duplicate, and ambiguous
 serial refusals also list the received pairs. These lists are command output,
 not log records. Invalid serials are omitted using the command's serial rules;
 all model labels use Go ASCII string escaping (without enclosing quotes) and

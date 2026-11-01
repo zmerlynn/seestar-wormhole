@@ -52,8 +52,11 @@ func TestSelectionChoices(t *testing.T) {
 					t.Fatalf("missing full pair %q in %s", line, err.Error())
 				}
 			}
-			if !strings.Contains(err.Error(), "\nReceived telescopes (full serials):\n") || !strings.Contains(err.Error(), "Pass --serial; also pass --model when a serial appears under more than one model.") {
-				t.Fatal("missing selection instructions")
+			if !strings.Contains(err.Error(), "\nReceived telescopes (full serials):\n") {
+				t.Fatal("missing selection list")
+			}
+			if strings.Contains(err.Error(), "Pass --serial with one of these.") != selection.Multiple {
+				t.Fatalf("serial guidance with Multiple=%v", selection.Multiple)
 			}
 			diagnostic.Log(c.logger, "failure", "", err)
 			assertSelectionSecrets(t, logs.String())

@@ -38,7 +38,10 @@ func (e *SelectionError) Error() string {
 	for _, d := range e.choices {
 		s += "\n" + d.Label
 	}
-	return s + "\nPass --serial; also pass --model when a serial appears under more than one model."
+	if e.Multiple {
+		s += "\nPass --serial with one of these."
+	}
+	return s
 }
 
 // Accidental structured logging still uses a fixed label, never Error().
