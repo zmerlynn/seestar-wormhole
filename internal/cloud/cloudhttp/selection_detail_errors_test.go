@@ -68,3 +68,39 @@ func TestSelectionDetailErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestSelectionMismatchRequiresSuccessfulExchange(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		ioErr  error
+		want   error
+	}{
+		{"definite mismatch", 200, nil, cloud.ErrConfig},
+		{"HTTP not found", 404, nil, cloud.ErrRejected},
+		{"server mismatch", 500, nil, cloud.ErrRejected},
+		{"transport with mismatch", 200, errors.New("synthetic I/O"), cloud.ErrTransport},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			f := &selectionCloud{bodies: []string{pageA1}}
+			c := selectionClient(t, f, &logs, slog.LevelInfo)
+			c.transport = transportFunc(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/v1/my-device/detail" {
+					return accountResponse(tc.status, detail), tc.ioErr
+				}
+				return f.RoundTrip(r)
+			})
+			_, err := c.SelectDevice(t.Context(), Device{"missing-synthetic-serial", "S50 Pro"})
+			if !errors.Is(err, tc.want) {
+				t.Fatalf("mismatch outcome=%v want=%v", err, tc.want)
+			}
+			if tc.want == cloud.ErrConfig && !strings.Contains(err.Error(), "--serial not found on account") {
+				t.Fatal("definite mismatch lost not-found guidance")
+			}
+			if tc.want != cloud.ErrConfig && errors.Is(err, cloud.ErrConfig) {
+				t.Fatal("failed exchange became not found")
+			}
+		})
+	}
+}
