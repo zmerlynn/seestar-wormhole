@@ -15,7 +15,7 @@ func TestPickerScreenshotCampaign(t *testing.T) {
 	}
 	for _, shot := range []string{
 		`d.state("Enter a serial number.", false, "telescope-manual")`,
-		`d.state("Stopped. Choose a telescope, then Connect.", false, "telescope-choosing")`,
+		`d.state("Choose a telescope", false, "telescope-picker")`,
 	} {
 		if !strings.Contains(string(driver), shot) {
 			t.Fatal("missing picker screenshot", shot)
@@ -28,12 +28,12 @@ func TestPickerScreenshotCampaign(t *testing.T) {
 	transition := strings.Index(string(viewport), "d.probe(guiTestPickerTransitionViewportProbe)")
 	scroll := strings.Index(string(viewport), "\n\tswitch shot {")
 	if transition < 0 || scroll < 0 || transition >= scroll {
-		t.Fatal("post-Change geometry must be checked before driver scrolling")
+		t.Fatal("selection-step geometry must be checked before driver scrolling")
 	}
 	if strings.Contains(guiTestPickerTransitionViewportProbe, "scroll") {
-		t.Fatal("post-Change predicate must only observe the viewport")
+		t.Fatal("selection-step predicate must only observe the viewport")
 	}
-	if !strings.Contains(string(viewport), `"telescope-manual", "telescope-choosing"`) {
+	if !strings.Contains(string(viewport), `"telescope-picker", "telescope-chosen", "telescope-picker-again", "telescope-manual"`) {
 		t.Fatal("new picker screenshots must use the repeated scrolling probe")
 	}
 }
@@ -63,10 +63,21 @@ func TestPickerDriverProbes(t *testing.T) {
 			"help":        `$('serial-help').textContent='wrong';`,
 			"association": `$('serial').setAttribute('aria-describedby','serial-error');`,
 		}},
-		{"choosing", `render({...idle,choosing:true,status:'Stopped. Choose a telescope, then Connect.'});`, guiTestChoosingPickerProbe, map[string]string{
+		{"connected", `render({...idle,active:true,status:'Connected to Seestar S50 Pro synthetic-choice-1234',selected_device:'Seestar S50 Pro synthetic-choice-1234'});`, guiTestConnectedTelescopeProbe, map[string]string{
+			"status":        `$('status').textContent='Connected to your Seestar';`,
+			"serial":        `$('status').textContent='Connected to Seestar S50 Pro ***1234';`,
+			"selected line": `$('selected-device');`,
+			"change button": `$('change-telescope');`,
+			"change help":   `$('change-telescope-help');`,
+			"Stop":          `$('start').textContent='Connect';`,
+			"parent":        `$('picker-action').append($('start'));`,
+			"settings":      `$('settings').hidden=false;`,
+		}},
+
+		{"selection", `render(multiple);`, guiTestSelectionPickerProbe, map[string]string{
 			"value":       `$('device-choice').value='0';`,
 			"label":       `$('device-choice').children[0].textContent='Find on my account';`,
-			"status":      `$('status').textContent='Stopped. Choose Connect to pick a telescope.';`,
+			"status":      `$('status').textContent='Not connected';`,
 			"Connect":     `$('primary-action').append($('start'));`,
 			"focus":       `$('start').focus();`,
 			"help hidden": `$('selection-help').hidden=true;`,
@@ -80,7 +91,7 @@ func TestPickerDriverProbes(t *testing.T) {
 				if name == "valid" {
 					expected = "true"
 				}
-				call := `(async () => {const {idle,multiple}=uxFixture(); const el=$,check=ok=>!!ok; ` + step.setup + mutation + `
+				call := `(async () => {const {idle,multiple}=uxFixture(); const el=id=>testElements.get(id)||null,check=ok=>!!ok; ` + step.setup + mutation + `
  if ((` + step.probe + `) !== ` + expected + `) throw new Error('driver predicate accepted a corrupted UI or rejected the valid page');})()`
 				runPageRegression(t, "picker-ux-test.js", call)
 			})
@@ -166,4 +177,51 @@ assert(probe(),'oversized group must only require picker outline');
 boxes['device-choice'].top=2;boxes['device-choice'].bottom=46;
 assert(!probe(),'oversized group accepted clipped picker outline');
 `)
+}
+
+// Execute the exact connected-row assertions shipped in the native page checks.
+func TestNativeConnectedRowAssertions(t *testing.T) {
+	const marker = "await check('Connected telescope status row', async () => {"
+	start := strings.Index(pageStateChecks, marker)
+	if start < 0 {
+		t.Fatal("native connected-row assertions missing")
+	}
+	body := pageStateChecks[start+len(marker):]
+	end := strings.Index(body, "\n    });")
+	if end < 0 {
+		t.Fatal("native connected-row assertions not terminated")
+	}
+	body = body[:end]
+	for name, mutation := range map[string]string{
+		"valid":         "",
+		"status":        `$('status').textContent='Connected to your Seestar';`,
+		"serial":        `$('status').textContent='Connected to Seestar S50 Pro ***1234';`,
+		"selected line": `testElements.set('selected-device',new TestElement());`,
+		"change button": `testElements.set('change-telescope',new TestElement());`,
+		"change help":   `testElements.set('change-telescope-help',new TestElement());`,
+		"Stop":          `$('start').textContent='Connect';`,
+		"parent":        `$('picker-action').append($('start'));`,
+		"position":      `$('announcements').nextElementSibling=null;`,
+		"settings":      `$('settings').hidden=false;`,
+		"events":        `$('events').children[0].textContent='arbitrary';`,
+		"summary":       `diagnostic=JSON.stringify({events:[{message:'arbitrary'}]});`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			check := strings.Replace(body, "      assert($('status')", mutation+"\n      assert($('status')", 1)
+			expected := "true"
+			if name == "valid" {
+				expected = "false"
+			}
+			script := `(async()=>{
+    const {idle}=uxFixture(),status=()=>idle;
+    const $=id=>testElements.get(id)||null;
+    $('announcements').nextElementSibling=$('primary-action');
+    const assert=(ok,message)=>{if(!ok)throw new Error(message);};
+    let failed=false;
+    try {` + check + `} catch(e){failed=true;}
+    if(failed!==` + expected + `)throw new Error('native assertions accepted corrupted state or rejected valid state');
+   })()`
+			runPageRegression(t, "picker-ux-test.js", script)
+		})
+	}
 }

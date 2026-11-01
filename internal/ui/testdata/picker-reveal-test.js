@@ -5,7 +5,7 @@ async function checkPickerLayoutReveal() {
  const settings={email:'synthetic@example.invalid',serial:'',model:''};
  load(settings);
  const idle={active:false,status:'Not connected',settings,devices_email:settings.email,devices:[],effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[]};
- const choosing={...idle,choosing:true,status:'Stopped. Choose a telescope, then Connect.'};
+ const choosing={...idle,status:'Choose a telescope',failure:{code:'selection_multiple',devices:[{serial:'synthetic-choice',model:'S30',label:'S30 synthetic-choice'}]}};
  const boxes={'device-choice':{top:700,bottom:744,left:20,right:740},'selection-help':{top:750,bottom:780,left:20,right:740},'start':{top:800,bottom:844,left:20,right:140}};
  let reads=0,scrolls=[];
  for(const [id,box] of Object.entries(boxes)) $(id).getBoundingClientRect=()=>{reads++;return {...box};};

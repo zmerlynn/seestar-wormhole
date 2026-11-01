@@ -33,16 +33,6 @@ func TestSetupHierarchyAndRunningCopy(t *testing.T) {
 	}
 }
 
-func TestChangeTelescopeWrapStyle(t *testing.T) {
-	css, err := assets.ReadFile("web/style.css")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(css), ".change-telescope-group {\n  display: inline-flex;\n  align-items: center;\n  gap: .5rem;\n}") {
-		t.Fatal("Change telescope group must wrap as one flex item")
-	}
-}
-
 func TestManualSerialLabel(t *testing.T) {
 	b, err := assets.ReadFile("web/index.html")
 	if err != nil {

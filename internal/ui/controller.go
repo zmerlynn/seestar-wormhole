@@ -23,13 +23,10 @@ type controller struct {
 	cancel             context.CancelFunc
 	status             *proxy.Status
 	stopping, quitting bool
-	changing           bool
 	final              string
 	failure            *ActionError
 	devices            []cloudhttp.DeviceChoice
 	devicesEmail       string
-	choosing           bool
-	pendingClear       bool
 	save               func(Settings) error
 	log                *eventLog
 	runSettings        Settings
@@ -51,7 +48,7 @@ func (c *controller) start(s Settings, password string) error {
 	defer c.saveMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.done != nil || c.quitting || c.changing {
+	if c.done != nil || c.quitting {
 		return errors.New("Stop the current run before starting again")
 	}
 	ctx, cancel := context.WithCancel(c.parent)
@@ -60,7 +57,6 @@ func (c *controller) start(s Settings, password string) error {
 	c.status = proxy.NewStatus()
 	c.stopping = false
 	c.final = ""
-	c.choosing = false
 	c.failure = nil
 	s.Ports = append([]proxyrun.Port(nil), s.Ports...)
 	if c.devicesEmail != s.Email {
@@ -148,51 +144,6 @@ func (c *controller) stop() {
 		c.stopping = true
 		c.cancel()
 	}
-}
-
-// changeTelescope uses Stop's cancellation and joins the run, including release
-// and its final boundary save, before replacing the persisted selection.
-func (c *controller) changeTelescope() error {
-	c.mu.Lock()
-	if c.changing || c.quitting || c.done == nil || c.status.SelectedDevice() == "" {
-		c.mu.Unlock()
-		return &ActionError{Code: "connection"}
-	}
-	c.changing = true
-	done := c.done
-	c.mu.Unlock()
-	defer func() { c.mu.Lock(); c.changing = false; c.mu.Unlock() }()
-	c.stop()
-	<-done
-	c.saveMu.Lock()
-	defer c.saveMu.Unlock()
-	// Explicit saves can finish while release is pending. Clear only the pair
-	// in the latest successful snapshot while holding the persistence lock.
-	c.mu.Lock()
-	s := c.lastSaved
-	c.mu.Unlock()
-	s.Serial, s.Model = "", ""
-	return c.persistTelescopeClearLocked(s)
-}
-
-// Only a successful clear/save changes the stopped prompt. A failed clear
-// keeps its retry intent in memory alongside the controller's pending snapshot.
-func (c *controller) persistTelescopeClearLocked(s Settings) error {
-	err := c.persistLocked(s)
-	c.mu.Lock()
-	c.pendingClear = err != nil
-	if err == nil && c.done == nil {
-		c.choosing = c.devicesEmail == s.Email && len(c.devices) > 0
-		if c.failure == nil || c.failure.Code != "release" {
-			c.final = "Stopped. Choose Connect to pick a telescope."
-			if c.choosing {
-				c.final = "Stopped. Choose a telescope, then Connect."
-			}
-			c.failure = nil
-		}
-	}
-	c.mu.Unlock()
-	return err
 }
 
 // quit joins cleanup even when startup has not yet returned a session.
@@ -301,7 +252,6 @@ func (c *controller) persistLocked(s Settings) error {
 	err := c.save(s)
 	c.mu.Lock()
 	c.pendingSave = nil
-	c.pendingClear = false
 	if err != nil {
 		c.pendingSave = &s
 	} else {
@@ -320,9 +270,6 @@ func (c *controller) retrySave() error {
 	defer c.saveMu.Unlock()
 	if c.pendingSave == nil {
 		return nil
-	}
-	if c.pendingClear {
-		return c.persistTelescopeClearLocked(*c.pendingSave)
 	}
 	return c.persistLocked(*c.pendingSave)
 }
@@ -395,7 +342,6 @@ func uiText(text string) string {
 
 // The control model is independent of pending HTTP/keychain actions in the page.
 type runView struct {
-	Choosing       bool                     `json:"choosing"`
 	DevicesEmail   string                   `json:"devices_email"`
 	Devices        []cloudhttp.DeviceChoice `json:"devices,omitempty"`
 	FailureMessage string                   `json:"failure_message,omitempty"`
@@ -414,7 +360,7 @@ func (c *controller) view() runView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	text, active := c.snapshotLocked()
-	v := runView{Choosing: c.choosing, DevicesEmail: c.devicesEmail, Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
+	v := runView{DevicesEmail: c.devicesEmail, Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
 	if active {
 		v.SelectedDevice = c.status.SelectedDevice()
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()

@@ -180,9 +180,6 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.settings = in.Settings
 			s.mu.Unlock()
 		}
-	case "/api/change-telescope":
-		err = s.controller.changeTelescope()
-
 	case "/api/stop":
 		s.controller.stop()
 

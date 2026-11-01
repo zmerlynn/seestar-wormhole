@@ -449,11 +449,8 @@ appears once with its received label. Selection failures for a chosen pair say
 Absence from the catalog alone is not invalid; the detail fallback above remains.
 Received choices
 remain in memory for this app run and are never added to the settings file.
-After a successful Change telescope clear/save, current-account received choices
-open the choosing step with **Stopped. Choose a telescope, then Connect.**, focus
-the picker once, and place Connect after it. With no received choices, **Stopped.
-Choose Connect to pick a telescope.** focuses Connect to load choices. Release
-uncertainty takes precedence; a failed save retains the pair and its retry.
+To switch telescopes, choose Stop, choose **Find on my account** or another
+picker entry, then Connect. Several telescopes still enter the selection step.
 
 Every catalog page requests `isContainShared=3`, the mode sent by the
 app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).

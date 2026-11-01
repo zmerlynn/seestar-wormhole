@@ -12,22 +12,6 @@ import (
 	"testing"
 )
 
-func TestChangeTelescopeAcrossStatusPoll(t *testing.T) {
-	runPageRegression(t, "change-telescope-poll-test.js", "checkChangeTelescopeAcrossPoll()")
-}
-
-func TestChangeTelescopeRetryAfterReload(t *testing.T) {
-	for _, pair := range []string{"cleared", "saved pair"} {
-		t.Run(pair, func(t *testing.T) {
-			call := "checkChangeTelescopeRetryAfterReload(false)"
-			if pair == "saved pair" {
-				call = "checkChangeTelescopeRetryAfterReload(true)"
-			}
-			runPageRegression(t, "change-telescope-reload-test.js", call)
-		})
-	}
-}
-
 // Execute the complete production script without a browser, HTTP, or keychain.
 func runPageRegression(t *testing.T, file, call string) {
 	t.Helper()
@@ -67,16 +51,7 @@ func TestPickerInitialStep(t *testing.T) {
 	runPageRegression(t, "device-picker-test.js", "checkPickerInitialStep()")
 }
 
-func TestChangeTelescopePage(t *testing.T) {
-	for _, uncertain := range []string{"false", "true"} {
-		t.Run(uncertain, func(t *testing.T) {
-			runPageRegression(t, "change-telescope-test.js", "checkChangeTelescope("+uncertain+")")
-		})
-	}
-}
-
-// Seed the DOM double from the actual HTML so descriptions, visibility, and
-// control order are tested against markup rather than copied fixture values.
+// Seed the DOM double from actual HTML to test bindings and control order.
 func pageDOM(t *testing.T) string {
 	t.Helper()
 	b, err := assets.ReadFile("web/index.html")
@@ -153,14 +128,6 @@ func TestPickerLabels(t *testing.T) {
 	runPageRegression(t, "picker-ux-test.js", "checkPickerLabels()")
 }
 
-func TestChangeTelescopeChoosingPage(t *testing.T) {
-	for _, uncertain := range []string{"false", "true"} {
-		t.Run(uncertain, func(t *testing.T) {
-			runPageRegression(t, "change-telescope-test.js", "checkChangeTelescope("+uncertain+", true)")
-		})
-	}
-}
-
 func TestManualPickerPage(t *testing.T) {
 	for _, scenario := range []string{"label", "order", "initial order", "empty status", "serial help", "validation", "optional model", "saved without serial", "running action"} {
 		t.Run(scenario, func(t *testing.T) {
@@ -175,10 +142,6 @@ func TestSavedChoicePage(t *testing.T) {
 			runPageRegression(t, "picker-ux-test.js", "checkSavedChoice("+strconv.Quote(scenario)+")")
 		})
 	}
-}
-
-func TestChangeTelescopeGroupPage(t *testing.T) {
-	runPageRegression(t, "picker-ux-test.js", "checkChangeGroup()")
 }
 
 func TestManualSerialRequired(t *testing.T) {

@@ -162,10 +162,10 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	}
 
 	// Finish the action's DOM/focus transition before choosing a viewport.
-	if err := d.probe(`(() => {const want=` + strconv.Quote(want) + `,active=` + strconv.FormatBool(active) + `,status=el('status').textContent,hidden=el('settings').hidden;return check(status===want && hidden===active && (pending==='' || (state.stopping && ['stop','quit','change-telescope'].includes(pending))),{want,status,active,hidden,pending,stopping:state?.stopping ?? null})})()`); err != nil {
+	if err := d.probe(`(() => {const want=` + strconv.Quote(want) + `,active=` + strconv.FormatBool(active) + `,status=el('status').textContent,hidden=el('settings').hidden;return check(status===want && hidden===active && (pending==='' || (state.stopping && ['stop','quit'].includes(pending))),{want,status,active,hidden,pending,stopping:state?.stopping ?? null})})()`); err != nil {
 		return err
 	}
-	if shot == "telescope-stopped" {
+	if shot == "telescope-picker" || shot == "telescope-picker-again" {
 		// Observe the app's reveal before any screenshot positioning can mask it.
 		if err := d.probe(guiTestPickerTransitionViewportProbe); err != nil {
 			return err
@@ -188,7 +188,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 		if err := d.probe(`(() => {const b=el('running-ports-box'),r=b.getBoundingClientRect();return check(b.open && r.top>=-1 && r.top<innerHeight,{open:b.open,rect:r,innerHeight})})()`); err != nil {
 			return err
 		}
-	case "telescope-picker", "telescope-chosen", "telescope-cleared", "telescope-picker-again", "telescope-manual", "telescope-choosing":
+	case "telescope-picker", "telescope-chosen", "telescope-picker-again", "telescope-manual":
 		// Scroll on every poll: the page can still shift after the state change.
 		if err := d.probe(guiTestPickerViewportProbe); err != nil {
 			return err
@@ -209,12 +209,6 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
    const visible=r=>!!r && r.top>=0 && r.bottom<=innerHeight;
    return check(!!error?.textContent && visible(rect) && visible(controlRect) && (guide.hidden || visible(guide.getBoundingClientRect())),{error:error?.id ?? null,rect:rect ?? null,control:control?.id ?? null,controlRect:controlRect ?? null,innerHeight});
   })()`); err != nil {
-			return err
-		}
-	case "telescope-stopped":
-		// Connect follows the picker here, so only the top of the page is checked.
-		d.w.ExecJS(`window.scrollTo(0,0)`)
-		if err := d.probe(`(() => {const status=el('status').getBoundingClientRect();return check(status.top>=0 && status.bottom<=innerHeight,{status,innerHeight})})()`); err != nil {
 			return err
 		}
 	default:
@@ -260,7 +254,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     return Array.from(paint.getImageData(0,0,1,1).data).slice(0,3)};
    const l=rgb=>{const v=rgb.map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
    const rootRGB=sample(root),rootLuminance=l(rootRGB),failures=[];
-   for(const id of ['selected-device','change-telescope','device-choice','status','email','password','password-note','goal','forget','start','quit','events','custom-help','discovery-help','releases-link']){
+   for(const id of ['device-choice','status','email','password','password-note','goal','forget','start','quit','events','custom-help','discovery-help','releases-link']){
     const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled') || e.getClientRects().length===0) continue;
     const fg=sample(root,s.backgroundColor,s.color),bg=sample(root,s.backgroundColor);
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);

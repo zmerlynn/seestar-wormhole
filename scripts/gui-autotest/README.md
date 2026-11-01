@@ -117,12 +117,12 @@ model a late OS completion; no native keychain is accessed.
 `telescope-picker` uses an in-memory fake cloud with two synthetic telescopes,
 including an unknown model. It captures the picker and status before selection,
 the **Enter manually…** step with **Enter a serial number.** and Connect after
-Serial/Model, the chosen entry with the exact underlying pair, the connected
-`Telescope:` line with **Change telescope** and **Stops the session.**, and the
-post-change choosing state after that button joins release and saves. The
-`telescope-choosing` capture checks **Stopped. Choose a telescope, then Connect.**,
-**Choose a telescope…**, picker focus, and Connect after the picker. An empty
-Connect keeps this step without a new lookup. The `telescope-manual` capture
+Serial/Model, the chosen entry with the exact underlying pair, and
+**Connected to Seestar S50 Pro synthetic-choice-1234** with Stop directly below
+status. The driver then chooses Stop, **Find on my account**, and Connect to
+return to **Choose a telescope**. The selection step checks **Choose a telescope…**,
+picker focus, and Connect after the picker. An empty Connect keeps this step
+without a new lookup. The `telescope-manual` capture
 includes Serial, Model, and Connect. Each viewport probe scrolls on every poll;
 picker captures include the status when both fit in the viewport. Before discovery,
 the driver checks **Find on my account** and its associated explanation.

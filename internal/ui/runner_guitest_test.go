@@ -155,6 +155,7 @@ func TestGUITestTelescopeSelection(t *testing.T) {
 				f := newGUITestRunner()
 				f.scenario = scenario
 				c := testController(f.run)
+				c.log = &eventLog{}
 				original := testSettings()
 				if err := c.start(original, testPassword); err != nil {
 					t.Fatal(err)
@@ -164,23 +165,40 @@ func TestGUITestTelescopeSelection(t *testing.T) {
 				if view := c.view(); view.Active || view.Failure == nil || view.Failure.Code != "selection_multiple" || len(view.Failure.Devices) != 2 {
 					t.Fatal("runner failed to expose catalog", view)
 				}
-				original.Serial = "synthetic-choice-5678"
-				original.Model = "Future telescope\tmodel"
+				original.Serial = "synthetic-choice-1234"
+				original.Model = "Seestar S50 Pro"
 				if err := c.start(original, testPassword); err != nil {
 					t.Fatal(err)
 				}
 				<-f.entered
 				synctest.Wait()
-				if view := c.view(); view.SelectedDevice != `Future telescope\tmodel ***5678` {
+				if view := c.view(); view.SelectedDevice != `Seestar S50 Pro synthetic-choice-1234` {
 					t.Fatal("runner failed to publish selected label", view)
 				}
 				f.steps <- session.Event{Kind: session.Progress}
 				synctest.Wait()
-				if err := c.changeTelescope(); err != nil {
-					t.Fatal(err)
+				const want = "Connected to Seestar S50 Pro synthetic-choice-1234"
+				if view := c.view(); view.Status != want {
+					t.Fatalf("connected status=%q", view.Status)
 				}
+				events, _, _ := c.log.snapshot()
+				found := false
+				for _, event := range events {
+					if event.Message == want && event.Code == "lifecycle" {
+						found = true
+					}
+				}
+				if !found {
+					t.Fatalf("connected event lost selected telescope: %+v", events)
+				}
+				c.mu.Lock()
+				done := c.done
+				c.mu.Unlock()
+				c.stop()
+				<-done
+
 				if view := c.view(); view.Active || view.SelectedDevice != "" {
-					t.Fatal("runner survived Change telescope", view)
+					t.Fatal("runner survived Stop", view)
 				}
 				<-f.releasing
 				<-f.released

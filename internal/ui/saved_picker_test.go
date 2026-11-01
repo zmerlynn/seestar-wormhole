@@ -14,7 +14,7 @@ import (
 )
 
 func TestSavedPickerPage(t *testing.T) {
-	for _, scenario := range []string{"boundary", "password", "change", "retry", "failed", "deduplicate", "received saved pair"} {
+	for _, scenario := range []string{"boundary", "password", "retry", "failed", "deduplicate", "received saved pair"} {
 		t.Run(scenario, func(t *testing.T) {
 			b, _ := json.Marshal(scenario)
 			runPageRegression(t, "saved-picker-test.js", "checkSavedPicker("+string(b)+")")

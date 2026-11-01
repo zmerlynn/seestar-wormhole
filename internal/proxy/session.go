@@ -54,7 +54,7 @@ type Session struct {
 	discardStack             atomic.Pointer[stack] // published by the attempt worker; drained by the owner after join
 	discardNext              core.Instant
 	discardLast              uint64
-	telescope                string       // public model label and masked serial, immutable after construction
+	telescope                string       // escaped public model label and full serial, immutable after construction
 	deviceDetail             cloud.Detail // immutable after construction, before publication
 	tunnelConfig             p2ptunnel.Config
 	lazy                     bool

@@ -60,3 +60,20 @@ func TestSelectedDeviceUIBinding(t *testing.T) {
 		t.Fatal("status must be written once per update")
 	}
 }
+
+func TestRunningRowHasOnlyStop(t *testing.T) {
+	html, _ := assets.ReadFile("web/index.html")
+	js, _ := assets.ReadFile("web/app.js")
+	for _, obsolete := range []string{"selected-device", "change-telescope", "Stops the session.", "Stopped. Choose"} {
+		if strings.Contains(string(html)+string(js), obsolete) {
+			t.Fatalf("obsolete running control or copy: %s", obsolete)
+		}
+	}
+	if !strings.Contains(string(html), `<p id="feedback"></p></div>`+"\n"+`<div id="primary-action"><button id="start"`) {
+		t.Fatal("Stop must directly follow status announcements")
+	}
+	s := testServer(t)
+	if w := doPost(s, "/api/change-telescope", `{}`); w.Code != 404 {
+		t.Fatalf("removed action status=%d", w.Code)
+	}
+}

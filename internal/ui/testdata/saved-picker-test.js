@@ -14,19 +14,19 @@ async function checkSavedPicker(scenario) {
  $('device-choice').value='custom';$('device-choice').onchange();
  $('serial').value=current.serial;$('model').value=current.model;
  $('mode').value='idle';$('idle').value=7;
- let saved=scenario==='change'?{...current,serial:'',model:'',choice_label:''}:current;
+ let saved=current;
  if(scenario==='failed') {
   api=async name=>{if(name==='password/save')throw {code:'storage'};return {...idle,save_failed:true};};
   await act('password/save');
   saved=original;
  } else if(scenario==='boundary') {
   // The ready boundary saves the Custom pair, and Stop leaves that entry available.
-  render({...idle,active:true,settings:current,selected_device:'Future ***5678'});
+  render({...idle,active:true,settings:current,selected_device:'Future synthetic-new-5678'});
   api=async name=>name==='status'?{...idle,settings:current}:{ok:true};
   await act('stop');
  } else {
   api=async name=>name==='status'?{...idle,settings:saved}:{ok:true};
-  const action={password:'password/save',change:'change-telescope',retry:'retry-storage'}[scenario];
+  const action={password:'password/save',retry:'retry-storage'}[scenario];
   if(action) await act(action); else render({...idle,settings:saved});
  }
  const count=pair=>pickerDevices.filter(d=>d.serial===pair.serial&&d.model===pair.model).length;
@@ -35,7 +35,7 @@ async function checkSavedPicker(scenario) {
  if(scenario==='failed') assert(count(current)===0,'failed save installed an unsaved pair');
  for(const device of devices) assert(count(device)===1,'received entry lost or duplicated');
  assert($('idle').value===7,'saved projection overwrote unrelated draft');
- if(!['change','retry'].includes(scenario)) assert($('serial').value===current.serial&&$('model').value===current.model,'saved projection overwrote Custom draft');
+ if(scenario!=='retry') assert($('serial').value===current.serial&&$('model').value===current.model,'saved projection overwrote Custom draft');
  // Find on my account does not discard the saved entry; selecting it fills the current pair.
  $('device-choice').value='';$('device-choice').onchange();
  const index=pickerDevices.findIndex(d=>d.serial===saved.serial&&d.model===saved.model);

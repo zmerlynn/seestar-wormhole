@@ -49,6 +49,15 @@
     }
   };
   try {
+    await check('Connected telescope status row', async () => {
+      const label = 'Seestar S50 Pro synthetic-choice-1234';
+      const message = 'Connected to ' + label;
+      const event = {time:'2026-01-01T19:16:00Z',message,code:'lifecycle',phase:'',reason:''};
+      render({...status(),active:true,status:message,selected_device:label,events:[event]});
+      assert($('status').textContent === message && !$('selected-device') && !$('change-telescope') && !$('change-telescope-help'), 'connected row retained separate telescope controls');
+      assert($('start').textContent === 'Stop' && $('start').parentElement === $('primary-action') && $('announcements').nextElementSibling === $('primary-action') && $('settings').hidden, 'Stop must be directly below running status');
+      assert($('events').children[0].textContent.endsWith('  '+message) && JSON.parse(diagnostic).events[0].message === message, 'selected status lost in events or copied summary');
+    });
     await check('Setup help and services grouping', async () => {
       applyGoal('custom');
       const custom = $('custom-help'), discovery = $('discovery-help');
@@ -357,7 +366,6 @@
       assert(parseFloat(style.paddingLeft) === 0 && Math.abs(textLeft - inputLeft) < 1, 'Account text is indented from inputs');
       results.push('Account computed style: padding-left=' + style.paddingLeft + ', text-left=' + textLeft + ', input-left=' + inputLeft);
     });
-    await check('Change telescope release and persistence', checkChangeTelescope);
     await check('Custom telescope fields', async () => {
       $('device-choice').value = 'custom';
       $('device-choice').dispatchEvent(new Event('change'));

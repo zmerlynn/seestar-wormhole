@@ -119,22 +119,10 @@ After selection, status includes the model and full serial, escaped and capped
 at 64 display characters per field, for example **Connected to Seestar S50 Pro {serial}**.
 An empty model uses **Seestar {serial}**. Recent events and Copy diagnostic
 summary carry the same status text.
-The **Change telescope** button and its description **Stops the session.**
-wrap together as a unit.
-It stops the session and waits for release; while waiting, status reads
-**Stopping — releasing the Seestar session…**. After the choice is cleared and
-saved, received choices for the current account lead to **Stopped. Choose a
-telescope, then Connect.** The picker receives focus once, and Connect follows
-it. With no received choices, status reads **Stopped. Choose Connect to pick a
-telescope.** and Connect receives focus to load the list. The release-uncertainty
-message takes precedence if release could not be confirmed. The telescope line
-and Change telescope button disappear, and the empty option is selected. The
-button is disabled during a stop or save.
-
-If saving fails, the session stays stopped and the fields stay filled;
-**Retry saving settings** retries that saved snapshot. A successful retry
-clears the fields and shows the same stopped prompt, preserving any release
-uncertainty. See [device selection](reference.md#device-selection).
+Stop is the only action below the running status. To switch telescopes, choose
+Stop, choose **Find on my account** or another picker entry, then Connect.
+Several telescopes still enter the existing selection step. See
+[device selection](reference.md#device-selection).
 
 ## Advanced
 

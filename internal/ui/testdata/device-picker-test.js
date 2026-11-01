@@ -55,10 +55,7 @@ async function checkDevicePicker() {
   assert($('serial-error').hidden && $('model-error').hidden, 'entry choice retained field error');
   assert(!diagnostic.includes('synthetic-choice-') && !diagnostic.includes('<img') && !diagnostic.includes('devices'), 'full choices in diagnostic summary');
   assert($('start').parentElement === $('primary-action'), 'Connect not restored after selection step');
-  render({...idle,active:true,selected_device:'Future telescope ***1234'});
-  assert(!$('change-telescope-help').hidden && $('change-telescope').attributes['aria-describedby'] === 'change-telescope-help' && $('change-telescope-help').textContent === 'Stops the session.', 'Change telescope description link');
-  render(idle);
-  assert($('change-telescope-help').hidden, 'orphaned change description');
+
 }
 
 

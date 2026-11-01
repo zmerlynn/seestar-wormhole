@@ -73,11 +73,3 @@ func TestRetrySettingsAccountDraft(t *testing.T) {
 		}
 	}
 }
-
-func TestChangeTelescopeAccountDraft(t *testing.T) {
-	for _, manual := range []bool{false, true} {
-		t.Run("manual="+strconv.FormatBool(manual), func(t *testing.T) {
-			runPageRegression(t, "retry-account-test.js", "checkChangeAccountDraft("+strconv.FormatBool(manual)+")")
-		})
-	}
-}

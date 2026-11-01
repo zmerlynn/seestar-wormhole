@@ -219,8 +219,8 @@ function controls() {
   $('settings').hidden = active;
   $('running').hidden = !active;
   $('start').type = active ? 'button' : 'submit';
-  $('start').textContent = state?.stopping || ['stop','change-telescope'].includes(pending) ? 'Stopping…' : active ? (state?.cancel ? 'Cancel' : 'Stop') : 'Connect';
-  $('start').disabled = blocked || state?.stopping || ['stop','change-telescope'].includes(pending) || pending === 'quit' || (!active && !!pending);
+  $('start').textContent = state?.stopping || pending === 'stop' ? 'Stopping…' : active ? (state?.cancel ? 'Cancel' : 'Stop') : 'Connect';
+  $('start').disabled = blocked || state?.stopping || pending === 'stop' || pending === 'quit' || (!active && !!pending);
   $('quit').disabled = !initialized || ended || pending === 'quit';
   $('idle-options').hidden = $('mode').value !== 'idle';
   $('idle').disabled = $('mode').value !== 'idle';
@@ -237,10 +237,6 @@ function controls() {
   $('forget').hidden = !password.saved;
   $('forget').disabled = blocked || !!pending || password.busy;
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
-  $('change-telescope-group').hidden = !state?.selected_device;
-  $('change-telescope').hidden = !state?.selected_device;
-  $('change-telescope-help').hidden = $('change-telescope').hidden;
-  $('change-telescope').disabled = blocked || !!pending || !!state?.stopping;
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
@@ -259,7 +255,7 @@ function controls() {
   $('serial-help').hidden = !needsSerial;
   const actionArea = $(choosing ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
-  const statusText = ended ? (state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.') : choosing && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
+  const statusText = ended ? (state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.') : choosing && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? 'Choose a telescope' : 'Ready to connect') : state?.status || 'Loading…';
   text('status', statusText);
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
   if (pickerFocusPending && !$('options').disabled) {
@@ -333,7 +329,7 @@ function devicePicker(devices) {
   };
 }
 function accountChoices(s) {
-  const nextSelectionStep = accountEmail() === s.devices_email && !s.active && (s.choosing || s.failure?.code === 'selection_multiple');
+  const nextSelectionStep = accountEmail() === s.devices_email && !s.active && s.failure?.code === 'selection_multiple';
   if (nextSelectionStep && !selectionStep) {
     pickerFocusPending = true;
     clearField('serial');
@@ -426,7 +422,7 @@ async function refresh() {
 async function poll() {
   if (ended) return;
   try {
-    if (!pending || ['stop','quit','change-telescope'].includes(pending)) await refresh();
+    if (!pending || ['stop','quit'].includes(pending)) await refresh();
   } catch (_) {
     if (ended) return;
     connected = false;
@@ -483,7 +479,7 @@ async function act(action) {
     }
     const refreshed = await refresh();
     if (ended || pending !== action || !refreshed) return;
-    if (action === 'change-telescope' || action === 'retry-storage') {
+    if (action === 'retry-storage') {
       // The action may finish for a different account than the current draft.
       if (accountEmail(refreshed.settings.email) === accountEmail()) {
         $('serial').value = refreshed.settings.serial || '';
@@ -533,7 +529,7 @@ $('settings').addEventListener('submit', e => {
 $('start').addEventListener('click', () => {
   if (active) act('stop');
 });
-for (const [id,action] of [['change-telescope','change-telescope'],['save-password','password/save'],['forget','forget'],['quit','quit'],['retry-storage','retry-storage']]) {
+for (const [id,action] of [['save-password','password/save'],['forget','forget'],['quit','quit'],['retry-storage','retry-storage']]) {
   $(id).addEventListener('click', () => act(action));
 }
 $('email').addEventListener('input', () => {
