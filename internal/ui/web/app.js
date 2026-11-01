@@ -255,7 +255,7 @@ function controls() {
   const manual = $('device-choice').value === 'custom';
   const needsSerial = selectionStep && $('device-choice').value !== '' && !$('serial').value.trim();
   $('serial-help').hidden = !needsSerial;
-  const actionArea = $(selectionStep || manual ? 'picker-action' : 'primary-action');
+  const actionArea = $(selectionStep || (!active && manual) ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
   const statusText = selectionStep && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? (state?.choosing ? state.status : 'Choose a telescope') : 'Ready to connect') : state?.status || 'Loading…';
   text('status', statusText);

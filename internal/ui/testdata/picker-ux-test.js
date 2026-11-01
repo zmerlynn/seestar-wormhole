@@ -65,6 +65,12 @@ async function checkManualPicker(scenario) {
   await act('start');
   uxAssert(requests === 0, 'empty manual serial made a request');
   uxAssert(document.activeElement === $('serial') && $('serial').attributes['aria-invalid'] === 'true' && !$('serial-error').hidden && $('serial-error').textContent === 'Enter a serial number.', 'empty manual serial validation');
+ } else if (scenario === 'running action') {
+  $('serial').value='synthetic-manual';
+  render({...idle,active:true,status:'Connected to your Seestar'});
+  uxAssert($('settings').hidden && $('start').parentElement === $('primary-action') && !$('start').disabled && $('start').textContent === 'Stop', 'manual connection hid the running Stop action');
+  render(idle);
+  uxAssert($('start').parentElement === $('picker-action') && $('start').textContent === 'Connect', 'stopped manual choice lost Connect after its fields');
  } else if (scenario === 'saved without serial') {
   picker.value='';
   const saved={...idle.settings,model:'S30',choice_label:'S30 '};
