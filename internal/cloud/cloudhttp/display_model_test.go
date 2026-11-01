@@ -18,6 +18,9 @@ func TestDisplayModel(t *testing.T) {
 		{"quotes", "a\"\\b", `a\"\\b`},
 		{"unicode", "星", `\u661f`},
 		{"boundary", strings.Repeat("x", 64), strings.Repeat("x", 64)},
+		{"exact escaped tab boundary", strings.Repeat("x", 63) + "\t", strings.Repeat("x", 61) + "..."},
+		{"exact escaped quote boundary", strings.Repeat("x", 63) + "\"", strings.Repeat("x", 61) + "..."},
+		{"exact escaped backslash boundary", strings.Repeat("x", 63) + "\\", strings.Repeat("x", 61) + "..."},
 		{"long", strings.Repeat("x", 65), strings.Repeat("x", 61) + "..."},
 		{"escaped bound", strings.Repeat("\u202e", 11), strings.Repeat(`\u202e`, 10) + "..."},
 	} {
