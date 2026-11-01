@@ -65,6 +65,14 @@ async function checkManualPicker(scenario) {
   await act('start');
   uxAssert(requests === 0, 'empty manual serial made a request');
   uxAssert(document.activeElement === $('serial') && $('serial').attributes['aria-invalid'] === 'true' && !$('serial-error').hidden && $('serial-error').textContent === 'Enter a serial number.', 'empty manual serial validation');
+ } else if (scenario === 'saved without serial') {
+  picker.value='';
+  const saved={...idle.settings,model:'S30',choice_label:'S30 '};
+  load(saved); render({...multiple,settings:saved});
+  uxAssert($('status').textContent === 'Enter a serial number.', 'incomplete saved choice claimed readiness');
+  let requests=0; api=async()=>{requests++;return idle;};
+  await act('start');
+  uxAssert(requests === 0 && !$('custom-device').hidden && document.activeElement === $('serial'), 'incomplete saved choice bypassed local Serial validation');
  } else if (scenario === 'optional model') {
   $('serial').value='synthetic-manual'; $('serial').dispatchEvent({type:'input'});
   uxAssert($('status').textContent === 'Ready to connect' && $('serial-help').hidden, 'usable manual serial not ready');

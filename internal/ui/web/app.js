@@ -253,7 +253,7 @@ function controls() {
   text('selection-help', selectionStep ? 'Your account has several telescopes. Choose one, then Connect.' : savedDevice && !receivedDevices.length ? 'Choose “Find on my account”, then Connect to load other telescopes.' : 'Connect uses your only telescope, or asks which one if there are several.');
   if ($('device-choice').children.length) textOptionLabel();
   const manual = $('device-choice').value === 'custom';
-  const needsSerial = selectionStep && manual && !$('serial').value.trim();
+  const needsSerial = selectionStep && $('device-choice').value !== '' && !$('serial').value.trim();
   $('serial-help').hidden = !needsSerial;
   const actionArea = $(selectionStep || manual ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
@@ -429,7 +429,7 @@ async function act(action) {
     $('device-choice').focus();
     return;
   }
-  if (action === 'start' && selectionStep && $('device-choice').value === 'custom' && !$('serial').value.trim()) {
+  if (action === 'start' && selectionStep && $('device-choice').value !== '' && !$('serial').value.trim()) {
     actionError = 'serial';
     fieldError('serial', 'Enter a serial number.', 'serial', true);
     return;

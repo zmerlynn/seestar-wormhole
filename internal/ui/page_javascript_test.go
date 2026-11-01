@@ -162,7 +162,7 @@ func TestChangeTelescopeChoosingPage(t *testing.T) {
 }
 
 func TestManualPickerPage(t *testing.T) {
-	for _, scenario := range []string{"label", "order", "initial order", "empty status", "serial help", "validation", "optional model"} {
+	for _, scenario := range []string{"label", "order", "initial order", "empty status", "serial help", "validation", "optional model", "saved without serial"} {
 		t.Run(scenario, func(t *testing.T) {
 			runPageRegression(t, "picker-ux-test.js", "checkManualPicker("+strconv.Quote(scenario)+")")
 		})
