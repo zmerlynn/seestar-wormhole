@@ -432,9 +432,11 @@ marker. Serial labels use the same ASCII escaping without truncation. The deskto
 exposes the choices structurally only for multiple devices without a serial;
 its Telescope picker below the account fields fills the exact wire serial and
 model for the next Connect. **Find on my account** is the default and clears
-the pair. After several telescopes are found for the current account, the empty
+the pair. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
+After several telescopes are found for the current account, the empty
 option reads **Choose a telescope…** until that selection step clears or the
-account changes. Connect remains explicit; Custom… reveals manual
+account changes. In that step, **Your account has several telescopes. Choose one, then Connect.**
+replaces the discovery help; only one picker help line appears at a time. Connect remains explicit; Custom… reveals manual
 Serial and Model fields. A saved pair is selected on load. Received choices
 remain in memory for this app run and are never added to the settings file.
 

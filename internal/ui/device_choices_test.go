@@ -120,7 +120,7 @@ func TestDeviceChoicesUIAPI(t *testing.T) {
 
 func TestDevicePickerBindings(t *testing.T) {
 	html, _ := assets.ReadFile("web/index.html")
-	for _, want := range []string{`<div id="device-picker">`, `<label for="device-choice">Telescope</label>`, `<select id="device-choice" aria-describedby="selection-help"></select>`, `<p id="selection-help" class="help" hidden>Your account has several telescopes. Choose one, then Connect.</p>`} {
+	for _, want := range []string{`<div id="device-picker">`, `<label for="device-choice">Telescope</label>`, `<select id="device-choice" aria-describedby="selection-help"></select>`, `<p id="selection-help" class="help">Connect uses your only telescope, or asks which one if there are several.</p>`} {
 		if !strings.Contains(string(html), want) {
 			t.Fatalf("picker binding missing: %s", want)
 		}

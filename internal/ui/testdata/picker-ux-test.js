@@ -25,13 +25,20 @@ async function checkPickerLabels() {
  const {idle,multiple}=uxFixture(); render({...idle,devices:[]});
  const label=()=>$('device-choice').children[0].textContent;
  uxAssert(label()==='Find on my account', 'initial empty label');
- uxAssert($('selection-help').hidden, 'help before discovery');
+ checkDiscoveryHelp('before discovery');
  render(multiple);
  uxAssert(label()==='Choose a telescope…', 'selection empty label');
  $('email').value='other@example.invalid'; $('email').dispatchEvent({type:'input'});
  uxAssert(label()==='Find on my account', 'account edit did not reset label');
+ checkDiscoveryHelp('account edit');
  $('email').value=idle.settings.email; $('email').dispatchEvent({type:'input'});
  uxAssert(label()==='Choose a telescope…', 'same account selection label');
  render(idle);
  uxAssert(label()==='Find on my account', 'cleared step did not reset label');
+ checkDiscoveryHelp('cleared step');
+}
+
+function checkDiscoveryHelp(step) {
+ uxAssert(!$('selection-help').hidden && $('selection-help').textContent === 'Connect uses your only telescope, or asks which one if there are several.', 'discovery help '+step);
+ uxAssert($('device-choice').attributes['aria-describedby'] === 'selection-help', 'discovery help association '+step);
 }

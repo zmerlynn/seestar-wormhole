@@ -93,8 +93,8 @@ fills the exact account pair and shows **Ready to connect**; choose Connect
 to start the session. The empty option now reads **Choose a telescope…**;
 Connect with it still selected in this step keeps
 the picker focused without another account request. Outside this step, including
-a changed account, it reverts to **Find on my account**. There is no extra help
-line before discovery.
+a changed account, it reverts to **Find on my account**. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
+The selection-step help replaces that line; only one picker help line appears at a time.
 
 **Custom…** reveals **Serial number (optional)** and **Model (optional)** below
 the picker for manual entry. Choosing another entry hides these fields and

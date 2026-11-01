@@ -249,7 +249,7 @@ function controls() {
   $('port-permissions').hidden = code !== 'http_permission';
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
-  $('selection-help').hidden = !selectionStep;
+  text('selection-help', selectionStep ? 'Your account has several telescopes. Choose one, then Connect.' : 'Connect uses your only telescope, or asks which one if there are several.');
   if ($('device-choice').children.length) textOptionLabel();
   const actionArea = $(selectionStep ? 'picker-action' : 'primary-action');
   if ($('start').parentElement !== actionArea) actionArea.append($('start'));
