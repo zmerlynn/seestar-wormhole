@@ -8,6 +8,7 @@ class TestElement {
   append(...children) {this.children.push(...children);}
   replaceChildren(...children) {this.children = children; this.value = '';}
   addEventListener() {}
+  focus() {document.activeElement = this;}
   removeAttribute(name) {delete this.attributes[name];}
   setAttribute(name, value) {this.attributes[name] = value;}
   querySelector() {return new TestElement();}

@@ -176,6 +176,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			s.settings = in.Settings
 			s.mu.Unlock()
 		}
+	case "/api/change-telescope":
+		err = s.controller.changeTelescope()
+
 	case "/api/stop":
 		s.controller.stop()
 
@@ -258,7 +261,12 @@ func (s *server) saveSettings(settings Settings) error {
 			}
 		}
 	}
+	// Publish saved fields only after persistence succeeds. Failed writes retain
+	// the last visible values while the controller owns the retry snapshot.
 	err := s.storage.write("config.json", settings)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	s.settings = settings
 	s.mu.Unlock()

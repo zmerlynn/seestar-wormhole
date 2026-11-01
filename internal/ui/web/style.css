@@ -236,3 +236,10 @@ select {
 footer a,#port-permissions a {
   color:var(--focus)
 }
+
+.telescope-status {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+}

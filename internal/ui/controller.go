@@ -21,6 +21,7 @@ type controller struct {
 	cancel             context.CancelFunc
 	status             *proxy.Status
 	stopping, quitting bool
+	changing           bool
 	final              string
 	failure            *ActionError
 	save               func(Settings) error
@@ -43,7 +44,7 @@ func (c *controller) start(s Settings, password string) error {
 	defer c.saveMu.Unlock()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.done != nil || c.quitting {
+	if c.done != nil || c.quitting || c.changing {
 		return errors.New("Stop the current run before starting again")
 	}
 	ctx, cancel := context.WithCancel(c.parent)
@@ -132,6 +133,27 @@ func (c *controller) stop() {
 		c.stopping = true
 		c.cancel()
 	}
+}
+
+// changeTelescope uses Stop's cancellation and joins the run, including release
+// and its final boundary save, before replacing the persisted selection.
+func (c *controller) changeTelescope() error {
+	c.mu.Lock()
+	if c.changing || c.quitting || c.done == nil || c.status.SelectedDevice() == "" {
+		c.mu.Unlock()
+		return &ActionError{Code: "connection"}
+	}
+	c.changing = true
+	done := c.done
+	s := c.runSettings
+	c.mu.Unlock()
+	defer func() { c.mu.Lock(); c.changing = false; c.mu.Unlock() }()
+	c.stop()
+	<-done
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	s.Serial, s.Model = "", ""
+	return c.persistLocked(s)
 }
 
 // quit joins cleanup even when startup has not yet returned a session.

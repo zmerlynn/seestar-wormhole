@@ -232,6 +232,8 @@ function controls() {
   $('forget').hidden = !password.saved;
   $('forget').disabled = blocked || !!pending || password.busy;
   $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
+  $('change-telescope').hidden = !state?.selected_device;
+  $('change-telescope').disabled = blocked || !!pending || !!state?.stopping;
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
@@ -244,6 +246,7 @@ function controls() {
   text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selection entered' : 'Automatic');
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
 }
+let retryTelescopeChange = false;
 let pickerKey = '';
 function devicePicker(devices) {
   const key = JSON.stringify(devices);
@@ -351,7 +354,7 @@ async function refresh() {
 async function poll() {
   if (ended) return;
   try {
-    if (!pending || ['stop','quit'].includes(pending)) await refresh();
+    if (!pending || ['stop','quit','change-telescope'].includes(pending)) await refresh();
   } catch (_) {
     if (ended) return;
     connected = false;
@@ -384,6 +387,7 @@ async function act(action) {
     });
     if (ended || pending !== action) return;
     if (action === 'start') lastFailure = '';
+    if (['start','password/save'].includes(action)) retryTelescopeChange = false;
     if (action === 'password/save' || action === 'forget') {
       $('password').value = '';
       if (action === 'forget') {
@@ -399,6 +403,15 @@ async function act(action) {
       return;
     }
     await refresh();
+    if (action === 'change-telescope' || (action === 'retry-storage' && retryTelescopeChange)) {
+      $('serial').value = state.settings.serial || '';
+      $('model').value = state.settings.model || '';
+      clearField('serial');
+      clearField('model');
+      retryTelescopeChange = false;
+      alertText('');
+      focusTarget = 'start';
+    }
     if (['password/save','forget'].includes(action)) {
       say(passwordState().notice || '');
       focusTarget = action === 'password/save' ? 'forget' : 'password';
@@ -416,6 +429,7 @@ async function act(action) {
       } catch (_) {
       }
     }
+    if (action === 'change-telescope' && e.code === 'storage') retryTelescopeChange = true;
     fail(e);
     errorField = e.field || '';
   } finally {
@@ -436,7 +450,7 @@ $('settings').addEventListener('submit', e => {
 $('start').addEventListener('click', () => {
   if (active) act('stop');
 });
-for (const [id,action] of [['save-password','password/save'],['forget','forget'],['quit','quit'],['retry-storage','retry-storage']]) {
+for (const [id,action] of [['change-telescope','change-telescope'],['save-password','password/save'],['forget','forget'],['quit','quit'],['retry-storage','retry-storage']]) {
   $(id).addEventListener('click', () => act(action));
 }
 $('email').addEventListener('input', () => {

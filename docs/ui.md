@@ -82,6 +82,8 @@ same ports, stop it first.
 ## Advanced
 
 The status shows `Telescope: <public model> <masked serial>` after selection.
+The **Change telescope** button beside it stops the session and waits for release.
+While it waits, the status reads **Stopping — releasing the Seestar session…**.
 
 ### Telescope selection
 
@@ -91,7 +93,17 @@ picker showing each model and full serial number. Choosing a telescope fills
 Serial and Model in Advanced with the exact account values; choose Connect
 again to try that pair. You can also enter both fields exactly as your account
 shows them. The list is excluded from logs and Copy diagnostic summary;
-selected-telescope status and device-selection logs keep serials masked. See [device selection](reference.md#device-selection).
+selected-telescope status and device-selection logs keep serials masked.
+
+Choose **Change telescope** to stop the current session and clear the saved
+Serial and Model fields. After the save succeeds, the status reads **Stopped.
+Seestar may still be releasing the session.**, the telescope line and button
+disappear, and Connect is available with both fields empty. Choose Connect to
+list the account's telescopes again; with only one telescope, it connects to
+that telescope automatically. The button is disabled during a stop or save.
+If saving fails, the session stays stopped and the fields stay filled; the
+existing settings-save error offers **Retry saving settings**. A successful
+retry clears the fields. See [device selection](reference.md#device-selection).
 
 ### Timing and idle
 
