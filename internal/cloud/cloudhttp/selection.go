@@ -12,7 +12,8 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// SelectDevice resolves serial and model from the account catalog. With no
+// SelectDevice resolves serial and model from the account catalog, or verifies
+// an explicit pair through detail when its serial is absent. With no
 // serial, exactly one pair must exist. Local client policy
 // requires a model to disambiguate multiple models for one serial. For a single
 // matching entry, an explicit model must agree with the catalog.
@@ -26,14 +27,38 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 	if err != nil {
 		return Device{}, err
 	}
+	// The spec's detail workflow supplies both identity fields; serial-only
+	// detail lookup is not established. Never bypass a catalog model mismatch.
+	if d.Serial != "" && d.Model != "" {
+		found := false
+		for _, v := range devices {
+			found = found || v.Serial() == d.Serial
+		}
+		if !found {
+			v, detailErr := c.Detail(ctx, d)
+			if detailErr == nil {
+				return c.selectedDevice(v), nil
+			}
+			var mismatch *detailIdentityMismatch
+			if !errors.As(detailErr, &mismatch) {
+				return Device{}, detailErr
+			}
+		}
+	}
 	if (!complete || duplicates) && d.Model == "" {
-		return Device{}, diagnostic.Wrap("device_selection", "incomplete catalog; name --model to select a received pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "incomplete catalog; name --model to select a received pair"}))
+		return Device{}, &SelectionError{
+			cause:   diagnostic.Wrap("device_selection", "incomplete catalog; name --model to select a received pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "incomplete catalog; name --model to select a received pair"})),
+			choices: selectionChoices(devices), Multiple: d.Serial == "" && len(devices) > 1,
+		}
 	}
 	if len(devices) == 0 {
 		return Device{}, diagnostic.Wrap("device_selection", "no devices on account", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"}))
 	}
 	if d.Serial == "" && len(devices) != 1 {
-		return Device{}, diagnostic.Wrap("device_selection", "multiple devices on account; set --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"}))
+		return Device{}, &SelectionError{
+			cause:   diagnostic.Wrap("device_selection", "multiple devices on account; set --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"})),
+			choices: selectionChoices(devices), Multiple: d.Serial == "" && len(devices) > 1,
+		}
 	}
 	var matches []cloud.Detail
 	for _, v := range devices {
@@ -48,11 +73,14 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 		}
 		// Keep this catalog refusal outside OptionError: startup discards its
 		// pending dependency logs for option-validation errors.
-		return Device{}, fmt.Errorf("model_mismatch: --model %q differs from catalog model %q: %w", d.Model, v.Model(), cloud.ErrConfig)
+		return Device{}, fmt.Errorf("model_mismatch: --model %q differs from catalog model %q: %w", displayModel(d.Model), displayModel(v.Model()), cloud.ErrConfig)
 	}
 	if len(matches) > 1 || (!complete && len(matches) == 1) {
 		if d.Model == "" {
-			return Device{}, diagnostic.Wrap("device_selection", "serial is ambiguous; name --model to select a catalog pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "serial is ambiguous; name --model to select a catalog pair"}))
+			return Device{}, &SelectionError{
+				cause:   diagnostic.Wrap("device_selection", "serial is ambiguous; name --model to select a catalog pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "serial is ambiguous; name --model to select a catalog pair"})),
+				choices: selectionChoices(devices), Multiple: d.Serial == "" && len(devices) > 1,
+			}
 		}
 		matched := false
 		for _, v := range matches {
@@ -67,16 +95,22 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 		}
 	}
 	if len(matches) == 1 {
-		v := matches[0]
-		if c.logger != nil {
-			c.logger.Info("device_selected", "model", displayModel(v.Model()), "serial", maskedSerial(v.Serial()))
-		}
-		return Device{Serial: v.Serial(), Model: v.Model()}, nil
+		return c.selectedDevice(matches[0]), nil
 	}
 	return Device{}, diagnostic.Wrap("device_selection", "--serial not found on account; check --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"}))
 }
 
-// devices pages the catalog: use positive reply current (otherwise the
+func (c *Client) selectedDevice(v cloud.Detail) Device {
+	if c.logger != nil {
+		c.logger.Info("device_selected", "model", displayModel(v.Model()), "serial", displaySerial(v.Serial()))
+	}
+	return Device{Serial: v.Serial(), Model: v.Model()}
+}
+
+// devices requests isContainShared=3 on every page, matching the app 3.3.2
+// connect screen (READ), not an observed difference for shared accounts:
+// https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection
+// It pages the catalog: use positive reply current (otherwise the
 // requested page), count wire items including duplicates, and load current+1
 // only while the accumulated count is below total. Null items count as empty.
 // Local client policy proves completeness only at a positive, exact total;
@@ -89,6 +123,17 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 // R13c/R13d are inferred guidance; duplicate veto and enumeration budgets are additional local policy:
 // https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#device-selection
 func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete, hasDuplicates bool, err error) {
+	var receivedPairs []Device
+	defer func() {
+		catalog := newCatalog(receivedPairs, err == nil && complete && !hasDuplicates)
+		if c.logger != nil {
+			c.logger.InfoContext(ctx, "device_catalog", "devices", catalog.Pairs, "count", catalog.Count, "complete", catalog.Complete, "omitted", catalog.Omitted)
+		}
+		if c.catalogObserver != nil {
+			c.catalogObserver(catalog)
+		}
+	}()
+
 	finish := diagnostic.Operation(c.logger, "device_list")
 	defer func() { finish(err) }()
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
@@ -97,7 +142,7 @@ func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete,
 	previousTotal := -1
 	received, current := 0, 1
 	for requests := 1; requests <= 16; requests++ {
-		q := url.Values{"current": {strconv.Itoa(current)}, "pageSize": {"100"}}
+		q := url.Values{"current": {strconv.Itoa(current)}, "pageSize": {"100"}, "isContainShared": {"3"}}
 		info, b, e := c.exchange(ctx, "/v1/my-device", q, nil, nil)
 		page, parseErr := cloud.ParseDevicePageWithLogger(b, c.logger)
 		err = responseError(info, b, parseErr, e)
@@ -122,6 +167,7 @@ func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete,
 			}
 			seen[pair] = true
 			devices = append(devices, v)
+			receivedPairs = append(receivedPairs, pair)
 		}
 		changedTotal := requests > 1 && page.Total != previousTotal
 		if c.logger != nil && (page.Total > 256 || changedTotal || duplicates > 0) {
@@ -143,25 +189,44 @@ func (c *Client) devices(ctx context.Context) (devices []cloud.Detail, complete,
 	return devices, false, received != len(devices), nil
 }
 
-// Model is server-supplied text, so only public product labels enter logs. An
-// unknown value still selects correctly but is displayed as [unknown model].
-func displayModel(model string) string {
-	switch model {
-	case "S50 Pro", "S50", "S30", "S30 Pro":
-		return model
+// DisplayName is the escaped, bounded model and full serial used for status.
+func (d Device) DisplayName() string {
+	model := d.Model
+	if model == "" {
+		model = "Seestar"
 	}
-	return "[unknown model]"
+	return displayModel(model) + " " + displaySerial(d.Serial)
 }
-func maskedSerial(serial string) string {
-	// Never expose a complete short identifier or untrusted suffix characters.
-	if len(serial) <= 8 {
-		return "***"
+
+// displaySerial preserves valid printable ASCII identities verbatim, without a cap.
+// Escape untrusted values outside the serial policy without truncating them.
+func displaySerial(serial string) string {
+	if ValidSerial(serial) {
+		return serial
 	}
-	tail := serial[len(serial)-4:]
-	for _, c := range tail {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
-			return "***"
+	quoted := strconv.QuoteToASCII(serial)
+	return quoted[1 : len(quoted)-1]
+}
+
+// displayModel uses Go's ASCII string escaping for model labels.
+// The 64-character limit includes escapes and a truncation marker. Wire values
+// remain untouched for selection. Dropping whole runes preserves whole escapes.
+func displayModel(model string) string {
+	r := []rune(model)
+	truncated := len(r) > 64
+	if truncated {
+		r = r[:64]
+	}
+	for {
+		quoted := strconv.QuoteToASCII(string(r))
+		label := quoted[1 : len(quoted)-1]
+		if !truncated && len(label) <= 64 {
+			return label
 		}
+		if len(label) <= 61 {
+			return label + "..."
+		}
+		truncated = true
+		r = r[:len(r)-1]
 	}
-	return "***" + tail
 }

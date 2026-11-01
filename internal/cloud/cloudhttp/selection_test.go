@@ -15,10 +15,12 @@ import (
 )
 
 type selectionCloud struct {
-	bodies  []string
-	status  int
-	paths   []string
-	queries []string
+	bodies     []string
+	detailBody string
+	sharedOnly bool
+	status     int
+	paths      []string
+	queries    []string
 }
 
 func (f *selectionCloud) RoundTrip(r *http.Request) (*http.Response, error) {
@@ -33,12 +35,21 @@ func (f *selectionCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 		b = `{"code":0,"data":{"accessToken":"token-sentinel-secret"}}`
 	case "/v1/user/current-profile":
 		b = `{"code":0,"data":{"id":"profile-sentinel"}}`
+	case "/v1/my-device/detail":
+		if f.detailBody == "" {
+			return nil, errors.New("unexpected detail")
+		}
+		b = f.detailBody
 	case "/v1/my-device":
 		if r.Header.Get("Authorization") != "token-sentinel-secret" {
 			return nil, errors.New("token-sentinel-secret: missing auth")
 		}
 		if len(f.bodies) == 0 {
 			return nil, errors.New("serial-sentinel-secret: unexpected list")
+		}
+		if f.sharedOnly && r.URL.Query().Get("isContainShared") != "3" {
+			b = emptyDevices
+			break
 		}
 		b = f.bodies[0]
 		f.bodies = f.bodies[1:]
@@ -69,7 +80,7 @@ func selectionClient(t *testing.T, f *selectionCloud, logs *bytes.Buffer, level 
 }
 func assertSelectionSecrets(t *testing.T, s string) {
 	t.Helper()
-	for _, secret := range []string{"token-sentinel-secret", "serial-sentinel-secret-1234", "other-serial-sentinel-5678", "fixture@example.invalid", "fixture-password", "profile-sentinel"} {
+	for _, secret := range []string{"token-sentinel-secret", "fixture@example.invalid", "fixture-password", "profile-sentinel"} {
 		if strings.Contains(s, secret) {
 			t.Fatal("secret escaped selection diagnostics")
 		}
@@ -120,13 +131,16 @@ func TestDeviceSelection(t *testing.T) {
 						t.Fatalf("want fixed catalog option/rule, got %v", err)
 					}
 					if tc.reason == "multiple devices on account" {
-						for _, s := range []string{"S50 Pro", "***1234", "S30", "***5678"} {
-							if strings.Contains(logs.String(), s) || strings.Contains(err.Error(), s) {
+						assertCloudSecretSafe(t, err, logs.String())
+						for _, s := range []string{"S50 Pro", "serial-sentinel-secret-1234", "S30", "other-serial-sentinel-5678"} {
+							if strings.Contains(err.Error(), s) {
 								t.Fatalf("catalog label %q escaped ambiguous rejection", s)
 							}
 						}
 					}
-					assertSelectionSecrets(t, err.Error())
+					if tc.reason != "multiple devices on account" {
+						assertSelectionSecrets(t, err.Error())
+					}
 				}
 				if tc.listed && !strings.Contains(strings.Join(f.paths, ","), "/v1/my-device") {
 					t.Fatal("device list not requested")
@@ -135,7 +149,7 @@ func TestDeviceSelection(t *testing.T) {
 					t.Fatal("explicit selection performed discovery")
 				}
 				if tc.reason == "" && tc.listed {
-					for _, s := range []string{`"level":"INFO"`, `"msg":"device_selected"`, tc.want.Model, "***"} {
+					for _, s := range []string{`"level":"INFO"`, `"msg":"device_selected"`, tc.want.Model, tc.want.Serial} {
 						if !strings.Contains(logs.String(), s) {
 							t.Fatalf("missing selection log %s", &logs)
 						}
@@ -180,22 +194,22 @@ func TestDeviceSelectionPagination(t *testing.T) {
 	if err != nil || got.Model != "S30" {
 		t.Fatalf("second page lookup failed: %v", err)
 	}
-	if len(f.queries) != 4 || f.queries[2] != "current=1&pageSize=100" || f.queries[3] != "current=2&pageSize=100" {
+	if len(f.queries) != 4 || f.queries[2] != "current=1&isContainShared=3&pageSize=100" || f.queries[3] != "current=2&isContainShared=3&pageSize=100" {
 		t.Fatalf("queries=%v", f.queries)
 	}
 	assertSelectionSecrets(t, logs.String())
 }
-func TestDeviceSelectionMaskedShortSerialAndUntrustedModel(t *testing.T) {
+func TestDeviceSelectionFullShortSerialAndUntrustedModel(t *testing.T) {
 	for _, serial := range []string{"x", "1234", "12345"} {
 		var logs bytes.Buffer
 		body := strings.Replace(oneDevice, "serial-sentinel-secret-1234", serial, 1)
-		body = strings.Replace(body, "S50 Pro", "token-sentinel-secret", 1)
+		body = strings.Replace(body, "S50 Pro", "Future telescope", 1)
 		c := selectionClient(t, &selectionCloud{bodies: []string{body}}, &logs, slog.LevelInfo)
 		if _, err := c.SelectDevice(t.Context(), Device{}); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Contains(logs.String(), serial) {
-			t.Fatal("full short serial in logs")
+		if !strings.Contains(logs.String(), `"serial":"`+serial+`"`) {
+			t.Fatal("full short serial missing from logs")
 		}
 		assertSelectionSecrets(t, logs.String())
 	}
@@ -220,4 +234,16 @@ func TestDeviceSelectionTransportFailure(t *testing.T) {
 		t.Fatalf("got %v, want transport failure", err)
 	}
 	assertSelectionSecrets(t, logs.String()+err.Error())
+}
+
+// The fake exposes its shared-only telescope only in connect-screen list mode.
+// This models the contract; it is not an observation of server filtering.
+func TestSharedOnlySelection(t *testing.T) {
+	var logs bytes.Buffer
+	f := &selectionCloud{bodies: []string{oneDevice}, sharedOnly: true}
+	c := selectionClient(t, f, &logs, slog.LevelInfo)
+	got, err := c.SelectDevice(t.Context(), Device{})
+	if err != nil || got != (Device{"serial-sentinel-secret-1234", "S50 Pro"}) {
+		t.Fatalf("shared-only selection=%v error=%v", got, err)
+	}
 }

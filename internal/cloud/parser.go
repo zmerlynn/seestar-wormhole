@@ -81,6 +81,20 @@ func validString(s string) bool {
 	return strings.TrimSpace(s) != "" && !strings.ContainsRune(s, 0)
 }
 
+// ValidSerial accepts 1-64 printable ASCII bytes, excluding space.
+// Cloud identities and outgoing device requests share this local policy.
+func ValidSerial(serial string) bool {
+	if len(serial) == 0 || len(serial) > 64 {
+		return false
+	}
+	for i := range len(serial) {
+		if serial[i] < 0x21 || serial[i] > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
 // ParseOnline returns a cleanup identifier from a complete JSON response, even
 // when other consumed fields or the cloud code prevent allocation. The caller
 // must stop it unless ownership transfers to a lease with deferred cleanup.
@@ -149,8 +163,8 @@ func (d deviceIdentity) detail() (Detail, error) {
 	if d.SSID == nil {
 		return Detail{}, invalid("data.ssid", "string")
 	}
-	if !validString(d.Serial) {
-		return Detail{}, invalid("data.deviceSn", "nonblank_string_without_nul")
+	if !ValidSerial(d.Serial) {
+		return Detail{}, invalid("data.deviceSn", "serial_ascii_1_64")
 	}
 	if !validString(d.Model) {
 		return Detail{}, invalid("data.deviceModel", "nonblank_string_without_nul")
@@ -180,7 +194,7 @@ func ParseDetail(b []byte) (Detail, error) {
 		Model  string `json:"deviceModel"`
 	}
 	var identity Detail
-	if decodeJSON(r.Data, &pair) == nil && validString(pair.Serial) && validString(pair.Model) {
+	if decodeJSON(r.Data, &pair) == nil && ValidSerial(pair.Serial) && validString(pair.Model) {
 		identity = Detail{serial: pair.Serial, model: pair.Model}
 	}
 	var d deviceIdentity

@@ -62,7 +62,7 @@ pasting them into a command line.
 Include the version (`seestar-wormhole-cli --version`), your platform, the
 telescope model and firmware, and the log lines around the problem. The logs
 leave out your credentials, and errors leave out file paths, but some lines
-include a partly masked serial number or your network addresses. Read them over and remove anything you'd
+include a full serial number or your network addresses. Read them over and remove anything you'd
 rather keep before posting.
 
 ## The native window didn't open

@@ -49,6 +49,23 @@
     }
   };
   try {
+    await check('Connected telescope status row', async () => {
+      const label = 'Seestar S50 Pro synthetic-choice-1234';
+      const message = 'Connected to ' + label;
+      const event = {time:'2026-01-01T19:16:00Z',message,code:'lifecycle',phase:'',reason:''};
+      render({...status(),active:true,status:message,selected_device:label,events:[event]});
+      assert($('status').textContent === message && !$('selected-device') && !$('change-telescope') && !$('change-telescope-help'), 'connected row retained separate telescope controls');
+      assert($('start').textContent === 'Stop' && $('start').parentElement === $('primary-action') && $('announcements').nextElementSibling === $('primary-action') && $('settings').hidden, 'Stop must be directly below running status');
+      assert($('events').children[0].textContent.endsWith('  '+message) && JSON.parse(diagnostic).events[0].message === message, 'selected status lost in events or copied summary');
+    });
+    await check('Buttons share font size', async () => {
+      const size = getComputedStyle($('quit')).fontSize;
+      for (const id of ['start','save-password','forget','retry-storage','copy']) {
+        assert(getComputedStyle($(id)).fontSize === size, 'Quit size differs from '+id);
+      }
+      const primary = getComputedStyle($('start'));
+      assert(Number(primary.fontWeight) >= 600 && primary.borderTopWidth === '2px', 'Connect/Stop lost bold text or border');
+    });
     await check('Setup help and services grouping', async () => {
       applyGoal('custom');
       const custom = $('custom-help'), discovery = $('discovery-help');
@@ -57,8 +74,11 @@
       assert(discovery.previousElementSibling === $('discovery').closest('label') && discovery.classList.contains('help') && parseFloat(getComputedStyle(discovery).marginLeft) > 0, 'discovery help detached or not indented');
       assert($('ports-error').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING && $('port-permissions').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING, 'port recovery follows the ten-row table');
       assert($('services-title').tagName === 'H2' && $('services-title').textContent === 'Services' && $('ports').getAttribute('aria-labelledby') === 'services-title', 'Services heading missing');
+      assert(document.querySelector('label[for="serial"]').textContent === 'Serial number', 'Serial label');
+      assert(document.querySelector('label[for="model"]').textContent === 'Model (optional)', 'Model label');
       for (const [id, placeholder] of [['serial', 'From your Seestar account'], ['model', 'e.g. S50 Pro']]) {
-        assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && !$(id+'-help') && $(id).getAttribute('aria-describedby').includes('selection-help'), id+' example is not placeholder-only');
+        const described = id === 'serial' ? 'serial-help serial-error' : id+'-error';
+        assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && (id === 'serial' ? $('serial-help').hidden : !$(id+'-help')) && $(id).getAttribute('aria-describedby') === described, id+' example is not placeholder-only');
       }
       assert(Array.from($('details').querySelectorAll('h2')).map(e => e.textContent).join('|') === 'Connection settings|Recent events', 'Details headings missing');
       assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous port headings');
@@ -325,14 +345,20 @@
       assert(!validate() && $('email-error').textContent === 'Enter your Seestar account email.', 'empty email copy');
     });
     await check('Details and copied summary are JSON', async () => {
-      const event = {time: '2026-01-01T19:16:00Z', message: 'App opened.', code: 'lifecycle', phase: '', reason: ''};
+      const event = {time: '2026-01-01T19:16:00Z', message: 'Account telescopes: S30 synthetic-details', code: 'lifecycle', phase: '', reason: ''};
       const effective = {idle: {mode: 'keep_connected', minutes: 0}, listen: 'all_networks', discovery: true, ports: {'80': 80}};
       render({...status(), effective, events: [event], log_path: 'synthetic-private-path'});
       assert($('effective-settings').textContent === JSON.stringify(effective, null, 2), 'Settings is not pretty JSON');
       const localTime = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
-      assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  App opened.', 'event category or UTC leaked into local list');
+      assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  Account telescopes: S30 synthetic-details', 'event category or UTC leaked into local list');
+      const detailsNodes = ['effective-settings','events','log-path','running-ports','ports'].map(id => $(id));
+      const detailsObserver = new MutationObserver(() => {});
+      for (const node of detailsNodes) detailsObserver.observe(node, {subtree: true, childList: true, characterData: true, attributes: true});
+      render({...status(), effective: JSON.parse(JSON.stringify(effective)), events: [{...event}], log_path: 'synthetic-private-path'});
+      assert(detailsObserver.takeRecords().length === 0, 'unchanged poll mutated Details or ports');
+      detailsObserver.disconnect();
       const copied = JSON.parse(diagnostic);
-      assert(Object.keys(copied).join() === 'app,version,settings,events' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && !diagnostic.includes('synthetic-private-path') && !$('mappings'), 'copied object schema/privacy');
+      assert(Object.keys(copied).join() === 'app,version,settings,events' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && copied.events[0].message === event.message && !diagnostic.includes('synthetic-private-path') && !$('mappings'), 'copied object schema/privacy');
       const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
       let clipboard = '';
       Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async value => {clipboard = value;}}});
@@ -354,11 +380,14 @@
       assert(parseFloat(style.paddingLeft) === 0 && Math.abs(textLeft - inputLeft) < 1, 'Account text is indented from inputs');
       results.push('Account computed style: padding-left=' + style.paddingLeft + ', text-left=' + textLeft + ', input-left=' + inputLeft);
     });
-    await check('S5 explicit selection copy', async () => {
+    await check('Custom telescope fields', async () => {
+      $('device-choice').value = 'custom';
+      $('device-choice').dispatchEvent(new Event('change'));
+      assert(!$('custom-device').hidden && !$('serial').closest('details') && !$('model').closest('details'), 'Custom fields remain in Advanced');
       $('model').value = 'synthetic';
-      $('model').dispatchEvent(new Event('input'));
-      assert($('telescope-selection').textContent === 'Selection entered', 'explicit telescope still described as Automatic');
-      $('model').value = '';
+      $('device-choice').value = '';
+      $('device-choice').dispatchEvent(new Event('change'));
+      assert($('custom-device').hidden && $('serial').value === '' && $('model').value === '', 'Find on my account retained Custom pair');
     });
   } finally {
     window.setTimeout = liveTimeout;

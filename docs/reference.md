@@ -232,7 +232,7 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serial/model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. Invalid saved serials refuse loading without rewriting the file. Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
@@ -406,8 +406,57 @@ List status does not determine availability; detail is authoritative.
 
 A serial shared by models requires an exact `--serial`/`--model` pair. With
 one matching entry in a complete catalog, a differing explicit `--model` fails
-with `model_mismatch`. Unmatched serials or multiple pairs without a serial identify
-`--serial` in diagnostics without exposing catalog labels or serials.
+with `model_mismatch`. If an explicit serial is absent from the catalog and
+`--model` is also supplied, selection tries detail with that pair and
+`onlyQueryOwner=false`. Only a successful detail reply matching both fields
+selects it. A definite identity mismatch in a complete successful exchange keeps
+the catalog not-found failure. Transport, timeout, authentication, server,
+busy/offline, and malformed or null detail errors retain Detail's classification.
+No documented vendor code establishes a missing device; an envelope code of
+`404` alone does not establish one. Serial-only detail
+lookup is not established by the spec, so an absent serial without `--model`
+still fails. A catalog model mismatch never uses this fallback.
+
+All detail requests, including the pre-allocation check, send
+`onlyQueryOwner=false`, as the app's connect workflow does in the
+[spec](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection).
+Unmatched serials or multiple pairs without a serial identify `--serial` in
+classified diagnostics. For multiple devices without a serial, the CLI prints
+an error to standard output listing every received distinct pair, one per line:
+model then **full serial**. Pass `--serial` with one of them. Incomplete-catalog, duplicate, and ambiguous
+serial refusals also list the received pairs. These lists are command output,
+not log records. Invalid serials are omitted using the command's serial rules;
+all model labels use Go ASCII string escaping (without enclosing quotes) and
+are capped at 64 display characters, including escapes and a `...` truncation
+marker. Valid serial labels preserve printable ASCII verbatim without truncation; log encoders still escape their own syntax. The desktop
+exposes the choices structurally only for multiple devices without a serial;
+its Telescope picker below the account fields fills the exact wire serial and
+model for the next Connect. **Find on my account** is the default and clears
+the pair. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
+After several telescopes are found for the current account, the empty
+option reads **Choose a telescope…** until that selection step clears or the
+account changes. In that step, **Your account has several telescopes. Choose one, then Connect.**
+replaces the discovery help; only one picker help line appears at a time. Connect remains explicit; Enter manually… reveals manual
+Serial and Model fields, with Connect after them in DOM and visual order. In manual
+entry, an empty Serial shows **Enter a serial number.** Connect validates it locally
+without an account request. The instruction and validation error are associated with Serial. A usable serial shows
+**Ready to connect**; Model remains optional. A saved pair is selected on load. An entry found only in settings is labeled
+**Saved: {model} {serial}**, using the same escaping and capping as received
+labels. If it is the only identity entry, **Choose “Find on my account”, then Connect to load other telescopes.**
+replaces the picker help. A saved pair also received from the current account
+appears once with its received label. Selection failures for a chosen pair say
+**Choose “Find on my account” to reload telescopes, or check Serial and Model.**
+Absence from the catalog alone is not invalid; the detail fallback above remains.
+Received choices
+remain in memory for this app run and are never added to the settings file.
+To switch telescopes, choose Stop, choose **Find on my account** or another
+picker entry, then Connect. Several telescopes still enter the selection step.
+
+Every catalog page requests `isContainShared=3`, the mode sent by the
+app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).
+This follows the app's request; it is not evidence that mode 3 adds shared
+or rental devices. The server meaning of mode 3 and the omitted parameter's
+default remain unknown.
 
 The proxy requests 100 items per page (local policy), at most 16 pages and
 256 distinct pairs, with one 30-second per-catalog-operation timeout,
@@ -419,8 +468,15 @@ Missing, null, zero, understated totals, page-limit exhaustion, or any exact
 pair duplicate require `--model`. Select a received exact pair with serial and
 model when completeness cannot be proven. Detail must then match both identity
 fields before allocation; mismatch stops the dial. Selection itself makes no
-device-session allocation. INFO reports only a public model label and masked
-serial; unknown model labels are redacted. Duplicate counts appear at DEBUG.
+device-session allocation. INFO reports a model label and full serial. Model labels use Go ASCII string escaping without control or format characters and are capped at 64 display characters, including escapes and a `...` truncation marker. Valid serials appear verbatim without truncation. The desktop status includes `<public model> <full serial>` once
+selection succeeds, for example `Connected to Seestar S50 Pro {serial}`.
+An empty model uses `Seestar {serial}`. The CLI's
+existing ready records include the same label in `telescope`; the INFO
+`device_selected` record keeps its separate `model` and `serial` fields.
+Public labels include the [spec's exact catalog names](https://github.com/zmerlynn/seestar-spec/blob/384340c4e37d9fd1acd230fe0a9f9fe3ceac11e7/spec/auth/cloud-auth/http-api.md#device-selection): `Seestar S50`,
+`Seestar S50 Pro`, `Seestar S30`, `Seestar S30 Pro`, `Seestar S30 Plus`, and
+`Seestar S80`, alongside the existing short labels. Wire model values are
+preserved. Duplicate counts appear at DEBUG.
 
 ## Installation identity
 
@@ -441,13 +497,24 @@ by default and shares this exact identity format.
 
 ## Logs
 
-Help, version, and license text go to stdout. Logs/errors go
-to stderr. Normal logging uses the selected format and level.
+Help, version, license text, and received telescope lists go to stdout.
+Classified logs/errors go to stderr. Normal logging uses the selected format and level.
 Use WARN for quieter long-running service logs.
-Rejected startup suppresses pending dependency records and reports their loss at WARN; diagnostic loss makes the final command result fail.
+Rejected startup suppresses pending dependency records except `device_catalog`
+and reports their loss at WARN; diagnostic loss makes the final command result fail.
 Most diagnostic records contain fixed classifications and numeric context,
 not dependency error text, forwarded payloads, or session secrets. Device
-selection masks serials.
+selection includes full serials in logs without truncation; valid serials preserve printable ASCII verbatim, with syntax escaping supplied by the log encoder. Model labels retain their 64-character display cap.
+The selected telescope also appears in lifecycle events and the copied diagnostic
+summary. Each catalog fetch also records the account's received telescope pairs,
+including a single telescope, before selection succeeds or fails. Recent events
+and the copied summary include `Account telescopes: {telescope}, …`, using
+the same escaped labels as status, or `Account telescopes (list may be incomplete):
+{telescope}, …` when completeness is unproven (including duplicate evidence).
+An empty catalog reads `Account telescopes: none`. The line is capped at 4096
+bytes at whole-label boundaries, ending with `… and N more` when cut; the
+existing 80-event history and private-log rotation bounds still apply.
+The CLI's multiple-device stdout list is unchanged.
 `wildcard_bind_warning` intentionally includes interface/address exposure.
 
 The UI records its unreachable-Seestar hint as a `lifecycle` event in `gui.log` and the copied diagnostic
@@ -459,13 +526,14 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 | Record | Level | Meaning and useful fields |
 |---|---|---|
 | `proxy_started` | INFO | Revision, listener count, lazy flag, pause threshold; process serving, not necessarily remote ready |
-| `installation_id_ephemeral`, `device_selected` | INFO | Identity storage mode; selected public model and masked serial |
-| `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy |
+| `installation_id_ephemeral`, `device_selected` | INFO | Identity storage mode; selected public model and full serial |
+| `device_catalog` | INFO | Every catalog fetch, including selection refusals: `devices` contains escaped `model` labels and full `serial` pairs; `count` is the received distinct-pair count and `complete` states whether completeness was proven without duplicates. `omitted` counts pairs cut to keep the encoded array within 12 KiB and the record within 16 KiB. The log sink accepts records up to 16 KiB. Failed fetches retain successfully received pairs with `complete=false`. The private GUI log also records this schema. |
+| `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy; ready records include selected public model and full serial in `telescope` |
 | `lazy_open_attempt` | INFO | New client-triggered attempt and fixed cause |
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |
 | `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy, recovery after ready, or ownership/cleanup recovery, including initial acquisition |
 | `cloud_retry` | WARN | Catalog network/service retry and delay |
-| `device_selection_refused` | WARN | `rule=model_mismatch`; requested and catalog public model labels (unknown labels redacted) |
+| `device_selection_refused` | WARN | `rule=model_mismatch`; `requested_model` and `catalog_model` contain cloud model text with Go ASCII escaping, capped at 64 display characters including any truncation marker |
 | `release_not_attempted` | WARN | Release needs reauthentication |
 | `dtls_ready` | INFO | Negotiated version and suite |
 | `iotc_rid_history_exhausted` | ERROR | Process-lifetime rendezvous identifier reservation budget is full; fixed `error` includes restart guidance |

@@ -4,15 +4,20 @@ import (
 	"errors"
 	"sync/atomic"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
 // Status is a nonblocking latest-value projection. Only fixed UI text is
-// published; it never retains events, dependency errors, or cloud material.
+// published alongside an escaped public model label and full serial; it never retains
+// events, dependency errors, or private cloud material.
 // One session owner writes; any number of readers may load.
 type Status struct {
+	// Catalog is installed before a run starts and receives each catalog fetch.
+	Catalog   func(cloudhttp.Catalog)
 	text      atomic.Pointer[string]
+	selected  atomic.Pointer[string]
 	ready     atomic.Bool
 	armed     atomic.Bool
 	updates   chan string
@@ -134,5 +139,27 @@ func (s *Status) notify(text string) {
 	select {
 	case s.updates <- text:
 	default:
+	}
+}
+
+// SetSelectedDevice publishes only the same public identity as device_selected.
+func (s *Status) SetSelectedDevice(d cloudhttp.Device) {
+	if s != nil {
+		label := d.DisplayName()
+		s.selected.Store(&label)
+	}
+}
+func (s *Status) SelectedDevice() string {
+	if s != nil {
+		if label := s.selected.Load(); label != nil {
+			return *label
+		}
+	}
+	return ""
+}
+
+func (s *Status) RecordCatalog(c cloudhttp.Catalog) {
+	if s != nil && s.Catalog != nil {
+		s.Catalog(c)
 	}
 }

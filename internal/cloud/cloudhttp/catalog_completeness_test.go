@@ -83,11 +83,11 @@ func TestCatalogSplitModelAmbiguity(t *testing.T) {
 
 func TestCatalogCurrentPage(t *testing.T) {
 	for _, tc := range []struct{ name, first, next string }{
-		{"positive", `{"data":{"current":7,"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=8&pageSize=100"},
-		{"absent", `{"data":{"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=2&pageSize=100"},
-		{"null", `{"data":{"current":null,"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=2&pageSize=100"},
-		{"zero", `{"data":{"current":0,"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=2&pageSize=100"},
-		{"negative", `{"data":{"current":-8,"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=2&pageSize=100"},
+		{"positive", `{"data":{"current":7,"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=8&isContainShared=3&pageSize=100"},
+		{"absent", `{"data":{"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=2&isContainShared=3&pageSize=100"},
+		{"null", `{"data":{"current":null,"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=2&isContainShared=3&pageSize=100"},
+		{"zero", `{"data":{"current":0,"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=2&isContainShared=3&pageSize=100"},
+		{"negative", `{"data":{"current":-8,"total":2,"items":[{"deviceSn":"private-a","deviceModel":"S50 Pro","ssid":"first","deviceStatus":1}]}}`, "current=2&isContainShared=3&pageSize=100"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
@@ -121,7 +121,7 @@ func assertCatalogModelRequired(t *testing.T, got Device, err error) {
 	if got != (Device{}) || !errors.Is(err, cloud.ErrConfig) || !errors.As(err, &option) || option.Option != "--model" || !strings.Contains(err.Error(), "name --model") {
 		t.Fatalf("selection=%v error=%v, want config refusal naming --model", got, err)
 	}
-	assertCatalogPagePrivacy(t, err.Error())
+	// Selection errors intentionally include received catalog choices.
 }
 
 func TestCatalogMissingExplicitPair(t *testing.T) {
@@ -155,11 +155,11 @@ func TestCatalogCurrentPageFallbackAndRepeat(t *testing.T) {
 		if err != nil || got != (Device{"private-b", "S30"}) {
 			t.Fatalf("selection=%v error=%v", got, err)
 		}
-		next := "current=9&pageSize=100"
+		next := "current=9&isContainShared=3&pageSize=100"
 		if strings.Contains(second, `"current":7`) {
-			next = "current=8&pageSize=100"
+			next = "current=8&isContainShared=3&pageSize=100"
 		}
-		if len(f.queries) != 5 || f.queries[3] != "current=8&pageSize=100" || f.queries[4] != next {
+		if len(f.queries) != 5 || f.queries[3] != "current=8&isContainShared=3&pageSize=100" || f.queries[4] != next {
 			t.Fatalf("queries=%v, want reply current or requested-page fallback", f.queries)
 		}
 	}

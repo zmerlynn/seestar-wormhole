@@ -29,7 +29,7 @@ import (
 // SEESTAR_EMAIL/SEESTAR_PASSWORD supply account login. New resolves the device
 // from the account catalog before starting the owner, even when Config.Serial
 // selects an entry; Config.Model disambiguates several models for that serial.
-// The selected catalog pair supplies both fields. Lazy mode still defers
+// The selected catalog or verified detail pair supplies both fields. Lazy mode still defers
 // device-session allocation.
 func New(ctx context.Context, cfg Config) (*Session, error) {
 	c, err := cloudhttp.NewFromEnvironment(cloudhttp.Config{Logger: diagnostic.Lifecycle(cfg.Logger), StateDir: cfg.StateDir})
@@ -49,10 +49,12 @@ func NewWithCredentials(ctx context.Context, cfg Config, credentials cloud.Crede
 }
 
 func newWithClient(ctx context.Context, cfg Config, c *cloudhttp.Client) (*Session, error) {
+	c.SetCatalogObserver(cfg.Status.RecordCatalog)
 	d, err := selectDevice(ctx, c, cloudhttp.Device{Serial: cfg.Serial, Model: cfg.Model}, cfg.Logger, mathrand.NewPCG(mathrand.Uint64(), mathrand.Uint64()))
 	if err != nil {
 		return nil, closeStartupCloud(ctx, c, err)
 	}
+	cfg.Status.SetSelectedDevice(d)
 	var detail cloud.Detail
 	if cfg.LANDiscovery {
 		detail, err = c.DetailForLAN(ctx, d)
@@ -62,6 +64,7 @@ func newWithClient(ctx context.Context, cfg Config, c *cloudhttp.Client) (*Sessi
 	}
 	s, err := startSelected(ctx, cfg, detail, func(s *Session) sessionedge.Factory {
 		s.deviceDetail = detail
+		s.telescope = d.DisplayName()
 		return &factory{s: s, cloud: c, device: d, verify: iotcedge.VerifyIOTCLicense, wire: func(l iotc.License) wireRunner { return &iotcedge.IOTCIO{Mask: l.Mask, Logger: cfg.Logger} }}
 	})
 	if err != nil {

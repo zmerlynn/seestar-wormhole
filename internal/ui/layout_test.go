@@ -13,7 +13,7 @@ func TestSetupHierarchyAndRunningCopy(t *testing.T) {
 	// Pin the small setup fixture directly; the native driver also checks its
 	// rendered control styling and Account alignment in both themes.
 	last := -1
-	for _, id := range []string{"start", "goal", "trust", "account", "email", "advanced"} {
+	for _, id := range []string{"start", "goal", "trust", "account", "email", "device-picker", "custom-device", "advanced"} {
 		position := strings.Index(string(b), `id="`+id+`"`)
 		if position < 0 || position <= last {
 			t.Fatalf("setup order misplaced %s", id)
@@ -30,5 +30,43 @@ func TestSetupHierarchyAndRunningCopy(t *testing.T) {
 	}
 	if !strings.Contains(string(b), "seestar‑wormhole") {
 		t.Fatal("product name can break at its hyphen")
+	}
+}
+
+func TestManualSerialLabel(t *testing.T) {
+	b, err := assets.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, label := range []string{`<label for="serial">Serial number</label>`, `<label for="model">Model (optional)</label>`} {
+		if !strings.Contains(string(b), label) {
+			t.Fatal("manual field label missing", label)
+		}
+	}
+}
+
+func TestManualConnectGapStyle(t *testing.T) {
+	css, err := assets.ReadFile("web/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), "#custom-device:not([hidden]) + #picker-action {\n  margin-top: .75rem;\n}") {
+		t.Fatal("Connect needs a gap only below visible manual fields")
+	}
+}
+
+func TestButtonsShareFontSize(t *testing.T) {
+	css, err := assets.ReadFile("web/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(css), "footer button") {
+		t.Fatal("Quit must inherit the shared button font size")
+	}
+	if !strings.Contains(string(css), "button {\n  font:inherit;") {
+		t.Fatal("buttons must inherit the shared font")
+	}
+	if !strings.Contains(string(css), "#start {\n  font-weight:600;\n  min-width:7rem;\n  border:2px solid var(--focus)\n}") {
+		t.Fatal("Connect/Stop must retain bold text and blue border")
 	}
 }

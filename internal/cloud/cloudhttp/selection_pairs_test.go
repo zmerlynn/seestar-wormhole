@@ -34,7 +34,7 @@ func TestCatalogPairSelection(t *testing.T) {
 		} {
 			t.Run(fmt.Sprintf("%s/%d pages", tc.name, len(pages)), func(t *testing.T) {
 				var logs bytes.Buffer
-				f := &selectionCloud{bodies: append([]string(nil), pages...)}
+				f := &selectionCloud{bodies: append([]string(nil), pages...), detailBody: detail}
 				c := selectionClient(t, f, &logs, slog.LevelDebug)
 				got, err := c.SelectDevice(t.Context(), tc.input)
 				if got != tc.want {
@@ -56,9 +56,13 @@ func TestCatalogPairSelection(t *testing.T) {
 					if strings.Contains(logs.String(), "device_selected") {
 						t.Fatal("selected ambiguous or missing pair")
 					}
-					assertCatalogPagePrivacy(t, err.Error())
+					// Catalog choices intentionally expose full serials in command errors.
 				}
-				assertCatalogPageRequests(t, f, len(pages))
+				if tc.name == "absent serial" {
+					assertCatalogPageRequests(t, f, len(pages), "/v1/my-device/detail")
+				} else {
+					assertCatalogPageRequests(t, f, len(pages))
+				}
 				assertCatalogPagePrivacy(t, logs.String())
 			})
 		}

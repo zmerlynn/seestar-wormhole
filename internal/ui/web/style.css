@@ -112,6 +112,9 @@ button:disabled {
   cursor:default;
   opacity:.6
 }
+#custom-device:not([hidden]) + #picker-action {
+  margin-top: .75rem;
+}
 #start {
   font-weight:600;
   min-width:7rem;
@@ -133,9 +136,6 @@ details {
 footer {
   margin-top:1.5rem;
   color:var(--muted)
-}
-footer button {
-  font-size:.9rem
 }
 table {
   border-collapse:collapse;

@@ -2,6 +2,7 @@ package ui
 
 import (
 	"encoding/json/v2"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"io"
 	"os"
@@ -15,8 +16,8 @@ import (
 const logLimit = 64 << 10
 const eventLimit = 80
 
-// Only fixed, user-facing lifecycle categories enter either log. No dependency
-// error, settings, address, account, control capability, or payload is accepted.
+// Only fixed lifecycle messages, including the selected display label, enter
+// either log. No dependency error, account, control capability, or payload is accepted.
 type event struct {
 	Time    time.Time `json:"time"`
 	Message string    `json:"message"`
@@ -33,12 +34,23 @@ type eventLog struct {
 	failed  bool
 }
 
-func eventCode(text string) string {
+func eventCode(text, telescope string, catalogs ...cloudhttp.Catalog) string {
+	if len(catalogs) == 1 && text == catalogs[0].Message() {
+		return "lifecycle"
+	}
+	// Dynamic messages require explicit selection context and an exact template.
+	if telescope != "" {
+		for _, state := range []string{"Ready", "Waiting for a local client", "Busy — waiting for the other session", "Seestar not reachable", "Reconnecting", "Releasing idle session", "Reconnecting — waiting for cleanup/retry"} {
+			if text == telescopeText(state, telescope) {
+				return "lifecycle"
+			}
+		}
+	}
 	switch text {
 	case "App opened.", "App could not start.", "Connecting to your Seestar…", "Connected to your Seestar", "Waiting for an app to connect", "Seestar is occupied. Retrying automatically.", "Seestar isn't reachable. Check this computer's internet connection and make sure Seestar is awake and connected to Wi-Fi. Retrying automatically.", "Connection interrupted. Retrying automatically.", "Releasing idle Seestar session…", "Waiting before retrying the connection…", "Stopped", "Stopped. Seestar may still be releasing the session.", "Settings saved.", "Password saved to keychain. Checked when you connect.", "Password removed from keychain and this app.":
 		return "lifecycle"
 	}
-	for _, code := range []string{"email", "password", "idle", "ports", "ports_empty", "bind", "bind_empty", "discovery_bind", "discovery", "http_permission", "http_conflict", "port_conflict", "signin", "selection", "serial", "model", "release", "storage", "password_save", "password_remove", "password_read", "password_missing", "keychain_timeout", "connection", "busy"} {
+	for _, code := range []string{"email", "password", "idle", "ports", "ports_empty", "bind", "bind_empty", "discovery_bind", "discovery", "http_permission", "http_conflict", "port_conflict", "signin", "selection", "selection_multiple", "serial", "model", "release", "storage", "password_save", "password_remove", "password_read", "password_missing", "keychain_timeout", "connection", "busy"} {
 		if text == errorCopy(code) {
 			return code
 		}
@@ -54,14 +66,14 @@ func (l *eventLog) addFailure(text string, err error) {
 	l.diskMu.Lock()
 	defer l.diskMu.Unlock()
 	l.mu.Lock()
-	entry := l.publishLocked(text, err)
+	entry := l.publishLocked(text, err, "")
 	l.mu.Unlock()
 	l.write(entry)
 }
 
 // publishLocked records an immutable event in memory, without disk I/O.
-func (l *eventLog) publishLocked(text string, err error) *event {
-	code := eventCode(text)
+func (l *eventLog) publishLocked(text string, err error, telescope string, catalogs ...cloudhttp.Catalog) *event {
+	code := eventCode(text, telescope, catalogs...)
 	if code == "" {
 		return nil
 	}
@@ -69,7 +81,7 @@ func (l *eventLog) publishLocked(text string, err error) *event {
 	if err != nil {
 		entry.Phase, entry.Reason = diagnostic.Fields(err, "connect")
 	}
-	if len(l.recent) > 0 {
+	if len(catalogs) == 0 && len(l.recent) > 0 {
 		last := l.recent[len(l.recent)-1]
 		if last.Message == entry.Message && last.Phase == entry.Phase && last.Reason == entry.Reason {
 			return nil
@@ -164,4 +176,30 @@ func (l *eventLog) snapshot() ([]event, string, bool) {
 		path = filepath.Join(l.storage.root, "gui.log")
 	}
 	return append([]event{}, l.recent...), path, l.failed
+}
+
+// addCatalog records every fetch, including consecutive identical catalogs.
+func (l *eventLog) addCatalog(c cloudhttp.Catalog) {
+	if l == nil {
+		return
+	}
+	l.diskMu.Lock()
+	defer l.diskMu.Unlock()
+	l.mu.Lock()
+	entry := l.publishLocked(c.Message(), nil, "", c)
+	l.mu.Unlock()
+	l.write(entry)
+	record := struct {
+		Time  time.Time `json:"time"`
+		Level string    `json:"level"`
+		Msg   string    `json:"msg"`
+		cloudhttp.Catalog
+	}{time.Now().UTC(), "INFO", "device_catalog", c}
+	if l.storage != nil {
+		line, err := json.Marshal(record)
+		failed := err != nil || l.appendLine(append(line, '\n')) != nil
+		l.mu.Lock()
+		l.failed = l.failed || failed
+		l.mu.Unlock()
+	}
 }

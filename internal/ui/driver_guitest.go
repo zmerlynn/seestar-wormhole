@@ -152,13 +152,24 @@ func (d *guiTestDriver) start() error {
 }
 
 func (d *guiTestDriver) state(want string, active bool, shot string) error {
-	if err := d.serverState(want, active); err != nil {
+	serverWant := want
+	// The chosen pair is a page draft until Connect submits it.
+	if want == "Ready to connect" || want == "Enter a serial number." {
+		serverWant = "Choose a telescope"
+	}
+	if err := d.serverState(serverWant, active); err != nil {
 		return err
 	}
 
 	// Finish the action's DOM/focus transition before choosing a viewport.
 	if err := d.probe(`(() => {const want=` + strconv.Quote(want) + `,active=` + strconv.FormatBool(active) + `,status=el('status').textContent,hidden=el('settings').hidden;return check(status===want && hidden===active && (pending==='' || (state.stopping && ['stop','quit'].includes(pending))),{want,status,active,hidden,pending,stopping:state?.stopping ?? null})})()`); err != nil {
 		return err
+	}
+	if shot == "telescope-picker" || shot == "telescope-picker-again" {
+		// Observe the app's reveal before any screenshot positioning can mask it.
+		if err := d.probe(guiTestPickerTransitionViewportProbe); err != nil {
+			return err
+		}
 	}
 	if shot == "setup" {
 		// Check launch visibility before any driver scrolling can conceal a defect.
@@ -175,6 +186,11 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	case "ready-ports":
 		d.w.ExecJS(`document.getElementById('running-ports-box').scrollIntoView({block:'start'})`)
 		if err := d.probe(`(() => {const b=el('running-ports-box'),r=b.getBoundingClientRect();return check(b.open && r.top>=-1 && r.top<innerHeight,{open:b.open,rect:r,innerHeight})})()`); err != nil {
+			return err
+		}
+	case "telescope-picker", "telescope-chosen", "telescope-picker-again", "telescope-manual":
+		// Scroll on every poll: the page can still shift after the state change.
+		if err := d.probe(guiTestPickerViewportProbe); err != nil {
 			return err
 		}
 	case "advanced-top", "advanced-network":
@@ -238,7 +254,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
     return Array.from(paint.getImageData(0,0,1,1).data).slice(0,3)};
    const l=rgb=>{const v=rgb.map(n=>{n/=255;return n<=.04045?n/12.92:((n+.055)/1.055)**2.4});return .2126*v[0]+.7152*v[1]+.0722*v[2]};
    const rootRGB=sample(root),rootLuminance=l(rootRGB),failures=[];
-   for(const id of ['status','email','password','password-note','goal','forget','start','quit','events','custom-help','discovery-help','releases-link']){
+   for(const id of ['device-choice','status','email','password','password-note','goal','forget','start','quit','events','custom-help','discovery-help','releases-link']){
     const e=document.getElementById(id),s=getComputedStyle(e);if(e.matches(':disabled') || e.getClientRects().length===0) continue;
     const fg=sample(root,s.backgroundColor,s.color),bg=sample(root,s.backgroundColor);
     const x=l(fg),y=l(bg),ratio=(Math.max(x,y)+.05)/(Math.min(x,y)+.05);
@@ -336,6 +352,9 @@ func (d *guiTestDriver) drive() error {
 	d.w.ExecJS(`for(const [id,value] of [['email','gui@example.invalid'],['password','synthetic-password']]) {const e=document.getElementById(id);e.focus();e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}`)
 	if err := d.uxSetup(); err != nil {
 		return err
+	}
+	if d.scenario == "telescope-picker" || d.scenario == "dark-telescope-picker" {
+		return d.telescopePicker()
 	}
 	if err := d.start(); err != nil {
 		return err

@@ -79,13 +79,52 @@ Opening seestar-wormhole again with the same state directory brings the
 existing window forward. If `seestar-wormhole-cli proxy` is already using the
 same ports, stop it first.
 
+## Telescope selection
+
+The **Telescope** picker sits below the account fields. **Find on my account** is the
+default: with one telescope on the account, Connect selects it. A saved Serial
+and Model pair appears as a selected entry. If it is absent from the current
+account's received list, its label is **Saved: {model} {serial}**, using the same
+escaping and capping as received labels. When that is the only identity entry,
+the picker help reads **Choose “Find on my account”, then Connect to load other telescopes.**
+This replaces the discovery help. A received match has its normal label and
+appears only once.
+
+If the account has several telescopes, Connect shows **Choose a telescope**
+and adds each model and full serial number to the picker. Its help reads
+**Your account has several telescopes. Choose one, then Connect.** The picker
+receives focus once, with Connect next in keyboard order. Choosing an entry
+fills the exact account pair and shows **Ready to connect**; choose Connect
+to start the session. The empty option now reads **Choose a telescope…**;
+Connect with it still selected in this step keeps
+the picker focused without another account request. Outside this step, including
+a changed account, it reverts to **Find on my account**. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
+The selection-step help replaces that line; only one picker help line appears at a time.
+
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This bound also applies to saved settings and received picker choices. An invalid saved serial refuses loading without rewriting the file. See the [command reference](reference.md#device-selection) for selection rules.
+
+**Enter manually…** reveals **Serial number** and **Model (optional)** below
+the picker for manual entry. Connect follows the revealed fields in visual and
+keyboard order; Tab from the picker reaches Serial next. In manual entry, an
+empty Serial shows **Enter a serial number.** Connect validates it locally without
+an account request. The instruction and validation error are associated with Serial. A usable serial
+shows **Ready to connect**; Model remains optional. Choosing another entry hides these fields and
+fills its exact pair; Find on my account clears both. The received list stays in memory
+for this app run, including when the controls page is reopened. Only Serial and
+Model are saved in the existing settings format. A selection failure for a
+chosen pair says **Choose “Find on my account” to reload telescopes, or check Serial and Model.**
+Absence from the catalog alone does not invalidate a saved pair; the detail
+fallback still applies. The received telescope list is included in Recent events, the private log, and Copy diagnostic summary; see [Details and logs](#details-and-logs).
+
+After selection, status includes the escaped model and full serial. Valid serials preserve printable ASCII verbatim without truncation. Only the model is capped at 64 display characters. For example: **Connected to Seestar S50 Pro {serial}**.
+An empty model uses **Seestar {serial}**. Recent events and Copy diagnostic
+summary carry the same status text.
+Stop is the only action below the running status. To switch telescopes, choose
+Stop, choose **Find on my account** or another picker entry, then Connect.
+Several telescopes still enter the existing selection step. See
+[device selection](reference.md#device-selection).
+
 ## Advanced
-
-### Telescope selection
-
-If your account has one Seestar, leave **Serial number (optional)** and
-**Model (optional)** empty. If it has several, enter the serial and model
-exactly as your account shows them. See [device selection](reference.md#device-selection).
 
 ### Timing and idle
 
@@ -122,10 +161,20 @@ local time, error codes, and the private log's location.
 
 **Copy diagnostic summary** copies one JSON object with the program name,
 version, connection settings, and this launch's events in UTC. It leaves out
-addresses, paths, credentials, tokens, account and device identifiers, and
-payloads.
+addresses, paths, credentials, tokens, account identifiers, and payloads.
+Lifecycle events include the selected telescope model and full serial with the
+same representation and model display cap as status. Each Connect that reads the account
+catalog also records its telescope list, even for a single telescope:
+`Account telescopes: {telescope}, …`. Unproven lists use
+`Account telescopes (list may be incomplete): {telescope}, …`; empty lists
+read `Account telescopes: none`. Long lists end with `… and N more`.
+The private log includes an INFO `device_catalog` record with the pairs, count,
+and completeness; see the [log reference](reference.md#logs).
 
-The private logs use fixed messages and categories, UTC timestamps, and
+Unchanged status polls preserve the text and nodes in Details and the service
+tables so selected text stays selected. Changed content updates on the next poll.
+
+The private logs use fixed message templates and categories, UTC timestamps, and
 classified failure phases and reasons, with no raw protocol traces.
 
 If seestar-wormhole fails to start, your system shows the error. On Windows,

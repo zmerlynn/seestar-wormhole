@@ -4,9 +4,11 @@ import (
 	"context"
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
+	"strings"
 	"sync"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
@@ -23,6 +25,8 @@ type controller struct {
 	stopping, quitting bool
 	final              string
 	failure            *ActionError
+	devices            []cloudhttp.DeviceChoice
+	devicesEmail       string
 	save               func(Settings) error
 	log                *eventLog
 	runSettings        Settings
@@ -33,6 +37,7 @@ type controller struct {
 }
 
 func (c *controller) start(s Settings, password string) error {
+	s.Email = strings.TrimSpace(strings.ReplaceAll(s.Email, " ", ""))
 	if s.Email == "" {
 		return &ActionError{Code: "email", Field: "email"}
 	}
@@ -50,10 +55,15 @@ func (c *controller) start(s Settings, password string) error {
 	c.cancel = cancel
 	c.done = make(chan struct{})
 	c.status = proxy.NewStatus()
+	c.status.Catalog = c.log.addCatalog
 	c.stopping = false
 	c.final = ""
 	c.failure = nil
 	s.Ports = append([]proxyrun.Port(nil), s.Ports...)
+	if c.devicesEmail != s.Email {
+		c.devices = nil
+	}
+	c.devicesEmail = s.Email
 	c.runSettings = s
 	c.saveAttempted = false
 	done, status := c.done, c.status
@@ -65,7 +75,7 @@ func (c *controller) start(s Settings, password string) error {
 			for {
 				select {
 				case text := <-status.Updates():
-					c.recordProgress(uiText(text))
+					c.recordProgress(telescopeText(text, status.SelectedDevice()))
 					c.saveAtBoundary(status, s)
 				case <-finished:
 					c.saveAtBoundary(status, s)
@@ -89,6 +99,9 @@ func (c *controller) start(s Settings, password string) error {
 		}
 		c.final = finalStatus(err)
 		c.failure = runFailure(err)
+		if c.failure != nil && c.failure.Code == "selection_multiple" {
+			c.devices = append([]cloudhttp.DeviceChoice(nil), c.failure.Devices...)
+		}
 		if diagnostic.CleanupError(err) != nil {
 			c.failure = &ActionError{Code: "release"}
 		}
@@ -171,7 +184,7 @@ func (c *controller) snapshotLocked() (string, bool) {
 	if p := c.credentials.state(c.runSettings.Email); p.Code == "password_reading" {
 		return "Reading saved password…", true
 	}
-	return uiText(c.status.Text()), true
+	return telescopeText(c.status.Text(), c.status.SelectedDevice()), true
 }
 
 // A terminal credential/protocol rejection ends this UI run after cleanup joins.
@@ -202,7 +215,7 @@ func (c *controller) recordProgress(text string) {
 	c.mu.Lock()
 	var entry *event
 	if !c.stopping {
-		entry = l.publishLocked(text, nil)
+		entry = l.publishLocked(text, nil, c.status.SelectedDevice())
 	}
 	c.mu.Unlock()
 	l.mu.Unlock()
@@ -279,6 +292,30 @@ func (c *controller) persistRemoval(generation uint64) error {
 	}
 	return err
 }
+
+// telescopeText interpolates only the selected display label into fixed states.
+func telescopeText(text, telescope string) string {
+	if telescope != "" {
+		switch text {
+		case "Ready":
+			return "Connected to " + telescope
+		case "Waiting for a local client":
+			return "Waiting for an app to connect to " + telescope
+		case "Busy — waiting for the other session":
+			return telescope + " is occupied. Retrying automatically."
+		case "Seestar not reachable":
+			return telescope + " isn't reachable. Check this computer's internet connection and make sure it is awake and connected to Wi-Fi. Retrying automatically."
+		case "Reconnecting":
+			return "Connection to " + telescope + " interrupted. Retrying automatically."
+		case "Releasing idle session":
+			return "Releasing idle session with " + telescope + "…"
+		case "Reconnecting — waiting for cleanup/retry":
+			return "Waiting before retrying " + telescope + "…"
+		}
+	}
+	return uiText(text)
+}
+
 func uiText(text string) string {
 	switch text {
 	case "Ready":
@@ -306,12 +343,15 @@ func uiText(text string) string {
 
 // The control model is independent of pending HTTP/keychain actions in the page.
 type runView struct {
-	FailureMessage string       `json:"failure_message,omitempty"`
-	Status         string       `json:"status"`
-	Active         bool         `json:"active"`
-	Stopping       bool         `json:"stopping"`
-	Cancel         bool         `json:"cancel"`
-	Failure        *ActionError `json:"failure,omitempty"`
+	DevicesEmail   string                   `json:"devices_email"`
+	Devices        []cloudhttp.DeviceChoice `json:"devices,omitempty"`
+	FailureMessage string                   `json:"failure_message,omitempty"`
+	Status         string                   `json:"status"`
+	SelectedDevice string                   `json:"selected_device,omitempty"`
+	Active         bool                     `json:"active"`
+	Stopping       bool                     `json:"stopping"`
+	Cancel         bool                     `json:"cancel"`
+	Failure        *ActionError             `json:"failure,omitempty"`
 	settings       Settings
 	SaveFailed     bool `json:"save_failed"`
 	Discovery      bool `json:"discovery_started"`
@@ -321,8 +361,9 @@ func (c *controller) view() runView {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	text, active := c.snapshotLocked()
-	v := runView{Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
+	v := runView{DevicesEmail: c.devicesEmail, Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
 	if active {
+		v.SelectedDevice = c.status.SelectedDevice()
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
 		v.Discovery = c.runSettings.Discovery && c.status.SaveBoundary(true)
 	}
@@ -330,7 +371,11 @@ func (c *controller) view() runView {
 		v.FailureMessage = errorCopy(c.failure.Code)
 	}
 	if !active && c.failure != nil && c.failure.Code != "release" {
-		v.Status = "Could not connect"
+		if c.failure.Code == "selection_multiple" {
+			v.Status = "Choose a telescope"
+		} else {
+			v.Status = "Could not connect"
+		}
 	}
 	return v
 }

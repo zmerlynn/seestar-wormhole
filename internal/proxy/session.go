@@ -54,6 +54,7 @@ type Session struct {
 	discardStack             atomic.Pointer[stack] // published by the attempt worker; drained by the owner after join
 	discardNext              core.Instant
 	discardLast              uint64
+	telescope                string       // escaped public model label and full serial, immutable after construction
 	deviceDetail             cloud.Detail // immutable after construction, before publication
 	tunnelConfig             p2ptunnel.Config
 	lazy                     bool
@@ -389,7 +390,11 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 	if e.Kind == session.Released && before.State != after.State && after.State == session.Backoff && after.OwnershipRecovery {
 		s.logger.Info("session_state", "phase", phase, "layer", layer, "reason", s.lifecycleReason, "retry_ms", retry, "local_clients", clients)
 	}
-	s.logger.Info(event, "phase", phase, "layer", layer, "reason", s.lifecycleReason, "retry_ms", retry, "local_clients", clients)
+	fields := []any{"phase", phase, "layer", layer, "reason", s.lifecycleReason, "retry_ms", retry, "local_clients", clients}
+	if after.State == session.Ready && s.telescope != "" {
+		fields = append(fields, "telescope", s.telescope)
+	}
+	s.logger.Info(event, fields...)
 	if after.State == session.Ready {
 		s.lifecycleReason = "none"
 	}

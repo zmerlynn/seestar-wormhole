@@ -1,0 +1,115 @@
+package cloudhttp
+
+import (
+	"bytes"
+	"encoding/json/v2"
+	"errors"
+	"log/slog"
+	"strings"
+	"testing"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+)
+
+func TestSelectionChoices(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		input      Device
+		multiple   bool
+	}{
+		{"multiple", twoDevices, Device{}, true},
+		{"model only", twoDevices, Device{Model: "S30"}, true},
+		{"repeated serial", pairPage, Device{}, true},
+		{"ambiguous serial", pairPage, Device{Serial: "private-a"}, false},
+		{"incomplete", strings.Replace(twoDevices, `"total":2`, `"total":0`, 1), Device{}, true},
+		{"duplicate", strings.Replace(twoDevices, `"other-serial-sentinel-5678","deviceModel":"S30"`, `"serial-sentinel-secret-1234","deviceModel":"S50 Pro"`, 1), Device{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var logs bytes.Buffer
+			c := selectionClient(t, &selectionCloud{bodies: []string{tc.body}}, &logs, slog.LevelDebug)
+			_, err := c.SelectDevice(t.Context(), tc.input)
+			var selection *SelectionError
+			if !errors.As(err, &selection) {
+				t.Fatalf("no structured choices: %v", err)
+			}
+			if selection.Multiple != tc.multiple {
+				t.Fatalf("multiple=%v", selection.Multiple)
+			}
+			want := []string{"S50 Pro serial-sentinel-secret-1234", "S30 other-serial-sentinel-5678"}
+			if strings.Contains(tc.name, "serial") {
+				want = []string{"S50 Pro private-a", "S30 private-a"}
+			}
+			if tc.name == "duplicate" {
+				want = want[:1]
+			}
+			choices := selection.Choices()
+			if len(choices) != len(want) {
+				t.Fatalf("choices=%v", choices)
+			}
+			for i, line := range want {
+				if choices[i].Label != line || !strings.Contains(selection.CLIMessage(), "\n"+line) {
+					t.Fatalf("missing full pair %q in %s", line, selection.CLIMessage())
+				}
+			}
+			if !strings.Contains(selection.CLIMessage(), "\nReceived telescopes (full serials):\n") {
+				t.Fatal("missing selection list")
+			}
+			if strings.Contains(selection.CLIMessage(), "Pass --serial with one of these.") != selection.Multiple {
+				t.Fatalf("serial guidance with Multiple=%v", selection.Multiple)
+			}
+			diagnostic.Log(c.logger, "failure", "", err)
+			assertSelectionSecrets(t, logs.String())
+			if strings.Contains(withoutIdentitySerialLogs(t, logs.String()), "private-a") {
+				t.Fatal("catalog in logs")
+			}
+		})
+	}
+}
+
+func TestSelectionChoiceUntrustedText(t *testing.T) {
+	const hostile = "<img src=x>\x1b\t\n" // synthetic server text; exact model is selection authority
+	body := strings.Replace(twoDevices, `"S50 Pro"`, `"<img src=x>\u001b\t\n"`, 1)
+	var logs bytes.Buffer
+	c := selectionClient(t, &selectionCloud{bodies: []string{body}}, &logs, slog.LevelInfo)
+	_, err := c.SelectDevice(t.Context(), Device{})
+	var selection *SelectionError
+	if !errors.As(err, &selection) {
+		t.Fatal("no structured list")
+	}
+	choices := selection.Choices()
+	if len(choices) != 2 || choices[0].Serial != "serial-sentinel-secret-1234" || choices[0].Model != hostile || choices[0].Label != `<img src=x>\x1b\t\n serial-sentinel-secret-1234` {
+		t.Fatalf("untrusted choices=%q", choices)
+	}
+	if strings.ContainsAny(choices[0].Label, "\x1b\t\n") {
+		t.Fatal("unsafe choice text")
+	}
+	// Also bound unknown model display, preserving its complete wire value.
+	long := strings.Repeat("x", 200)
+	devices, _, parseErr := cloud.ParseDevices([]byte(strings.Replace(twoDevices, "S50 Pro", long, 1)))
+	if parseErr != nil {
+		t.Fatal(parseErr)
+	}
+	bounded := selectionChoices(devices)
+	if bounded[0].Model != long || bounded[0].Label != strings.Repeat("x", 61)+`... serial-sentinel-secret-1234` {
+		t.Fatal("model bound or wire value lost")
+	}
+}
+
+func TestSelectionChoiceSerialRejection(t *testing.T) {
+	for _, serial := range []string{
+		"synthetic-serial\r",
+		strings.Repeat("x", 4097),
+		"synthetic-serial\x1b",
+	} {
+		encoded, err := json.Marshal(serial)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body := strings.Replace(twoDevices, `"other-serial-sentinel-5678"`, string(encoded), 1)
+		_, _, err = cloud.ParseDevices([]byte(body))
+		if !errors.Is(err, cloud.ErrInvalid) {
+			t.Fatalf("invalid cloud serial accepted: %v", err)
+		}
+	}
+}

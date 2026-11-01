@@ -9,6 +9,7 @@ import (
 )
 
 const logQueueSize = 32
+
 const maxLogLine = 16 << 10
 const logDrainBound = 250 * time.Millisecond
 

@@ -170,7 +170,7 @@ func TestCLISharedSerialPreflight(t *testing.T) {
 				if commandExitCode(options{command: commandProxy}, err) != 2 || out.Len() != 0 {
 					t.Fatalf("exit=%d stdout=%s", commandExitCode(options{command: commandProxy}, err), &out)
 				}
-				assertConfigRecord(t, logs.Bytes(), command, "--serial", "use a nonblank device serial of at most 4096 bytes without NUL, CR or LF")
+				assertConfigRecord(t, logs.Bytes(), command, "--serial", "use a device serial of 1-64 printable ASCII bytes (0x21-0x7E; no spaces)")
 			})
 		}
 	}

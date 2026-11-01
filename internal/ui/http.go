@@ -5,6 +5,7 @@ import (
 	"embed"
 	"encoding/json/v2"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
@@ -173,6 +174,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		err = s.controller.start(in.Settings, in.Password)
 		if err == nil {
 			s.mu.Lock()
+			// Accepting Connect is not a successful save. Keep the authoritative
+			// pair for its account until the run reaches its save boundary.
+			s.retainSavedPair(&in.Settings)
 			s.settings = in.Settings
 			s.mu.Unlock()
 		}
@@ -260,19 +264,37 @@ func (s *server) saveSettings(settings Settings) error {
 	}
 	err := s.storage.write("config.json", settings)
 	s.mu.Lock()
+	// A failed clear keeps the same account's prior selection visible.
+	// Other fields still project the current account, including a successful native password save
+	// whose settings write failed. The controller owns the retry snapshot.
+	if err != nil {
+		s.retainSavedPair(&settings)
+	}
 	s.settings = settings
 	s.mu.Unlock()
 	return err
 }
 
+// retainSavedPair projects only a pair already saved for this normalized account.
+// The caller holds s.mu; accepting a draft or a failed write cannot save a pair.
+func (s *server) retainSavedPair(settings *Settings) {
+	normalize := func(email string) string { return strings.TrimSpace(strings.ReplaceAll(email, " ", "")) }
+	if normalize(settings.Email) == normalize(s.settings.Email) {
+		settings.Serial, settings.Model = s.settings.Serial, s.settings.Model
+	} else {
+		settings.Serial, settings.Model = "", ""
+	}
+}
+
 type pageSettings struct {
 	Settings
 	IdleMinutes float64 `json:"idle_minutes"`
+	ChoiceLabel string  `json:"choice_label"`
 }
 
 func pageSettingsFor(s Settings) pageSettings {
 	d, _ := time.ParseDuration(s.Idle)
-	return pageSettings{s, d.Minutes()}
+	return pageSettings{s, d.Minutes(), (cloudhttp.Device{Serial: s.Serial, Model: s.Model}).ChoiceLabel()}
 }
 
 // One allowlisted projection feeds both Settings and the copied summary.

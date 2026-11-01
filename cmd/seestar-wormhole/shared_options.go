@@ -7,7 +7,7 @@ import (
 )
 
 func registerSharedOptions(f *pflag.FlagSet, o *options) {
-	f.StringVar(&o.serial, "serial", "", "optional device serial; required for accounts with several devices")
+	f.StringVar(&o.serial, "serial", "", "optional device serial: 1-64 printable ASCII bytes (0x21-0x7E; no spaces); required for accounts with several devices")
 	f.StringVar(&o.model, "model", "", "device model; required when a serial has several catalog models")
 	f.StringVar(&o.stateDir, "state-dir", "", "private installation UUID storage directory (default: memory only; UI state root with --config)")
 	registerLoggingOptions(f, o)

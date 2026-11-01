@@ -82,6 +82,7 @@ func (Device) Format(s fmt.State, verb rune) { io.WriteString(s, "[cloud device 
 // Client contains ephemeral environment credentials; do not copy after use.
 type Client struct {
 	logger               *slog.Logger
+	catalogObserver      func(Catalog)
 	oddityRecords        *atomic.Uint32 // shared bounded diagnostics, safe across client snapshots
 	base                 *url.URL
 	account              *accountOwner
@@ -339,6 +340,12 @@ func responseError(info responseInfo, body []byte, parseErr, errorIO error) erro
 
 func query(d Device) url.Values { return url.Values{"deviceSn": {d.Serial}, "deviceModel": {d.Model}} }
 
+// detailIdentityMismatch marks a definite mismatch from a complete successful
+// exchange. Other failures must retain Detail's classification during selection.
+type detailIdentityMismatch struct{ error }
+
+func (e *detailIdentityMismatch) Unwrap() error { return e.error }
+
 // Detail obtains and verifies the requested device, including busy/offline state.
 func (c *Client) Detail(ctx context.Context, d Device) (cloud.Detail, error) {
 	return c.detail(ctx, d, cloud.ParseDetail)
@@ -353,7 +360,7 @@ func (c *Client) DetailForLAN(ctx context.Context, d Device) (cloud.Detail, erro
 func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud.Detail, error)) (result cloud.Detail, err error) {
 	finish := diagnostic.Operation(c.logger, "device_detail")
 	defer func() { finish(err) }()
-	if !validInput(d.Serial) {
+	if !ValidSerial(d.Serial) {
 		return cloud.Detail{}, environmentInputError("--serial", SerialRule)
 	}
 	if !validInput(d.Model) {
@@ -361,9 +368,13 @@ func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)
 	defer cancel()
-	info, b, e := c.exchange(ctx, "/v1/my-device/detail", query(d), nil, nil)
-	detail, err := parse(b)
-	parseErr := err
+	// READ: the app's pre-allocation detail request includes shared devices.
+	// https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection
+	q := query(d)
+	q.Set("onlyQueryOwner", "false")
+	info, b, e := c.exchange(ctx, "/v1/my-device/detail", q, nil, nil)
+	detail, parseErr := parse(b)
+	parsedSuccessfully := parseErr == nil
 	// Local client policy: correlate both identity fields
 	// before allocation. Correlate decoded identity before interpreting availability. A status
 	// belonging to another device is never busy/offline for this request;
@@ -375,6 +386,9 @@ func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud
 	err = responseError(info, b, parseErr, e)
 	if inconsistent {
 		err = diagnostic.Wrap("device_detail", "inconsistent server answer: detail identity differs from requested pair", err)
+		if parsedSuccessfully && info.status >= 200 && info.status < 300 && info.complete && e == nil {
+			err = &detailIdentityMismatch{err}
+		}
 	}
 	c.rejected(ctx, "device_detail", info, b, cloud.JoinOutcomes(err, parseErr))
 	if err != nil {
@@ -432,7 +446,7 @@ func (c *Client) Acquire(ctx context.Context, d Device) (lease *Lease, err error
 	defer func() { err = cloud.JoinOutcomes(err) }()
 	finish := diagnostic.Operation(c.logger, "allocation")
 	defer func() { finish(err) }()
-	if !validInput(d.Serial) || !validInput(d.Model) {
+	if !ValidSerial(d.Serial) || !validInput(d.Model) {
 		return nil, cloud.ErrConfig
 	}
 	ctx, cancel := context.WithTimeout(ctx, c.timeout)

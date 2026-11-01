@@ -16,7 +16,7 @@ if (token) {
 }
 let initialized = false, ended = false, connected = false, pending = '', active = false;
 let lastFailure = '', state = null, statusGeneration = 0, actionError = '';
-let fieldErrors = {}, portDefaults = [];
+let fieldErrors = {}, portDefaults = [], draftEmail = '';
 let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '';
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
@@ -48,14 +48,14 @@ async function api(action, body) {
   }
   return response.json();
 }
-function accountEmail() {
-  return $('email').value.replace(/ /g, '').trim();
+function accountEmail(value = $('email').value) {
+  return value.replace(/ /g, '').trim();
 }
 function settings() {
   return {
     version: 1, bind: $('listen').value === 'other' ? $('bind').value.trim() : $('listen').value,
     discovery: $('discovery').checked, idle: $('mode').value === 'eager' ? '0' : Number($('idle').value) + 'm',
-    serial: $('serial').value.trim(), model: $('model').value.trim(), ports: services.map(([device]) => ({device, local: Number($('port-' + device).value)})),
+    serial: $('serial').value, model: $('model').value, ports: services.map(([device]) => ({device, local: Number($('port-' + device).value)})),
     email: accountEmail(), remember_password: usingSaved()
   };
 }
@@ -72,6 +72,8 @@ function portValues(s) {
   return ports;
 }
 function portsTable(id, ports, editable = false) {
+  const key = JSON.stringify(services.map(([remote]) => ports[remote] || 'Off'));
+  if (!editable && $(id).portsKey === key) return;
   const table = document.createElement('table');
   const head = table.createTHead().insertRow();
   for (const name of ['Local port', 'Seestar port', 'Purpose']) {
@@ -99,6 +101,7 @@ function portsTable(id, ports, editable = false) {
     row.insertCell().textContent = purpose;
   }
   $(id).replaceChildren(table);
+  if (!editable) $(id).portsKey = key;
 }
 function goalFor(s) {
   const ports = portValues(s);
@@ -109,6 +112,7 @@ function goalFor(s) {
 }
 function load(s) {
   for (const name of ['email', 'bind', 'serial', 'model']) $(name).value = s[name] || '';
+  draftEmail = accountEmail();
   $('listen').value = ['0.0.0.0', '127.0.0.1'].includes(s.bind) ? s.bind : 'other';
   $('discovery').checked = !!s.discovery;
   $('mode').value = s.idle_minutes > 0 ? 'idle' : 'eager';
@@ -152,6 +156,10 @@ function clearErrors() {
 function fieldError(field, message, code, focus = false) {
   const e = $(field), help = $(field + '-error');
   if (!e || !help) return;
+  if (['serial','model'].includes(field)) {
+    $('device-choice').value = 'custom';
+    $('custom-device').hidden = false;
+  }
   if (e.closest('details')) $('advanced').open = true;
   const target = field === 'bind' && $('listen').value !== 'other' ? $('listen') : e;
   target.setAttribute('aria-invalid','true');
@@ -237,24 +245,121 @@ function controls() {
   $('goal-help').hidden = currentGoal === 'custom';
   $('goal-help').textContent = currentGoal === 'phone' ? 'Connect your phone to the same network as this computer.' : 'Only apps running here can connect.';
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
-  const code = actionError || (!active && state?.failure?.code) || '';
+  const failureCode = actionError || (!active && state?.failure?.code) || '';
+  const code = failureCode === 'selection_multiple' ? '' : failureCode;
   $('port-permissions').hidden = code !== 'http_permission';
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
-  text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selection entered' : 'Automatic');
+  text('selection-help', selectionStep ? 'Your account has several telescopes. Choose one, then Connect.' : savedDevice && !receivedDevices.length ? 'Choose “Find on my account”, then Connect to load other telescopes.' : 'Connect uses your only telescope, or asks which one if there are several.');
+  if ($('device-choice').children.length) textOptionLabel();
+  const manual = $('device-choice').value === 'custom';
+  const choosing = selectionStep || (!active && manual);
+  const needsSerial = choosing && $('device-choice').value !== '' && !$('serial').value.trim();
+  $('serial-help').hidden = !needsSerial;
+  const actionArea = $(choosing ? 'picker-action' : 'primary-action');
+  if ($('start').parentElement !== actionArea) actionArea.append($('start'));
+  const statusText = ended ? (state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.') : choosing && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? 'Choose a telescope' : 'Ready to connect') : state?.status || 'Loading…';
+  text('status', statusText);
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
+  if (pickerFocusPending && !$('options').disabled) {
+    pickerFocusPending = false;
+    const picker = $('device-choice');
+    picker.focus();
+    // The action has moved and fields may have changed height. Reveal their
+    // final layout once, while preserving any focus the user moves meanwhile.
+    requestAnimationFrame(() => {
+      if (document.activeElement !== picker || $('options').disabled || $('settings').hidden || !selectionStep) return;
+      const style = getComputedStyle(picker);
+      const ring = (parseFloat(style.outlineWidth) || 0) + Math.max(0, parseFloat(style.outlineOffset) || 0);
+      const rect = picker.getBoundingClientRect(), help = $('selection-help').getBoundingClientRect(), start = $('start').getBoundingClientRect();
+      const group = {top: rect.top - ring, bottom: Math.max(help.bottom, start.bottom + ring), left: Math.min(rect.left, start.left) - ring, right: Math.max(rect.right, start.right) + ring};
+      const target = group.bottom - group.top <= innerHeight && group.right - group.left <= innerWidth ? group : {top: rect.top - ring, bottom: rect.bottom + ring, left: rect.left - ring, right: rect.right + ring};
+      const dy = target.top < 0 ? Math.floor(target.top) : Math.max(0, Math.ceil(target.bottom - innerHeight));
+      const dx = target.left < 0 ? Math.floor(target.left) : Math.max(0, Math.ceil(target.right - innerWidth));
+      if (dx || dy) window.scrollBy(dx, dy);
+    });
+  }
+}
+let pickerKey = '', receivedDevices = [], savedDevice = null;
+let pickerDevices = [], selectionStep = false, pickerFocusPending = false;
+function textOptionLabel() {
+  const option = $('device-choice').children[0];
+  const label = selectionStep ? 'Choose a telescope…' : 'Find on my account';
+  if (option.textContent !== label) option.textContent = label;
+}
+function selectPair() {
+  const index = pickerDevices.findIndex(d => d.serial === $('serial').value && d.model === $('model').value);
+  $('device-choice').value = index >= 0 ? String(index) : $('serial').value || $('model').value ? 'custom' : '';
+  $('custom-device').hidden = $('device-choice').value !== 'custom';
+}
+function devicePicker(devices) {
+  if (devices) receivedDevices = devices;
+  const all = [...receivedDevices];
+  if (savedDevice && !all.some(d => d.serial === savedDevice.serial && d.model === savedDevice.model)) all.unshift({...savedDevice, label: 'Saved: ' + savedDevice.label});
+  const key = JSON.stringify(all);
+  if (key === pickerKey) return;
+  pickerKey = key;
+  pickerDevices = all;
+  const picker = $('device-choice');
+  const custom = picker.value === 'custom';
+  picker.replaceChildren();
+  const automatic = document.createElement('option');
+  automatic.textContent = 'Find on my account';
+  automatic.value = '';
+  picker.append(automatic);
+  all.forEach((device, index) => {
+    const option = document.createElement('option');
+    option.textContent = device.label;
+    option.value = String(index);
+    picker.append(option);
+  });
+  const option = document.createElement('option');
+  option.textContent = 'Enter manually…';
+  option.value = 'custom';
+  picker.append(option);
+  selectPair();
+  if (custom) {picker.value = 'custom'; $('custom-device').hidden = false;}
+  picker.onchange = () => {
+    $('custom-device').hidden = picker.value !== 'custom';
+    if (picker.value !== 'custom') {
+      const device = pickerDevices[Number(picker.value)];
+      $('serial').value = picker.value === '' ? '' : device.serial;
+      $('model').value = picker.value === '' ? '' : device.model;
+    }
+    clearField('serial');
+    clearField('model');
+    controls();
+  };
+}
+function accountChoices(s) {
+  const nextSelectionStep = accountEmail() === s.devices_email && !s.active && s.failure?.code === 'selection_multiple';
+  if (nextSelectionStep && !selectionStep) {
+    pickerFocusPending = true;
+    clearField('serial');
+    clearField('model');
+  }
+  selectionStep = nextSelectionStep;
+  if (!selectionStep) pickerFocusPending = false;
+  devicePicker(accountEmail() === s.devices_email ? s.devices || (selectionStep ? s.failure.devices : undefined) : []);
+}
+// Settings carry the last successfully saved pair, independently of form drafts.
+function projectPicker(s) {
+  const pair = s.settings;
+  savedDevice = pair.email === accountEmail() && (pair.serial || pair.model) ? {serial: pair.serial || '', model: pair.model || '', label: pair.choice_label} : null;
+  accountChoices(s);
 }
 function render(s) {
   state = s;
+  projectPicker(s);
   text('version',s.version);
   active = s.active;
-  text('status',s.status);
   $('last-known').hidden = true;
   $('quit').textContent = s.native ? 'Quit' : 'Quit service';
   $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';
   $('retry-storage').hidden = !s.save_failed;
   if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Settings could not be saved; they may reset next time.');
-  if (s.failure && !active && !actionError) {
+  if (selectionStep) alertText('');
+  if (s.failure && !active && !actionError && !selectionStep) {
     const newFailure = lastFailure !== s.failure.code;
     alertText(s.failure.code === 'release' || s.failure.field ? '' : s.failure_message);
     if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Local port ' + s.failure.local + ' → Seestar port ' + s.failure.service + '.' : ''),s.failure.code);
@@ -275,13 +380,17 @@ function render(s) {
   $('copy-steps').hidden = !(active && smb);
   $('copy-port').textContent = smb || '';
   portsTable('running-ports', run.ports);
-  $('effective-settings').textContent = JSON.stringify(s.effective, null, 2);
-  $('events').replaceChildren(...s.events.map(event => {
-    const item = document.createElement('li');
-    item.textContent = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + event.message;
-    return item;
-  }));
-  $('log-path').textContent = s.log_path ? 'Private log: ' + s.log_path : '';
+  text('effective-settings', JSON.stringify(s.effective, null, 2));
+  const eventLines = s.events.map(event => new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + event.message);
+  const eventNodes = Array.from($('events').children);
+  if (eventLines.length !== eventNodes.length || eventLines.some((line, i) => line !== eventNodes[i].textContent)) {
+    $('events').replaceChildren(...eventLines.map(line => {
+      const item = document.createElement('li');
+      item.textContent = line;
+      return item;
+    }));
+  }
+  text('log-path', s.log_path ? 'Private log: ' + s.log_path : '');
   $('log-error').hidden = !s.log_failed;
   diagnostic = JSON.stringify({app: 'seestar-wormhole', version: s.version, settings: s.effective, events: s.events}, null, 2);
   controls();
@@ -295,7 +404,8 @@ async function refresh() {
     if (ended || generation !== statusGeneration) return;
     throw e;
   }
-  if (ended || generation !== statusGeneration) return;
+  // A superseding poll may own rendering, but the action still needs its reply.
+  if (ended || generation !== statusGeneration) return s;
   if (!connected && initialized) alertText('');
   connected = true;
   const first = !initialized;
@@ -308,12 +418,13 @@ async function refresh() {
     $('password').value = '';
   }
   render(s);
-  if (first) {
+  if (first && !selectionStep) {
     // WKWebView can finish the status fetch before its native window is key.
     const focusStart = () => requestAnimationFrame(() => $('start').focus());
     if (document.hasFocus()) focusStart();
     else window.addEventListener('focus', focusStart, {once: true});
   }
+  return s;
 }
 async function poll() {
   if (ended) return;
@@ -331,6 +442,15 @@ async function poll() {
 }
 async function act(action) {
   if (pending && !['stop','quit'].includes(action)) return;
+  if (action === 'start' && accountEmail() === state?.devices_email && selectionStep && $('device-choice').value === '') {
+    $('device-choice').focus();
+    return;
+  }
+  if (action === 'start' && ($('device-choice').value === 'custom' || (selectionStep && $('device-choice').value !== '')) && !$('serial').value.trim()) {
+    actionError = 'serial';
+    fieldError('serial', 'Enter a serial number.', 'serial', true);
+    return;
+  }
   if (['start','password/save'].includes(action) && !validate()) return;
   ++statusGeneration;
   actionError = '';
@@ -361,11 +481,24 @@ async function act(action) {
     if (action === 'quit') {
       ended = true;
       say('');
-      $('status').textContent = state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.';
       controls();
       return;
     }
-    await refresh();
+    const refreshed = await refresh();
+    if (ended || pending !== action || !refreshed) return;
+    if (action === 'retry-storage') {
+      // The action may finish for a different account than the current draft.
+      if (accountEmail(refreshed.settings.email) === accountEmail()) {
+        $('serial').value = refreshed.settings.serial || '';
+        $('model').value = refreshed.settings.model || '';
+      }
+      projectPicker(refreshed);
+      selectPair();
+      clearField('serial');
+      clearField('model');
+      alertText('');
+      focusTarget = selectionStep ? '' : 'start';
+    }
     if (['password/save','forget'].includes(action)) {
       say(passwordState().notice || '');
       focusTarget = action === 'password/save' ? 'forget' : 'password';
@@ -408,6 +541,19 @@ for (const [id,action] of [['save-password','password/save'],['forget','forget']
 }
 $('email').addEventListener('input', () => {
   $('password').value = '';
+  const email = accountEmail();
+  if (email !== draftEmail) {
+    // The draft belongs to the account being edited, which may be newer than
+    // the latest status response. Clear once; later manual entry stays local.
+    $('serial').value = '';
+    $('model').value = '';
+    $('device-choice').value = '';
+    $('custom-device').hidden = true;
+    clearField('serial');
+    clearField('model');
+    draftEmail = email;
+  }
+  if (state) projectPicker(state);
 });
 for (const id of ['email','password','idle','bind','serial','model']) $(id).addEventListener('input', () => {
   clearField(id);

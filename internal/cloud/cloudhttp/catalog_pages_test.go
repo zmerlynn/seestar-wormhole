@@ -52,7 +52,7 @@ func TestCatalogPageLiterals(t *testing.T) {
 	for _, tc := range catalogPageLiterals {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
-			f := &selectionCloud{bodies: append([]string(nil), tc.pages...)}
+			f := &selectionCloud{bodies: append([]string(nil), tc.pages...), detailBody: detail}
 			c := selectionClient(t, f, &logs, slog.LevelDebug)
 			got, complete, _, err := c.devices(t.Context())
 			if err != nil {
@@ -90,7 +90,7 @@ func TestCatalogPageSelection(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
-			f := &selectionCloud{bodies: append([]string(nil), tc.pages...)}
+			f := &selectionCloud{bodies: append([]string(nil), tc.pages...), detailBody: detail}
 			c := selectionClient(t, f, &logs, slog.LevelDebug)
 			got, err := c.SelectDevice(t.Context(), tc.input)
 			if got != tc.want {
@@ -115,9 +115,13 @@ func TestCatalogPageSelection(t *testing.T) {
 				if strings.Contains(logs.String(), "device_selected") {
 					t.Fatal("selected ambiguous catalog")
 				}
-				assertCatalogPagePrivacy(t, err.Error())
+				// Catalog choices intentionally expose full serials in command errors.
 			}
-			assertCatalogPageRequests(t, f, len(tc.pages))
+			if tc.name == "explicit absent" {
+				assertCatalogPageRequests(t, f, len(tc.pages), "/v1/my-device/detail")
+			} else {
+				assertCatalogPageRequests(t, f, len(tc.pages))
+			}
 			assertCatalogPagePrivacy(t, logs.String())
 		})
 	}
@@ -136,7 +140,7 @@ func TestCatalogPageSafety(t *testing.T) {
 		for _, input := range []Device{{}, {Serial: "private-a"}} {
 			t.Run(tc.name+"/"+input.Serial, func(t *testing.T) {
 				var logs bytes.Buffer
-				f := &selectionCloud{bodies: append([]string(nil), tc.pages...)}
+				f := &selectionCloud{bodies: append([]string(nil), tc.pages...), detailBody: detail}
 				c := selectionClient(t, f, &logs, slog.LevelDebug)
 				got, err := c.SelectDevice(t.Context(), input)
 				if !errors.Is(err, tc.want) || got != (Device{}) {
@@ -184,7 +188,7 @@ func TestCatalogPageCapacity(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var logs bytes.Buffer
-			f := &selectionCloud{bodies: append([]string(nil), tc.pages...)}
+			f := &selectionCloud{bodies: append([]string(nil), tc.pages...), detailBody: detail}
 			c := selectionClient(t, f, &logs, slog.LevelDebug)
 			got, _, _, err := c.devices(t.Context())
 			if tc.invalid {
@@ -207,15 +211,16 @@ func repeatCatalogPage(page string, n int) []string {
 	return pages
 }
 
-func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int) {
+func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int, following ...string) {
 	t.Helper()
 	wantPaths := []string{"/v1/user/login", "/v1/user/current-profile"}
 	for page := 1; page <= pages; page++ {
 		wantPaths = append(wantPaths, "/v1/my-device")
-		if len(f.queries) <= page+1 || f.queries[page+1] != fmt.Sprintf("current=%d&pageSize=100", page) {
+		if len(f.queries) <= page+1 || f.queries[page+1] != fmt.Sprintf("current=%d&isContainShared=3&pageSize=100", page) {
 			t.Fatalf("queries=%v, want sequential current and pageSize=100", f.queries)
 		}
 	}
+	wantPaths = append(wantPaths, following...)
 	if !reflect.DeepEqual(f.paths, wantPaths) || len(f.bodies) != 0 {
 		t.Fatalf("paths=%v remaining=%d, want %v and no remaining pages (no allocation)", f.paths, len(f.bodies), wantPaths)
 	}
@@ -223,6 +228,7 @@ func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int) {
 
 func assertCatalogPagePrivacy(t *testing.T, s string) {
 	t.Helper()
+	s = withoutIdentitySerialLogs(t, s)
 	assertSelectionSecrets(t, s)
 	for _, private := range []string{"private-a", "private-b", "private-missing", "private-secret"} {
 		if strings.Contains(s, private) {
@@ -265,4 +271,35 @@ func TestCatalogPageDiagnostics(t *testing.T) {
 			t.Fatalf("pagination diagnostics=%v, want %v", got, want)
 		}
 	}
+}
+
+// Selected and catalog serial fields are public log context. Check every other field,
+// record, and error for catalog data and credentials.
+func withoutIdentitySerialLogs(t *testing.T, text string) string {
+	t.Helper()
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		var record map[string]any
+		if json.Unmarshal([]byte(line), &record) != nil || (record["msg"] != "device_selected" && record["msg"] != "device_catalog") {
+			continue
+		}
+		if record["msg"] == "device_selected" {
+			delete(record, "serial")
+		}
+		if record["msg"] == "device_catalog" {
+			if pairs, ok := record["devices"].([]any); ok {
+				for _, pair := range pairs {
+					if fields, ok := pair.(map[string]any); ok {
+						delete(fields, "serial")
+					}
+				}
+			}
+		}
+		encoded, err := json.Marshal(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines[i] = string(encoded)
+	}
+	return strings.Join(lines, "\n")
 }
