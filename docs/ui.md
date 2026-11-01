@@ -86,8 +86,12 @@ The status shows `Telescope: <public model> <masked serial>` after selection.
 ### Telescope selection
 
 If your account has one Seestar, leave **Serial number (optional)** and
-**Model (optional)** empty. If it has several, enter the serial and model
-exactly as your account shows them. See [device selection](reference.md#device-selection).
+**Model (optional)** empty. If it has several, choose Connect to receive a
+picker showing each model and full serial number. Choosing a telescope fills
+Serial and Model in Advanced with the exact account values; choose Connect
+again to try that pair. You can also enter both fields exactly as your account
+shows them. The list is excluded from logs and Copy diagnostic summary;
+selected-telescope status and device-selection logs keep serials masked. See [device selection](reference.md#device-selection).
 
 ### Timing and idle
 

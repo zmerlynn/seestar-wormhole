@@ -3,15 +3,18 @@ package ui
 import (
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// ActionError carries only a fixed category and a field name, never dependency text.
+// ActionError carries fixed categories and, only for multiple-device selection,
+// received account choices. Dependency error text never enters this projection.
 type ActionError struct {
-	Code    string `json:"code"`
-	Field   string `json:"field,omitempty"`
-	Service uint16 `json:"service,omitempty"`
-	Local   uint16 `json:"local,omitempty"`
+	Code    string                   `json:"code"`
+	Field   string                   `json:"field,omitempty"`
+	Service uint16                   `json:"service,omitempty"`
+	Local   uint16                   `json:"local,omitempty"`
+	Devices []cloudhttp.DeviceChoice `json:"devices,omitempty"`
 }
 
 func (e *ActionError) Error() string { return "UI action failed: " + e.Code }
@@ -36,6 +39,10 @@ func actionError(err error) *ActionError {
 	}
 	if phase == "lan_discovery" {
 		return &ActionError{Code: "discovery", Field: "discovery"}
+	}
+	var selection *cloudhttp.SelectionError
+	if errors.As(err, &selection) && selection.Multiple {
+		return &ActionError{Code: "selection_multiple", Field: "serial", Devices: selection.Choices()}
 	}
 	if phase == "device_selection" {
 		return &ActionError{Code: "selection", Field: "serial"}
@@ -79,6 +86,8 @@ func errorCopy(code string) string {
 		return "A local port is in use. Stop the app using it or change the port in Advanced."
 	case "signin":
 		return "Could not sign in. Check your Seestar account email and password, then connect again."
+	case "selection_multiple":
+		return "Choose a telescope from the list, then choose Connect again."
 	case "selection":
 		return "In Advanced, enter your Seestar's serial and model exactly as shown in your account."
 	case "serial":

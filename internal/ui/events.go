@@ -38,7 +38,7 @@ func eventCode(text string) string {
 	case "App opened.", "App could not start.", "Connecting to your Seestar…", "Connected to your Seestar", "Waiting for an app to connect", "Seestar is occupied. Retrying automatically.", "Seestar isn't reachable. Check this computer's internet connection and make sure Seestar is awake and connected to Wi-Fi. Retrying automatically.", "Connection interrupted. Retrying automatically.", "Releasing idle Seestar session…", "Waiting before retrying the connection…", "Stopped", "Stopped. Seestar may still be releasing the session.", "Settings saved.", "Password saved to keychain. Checked when you connect.", "Password removed from keychain and this app.":
 		return "lifecycle"
 	}
-	for _, code := range []string{"email", "password", "idle", "ports", "ports_empty", "bind", "bind_empty", "discovery_bind", "discovery", "http_permission", "http_conflict", "port_conflict", "signin", "selection", "serial", "model", "release", "storage", "password_save", "password_remove", "password_read", "password_missing", "keychain_timeout", "connection", "busy"} {
+	for _, code := range []string{"email", "password", "idle", "ports", "ports_empty", "bind", "bind_empty", "discovery_bind", "discovery", "http_permission", "http_conflict", "port_conflict", "signin", "selection", "selection_multiple", "serial", "model", "release", "storage", "password_save", "password_remove", "password_read", "password_missing", "keychain_timeout", "connection", "busy"} {
 		if text == errorCopy(code) {
 			return code
 		}

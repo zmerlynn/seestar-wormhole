@@ -55,7 +55,7 @@ function settings() {
   return {
     version: 1, bind: $('listen').value === 'other' ? $('bind').value.trim() : $('listen').value,
     discovery: $('discovery').checked, idle: $('mode').value === 'eager' ? '0' : Number($('idle').value) + 'm',
-    serial: $('serial').value.trim(), model: $('model').value.trim(), ports: services.map(([device]) => ({device, local: Number($('port-' + device).value)})),
+    serial: $('serial').value, model: $('model').value, ports: services.map(([device]) => ({device, local: Number($('port-' + device).value)})),
     email: accountEmail(), remember_password: usingSaved()
   };
 }
@@ -244,8 +244,39 @@ function controls() {
   text('telescope-selection', $('serial').value.trim() || $('model').value.trim() ? 'Selection entered' : 'Automatic');
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
 }
+let pickerKey = '';
+function devicePicker(devices) {
+  const key = JSON.stringify(devices);
+  if (key === pickerKey) return;
+  pickerKey = key;
+  $('device-picker').hidden = !devices.length;
+  $('device-choice').replaceChildren();
+  const prompt = document.createElement('option');
+  prompt.textContent = 'Choose a telescope…';
+  prompt.value = '';
+  $('device-choice').append(prompt);
+  devices.forEach((device, index) => {
+    const option = document.createElement('option');
+    option.textContent = device.label;
+    option.value = String(index);
+    $('device-choice').append(option);
+  });
+  $('device-choice').onchange = () => {
+    if ($('device-choice').value === '') return;
+    const device = devices[Number($('device-choice').value)];
+    if (!device) return;
+    $('serial').value = device.serial;
+    $('model').value = device.model;
+    clearField('serial');
+    clearField('model');
+    $('advanced').open = true;
+    say('Telescope selection filled in Advanced. Choose Connect to try again.');
+    controls();
+  };
+}
 function render(s) {
   state = s;
+  devicePicker(!s.active && s.failure?.code === 'selection_multiple' ? s.failure.devices || [] : []);
   text('version',s.version);
   active = s.active;
   text('status',s.status);

@@ -428,7 +428,9 @@ appears under more than one model. Incomplete-catalog, duplicate, and ambiguous
 serial refusals also list the received pairs. These lists are command output,
 not log records. Invalid serials are omitted using the command's serial rules;
 unknown model labels are quoted, escaped, and limited to 96 characters before
-escaping. Control characters in serial display are escaped too.
+escaping. Control characters in serial display are escaped too. The desktop
+exposes the choices structurally only for multiple devices without a serial;
+its picker fills the exact wire serial and model in Advanced for the next try.
 
 Every catalog page requests `isContainShared=3` (all), the mode sent by the
 app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).
@@ -480,9 +482,9 @@ Use WARN for quieter long-running service logs.
 Rejected startup suppresses pending dependency records and reports their loss at WARN; diagnostic loss makes the final command result fail.
 Most diagnostic records contain fixed classifications and numeric context,
 not dependency error text, forwarded payloads, or session secrets. Device
-selection masks serials in logs. The CLI's multiple-device list shows full
-serials for account-owner selection; it is command output outside the log
-contract.
+selection masks serials in logs. The CLI's multiple-device list and the desktop
+picker show full serials for account-owner selection; they are outside the log
+contract and are excluded from the copied diagnostic summary.
 `wildcard_bind_warning` intentionally includes interface/address exposure.
 
 The UI records its unreachable-Seestar hint as a `lifecycle` event in `gui.log` and the copied diagnostic
