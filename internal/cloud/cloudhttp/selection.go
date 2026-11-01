@@ -198,8 +198,12 @@ func (d Device) DisplayName() string {
 	return displayModel(model) + " " + displaySerial(d.Serial)
 }
 
-// displaySerial preserves the complete identity with Go ASCII string escaping.
+// displaySerial preserves valid printable ASCII identities verbatim, without a cap.
+// Escape untrusted values outside the serial policy without truncating them.
 func displaySerial(serial string) string {
+	if ValidSerial(serial) {
+		return serial
+	}
 	quoted := strconv.QuoteToASCII(serial)
 	return quoted[1 : len(quoted)-1]
 }

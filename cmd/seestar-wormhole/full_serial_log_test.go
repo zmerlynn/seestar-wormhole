@@ -17,10 +17,9 @@ type serialLogSink struct{ bytes.Buffer }
 func (*serialLogSink) Close() error { return nil }
 
 func TestFullSerialBoundedLog(t *testing.T) {
-	// Quotes/backslashes are the maximum display/log escaping case for legal serials.
+	// Log encoders still escape syntax; serial display itself preserves printable ASCII.
 	for _, serial := range []string{strings.Repeat("\"", 64), strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2)} {
-		quoted := strconv.QuoteToASCII(serial)
-		escaped := quoted[1 : len(quoted)-1]
+		escaped := serial
 		if len(serial) != 64 || !cloudhttp.ValidSerial(serial) {
 			t.Fatal("maximum serial rejected")
 		}

@@ -23,8 +23,8 @@ func TestSerialLabelASCIIEscaping(t *testing.T) {
 		{"byte order mark", "\ufeff", `\ufeff`, false},
 		{"nonprinting", "\u0085", `\u0085`, false},
 		{"non ASCII printable", "\u00e9", `\u00e9`, false},
-		{"quote", "\"", `\"`, true},
-		{"backslash", "\\", `\\`, true},
+		{"quote", "\"", `"`, true},
+		{"backslash", "\\", `\`, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			serial := "synthetic-label-" + tc.character + "1234"

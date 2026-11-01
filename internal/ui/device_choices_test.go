@@ -135,7 +135,7 @@ func TestSavedPickerChoiceLabel(t *testing.T) {
 	s.Serial = "synthetic-\"\\-choice"
 	s.Model = "Future\tmodel"
 	got := pageSettingsFor(s)
-	if got.ChoiceLabel != `Future\tmodel synthetic-\"\\-choice` || got.Serial != s.Serial || got.Model != s.Model {
+	if got.ChoiceLabel != `Future\tmodel synthetic-"\-choice` || got.Serial != s.Serial || got.Model != s.Model {
 		t.Fatalf("saved picker label or wire pair: %#v", got)
 	}
 }

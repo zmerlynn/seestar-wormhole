@@ -10,7 +10,7 @@ import (
 )
 
 func TestFullSerialSurfaces(t *testing.T) {
-	for _, tc := range []struct{ serial, display string }{{strings.Repeat("s", 64), strings.Repeat("s", 64)}, {strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2), strings.Repeat("!\\\"#$%&'()*+,-./:;<=>?@[\\\\]^_`{|}~", 2)}} {
+	for _, tc := range []struct{ serial, display string }{{strings.Repeat("s", 64), strings.Repeat("s", 64)}, {strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2), strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2)}} {
 		serial := tc.serial
 		t.Run(strconv.QuoteToASCII(serial), func(t *testing.T) {
 			if !ValidSerial(serial) {

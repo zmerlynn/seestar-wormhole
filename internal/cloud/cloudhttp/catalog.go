@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Catalog contains only escaped display identity, never wire or account data.
+// CatalogPair contains escaped model text and the full displayed serial.
 // Pairs are bounded to keep one encoded log record below the 16 KiB catalog record budget.
 type CatalogPair struct {
 	Model  string `json:"model"`

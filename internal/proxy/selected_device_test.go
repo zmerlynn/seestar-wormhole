@@ -19,7 +19,7 @@ func TestSelectedDeviceStatusAndReady(t *testing.T) {
 		{"serial-sentinel-secret-1234", "Seestar S50 Pro", "Seestar S50 Pro serial-sentinel-secret-1234"},
 		{"tiny", "S30", "S30 tiny"},
 		{strings.Repeat("s", 64), "S30", "S30 " + strings.Repeat("s", 64)},
-		{strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2), "S30", "S30 " + strings.Repeat("!\\\"#$%&'()*+,-./:;<=>?@[\\\\]^_`{|}~", 2)},
+		{strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2), "S30", "S30 " + strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2)},
 		{"serial-sentinel-secret-1234", "private-model", "private-model serial-sentinel-secret-1234"},
 	} {
 		t.Run(tc.model+"/"+fmt.Sprint(len(tc.serial)), func(t *testing.T) {

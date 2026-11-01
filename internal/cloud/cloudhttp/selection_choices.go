@@ -50,7 +50,7 @@ func (e *SelectionError) CLIMessage() string {
 func (e *SelectionError) LogValue() slog.Value          { return slog.StringValue(e.Error()) }
 func (e *SelectionError) Format(s fmt.State, verb rune) { fmt.Fprint(s, e.Error()) }
 
-// ChoiceLabel is the full, escaped account-owner picker label. It is not a log label.
+// ChoiceLabel combines escaped model text and the full account-owner serial.
 func (d Device) ChoiceLabel() string {
 	return displayModel(d.Model) + " " + displaySerial(d.Serial)
 }

@@ -12,7 +12,7 @@ import (
 )
 
 func TestLifecycleFullSerial(t *testing.T) {
-	for _, tc := range []struct{ serial, display string }{{strings.Repeat("s", 64), strings.Repeat("s", 64)}, {strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2), strings.Repeat("!\\\"#$%&'()*+,-./:;<=>?@[\\\\]^_`{|}~", 2)}} {
+	for _, tc := range []struct{ serial, display string }{{strings.Repeat("s", 64), strings.Repeat("s", 64)}, {strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2), strings.Repeat("!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~", 2)}} {
 		serial := tc.serial
 		escaped := tc.display
 		for _, model := range []string{"S30", ""} {

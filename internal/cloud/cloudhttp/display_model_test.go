@@ -86,13 +86,16 @@ func TestCatalogPublicModelNames(t *testing.T) {
 }
 
 func TestDisplaySerial(t *testing.T) {
+	if got := displaySerial(strings.Repeat("\u202e", 11)); got != strings.Repeat(`\u202e`, 11) {
+		t.Fatal("untrusted display capped or unescaped")
+	}
 
 	for _, tc := range []struct{ wire, want string }{
 		{"tiny", "tiny"},
 		{"synthetic-serial-1234", "synthetic-serial-1234"},
-		{"a\"\\b", `a\"\\b`},
+		{"a\"\\b", `a"\b`},
 		{strings.Repeat("x", 64), strings.Repeat("x", 64)},
-		{strings.Repeat("\"", 64), strings.Repeat(`\"`, 64)},
+		{strings.Repeat("\"", 64), strings.Repeat(`"`, 64)},
 	} {
 		t.Run(tc.want, func(t *testing.T) {
 			for _, model := range []string{"", "Seestar S50 Pro"} {
