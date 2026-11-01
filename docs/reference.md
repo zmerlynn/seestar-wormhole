@@ -508,7 +508,7 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 | `layer_failed` | INFO for handled busy; ERROR for other failures | Classified phase/reason |
 | `session_unavailable` | WARN | Outage reason, `unavailable_ms`, `busy_answers`, every five minutes during eager busy, recovery after ready, or ownership/cleanup recovery, including initial acquisition |
 | `cloud_retry` | WARN | Catalog network/service retry and delay |
-| `device_selection_refused` | WARN | `rule=model_mismatch`; requested and catalog public model labels (unknown labels redacted) |
+| `device_selection_refused` | WARN | `rule=model_mismatch`; `requested_model` and `catalog_model` contain cloud model text with Go ASCII escaping, capped at 64 display characters including any truncation marker |
 | `release_not_attempted` | WARN | Release needs reauthentication |
 | `dtls_ready` | INFO | Negotiated version and suite |
 | `iotc_rid_history_exhausted` | ERROR | Process-lifetime rendezvous identifier reservation budget is full; fixed `error` includes restart guidance |

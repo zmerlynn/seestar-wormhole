@@ -28,3 +28,14 @@ func TestCatalogModeReferenceUncertainty(t *testing.T) {
 		})
 	}
 }
+
+func TestDeviceSelectionRefusedReference(t *testing.T) {
+	data, err := os.ReadFile("../../../docs/reference.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const row = "| `device_selection_refused` | WARN | `rule=model_mismatch`; `requested_model` and `catalog_model` contain cloud model text with Go ASCII escaping, capped at 64 display characters including any truncation marker |"
+	if !strings.Contains(string(data), row) {
+		t.Fatal("device_selection_refused reference does not describe the escaped cloud model fields and display bound")
+	}
+}
