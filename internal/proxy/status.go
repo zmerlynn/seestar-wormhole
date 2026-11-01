@@ -10,7 +10,7 @@ import (
 )
 
 // Status is a nonblocking latest-value projection. Only fixed UI text is
-// published alongside a public model label and masked serial; it never retains
+// published alongside an escaped public model label and full serial; it never retains
 // events, dependency errors, or private cloud material.
 // One session owner writes; any number of readers may load.
 type Status struct {

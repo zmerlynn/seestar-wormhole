@@ -53,12 +53,10 @@ func TestSelectedDeviceUIStatus(t *testing.T) {
 func TestSelectedDeviceUIBinding(t *testing.T) {
 	html, _ := assets.ReadFile("web/index.html")
 	js, _ := assets.ReadFile("web/app.js")
-	if !strings.Contains(string(html), `<p id="selected-device" hidden></p>`) {
-		t.Fatal("selected telescope has no display")
+	if strings.Contains(string(html), `id="selected-device"`) || strings.Contains(string(js), "Telescope: ") {
+		t.Fatal("selected telescope must be folded into status")
 	}
-	// Pin the textContent binding: the value is text, never HTML or settings input.
-	if !strings.Contains(string(js), "text('selected-device',s.selected_device ? 'Telescope: ' + s.selected_device : '');") ||
-		!strings.Contains(string(js), "$('selected-device').hidden = !s.selected_device;") {
-		t.Fatal("selected telescope is not rendered")
+	if strings.Count(string(js), "text('status', statusText);") != 1 {
+		t.Fatal("status must be written once per update")
 	}
 }

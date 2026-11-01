@@ -474,8 +474,9 @@ fields before allocation; mismatch stops the dial. Selection itself makes no
 device-session allocation. INFO reports a public model label and full
 serial; both are escaped without control or format characters
 and capped at 64 display characters, including escapes and a `...` truncation
-marker. The desktop status shows
-`Telescope: <public model> <full serial>` once selection succeeds. The CLI's
+marker. The desktop status includes `<public model> <full serial>` once
+selection succeeds, for example `Connected to Seestar S50 Pro {serial}`.
+An empty model uses `Seestar {serial}`. The CLI's
 existing ready records include the same label in `telescope`; the INFO
 `device_selected` record keeps its separate `model` and `serial` fields.
 Public labels include the [spec's exact catalog names](https://github.com/zmerlynn/seestar-spec/blob/384340c4e37d9fd1acd230fe0a9f9fe3ceac11e7/spec/auth/cloud-auth/http-api.md#device-selection): `Seestar S50`,

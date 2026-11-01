@@ -115,7 +115,10 @@ Absence from the catalog alone does not invalidate a saved pair; the detail
 fallback still applies. The list is excluded from
 logs and Copy diagnostic summary.
 
-After selection, status shows `Telescope: <public model> <full serial>`.
+After selection, status includes the model and full serial, escaped and capped
+at 64 display characters per field, for example **Connected to Seestar S50 Pro {serial}**.
+An empty model uses **Seestar {serial}**. Recent events and Copy diagnostic
+summary carry the same status text.
 The **Change telescope** button and its description **Stops the session.**
 wrap together as a unit.
 It stops the session and waits for release; while waiting, status reads

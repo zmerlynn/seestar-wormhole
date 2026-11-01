@@ -15,8 +15,8 @@ import (
 const logLimit = 64 << 10
 const eventLimit = 80
 
-// Only fixed, user-facing lifecycle categories enter either log. No dependency
-// error, settings, address, account, control capability, or payload is accepted.
+// Only fixed lifecycle messages, including the selected display label, enter
+// either log. No dependency error, account, control capability, or payload is accepted.
 type event struct {
 	Time    time.Time `json:"time"`
 	Message string    `json:"message"`
@@ -33,7 +33,15 @@ type eventLog struct {
 	failed  bool
 }
 
-func eventCode(text string) string {
+func eventCode(text, telescope string) string {
+	// Dynamic messages require explicit selection context and an exact template.
+	if telescope != "" {
+		for _, state := range []string{"Ready", "Waiting for a local client", "Busy — waiting for the other session", "Seestar not reachable", "Reconnecting", "Releasing idle session", "Reconnecting — waiting for cleanup/retry"} {
+			if text == telescopeText(state, telescope) {
+				return "lifecycle"
+			}
+		}
+	}
 	switch text {
 	case "App opened.", "App could not start.", "Connecting to your Seestar…", "Connected to your Seestar", "Waiting for an app to connect", "Seestar is occupied. Retrying automatically.", "Seestar isn't reachable. Check this computer's internet connection and make sure Seestar is awake and connected to Wi-Fi. Retrying automatically.", "Connection interrupted. Retrying automatically.", "Releasing idle Seestar session…", "Waiting before retrying the connection…", "Stopped", "Stopped. Seestar may still be releasing the session.", "Settings saved.", "Password saved to keychain. Checked when you connect.", "Password removed from keychain and this app.":
 		return "lifecycle"
@@ -54,14 +62,14 @@ func (l *eventLog) addFailure(text string, err error) {
 	l.diskMu.Lock()
 	defer l.diskMu.Unlock()
 	l.mu.Lock()
-	entry := l.publishLocked(text, err)
+	entry := l.publishLocked(text, err, "")
 	l.mu.Unlock()
 	l.write(entry)
 }
 
 // publishLocked records an immutable event in memory, without disk I/O.
-func (l *eventLog) publishLocked(text string, err error) *event {
-	code := eventCode(text)
+func (l *eventLog) publishLocked(text string, err error, telescope string) *event {
+	code := eventCode(text, telescope)
 	if code == "" {
 		return nil
 	}

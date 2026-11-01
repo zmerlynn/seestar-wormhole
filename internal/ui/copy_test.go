@@ -88,7 +88,7 @@ func TestOccupiedCopyDistinguishesRetryPaths(t *testing.T) {
 		t.Fatal(got)
 	}
 	for _, message := range []string{"App opened.", "App could not start.", uiText("Ready"), uiText("Busy — waiting for the other session"), uiText("Reconnecting — waiting for cleanup/retry"), "Stopped. Seestar may still be releasing the session."} {
-		if eventCode(message) != "lifecycle" {
+		if eventCode(message, "") != "lifecycle" {
 			t.Fatalf("lifecycle event dropped: %s", message)
 		}
 	}

@@ -78,7 +78,7 @@ func (c *controller) start(s Settings, password string) error {
 			for {
 				select {
 				case text := <-status.Updates():
-					c.recordProgress(uiText(text))
+					c.recordProgress(telescopeText(text, status.SelectedDevice()))
 					c.saveAtBoundary(status, s)
 				case <-finished:
 					c.saveAtBoundary(status, s)
@@ -232,7 +232,7 @@ func (c *controller) snapshotLocked() (string, bool) {
 	if p := c.credentials.state(c.runSettings.Email); p.Code == "password_reading" {
 		return "Reading saved password…", true
 	}
-	return uiText(c.status.Text()), true
+	return telescopeText(c.status.Text(), c.status.SelectedDevice()), true
 }
 
 // A terminal credential/protocol rejection ends this UI run after cleanup joins.
@@ -263,7 +263,7 @@ func (c *controller) recordProgress(text string) {
 	c.mu.Lock()
 	var entry *event
 	if !c.stopping {
-		entry = l.publishLocked(text, nil)
+		entry = l.publishLocked(text, nil, c.status.SelectedDevice())
 	}
 	c.mu.Unlock()
 	l.mu.Unlock()
@@ -344,6 +344,30 @@ func (c *controller) persistRemoval(generation uint64) error {
 	}
 	return err
 }
+
+// telescopeText interpolates only the selected display label into fixed states.
+func telescopeText(text, telescope string) string {
+	if telescope != "" {
+		switch text {
+		case "Ready":
+			return "Connected to " + telescope
+		case "Waiting for a local client":
+			return "Waiting for an app to connect to " + telescope
+		case "Busy — waiting for the other session":
+			return telescope + " is occupied. Retrying automatically."
+		case "Seestar not reachable":
+			return telescope + " isn't reachable. Check this computer's internet connection and make sure it is awake and connected to Wi-Fi. Retrying automatically."
+		case "Reconnecting":
+			return "Connection to " + telescope + " interrupted. Retrying automatically."
+		case "Releasing idle session":
+			return "Releasing idle session with " + telescope + "…"
+		case "Reconnecting — waiting for cleanup/retry":
+			return "Waiting before retrying " + telescope + "…"
+		}
+	}
+	return uiText(text)
+}
+
 func uiText(text string) string {
 	switch text {
 	case "Ready":
