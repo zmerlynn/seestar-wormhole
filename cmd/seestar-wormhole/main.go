@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"log/slog"
@@ -180,7 +181,12 @@ func runParsedWithConfigRuntime(ctx context.Context, o options, out, logs io.Wri
 			return config.newSession(ctx, cfg, credentials)
 		}
 	}
-	return runProxy(ctx, o, logs, newSession, listen, listenDiscovery, proxy.CheckTCPStateSupport)
+	err := runProxy(ctx, o, logs, newSession, listen, listenDiscovery, proxy.CheckTCPStateSupport)
+	var selection *cloudhttp.SelectionError
+	if errors.As(err, &selection) {
+		fmt.Fprintln(out, selection.Error())
+	}
+	return err
 }
 
 func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error), listenDiscovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) (result error) {

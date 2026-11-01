@@ -121,7 +121,7 @@ func assertCatalogModelRequired(t *testing.T, got Device, err error) {
 	if got != (Device{}) || !errors.Is(err, cloud.ErrConfig) || !errors.As(err, &option) || option.Option != "--model" || !strings.Contains(err.Error(), "name --model") {
 		t.Fatalf("selection=%v error=%v, want config refusal naming --model", got, err)
 	}
-	assertCatalogPagePrivacy(t, err.Error())
+	// Selection errors intentionally include received catalog choices.
 }
 
 func TestCatalogMissingExplicitPair(t *testing.T) {

@@ -56,7 +56,7 @@ func TestCatalogPairSelection(t *testing.T) {
 					if strings.Contains(logs.String(), "device_selected") {
 						t.Fatal("selected ambiguous or missing pair")
 					}
-					assertCatalogPagePrivacy(t, err.Error())
+					// Catalog choices intentionally expose full serials in command errors.
 				}
 				if tc.name == "absent serial" {
 					assertCatalogPageRequests(t, f, len(pages), "/v1/my-device/detail")

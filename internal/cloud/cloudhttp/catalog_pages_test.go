@@ -115,7 +115,7 @@ func TestCatalogPageSelection(t *testing.T) {
 				if strings.Contains(logs.String(), "device_selected") {
 					t.Fatal("selected ambiguous catalog")
 				}
-				assertCatalogPagePrivacy(t, err.Error())
+				// Catalog choices intentionally expose full serials in command errors.
 			}
 			if tc.name == "explicit absent" {
 				assertCatalogPageRequests(t, f, len(tc.pages), "/v1/my-device/detail")

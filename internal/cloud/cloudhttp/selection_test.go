@@ -132,12 +132,14 @@ func TestDeviceSelection(t *testing.T) {
 					}
 					if tc.reason == "multiple devices on account" {
 						for _, s := range []string{"S50 Pro", "***1234", "S30", "***5678"} {
-							if strings.Contains(logs.String(), s) || strings.Contains(err.Error(), s) {
+							if strings.Contains(logs.String(), s) {
 								t.Fatalf("catalog label %q escaped ambiguous rejection", s)
 							}
 						}
 					}
-					assertSelectionSecrets(t, err.Error())
+					if tc.reason != "multiple devices on account" {
+						assertSelectionSecrets(t, err.Error())
+					}
 				}
 				if tc.listed && !strings.Contains(strings.Join(f.paths, ","), "/v1/my-device") {
 					t.Fatal("device list not requested")

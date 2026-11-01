@@ -46,13 +46,19 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 		}
 	}
 	if (!complete || duplicates) && d.Model == "" {
-		return Device{}, diagnostic.Wrap("device_selection", "incomplete catalog; name --model to select a received pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "incomplete catalog; name --model to select a received pair"}))
+		return Device{}, &SelectionError{
+			cause:   diagnostic.Wrap("device_selection", "incomplete catalog; name --model to select a received pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "incomplete catalog; name --model to select a received pair"})),
+			choices: selectionChoices(devices), Multiple: d.Serial == "" && len(devices) > 1,
+		}
 	}
 	if len(devices) == 0 {
 		return Device{}, diagnostic.Wrap("device_selection", "no devices on account", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"}))
 	}
 	if d.Serial == "" && len(devices) != 1 {
-		return Device{}, diagnostic.Wrap("device_selection", "multiple devices on account; set --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"}))
+		return Device{}, &SelectionError{
+			cause:   diagnostic.Wrap("device_selection", "multiple devices on account; set --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"})),
+			choices: selectionChoices(devices), Multiple: d.Serial == "" && len(devices) > 1,
+		}
 	}
 	var matches []cloud.Detail
 	for _, v := range devices {
@@ -71,7 +77,10 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 	}
 	if len(matches) > 1 || (!complete && len(matches) == 1) {
 		if d.Model == "" {
-			return Device{}, diagnostic.Wrap("device_selection", "serial is ambiguous; name --model to select a catalog pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "serial is ambiguous; name --model to select a catalog pair"}))
+			return Device{}, &SelectionError{
+				cause:   diagnostic.Wrap("device_selection", "serial is ambiguous; name --model to select a catalog pair", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "serial is ambiguous; name --model to select a catalog pair"})),
+				choices: selectionChoices(devices), Multiple: d.Serial == "" && len(devices) > 1,
+			}
 		}
 		matched := false
 		for _, v := range matches {

@@ -420,8 +420,15 @@ still fails. A catalog model mismatch never uses this fallback.
 All detail requests, including the pre-allocation check, send
 `onlyQueryOwner=false`, as the app's connect workflow does in the
 [spec](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection).
-Unmatched serials or multiple pairs without a serial identify
-`--serial` in diagnostics without exposing catalog labels or serials.
+Unmatched serials or multiple pairs without a serial identify `--serial` in
+classified diagnostics. For multiple devices without a serial, the CLI prints
+an error to standard output listing every received distinct pair, one per line:
+model then **full serial**. Pass `--serial`; also pass `--model` when a serial
+appears under more than one model. Incomplete-catalog, duplicate, and ambiguous
+serial refusals also list the received pairs. These lists are command output,
+not log records. Invalid serials are omitted using the command's serial rules;
+unknown model labels are quoted, escaped, and limited to 96 characters before
+escaping. Control characters in serial display are escaped too.
 
 Every catalog page requests `isContainShared=3` (all), the mode sent by the
 app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).
@@ -467,13 +474,15 @@ by default and shares this exact identity format.
 
 ## Logs
 
-Help, version, and license text go to stdout. Logs/errors go
-to stderr. Normal logging uses the selected format and level.
+Help, version, license text, and received telescope lists go to stdout.
+Classified logs/errors go to stderr. Normal logging uses the selected format and level.
 Use WARN for quieter long-running service logs.
 Rejected startup suppresses pending dependency records and reports their loss at WARN; diagnostic loss makes the final command result fail.
 Most diagnostic records contain fixed classifications and numeric context,
 not dependency error text, forwarded payloads, or session secrets. Device
-selection masks serials.
+selection masks serials in logs. The CLI's multiple-device list shows full
+serials for account-owner selection; it is command output outside the log
+contract.
 `wildcard_bind_warning` intentionally includes interface/address exposure.
 
 The UI records its unreachable-Seestar hint as a `lifecycle` event in `gui.log` and the copied diagnostic
