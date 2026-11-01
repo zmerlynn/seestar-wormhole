@@ -79,31 +79,43 @@ Opening seestar-wormhole again with the same state directory brings the
 existing window forward. If `seestar-wormhole-cli proxy` is already using the
 same ports, stop it first.
 
+## Telescope selection
+
+The **Telescope** picker sits below the account fields. **Automatic** is the
+default: with one telescope on the account, Connect selects it. A saved Serial
+and Model pair appears as a selected entry with its model and full serial number.
+
+If the account has several telescopes, Connect shows **Choose a telescope**
+and adds each model and full serial number to the picker. Its help reads
+**Your account has several telescopes. Choose one, then Connect.** The picker
+receives focus once, with Connect next in keyboard order. Choosing an entry
+fills the exact account pair and shows **Ready to connect**; choose Connect
+to start the session. Connect with Automatic still selected in this step keeps
+the picker focused without another account request.
+
+**Custom…** reveals **Serial number (optional)** and **Model (optional)** below
+the picker for manual entry. Choosing another entry hides these fields and
+fills its exact pair; Automatic clears both. The received list stays in memory
+for this app run, including when the controls page is reopened. Only Serial and
+Model are saved in the existing settings format. The list is excluded from
+logs and Copy diagnostic summary.
+
+After selection, status shows `Telescope: <public model> <masked serial>`.
+The **Change telescope** button has the description **Stops the session.**
+It stops the session and waits for release; while waiting, status reads
+**Stopping — releasing the Seestar session…**. After the choice is cleared and
+saved, status reads **Stopped. Choose Connect to pick a telescope.** The
+release-uncertainty message takes precedence if release could not be confirmed.
+The telescope line and button disappear, and Automatic is selected. Connect
+can list the account's telescopes again, or connect automatically to a single
+telescope. The button is disabled during a stop or save.
+
+If saving fails, the session stays stopped and the fields stay filled;
+**Retry saving settings** retries that saved snapshot. A successful retry
+clears the fields and shows the same stopped prompt, preserving any release
+uncertainty. See [device selection](reference.md#device-selection).
+
 ## Advanced
-
-The status shows `Telescope: <public model> <masked serial>` after selection.
-The **Change telescope** button beside it stops the session and waits for release.
-While it waits, the status reads **Stopping — releasing the Seestar session…**.
-
-### Telescope selection
-
-If your account has one Seestar, leave **Serial number (optional)** and
-**Model (optional)** empty. If it has several, choose Connect to receive a
-picker showing each model and full serial number. Choosing a telescope fills
-Serial and Model in Advanced with the exact account values; choose Connect
-again to try that pair. You can also enter both fields exactly as your account
-shows them. The list is excluded from logs and Copy diagnostic summary;
-selected-telescope status and device-selection logs keep serials masked.
-
-Choose **Change telescope** to stop the current session and clear the saved
-Serial and Model fields. After the save succeeds, the status reads **Stopped.
-Seestar may still be releasing the session.**, the telescope line and button
-disappear, and Connect is available with both fields empty. Choose Connect to
-list the account's telescopes again; with only one telescope, it connects to
-that telescope automatically. The button is disabled during a stop or save.
-If saving fails, the session stays stopped and the fields stay filled; the
-existing settings-save error offers **Retry saving settings**. A successful
-retry clears the fields. See [device selection](reference.md#device-selection).
 
 ### Timing and idle
 

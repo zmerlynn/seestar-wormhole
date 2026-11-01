@@ -430,7 +430,10 @@ all model labels use Go ASCII string escaping (without enclosing quotes) and
 are capped at 64 display characters, including escapes and a `...` truncation
 marker. Serial labels use the same ASCII escaping without truncation. The desktop
 exposes the choices structurally only for multiple devices without a serial;
-its picker fills the exact wire serial and model in Advanced for the next try.
+its Telescope picker below the account fields fills the exact wire serial and
+model for the next Connect. Automatic clears the pair; Custom… reveals manual
+Serial and Model fields. A saved pair is selected on load. Received choices
+remain in memory for this app run and are never added to the settings file.
 
 Every catalog page requests `isContainShared=3`, the mode sent by the
 app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).

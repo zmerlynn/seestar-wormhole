@@ -58,7 +58,7 @@
       assert($('ports-error').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING && $('port-permissions').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING, 'port recovery follows the ten-row table');
       assert($('services-title').tagName === 'H2' && $('services-title').textContent === 'Services' && $('ports').getAttribute('aria-labelledby') === 'services-title', 'Services heading missing');
       for (const [id, placeholder] of [['serial', 'From your Seestar account'], ['model', 'e.g. S50 Pro']]) {
-        assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && !$(id+'-help') && $(id).getAttribute('aria-describedby').includes('selection-help'), id+' example is not placeholder-only');
+        assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && !$(id+'-help') && $(id).getAttribute('aria-describedby') === id+'-error', id+' example is not placeholder-only');
       }
       assert(Array.from($('details').querySelectorAll('h2')).map(e => e.textContent).join('|') === 'Connection settings|Recent events', 'Details headings missing');
       assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous port headings');
@@ -355,11 +355,14 @@
       results.push('Account computed style: padding-left=' + style.paddingLeft + ', text-left=' + textLeft + ', input-left=' + inputLeft);
     });
     await check('Change telescope release and persistence', checkChangeTelescope);
-    await check('S5 explicit selection copy', async () => {
+    await check('Custom telescope fields', async () => {
+      $('device-choice').value = 'custom';
+      $('device-choice').dispatchEvent(new Event('change'));
+      assert(!$('custom-device').hidden && !$('serial').closest('details') && !$('model').closest('details'), 'Custom fields remain in Advanced');
       $('model').value = 'synthetic';
-      $('model').dispatchEvent(new Event('input'));
-      assert($('telescope-selection').textContent === 'Selection entered', 'explicit telescope still described as Automatic');
-      $('model').value = '';
+      $('device-choice').value = '';
+      $('device-choice').dispatchEvent(new Event('change'));
+      assert($('custom-device').hidden && $('serial').value === '' && $('model').value === '', 'Automatic retained Custom pair');
     });
   } finally {
     window.setTimeout = liveTimeout;

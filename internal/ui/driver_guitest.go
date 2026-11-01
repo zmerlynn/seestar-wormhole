@@ -152,7 +152,12 @@ func (d *guiTestDriver) start() error {
 }
 
 func (d *guiTestDriver) state(want string, active bool, shot string) error {
-	if err := d.serverState(want, active); err != nil {
+	serverWant := want
+	// The chosen pair is a page draft until Connect submits it.
+	if want == "Ready to connect" {
+		serverWant = "Choose a telescope"
+	}
+	if err := d.serverState(serverWant, active); err != nil {
 		return err
 	}
 
@@ -178,8 +183,8 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 			return err
 		}
 	case "telescope-picker", "telescope-chosen", "telescope-cleared", "telescope-picker-again":
-		d.js(`document.getElementById('device-picker').hidden ? document.getElementById('advanced').scrollIntoView({block:'start'}) : document.getElementById('device-picker').scrollIntoView({block:'start'});`)
-		if err := d.probe(`(() => {const ids=el('device-picker').hidden ? ['serial','model'] : el('advanced').open ? ['device-choice','serial','model'] : ['device-choice']; const visible=ids.every(id=>{const r=el(id).getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight});return check(visible,{ids,innerHeight})})()`); err != nil {
+		d.js(`(() => {const el=id=>document.getElementById(id); const top=el('status').getBoundingClientRect().top+scrollY,bottom=el('device-picker').getBoundingClientRect().bottom+scrollY; if(bottom-top<=innerHeight) window.scrollTo(0,Math.max(0,bottom-innerHeight)); else el('device-picker').scrollIntoView({block:'center'});})()`)
+		if err := d.probe(`(() => {const span=el('device-picker').getBoundingClientRect().bottom-el('status').getBoundingClientRect().top; const ids=span<=innerHeight ? ['status','device-choice'] : ['device-choice']; const visible=ids.every(id=>{const r=el(id).getBoundingClientRect();return r.top>=0 && r.bottom<=innerHeight});return check(visible,{ids,innerHeight})})()`); err != nil {
 			return err
 		}
 	case "advanced-top", "advanced-network":

@@ -115,10 +115,12 @@ retry. All use fake credentials and a marker-backed fake keychain. Timeout cases
 model a late OS completion; no native keychain is accessed.
 
 `telescope-picker` uses an in-memory fake cloud with two synthetic telescopes,
-including an unknown model. It captures the picker before selection, the exact
-Serial and Model filled in Advanced, the connected `Telescope:` line with
-**Change telescope**, and the stopped page with cleared fields after that button
-joins release and saves. It then checks that Connect offers the picker again.
+including an unknown model. It captures the picker and status before selection,
+the chosen entry with the exact underlying Serial and Model pair, the connected
+`Telescope:` line with **Change telescope** and **Stops the session.**, and the
+stopped prompt with Automatic selected after that button joins release and saves.
+It then checks that Connect offers the picker again. Picker captures include
+the status when both fit in the viewport.
 `dark-telescope-picker` repeats this flow in the existing OS dark-mode campaign.
 These screenshots are produced only by the CI GUI autotest run; compilation and
 headless plumbing tests do not produce screenshots.
