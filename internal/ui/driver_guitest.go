@@ -154,7 +154,7 @@ func (d *guiTestDriver) start() error {
 func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	serverWant := want
 	// The chosen pair is a page draft until Connect submits it.
-	if want == "Ready to connect" {
+	if want == "Ready to connect" || want == "Enter a serial number." {
 		serverWant = "Choose a telescope"
 	}
 	if err := d.serverState(serverWant, active); err != nil {
@@ -182,9 +182,9 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 		if err := d.probe(`(() => {const b=el('running-ports-box'),r=b.getBoundingClientRect();return check(b.open && r.top>=-1 && r.top<innerHeight,{open:b.open,rect:r,innerHeight})})()`); err != nil {
 			return err
 		}
-	case "telescope-picker", "telescope-chosen", "telescope-cleared", "telescope-picker-again":
+	case "telescope-picker", "telescope-chosen", "telescope-cleared", "telescope-picker-again", "telescope-manual", "telescope-choosing":
 		// Scroll on every poll: the page can still shift after the state change.
-		if err := d.probe(`(() => {const top=el('status').getBoundingClientRect().top+scrollY,bottom=el('device-picker').getBoundingClientRect().bottom+scrollY; const fits=bottom-top<=innerHeight; if(fits) window.scrollTo(0,Math.max(0,Math.ceil(bottom-innerHeight))); else el('device-picker').scrollIntoView({block:'center'}); const ids=fits ? ['status','device-choice'] : ['device-choice']; const visible=ids.every(id=>{const r=el(id).getBoundingClientRect();return r.top>=-1 && r.bottom<=innerHeight+1});return check(visible,{ids,innerHeight,rects:ids.map(id=>el(id).getBoundingClientRect())})})()`); err != nil {
+		if err := d.probe(guiTestPickerViewportProbe); err != nil {
 			return err
 		}
 	case "advanced-top", "advanced-network":

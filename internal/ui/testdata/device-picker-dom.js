@@ -11,6 +11,7 @@ class TestElement {
   dispatchEvent(event) {for (const callback of this.listeners?.[event.type] || []) callback(event); if (event.type === 'change' && this.onchange) this.onchange(event);}
   focus() {if (this === document.getElementById('device-choice') && document.getElementById('options').disabled) throw new Error('focus in disabled form'); this.focusCount++; document.activeElement = this;}
   removeAttribute(name) {delete this.attributes[name];}
+  getAttribute(name) {return this.attributes[name] ?? null;}
   setAttribute(name, value) {this.attributes[name] = value;}
   querySelector() {return new TestElement();}
   closest() {return null;}

@@ -5,13 +5,23 @@ package ui
 import "github.com/zmerlynn/seestar-wormhole/internal/session"
 
 func (d *guiTestDriver) telescopePicker() error {
+	if err := d.probe(guiTestDiscoveryPickerProbe); err != nil {
+		return err
+	}
 	if err := d.start(); err != nil {
 		return err
 	}
-	if err := d.probe(`check(!el('device-picker').hidden && el('device-choice').options.length===4 && el('device-choice').options[1].textContent==='Seestar S50 Pro synthetic-choice-1234' && el('device-choice').options[2].textContent==='Future telescope\\tmodel synthetic-choice-5678' && el('serial').value==='' && el('model').value==='' && el('change-telescope').hidden && el('device-choice').options[0].textContent==='Choose a telescope…' && el('device-choice').options[3].textContent==='Custom…' && el('serial-error').hidden && el('error-code').hidden && el('selection-help').textContent==='Your account has several telescopes. Choose one, then Connect.' && el('device-choice').getAttribute('aria-describedby')==='selection-help' && document.activeElement===el('device-choice'),{pickerHidden:el('device-picker').hidden,options:el('device-choice').options.length})`); err != nil {
+	if err := d.probe(`check(!el('device-picker').hidden && el('device-choice').options.length===4 && el('device-choice').options[1].textContent==='Seestar S50 Pro synthetic-choice-1234' && el('device-choice').options[2].textContent==='Future telescope\\tmodel synthetic-choice-5678' && el('serial').value==='' && el('model').value==='' && el('change-telescope').hidden && el('device-choice').options[0].textContent==='Choose a telescope…' && el('device-choice').options[3].textContent==='Enter manually…' && el('serial-error').hidden && el('error-code').hidden && el('selection-help').textContent==='Your account has several telescopes. Choose one, then Connect.' && el('device-choice').getAttribute('aria-describedby')==='selection-help' && document.activeElement===el('device-choice'),{pickerHidden:el('device-picker').hidden,options:el('device-choice').options.length})`); err != nil {
 		return err
 	}
 	if err := d.state("Choose a telescope", false, "telescope-picker"); err != nil {
+		return err
+	}
+	d.js(`const picker=document.getElementById('device-choice');picker.value='custom';picker.dispatchEvent(new Event('change',{bubbles:true}));`)
+	if err := d.probe(guiTestManualPickerProbe); err != nil {
+		return err
+	}
+	if err := d.state("Enter a serial number.", false, "telescope-manual"); err != nil {
 		return err
 	}
 	// Choose the unknown model: display escaping must never become the wire value.
@@ -43,21 +53,39 @@ func (d *guiTestDriver) telescopePicker() error {
 	if err := d.probe(`check(el('serial').value==='' && el('model').value==='' && el('selected-device').hidden && el('change-telescope').hidden && !el('start').disabled && el('start').textContent==='Connect',{serial:el('serial').value,model:el('model').value,changeHidden:el('change-telescope').hidden})`); err != nil {
 		return err
 	}
-	if err := d.state("Stopped. Choose Connect to pick a telescope.", false, "telescope-stopped"); err != nil {
+	if err := d.state("Stopped. Choose a telescope, then Connect.", false, "telescope-stopped"); err != nil {
 		return err
 	}
-	if err := d.state("Stopped. Choose Connect to pick a telescope.", false, "telescope-cleared"); err != nil {
+	if err := d.state("Stopped. Choose a telescope, then Connect.", false, "telescope-cleared"); err != nil {
 		return err
 	}
-	// The next Connect must enumerate again from the cleared saved pair.
-	if err := d.start(); err != nil {
+	if err := d.probe(guiTestChoosingPickerProbe); err != nil {
 		return err
 	}
-	if err := d.probe(`check(!el('device-picker').hidden && el('device-choice').options.length===4 && el('device-choice').value==='',{pickerHidden:el('device-picker').hidden,choice:el('device-choice').value})`); err != nil {
+	if err := d.state("Stopped. Choose a telescope, then Connect.", false, "telescope-choosing"); err != nil {
 		return err
 	}
-	if err := d.state("Choose a telescope", false, "telescope-picker-again"); err != nil {
+	// The empty choice keeps the received list and asks for a choice locally.
+	if err := d.click("start"); err != nil {
+		return err
+	}
+	if err := d.probe(guiTestChoosingPickerProbe); err != nil {
+		return err
+	}
+	if err := d.state("Stopped. Choose a telescope, then Connect.", false, "telescope-picker-again"); err != nil {
 		return err
 	}
 	return d.click("quit")
 }
+
+const guiTestDiscoveryPickerProbe = `check(el('device-choice').children[0].textContent==='Find on my account' && !el('selection-help').hidden && el('selection-help').textContent==='Connect uses your only telescope, or asks which one if there are several.' && el('device-choice').getAttribute('aria-describedby')==='selection-help',{})`
+
+const guiTestManualPickerProbe = `(() => {
+ const picker=el('device-choice'),manual=el('custom-device'),action=el('picker-action'),siblings=Array.from(manual.parentElement.children);
+ return check(picker.children[picker.children.length-1].textContent==='Enter manually…' && !manual.hidden && siblings.indexOf(manual)<siblings.indexOf(action) && el('start').parentElement===action && document.activeElement===picker && el('status').textContent==='Enter a serial number.' && !el('serial-help').hidden && el('serial-help').textContent==='Enter a serial number.' && el('serial').getAttribute('aria-describedby').split(' ').includes('serial-help'),{});
+})()`
+
+const guiTestChoosingPickerProbe = `check(el('device-choice').value==='' && el('device-choice').children[0].textContent==='Choose a telescope…' && el('status').textContent==='Stopped. Choose a telescope, then Connect.' && el('start').parentElement===el('picker-action') && document.activeElement===el('device-choice') && !el('selection-help').hidden && el('selection-help').textContent==='Your account has several telescopes. Choose one, then Connect.',{})`
+
+// Scrolling stays inside the repeated probe, including after layout shifts.
+const guiTestPickerViewportProbe = `(() => {const top=el('status').getBoundingClientRect().top+scrollY,bottom=el('device-picker').getBoundingClientRect().bottom+scrollY; const fits=bottom-top<=innerHeight; if(fits) window.scrollTo(0,Math.max(0,Math.ceil(bottom-innerHeight))); else el('device-picker').scrollIntoView({block:'center'}); const ids=fits ? ['status','device-choice'] : ['device-choice']; if(!el('custom-device').hidden) ids.push('serial','model','start'); const visible=ids.every(id=>{const r=el(id).getBoundingClientRect();return r.top>=-1 && r.bottom<=innerHeight+1});return check(visible,{ids,innerHeight,rects:ids.map(id=>el(id).getBoundingClientRect())})})()`

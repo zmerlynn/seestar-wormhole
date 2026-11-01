@@ -116,11 +116,17 @@ model a late OS completion; no native keychain is accessed.
 
 `telescope-picker` uses an in-memory fake cloud with two synthetic telescopes,
 including an unknown model. It captures the picker and status before selection,
-the chosen entry with the exact underlying Serial and Model pair, the connected
+the **Enter manually…** step with **Enter a serial number.** and Connect after
+Serial/Model, the chosen entry with the exact underlying pair, the connected
 `Telescope:` line with **Change telescope** and **Stops the session.**, and the
-stopped prompt with Automatic selected after that button joins release and saves.
-It then checks that Connect offers the picker again. Picker captures include
-the status when both fit in the viewport.
+post-change choosing state after that button joins release and saves. The
+`telescope-choosing` capture checks **Stopped. Choose a telescope, then Connect.**,
+**Choose a telescope…**, picker focus, and Connect after the picker. An empty
+Connect keeps this step without a new lookup. The `telescope-manual` capture
+includes Serial, Model, and Connect. Each viewport probe scrolls on every poll;
+picker captures include the status when both fit in the viewport. Before discovery,
+the driver checks **Find on my account** and its associated explanation.
 `dark-telescope-picker` repeats this flow in the existing OS dark-mode campaign.
+Both scenarios run on Linux, Windows, and macOS.
 These screenshots are produced only by the CI GUI autotest run; compilation and
 headless plumbing tests do not produce screenshots.
