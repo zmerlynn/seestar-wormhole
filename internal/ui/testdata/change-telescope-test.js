@@ -4,6 +4,7 @@ async function checkChangeTelescope(uncertain = false, received = false) {
   const original = {email:'synthetic@example.invalid',serial:'synthetic-change-1234',model:'Future telescope'};
   const finalStatus = uncertain ? 'Session release could not be confirmed. If Seestar is occupied, wait and try Connect again.' : received ? 'Stopped. Choose a telescope, then Connect.' : 'Stopped. Choose Connect to pick a telescope.';
   const stopped = {active:false,status:finalStatus,settings:{...original,serial:'',model:''},version:'synthetic',effective:{listen:'this_computer',idle:{mode:'keep_connected'},ports:{}},password:{memory:true},events:[]};
+  if (uncertain) stopped.failure={code:'release'};
   if (received) {stopped.devices_email=original.email; stopped.devices=[{serial:original.serial,model:original.model,label:'Future telescope synthetic-change-1234'}]; stopped.choosing=true;}
   initialized = connected = true;
   $('start').hidden = false;
