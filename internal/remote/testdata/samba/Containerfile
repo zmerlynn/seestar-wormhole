@@ -1,0 +1,14 @@
+# A guest-only, read-only Samba share named like the telescope's, for the
+# smbintegration tests. Build with this directory as the context.
+FROM docker.io/library/ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+RUN apt-get update \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends samba \
+ && rm -rf /var/lib/apt/lists/*
+# The telescope runs Samba 4.19.5; fail the build if Ubuntu moves on.
+RUN smbd --version && smbd --version | grep -q '^Version 4\.19\.5'
+COPY smb.conf /etc/samba/smb.conf
+COPY tree.txt make-tree.sh /fixture/
+RUN testparm -s >/dev/null && sh /fixture/make-tree.sh /srv/emmc /fixture/tree.txt
+ENV SMB_PORT=14450
+EXPOSE 14450
+CMD ["sh", "-c", "exec smbd --foreground --no-process-group --debug-stdout --option=\"smb ports=$SMB_PORT\""]

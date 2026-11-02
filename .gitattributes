@@ -1,0 +1,6 @@
+# Keep generated notices, their inputs, scripts and archive text identical on every OS.
+* text=auto eol=lf
+
+# Vendored upstream files and wire fixtures retain their exact committed bytes.
+/vendor/** -text
+**/testdata/** -text

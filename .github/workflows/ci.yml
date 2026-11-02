@@ -1,0 +1,113 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=vendor
+  GOTOOLCHAIN: local
+  GOPROXY: 'off'
+  GOSUMDB: 'off'
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    container: golang:1.27.3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Format, build, cross-build, vet, license catalog and race tests
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sh scripts/check-go.sh
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Build vendored source
+        run: go build ./...
+      - name: Vet vendored source
+        run: go vet ./...
+      - name: Test vendored source
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            go test -race ./...
+          else
+            go test -v ./...
+          fi
+      - name: Build and smoke test native binary
+        run: |
+          binary=seestar-copy-cli
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            binary+=.exe
+          fi
+          go build -o "$binary" ./cmd/seestar-copy-cli
+          "./$binary" --version
+          "./$binary" sync --help
+
+  smb:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Start the Samba fixture
+        run: |
+          docker build -f internal/remote/testdata/samba/Containerfile -t seestar-copy-samba internal/remote/testdata/samba
+          docker run -d --name samba -p 127.0.0.1:14450:14450 seestar-copy-samba
+          for try in $(seq 50); do
+            if docker exec samba bash -c 'exec 3<>/dev/tcp/127.0.0.1/14450'; then exit 0; fi
+            sleep 0.2
+          done
+          docker logs samba
+          exit 1
+      - name: SMB integration tests
+        env:
+          SEESTAR_COPY_SMB_ENDPOINT: 127.0.0.1:14450
+        run: go test -tags smbintegration -race -count=1 -timeout 10m -v ./internal/remote
+      - name: Samba log
+        if: failure()
+        run: docker logs samba
+
+  vendor:
+    runs-on: ubuntu-24.04
+    container: golang:1.27.3
+    env:
+      GOFLAGS: ''
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Vendor tree is reproducible
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go mod tidy
+          go mod vendor
+          test -z "$(git status --porcelain -- go.mod go.sum vendor)" || { git status --porcelain -- go.mod go.sum vendor; exit 1; }

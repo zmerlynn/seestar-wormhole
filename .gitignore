@@ -1,0 +1,14 @@
+/bin/
+/dist/
+/coverage.out
+/.cache/
+/seestar-copy-cli
+/seestar-copy-cli.exe
+
+# Local state, logs and copied images.
+**/*.jsonl
+**/*.log
+**/*.log.*
+**/.seestar-copy-*.tmp
+**/*.fit
+**/*.fits
