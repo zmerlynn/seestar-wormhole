@@ -144,11 +144,6 @@ proxy forwards what your app or client sends, including commands that move the
 mount, change settings or delete files, and use of the vendor's cloud service
 is subject to its terms.
 
-Tips are welcome and never required:
-[GitHub Sponsors](https://github.com/sponsors/zmerlynn) or
-[a one-time card payment](https://buy.stripe.com/bJe3cxgMNaWbgCfe9E5wI00). A
-tip is a thank-you; it doesn't buy support, priority or features.
-
 ## More
 
 See [internal package boundary](docs/development/README.md).
@@ -164,3 +159,10 @@ See [internal package boundary](docs/development/README.md).
 - [How it works and how to hack on it](https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md) (in the source repository)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE) and [third-party notices](NOTICE)
+
+## Support this project
+
+Tips are welcome and never required:
+[GitHub Sponsors](https://github.com/sponsors/zmerlynn) or a
+[one-time tip](https://buy.stripe.com/bJe3cxgMNaWbgCfe9E5wI00). A tip is a
+thank-you; it doesn't buy support, priority or features.
