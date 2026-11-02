@@ -75,7 +75,7 @@ func TestDryRunCreatesNothing(t *testing.T) {
 	for _, want := range []string{
 		`level=INFO msg="would copy" path="MyWorks/M 31/b.fit" size=4` + "\n",
 		`level=INFO msg="would copy" path=MyWorks/a.fit size=3` + "\n",
-		`level=INFO msg="dry run done" copy=2 replace=0 adopt=0 waiting=0 failed=0 skipped=0 bytes=7 elapsed=`,
+		`level=INFO msg="dry run done" copy=2 replace=0 adopt=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=7 elapsed=`,
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("log lacks %q:\n%s", want, stderr)
@@ -158,7 +158,7 @@ func TestDryRunChangesNothingAndPredicts(t *testing.T) {
 		`level=INFO msg="would adopt" path=MyWorks/c.fit size=2` + "\n",
 		`level=INFO msg="would copy" path=MyWorks/d.fit size=5` + "\n",
 		`level=INFO msg="would wait" path=MyWorks/young.fit size=1` + "\n",
-		`level=INFO msg="dry run done" copy=1 replace=1 adopt=1 waiting=1 failed=0 skipped=0 bytes=9 elapsed=`,
+		`level=INFO msg="dry run done" copy=1 replace=1 adopt=1 waiting=1 failed=0 skipped=0 unmatched=0 bytes=9 elapsed=`,
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("log lacks %q:\n%s", want, stderr)
@@ -178,7 +178,7 @@ func TestDryRunChangesNothingAndPredicts(t *testing.T) {
 
 	readonly.Reset()
 	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once")
-	if want := `msg="pass done" copied=1 replaced=1 adopted=1 waiting=1 failed=0 skipped=0 bytes=9 `; code != exitOK || !strings.Contains(stderr, want) {
+	if want := `msg="pass done" copied=1 replaced=1 adopted=1 waiting=1 failed=0 skipped=0 unmatched=0 bytes=9 `; code != exitOK || !strings.Contains(stderr, want) {
 		t.Errorf("real pass after the dry run: exit %d, log lacks %q:\n%s", code, want, stderr)
 	}
 }
@@ -196,7 +196,7 @@ func TestDryRunReadOnlyDirs(t *testing.T) {
 	}
 	destBefore, stateBefore := snapshot(t, dest), snapshot(t, stateDir)
 	code, _, stderr := dryRun(t, "--dest", dest, "--state-dir", stateDir)
-	if want := `msg="dry run done" copy=1 replace=1 adopt=1 waiting=1 failed=0 skipped=0 bytes=9 `; code != exitOK || !strings.Contains(stderr, want) {
+	if want := `msg="dry run done" copy=1 replace=1 adopt=1 waiting=1 failed=0 skipped=0 unmatched=0 bytes=9 `; code != exitOK || !strings.Contains(stderr, want) {
 		t.Errorf("exit %d, log lacks %q:\n%s", code, want, stderr)
 	}
 	if !maps.Equal(snapshot(t, dest), destBefore) || !maps.Equal(snapshot(t, stateDir), stateBefore) {
@@ -238,12 +238,12 @@ func TestDryRunFailures(t *testing.T) {
 				`level=WARN msg="file failed" path=MyWorks/A.fit reason=`,
 				`level=WARN msg="file failed" path=MyWorks/a.fit reason=`,
 				`level=INFO msg="would copy" path=MyWorks/b.fit size=3`,
-				`level=INFO msg="dry run done" copy=1 replace=0 adopt=0 waiting=0 failed=2 skipped=0 bytes=3 `,
+				`level=INFO msg="dry run done" copy=1 replace=0 adopt=0 waiting=0 failed=2 skipped=0 unmatched=0 bytes=3 `,
 				`level=ERROR msg="sync failed" error="failed files: 2"`,
 			}},
 		{name: "listing fails", files: []string{"MyWorks/sub/a.fit", "Autorun/Dark/a.fit"}, unreadable: []string{"MyWorks/sub"},
 			log: []string{
-				`level=ERROR msg="dry run failed" copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=0 bytes=0 elapsed=`,
+				`level=ERROR msg="dry run failed" copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=`,
 				`level=ERROR msg="sync failed" error="list the share: readdir MyWorks/sub: permission denied"`,
 			}},
 	} {

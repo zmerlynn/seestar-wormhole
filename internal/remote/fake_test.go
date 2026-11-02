@@ -162,14 +162,17 @@ func TestWalkSkip(t *testing.T) {
 	var reads []string
 	skip := map[string]bool{".hidden": true, "a/x": true, "bad": true}
 	var asked []string
-	got, err := NewFake(readsFS{base, "bad", &reads}).Walk(t.Context(), func(p string) bool {
+	got, err := NewFake(readsFS{base, "bad", &reads}).Walk(t.Context(), func(p string, dir bool) bool {
+		if dir {
+			p += "/"
+		}
 		asked = append(asked, p)
-		return skip[p]
+		return skip[strings.TrimSuffix(p, "/")]
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{".hidden", "a", "a/x", "a/y", "bad", "c"}; !slices.Equal(asked, want) {
+	if want := []string{".hidden/", "a/", "a/x", "a/y", "bad/", "c"}; !slices.Equal(asked, want) {
 		t.Errorf("skip asked about %q, want %q", asked, want)
 	}
 	if want := []string{".", "a"}; !slices.Equal(reads, want) {
@@ -184,12 +187,12 @@ func TestWalkSkip(t *testing.T) {
 	}
 
 	reads = nil
-	got, err = NewFake(readsFS{base, "bad", &reads}).Walk(t.Context(), func(p string) bool { return p != "bad" })
+	got, err = NewFake(readsFS{base, "bad", &reads}).Walk(t.Context(), func(p string, _ bool) bool { return p != "bad" })
 	if !errors.Is(err, fs.ErrPermission) || got != nil {
 		t.Errorf("unreadable folder not skipped: Walk = %v, %v; want the error and no listing", got, err)
 	}
 
-	got, err = NewFake(base).Walk(t.Context(), func(string) bool { return true })
+	got, err = NewFake(base).Walk(t.Context(), func(string, bool) bool { return true })
 	if err != nil || len(got) != 0 {
 		t.Errorf("skipping every entry: Walk = %v, %v; want an empty listing", got, err)
 	}

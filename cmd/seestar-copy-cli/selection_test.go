@@ -44,7 +44,7 @@ func TestExcludeMatch(t *testing.T) {
 		{"Café.FIT", []string{"CAFÉ.fit"}, []string{"Cafe\u0301.fit"}},
 		{"ς", nil, []string{"Σ"}},
 	} {
-		e, err := parseExclude(tc.pattern)
+		e, err := parsePattern("--exclude", tc.pattern)
 		if err != nil {
 			t.Errorf("%q: %v", tc.pattern, err)
 			continue
@@ -72,13 +72,13 @@ func TestExcludeParseErrors(t *testing.T) {
 		"M[42]", "[", `MyWorks\x`, `\`,
 		"**", "a**", "MyWorks/**/x",
 	} {
-		if e, err := parseExclude(p); err == nil {
+		if e, err := parsePattern("--exclude", p); err == nil {
 			t.Errorf("%q: accepted as %+v", p, e)
 		}
 	}
 	// Spaces are kept, not trimmed.
 	for _, p := range []string{" log", "log ", "/log "} {
-		e, err := parseExclude(p)
+		e, err := parsePattern("--exclude", p)
 		if err != nil || e.match("log") || !e.match(strings.TrimPrefix(p, "/")) {
 			t.Errorf("%q: %+v, %v; want spaces kept", p, e, err)
 		}
@@ -276,9 +276,13 @@ func TestDryRunReportsSelection(t *testing.T) {
 func TestSkipsBeforeListingFailure(t *testing.T) {
 	for _, tc := range []struct {
 		name, flag, skip, summary string
+		include                   []string
 	}{
-		{"pass", "--once", `msg=skipped path=.hidden exclude=.*`, `msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=1 `},
-		{"dry run", "--dry-run", `msg="would skip" path=.hidden exclude=.*`, `msg="dry run failed" copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=1 `},
+		{"pass", "--once", `msg=skipped path=.hidden exclude=.*`, `msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=1 unmatched=0 `, nil},
+		{"dry run", "--dry-run", `msg="would skip" path=.hidden exclude=.*`, `msg="dry run failed" copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=1 unmatched=0 `, nil},
+		// What the include left out before the failure is counted too.
+		{"pass with include", "--once", `msg=skipped path=.hidden exclude=.*`, `msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=1 unmatched=1 `, []string{"--include", "/zbad"}},
+		{"dry run with include", "--dry-run", `msg="would skip" path=.hidden exclude=.*`, `msg="dry run failed" copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=1 unmatched=1 `, []string{"--include", "/zbad"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			readonly.Reset()
@@ -291,7 +295,7 @@ func TestSkipsBeforeListingFailure(t *testing.T) {
 			dev.unreadable = []string{"zbad"}
 			dev.use(t)
 			dest := t.TempDir()
-			code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", t.TempDir(), tc.flag)
+			code, _, stderr := invoke(t, slices.Concat([]string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", t.TempDir(), tc.flag}, tc.include)...)
 			if code != exitFailure {
 				t.Fatalf("exit %d, want %d\n%s", code, exitFailure, stderr)
 			}
@@ -348,7 +352,7 @@ func checkLines(t *testing.T, log, key string, want []string) {
 // built-in list behaves exactly as the defaults, in a dry run and in a real
 // pass, wherever --no-default-excludes is given.
 func TestDefaultsEqualLiteralFlags(t *testing.T) {
-	builtIn, err := parseExcludes(nil, false)
+	builtIn, err := selectionFlags{}.parse()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -356,8 +360,8 @@ func TestDefaultsEqualLiteralFlags(t *testing.T) {
 	for i := 1; i < len(literalDefaultFlags); i += 2 {
 		values = append(values, literalDefaultFlags[i])
 	}
-	literal, err := parseExcludes(values, true)
-	if err != nil || !slices.Equal(builtIn, literal) {
+	literal, err := selectionFlags{excludes: values, noDefaultExcludes: true}.parse()
+	if err != nil || !slices.Equal(builtIn.excludes, literal.excludes) {
 		t.Errorf("literal flags parse to %+v, %v; want the built-in %+v", literal, err, builtIn)
 	}
 
@@ -395,4 +399,141 @@ func TestDefaultsEqualLiteralFlags(t *testing.T) {
 			}
 		}
 	}
+}
+
+// An include keeps a file that it matches or that is in a folder it
+// matches, and lists a folder only if it could match the folder or
+// something below it: with an anchored pattern, the folder's names must
+// match its leading names. With several includes any one will do.
+func TestIncluded(t *testing.T) {
+	for _, tc := range []struct {
+		includes   []string
+		files      []string // kept
+		otherFiles []string // left out
+		dirs       []string // listed
+		otherDirs  []string // left out, never read
+	}{
+		{
+			includes:   []string{"/MyWorks"},
+			files:      []string{"MyWorks", "myworks/a.fit", "MyWorks/M 31/x/y.fit"},
+			otherFiles: []string{"a.fit", "Autorun/MyWorks", "MyWorks2/a.fit", "x/MyWorks/a.fit"},
+			dirs:       []string{"MyWorks", "MYWORKS", "MyWorks/M 31", "MyWorks/M 31/x"},
+			otherDirs:  []string{"Autorun", "MyWorks2", "x/MyWorks", "Autorun/MyWorks"},
+		},
+		{
+			includes:   []string{"/MyWorks/M 31"},
+			files:      []string{"MyWorks/M 31", "MyWorks/M 31/a.fit"},
+			otherFiles: []string{"MyWorks", "MyWorks/a.fit", "MyWorks/M 3/a.fit", "M 31/a.fit"},
+			dirs:       []string{"MyWorks", "MyWorks/M 31", "MyWorks/m 31/sub"},
+			otherDirs:  []string{"Autorun", "MyWorks/M 42", "MyWorks/M 3", "M 31"},
+		},
+		{
+			includes:   []string{"/Autorun/*/l.fit"},
+			files:      []string{"Autorun/Light/l.fit", "Autorun/Dark/L.FIT/x"},
+			otherFiles: []string{"Autorun/l.fit", "Autorun/Light/x/l.fit", "l.fit", "Autorun/Light"},
+			dirs:       []string{"Autorun", "Autorun/Light", "Autorun/Bias", "Autorun/Light/l.fit"},
+			otherDirs:  []string{"MyWorks", "Autorun/Light/x", "Autorun/Light/l.fit2"},
+		},
+		{
+			includes:   []string{"*.jpg"},
+			files:      []string{"a.jpg", "Preview/A.JPG", "x/y.jpg/z.fit"},
+			otherFiles: []string{"a.jpeg", "Preview", "jpg/a.fit"},
+			dirs:       []string{"Preview", "a/b/c"},
+		},
+		{
+			includes:   []string{"*.jpg", "/Video"},
+			files:      []string{"a.jpg", "Video/y.mp4"},
+			otherFiles: []string{"y.mp4", "Autorun/Video/y.mp4"},
+			dirs:       []string{"Autorun", "Video"},
+		},
+	} {
+		s, err := selectionFlags{includes: tc.includes}.parse()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, c := range []struct {
+			paths []string
+			dir   bool
+			want  bool
+		}{{tc.files, false, true}, {tc.otherFiles, false, false}, {tc.dirs, true, true}, {tc.otherDirs, true, false}} {
+			for _, p := range c.paths {
+				if got := s.included(p, c.dir); got != c.want {
+					t.Errorf("%q: included(%q, folder %t) = %t, want %t", tc.includes, p, c.dir, got, c.want)
+				}
+			}
+		}
+	}
+	// No include keeps everything.
+	if s, err := (selectionFlags{}).parse(); err != nil || !s.included("a", false) || !s.included("a", true) {
+		t.Errorf("without includes: %+v, %v; want everything kept", s, err)
+	}
+}
+
+// A sync with --include copies only what an include selects, and does not
+// read a folder that cannot hold such a file, so an unreadable one does not
+// fail the pass. What an exclude matches is skipped and logged even if an
+// include matches it, whatever the order of the flags; what no include
+// selects has no line of its own and is counted as unmatched. A dry run
+// counts it the same way and has no line for it either.
+func TestSyncInclude(t *testing.T) {
+	selectionDevice(t)
+	sync := func(flags ...string) (int, string, []string) {
+		t.Helper()
+		readonly.Reset()
+		dest := t.TempDir()
+		code, _, stderr := invoke(t, slices.Concat([]string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", t.TempDir(), "--once"}, flags)...)
+		return code, stderr, localFiles(t, dest)
+	}
+	for _, tc := range []struct {
+		flags   []string
+		copied  []string
+		summary string
+	}{
+		{[]string{"--include", "/MyWorks"}, []string{"MyWorks/M 31/log/x.txt", "MyWorks/M 31/z.fit"},
+			"copied=2 replaced=0 adopted=0 waiting=0 failed=0 skipped=9 unmatched=4 "},
+		// batch_stack_tmp cannot be listed, but the include rules it out.
+		{[]string{"--no-default-excludes", "--include", "/myworks"},
+			[]string{"MyWorks/M 31/Thumbs.db", "MyWorks/M 31/log/x.txt", "MyWorks/M 31/z.fit", "MyWorks/desktop.ini"},
+			"copied=4 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=11 "},
+		{[]string{"--no-default-excludes", "--include", "/Autorun/*/l.fit", "--include", "/Video/y.mp4"},
+			[]string{"Autorun/Light/l.fit", "Video/y.mp4"},
+			"copied=2 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=13 "},
+		{[]string{"--include", "*.FIT"}, []string{"Autorun/Bias/b.fit", "Autorun/Dark/d.fit", "Autorun/Light/l.fit", "MyWorks/M 31/z.fit"},
+			"copied=4 replaced=0 adopted=0 waiting=0 failed=0 skipped=10 unmatched=4 "},
+		// Excludes win, in either order, and also the built-in ones.
+		{[]string{"--include", "Preview", "--exclude", "Preview"}, nil,
+			"copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=11 unmatched=7 "},
+		{[]string{"--exclude", "Preview", "--include", "Preview"}, nil,
+			"copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=11 unmatched=7 "},
+		{[]string{"--include", "/log", "--include", "Thumbs.db"}, nil,
+			"copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=10 unmatched=8 "},
+	} {
+		code, stderr, copied := sync(tc.flags...)
+		if code != exitOK || !slices.Equal(copied, tc.copied) || !strings.Contains(stderr, tc.summary) {
+			t.Errorf("%q: exit %d, copied %q, want %q and a summary with %q\n%s", tc.flags, code, copied, tc.copied, tc.summary, stderr)
+		}
+	}
+
+	// Skip lines are only for excludes; what the include leaves out has
+	// no line, and nothing in it is offered to the excludes.
+	notVideo := func(lines []string) []string {
+		return slices.DeleteFunc(lines, func(l string) bool { return strings.Contains(l, "Video/") })
+	}
+	code, stderr, _ := sync("--include", "/MyWorks")
+	if code != exitOK {
+		t.Fatalf("exit %d\n%s", code, stderr)
+	}
+	checkLines(t, stderr, "msg=skipped ", notVideo(selectionSkips("skipped")))
+	for _, p := range []string{"Autorun", "Preview", "Video", "diag.png"} {
+		if strings.Contains(stderr, "path="+p) {
+			t.Errorf("a line names %q, which only the include left out:\n%s", p, stderr)
+		}
+	}
+
+	code, _, stderr = dryRun(t, "--dest", t.TempDir(), "--state-dir", t.TempDir(), "--include", "/MyWorks")
+	if want := "copy=2 replace=0 adopt=0 waiting=0 failed=0 skipped=9 unmatched=4 "; code != exitOK || !strings.Contains(stderr, want) {
+		t.Errorf("dry run: exit %d, log lacks %q:\n%s", code, want, stderr)
+	}
+	checkLines(t, stderr, "would skip", notVideo(selectionSkips(`"would skip"`)))
+	checkLines(t, stderr, "no copied files recorded", []string{`msg="no copied files recorded under this top-level folder" folder=MyWorks`})
 }

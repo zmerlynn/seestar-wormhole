@@ -237,7 +237,7 @@ func TestSyncPasses(t *testing.T) {
 			`INFO msg="file copied" path=Autorun/Dark/dark.fit size=2`,
 			`INFO msg="file adopted" path="MyWorks/M 31/have.fit" size=2`,
 			`INFO msg="file copied" path="MyWorks/M 31/old.fit" size=3`,
-			`INFO msg="pass done" copied=2 replaced=0 adopted=1 waiting=3 failed=0 skipped=0 bytes=5 elapsed=0s`,
+			`INFO msg="pass done" copied=2 replaced=0 adopted=1 waiting=3 failed=0 skipped=0 unmatched=0 bytes=5 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 1 log:\n%s\nwant:\n%s", got, want)
 		}
@@ -254,7 +254,7 @@ func TestSyncPasses(t *testing.T) {
 		synctest.Wait()
 		if got, want := logs.next(), logLines(t0.Add(5*time.Minute),
 			`INFO msg="file copied" path="MyWorks/M 31/settled.fit" size=3`,
-			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=3 failed=0 skipped=0 bytes=3 elapsed=0s`,
+			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=3 failed=0 skipped=0 unmatched=0 bytes=3 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 2 log:\n%s\nwant:\n%s", got, want)
 		}
@@ -266,7 +266,7 @@ func TestSyncPasses(t *testing.T) {
 			`INFO msg="file replaced" path=Autorun/Dark/dark.fit size=3`,
 			`INFO msg="file copied" path="MyWorks/M 31/growing.fit" size=2`,
 			`INFO msg="file copied" path="MyWorks/M 31/young.fit" size=2`,
-			`INFO msg="pass done" copied=2 replaced=1 adopted=0 waiting=0 failed=0 skipped=0 bytes=7 elapsed=0s`,
+			`INFO msg="pass done" copied=2 replaced=1 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=7 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 3 log:\n%s\nwant:\n%s", got, want)
 		}
@@ -313,7 +313,7 @@ func TestSyncOnce(t *testing.T) {
 	}{
 		{name: "clean", files: []string{"MyWorks/a.fit", "MyWorks/b.fit"}, code: exitOK,
 			copied: []string{"MyWorks/a.fit", "MyWorks/b.fit"},
-			log:    []string{`msg="pass done" copied=2 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 bytes=6 `}},
+			log:    []string{`msg="pass done" copied=2 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=6 `}},
 		{name: "overwrite", files: []string{"MyWorks/a.fit", "MyWorks/b.fit"}, local: []string{"MyWorks/a.fit"}, code: exitOK,
 			copied: []string{"MyWorks/a.fit", "MyWorks/b.fit"},
 			log: []string{
@@ -325,7 +325,7 @@ func TestSyncOnce(t *testing.T) {
 			copied: []string{"MyWorks/b.fit"},
 			log: []string{
 				`level=WARN msg="file failed" path=MyWorks/a.fit reason="open on the device: open refused"`,
-				`msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=1 skipped=0 bytes=3 `,
+				`msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=1 skipped=0 unmatched=0 bytes=3 `,
 				`level=ERROR msg="sync failed" error="failed files: 1"`,
 			}},
 		{name: "plan fails", files: []string{"MyWorks/a.fit", "MyWorks/A.fit", "MyWorks/b.fit"}, code: exitFailure,
@@ -333,12 +333,12 @@ func TestSyncOnce(t *testing.T) {
 			log: []string{
 				`level=WARN msg="file failed" path=MyWorks/A.fit reason=`,
 				`level=WARN msg="file failed" path=MyWorks/a.fit reason=`,
-				`msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=2 skipped=0 bytes=3 `,
+				`msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=2 skipped=0 unmatched=0 bytes=3 `,
 				`level=ERROR msg="sync failed" error="failed files: 2"`,
 			}},
 		{name: "listing fails", files: []string{"MyWorks/sub/a.fit", "Autorun/Dark/a.fit"}, unreadable: []string{"MyWorks/sub"}, code: exitFailure,
 			log: []string{
-				`level=ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 bytes=0 elapsed=`,
+				`level=ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=`,
 				` error="list the share: readdir MyWorks/sub: permission denied"` + "\n",
 				`level=ERROR msg="sync failed" error="list the share: readdir MyWorks/sub: permission denied"`,
 			}},
@@ -402,7 +402,7 @@ func TestSyncRetriesFailedPass(t *testing.T) {
 			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--interval", "1m"}, io.Discard, logs)
 		}()
 		synctest.Wait()
-		if got, want := logs.next(), logLines(t0, `ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
+		if got, want := logs.next(), logLines(t0, `ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
 			t.Fatalf("first pass log %q, want %q", got, want)
 		}
 		time.Sleep(time.Minute)
@@ -431,7 +431,7 @@ func TestSyncStopWhileListing(t *testing.T) {
 		if code != exitOK {
 			t.Errorf("exit %d after a stop, want 0", code)
 		}
-		if got, want := stderr.String(), logLines(t0, `INFO msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 bytes=0 elapsed=0s`); got != want {
+		if got, want := stderr.String(), logLines(t0, `INFO msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s`); got != want {
 			t.Errorf("log %q, want %q", got, want)
 		}
 	})
@@ -463,7 +463,7 @@ func TestSyncLogsEachFileAsItFinishes(t *testing.T) {
 		if c := <-code; c != exitOK {
 			t.Errorf("exit %d after a stop, want 0", c)
 		}
-		if got, want := logs.next(), logLines(t0, `INFO msg="pass stopped" copied=1 replaced=0 adopted=0 waiting=0 failed=1 skipped=0 bytes=3 elapsed=0s`); got != want {
+		if got, want := logs.next(), logLines(t0, `INFO msg="pass stopped" copied=1 replaced=0 adopted=0 waiting=0 failed=1 skipped=0 unmatched=0 bytes=3 elapsed=0s`); got != want {
 			t.Errorf("log after the stop %q, want %q", got, want)
 		}
 	})
@@ -486,7 +486,7 @@ func TestSyncStopMidFile(t *testing.T) {
 	if code != exitOK {
 		t.Errorf("exit %d after a stop, want 0\n%s", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), `msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=2 skipped=0 bytes=0 `) ||
+	if !strings.Contains(stderr.String(), `msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=2 skipped=0 unmatched=0 bytes=0 `) ||
 		strings.Contains(stderr.String(), "level=WARN") || strings.Contains(stderr.String(), "level=ERROR") {
 		t.Errorf("log after a stop:\n%s\nwant only the stopped pass's summary", stderr.String())
 	}

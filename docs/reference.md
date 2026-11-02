@@ -43,6 +43,7 @@ deletes anything in the destination either, except its own
 | `--dest` | none; required | The local mirror folder. It is created, with any missing parents, if it does not exist, except by a dry run. A relative path is taken from the current folder. |
 | `--exclude` | none | A pattern for files and folders to leave out, in addition to the built-in ones. Repeat it for more than one. See [selection](#selection). |
 | `--no-default-excludes` | off | Do not leave out what the built-in patterns match. See [selection](#selection). |
+| `--include` | none | Copy only files that this pattern matches, or that are in a folder it matches. Repeat it for more than one; a file needs to match only one. Excludes always win. See [selection](#selection). |
 | `--interval` | `5m` | The wait between the end of one pass and the start of the next. Must be more than zero. |
 | `--once` | off | Run one pass and exit. See [exit codes](#exit-codes). |
 | `--dry-run` | off | Run one pass that only reports what it would do, and change nothing on disk. Not allowed with `--interval`. See [dry run](#dry-run). |
@@ -95,7 +96,8 @@ the share are listed but neither followed nor copied.
 ### Selection
 
 Sync copies the whole share, except files and folders that an exclude pattern
-matches. An excluded folder is skipped with everything in it and is never
+matches; with `--include`, it copies only what an include selects, as
+[below](#include). An excluded folder is skipped with everything in it and is never
 listed. Excluded files are not copied, adopted or recorded. Files already
 recorded in the state stay recorded. Each pass logs a `skipped` line for each
 excluded file or folder, with the pattern that matched, and counts them in its
@@ -134,8 +136,8 @@ seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar \
   --exclude 'Video' --exclude '/Preview'
 ```
 
-Quote patterns so that the shell does not expand them. Patterns follow these
-rules:
+Quote patterns so that the shell does not expand them. Exclude and include
+patterns follow these rules:
 
 - A pattern with no `/` matches a file or folder name at any depth: `Thumbs.db`
   matches `Thumbs.db` and `MyWorks/M 31/Thumbs.db`.
@@ -152,8 +154,41 @@ rules:
 A pattern that is empty or `/` alone, ends in `/`, contains `[`, `\` or `**`,
 or has an empty, `.` or `..` part is a usage error.
 
-The first pass after a pattern is removed, or after upgrading to a release
-whose selection covers new folders, finds files that were never recorded.
+#### Include
+
+With one or more `--include` patterns, sync copies only the files that at
+least one of them selects, and that no exclude matches. Other files are not
+copied, adopted or recorded; files already recorded stay recorded. An
+include selects a file if it matches the file's path or the path of any
+folder above it:
+
+```sh
+--include '/MyWorks'        # everything in the MyWorks folder at the share root
+--include '/MyWorks/M 31'   # one target's folder
+--include '*.jpg'           # JPEG files in any folder
+--include 'Stacked'         # everything in any folder named Stacked
+```
+
+Excludes always win, whatever the order of the flags. An include never
+brings back a file or folder that an exclude matches, built-in or given:
+`--include x --exclude x` selects nothing, and `--include '/log'` selects
+nothing unless `--no-default-excludes` is given. This is unlike rsync, where
+the first rule that matches decides.
+
+A folder is listed only if an include could select it or something in it.
+With anchored patterns such as `/MyWorks`, sync reads just the folders on
+the way to them. A pattern without a `/` can match at any depth, so with one
+of those every folder that is not excluded is listed. Files and folders that
+no include selects have no line of their own; each pass counts them as
+`unmatched` in its summary, a folder that is not listed once, without what
+is in it, also when the listing then fails. An entry that an exclude matches is logged and counted as
+`skipped` instead, whether or not an include would select it.
+
+#### Changing the selection
+
+The first pass after an exclude or an include is removed, or after upgrading
+to a release whose selection covers new folders, finds files that were never
+recorded.
 They are copied or adopted as usual, once they are old enough under the
 [readiness](#readiness) rules: with the defaults, files at least 10 minutes old
 go in that first pass. Run a [dry run](#dry-run) first to see what that would
@@ -425,7 +460,7 @@ stdout. Per-file lines are logged as each file finishes. A pass that skips the
 time=2026-11-02T03:10:00.118Z level=INFO msg=skipped path=log exclude=/log
 time=2026-11-02T03:10:01.620Z level=INFO msg="file copied" path="MyWorks/M 31/light_002.fit" size=16000000
 time=2026-11-02T03:10:03.290Z level=INFO msg="file copied" path="MyWorks/M 31/light_003.fit" size=16000000
-time=2026-11-02T03:10:03.502Z level=INFO msg="pass done" copied=2 replaced=0 adopted=0 waiting=1 failed=0 skipped=1 bytes=32000000 elapsed=3.502s
+time=2026-11-02T03:10:03.502Z level=INFO msg="pass done" copied=2 replaced=0 adopted=0 waiting=1 failed=0 skipped=1 unmatched=0 bytes=32000000 elapsed=3.502s
 ```
 
 Values with spaces or quotes are quoted. The messages and keys below are
@@ -449,7 +484,7 @@ changes them says so in its notes.
 | INFO | `would wait` | `path`, `size` | Dry run: the file is not ready yet. |
 | INFO | `would skip` | `path`, `exclude` | Dry run: the same as `skipped`. |
 | INFO | `no copied files recorded under this top-level folder` | `folder` | Dry run: the state has no file under this folder at the share root, such as a folder a new release now covers. |
-| INFO | `dry run done` | `copy`, `replace`, `adopt`, `waiting`, `failed`, `skipped`, `bytes`, `elapsed` | A dry run finished. The counts are of the lines above and of `file failed` lines; `bytes` is what it would download. |
+| INFO | `dry run done` | `copy`, `replace`, `adopt`, `waiting`, `failed`, `skipped`, `unmatched`, `bytes`, `elapsed` | A dry run finished. Counts other than `unmatched` are of the lines above and of `file failed` lines. `unmatched` counts entries left out by includes, without a line of their own; `bytes` is what it would download. |
 | ERROR | `dry run failed` | as `dry run done`, and `error` | The connection or a listing failed in a dry run. |
 | INFO | `dry run stopped` | as `dry run done` | A signal stopped a dry run. |
 | WARN | `dropped the torn final line of the state file` | `file`, `line`, `reason` | See [format](#format). |
@@ -469,6 +504,7 @@ Every pass ends with one summary line, whose keys are:
 | `waiting` | Files not ready yet. They have no line of their own. |
 | `failed` | Files that failed, each with its own `file failed` line, plus files cut off by a stop. |
 | `skipped` | Files and folders an exclude left out, each with its own `skipped` line. What is in a skipped folder is not counted. |
+| `unmatched` | Files and folders that no `--include` selects and no exclude matches. They have no line of their own. What is in a folder that is not listed is not counted. Always 0 without `--include`. |
 | `bytes` | Bytes downloaded: the sizes of the copied and replaced files. |
 | `elapsed` | The pass's duration, as a Go duration such as `3.502s` or `2m5.1s`. |
 

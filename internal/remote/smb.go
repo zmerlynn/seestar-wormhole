@@ -90,7 +90,7 @@ func mount(ctx context.Context, session *smb2.Session) (*smb2.Share, error) {
 }
 
 // Walk lists the share; see Session.
-func (s *SMB) Walk(ctx context.Context, skip func(string) bool) ([]Entry, error) {
+func (s *SMB) Walk(ctx context.Context, skip func(string, bool) bool) ([]Entry, error) {
 	entries, err := walk(ctx, s.share.WithContext(ctx), skip)
 	if err != nil {
 		return nil, fmt.Errorf("walk on %s: %w", s.endpoint, err)

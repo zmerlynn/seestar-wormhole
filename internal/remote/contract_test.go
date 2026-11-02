@@ -123,8 +123,8 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 		// root itself is never offered to skip.
 		skipped := map[string]bool{"MyWorks": true, "Autorun/Dark/Dark_10.0s_IRCUT_20261029-020000.fit": true}
 		var asked []string
-		got, err := session.Walk(ctx, func(p string) bool {
-			asked = append(asked, p)
+		got, err := session.Walk(ctx, func(p string, dir bool) bool {
+			asked = append(asked, fmt.Sprintf("%s %t", p, dir))
 			return skipped[p]
 		})
 		if err != nil {
@@ -144,8 +144,8 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 			t.Errorf("skip asked about %q, want every listed entry above a skipped folder", asked)
 		}
 		for i := range min(len(asked), len(wantAsked)) {
-			if asked[i] != wantAsked[i].Path {
-				t.Errorf("skip asked about %q, want %q", asked[i], wantAsked[i].Path)
+			if want := fmt.Sprintf("%s %t", wantAsked[i].Path, wantAsked[i].Kind == Dir); asked[i] != want {
+				t.Errorf("skip asked about %q, want %q", asked[i], want)
 			}
 		}
 	})

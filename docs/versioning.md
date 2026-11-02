@@ -23,8 +23,10 @@ The [command reference](reference.md) has the detail of each item.
    are refused. A new flag whose default keeps the old behavior is additive. The
    [selection](reference.md#selection): sync copies the whole share except what an exclude pattern matches; the
    built-in patterns are exactly the listed `--exclude` flags, and adding, removing or changing one is breaking;
-   `--exclude` adds to them and `--no-default-excludes` removes them all; the pattern grammar, that an excluded
-   folder is not listed, and that case is ignored by lowercasing with no Unicode normalization.
+   `--exclude` adds to them and `--no-default-excludes` removes them all; with one or more `--include` patterns,
+   only files that an include matches, or that are in a folder an include matches, are selected; excludes always
+   win over includes, whatever the order; one pattern grammar for both flags, that an excluded folder is not
+   listed, and that case is ignored by lowercasing with no Unicode normalization.
 2. **Runtime inputs.** The binary reads no configuration file and no environment variables of its own; every
    setting is a flag. The default `--state-dir` comes from the operating system's per-user config folder, as in
    [location](reference.md#location). Adding opt-in configuration later is additive and must not override explicit

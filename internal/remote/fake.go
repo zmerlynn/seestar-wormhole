@@ -42,7 +42,7 @@ func NewFake(fsys fs.FS) *Fake {
 }
 
 // Walk lists the share; see Session.
-func (f *Fake) Walk(ctx context.Context, skip func(string) bool) ([]Entry, error) {
+func (f *Fake) Walk(ctx context.Context, skip func(string, bool) bool) ([]Entry, error) {
 	if f.closed() {
 		return nil, &fs.PathError{Op: "walk", Path: ".", Err: fs.ErrClosed}
 	}

@@ -73,11 +73,11 @@ type Session interface {
 	// not followed. Any failure is returned as it is, with no partial
 	// listing.
 	//
-	// skip, if not nil, is called with the path of every listed entry,
-	// before a directory's contents are read. An entry for which it returns
-	// true is left out, and so is everything below it: that directory is
-	// never read.
-	Walk(ctx context.Context, skip func(path string) bool) ([]Entry, error)
+	// skip, if not nil, is called with the path of every listed entry, and
+	// whether it is a directory, before a directory's contents are read.
+	// An entry for which it returns true is left out, and so is everything
+	// below it: that directory is never read.
+	Walk(ctx context.Context, skip func(path string, dir bool) bool) ([]Entry, error)
 	// Open opens a file for reading only. ctx stays bound to the file: once
 	// it is done, reads and Close fail with its error.
 	Open(ctx context.Context, path string) (File, error)
@@ -119,7 +119,7 @@ func kindOf(mode fs.FileMode) Kind {
 }
 
 // walk lists the root of fsys for Session.Walk.
-func walk(ctx context.Context, fsys fs.FS, skip func(string) bool) ([]Entry, error) {
+func walk(ctx context.Context, fsys fs.FS, skip func(string, bool) bool) ([]Entry, error) {
 	var entries []Entry
 	// The root is the first call. Telling it apart by path would not do: a
 	// listed name of "" or "." joins back to the root itself.
@@ -148,7 +148,7 @@ func walk(ctx context.Context, fsys fs.FS, skip func(string) bool) ([]Entry, err
 		}
 		// fs.WalkDir reads a directory only after this returns, so a
 		// skipped one is never read.
-		if skip != nil && skip(p) {
+		if skip != nil && skip(p, d.IsDir()) {
 			if d.IsDir() {
 				return fs.SkipDir
 			}

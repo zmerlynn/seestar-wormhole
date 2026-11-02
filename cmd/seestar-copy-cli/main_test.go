@@ -52,7 +52,8 @@ func TestSyncHelp(t *testing.T) {
 		t.Fatalf("code=%d stderr=%q, want 0 and no stderr", code, stderr)
 	}
 	for _, want := range []string{
-		"--endpoint string", "--dest string", "--exclude stringArray", "--no-default-excludes",
+		"--endpoint string", "--dest string", "--exclude stringArray", "--no-default-excludes", "--include stringArray",
+		"Excludes always win, whatever the order:\n--include x --exclude x selects nothing",
 		// The built-in patterns, as the literal flags they equal.
 		"\n  --exclude '.*'\n  --exclude '*.tmp'\n  --exclude 'Thumbs.db'\n  --exclude 'desktop.ini'\n" +
 			"  --exclude '$RECYCLE.BIN'\n  --exclude 'System Volume Information'\n  --exclude '/log'\n" +
@@ -275,14 +276,15 @@ func TestSourceRemoved(t *testing.T) {
 	}
 }
 
-// A bad --exclude is a usage error before anything is dialed, also with
-// --no-default-excludes; the value is not echoed.
-func TestExcludeUsageErrors(t *testing.T) {
+// A bad --exclude or --include is a usage error naming that flag before
+// anything is dialed, also with --no-default-excludes; the value is not
+// echoed.
+func TestPatternUsageErrors(t *testing.T) {
 	const (
-		parts   = `option=--exclude rule="use a name, or a path from the share root, with no empty, . or .. parts"`
-		slash   = `option=--exclude rule="omit the trailing /; a pattern matches files and folders"`
-		class   = `option=--exclude rule="[ and \\ are not supported; use * and ?, and / between folders"`
-		globstr = `option=--exclude rule="** is not supported; * matches within one name"`
+		parts   = `rule="use a name, or a path from the share root, with no empty, . or .. parts"`
+		slash   = `rule="omit the trailing /; a pattern matches files and folders"`
+		class   = `rule="[ and \\ are not supported; use * and ?, and / between folders"`
+		globstr = `rule="** is not supported; * matches within one name"`
 	)
 	dev := newDevice()
 	dev.use(t)
@@ -291,14 +293,16 @@ func TestExcludeUsageErrors(t *testing.T) {
 		{"..", parts}, {"/../log", parts}, {".", parts}, {"log/", slash}, {"/log/", slash},
 		{"M[42]", class}, {`MyWorks\x`, class}, {"**", globstr}, {"MyWorks/**/x", globstr}, {"a**", globstr},
 	} {
-		for _, extra := range [][]string{nil, {"--no-default-excludes"}} {
-			args := slices.Concat([]string{"sync", "--endpoint", "h:445"}, scratch(t), extra, []string{"--exclude", "ok", "--exclude", tc.pattern})
-			code, _, stderr := invoke(t, args...)
-			if code != exitUsage || !strings.Contains(stderr, tc.want) {
-				t.Errorf("--exclude %q %q: code=%d stderr=%q, want 2 with %q", tc.pattern, extra, code, stderr, tc.want)
-			}
-			if len(tc.pattern) > 2 && strings.Contains(stderr, tc.pattern) {
-				t.Errorf("--exclude %q: the value is echoed: %q", tc.pattern, stderr)
+		for _, flag := range []string{"--exclude", "--include"} {
+			for _, extra := range [][]string{nil, {"--no-default-excludes"}} {
+				args := slices.Concat([]string{"sync", "--endpoint", "h:445"}, scratch(t), extra, []string{flag, "ok", flag, tc.pattern})
+				code, _, stderr := invoke(t, args...)
+				if want := "option=" + flag + " " + tc.want; code != exitUsage || !strings.Contains(stderr, want) {
+					t.Errorf("%s %q %q: code=%d stderr=%q, want 2 with %q", flag, tc.pattern, extra, code, stderr, want)
+				}
+				if len(tc.pattern) > 2 && strings.Contains(stderr, tc.pattern) {
+					t.Errorf("%s %q: the value is echoed: %q", flag, tc.pattern, stderr)
+				}
 			}
 		}
 	}
@@ -311,10 +315,12 @@ func TestSyncFlags(t *testing.T) {
 	for _, tc := range []struct {
 		args     []string
 		excludes []string
+		includes []string
 	}{
-		{nil, nil},
-		{[]string{"--exclude", "MyWorks"}, []string{"MyWorks"}},
-		{[]string{"--exclude", "b", "--no-default-excludes", "--exclude", "a,c"}, []string{"b", "a,c"}},
+		{nil, nil, nil},
+		{[]string{"--exclude", "MyWorks"}, []string{"MyWorks"}, nil},
+		{[]string{"--exclude", "b", "--no-default-excludes", "--exclude", "a,c"}, []string{"b", "a,c"}, nil},
+		{[]string{"--include", "b", "--exclude", "x", "--include", "a,c"}, []string{"x"}, []string{"b", "a,c"}},
 	} {
 		cmd := newSyncCommand(newLogger(io.Discard))
 		if err := cmd.ParseFlags(tc.args); err != nil {
@@ -324,6 +330,9 @@ func TestSyncFlags(t *testing.T) {
 		excludes, _ := f.GetStringArray("exclude")
 		if !slices.Equal(excludes, tc.excludes) {
 			t.Errorf("%q: excludes %q, want %q", tc.args, excludes, tc.excludes)
+		}
+		if includes, _ := f.GetStringArray("include"); !slices.Equal(includes, tc.includes) {
+			t.Errorf("%q: includes %q, want %q", tc.args, includes, tc.includes)
 		}
 		if len(tc.args) > 0 {
 			continue
