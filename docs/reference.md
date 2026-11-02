@@ -3,7 +3,7 @@
 Use this page when you script `seestar-copy-cli` or need an exact flag, rule or
 log line. The [README](../README.md) has a first run.
 
-- [sync](#sync): flags, endpoint and destination layout
+- [sync](#sync): flags, endpoint, destination layout and [dry run](#dry-run)
 - [How a pass decides](#how-a-pass-decides)
 - [Copying a file](#copying-a-file) and [temporary files](#temporary-files)
 - [The state file](#the-state-file)
@@ -25,7 +25,8 @@ Mirrors the telescope's images into the folder `--dest`, in passes. Each pass
 connects to the share, lists every source, copies what is new or changed,
 records each copy in a [state file](#the-state-file), logs off and
 disconnects. Passes repeat every `--interval` until you
-[stop](#stopping) it, or run once with `--once`.
+[stop](#stopping) it, or run once with `--once`. A
+[dry run](#dry-run) reports what one pass would do and changes nothing.
 
 Sync only reads from the telescope. It opens files on the share read-only and
 never creates, changes, renames, deletes or locks anything there. It never
@@ -37,10 +38,11 @@ deletes anything in the destination either, except its own
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `--endpoint` | none; required | SMB `host:port` of the telescope or of a seestar-wormhole listener. See [endpoint](#endpoint). |
-| `--dest` | none; required | The local mirror folder. It is created, with any missing parents, if it does not exist. A relative path is taken from the current folder. |
+| `--dest` | none; required | The local mirror folder. It is created, with any missing parents, if it does not exist, except by a dry run. A relative path is taken from the current folder. |
 | `--source` | `MyWorks`, `Autorun/Dark`, `darklibrary` | A folder on the share to copy, relative to the share root, with forward slashes. Repeat it for more than one. Giving any `--source` replaces all the defaults. Sources may not repeat or contain each other. |
 | `--interval` | `5m` | The wait between the end of one pass and the start of the next. Must be more than zero. |
 | `--once` | off | Run one pass and exit. See [exit codes](#exit-codes). |
+| `--dry-run` | off | Run one pass that only reports what it would do, and change nothing on disk. Not allowed with `--interval`. See [dry run](#dry-run). |
 | `--ready-age` | `2m` | A file is copied only once its device mtime is at least this old. Zero or more. |
 | `--first-pass-age` | `10m` | On the first pass, a file counts as finished only if its device mtime is at least this old. Zero or more. See [readiness](#readiness). |
 | `--workers` | `4` | Files copied at once, `1` to `64`. All of them share one SMB session. |
@@ -88,6 +90,31 @@ Only regular files are copied. Symbolic links and other special entries on
 the share are listed but neither followed nor copied. A source that does not
 exist on the share is logged (`source not found`) and skipped; the rest of the
 pass goes on. A source that is a file rather than a folder fails the pass.
+
+### Dry run
+
+`--dry-run` runs one pass that changes nothing on disk, then exits as
+`--once` does. It connects, lists the sources, and decides each file as a
+real pass would, from the [state file](#the-state-file) and the destination
+if they exist. It logs a line for each file it would copy, replace or adopt,
+or that is waiting, a `file failed` line for each file that would fail, and a
+`dry run done` summary; see [logs](#logs). Files that are done have no line.
+`--once` may be given with it; `--interval` may not.
+
+A dry run creates nothing, not even a missing destination or state folder.
+It takes no [lock](#lock), removes no [temporary files](#temporary-files),
+and leaves a torn final line in the state file in place; it logs that line
+and ignores it. It works on a read-only destination and state, and may run
+while another sync uses the same destination. Like any pass, it only reads
+from the telescope.
+
+It decides as the first pass of a new process does (see
+[readiness](#readiness)), so it predicts the next `--once` run. The later
+passes of a sync that is already running may treat files that have not
+settled differently.
+
+It exits 0, or 1 if the connection or a listing fails or any file would
+fail, as `--once` does.
 
 ## How a pass decides
 
@@ -147,8 +174,8 @@ check against the previous listing still makes them wait.
 ### A failed pass
 
 If the connection or the listing of a source fails, the pass fails: nothing is
-copied, the error is logged in the `pass failed` line, and the next pass is
-tried after `--interval`. With `--once`, sync exits 1 instead.
+copied, and the error is logged. With `--once` or `--dry-run`, sync exits 1;
+otherwise it tries another pass after `--interval`.
 
 A file that fails is logged and left for the next pass; the other files go on.
 There is one attempt per file per pass, and no retry loop within a pass.
@@ -275,7 +302,8 @@ RFC 3339 offset. Some damage is repaired, and the rest stops sync:
 
 - A final line without a newline, or one that is not a valid record, is what
   a crash leaves. It is dropped with a warning, and the file is cut back to
-  the last good line.
+  the last good line. A [dry run](#dry-run) ignores it and leaves the file
+  as it is.
 - Any other bad line, a line longer than 1 MiB, a header with another version,
   or a header that names another destination stops sync with exit 1. The file
   is left unchanged.
@@ -302,7 +330,7 @@ and `registry.lock` in the same folder, stay on disk; that is expected.
 ## Stopping
 
 Sync runs until it receives Ctrl+C (SIGINT) or SIGTERM, or until the pass of
-`--once` ends. On a signal:
+`--once` or `--dry-run` ends. On a signal:
 
 - reads in progress stop, and their temporary files are removed;
 - files not yet started are not started;
@@ -342,7 +370,15 @@ changes them says so in its notes.
 | INFO | `pass done` | see below | A pass finished. |
 | ERROR | `pass failed` | see below, and `error` | The connection or a listing failed. |
 | INFO | `pass stopped` | see below | A signal stopped the pass. |
+| INFO | `would copy` | `path`, `size`, and `overwrite=true` when it would replace a different local file | Dry run: the file would be downloaded and recorded as `copied`. |
+| INFO | `would replace` | `path`, `size` | Dry run: the file changed on the device and would be downloaded again. |
+| INFO | `would adopt` | `path`, `size` | Dry run: the file is already in the destination and would be hashed and recorded. |
+| INFO | `would wait` | `path`, `size` | Dry run: the file is not ready yet. |
+| INFO | `dry run done` | `copy`, `replace`, `adopt`, `waiting`, `failed`, `bytes`, `elapsed` | A dry run finished. The counts are of the lines above and of `file failed` lines; `bytes` is what it would download. |
+| ERROR | `dry run failed` | as `dry run done`, and `error` | The connection or a listing failed in a dry run. |
+| INFO | `dry run stopped` | as `dry run done` | A signal stopped a dry run. |
 | WARN | `dropped the torn final line of the state file` | `file`, `line`, `reason` | See [format](#format). |
+| WARN | `ignored the torn final line of the state file` | `file`, `line`, `reason` | The same, in a [dry run](#dry-run), which leaves the file as it is. |
 | WARN | `skipped a folder that cannot be read while removing leftover temporary files` | `folder`, `reason` | See [temporary files](#temporary-files). |
 | WARN | `skipped a malformed state file while checking for another spelling of the destination` | `file`, `reason` | Another state file in the `sync` folder cannot be read. |
 | ERROR | `sync failed` | `error` | Sync is exiting 1. |
@@ -373,18 +409,18 @@ Flag values are never echoed in it.
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Stopped by a signal; a `--once` pass with no failed files; or help, `--version` or `licenses` printed. |
-| 1 | A runtime failure: the destination or state could not be opened or locked, leftover temporary files could not be removed, a `--once` pass failed (`connect to ...` or `list ...`), a `--once` pass had failed files (`failed files: N`), or output could not be written. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint` or `--dest`, or a positional argument. |
+| 0 | Stopped by a signal; a `--once` or `--dry-run` pass with no failed files; or help, `--version` or `licenses` printed. |
+| 1 | A runtime failure: the destination or state could not be opened or locked, leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), or output could not be written. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint` or `--dest`, `--dry-run` with `--interval`, or a positional argument. |
 
-Without `--once`, failed passes and failed files do not end sync: it logs
-them and tries again on the next pass.
+Without `--once` or `--dry-run`, failed passes and failed files do not end
+sync: it logs them and tries again on the next pass.
 
 ## Names that fail
 
 Sync never renames a file. A name it cannot store fails with a `file failed`
 line naming the rule, on every pass, and the other files go on. With `--once`
-such a file makes the exit code 1. To leave it out, choose `--source` folders
+or `--dry-run` such a file makes the exit code 1. To leave it out, choose `--source` folders
 that don't contain it.
 
 ### On every platform

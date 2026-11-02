@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-copy/internal/plan"
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
@@ -34,6 +35,7 @@ func tempName(p string) string {
 
 // download copies d from the device into place and records it as how.
 func (c *Copier) download(ctx context.Context, sess remote.Session, d plan.Decision, how state.How) (rec state.Record, err error) {
+	readonly.Check("copier.download")
 	if err := c.root.MkdirAll(filepath.FromSlash(path.Dir(d.Path)), 0o777); err != nil {
 		return rec, fmt.Errorf("create the folder: %w", err)
 	}
@@ -109,6 +111,7 @@ func fetch(ctx context.Context, sess remote.Session, d plan.Decision, w io.Write
 // must still be the file at the path afterward. It is only read. The record
 // keeps the device's mtime.
 func (c *Copier) adopt(ctx context.Context, d plan.Decision) (state.Record, error) {
+	readonly.Check("copier.adopt")
 	name := filepath.FromSlash(d.Path)
 	f, err := c.root.Open(name)
 	if err != nil {
@@ -159,6 +162,7 @@ func checkLocal(f *os.File, d plan.Decision) (fs.FileInfo, error) {
 // record appends the state record of d, which is complete under its final
 // name.
 func (c *Copier) record(d plan.Decision, sum string, how state.How) (state.Record, error) {
+	readonly.Check("copier.record")
 	rec := state.Record{Path: d.Path, Size: d.Size, MTime: d.ModTime.UTC(), SHA256: sum, At: c.now().UTC(), How: how}
 	if err := c.state.Append(rec); err != nil {
 		return state.Record{}, fmt.Errorf("record in the state: %w", err)
@@ -168,6 +172,7 @@ func (c *Copier) record(d plan.Decision, sum string, how state.How) (state.Recor
 
 // syncFolder opens share folder dir, fsyncs it and closes it.
 func (c *Copier) syncFolder(dir string) error {
+	readonly.Check("copier.syncFolder")
 	f, err := c.root.Open(filepath.FromSlash(dir))
 	if err != nil {
 		return err

@@ -54,7 +54,7 @@ func TestSyncHelp(t *testing.T) {
 	for _, want := range []string{
 		"--endpoint string", "--dest string", "--source stringArray",
 		"any replaces the defaults (default [MyWorks,Autorun/Dark,darklibrary])",
-		"--interval duration", "(default 5m0s)", "--once", "(default 2m0s)", "(default 10m0s)",
+		"--interval duration", "(default 5m0s)", "--once", "--dry-run", "(default 2m0s)", "(default 10m0s)",
 		"files copied at once (1-64) (default 4)", "--state-dir string",
 	} {
 		if !strings.Contains(stdout, want) {
@@ -213,6 +213,7 @@ func TestUsageErrors(t *testing.T) {
 		{slices.Concat(valid, []string{"--workers", "-1"}), "--workers", `"must be 1 to 64"`},
 		{slices.Concat(valid, []string{"--workers", "four"}), "--workers", `"use a whole number"`},
 		{slices.Concat(valid, []string{"--once=maybe"}), "--once", `"use true or false"`},
+		{slices.Concat(valid, []string{"--dry-run", "--interval", "1m"}), "--dry-run", `"runs one pass; do not give --interval with it"`},
 		{slices.Concat(valid, []string{"--state-dir", ""}), "--state-dir", `"must not be empty; omit it for the default"`},
 	} {
 		code, stdout, stderr := invoke(t, tc.args...)
@@ -316,6 +317,9 @@ func TestSyncFlags(t *testing.T) {
 		}
 		if got, _ := f.GetBool("once"); got {
 			t.Error("--once is on by default")
+		}
+		if got, _ := f.GetBool("dry-run"); got {
+			t.Error("--dry-run is on by default")
 		}
 	}
 }

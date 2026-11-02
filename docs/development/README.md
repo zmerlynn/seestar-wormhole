@@ -22,6 +22,7 @@ is stopped.
 | `internal/state` | The per-destination state file: JSON Lines, last record per path wins, torn-tail tolerance, append with fsync, and the exclusive lock. |
 | `internal/plan` | The pass decisions: wait, done, copy, replace, adopt or fail for each listed file. A pure function with no I/O; the current time is an input. |
 | `internal/copier` | Carries out a pass's decisions over the one session with a worker pool: temporary file beside the final one, hash, size check, fsync, mtime, rename, then the state record. |
+| `internal/readonly` | The dry-run guard: once enabled, every function that changes the local filesystem panics. A test checks that each such function calls it first. |
 | `internal/licenses` | The `licenses` command's output: the project's `NOTICE` and `LICENSE`, then the license texts of each module linked into the running build. |
 | `scripts/generate-licenses.go` | Writes the license catalog that `internal/licenses` embeds. |
 
@@ -137,6 +138,10 @@ These apply to every change, whoever writes it.
 - **A fix starts with a test that fails without it.** Prefer literal-byte
   fixtures to round trips, and check that the test catches a mutation of the
   line it protects.
+- **A dry run writes nothing.** It reads the state and the destination
+  through views that have no write methods, and every function that creates,
+  writes, renames or removes a local file or folder starts with
+  `readonly.Check`; `internal/readonly`'s test fails otherwise.
 - **Commit to the new path.** Don't keep a fallback to old behavior unless a
   named configuration still needs it.
 - **Files on disk stay downgradable.** A state file written by a newer

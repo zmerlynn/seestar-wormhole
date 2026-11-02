@@ -16,6 +16,8 @@ import (
 	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 )
 
 const (
@@ -96,6 +98,7 @@ type State struct {
 // Open keeps the permissions of a directory or file that already exists; on
 // Windows, privacy comes from inherited ACLs.
 func Open(stateDir, dest string, log *slog.Logger) (*State, error) {
+	readonly.Check("state.Open")
 	if log == nil {
 		log = slog.Default()
 	}
@@ -137,6 +140,7 @@ func Open(stateDir, dest string, log *slog.Logger) (*State, error) {
 
 // openLocked loads the state file at path, which the caller has locked.
 func openLocked(path, absDest string, log *slog.Logger) (*State, error) {
+	readonly.Check("state.openLocked")
 	if err := register(path, absDest, log); err != nil {
 		return nil, err
 	}
@@ -174,6 +178,7 @@ const registryName = "registry.lock"
 // both pass. It checks even when the state file exists, to find a history
 // that is already split.
 func register(path, absDest string, log *slog.Logger) error {
+	readonly.Check("state.register")
 	regPath := filepath.Join(filepath.Dir(path), registryName)
 	reg, err := lockFile(regPath, true)
 	if err != nil {
@@ -267,6 +272,7 @@ func readHeader(p string) (header, error) {
 // existing file or link in the sync directory is never opened, truncated or
 // published.
 func create(path, absDest string) (err error) {
+	readonly.Check("state.create")
 	line, err := encodeLine(header{V: version, Dest: absDest})
 	if err != nil {
 		return err
@@ -307,6 +313,7 @@ func create(path, absDest string) (err error) {
 
 // syncDir makes the entries of dir durable where the OS supports it.
 func syncDir(dir string) error {
+	readonly.Check("state.syncDir")
 	if runtime.GOOS == "windows" {
 		// Windows cannot flush a directory opened with os.Open; NTFS
 		// journals the rename itself.
@@ -321,6 +328,67 @@ func syncDir(dir string) error {
 		err = cerr
 	}
 	return err
+}
+
+// Load reads the records of dest's state for a dry run, and changes nothing on
+// disk. It creates no folder or file, takes no lock and repairs nothing: a
+// torn final line is left in place, logged at warn level, and its record
+// ignored, as [Open] would drop it. A missing state directory or state file,
+// or an empty state file, gives no records. A missing destination is left
+// absent; its existing state records are still loaded. Like Open, Load
+// refuses a state directory inside dest and, when the sync directory exists,
+// another spelling of a destination that already has a state file; it
+// refuses a state file it cannot parse for the same reasons Open does.
+func Load(stateDir, dest string, log *slog.Logger) (map[string]Record, error) {
+	if log == nil {
+		log = slog.Default()
+	}
+	path, absDest, err := resolve(stateDir, dest)
+	if err != nil {
+		return nil, err
+	}
+	if !utf8.ValidString(absDest) {
+		return nil, fmt.Errorf("destination %q is not valid UTF-8", absDest)
+	}
+	syncDir := filepath.Dir(path)
+	switch _, err := os.Stat(absDest); {
+	case errors.Is(err, fs.ErrNotExist):
+		// Open would create it empty, so no alias or nesting check could
+		// fail on it.
+	case err != nil:
+		return nil, fmt.Errorf("destination: %w", err)
+	default:
+		if err := checkOutside(absDest, filepath.Dir(syncDir), syncDir); err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(syncDir); err == nil {
+			if err := checkAliases(path, absDest, log); err != nil {
+				return nil, err
+			}
+		}
+	}
+	f, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return map[string]Record{}, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("open state file: %w", err)
+	}
+	defer f.Close()
+	if fi, err := f.Stat(); err != nil {
+		return nil, fmt.Errorf("state file %s: %w", path, err)
+	} else if fi.Size() == 0 {
+		// Open would write a new header over it.
+		return map[string]Record{}, nil
+	}
+	records, _, torn, err := load(f, absDest, log)
+	if err != nil {
+		return nil, fmt.Errorf("state file %s: %w", path, err)
+	}
+	if torn != nil {
+		log.Warn("ignored the torn final line of the state file", "file", path, "line", torn.n, "reason", torn.err)
+	}
+	return records, nil
 }
 
 // badLine is a line that did not hold a record. It is fatal unless it is the

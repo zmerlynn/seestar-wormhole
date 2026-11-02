@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"golang.org/x/sys/unix"
 )
 
@@ -16,6 +17,7 @@ import (
 // fcntl locks. The lock lasts until the returned file is closed or the
 // process exits.
 func lockFile(path string, wait bool) (*os.File, error) {
+	readonly.Check("state.lockFile")
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err

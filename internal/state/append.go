@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 )
 
 // Append checks rec, writes it as one line, fsyncs the file, and only then
@@ -17,6 +19,7 @@ import (
 // are unchanged. If a failed line cannot be cut back off the file and the cut
 // fsynced, every later Append fails.
 func (s *State) Append(rec Record) error {
+	readonly.Check("state.Append")
 	if err := checkAppend(rec); err != nil {
 		return fmt.Errorf("refuse state record for %q: %w", rec.Path, err)
 	}

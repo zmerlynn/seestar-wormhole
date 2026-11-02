@@ -37,6 +37,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-copy/internal/plan"
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
@@ -56,6 +57,7 @@ type Copier struct {
 // nil log means slog.Default()); any other folder that cannot be read fails
 // New, since it may hold a leftover.
 func New(dest string, st *state.State, log *slog.Logger) (*Copier, error) {
+	readonly.Check("copier.New")
 	if log == nil {
 		log = slog.Default()
 	}
@@ -75,6 +77,7 @@ func New(dest string, st *state.State, log *slog.Logger) (*Copier, error) {
 // nothing else is removed: not a link, not a folder, and not a name in
 // another case, which the pass decisions refuse but never wrote.
 func removeTemps(root *os.Root, log *slog.Logger) error {
+	readonly.Check("copier.removeTemps")
 	return fs.WalkDir(rootFS(root), ".", func(p string, de fs.DirEntry, err error) error {
 		if err != nil {
 			// Sync cannot have written in a folder it may not read,
@@ -109,7 +112,47 @@ func (c *Copier) Close() error {
 // exist has Exists false; a symbolic link in a parent that leads outside the
 // destination is an error.
 func (c *Copier) Stat(p string) plan.Local {
-	fi, err := c.root.Lstat(filepath.FromSlash(p))
+	return stat(c.root, p)
+}
+
+// Dest is a read-only view of a destination, for a dry run. It can only
+// stat; unlike a [Copier] it removes no temporary files and needs no state.
+type Dest struct {
+	root *os.Root // nil if the destination does not exist
+}
+
+// OpenDest opens dest for [Dest.Stat]. A destination that does not exist is
+// not created; every path in it then does not exist.
+func OpenDest(dest string) (*Dest, error) {
+	root, err := os.OpenRoot(dest)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return &Dest{}, nil
+	case err != nil:
+		return nil, fmt.Errorf("open destination: %w", err)
+	}
+	return &Dest{root: root}, nil
+}
+
+// Stat is [Copier.Stat] for the view.
+func (d *Dest) Stat(p string) plan.Local {
+	if d.root == nil {
+		return plan.Local{}
+	}
+	return stat(d.root, p)
+}
+
+// Close closes the view.
+func (d *Dest) Close() error {
+	if d.root == nil {
+		return nil
+	}
+	return d.root.Close()
+}
+
+// stat is [Copier.Stat] under root.
+func stat(root *os.Root, p string) plan.Local {
+	fi, err := root.Lstat(filepath.FromSlash(p))
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
 		return plan.Local{}
@@ -152,6 +195,7 @@ type Result struct {
 //
 // Run must not be called again until it returns.
 func (c *Copier) Run(ctx context.Context, sess remote.Session, workers int, ds []plan.Decision, done func(Result)) {
+	readonly.Check("copier.Run")
 	var jobs []plan.Decision
 	for _, d := range ds {
 		switch d.Kind {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"golang.org/x/sys/windows"
 )
 
@@ -14,6 +15,7 @@ import (
 // in the same process conflicts too. It lasts until the returned file is
 // closed or the process exits.
 func lockFile(path string, wait bool) (*os.File, error) {
+	readonly.Check("state.lockFile")
 	f, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err

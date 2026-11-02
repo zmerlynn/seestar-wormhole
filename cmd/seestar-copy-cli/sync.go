@@ -17,6 +17,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-copy/internal/copier"
 	"github.com/zmerlynn/seestar-copy/internal/plan"
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
@@ -31,7 +32,9 @@ type syncOptions struct {
 	dest         string
 	sources      []string
 	interval     time.Duration
+	intervalSet  bool
 	once         bool
+	dryRun       bool
 	readyAge     time.Duration
 	firstPassAge time.Duration
 	workers      int
@@ -49,14 +52,17 @@ Each pass lists every --source on the share, copies files that are new or
 changed on the device, and records them in a state file under --state-dir, so
 a file moved out of --dest is not copied again. Passes repeat every --interval
 until Ctrl+C, or run once with --once. The telescope is never written to.
+--dry-run runs one pass that only logs what it would copy, replace or adopt,
+and changes nothing on disk.
 Durations use Go units, such as 30s, 5m or 1h30m.
 Logs and errors go to stderr; help goes to stdout.
-Exit 0 when stopped or after a clean --once pass, 1 on a runtime failure or a
---once pass with failed files, 2 on a usage error.`,
+Exit 0 when stopped or after a clean --once or --dry-run pass, 1 on a runtime
+failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 		Example: "  " + programName + " sync --endpoint 127.0.0.1:4445 --dest ~/Seestar",
 		Args:    noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			o.stateDirSet = cmd.Flags().Changed("state-dir")
+			o.intervalSet = cmd.Flags().Changed("interval")
 			if err := o.validate(); err != nil {
 				return err
 			}
@@ -69,6 +75,7 @@ Exit 0 when stopped or after a clean --once pass, 1 on a runtime failure or a
 	f.StringArrayVar(&o.sources, "source", defaultSources, "folder on the share to copy; repeatable, and any replaces the defaults")
 	f.DurationVar(&o.interval, "interval", 5*time.Minute, "wait between the end of one pass and the start of the next")
 	f.BoolVar(&o.once, "once", false, "run one pass and exit")
+	f.BoolVar(&o.dryRun, "dry-run", false, "run one pass that only reports what it would do, and change nothing on disk")
 	f.DurationVar(&o.readyAge, "ready-age", 2*time.Minute, "copy a file only once its device time is at least this old")
 	f.DurationVar(&o.firstPassAge, "first-pass-age", 10*time.Minute, "on the first pass, files at least this old count as finished")
 	f.IntVar(&o.workers, "workers", 4, "files copied at once (1-64)")
@@ -92,6 +99,9 @@ func (o *syncOptions) validate() error {
 	}
 	if o.interval <= 0 {
 		return &usageError{Option: "--interval", Rule: "must be more than zero"}
+	}
+	if o.dryRun && o.intervalSet {
+		return &usageError{Option: "--dry-run", Rule: "runs one pass; do not give --interval with it"}
 	}
 	if o.readyAge < 0 {
 		return &usageError{Option: "--ready-age", Rule: "must not be negative"}
@@ -157,8 +167,15 @@ var dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
 }
 
 // runSync opens the state and the destination, then runs passes until ctx is
-// done, or runs one with --once. A stop by ctx returns nil.
+// done, or runs one with --once. A stop by ctx returns nil. A dry run is
+// [runDry].
 func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
+	if o.dryRun {
+		// Before anything touches the disk: from here on, any function
+		// that changes the local filesystem panics.
+		readonly.Enable()
+		return runDry(ctx, o, log)
+	}
 	stateDir, err := o.resolveStateDir()
 	if err != nil {
 		return err
@@ -173,7 +190,7 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		return err
 	}
 	defer cp.Close()
-	s := &syncer{opts: o, log: log, state: st, copier: cp, firstPass: true}
+	s := &syncer{opts: o, log: log, records: st.Snapshot, stat: cp.Stat, copier: cp, firstPass: true}
 	for {
 		failed, err := s.pass(ctx)
 		switch {
@@ -194,11 +211,46 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 	}
 }
 
+// runDry runs one pass that only reports what a real pass would do. It
+// reads the state and the destination, if they exist, through read-only
+// views, and never opens [state.State] or [copier.Copier], which can write.
+// Failed files make it return an error, as with --once.
+func runDry(ctx context.Context, o syncOptions, log *slog.Logger) error {
+	stateDir, err := o.resolveStateDir()
+	if err != nil {
+		return err
+	}
+	records, err := state.Load(stateDir, o.dest, log)
+	if err != nil {
+		return err
+	}
+	dest, err := copier.OpenDest(o.dest)
+	if err != nil {
+		return err
+	}
+	defer dest.Close()
+	s := &syncer{opts: o, log: log, records: func() map[string]state.Record { return records }, stat: dest.Stat, firstPass: true}
+	failed, err := s.dryPass(ctx)
+	switch {
+	case ctx.Err() != nil:
+		return nil
+	case err != nil:
+		return err
+	case failed > 0:
+		return fmt.Errorf("failed files: %d", failed)
+	}
+	return nil
+}
+
 // syncer holds what one process's passes share.
 type syncer struct {
-	opts   syncOptions
-	log    *slog.Logger
-	state  *state.State
+	opts syncOptions
+	log  *slog.Logger
+	// records returns the state's records, and stat the local stat of a
+	// share path, for the pass decisions.
+	records func() map[string]state.Record
+	stat    func(string) plan.Local
+	// copier carries out the decisions; nil in a dry run.
 	copier *copier.Copier
 	// previous is the last pass's listing; firstPass is set until a pass
 	// has listed every source.
@@ -231,33 +283,9 @@ func (s *syncer) pass(ctx context.Context) (failed int, err error) {
 		return 0, fmt.Errorf("connect to %s: %w", s.opts.endpoint, err)
 	}
 	defer sess.Close()
-	listing, err := s.list(ctx, sess)
+	decisions, counts, err := s.decide(ctx, sess)
 	if err != nil {
 		return 0, err
-	}
-	in := plan.Input{
-		Listing:      listing,
-		FirstPass:    s.firstPass,
-		Previous:     s.previous,
-		State:        map[string]plan.Recorded{},
-		Local:        map[string]plan.Local{},
-		Now:          time.Now(),
-		ReadyAge:     s.opts.readyAge,
-		FirstPassAge: s.opts.firstPassAge,
-		Windows:      runtime.GOOS == "windows",
-	}
-	s.previous, s.firstPass = listing, false
-	for p, rec := range s.state.Snapshot() {
-		in.State[p] = plan.Recorded{Size: rec.Size, ModTime: rec.MTime}
-	}
-	for _, p := range plan.NeedLocal(in) {
-		in.Local[p] = s.copier.Stat(p)
-	}
-	decisions, counts := plan.Decide(in)
-	for _, d := range decisions {
-		if d.Kind == plan.Fail {
-			s.log.Warn("file failed", "path", d.Path, "reason", d.Reason)
-		}
 	}
 	// Each file is logged as it finishes, not at the end of the pass.
 	s.copier.Run(ctx, sess, s.opts.workers, decisions, func(r copier.Result) {
@@ -288,6 +316,91 @@ func (s *syncer) pass(ctx context.Context) (failed int, err error) {
 	failed += counts.Fail
 	waiting = counts.Wait
 	return failed, nil
+}
+
+// dryPass is a pass that only logs what [syncer.pass] would do: a line for
+// each file it would copy, replace or adopt, or that is waiting, the same
+// line for a failed file, and a summary. It returns how many files would
+// fail. An error means the session or a listing failed.
+func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
+	start := time.Now()
+	var counts plan.Counts
+	var bytes int64
+	defer func() {
+		args := []any{"copy", counts.Copy, "replace", counts.Replace, "adopt", counts.Adopt, "waiting", counts.Wait,
+			"failed", counts.Fail, "bytes", bytes, "elapsed", time.Since(start).Round(time.Millisecond)}
+		switch {
+		case ctx.Err() != nil:
+			s.log.Info("dry run stopped", args...)
+		case err != nil:
+			s.log.Error("dry run failed", append(args, "error", err)...)
+		default:
+			s.log.Info("dry run done", args...)
+		}
+	}()
+	sess, err := dial(ctx, s.opts.endpoint)
+	if err != nil {
+		return 0, fmt.Errorf("connect to %s: %w", s.opts.endpoint, err)
+	}
+	defer sess.Close()
+	var decisions []plan.Decision
+	decisions, counts, err = s.decide(ctx, sess)
+	if err != nil {
+		return 0, err
+	}
+	for _, d := range decisions {
+		args := []any{"path", d.Path, "size", d.Size}
+		switch d.Kind {
+		case plan.Copy:
+			bytes += d.Size
+			if d.Overwrite {
+				args = append(args, "overwrite", true)
+			}
+			s.log.Info("would copy", args...)
+		case plan.Replace:
+			bytes += d.Size
+			s.log.Info("would replace", args...)
+		case plan.Adopt:
+			s.log.Info("would adopt", args...)
+		case plan.Wait:
+			s.log.Info("would wait", args...)
+		}
+	}
+	return counts.Fail, nil
+}
+
+// decide lists the sources over sess and returns the pass decisions and
+// their counts. It logs a line for each file that fails.
+func (s *syncer) decide(ctx context.Context, sess remote.Session) ([]plan.Decision, plan.Counts, error) {
+	listing, err := s.list(ctx, sess)
+	if err != nil {
+		return nil, plan.Counts{}, err
+	}
+	in := plan.Input{
+		Listing:      listing,
+		FirstPass:    s.firstPass,
+		Previous:     s.previous,
+		State:        map[string]plan.Recorded{},
+		Local:        map[string]plan.Local{},
+		Now:          time.Now(),
+		ReadyAge:     s.opts.readyAge,
+		FirstPassAge: s.opts.firstPassAge,
+		Windows:      runtime.GOOS == "windows",
+	}
+	s.previous, s.firstPass = listing, false
+	for p, rec := range s.records() {
+		in.State[p] = plan.Recorded{Size: rec.Size, ModTime: rec.MTime}
+	}
+	for _, p := range plan.NeedLocal(in) {
+		in.Local[p] = s.stat(p)
+	}
+	decisions, counts := plan.Decide(in)
+	for _, d := range decisions {
+		if d.Kind == plan.Fail {
+			s.log.Warn("file failed", "path", d.Path, "reason", d.Reason)
+		}
+	}
+	return decisions, counts, nil
 }
 
 // list lists every source. A missing source is a warning; any other listing
