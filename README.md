@@ -107,7 +107,9 @@ restacking. See [delete](docs/reference.md#delete).
 - **An existing copy is reused.** If your folder already holds files copied
   another way with the same size and modification time, to within 2 seconds,
   sync records them without downloading them again. A different file at the
-  same path is overwritten with the telescope's copy.
+  same path is overwritten with the telescope's copy. Only files the
+  telescope still has are looked at, so a folder filled from an older
+  archive can show far fewer reused files than it holds.
 - **Use one spelling for your folder.** Give the same folder the same way
   every time, such as `--dest ~/Seestar`. Another spelling, such as through a
   link, starts a separate history; sync refuses to start when it notices. See

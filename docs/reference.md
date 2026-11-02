@@ -3,8 +3,8 @@
 Use this page when you script `seestar-copy-cli` or need an exact flag, rule or
 log line. The [README](../README.md) has a first run.
 
-- [sync](#sync): flags, endpoint, destination layout, [selection](#selection) and
-  [dry run](#dry-run)
+- [sync](#sync): flags, endpoint, [performance](#performance), destination
+  layout, [selection](#selection) and [dry run](#dry-run)
 - [How a pass decides](#how-a-pass-decides)
 - [Copying a file](#copying-a-file) and [temporary files](#temporary-files)
 - [The state file](#the-state-file)
@@ -79,6 +79,20 @@ Each pass opens its own session and closes it before the wait, so the
 telescope's share is free between passes. A failed connection fails that pass
 only; see [a failed pass](#a-failed-pass).
 
+### Performance
+
+`--workers` sets how many files are copied at once. Keep the default of 4.
+In one setup, copying through a seestar-wormhole listener:
+
+- 1 worker copied 1.17 GB in 4 minutes 16 seconds, about 4.3 MiB/s;
+- 4 workers copied 330,833,790 bytes in 36 to 42 seconds, about 7.5 to
+  8.8 MiB/s;
+- earlier tests of that path topped out near 10 MiB/s.
+
+These are one setup's measurements, not guarantees. One worker was slower
+than four in these measurements. More workers may not help once the link is
+near its ceiling. All workers share one SMB session.
+
 ### Destination layout
 
 Files mirror the share's tree under `--dest`, starting at the share root,
@@ -94,6 +108,14 @@ Names are kept byte for byte. A downloaded file gets the device file's
 modification time (mtime). An [adopted](#how-a-pass-decides) file keeps its
 own, which is within 2 seconds of the device's. Folders are created as needed;
 their mtimes are not set.
+
+New files are created with mode 0666 and new folders with 0777, less the
+umask; with the common umask 022 that is 0644 and 0755. This includes
+`--dest` and any missing parents. A replaced or overwritten file is a new
+file with these modes; it does not keep the old file's mode. Folders that
+already exist, and adopted files, keep theirs. On Windows the mode bits do
+not apply: new files and folders get the ACLs they inherit from their
+folder.
 
 Only regular files are copied. Symbolic links and other special entries on
 the share are listed but neither followed nor copied.
@@ -224,6 +246,9 @@ It decides as the first pass of a new process does (see
 passes of a sync that is already running may treat files that have not
 settled differently.
 
+Like a pass, it looks only at files the device lists now; see
+[what adoption covers](#what-adoption-covers).
+
 It exits 0, or 1 if the connection or a listing fails or any file would
 fail, as `--once` does.
 
@@ -260,6 +285,16 @@ Adoption lets sync take over a folder that another tool, such as rclone,
 filled, as long as that tool kept the device's mtimes. The 2 seconds allow
 for filesystems that store mtimes coarsely, so a copy on a FAT32 or exFAT
 drive is adopted too. The record keeps the device's mtime.
+
+### What adoption covers
+
+Adoption covers only files that the device lists now and that the pass
+selects. Pass counts come from the current device listing, not from an
+inventory of the destination. The skipped and unmatched counts also include
+files and folders the selection leaves out. A local file with no counterpart
+on the device, such as one the telescope no longer has, is never read,
+counted or reported. A destination seeded from an older archive can
+therefore show far fewer adopted files than it holds. That is expected.
 
 ### Readiness
 
@@ -360,8 +395,15 @@ folder:
 
 If there is no per-user config folder, sync exits 1 and asks for
 `--state-dir`. Keep the state on a local disk: shared and network folders are
-not supported. Sync creates the `sync` folder readable by you only (0700 on
-Linux and macOS) and its files 0600.
+not supported.
+
+Sync creates the `sync` folder, and any missing folders above it, with mode
+0700 less the umask, so only you can read them. A new state file is set to
+exactly 0600, whatever the umask. The lock files are created 0600, less the
+umask. Existing folders and lock files keep their permissions. An existing
+nonempty state file keeps its permissions; an empty state file is replaced
+with a new 0600 file. On Windows the mode bits do not apply, and privacy
+comes from the ACLs the folder inherits.
 
 The state is keyed by destination only. With a second telescope, use a second
 destination.
@@ -456,10 +498,10 @@ one stopped.
 
 ## Logs
 
-Sync logs to stderr, as text lines in Go's `log/slog` format, with UTC
-timestamps to the millisecond. Help, `--version` and `licenses` write to
-stdout. Per-file lines are logged as each file finishes. A pass that skips the
-`log` folder and copies two files looks like this:
+Sync logs to stderr, as text lines with UTC timestamps to the millisecond.
+Help, `--version` and `licenses` write to stdout. Per-file lines are logged as
+each file finishes. A pass that skips the `log` folder and copies two files
+looks like this:
 
 ```text
 time=2026-11-02T03:10:00.118Z level=INFO msg=skipped path=log exclude=/log
@@ -468,9 +510,15 @@ time=2026-11-02T03:10:03.290Z level=INFO msg="file copied" path="MyWorks/M 31/li
 time=2026-11-02T03:10:03.502Z level=INFO msg="pass done" copied=2 replaced=0 adopted=0 waiting=1 failed=0 skipped=1 unmatched=0 bytes=32000000 elapsed=3.502s
 ```
 
-Values with spaces or quotes are quoted. The messages and keys below are
-what this release logs. They are not part of the
-[versioning contract](versioning.md#not-in-the-contract); a release that
+The format is logfmt-like `key=value` pairs, as Go's `log/slog` text handler
+writes them. A value that is empty, or that contains a space of any kind, a
+`"`, an `=` or a character that does not print, is double-quoted with Go
+string escaping, such as `\"` for a quote inside it. In the example above
+that gives `msg="file copied"` and `path="MyWorks/M 31/light_002.fit"`. Read
+the lines with a logfmt parser, not by splitting on spaces.
+
+The messages and keys below are what this release logs. They are not part of
+the [versioning contract](versioning.md#not-in-the-contract); a release that
 changes them says so in its notes.
 
 | Level | Message | Keys | When |
