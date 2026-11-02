@@ -3,7 +3,7 @@
 See [known issues and accepted limits](known-issues.md) for the limits that
 remain by choice.
 
-What's been tested and what hasn't, as of October 2026. The short version is
+What's been tested and what hasn't, as of November 2026. The short version is
 in the [README](../README.md#status).
 
 ## Telescopes
@@ -12,6 +12,14 @@ Daily-use testing was on one **Seestar S50 Pro, firmware 9.31**. The same
 telescope now runs **firmware 9.75**, with the narrower coverage below. Other
 Seestar models on the same cloud service are expected to work, since they
 share the connection, but operation on other models has not been observed.
+
+In November 2026, a user reported that a telescope shared with or rented to
+their account was missing from the account telescope list in v0.5.0 and
+appears in v0.6.0. They connected to it and used it through the proxy with
+seestar_alp; see [seestar_alp and other clients](clients.md#seestar_alp).
+v0.6.0 added both `isContainShared=3` to the list request and
+`onlyQueryOwner=false` to the detail request; which one was needed hasn't been
+tested separately. See [device selection](reference.md#device-selection).
 
 ### Firmware 9.75
 

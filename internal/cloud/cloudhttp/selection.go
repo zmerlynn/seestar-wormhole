@@ -108,8 +108,10 @@ func (c *Client) selectedDevice(v cloud.Detail) Device {
 }
 
 // devices requests isContainShared=3 on every page, matching the app 3.3.2
-// connect screen (READ), not an observed difference for shared accounts:
+// connect screen (READ):
 // https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection
+// One user's shared telescope was listed only after this was added (v0.6.0;
+// v0.5.0 omitted it), not tested apart from detail's onlyQueryOwner=false.
 // It pages the catalog: use positive reply current (otherwise the
 // requested page), count wire items including duplicates, and load current+1
 // only while the accumulated count is below total. Null items count as empty.
