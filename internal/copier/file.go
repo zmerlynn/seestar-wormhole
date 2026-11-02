@@ -104,9 +104,10 @@ func fetch(ctx context.Context, sess remote.Session, d plan.Decision, w io.Write
 }
 
 // adopt hashes the local copy of d and records it as adopted. The file must
-// be a regular file with the listed size and mtime both before and after it
-// is hashed, and must still be the file at the path afterward. It is only
-// read.
+// be a regular file with the listed size and an mtime within
+// plan.SameMTime of the listed one both before and after it is hashed, and
+// must still be the file at the path afterward. It is only read. The record
+// keeps the device's mtime.
 func (c *Copier) adopt(ctx context.Context, d plan.Decision) (state.Record, error) {
 	name := filepath.FromSlash(d.Path)
 	f, err := c.root.Open(name)
@@ -140,7 +141,7 @@ func (c *Copier) adopt(ctx context.Context, d plan.Decision) (state.Record, erro
 }
 
 // checkLocal returns the stat of f, the open local file of d, if it is a
-// regular file with d's size and mtime.
+// regular file with d's size and an mtime within plan.SameMTime of d's.
 func checkLocal(f *os.File, d plan.Decision) (fs.FileInfo, error) {
 	fi, err := f.Stat()
 	switch {
@@ -148,7 +149,7 @@ func checkLocal(f *os.File, d plan.Decision) (fs.FileInfo, error) {
 		return nil, fmt.Errorf("stat the local file: %w", err)
 	case !fi.Mode().IsRegular():
 		return nil, errors.New("the local file is no longer a regular file")
-	case fi.Size() != d.Size || !fi.ModTime().Equal(d.ModTime):
+	case fi.Size() != d.Size || !plan.SameMTime(fi.ModTime(), d.ModTime):
 		return nil, fmt.Errorf("the local file changed: it has size %d and mtime %s, not %d and %s",
 			fi.Size(), fi.ModTime().UTC().Format(time.RFC3339Nano), d.Size, d.ModTime.UTC().Format(time.RFC3339Nano))
 	}

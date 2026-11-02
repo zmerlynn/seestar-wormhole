@@ -66,8 +66,9 @@ func listedAt(t time.Time) func(*Input) {
 	}
 }
 
-func identicalLocal() Local {
-	return Local{Exists: true, Regular: true, Size: testSize, ModTime: testMtime}
+// localAt is a local file of the listed size with mtime t.
+func localAt(t time.Time) Local {
+	return Local{Exists: true, Regular: true, Size: testSize, ModTime: t}
 }
 
 // TestDecideOneFile runs each rule on a single listed file. Every case also
@@ -116,10 +117,16 @@ func TestDecideOneFile(t *testing.T) {
 		{name: "in state, changed, first pass, too new", setup: fns(recorded(testSize+1, testMtime), firstPass, now(5*time.Minute)), want: Wait},
 
 		// The local file.
-		{name: "identical local file", setup: fns(local(identicalLocal())), wantNeed: true, want: Adopt},
+		{name: "identical local file", setup: fns(local(localAt(testMtime))), wantNeed: true, want: Adopt},
 		{name: "identical local file, mtime in another location", setup: fns(local(Local{Exists: true, Regular: true, Size: testSize, ModTime: testMtime.In(elsewhere)})), wantNeed: true, want: Adopt},
 		{name: "local file of another size", setup: fns(local(Local{Exists: true, Regular: true, Size: testSize - 1, ModTime: testMtime})), wantNeed: true, want: Copy, wantOver: true},
-		{name: "local mtime a nanosecond off", setup: fns(local(Local{Exists: true, Regular: true, Size: testSize, ModTime: testMtime.Add(1)})), wantNeed: true, want: Copy, wantOver: true},
+		{name: "local mtime a nanosecond off", setup: fns(local(localAt(testMtime.Add(1)))), wantNeed: true, want: Adopt},
+		{name: "local mtime 10 ms behind", setup: fns(local(localAt(testMtime.Add(-10 * time.Millisecond)))), wantNeed: true, want: Adopt},
+		{name: "local mtime a second ahead", setup: fns(local(localAt(testMtime.Add(time.Second)))), wantNeed: true, want: Adopt},
+		{name: "local mtime 2 s ahead", setup: fns(local(localAt(testMtime.Add(2 * time.Second)))), wantNeed: true, want: Adopt},
+		{name: "local mtime 2 s behind", setup: fns(local(localAt(testMtime.Add(-2 * time.Second)))), wantNeed: true, want: Adopt},
+		{name: "local mtime 2 s and a nanosecond ahead", setup: fns(local(localAt(testMtime.Add(2*time.Second + 1)))), wantNeed: true, want: Copy, wantOver: true},
+		{name: "local mtime 3 s behind", setup: fns(local(localAt(testMtime.Add(-3 * time.Second)))), wantNeed: true, want: Copy, wantOver: true},
 		{name: "local directory", setup: fns(local(Local{Exists: true, Size: testSize, ModTime: testMtime})), wantNeed: true, want: Fail, reason: "local path exists and is not a regular file"},
 		{name: "local stat failed", setup: fns(local(Local{Err: fs.ErrPermission})), wantNeed: true, want: Fail, reason: "local stat failed: permission denied"},
 		{name: "local stat failed beside a match", setup: fns(local(Local{Exists: true, Regular: true, Size: testSize, ModTime: testMtime, Err: errors.New("i/o error")})), wantNeed: true, want: Fail, reason: "local stat failed: i/o error"},

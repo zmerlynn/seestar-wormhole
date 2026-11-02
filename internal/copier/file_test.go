@@ -343,6 +343,27 @@ func TestAdopt(t *testing.T) {
 	}
 }
 
+// A local file whose mtime is a second off the device's, as on a FAT32
+// drive, is adopted, and its record keeps the device's mtime.
+func TestAdoptMTimeSlop(t *testing.T) {
+	const p = "MyWorks/a.fit"
+	fx := newFixture(t, func(dest string) {
+		writeLocal(t, dest, p, "abc")
+		if err := os.Chtimes(filepath.Join(dest, filepath.FromSlash(p)), time.Time{}, deviceMTime.Add(-time.Second)); err != nil {
+			t.Fatal(err)
+		}
+	})
+	c := fx.copier(t)
+	results := run(c, t.Context(), device(nil), 1, []plan.Decision{decision(plan.Adopt, p, 3)})
+	if len(results) != 1 || results[0].Err != nil {
+		t.Fatalf("got results %+v, want one success", results)
+	}
+	want := []string{`{"path":"MyWorks/a.fit","size":3,"mtime":"2026-10-29T03:31:19Z","sha256":"` + sumABC + `","at":"2026-11-02T01:02:03Z","how":"adopted"}` + "\n"}
+	if got := fx.records(t); !slices.Equal(got, want) {
+		t.Errorf("state records:\ngot  %q\nwant %q", got, want)
+	}
+}
+
 // A read-only local file is adopted: an adoption only reads it.
 func TestAdoptReadOnly(t *testing.T) {
 	const p = "MyWorks/a.fit"
@@ -371,7 +392,7 @@ func TestAdoptChanged(t *testing.T) {
 		want       string
 	}{
 		{name: "size", data: "abcd", mtime: deviceMTime, want: "the local file changed: it has size 4"},
-		{name: "mtime", data: "abc", mtime: deviceMTime.Add(time.Second), want: "and mtime 2026-10-29T03:31:20Z, not 3 and 2026-10-29T03:31:19Z"},
+		{name: "mtime", data: "abc", mtime: deviceMTime.Add(3 * time.Second), want: "and mtime 2026-10-29T03:31:22Z, not 3 and 2026-10-29T03:31:19Z"},
 		{name: "folder", want: "no longer a regular file"},
 		{name: "missing", want: "open the local file"},
 	} {

@@ -79,8 +79,10 @@ the default sources:
 <dest>/darklibrary/<file>
 ```
 
-Names are kept byte for byte. Each file gets the device file's modification
-time (mtime). Folders are created as needed; their mtimes are not set.
+Names are kept byte for byte. A downloaded file gets the device file's
+modification time (mtime). An [adopted](#how-a-pass-decides) file keeps its
+own, which is within 2 seconds of the device's. Folders are created as needed;
+their mtimes are not set.
 
 Only regular files are copied. Symbolic links and other special entries on
 the share are listed but neither followed nor copied. A source that does not
@@ -105,21 +107,21 @@ apply in order:
    replaces the local file if that is still there, and is written again if
    you had moved it away.
 5. **Adopt.** The state does not have the file, and a regular file with the
-   same size and exactly the same mtime is already at `<dest>/<path>`. Sync
-   hashes the local file and records it as `adopted`, with no download. This
-   is the only time the destination is consulted.
+   same size and an mtime within 2 seconds of it is already at
+   `<dest>/<path>`. Sync hashes the local file and records it as `adopted`,
+   with no download. This is the only time the destination is consulted.
 6. **Copy.** Otherwise the file is downloaded and recorded as `copied`. A
-   local file at that path with a different size or mtime is overwritten,
-   since the device's copy is authoritative; the log line then has
-   `overwrote=true`.
+   local file at that path with a different size, or an mtime more than 2
+   seconds off, is overwritten, since the device's copy is authoritative; the
+   log line then has `overwrote=true`.
 
 If something other than a regular file, such as a folder or a symbolic link,
 is at `<dest>/<path>` when a file not in the state is ready, that file fails.
 
 Adoption lets sync take over a folder that another tool, such as rclone,
-filled, as long as that tool kept the device's mtimes. A destination
-filesystem that stores mtimes more coarsely than the device does may not
-match exactly; such files are downloaded again instead.
+filled, as long as that tool kept the device's mtimes. The 2 seconds allow
+for filesystems that store mtimes coarsely, so a copy on a FAT32 or exFAT
+drive is adopted too. The record keeps the device's mtime.
 
 ### Readiness
 
@@ -170,8 +172,10 @@ A crash or failure at any step leaves either no state line for the file, or
 the complete file under its final name. If a crash loses a state line, the
 next pass finds the complete file and adopts it.
 
-An adoption only reads the local file. It fails if the file changes, or
-something else takes its path, while it is being hashed.
+An adoption only reads the local file. It fails if, while the file is being
+hashed, its size changes, its mtime moves more than 2 seconds from the
+device's, or something else takes its path. A rewrite that keeps the size and
+a near mtime is not noticed.
 
 ### Temporary files
 

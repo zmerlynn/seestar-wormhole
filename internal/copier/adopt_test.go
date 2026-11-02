@@ -50,11 +50,11 @@ func TestAdoptChangedWhileHashing(t *testing.T) {
 				if err := os.WriteFile(name, []byte("xyz"), 0o666); err != nil {
 					t.Fatal(err)
 				}
-				if err := os.Chtimes(name, time.Time{}, deviceMTime.Add(time.Second)); err != nil {
+				if err := os.Chtimes(name, time.Time{}, deviceMTime.Add(3*time.Second)); err != nil {
 					t.Fatal(err)
 				}
 			},
-			want: "after hashing: the local file changed: it has size 3 and mtime 2026-10-29T03:31:20Z",
+			want: "after hashing: the local file changed: it has size 3 and mtime 2026-10-29T03:31:22Z",
 		},
 		{
 			// Its bytes were read already, so only the size shows it.

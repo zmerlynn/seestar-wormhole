@@ -284,12 +284,24 @@ func withLocal(d Decision, l Local, ok bool) Decision {
 		d.Kind = Copy
 	case !l.Regular:
 		d.Kind, d.Reason = Fail, "local path exists and is not a regular file"
-	case l.Size == d.Size && l.ModTime.Equal(d.ModTime):
+	case l.Size == d.Size && SameMTime(l.ModTime, d.ModTime):
 		d.Kind = Adopt
 	default:
 		d.Kind, d.Overwrite = Copy, true
 	}
 	return d
+}
+
+// adoptMTimeSlop is how far a local mtime may be from the device's for
+// the local file to be adopted. FAT32 stores mtimes to 2 seconds and exFAT
+// to 10 ms.
+const adoptMTimeSlop = 2 * time.Second
+
+// SameMTime reports whether a local mtime and a device mtime are within
+// 2 seconds of each other, close enough to adopt the local file.
+func SameMTime(local, device time.Time) bool {
+	diff := local.Sub(device)
+	return diff >= -adoptMTimeSlop && diff <= adoptMTimeSlop
 }
 
 // previous indexes the previous listing's regular files by path. A path

@@ -94,9 +94,9 @@ code.
   or delete is not copied again, unless it changes on the telescope. See
   [the state file](docs/reference.md#the-state-file).
 - **An existing copy is reused.** If your folder already holds files copied
-  another way with the same size and modification time, sync records them
-  without downloading them again. A different file at the same path is
-  overwritten with the telescope's copy.
+  another way with the same size and modification time, to within 2 seconds,
+  sync records them without downloading them again. A different file at the
+  same path is overwritten with the telescope's copy.
 - **Use one spelling for your folder.** Give the same folder the same way
   every time, such as `--dest ~/Seestar`. Another spelling, such as through a
   link, starts a separate history; sync refuses to start when it notices. See

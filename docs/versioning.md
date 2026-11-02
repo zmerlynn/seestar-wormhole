@@ -30,7 +30,8 @@ The [command reference](reference.md) has the detail of each item.
    the share. It logs in as guest to the share `EMMC Images`. A release that writes to the device in any way is not a
    compatible release.
 5. **The destination.** The [layout](reference.md#destination-layout): files mirror the share's tree under
-   `--dest` with names kept byte for byte and the device's mtime, and folders' mtimes are not set. The
+   `--dest` with names kept byte for byte; downloaded files get the device's mtime, adopted files keep their own,
+   which is within the adoption tolerance in the decision rules; and folders' mtimes are not set. The
    [decision rules](reference.md#how-a-pass-decides): a file recorded with the same size and mtime is never copied
    again, whether or not it is still in the destination; a changed one is downloaded again; a matching local file is
    adopted; any other local file at that path is overwritten. Sync deletes nothing in the destination except its own
