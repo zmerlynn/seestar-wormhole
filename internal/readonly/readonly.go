@@ -1,11 +1,12 @@
 // Package readonly is a process-wide guard for a dry run. Once [Enable] is
 // called, [Check] panics, and every function that changes the local
-// filesystem calls Check first. So a dry run that reached a write by mistake
-// stops before it changes anything, rather than going on quietly.
+// filesystem or the device calls Check first. So a dry run that reached a
+// write by mistake stops before it changes anything, rather than going on
+// quietly.
 //
 // A test in this package checks that every function under internal/ and
 // cmd/ that creates, writes, renames, removes or otherwise changes a file or
-// folder starts with a call to Check.
+// folder, locally or on the device, starts with a call to Check.
 package readonly
 
 import "sync/atomic"
@@ -19,7 +20,7 @@ func Enable() { enabled.Store(true) }
 // message.
 func Check(op string) {
 	if enabled.Load() {
-		panic("readonly: " + op + " would change the local filesystem during a dry run")
+		panic("readonly: " + op + " would change the local filesystem or the device during a dry run")
 	}
 }
 

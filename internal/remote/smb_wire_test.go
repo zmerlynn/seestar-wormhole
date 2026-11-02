@@ -754,3 +754,29 @@ func TestPendingCallsEnd(t *testing.T) {
 		}
 	}
 }
+
+// TestSMBRemoverRefusesInvalidPaths checks that SMBRemover refuses every
+// path Open refuses before any request reaches the share: no CREATE goes
+// out for any of them.
+func TestSMBRemoverRefusesInvalidPaths(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		p := startPeer(t, &peer{file: `a\b`})
+		defer p.stop()
+		ctx := t.Context()
+		r := &SMBRemover{p.mustDial(t, ctx)}
+		defer r.Close()
+		for _, path := range invalidRemovePaths {
+			if err := r.RemoveFile(ctx, Entry{Path: path, Kind: Regular}); !errors.Is(err, fs.ErrInvalid) {
+				t.Errorf("RemoveFile(%q) = %v, want fs.ErrInvalid", path, err)
+			}
+			if err := r.RemoveDir(ctx, path); !errors.Is(err, fs.ErrInvalid) {
+				t.Errorf("RemoveDir(%q) = %v, want fs.ErrInvalid", path, err)
+			}
+		}
+		for _, req := range p.seen() {
+			if req.Command() == wire.SMB2_CREATE {
+				t.Errorf("a CREATE reached the share: %v", req)
+			}
+		}
+	})
+}

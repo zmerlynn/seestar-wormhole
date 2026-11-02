@@ -50,6 +50,11 @@ func newDialer() *smb2.Dialer {
 }
 
 func dial(ctx context.Context, endpoint string, dialer *smb2.Dialer) (*SMB, error) {
+	return dialShare(ctx, endpoint, dialer, ShareName)
+}
+
+// dialShare is dial for the share named share; only tests name another.
+func dialShare(ctx context.Context, endpoint string, dialer *smb2.Dialer, share string) (*SMB, error) {
 	// go-smb2 would add port 445 to a bare host, and an empty host dials
 	// the local machine; both would connect somewhere the caller did not name.
 	if host, port, err := net.SplitHostPort(endpoint); err != nil || host == "" || port == "" {
@@ -60,24 +65,24 @@ func dial(ctx context.Context, endpoint string, dialer *smb2.Dialer) (*SMB, erro
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", endpoint, err)
 	}
-	share, err := mount(ctx, session)
+	mounted, err := mount(ctx, session, share)
 	if err != nil {
-		return nil, fmt.Errorf("mount %q on %s: %w", ShareName, endpoint, err)
+		return nil, fmt.Errorf("mount %q on %s: %w", share, endpoint, err)
 	}
 	stop := context.AfterFunc(ctx, func() { _ = session.Close() })
-	return &SMB{endpoint: endpoint, session: session, share: share, stopWatch: stop}, nil
+	return &SMB{endpoint: endpoint, session: session, share: mounted, stopWatch: stop}, nil
 }
 
-// mount mounts ShareName. On failure it has closed the session. Canceling
+// mount mounts share. On failure it has closed the session. Canceling
 // ctx aborts the session, so a server that never answers TREE_CONNECT cannot
 // hold mount; mount returns only once that abort has finished.
-func mount(ctx context.Context, session *smb2.Session) (*smb2.Share, error) {
+func mount(ctx context.Context, session *smb2.Session, share string) (*smb2.Share, error) {
 	aborted := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		defer close(aborted)
 		_ = session.Abort()
 	})
-	share, err := session.Mount(ctx, ShareName)
+	mounted, err := session.Mount(ctx, share)
 	if !stop() {
 		<-aborted
 		return nil, ctx.Err()
@@ -86,7 +91,7 @@ func mount(ctx context.Context, session *smb2.Session) (*smb2.Share, error) {
 		_ = session.Close()
 		return nil, err
 	}
-	return share, nil
+	return mounted, nil
 }
 
 // Walk lists the share; see Session.
@@ -102,7 +107,7 @@ func (s *SMB) Walk(ctx context.Context, skip func(string, bool) bool) ([]Entry, 
 // FILE_OPEN, so it never creates the file, and shares it for reading and
 // writing; it has no way to also share it for deletion.
 func (s *SMB) Open(ctx context.Context, path string) (File, error) {
-	if !validPath(path) {
+	if !ValidPath(path) {
 		return nil, &fs.PathError{Op: "open", Path: path, Err: fs.ErrInvalid}
 	}
 	f, err := s.share.Open(ctx, path)

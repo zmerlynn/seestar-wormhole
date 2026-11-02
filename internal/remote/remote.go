@@ -1,13 +1,18 @@
-// Package remote is a read-only view of the telescope's SMB share.
+// Package remote is a view of the telescope's SMB share.
 //
-// A Session lists the share and opens files for reading, and nothing
-// else: there is no call that creates, changes, renames, deletes or locks
-// anything on the share. Dial returns the go-smb2 implementation; NewFake
-// returns one backed by an io/fs.FS for tests. Both list with fs.WalkDir
-// through the same code, so the listing rules below hold for both.
+// Session is read-only: it lists the share and opens files for reading, and
+// nothing else. It has no call that creates, changes, renames, deletes or
+// locks anything on the share. Dial returns the go-smb2 implementation;
+// NewFake returns one backed by an io/fs.FS for tests. Both list with
+// fs.WalkDir through the same code, so the listing rules below hold for both.
+//
+// Remover, used only by the delete command, removes a regular file or an
+// empty folder by path and nothing else. go-smb2 may clear a read-only
+// attribute in order to do it. Only DialRemover returns one for the share,
+// and NewFakeDir one over a local folder for tests.
 //
 // Paths are share-relative, slash-separated and kept byte for byte. A path
-// handed to Open must be a valid io/fs path without backslashes; any other
+// handed to Open, RemoveFile or RemoveDir must pass ValidPath; any other
 // path is refused with fs.ErrInvalid rather than cleaned.
 package remote
 
@@ -94,10 +99,10 @@ type File interface {
 	io.Closer
 }
 
-// validPath reports whether p is a path the share would receive exactly as
+// ValidPath reports whether p is a path the share would receive exactly as
 // given: a valid io/fs path other than ".", with no backslash (the SMB
-// separator).
-func validPath(p string) bool {
+// separator). Open, RemoveFile and RemoveDir refuse any other path.
+func ValidPath(p string) bool {
 	return p != "." && fs.ValidPath(p) && !strings.Contains(p, `\`)
 }
 

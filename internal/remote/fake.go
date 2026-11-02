@@ -32,6 +32,10 @@ type Fault struct {
 	// error, or for the session to close and returns fs.ErrClosed, so a
 	// test can cancel or close at a known point mid-file.
 	Stall func()
+	// BeforeRecheck, if not nil, is called by FakeDir's RemoveFile or
+	// RemoveDir of the path after the path check and before the fresh
+	// stat, so a test can change the path just before it is checked.
+	BeforeRecheck func()
 }
 
 var _ Session = (*Fake)(nil)
@@ -51,7 +55,7 @@ func (f *Fake) Walk(ctx context.Context, skip func(string, bool) bool) ([]Entry,
 
 // Open opens path for reading; see Session.
 func (f *Fake) Open(ctx context.Context, path string) (File, error) {
-	if !validPath(path) {
+	if !ValidPath(path) {
 		return nil, &fs.PathError{Op: "open", Path: path, Err: fs.ErrInvalid}
 	}
 	if f.closed() {

@@ -13,8 +13,9 @@ telescope is somewhere else.
 
 ## What it doesn't do
 
-- It never writes to the telescope: it doesn't delete, rename or upload
-  anything there. Freeing space on the telescope is up to you.
+- It never writes to the telescope, except when you run `delete --force`:
+  it doesn't rename or upload anything there, and `sync` and `find` only
+  read.
 - It doesn't delete or move anything in your folder, sort images by night, or
   stack or process them. What you do with the files after they land is up to
   you.
@@ -87,6 +88,15 @@ telescope writes it.
 Each line of its log says what it copied, and each pass ends with a summary.
 The [command reference](docs/reference.md) has every flag, log line and exit
 code.
+
+To free space on the telescope once your images are safe, run sync, then
+make your own export or backup of the folder, then preview with
+`seestar-copy-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar`, which
+only reports what it would delete. When the preview looks right, add
+`--force`. By default delete removes only files that sync recorded, that have
+not changed on the telescope, that are at least 7 days old, and whose copy in
+your folder still matches. Don't run it while the telescope is capturing or
+restacking. See [delete](docs/reference.md#delete).
 
 ## Things to know
 

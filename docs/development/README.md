@@ -17,12 +17,12 @@ is stopped.
 
 | Path | What it does |
 | --- | --- |
-| `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, and the `sync` pass loop: dial, list, plan, copy, log off, sleep. |
-| `internal/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `NewFake` serves an `io/fs` tree with injected faults for tests. |
+| `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the `sync` pass loop (dial, list, plan, copy, log off, sleep), `find`'s listing, and `delete`'s run. |
+| `internal/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
 | `internal/state` | The per-destination state file: JSON Lines, last record per path wins, torn-tail tolerance, append with fsync, and the exclusive lock. |
-| `internal/plan` | The pass decisions: wait, done, copy, replace, adopt or fail for each listed file. A pure function with no I/O; the current time is an input. |
+| `internal/plan` | The pass decisions: wait, done, copy, replace, adopt or fail for each listed file, and `delete`'s decisions on files and emptied folders. Pure functions with no I/O; the current time is an input. |
 | `internal/copier` | Carries out a pass's decisions over the one session with a worker pool: temporary file beside the final one, hash, size check, fsync, mtime, rename, then the state record. |
-| `internal/readonly` | The dry-run guard: once enabled, every function that changes the local filesystem panics. A test checks that each such function calls it first. |
+| `internal/readonly` | The dry-run guard: once enabled, every function that changes the local filesystem or the device panics. A test checks that each such function calls it first. |
 | `internal/licenses` | The `licenses` command's output: the project's `NOTICE` and `LICENSE`, then the license texts of each module linked into the running build. |
 | `scripts/generate-licenses.go` | Writes the license catalog that `internal/licenses` embeds. |
 
@@ -114,9 +114,9 @@ archives are reproducible.
 
 These apply to every change, whoever writes it.
 
-- **Never write to the telescope.** Files on the share are opened read-only.
-  The tool does not create, delete, rename, change or lock anything on the
-  device.
+- **Only `delete` changes the telescope, and only through
+  `remote.Remover`.** Everything else opens the share read-only and never
+  creates, deletes, renames, changes or locks anything on it.
 - **Strict in what you write, permissive in what you read.** Everything the
   tool writes, and every safety check on input, is strict: sizes checked
   before use, no allocation from unchecked values, names from the device
@@ -140,7 +140,8 @@ These apply to every change, whoever writes it.
   line it protects.
 - **A dry run writes nothing.** It reads the state and the destination
   through views that have no write methods, and every function that creates,
-  writes, renames or removes a local file or folder starts with
+  writes, renames or removes a local file or folder, or removes one on the
+  device, starts with
   `readonly.Check`; `internal/readonly`'s test fails otherwise.
 - **Commit to the new path.** Don't keep a fallback to old behavior unless a
   named configuration still needs it.

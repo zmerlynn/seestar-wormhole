@@ -152,11 +152,11 @@ func defaultExcludeFlags() string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// resolveStateDir returns --state-dir, or the per-user config folder's seestar-copy, as
-// seestar-wormhole chooses its own.
-func (o *syncOptions) resolveStateDir() (string, error) {
-	if o.stateDirSet {
-		return o.stateDir, nil
+// resolveStateDir returns --state-dir if it was given, or the per-user
+// config folder's seestar-copy, as seestar-wormhole chooses its own.
+func resolveStateDir(stateDir string, set bool) (string, error) {
+	if set {
+		return stateDir, nil
 	}
 	base, err := os.UserConfigDir()
 	if err != nil {
@@ -180,7 +180,7 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		readonly.Enable()
 		return runDry(ctx, o, log)
 	}
-	stateDir, err := o.resolveStateDir()
+	stateDir, err := resolveStateDir(o.stateDir, o.stateDirSet)
 	if err != nil {
 		return err
 	}
@@ -220,7 +220,7 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 // views, and never opens [state.State] or [copier.Copier], which can write.
 // Failed files make it return an error, as with --once.
 func runDry(ctx context.Context, o syncOptions, log *slog.Logger) error {
-	stateDir, err := o.resolveStateDir()
+	stateDir, err := resolveStateDir(o.stateDir, o.stateDirSet)
 	if err != nil {
 		return err
 	}

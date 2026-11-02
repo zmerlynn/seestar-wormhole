@@ -60,7 +60,7 @@ func newCommand(stdout io.Writer, log *slog.Logger) *cobra.Command {
 	})
 	root.SetFlagErrorFunc(flagError)
 	root.Flags().BoolVar(&showVersion, "version", false, "print version, revision and platform")
-	root.AddCommand(newSyncCommand(log), &cobra.Command{
+	root.AddCommand(newSyncCommand(log), newFindCommand(log), newDeleteCommand(log), &cobra.Command{
 		Use:   "licenses",
 		Short: "Print the license of this program and of the libraries in this build",
 		Args:  noArguments,
@@ -100,6 +100,8 @@ func flagError(cmd *cobra.Command, err error) error {
 		switch invalid.GetFlag().Value.Type() {
 		case "duration":
 			rule = "use a duration such as 30s, 5m or 1h"
+		case "age":
+			rule = "use a duration such as 36h, or whole days such as 7d"
 		case "int":
 			rule = "use a whole number"
 		case "bool":

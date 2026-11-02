@@ -29,12 +29,13 @@ func TestMain(m *testing.M) {
 	os.Exit(buildAndRun(m))
 }
 
-// errNoDevice is what dial returns in tests that do not replace it, so no
-// test connects anywhere.
+// errNoDevice is what dial and dialRemover return in tests that do not
+// replace them, so no test connects anywhere.
 var errNoDevice = errors.New("no device in tests")
 
 func buildAndRun(m *testing.M) int {
 	dial = func(context.Context, string) (remote.Session, error) { return nil, errNoDevice }
+	dialRemover = func(context.Context, string) (remote.Remover, error) { return nil, errNoDevice }
 	dir, err := os.MkdirTemp("", "seestar-copy-cli-test")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

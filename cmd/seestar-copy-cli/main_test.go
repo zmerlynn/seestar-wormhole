@@ -35,7 +35,7 @@ func TestHelp(t *testing.T) {
 		if code != exitOK || stderr != "" {
 			t.Errorf("%q: code=%d stderr=%q, want 0 and no stderr", args, code, stderr)
 		}
-		for _, want := range []string{"Usage:\n  seestar-copy-cli [flags]\n", "  sync ", "  licenses ", "--version"} {
+		for _, want := range []string{"Usage:\n  seestar-copy-cli [flags]\n", "  sync ", "  find ", "  licenses ", "--version"} {
 			if !strings.Contains(stdout, want) {
 				t.Errorf("%q: help lacks %q:\n%s", args, want, stdout)
 			}
@@ -399,11 +399,11 @@ func TestStateDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	want = filepath.Join(want, "seestar-copy")
-	got, err := (&syncOptions{}).resolveStateDir()
+	got, err := resolveStateDir("", false)
 	if err != nil || got != want {
 		t.Errorf("default state dir %q, %v, want %q", got, err, want)
 	}
-	got, err = (&syncOptions{stateDir: "x", stateDirSet: true}).resolveStateDir()
+	got, err = resolveStateDir("x", true)
 	if err != nil || got != "x" {
 		t.Errorf("explicit state dir %q, %v, want x", got, err)
 	}

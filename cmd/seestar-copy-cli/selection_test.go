@@ -9,9 +9,11 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/zmerlynn/seestar-copy/internal/readonly"
+	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
 
@@ -536,4 +538,37 @@ func TestSyncInclude(t *testing.T) {
 	}
 	checkLines(t, stderr, "would skip", notVideo(selectionSkips(`"would skip"`)))
 	checkLines(t, stderr, "no copied files recorded", []string{`msg="no copied files recorded under this top-level folder" folder=MyWorks`})
+}
+
+// TestWalkKeptParents checks that the walk records the parent of every
+// entry it left out, whether an exclude or an include left it out, so that
+// delete keeps a folder with something unlisted in it.
+func TestWalkKeptParents(t *testing.T) {
+	file := &fstest.MapFile{Data: []byte("x")}
+	share := fstest.MapFS{
+		"top.jpg":             file,
+		".DS_Store":           file,
+		"MyWorks/a/x.jpg":     file,
+		"MyWorks/a/x.fit":     file,
+		"MyWorks/b/y.jpg":     file,
+		"MyWorks/c/.hidden":   file,
+		"MyWorks/d/e/z.fit":   file,
+		"MyWorks/only/f.jpg":  file,
+		"MyWorks/skip/g.tmp":  file,
+		"MyWorks/skip/in.jpg": file,
+	}
+	s, err := selectionFlags{includes: []string{"*.jpg"}, excludes: []string{"/MyWorks/skip"}}.parse()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, out, err := s.walk(t.Context(), remote.NewFake(share))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// .DS_Store is excluded at the root, x.fit and z.fit miss the include,
+	// .hidden is excluded, and /MyWorks/skip is excluded as a whole.
+	want := map[string]bool{".": true, "MyWorks": true, "MyWorks/a": true, "MyWorks/c": true, "MyWorks/d/e": true}
+	if !maps.Equal(out.keptParents, want) {
+		t.Errorf("keptParents = %v, want %v", out.keptParents, want)
+	}
 }

@@ -11,7 +11,7 @@ func TestCheck(t *testing.T) {
 	Enable()
 	defer func() {
 		r := recover()
-		if s, ok := r.(string); !ok || !strings.Contains(s, "state.Append would change the local filesystem during a dry run") {
+		if s, ok := r.(string); !ok || !strings.Contains(s, "state.Append would change the local filesystem or the device during a dry run") {
 			t.Errorf("Check after Enable panicked with %v", r)
 		}
 		Reset()

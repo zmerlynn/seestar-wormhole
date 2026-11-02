@@ -12,17 +12,18 @@ import (
 	"testing"
 )
 
-// writeNames are the functions and methods that change the local filesystem,
-// matched by name on any receiver or package: the os functions and the
-// os.Root and os.File methods that create, open for writing, write at an
-// offset, truncate, sync, rename, remove, link or change times, modes or
-// owners. A plain Write is not matched, since hashes and buffers have one
-// too; an os.File can only be written after one of these opened it for
-// writing, and WriteAt, Truncate and Sync are matched.
+// writeNames are the functions and methods that change the local filesystem
+// or the device, matched by name on any receiver or package: the os
+// functions and the os.Root and os.File methods that create, open for
+// writing, write at an offset, truncate, sync, rename, remove, link or
+// change times, modes or owners, go-smb2's Share.Remove, and the
+// remote.Remover methods. A plain Write is not matched, since hashes and
+// buffers have one too; an os.File can only be written after one of these
+// opened it for writing, and WriteAt, Truncate and Sync are matched.
 var writeNames = map[string]bool{
 	"Chmod": true, "Chown": true, "Chtimes": true, "Create": true, "CreateTemp": true,
 	"Lchown": true, "Link": true, "Mkdir": true, "MkdirAll": true, "MkdirTemp": true,
-	"OpenFile": true, "Remove": true, "RemoveAll": true, "Rename": true, "Symlink": true,
+	"OpenFile": true, "Remove": true, "RemoveAll": true, "RemoveDir": true, "RemoveFile": true, "Rename": true, "Symlink": true,
 	"Sync": true, "Truncate": true, "WriteAt": true, "WriteFile": true,
 }
 
@@ -79,7 +80,7 @@ func TestWritesAreGuarded(t *testing.T) {
 					return
 				}
 				if len(body.List) == 0 || !isCheck(body.List[0]) {
-					t.Errorf("%s: %s changes the local filesystem but does not start with readonly.Check", fset.Position(pos), name)
+					t.Errorf("%s: %s changes the local filesystem or the device but does not start with readonly.Check", fset.Position(pos), name)
 				}
 			}
 			for _, f := range files {
@@ -114,13 +115,15 @@ func TestWritesAreGuarded(t *testing.T) {
 	}
 	for key := range allowed {
 		if !slices.Contains(guarded, key) {
-			t.Errorf("allowed lists %s, which no longer changes the local filesystem", key)
+			t.Errorf("allowed lists %s, which no longer changes the local filesystem or the device", key)
 		}
 	}
 	// The scan must see the writes it is meant to catch.
 	for _, want := range []string{
 		"internal/state.Open", "internal/state.create", "internal/state.lockFile", "internal/state.Append",
 		"internal/state.syncDir", "internal/copier.removeTemps", "internal/copier.download", "internal/copier.syncFolder",
+		"internal/remote.RemoveFile", "internal/remote.RemoveDir",
+		"cmd/seestar-copy-cli.deleteFile", "cmd/seestar-copy-cli.removeFolder",
 	} {
 		if !slices.Contains(guarded, want) {
 			t.Errorf("the scan did not find the writes in %s; found %q", want, guarded)
