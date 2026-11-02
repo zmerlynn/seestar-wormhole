@@ -454,9 +454,11 @@ picker entry, then Connect. Several telescopes still enter the selection step.
 
 Every catalog page requests `isContainShared=3`, the mode sent by the
 app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).
-This follows the app's request; it is not evidence that mode 3 adds shared
-or rental devices. The server meaning of mode 3 and the omitted parameter's
-default remain unknown.
+This follows the app's request; on its own it is not evidence that mode 3 adds
+shared or rental devices. In November 2026 one user's shared telescope was
+listed by v0.6.0 but not by v0.5.0, which sent neither this parameter nor
+`onlyQueryOwner=false`; the two were not tested separately. The server
+meaning of mode 3 and the omitted parameter's default remain unknown.
 
 The proxy requests 100 items per page (local policy), at most 16 pages and
 256 distinct pairs, with one 30-second per-catalog-operation timeout,
