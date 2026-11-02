@@ -1,14 +1,14 @@
 // Package remote is a read-only view of the telescope's SMB share.
 //
-// A Session lists source trees and opens files for reading, and nothing
+// A Session lists the share and opens files for reading, and nothing
 // else: there is no call that creates, changes, renames, deletes or locks
 // anything on the share. Dial returns the go-smb2 implementation; NewFake
 // returns one backed by an io/fs.FS for tests. Both list with fs.WalkDir
 // through the same code, so the listing rules below hold for both.
 //
 // Paths are share-relative, slash-separated and kept byte for byte. A path
-// handed to Walk or Open must be a valid io/fs path without backslashes; any
-// other path is refused with fs.ErrInvalid rather than cleaned.
+// handed to Open must be a valid io/fs path without backslashes; any other
+// path is refused with fs.ErrInvalid rather than cleaned.
 package remote
 
 import (
@@ -23,10 +23,6 @@ import (
 
 // ShareName is the telescope's share. It is not configurable.
 const ShareName = "EMMC Images"
-
-// ErrSourceNotFound reports that the source tree given to Walk does not
-// exist. The returned error also wraps the underlying not-exist error.
-var ErrSourceNotFound = errors.New("source not found")
 
 // Kind is the type of a listed entry.
 type Kind uint8
@@ -52,7 +48,7 @@ func (k Kind) String() string {
 	}
 }
 
-// Entry is one listed file or directory below a source.
+// Entry is one listed file or directory of the share.
 type Entry struct {
 	// Path is share-relative with forward slashes, as the server spelled it.
 	Path string
@@ -71,13 +67,17 @@ type Entry struct {
 // answering holds the call until the session's own context (the one given to
 // Dial) is canceled or Close is called. Close always ends every pending call.
 type Session interface {
-	// Walk lists the tree under source recursively, without the source
-	// itself. Each directory is followed by its contents, and the entries of
-	// one directory are in name order. Symbolic links are listed as Other
-	// and not followed. A missing source returns an error wrapping
-	// ErrSourceNotFound; any other failure is returned as it is, with no
-	// partial listing.
-	Walk(ctx context.Context, source string) ([]Entry, error)
+	// Walk lists the whole share recursively, without the root itself.
+	// Each directory is followed by its contents, and the entries of one
+	// directory are in name order. Symbolic links are listed as Other and
+	// not followed. Any failure is returned as it is, with no partial
+	// listing.
+	//
+	// skip, if not nil, is called with the path of every listed entry,
+	// before a directory's contents are read. An entry for which it returns
+	// true is left out, and so is everything below it: that directory is
+	// never read.
+	Walk(ctx context.Context, skip func(path string) bool) ([]Entry, error)
 	// Open opens a file for reading only. ctx stays bound to the file: once
 	// it is done, reads and Close fail with its error.
 	Open(ctx context.Context, path string) (File, error)
@@ -118,26 +118,20 @@ func kindOf(mode fs.FileMode) Kind {
 	}
 }
 
-// walk lists source in fsys for Session.Walk.
-func walk(ctx context.Context, fsys fs.FS, source string) ([]Entry, error) {
-	if !validPath(source) {
-		return nil, &fs.PathError{Op: "walk", Path: source, Err: fs.ErrInvalid}
-	}
+// walk lists the root of fsys for Session.Walk.
+func walk(ctx context.Context, fsys fs.FS, skip func(string) bool) ([]Entry, error) {
 	var entries []Entry
 	// The root is the first call. Telling it apart by path would not do: a
-	// listed name of "" or "." joins back to the source itself.
+	// listed name of "" or "." joins back to the root itself.
 	atRoot := true
-	err := fs.WalkDir(fsys, source, func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, ".", func(p string, d fs.DirEntry, err error) error {
 		if atRoot {
 			atRoot = false
 			if err != nil {
-				if errors.Is(err, fs.ErrNotExist) {
-					return fmt.Errorf("%w: %s: %w", ErrSourceNotFound, source, err)
-				}
 				return err
 			}
 			if !d.IsDir() {
-				return fmt.Errorf("source %s is not a directory", source)
+				return errors.New("share root is not a directory")
 			}
 			return ctx.Err()
 		}
@@ -150,7 +144,15 @@ func walk(ctx context.Context, fsys fs.FS, source string) ([]Entry, error) {
 		// fs.WalkDir joins names with path.Join, which would clean a name
 		// such as ".." or "a/b" into a different path.
 		if !validName(d.Name()) {
-			return fmt.Errorf("listing %s: invalid name %q", source, d.Name())
+			return fmt.Errorf("listing the share: invalid name %q", d.Name())
+		}
+		// fs.WalkDir reads a directory only after this returns, so a
+		// skipped one is never read.
+		if skip != nil && skip(p) {
+			if d.IsDir() {
+				return fs.SkipDir
+			}
+			return nil
 		}
 		info, err := d.Info()
 		if err != nil {

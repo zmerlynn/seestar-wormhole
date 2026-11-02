@@ -41,12 +41,12 @@ func NewFake(fsys fs.FS) *Fake {
 	return &Fake{fsys: fsys, done: make(chan struct{})}
 }
 
-// Walk lists source; see Session.
-func (f *Fake) Walk(ctx context.Context, source string) ([]Entry, error) {
+// Walk lists the share; see Session.
+func (f *Fake) Walk(ctx context.Context, skip func(string) bool) ([]Entry, error) {
 	if f.closed() {
-		return nil, &fs.PathError{Op: "walk", Path: source, Err: fs.ErrClosed}
+		return nil, &fs.PathError{Op: "walk", Path: ".", Err: fs.ErrClosed}
 	}
-	return walk(ctx, f.fsys, source)
+	return walk(ctx, f.fsys, skip)
 }
 
 // Open opens path for reading; see Session.

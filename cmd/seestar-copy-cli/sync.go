@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/fs"
 	"log/slog"
 	"net"
 	"os"
@@ -25,12 +24,13 @@ import (
 // maxWorkers bounds --workers; every worker shares the one SMB session.
 const maxWorkers = 64
 
-var defaultSources = []string{"MyWorks", "Autorun/Dark", "darklibrary"}
-
 type syncOptions struct {
-	endpoint     string
-	dest         string
-	sources      []string
+	endpoint          string
+	dest              string
+	excludeFlags      []string
+	noDefaultExcludes bool
+	// excludes is set by validate from the two flags above.
+	excludes     []exclude
 	interval     time.Duration
 	intervalSet  bool
 	once         bool
@@ -48,12 +48,18 @@ func newSyncCommand(log *slog.Logger) *cobra.Command {
 		Use:   "sync --endpoint HOST:PORT --dest DIR",
 		Short: "Mirror the telescope's images into a local folder",
 		Long: `Mirror the telescope's images into a local folder.
-Each pass lists every --source on the share, copies files that are new or
-changed on the device, and records them in a state file under --state-dir, so
-a file moved out of --dest is not copied again. Passes repeat every --interval
-until Ctrl+C, or run once with --once. The telescope is never written to.
---dry-run runs one pass that only logs what it would copy, replace or adopt,
-and changes nothing on disk.
+Each pass lists the whole share, except what an --exclude pattern matches,
+copies files that are new or changed on the device, and records them in a
+state file under --state-dir, so a file moved out of --dest is not copied
+again. Passes repeat every --interval until Ctrl+C, or run once with --once.
+The telescope is never written to. --dry-run runs one pass that only logs
+what it would copy, replace, adopt or skip, and changes nothing on disk.
+An --exclude pattern with no / matches a file or folder name at any depth;
+one with a / is a path from the share root, and a leading / is optional.
+* and ? match within one name; case is ignored. A matched folder is skipped
+with everything in it. Unless --no-default-excludes is given, sync also
+skips what these flags would:
+` + defaultExcludeFlags() + `
 Durations use Go units, such as 30s, 5m or 1h30m.
 Logs and errors go to stderr; help goes to stdout.
 Exit 0 when stopped or after a clean --once or --dry-run pass, 1 on a runtime
@@ -72,7 +78,8 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 	f := cmd.Flags()
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder, created if missing (required)")
-	f.StringArrayVar(&o.sources, "source", defaultSources, "folder on the share to copy; repeatable, and any replaces the defaults")
+	f.StringArrayVar(&o.excludeFlags, "exclude", nil, "skip files and folders that match this pattern, as well as the built-in ones; repeatable")
+	f.BoolVar(&o.noDefaultExcludes, "no-default-excludes", false, "do not skip what the built-in patterns match")
 	f.DurationVar(&o.interval, "interval", 5*time.Minute, "wait between the end of one pass and the start of the next")
 	f.BoolVar(&o.once, "once", false, "run one pass and exit")
 	f.BoolVar(&o.dryRun, "dry-run", false, "run one pass that only reports what it would do, and change nothing on disk")
@@ -94,9 +101,11 @@ func (o *syncOptions) validate() error {
 	if o.dest == "" {
 		return &usageError{Option: "--dest", Rule: "required; give the local mirror folder"}
 	}
-	if err := validateSources(o.sources); err != nil {
+	excludes, err := parseExcludes(o.excludeFlags, o.noDefaultExcludes)
+	if err != nil {
 		return err
 	}
+	o.excludes = excludes
 	if o.interval <= 0 {
 		return &usageError{Option: "--interval", Rule: "must be more than zero"}
 	}
@@ -130,22 +139,14 @@ func validateEndpoint(endpoint string) error {
 	return nil
 }
 
-// validateSources accepts share-relative folders with forward slashes, and no
-// colon, so none can look like a drive. Two sources may not overlap, since
-// that would list the same files twice.
-func validateSources(sources []string) error {
-	const rule = "use a folder relative to the share root, with forward slashes, such as MyWorks"
-	for i, s := range sources {
-		if s == "." || !fs.ValidPath(s) || strings.ContainsAny(s, `\:`) {
-			return &usageError{Option: "--source", Rule: rule}
-		}
-		for _, other := range sources[:i] {
-			if s == other || strings.HasPrefix(s, other+"/") || strings.HasPrefix(other, s+"/") {
-				return &usageError{Option: "--source", Rule: "sources must not repeat or contain each other"}
-			}
-		}
+// defaultExcludeFlags renders the built-in patterns as the --exclude flags
+// they equal, one per line, quoted for a shell.
+func defaultExcludeFlags() string {
+	var b strings.Builder
+	for _, p := range defaultExcludes {
+		b.WriteString("  --exclude '" + p + "'\n")
 	}
-	return nil
+	return strings.TrimSuffix(b.String(), "\n")
 }
 
 // resolveStateDir returns --state-dir, or the per-user config folder's seestar-copy, as
@@ -253,20 +254,21 @@ type syncer struct {
 	// copier carries out the decisions; nil in a dry run.
 	copier *copier.Copier
 	// previous is the last pass's listing; firstPass is set until a pass
-	// has listed every source.
+	// has listed the share.
 	previous  []plan.Entry
 	firstPass bool
 }
 
-// pass runs one pass, logs its summary and returns how many files failed. An
-// error means the session or a listing failed, and nothing was copied.
+// pass runs one pass, logs a line for each entry an exclude skipped and its
+// summary, and returns how many files failed. An error means the session or
+// a listing failed, and nothing was copied.
 func (s *syncer) pass(ctx context.Context) (failed int, err error) {
 	start := time.Now()
-	var copied, replaced, adopted, waiting int
+	var copied, replaced, adopted, waiting, skipped int
 	var bytes int64
 	defer func() {
 		args := []any{"copied", copied, "replaced", replaced, "adopted", adopted, "waiting", waiting,
-			"failed", failed, "bytes", bytes, "elapsed", time.Since(start).Round(time.Millisecond)}
+			"failed", failed, "skipped", skipped, "bytes", bytes, "elapsed", time.Since(start).Round(time.Millisecond)}
 		switch {
 		case ctx.Err() != nil:
 			s.log.Info("pass stopped", args...)
@@ -283,7 +285,12 @@ func (s *syncer) pass(ctx context.Context) (failed int, err error) {
 		return 0, fmt.Errorf("connect to %s: %w", s.opts.endpoint, err)
 	}
 	defer sess.Close()
-	decisions, counts, err := s.decide(ctx, sess)
+	// A failed listing still logs and counts what it skipped before failing.
+	decisions, counts, sel, err := s.decide(ctx, sess)
+	skipped = len(sel.skipped)
+	for _, x := range sel.skipped {
+		s.log.Info("skipped", "path", x.path, "exclude", x.by.flag)
+	}
 	if err != nil {
 		return 0, err
 	}
@@ -325,10 +332,11 @@ func (s *syncer) pass(ctx context.Context) (failed int, err error) {
 func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 	start := time.Now()
 	var counts plan.Counts
+	var sel selection
 	var bytes int64
 	defer func() {
 		args := []any{"copy", counts.Copy, "replace", counts.Replace, "adopt", counts.Adopt, "waiting", counts.Wait,
-			"failed", counts.Fail, "bytes", bytes, "elapsed", time.Since(start).Round(time.Millisecond)}
+			"failed", counts.Fail, "skipped", len(sel.skipped), "bytes", bytes, "elapsed", time.Since(start).Round(time.Millisecond)}
 		switch {
 		case ctx.Err() != nil:
 			s.log.Info("dry run stopped", args...)
@@ -344,9 +352,23 @@ func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 	}
 	defer sess.Close()
 	var decisions []plan.Decision
-	decisions, counts, err = s.decide(ctx, sess)
+	decisions, counts, sel, err = s.decide(ctx, sess)
+	for _, x := range sel.skipped {
+		s.log.Info("would skip", "path", x.path, "exclude", x.by.flag)
+	}
 	if err != nil {
 		return 0, err
+	}
+	recorded := map[string]bool{}
+	for p := range s.records() {
+		if top, _, ok := strings.Cut(p, "/"); ok {
+			recorded[top] = true
+		}
+	}
+	for _, folder := range sel.folders {
+		if !recorded[folder] {
+			s.log.Info("no copied files recorded under this top-level folder", "folder", folder)
+		}
 	}
 	for _, d := range decisions {
 		args := []any{"path", d.Path, "size", d.Size}
@@ -369,12 +391,14 @@ func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 	return counts.Fail, nil
 }
 
-// decide lists the sources over sess and returns the pass decisions and
-// their counts. It logs a line for each file that fails.
-func (s *syncer) decide(ctx context.Context, sess remote.Session) ([]plan.Decision, plan.Counts, error) {
-	listing, err := s.list(ctx, sess)
+// decide lists the share over sess and returns the pass decisions, their
+// counts and what the excludes left out. It logs a line for each file that
+// fails. If the listing fails, it returns only what the excludes left out
+// before the failure.
+func (s *syncer) decide(ctx context.Context, sess remote.Session) ([]plan.Decision, plan.Counts, selection, error) {
+	listing, sel, err := s.list(ctx, sess)
 	if err != nil {
-		return nil, plan.Counts{}, err
+		return nil, plan.Counts{}, sel, err
 	}
 	in := plan.Input{
 		Listing:      listing,
@@ -400,25 +424,44 @@ func (s *syncer) decide(ctx context.Context, sess remote.Session) ([]plan.Decisi
 			s.log.Warn("file failed", "path", d.Path, "reason", d.Reason)
 		}
 	}
-	return decisions, counts, nil
+	return decisions, counts, sel, nil
 }
 
-// list lists every source. A missing source is a warning; any other listing
-// failure fails the pass.
-func (s *syncer) list(ctx context.Context, sess remote.Session) ([]plan.Entry, error) {
-	var listing []plan.Entry
-	for _, source := range s.opts.sources {
-		entries, err := sess.Walk(ctx, source)
-		if errors.Is(err, remote.ErrSourceNotFound) {
-			s.log.Warn("source not found", "source", source)
-			continue
+// selection is what one listing left out, and its top-level folders.
+type selection struct {
+	// skipped are the entries an exclude matched, with the first that did,
+	// in listing order. A skipped folder's contents are not listed.
+	skipped []skippedEntry
+	// folders are the listed top-level folders.
+	folders []string
+}
+
+type skippedEntry struct {
+	path string
+	by   exclude
+}
+
+// list lists the whole share, leaving out what the excludes match. Any
+// listing failure, of the root or of a folder that is not excluded, fails
+// the pass; the returned selection then holds the entries skipped before it.
+func (s *syncer) list(ctx context.Context, sess remote.Session) ([]plan.Entry, selection, error) {
+	var sel selection
+	entries, err := sess.Walk(ctx, func(p string) bool {
+		e, ok := excluded(s.opts.excludes, p)
+		if ok {
+			sel.skipped = append(sel.skipped, skippedEntry{p, e})
 		}
-		if err != nil {
-			return nil, fmt.Errorf("list %s: %w", source, err)
-		}
-		for _, e := range entries {
-			listing = append(listing, plan.Entry{Path: e.Path, Size: e.Size, ModTime: e.ModTime, Regular: e.Kind == remote.Regular})
+		return ok
+	})
+	if err != nil {
+		return nil, sel, fmt.Errorf("list the share: %w", err)
+	}
+	listing := make([]plan.Entry, 0, len(entries))
+	for _, e := range entries {
+		listing = append(listing, plan.Entry{Path: e.Path, Size: e.Size, ModTime: e.ModTime, Regular: e.Kind == remote.Regular})
+		if e.Kind == remote.Dir && !strings.Contains(e.Path, "/") {
+			sel.folders = append(sel.folders, e.Path)
 		}
 	}
-	return listing, nil
+	return listing, sel, nil
 }

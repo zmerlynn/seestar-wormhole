@@ -58,7 +58,7 @@ func newCommand(stdout io.Writer, log *slog.Logger) *cobra.Command {
 			return topic.Help()
 		},
 	})
-	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return flagError(err) })
+	root.SetFlagErrorFunc(flagError)
 	root.Flags().BoolVar(&showVersion, "version", false, "print version, revision and platform")
 	root.AddCommand(newSyncCommand(log), &cobra.Command{
 		Use:   "licenses",
@@ -80,11 +80,15 @@ func noArguments(_ *cobra.Command, args []string) error {
 
 // flagError turns the flag parser's errors into a usageError. Flag values are
 // never echoed; only the flag name and a fixed rule are reported.
-func flagError(err error) error {
+func flagError(cmd *cobra.Command, err error) error {
 	if unknown, ok := errors.AsType[*pflag.NotExistError](err); ok {
 		name := "--" + unknown.GetSpecifiedName()
 		if unknown.GetSpecifiedShortnames() != "" {
 			name = "-" + unknown.GetSpecifiedName()
+		}
+		// 0.1.0 had --source; say what replaced it.
+		if name == "--source" && cmd.Name() == "sync" {
+			return &usageError{Option: name, Rule: "removed; sync copies the whole share, so leave folders out with --exclude"}
 		}
 		return &usageError{Option: name, Rule: "unknown flag"}
 	}

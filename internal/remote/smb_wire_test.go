@@ -384,8 +384,9 @@ func TestSMBRequestsAreReadOnly(t *testing.T) {
 			t.Errorf("ReadAll = %d bytes, %v; want %d", len(got), err, len(data))
 		}
 		_ = f.Close()
-		if _, err := s.Walk(ctx, "MyWorks"); !errors.Is(err, ErrSourceNotFound) {
-			t.Errorf("Walk = %v, want ErrSourceNotFound", err)
+		// The peer reports every name but its file, the root too, as missing.
+		if _, err := s.Walk(ctx, nil); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("Walk = %v, want fs.ErrNotExist", err)
 		}
 		if _, err := s.Open(ctx, "MyWorks/locked.fit"); !errors.Is(err, fs.ErrPermission) {
 			t.Errorf("Open of a denied file = %v, want fs.ErrPermission", err)
@@ -449,7 +450,7 @@ func TestSMBErrorsNameEndpointAndPath(t *testing.T) {
 		}
 	})
 	synctest.Test(t, func(t *testing.T) {
-		p := startPeer(t, &peer{deny: `MyWorks\locked.fit`})
+		p := startPeer(t, &peer{file: `MyWorks\a.fit`, deny: `MyWorks\locked.fit`})
 		defer p.stop()
 		ctx := t.Context()
 		s := p.mustDial(t, ctx)
@@ -459,9 +460,9 @@ func TestSMBErrorsNameEndpointAndPath(t *testing.T) {
 		if !errors.Is(err, fs.ErrPermission) || !errors.As(err, &pe) || !strings.Contains(err.Error(), wireEndpoint) || !strings.Contains(err.Error(), `"MyWorks/locked.fit"`) {
 			t.Errorf("denied Open = %v, want fs.ErrPermission naming %s and the path", err, wireEndpoint)
 		}
-		_, err = s.Walk(ctx, "MyWorks/M 31")
-		if !errors.Is(err, ErrSourceNotFound) || !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), wireEndpoint) || !strings.Contains(err.Error(), `"MyWorks/M 31"`) {
-			t.Errorf("Walk of a missing source = %v, want ErrSourceNotFound naming %s and the source", err, wireEndpoint)
+		_, err = s.Walk(ctx, nil)
+		if !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), wireEndpoint) {
+			t.Errorf("Walk of a missing root = %v, want fs.ErrNotExist naming %s", err, wireEndpoint)
 		}
 	})
 }
@@ -697,7 +698,7 @@ func TestPendingCallsEnd(t *testing.T) {
 	}
 	calls := map[string]call{
 		"Open":    {wire.SMB2_CREATE, func(s *SMB) error { _, err := s.Open(context.Background(), "MyWorks/a.fit"); return err }},
-		"Walk":    {wire.SMB2_CREATE, func(s *SMB) error { _, err := s.Walk(context.Background(), "MyWorks"); return err }},
+		"Walk":    {wire.SMB2_CREATE, func(s *SMB) error { _, err := s.Walk(context.Background(), nil); return err }},
 		"Read":    {wire.SMB2_READ, func(s *SMB) error { return read(s, false) }},
 		"WriteTo": {wire.SMB2_READ, func(s *SMB) error { return read(s, true) }},
 	}

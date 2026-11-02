@@ -29,6 +29,8 @@ type device struct {
 	mu     sync.Mutex
 	files  fstest.MapFS
 	faults map[string]remote.Fault
+	// unreadable folders fail to list.
+	unreadable []string
 	// dialErrs fail the first dials, one each.
 	dialErrs      []error
 	dials, closes int
@@ -66,10 +68,23 @@ func (d *device) use(t *testing.T) {
 		for p, f := range d.files {
 			snapshot[p] = &fstest.MapFile{Data: f.Data, Mode: f.Mode, ModTime: f.ModTime}
 		}
-		f := remote.NewFake(snapshot)
+		f := remote.NewFake(unreadableFS{snapshot, d.unreadable})
 		f.Faults = d.faults
 		return &deviceSession{Fake: f, d: d}, nil
 	}
+}
+
+// unreadableFS fails ReadDir of the folders in dirs.
+type unreadableFS struct {
+	fstest.MapFS
+	dirs []string
+}
+
+func (u unreadableFS) ReadDir(name string) ([]fs.DirEntry, error) {
+	if slices.Contains(u.dirs, name) {
+		return nil, &fs.PathError{Op: "readdir", Path: name, Err: fs.ErrPermission}
+	}
+	return u.MapFS.ReadDir(name)
 }
 
 // deviceSession counts Close.
@@ -192,13 +207,12 @@ func TestSyncPasses(t *testing.T) {
 		dev := newDevice()
 		dev.use(t)
 		const (
-			dark     = "Autorun/Dark/dark.fit"
-			growing  = "MyWorks/M 31/growing.fit"
-			have     = "MyWorks/M 31/have.fit"
-			old      = "MyWorks/M 31/old.fit"
-			settled  = "MyWorks/M 31/settled.fit"
-			young    = "MyWorks/M 31/young.fit"
-			notFound = `WARN msg="source not found" source=darklibrary`
+			dark    = "Autorun/Dark/dark.fit"
+			growing = "MyWorks/M 31/growing.fit"
+			have    = "MyWorks/M 31/have.fit"
+			old     = "MyWorks/M 31/old.fit"
+			settled = "MyWorks/M 31/settled.fit"
+			young   = "MyWorks/M 31/young.fit"
 		)
 		dev.set(dark, "d1", t0.Add(-20*time.Minute))
 		dev.set(growing, "g", t0.Add(-3*time.Minute))
@@ -220,11 +234,10 @@ func TestSyncPasses(t *testing.T) {
 		// Pass 1: only files at least --first-pass-age old are stable.
 		synctest.Wait()
 		if got, want := logs.next(), logLines(t0,
-			notFound,
 			`INFO msg="file copied" path=Autorun/Dark/dark.fit size=2`,
 			`INFO msg="file adopted" path="MyWorks/M 31/have.fit" size=2`,
 			`INFO msg="file copied" path="MyWorks/M 31/old.fit" size=3`,
-			`INFO msg="pass done" copied=2 replaced=0 adopted=1 waiting=3 failed=0 bytes=5 elapsed=0s`,
+			`INFO msg="pass done" copied=2 replaced=0 adopted=1 waiting=3 failed=0 skipped=0 bytes=5 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 1 log:\n%s\nwant:\n%s", got, want)
 		}
@@ -240,9 +253,8 @@ func TestSyncPasses(t *testing.T) {
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
 		if got, want := logs.next(), logLines(t0.Add(5*time.Minute),
-			notFound,
 			`INFO msg="file copied" path="MyWorks/M 31/settled.fit" size=3`,
-			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=3 failed=0 bytes=3 elapsed=0s`,
+			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=3 failed=0 skipped=0 bytes=3 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 2 log:\n%s\nwant:\n%s", got, want)
 		}
@@ -251,11 +263,10 @@ func TestSyncPasses(t *testing.T) {
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
 		if got, want := logs.next(), logLines(t0.Add(10*time.Minute),
-			notFound,
 			`INFO msg="file replaced" path=Autorun/Dark/dark.fit size=3`,
 			`INFO msg="file copied" path="MyWorks/M 31/growing.fit" size=2`,
 			`INFO msg="file copied" path="MyWorks/M 31/young.fit" size=2`,
-			`INFO msg="pass done" copied=2 replaced=1 adopted=0 waiting=0 failed=0 bytes=7 elapsed=0s`,
+			`INFO msg="pass done" copied=2 replaced=1 adopted=0 waiting=0 failed=0 skipped=0 bytes=7 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 3 log:\n%s\nwant:\n%s", got, want)
 		}
@@ -294,13 +305,15 @@ func TestSyncOnce(t *testing.T) {
 		files  []string
 		local  []string // placed in dest first, with other content
 		faults map[string]remote.Fault
-		code   int
-		copied []string
-		log    []string
+		// unreadable folders fail to list.
+		unreadable []string
+		code       int
+		copied     []string
+		log        []string
 	}{
 		{name: "clean", files: []string{"MyWorks/a.fit", "MyWorks/b.fit"}, code: exitOK,
 			copied: []string{"MyWorks/a.fit", "MyWorks/b.fit"},
-			log:    []string{`msg="pass done" copied=2 replaced=0 adopted=0 waiting=0 failed=0 bytes=6 `}},
+			log:    []string{`msg="pass done" copied=2 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 bytes=6 `}},
 		{name: "overwrite", files: []string{"MyWorks/a.fit", "MyWorks/b.fit"}, local: []string{"MyWorks/a.fit"}, code: exitOK,
 			copied: []string{"MyWorks/a.fit", "MyWorks/b.fit"},
 			log: []string{
@@ -312,7 +325,7 @@ func TestSyncOnce(t *testing.T) {
 			copied: []string{"MyWorks/b.fit"},
 			log: []string{
 				`level=WARN msg="file failed" path=MyWorks/a.fit reason="open on the device: open refused"`,
-				`msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=1 bytes=3 `,
+				`msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=1 skipped=0 bytes=3 `,
 				`level=ERROR msg="sync failed" error="failed files: 1"`,
 			}},
 		{name: "plan fails", files: []string{"MyWorks/a.fit", "MyWorks/A.fit", "MyWorks/b.fit"}, code: exitFailure,
@@ -320,14 +333,18 @@ func TestSyncOnce(t *testing.T) {
 			log: []string{
 				`level=WARN msg="file failed" path=MyWorks/A.fit reason=`,
 				`level=WARN msg="file failed" path=MyWorks/a.fit reason=`,
-				`msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=2 bytes=3 `,
+				`msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=2 skipped=0 bytes=3 `,
 				`level=ERROR msg="sync failed" error="failed files: 2"`,
 			}},
-		{name: "listing fails", files: []string{"MyWorks", "Autorun/Dark/a.fit"}, code: exitFailure,
+		{name: "listing fails", files: []string{"MyWorks/sub/a.fit", "Autorun/Dark/a.fit"}, unreadable: []string{"MyWorks/sub"}, code: exitFailure,
 			log: []string{
-				`level=ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 bytes=0 elapsed=`,
-				` error="list MyWorks: source MyWorks is not a directory"` + "\n",
-				`level=ERROR msg="sync failed" error="list MyWorks: source MyWorks is not a directory"`,
+				`level=ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 bytes=0 elapsed=`,
+				` error="list the share: readdir MyWorks/sub: permission denied"` + "\n",
+				`level=ERROR msg="sync failed" error="list the share: readdir MyWorks/sub: permission denied"`,
+			}},
+		{name: "root listing fails", files: []string{"MyWorks/a.fit"}, unreadable: []string{"."}, code: exitFailure,
+			log: []string{
+				`level=ERROR msg="sync failed" error="list the share: readdir .: permission denied"`,
 			}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -340,6 +357,7 @@ func TestSyncOnce(t *testing.T) {
 				place(t, dest, p, "local", old)
 			}
 			dev.faults = tc.faults
+			dev.unreadable = tc.unreadable
 			dev.use(t)
 			code, stdout, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once")
 			if code != tc.code || stdout != "" {
@@ -384,7 +402,7 @@ func TestSyncRetriesFailedPass(t *testing.T) {
 			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--interval", "1m"}, io.Discard, logs)
 		}()
 		synctest.Wait()
-		if got, want := logs.next(), logLines(t0, `ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
+		if got, want := logs.next(), logLines(t0, `ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
 			t.Fatalf("first pass log %q, want %q", got, want)
 		}
 		time.Sleep(time.Minute)
@@ -413,7 +431,7 @@ func TestSyncStopWhileListing(t *testing.T) {
 		if code != exitOK {
 			t.Errorf("exit %d after a stop, want 0", code)
 		}
-		if got, want := stderr.String(), logLines(t0, `INFO msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=0 bytes=0 elapsed=0s`); got != want {
+		if got, want := stderr.String(), logLines(t0, `INFO msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 bytes=0 elapsed=0s`); got != want {
 			t.Errorf("log %q, want %q", got, want)
 		}
 	})
@@ -435,7 +453,7 @@ func TestSyncLogsEachFileAsItFinishes(t *testing.T) {
 		code := make(chan int, 1)
 		go func() {
 			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--state-dir", t.TempDir(),
-				"--source", "MyWorks", "--workers", "2", "--once"}, io.Discard, logs)
+				"--workers", "2", "--once"}, io.Discard, logs)
 		}()
 		synctest.Wait() // a.fit is done and b.fit is stalled mid-file
 		if got, want := logs.next(), logLines(t0, `INFO msg="file copied" path=MyWorks/a.fit size=3`); got != want {
@@ -445,7 +463,7 @@ func TestSyncLogsEachFileAsItFinishes(t *testing.T) {
 		if c := <-code; c != exitOK {
 			t.Errorf("exit %d after a stop, want 0", c)
 		}
-		if got, want := logs.next(), logLines(t0, `INFO msg="pass stopped" copied=1 replaced=0 adopted=0 waiting=0 failed=1 bytes=3 elapsed=0s`); got != want {
+		if got, want := logs.next(), logLines(t0, `INFO msg="pass stopped" copied=1 replaced=0 adopted=0 waiting=0 failed=1 skipped=0 bytes=3 elapsed=0s`); got != want {
 			t.Errorf("log after the stop %q, want %q", got, want)
 		}
 	})
@@ -464,11 +482,11 @@ func TestSyncStopMidFile(t *testing.T) {
 	dev.faults = map[string]remote.Fault{"MyWorks/a.fit": {After: 1, Stall: cancel}}
 	dev.use(t)
 	var stdout, stderr bytes.Buffer
-	code := run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--source", "MyWorks", "--workers", "1", "--once"}, &stdout, &stderr)
+	code := run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--workers", "1", "--once"}, &stdout, &stderr)
 	if code != exitOK {
 		t.Errorf("exit %d after a stop, want 0\n%s", code, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), `msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=2 bytes=0 `) ||
+	if !strings.Contains(stderr.String(), `msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=2 skipped=0 bytes=0 `) ||
 		strings.Contains(stderr.String(), "level=WARN") || strings.Contains(stderr.String(), "level=ERROR") {
 		t.Errorf("log after a stop:\n%s\nwant only the stopped pass's summary", stderr.String())
 	}
@@ -534,7 +552,7 @@ func TestSyncStopEndsSession(t *testing.T) {
 		dest, stateDir := t.TempDir(), t.TempDir()
 		code := make(chan int, 1)
 		go func() {
-			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--source", "MyWorks", "--once"}, io.Discard, io.Discard)
+			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once"}, io.Discard, io.Discard)
 		}()
 		<-sess.entered
 		cancel()

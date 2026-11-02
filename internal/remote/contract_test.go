@@ -72,17 +72,6 @@ func content(size int64) []byte {
 	return b[:size]
 }
 
-// below is the part of the fixture strictly under source.
-func below(entries []Entry, source string) []Entry {
-	var out []Entry
-	for _, e := range entries {
-		if strings.HasPrefix(e.Path, source+"/") {
-			out = append(out, e)
-		}
-	}
-	return out
-}
-
 func fixtureFile(t *testing.T, path string) Entry {
 	t.Helper()
 	for _, e := range fixture(t) {
@@ -120,42 +109,50 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 	t.Cleanup(func() { _ = session.Close() })
 	ctx := t.Context()
 
-	t.Run("Walk", func(t *testing.T) {
-		for _, source := range []string{"MyWorks", "Autorun/Dark", "MyWorks/M 31/sub dir", "MyWorks/empty"} {
-			got, err := session.Walk(ctx, source)
-			if err != nil {
-				t.Fatalf("Walk(%q): %v", source, err)
-			}
-			sameEntries(t, got, below(all, source))
+	t.Run("WalkRoot", func(t *testing.T) {
+		got, err := session.Walk(ctx, nil)
+		if err != nil {
+			t.Fatalf("Walk: %v", err)
 		}
+		sameEntries(t, got, all)
 	})
 
-	t.Run("WalkMissingSource", func(t *testing.T) {
-		for _, source := range []string{"darklibrary", "MyWorks/nope/deeper", "MyWorks/myworks-not"} {
-			_, err := session.Walk(ctx, source)
-			if !errors.Is(err, ErrSourceNotFound) || !errors.Is(err, fs.ErrNotExist) {
-				t.Errorf("Walk(%q) = %v, want ErrSourceNotFound and fs.ErrNotExist", source, err)
+	t.Run("WalkSkip", func(t *testing.T) {
+		// A skipped folder is left out with everything below it, a
+		// skipped file alone; its later siblings are still listed. The
+		// root itself is never offered to skip.
+		skipped := map[string]bool{"MyWorks": true, "Autorun/Dark/Dark_10.0s_IRCUT_20261029-020000.fit": true}
+		var asked []string
+		got, err := session.Walk(ctx, func(p string) bool {
+			asked = append(asked, p)
+			return skipped[p]
+		})
+		if err != nil {
+			t.Fatalf("Walk with skip: %v", err)
+		}
+		var want, wantAsked []Entry
+		for _, e := range all {
+			if !strings.HasPrefix(e.Path, "MyWorks/") {
+				wantAsked = append(wantAsked, e)
+				if !skipped[e.Path] {
+					want = append(want, e)
+				}
 			}
 		}
-	})
-
-	t.Run("WalkFileSource", func(t *testing.T) {
-		_, err := session.Walk(ctx, "outside.txt")
-		if err == nil || errors.Is(err, ErrSourceNotFound) {
-			t.Errorf("Walk of a file = %v, want a non-sentinel error", err)
+		sameEntries(t, got, want)
+		if len(asked) != len(wantAsked) {
+			t.Errorf("skip asked about %q, want every listed entry above a skipped folder", asked)
+		}
+		for i := range min(len(asked), len(wantAsked)) {
+			if asked[i] != wantAsked[i].Path {
+				t.Errorf("skip asked about %q, want %q", asked[i], wantAsked[i].Path)
+			}
 		}
 	})
 
 	t.Run("InvalidPaths", func(t *testing.T) {
-		for _, p := range []string{"", ".", "/MyWorks", "MyWorks/", "MyWorks//case", "..", "MyWorks/../MyWorks", "./MyWorks", `MyWorks\case`} {
-			if _, err := session.Walk(ctx, p); !errors.Is(err, fs.ErrInvalid) {
-				t.Errorf("Walk(%q) = %v, want fs.ErrInvalid", p, err)
-			}
-			if _, err := session.Open(ctx, p); !errors.Is(err, fs.ErrInvalid) {
-				t.Errorf("Open(%q) = %v, want fs.ErrInvalid", p, err)
-			}
-		}
-		for _, p := range []string{"/MyWorks2/y.fit", "MyWorks2//y.fit", "MyWorks2/./y.fit", `MyWorks2\y.fit`, "MyWorks2/y.fit/"} {
+		for _, p := range []string{".", "", "/MyWorks", "MyWorks/", "MyWorks//case", "..", "MyWorks/../MyWorks", "./MyWorks", `MyWorks\case`,
+			"/MyWorks2/y.fit", "MyWorks2//y.fit", "MyWorks2/./y.fit", `MyWorks2\y.fit`, "MyWorks2/y.fit/"} {
 			if _, err := session.Open(ctx, p); !errors.Is(err, fs.ErrInvalid) {
 				t.Errorf("Open(%q) = %v, want fs.ErrInvalid", p, err)
 			}
@@ -201,8 +198,8 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 
 	t.Run("OpenMissing", func(t *testing.T) {
 		_, err := session.Open(ctx, "MyWorks/case/b.fit")
-		if !errors.Is(err, fs.ErrNotExist) || errors.Is(err, ErrSourceNotFound) {
-			t.Errorf("Open of a missing file = %v, want fs.ErrNotExist only", err)
+		if !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("Open of a missing file = %v, want fs.ErrNotExist", err)
 		}
 	})
 
@@ -282,7 +279,7 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 	t.Run("CanceledWalk", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, err := session.Walk(ctx, "MyWorks"); !errors.Is(err, context.Canceled) {
+		if _, err := session.Walk(ctx, nil); !errors.Is(err, context.Canceled) {
 			t.Errorf("Walk with a canceled context = %v", err)
 		}
 	})
@@ -299,7 +296,7 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 		if err := s.Close(); err != nil {
 			t.Errorf("second Close: %v", err)
 		}
-		if _, err := s.Walk(ctx, "MyWorks2"); err == nil {
+		if _, err := s.Walk(ctx, nil); err == nil {
 			t.Error("Walk after Close succeeded")
 		}
 		if _, err := s.Open(ctx, "MyWorks2/y.fit"); err == nil {

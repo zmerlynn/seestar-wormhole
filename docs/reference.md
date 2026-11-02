@@ -3,7 +3,8 @@
 Use this page when you script `seestar-copy-cli` or need an exact flag, rule or
 log line. The [README](../README.md) has a first run.
 
-- [sync](#sync): flags, endpoint, destination layout and [dry run](#dry-run)
+- [sync](#sync): flags, endpoint, destination layout, [selection](#selection) and
+  [dry run](#dry-run)
 - [How a pass decides](#how-a-pass-decides)
 - [Copying a file](#copying-a-file) and [temporary files](#temporary-files)
 - [The state file](#the-state-file)
@@ -22,7 +23,8 @@ seestar-copy-cli sync --endpoint HOST:PORT --dest DIR [flags]
 ```
 
 Mirrors the telescope's images into the folder `--dest`, in passes. Each pass
-connects to the share, lists every source, copies what is new or changed,
+connects to the share, lists the whole share except what is
+[excluded](#selection), copies what is new or changed,
 records each copy in a [state file](#the-state-file), logs off and
 disconnects. Passes repeat every `--interval` until you
 [stop](#stopping) it, or run once with `--once`. A
@@ -39,7 +41,8 @@ deletes anything in the destination either, except its own
 | --- | --- | --- |
 | `--endpoint` | none; required | SMB `host:port` of the telescope or of a seestar-wormhole listener. See [endpoint](#endpoint). |
 | `--dest` | none; required | The local mirror folder. It is created, with any missing parents, if it does not exist, except by a dry run. A relative path is taken from the current folder. |
-| `--source` | `MyWorks`, `Autorun/Dark`, `darklibrary` | A folder on the share to copy, relative to the share root, with forward slashes. Repeat it for more than one. Giving any `--source` replaces all the defaults. Sources may not repeat or contain each other. |
+| `--exclude` | none | A pattern for files and folders to leave out, in addition to the built-in ones. Repeat it for more than one. See [selection](#selection). |
+| `--no-default-excludes` | off | Do not leave out what the built-in patterns match. See [selection](#selection). |
 | `--interval` | `5m` | The wait between the end of one pass and the start of the next. Must be more than zero. |
 | `--once` | off | Run one pass and exit. See [exit codes](#exit-codes). |
 | `--dry-run` | off | Run one pass that only reports what it would do, and change nothing on disk. Not allowed with `--interval`. See [dry run](#dry-run). |
@@ -72,13 +75,13 @@ only; see [a failed pass](#a-failed-pass).
 
 ### Destination layout
 
-Files mirror the share's tree under `--dest`, starting at the share root. With
-the default sources:
+Files mirror the share's tree under `--dest`, starting at the share root,
+such as:
 
 ```text
 <dest>/MyWorks/<target>/<file>
-<dest>/Autorun/Dark/<file>
-<dest>/darklibrary/<file>
+<dest>/Autorun/Light/<target>/<file>
+<dest>/<file at the share root>
 ```
 
 Names are kept byte for byte. A downloaded file gets the device file's
@@ -87,18 +90,86 @@ own, which is within 2 seconds of the device's. Folders are created as needed;
 their mtimes are not set.
 
 Only regular files are copied. Symbolic links and other special entries on
-the share are listed but neither followed nor copied. A source that does not
-exist on the share is logged (`source not found`) and skipped; the rest of the
-pass goes on. A source that is a file rather than a folder fails the pass.
+the share are listed but neither followed nor copied.
+
+### Selection
+
+Sync copies the whole share, except files and folders that an exclude pattern
+matches. An excluded folder is skipped with everything in it and is never
+listed. Excluded files are not copied, adopted or recorded. Files already
+recorded in the state stay recorded. Each pass logs a `skipped` line for each
+excluded file or folder, with the pattern that matched, and counts them in its
+summary; a folder has one line, and what is in it has none. A pass whose
+listing fails still logs and counts what it skipped before the failure.
+
+Unless `--no-default-excludes` is given, sync leaves out what these flags
+would:
+
+```sh
+--exclude '.*'
+--exclude '*.tmp'
+--exclude 'Thumbs.db'
+--exclude 'desktop.ini'
+--exclude '$RECYCLE.BIN'
+--exclude 'System Volume Information'
+--exclude '/log'
+--exclude '/tmp_stitch'
+--exclude '/batch_stack_tmp'
+```
+
+These are dot names such as `.DS_Store`, files the telescope is still writing
+such as `*.mp4.tmp`, Windows system files, and the telescope's logs and scratch
+folders. They are a fixed list, not a judgment of each file: a folder whose
+name starts with a dot is skipped even if it holds images. The public
+[Seestar share layout](https://github.com/zmerlynn/seestar-spec/blob/HEAD/spec/media/smb.md#image-store-layout-firmware-975)
+for firmware 9.75 describes the root folders such as `log` and `tmp_stitch`,
+what writes them, and the `.mp4.tmp` name a video has while it is written.
+
+Each `--exclude` adds a pattern to the built-in ones. To change the built-in
+list, give `--no-default-excludes` and repeat the `--exclude` flags you want to
+keep. For example, to also leave out videos and the `Preview` folder:
+
+```sh
+seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar \
+  --exclude 'Video' --exclude '/Preview'
+```
+
+Quote patterns so that the shell does not expand them. Patterns follow these
+rules:
+
+- A pattern with no `/` matches a file or folder name at any depth: `Thumbs.db`
+  matches `Thumbs.db` and `MyWorks/M 31/Thumbs.db`.
+- A pattern with a `/` anywhere is a path from the share root, and must match
+  the whole path: `/log` and `log/x` are anchored, `MyWorks/*/Stacked` matches
+  `MyWorks/M 31/Stacked` only. One leading `/` is optional.
+- `*` matches any run of characters and `?` any one character, both within one
+  name; neither matches `/`.
+- Case is ignored: both sides are lowercased before they are compared. There is
+  no Unicode normalization, so a name spelled with a combining accent does not
+  match a pattern spelled with a precomposed one.
+- Spaces are part of the pattern.
+
+A pattern that is empty or `/` alone, ends in `/`, contains `[`, `\` or `**`,
+or has an empty, `.` or `..` part is a usage error.
+
+The first pass after a pattern is removed, or after upgrading to a release
+whose selection covers new folders, finds files that were never recorded.
+They are copied or adopted as usual, once they are old enough under the
+[readiness](#readiness) rules: with the defaults, files at least 10 minutes old
+go in that first pass. Run a [dry run](#dry-run) first to see what that would
+be.
 
 ### Dry run
 
 `--dry-run` runs one pass that changes nothing on disk, then exits as
-`--once` does. It connects, lists the sources, and decides each file as a
+`--once` does. It connects, lists the share, and decides each file as a
 real pass would, from the [state file](#the-state-file) and the destination
 if they exist. It logs a line for each file it would copy, replace or adopt,
 or that is waiting, a `file failed` line for each file that would fail, and a
 `dry run done` summary; see [logs](#logs). Files that are done have no line.
+It also logs a `would skip` line for each excluded file or folder, with the
+pattern that matched, and a line for each top-level folder that has no copied
+files recorded under it, so new folders stand out before a real pass.
 `--once` may be given with it; `--interval` may not.
 
 A dry run creates nothing, not even a missing destination or state folder.
@@ -173,8 +244,9 @@ check against the previous listing still makes them wait.
 
 ### A failed pass
 
-If the connection or the listing of a source fails, the pass fails: nothing is
-copied, and the error is logged. With `--once` or `--dry-run`, sync exits 1;
+If the connection fails, or any folder that is not excluded cannot be listed,
+including the share root, the pass fails: nothing is copied, and the error is
+logged. With `--once` or `--dry-run`, sync exits 1;
 otherwise it tries another pass after `--interval`.
 
 A file that fails is logged and left for the next pass; the other files go on.
@@ -346,13 +418,14 @@ one stopped.
 
 Sync logs to stderr, as text lines in Go's `log/slog` format, with UTC
 timestamps to the millisecond. Help, `--version` and `licenses` write to
-stdout. Per-file lines are logged as each file finishes. A pass that copies two
-files looks like this:
+stdout. Per-file lines are logged as each file finishes. A pass that skips the
+`log` folder and copies two files looks like this:
 
 ```text
+time=2026-11-02T03:10:00.118Z level=INFO msg=skipped path=log exclude=/log
 time=2026-11-02T03:10:01.620Z level=INFO msg="file copied" path="MyWorks/M 31/light_002.fit" size=16000000
 time=2026-11-02T03:10:03.290Z level=INFO msg="file copied" path="MyWorks/M 31/light_003.fit" size=16000000
-time=2026-11-02T03:10:03.502Z level=INFO msg="pass done" copied=2 replaced=0 adopted=0 waiting=1 failed=0 bytes=32000000 elapsed=3.502s
+time=2026-11-02T03:10:03.502Z level=INFO msg="pass done" copied=2 replaced=0 adopted=0 waiting=1 failed=0 skipped=1 bytes=32000000 elapsed=3.502s
 ```
 
 Values with spaces or quotes are quoted. The messages and keys below are
@@ -366,7 +439,7 @@ changes them says so in its notes.
 | INFO | `file replaced` | `path`, `size` | A file that changed on the device was downloaded again. |
 | INFO | `file adopted` | `path`, `size` | A file already in the destination was hashed and recorded. |
 | WARN | `file failed` | `path`, `reason` | A file failed this pass; it is tried again next pass. |
-| WARN | `source not found` | `source` | A `--source` is not on the share; the pass goes on. |
+| INFO | `skipped` | `path`, `exclude` | The file or folder matches the pattern `exclude`, the first one that matched, and is left out. A folder has one line; what is in it is not listed. See [selection](#selection). |
 | INFO | `pass done` | see below | A pass finished. |
 | ERROR | `pass failed` | see below, and `error` | The connection or a listing failed. |
 | INFO | `pass stopped` | see below | A signal stopped the pass. |
@@ -374,7 +447,9 @@ changes them says so in its notes.
 | INFO | `would replace` | `path`, `size` | Dry run: the file changed on the device and would be downloaded again. |
 | INFO | `would adopt` | `path`, `size` | Dry run: the file is already in the destination and would be hashed and recorded. |
 | INFO | `would wait` | `path`, `size` | Dry run: the file is not ready yet. |
-| INFO | `dry run done` | `copy`, `replace`, `adopt`, `waiting`, `failed`, `bytes`, `elapsed` | A dry run finished. The counts are of the lines above and of `file failed` lines; `bytes` is what it would download. |
+| INFO | `would skip` | `path`, `exclude` | Dry run: the same as `skipped`. |
+| INFO | `no copied files recorded under this top-level folder` | `folder` | Dry run: the state has no file under this folder at the share root, such as a folder a new release now covers. |
+| INFO | `dry run done` | `copy`, `replace`, `adopt`, `waiting`, `failed`, `skipped`, `bytes`, `elapsed` | A dry run finished. The counts are of the lines above and of `file failed` lines; `bytes` is what it would download. |
 | ERROR | `dry run failed` | as `dry run done`, and `error` | The connection or a listing failed in a dry run. |
 | INFO | `dry run stopped` | as `dry run done` | A signal stopped a dry run. |
 | WARN | `dropped the torn final line of the state file` | `file`, `line`, `reason` | See [format](#format). |
@@ -393,6 +468,7 @@ Every pass ends with one summary line, whose keys are:
 | `adopted` | Files hashed in place and recorded as `adopted`. |
 | `waiting` | Files not ready yet. They have no line of their own. |
 | `failed` | Files that failed, each with its own `file failed` line, plus files cut off by a stop. |
+| `skipped` | Files and folders an exclude left out, each with its own `skipped` line. What is in a skipped folder is not counted. |
 | `bytes` | Bytes downloaded: the sizes of the copied and replaced files. |
 | `elapsed` | The pass's duration, as a Go duration such as `3.502s` or `2m5.1s`. |
 
@@ -410,7 +486,7 @@ Flag values are never echoed in it.
 | Code | Meaning |
 | --- | --- |
 | 0 | Stopped by a signal; a `--once` or `--dry-run` pass with no failed files; or help, `--version` or `licenses` printed. |
-| 1 | A runtime failure: the destination or state could not be opened or locked, leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), or output could not be written. |
+| 1 | A runtime failure: the destination or state could not be opened or locked, leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), or output could not be written. |
 | 2 | A usage error: an unknown or invalid flag, a missing `--endpoint` or `--dest`, `--dry-run` with `--interval`, or a positional argument. |
 
 Without `--once` or `--dry-run`, failed passes and failed files do not end
@@ -420,8 +496,8 @@ sync: it logs them and tries again on the next pass.
 
 Sync never renames a file. A name it cannot store fails with a `file failed`
 line naming the rule, on every pass, and the other files go on. With `--once`
-or `--dry-run` such a file makes the exit code 1. To leave it out, choose `--source` folders
-that don't contain it.
+or `--dry-run` such a file makes the exit code 1. To leave it out, add an
+[`--exclude`](#selection) pattern that matches it or its folder.
 
 ### On every platform
 
@@ -509,7 +585,7 @@ the output exits 1. See [NOTICE](../NOTICE).
   only.
 - Flags take their value as `--flag value` or `--flag=value`. Boolean flags
   need no value; `--once=false` turns one off. A flag given twice keeps the
-  last value, except `--source`, which collects every value.
+  last value, except `--exclude`, which collects every value.
 - Help and version need no network and touch no files.
 
 ## Verifying a release

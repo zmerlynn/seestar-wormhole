@@ -78,8 +78,9 @@ folder; copy it to a folder on your `PATH` as above.
    it was in the middle of are left for next time.
 
 Files land under the folder as they are on the telescope, such as
-`~/Seestar/MyWorks/M 31/`. By default sync copies `MyWorks`, `Autorun/Dark`
-and `darklibrary`. It waits until a file has stopped changing before it
+`~/Seestar/MyWorks/M 31/`. Sync copies the whole share except a built-in list
+of system, log and scratch files; add `--exclude` to leave out more, and see
+[selection](docs/reference.md#selection) for the list. It waits until a file has stopped changing before it
 copies it, so the first copy of a new image comes a few minutes after the
 telescope writes it.
 

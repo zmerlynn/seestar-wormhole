@@ -52,8 +52,11 @@ func TestSyncHelp(t *testing.T) {
 		t.Fatalf("code=%d stderr=%q, want 0 and no stderr", code, stderr)
 	}
 	for _, want := range []string{
-		"--endpoint string", "--dest string", "--source stringArray",
-		"any replaces the defaults (default [MyWorks,Autorun/Dark,darklibrary])",
+		"--endpoint string", "--dest string", "--exclude stringArray", "--no-default-excludes",
+		// The built-in patterns, as the literal flags they equal.
+		"\n  --exclude '.*'\n  --exclude '*.tmp'\n  --exclude 'Thumbs.db'\n  --exclude 'desktop.ini'\n" +
+			"  --exclude '$RECYCLE.BIN'\n  --exclude 'System Volume Information'\n  --exclude '/log'\n" +
+			"  --exclude '/tmp_stitch'\n  --exclude '/batch_stack_tmp'\n",
 		"--interval duration", "(default 5m0s)", "--once", "--dry-run", "(default 2m0s)", "(default 10m0s)",
 		"files copied at once (1-64) (default 4)", "--state-dir string",
 	} {
@@ -250,54 +253,77 @@ func TestEndpoint(t *testing.T) {
 	}
 }
 
-func TestSources(t *testing.T) {
-	const rule = `option=--source rule="use a folder relative to the share root, with forward slashes, such as MyWorks"`
-	const overlap = `option=--source rule="sources must not repeat or contain each other"`
-	for _, tc := range []struct {
-		sources []string
-		want    string
-	}{
-		{[]string{""}, rule}, {[]string{"."}, rule}, {[]string{"/MyWorks"}, rule}, {[]string{"../x"}, rule},
-		{[]string{"a/../b"}, rule}, {[]string{"a//b"}, rule}, {[]string{"a/"}, rule}, {[]string{`a\b`}, rule},
-		{[]string{"C:/x"}, rule}, {[]string{"C:"}, rule}, {[]string{"a/b:c"}, rule},
-		{[]string{"MyWorks", "MyWorks"}, overlap},
-		{[]string{"MyWorks", "MyWorks/M 31"}, overlap},
-		{[]string{"Autorun/Dark", "Autorun"}, overlap},
-		{[]string{"MyWorks", "MyWorksOld"}, ""},
-		{[]string{"My,Works"}, ""},
+// --source, from 0.1.0, is a usage error that points to --exclude, in any
+// form; nothing is dialed.
+func TestSourceRemoved(t *testing.T) {
+	dev := newDevice()
+	dev.use(t)
+	const want = `option=--source rule="removed; sync copies the whole share, so leave folders out with --exclude"`
+	for _, args := range [][]string{{"--source", "MyWorks"}, {"--source=MyWorks"}, {"--source"}} {
+		code, _, stderr := invoke(t, slices.Concat([]string{"sync", "--endpoint", "h:445"}, scratch(t), args)...)
+		if code != exitUsage || !strings.Contains(stderr, want) {
+			t.Errorf("%q: code=%d stderr=%q, want 2 with %q", args, code, stderr, want)
+		}
+	}
+	if dials, _ := dev.counts(); dials != 0 {
+		t.Errorf("%d sessions dialed, want none", dials)
+	}
+	// Elsewhere it is just an unknown flag.
+	code, _, stderr := invoke(t, "--source", "MyWorks")
+	if code != exitUsage || !strings.Contains(stderr, `option=--source rule="unknown flag"`) {
+		t.Errorf("top-level --source: code=%d stderr=%q, want 2 and unknown flag", code, stderr)
+	}
+}
+
+// A bad --exclude is a usage error before anything is dialed, also with
+// --no-default-excludes; the value is not echoed.
+func TestExcludeUsageErrors(t *testing.T) {
+	const (
+		parts   = `option=--exclude rule="use a name, or a path from the share root, with no empty, . or .. parts"`
+		slash   = `option=--exclude rule="omit the trailing /; a pattern matches files and folders"`
+		class   = `option=--exclude rule="[ and \\ are not supported; use * and ?, and / between folders"`
+		globstr = `option=--exclude rule="** is not supported; * matches within one name"`
+	)
+	dev := newDevice()
+	dev.use(t)
+	for _, tc := range []struct{ pattern, want string }{
+		{"", parts}, {"/", parts}, {"//", slash}, {"//x", parts}, {"a//b", parts}, {"./a", parts}, {"a/.", parts},
+		{"..", parts}, {"/../log", parts}, {".", parts}, {"log/", slash}, {"/log/", slash},
+		{"M[42]", class}, {`MyWorks\x`, class}, {"**", globstr}, {"MyWorks/**/x", globstr}, {"a**", globstr},
 	} {
-		args := slices.Concat([]string{"sync", "--endpoint", "h:445"}, scratch(t))
-		for _, s := range tc.sources {
-			args = append(args, "--source", s)
-		}
-		code, _, stderr := invoke(t, args...)
-		if tc.want == "" {
-			if code != exitFailure || !strings.Contains(stderr, errNoDevice.Error()) {
-				t.Errorf("%q: code=%d stderr=%q, want accepted and exit 1", tc.sources, code, stderr)
+		for _, extra := range [][]string{nil, {"--no-default-excludes"}} {
+			args := slices.Concat([]string{"sync", "--endpoint", "h:445"}, scratch(t), extra, []string{"--exclude", "ok", "--exclude", tc.pattern})
+			code, _, stderr := invoke(t, args...)
+			if code != exitUsage || !strings.Contains(stderr, tc.want) {
+				t.Errorf("--exclude %q %q: code=%d stderr=%q, want 2 with %q", tc.pattern, extra, code, stderr, tc.want)
 			}
-		} else if code != exitUsage || !strings.Contains(stderr, tc.want) {
-			t.Errorf("%q: code=%d stderr=%q, want 2 with %q", tc.sources, code, stderr, tc.want)
+			if len(tc.pattern) > 2 && strings.Contains(stderr, tc.pattern) {
+				t.Errorf("--exclude %q: the value is echoed: %q", tc.pattern, stderr)
+			}
 		}
+	}
+	if dials, _ := dev.counts(); dials != 0 {
+		t.Errorf("%d sessions dialed, want none", dials)
 	}
 }
 
 func TestSyncFlags(t *testing.T) {
 	for _, tc := range []struct {
-		args    []string
-		sources []string
+		args     []string
+		excludes []string
 	}{
-		{nil, []string{"MyWorks", "Autorun/Dark", "darklibrary"}},
-		{[]string{"--source", "MyWorks"}, []string{"MyWorks"}},
-		{[]string{"--source", "b", "--source", "a,c"}, []string{"b", "a,c"}},
+		{nil, nil},
+		{[]string{"--exclude", "MyWorks"}, []string{"MyWorks"}},
+		{[]string{"--exclude", "b", "--no-default-excludes", "--exclude", "a,c"}, []string{"b", "a,c"}},
 	} {
 		cmd := newSyncCommand(newLogger(io.Discard))
 		if err := cmd.ParseFlags(tc.args); err != nil {
 			t.Fatal(err)
 		}
 		f := cmd.Flags()
-		sources, _ := f.GetStringArray("source")
-		if !slices.Equal(sources, tc.sources) {
-			t.Errorf("%q: sources %q, want %q", tc.args, sources, tc.sources)
+		excludes, _ := f.GetStringArray("exclude")
+		if !slices.Equal(excludes, tc.excludes) {
+			t.Errorf("%q: excludes %q, want %q", tc.args, excludes, tc.excludes)
 		}
 		if len(tc.args) > 0 {
 			continue
@@ -321,11 +347,14 @@ func TestSyncFlags(t *testing.T) {
 		if got, _ := f.GetBool("dry-run"); got {
 			t.Error("--dry-run is on by default")
 		}
+		if got, _ := f.GetBool("no-default-excludes"); got {
+			t.Error("--no-default-excludes is on by default")
+		}
 	}
 }
 
 func TestValidDefaults(t *testing.T) {
-	o := syncOptions{endpoint: "h:445", dest: "d", sources: defaultSources, interval: 5 * time.Minute,
+	o := syncOptions{endpoint: "h:445", dest: "d", interval: 5 * time.Minute,
 		readyAge: 0, firstPassAge: 0, workers: 1}
 	if err := o.validate(); err != nil {
 		t.Errorf("zero ages and one worker: %v", err)

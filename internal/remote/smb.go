@@ -89,11 +89,11 @@ func mount(ctx context.Context, session *smb2.Session) (*smb2.Share, error) {
 	return share, nil
 }
 
-// Walk lists source; see Session.
-func (s *SMB) Walk(ctx context.Context, source string) ([]Entry, error) {
-	entries, err := walk(ctx, s.share.WithContext(ctx), source)
+// Walk lists the share; see Session.
+func (s *SMB) Walk(ctx context.Context, skip func(string) bool) ([]Entry, error) {
+	entries, err := walk(ctx, s.share.WithContext(ctx), skip)
 	if err != nil {
-		return nil, fmt.Errorf("walk %q on %s: %w", source, s.endpoint, err)
+		return nil, fmt.Errorf("walk on %s: %w", s.endpoint, err)
 	}
 	return entries, nil
 }
