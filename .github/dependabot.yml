@@ -1,0 +1,13 @@
+# Version updates for the SHA-pinned workflow actions. Go modules get security
+# updates alone. The Samba test fixture's image is pinned by digest to match
+# the telescope's Samba version, and nothing built from it ships, so it is
+# updated by hand.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']

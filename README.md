@@ -23,25 +23,42 @@ telescope is somewhere else.
 - It doesn't limit its bandwidth, and it has no configuration file: every
   setting is a flag.
 
-## Status
+## Install
 
-In development. There are no releases yet, so build it from source.
+Download the file for your platform from the
+[Releases page](https://github.com/zmerlynn/seestar-copy/releases):
 
-## Build from source
+- **Linux:** `seestar-copy_<version>_linux_<arch>.tar.gz`, for amd64 or
+  arm64. Unpack it.
+- **Windows:** `seestar-copy_<version>_windows_<arch>.zip`, for amd64 or
+  arm64. Unpack it. Windows downloads are not code-signed.
+- **macOS:** `seestar-copy_<version>_darwin_universal.dmg`, for Intel and
+  Apple silicon. It is signed and notarized by Apple. Open it.
 
-You need [Go](https://go.dev/dl/) 1.27 or newer and a copy of this repository.
-From the repository's folder, run:
+Copy `seestar-copy-cli` (`seestar-copy-cli.exe` on Windows) to a folder on
+your `PATH`, such as `/usr/local/bin` on Linux or macOS. Then check it with:
 
 ```sh
+seestar-copy-cli --version
+```
+
+Every download also has the LICENSE and NOTICE files. To check a download's
+checksum and build provenance, see
+[verifying a release](docs/reference.md#verifying-a-release). The
+[versioning policy](docs/versioning.md) says what a release promises.
+
+### Build from source
+
+You need [Go](https://go.dev/dl/) 1.27 or newer. Run:
+
+```sh
+git clone https://github.com/zmerlynn/seestar-copy
+cd seestar-copy
 go build -mod=vendor ./cmd/seestar-copy-cli
 ```
 
-This creates `seestar-copy-cli` (`seestar-copy-cli.exe` on Windows). Then check
-it with:
-
-```sh
-./seestar-copy-cli --version
-```
+This creates `seestar-copy-cli` (`seestar-copy-cli.exe` on Windows) in that
+folder; copy it to a folder on your `PATH` as above.
 
 ## Copy your images
 
@@ -54,7 +71,7 @@ it with:
 3. Run one pass to check the connection:
 
    ```sh
-   ./seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar --once
+   seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar --once
    ```
 
 4. Run it without `--once` to keep copying. Press Ctrl+C to stop it; files
@@ -84,8 +101,9 @@ code.
   every time, such as `--dest ~/Seestar`. Another spelling, such as through a
   link, starts a separate history; sync refuses to start when it notices. See
   [one spelling per destination](docs/reference.md#one-spelling-per-destination).
-- **One sync per folder.** A second sync for the same folder exits with an
-  error. For a second telescope, use a second folder.
+- **One sync per folder.** A second sync for the same folder, spelled the
+  same way and with the same `--state-dir`, exits with an error. For a second
+  telescope, use a second folder.
 - **Partial files are hidden.** A file being copied is written under a hidden
   temporary name next to where it will go, so nothing that watches for `.fit`
   files sees half a file. See
@@ -96,6 +114,11 @@ code.
   [names that fail](docs/reference.md#names-that-fail).
 - **On Windows,** a power cut just after a copy can lose that file without
   sync noticing. See [Windows](docs/reference.md#windows).
+
+## Status
+
+Early development. Releases are 0.x, so a minor release may change a flag or
+a file format; its notes say how. See [versioning](docs/versioning.md).
 
 ## Affiliation and warranty
 
@@ -109,6 +132,8 @@ Using it is at your own risk.
 ## More
 
 - [Command reference](docs/reference.md): every flag, log line and exit code
+- [Versioning](docs/versioning.md): what a release promises
+- [Security policy](SECURITY.md) and [contributing](CONTRIBUTING.md)
 - [How it works and how to hack on it](docs/development/README.md)
 - [License](LICENSE) and [third-party notices](NOTICE);
   `seestar-copy-cli licenses` prints the notices of the libraries in your

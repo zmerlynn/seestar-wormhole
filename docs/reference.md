@@ -13,6 +13,7 @@ log line. The [README](../README.md) has a first run.
 - [Windows](#windows)
 - [licenses](#licenses)
 - [Global command behavior](#global-command-behavior)
+- [Verifying a release](#verifying-a-release)
 
 ## sync
 
@@ -284,7 +285,8 @@ moved away.
 
 Only one sync at a time may use a destination. Sync holds an exclusive OS
 lock on `<sha256>.lock`, next to the state file, while it runs. A second sync
-for the same destination exits 1:
+for the same destination, spelled the same way and with the same
+`--state-dir`, exits 1:
 
 ```text
 destination /home/user/Seestar: another sync is using this destination (lock file .../sync/<sha256>.lock)
@@ -322,7 +324,9 @@ time=2026-11-02T03:10:03.502Z level=INFO msg="pass done" copied=2 replaced=0 ado
 ```
 
 Values with spaces or quotes are quoted. The messages and keys below are
-stable.
+what this release logs. They are not part of the
+[versioning contract](versioning.md#not-in-the-contract); a release that
+changes them says so in its notes.
 
 | Level | Message | Keys | When |
 | --- | --- | --- | --- |
@@ -467,3 +471,23 @@ the output exits 1. See [NOTICE](../NOTICE).
   need no value; `--once=false` turns one off. A flag given twice keeps the
   last value, except `--source`, which collects every value.
 - Help and version need no network and touch no files.
+
+## Verifying a release
+
+Each release lists a SHA-256 checksum for its four archives and universal Mac
+DMG in the single `SHA256SUMS`, and carries a GitHub build provenance
+attestation for each of those five downloads. With the downloaded assets and
+`SHA256SUMS` in one folder:
+
+```sh
+sha256sum --check --ignore-missing SHA256SUMS
+gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-copy
+```
+
+Linux and Windows executables are byte-for-byte reproducible with identical
+source, version, revision and Go toolchain: rebuild and compare against
+`seestar-copy-cli` (with `.exe` on Windows) unpacked from the archive. See
+[cutting a release](development/releasing.md). The Mac executable is combined
+with lipo and signed, so it is not byte-reproducible; the DMG is verified by
+`SHA256SUMS` and attestation only. See [versioning](versioning.md) for what a
+release promises.

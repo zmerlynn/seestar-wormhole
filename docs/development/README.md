@@ -94,6 +94,13 @@ To build the command:
 go build -mod=vendor ./cmd/seestar-copy-cli
 ```
 
+`main` changes only through a pull request. The optional pre-push hook
+rejects pushes to `main`. It is enabled once per clone with:
+
+```sh
+git config core.hooksPath .githooks
+```
+
 ## Releasing
 
 A `v*` tag builds the release: Linux and Windows archives, a signed and
@@ -138,9 +145,9 @@ These apply to every change, whoever writes it.
   because it was read. The format's version changes only for a change an
   older release cannot read, and such a one-way change needs the
   maintainer's approval before it is written.
-- **Every public flag, format, exit code and log line is a promise.** Add
-  one only for a current need, and document it in the reference in the same
-  change.
+- **Every public flag, format and exit code is a promise**, as
+  [versioning](../versioning.md) lists. Add one, or a log line, only for a
+  current need, and document it in the reference in the same change.
 - **Dependencies are few, vendored and Unlicense-compatible.** The project
   is under the Unlicense. A dependency must allow distributing one static
   binary with a notice: MIT, BSD, Apache-2.0 or ISC. The vendor tree is

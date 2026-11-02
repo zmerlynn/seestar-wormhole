@@ -1,7 +1,10 @@
 # Cutting a release
 
 This page has the build mechanics of a release: what the workflow builds,
-how to rehearse it, and how to check that it is reproducible.
+how to rehearse it, and how to check that it is reproducible. The
+[versioning contract](../versioning.md) says what a release promises. The
+[release checklist](../../.claude/skills/seestar-copy-release/SKILL.md) puts
+these steps in order with the checks before publishing.
 
 Use a clean checkout of the intended commit. The CLI builds use the official
 `golang:1.27.3` image (Go 1.27.3), with the vendored dependencies. The Mac
@@ -12,7 +15,8 @@ DMG is packaged on macos-26 with Xcode Command Line Tools.
    `go test scripts/release.go scripts/release_test.go`, the release tooling
    tests: archive names, members, modes, determinism, checksums, the exact
    inventory, and version validation before any build.
-2. Run `./scripts/release.sh v0.1.0`. Versions must be `vMAJOR.MINOR.PATCH`
+2. Choose the version by the [bump rules](../versioning.md#bumps), then
+   run `./scripts/release.sh v0.1.0`. Versions must be `vMAJOR.MINOR.PATCH`
    or `vMAJOR.MINOR.PATCH-rc.N`, with no leading zeros in any number. Other
    forms exit 2 before building. This writes the six static CLI executables
    to `dist/parts/` and the two Linux and two Windows archives to `dist/`.
