@@ -2,6 +2,7 @@ package state
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -106,7 +107,8 @@ func TestOpenPublishesHeaderAfterSync(t *testing.T) {
 			t.Errorf("rename(%q, %q), want the fsynced temporary file renamed to %q", from, to, p)
 		}
 		if tmp != nil {
-			if _, err := tmp.Stat(); !errors.Is(err, os.ErrClosed) {
+			// Seek, unlike Stat, reports a closed file on Windows too.
+			if _, err := tmp.Seek(0, io.SeekCurrent); !errors.Is(err, os.ErrClosed) {
 				t.Errorf("temporary file still open at rename: %v", err)
 			}
 		}

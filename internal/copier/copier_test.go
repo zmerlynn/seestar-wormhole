@@ -85,6 +85,8 @@ func symlink(t *testing.T, target, name string) {
 // New removes leftover temporary files at any depth, and nothing else: not
 // a name that is close to the pattern, not a folder or a symbolic link with
 // a temporary name, and nothing behind a symbolic link.
+// The other-case name has a folder of its own, since on a case-insensitive
+// filesystem it is the same entry as the folder with the temporary name.
 func TestNewRemovesLeftoverTempFiles(t *testing.T) {
 	tmpA := plan.TempName("a.fit")
 	tmpB := plan.TempName("MyWorks/M 31/b.fit")
@@ -94,7 +96,7 @@ func TestNewRemovesLeftoverTempFiles(t *testing.T) {
 	kept := map[string]string{
 		"MyWorks/a.fit":                          "kept",
 		".seestar-copy-tmp/0123abcd":             "old temporary folder",
-		"MyWorks/" + strings.ToUpper(tmpA):       "other case",
+		"Upper/" + strings.ToUpper(tmpA):         "other case",
 		"MyWorks/" + tmpA[:len(tmpA)-5] + ".tmp": "63 digits",
 		"MyWorks/" + tmpA + ".fit":               "longer",
 		"MyWorks/x" + tmpA:                       "prefixed",

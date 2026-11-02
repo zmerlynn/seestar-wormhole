@@ -153,9 +153,11 @@ func TestOpenAllowsLinkedStateOutsideDest(t *testing.T) {
 	mkdir(t, filepath.Join(root, "real-dest"))
 	// A destination whose name the state directory's resolved path starts
 	// with is still outside it.
+	// The targets exist first: Windows makes a link to a missing target a
+	// file link, which does not work as a folder.
+	mkdir(t, filepath.Join(root, "real-dest-state"))
 	symlink(t, filepath.Join(root, "real-dest-state"), filepath.Join(root, "state"))
 	symlink(t, filepath.Join(root, "real-dest"), filepath.Join(root, "dest"))
-	mkdir(t, filepath.Join(root, "real-dest-state"))
 	mustOpen(t, filepath.Join(root, "state"), filepath.Join(root, "dest"), nil)
 	if _, err := os.Stat(filepath.Join(root, "real-dest-state", "sync")); err != nil {
 		t.Errorf("sync directory not created through the link: %v", err)
