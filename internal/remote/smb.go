@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -9,7 +10,11 @@ import (
 
 	"github.com/hirochachacha/go-smb2/v2"
 	"github.com/hirochachacha/go-smb2/v2/auth"
+	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 )
+
+// statusNotADirectory is STATUS_NOT_A_DIRECTORY ([MS-ERREF] 2.3.1).
+const statusNotADirectory = 0xC0000103
 
 // SMB is a Session on the telescope's share, through go-smb2.
 //
@@ -103,6 +108,22 @@ func (s *SMB) Walk(ctx context.Context, skip func(string, bool) bool) ([]Entry, 
 	return entries, nil
 }
 
+// ReadDir lists one folder; see Session. go-smb2 opens the folder with
+// read-only access and FILE_OPEN, queries its entries and closes it.
+func (s *SMB) ReadDir(ctx context.Context, dir string) ([]Entry, error) {
+	if !validDir(dir) {
+		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: fs.ErrInvalid}
+	}
+	entries, err := readDir(s.share.WithContext(ctx), dir)
+	if rerr, ok := errors.AsType[*protocol.ResponseError](err); ok && rerr.Code == statusNotADirectory {
+		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: ErrNotDir}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("list %q on %s: %w", dir, s.endpoint, err)
+	}
+	return entries, nil
+}
+
 // Open opens path read-only. go-smb2's Share.Open asks for GENERIC_READ with
 // FILE_OPEN, so it never creates the file, and shares it for reading and
 // writing; it has no way to also share it for deletion.
@@ -132,6 +153,14 @@ type smbFile struct {
 }
 
 func (f *smbFile) Read(p []byte) (int, error) { return f.f.Read(f.ctx, p) }
+
+// Seek moves the file's offset; io.SeekEnd asks the server for the size.
+func (f *smbFile) Seek(offset int64, whence int) (int64, error) {
+	return f.f.Seek(f.ctx, offset, whence)
+}
+
+// Stat asks the server for the open file's information.
+func (f *smbFile) Stat() (fs.FileInfo, error) { return f.f.Stat(f.ctx) }
 
 // WriteTo uses go-smb2's pipelined copy.
 func (f *smbFile) WriteTo(w io.Writer) (int64, error) { return f.f.WriteTo(f.ctx, w) }

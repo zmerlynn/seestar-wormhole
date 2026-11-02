@@ -17,11 +17,12 @@ is stopped.
 
 | Path | What it does |
 | --- | --- |
-| `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the `sync` pass loop (dial, list, plan, copy, log off, sleep), `find`'s listing, and `delete`'s run. |
+| `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the `sync` pass loop (dial, list, plan, copy, log off, sleep), `find`'s listing, `delete`'s run, and `browse`'s listener and `--open`. |
 | `internal/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
 | `internal/state` | The per-destination state file: JSON Lines, last record per path wins, torn-tail tolerance, append with fsync, and the exclusive lock. |
 | `internal/plan` | The pass decisions: wait, done, copy, replace, adopt or fail for each listed file, and `delete`'s decisions on files and emptied folders. Pure functions with no I/O; the current time is an input. |
 | `internal/copier` | Carries out a pass's decisions over the one session with a worker pool: temporary file beside the final one, hash, size check, fsync, mtime, rename, then the state record. |
+| `internal/browse` | `browse`'s web server: the HTTP handler with its Host, Fetch Metadata and path checks, the embedded page, and the pool that shares one SMB session between requests, closing it when idle, failed or stuck. |
 | `internal/readonly` | The dry-run guard: once enabled, every function that changes the local filesystem or the device panics. A test checks that each such function calls it first. |
 | `internal/licenses` | The `licenses` command's output: the project's `NOTICE` and `LICENSE`, then the license texts of each module linked into the running build. |
 | `scripts/generate-licenses.go` | Writes the license catalog that `internal/licenses` embeds. |

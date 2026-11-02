@@ -2,6 +2,7 @@ package remote
 
 import (
 	"context"
+	"errors"
 	"io"
 	"io/fs"
 	"sync"
@@ -51,6 +52,24 @@ func (f *Fake) Walk(ctx context.Context, skip func(string, bool) bool) ([]Entry,
 		return nil, &fs.PathError{Op: "walk", Path: ".", Err: fs.ErrClosed}
 	}
 	return walk(ctx, f.fsys, skip)
+}
+
+// ReadDir lists one folder; see Session. A path that is not a folder is
+// found by a stat first, since an fstest.MapFS does not say so itself.
+func (f *Fake) ReadDir(ctx context.Context, dir string) ([]Entry, error) {
+	if !validDir(dir) {
+		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: fs.ErrInvalid}
+	}
+	if f.closed() {
+		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: fs.ErrClosed}
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if fi, err := fs.Stat(f.fsys, dir); err == nil && !fi.IsDir() {
+		return nil, &fs.PathError{Op: "readdir", Path: dir, Err: ErrNotDir}
+	}
+	return readDir(f.fsys, dir)
 }
 
 // Open opens path for reading; see Session.
@@ -134,5 +153,28 @@ func (f *fakeFile) Read(p []byte) (int, error) {
 func (f *fakeFile) WriteTo(w io.Writer) (int64, error) {
 	return io.Copy(w, struct{ io.Reader }{f})
 }
+
+// Seek moves the offset of the underlying file, which must be an
+// io.Seeker, and the fault counter with it, so After stays a byte offset.
+func (f *fakeFile) Seek(offset int64, whence int) (int64, error) {
+	if f.session.closed() {
+		return 0, fs.ErrClosed
+	}
+	if err := f.ctx.Err(); err != nil {
+		return 0, err
+	}
+	s, ok := f.file.(io.Seeker)
+	if !ok {
+		return 0, errors.ErrUnsupported
+	}
+	n, err := s.Seek(offset, whence)
+	if err == nil {
+		f.read = n
+	}
+	return n, err
+}
+
+// Stat returns the underlying file's information.
+func (f *fakeFile) Stat() (fs.FileInfo, error) { return f.file.Stat() }
 
 func (f *fakeFile) Close() error { return f.file.Close() }

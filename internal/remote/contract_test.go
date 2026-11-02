@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -152,7 +153,7 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 
 	t.Run("InvalidPaths", func(t *testing.T) {
 		for _, p := range []string{".", "", "/MyWorks", "MyWorks/", "MyWorks//case", "..", "MyWorks/../MyWorks", "./MyWorks", `MyWorks\case`,
-			"/MyWorks2/y.fit", "MyWorks2//y.fit", "MyWorks2/./y.fit", `MyWorks2\y.fit`, "MyWorks2/y.fit/"} {
+			"/MyWorks2/y.fit", "MyWorks2//y.fit", "MyWorks2/./y.fit", `MyWorks2\y.fit`, "MyWorks2/y.fit/", "MyWorks2/y.fit\x00"} {
 			if _, err := session.Open(ctx, p); !errors.Is(err, fs.ErrInvalid) {
 				t.Errorf("Open(%q) = %v, want fs.ErrInvalid", p, err)
 			}
@@ -200,6 +201,62 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 		_, err := session.Open(ctx, "MyWorks/case/b.fit")
 		if !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("Open of a missing file = %v, want fs.ErrNotExist", err)
+		}
+	})
+
+	t.Run("ReadDir", func(t *testing.T) {
+		for _, dir := range []string{".", "MyWorks", "MyWorks/M 31", "MyWorks/NGC 7000 – Nördlich", "MyWorks/empty"} {
+			var want []Entry
+			for _, e := range all {
+				if path.Dir(e.Path) == dir {
+					want = append(want, e)
+				}
+			}
+			got, err := session.ReadDir(ctx, dir)
+			if err != nil {
+				t.Fatalf("ReadDir(%q): %v", dir, err)
+			}
+			sameEntries(t, got, want)
+		}
+	})
+
+	t.Run("ReadDirErrors", func(t *testing.T) {
+		if _, err := session.ReadDir(ctx, "MyWorks2/y.fit"); !errors.Is(err, ErrNotDir) {
+			t.Errorf("ReadDir of a file = %v, want ErrNotDir", err)
+		}
+		if _, err := session.ReadDir(ctx, "MyWorks/missing"); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("ReadDir of a missing folder = %v, want fs.ErrNotExist", err)
+		}
+		for _, p := range []string{"", "/MyWorks", "MyWorks/", "MyWorks//case", "..", "MyWorks/../MyWorks", "./MyWorks", `MyWorks\case`, "MyWorks\x00", "a\x00b"} {
+			if _, err := session.ReadDir(ctx, p); !errors.Is(err, fs.ErrInvalid) {
+				t.Errorf("ReadDir(%q) = %v, want fs.ErrInvalid", p, err)
+			}
+		}
+	})
+
+	t.Run("StatAndSeek", func(t *testing.T) {
+		e := fixtureFile(t, "MyWorks/M 31/Light_M 31_10.0s_IRCUT_20261029-033129.fit")
+		want := content(e.Size)
+		f, err := session.Open(ctx, e.Path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		fi, err := f.Stat()
+		if err != nil || fi.Size() != e.Size || !fi.ModTime().Equal(e.ModTime) || !fi.Mode().IsRegular() {
+			t.Fatalf("Stat = %v, %v; want size %d, mtime %v, a regular file", fi, err, e.Size, e.ModTime)
+		}
+		if n, err := f.Seek(0, io.SeekEnd); n != e.Size || err != nil {
+			t.Errorf("Seek(0, SeekEnd) = %d, %v; want %d", n, err, e.Size)
+		}
+		for _, off := range []int64{100, 0, e.Size - 10} {
+			if n, err := f.Seek(off, io.SeekStart); n != off || err != nil {
+				t.Fatalf("Seek(%d) = %d, %v", off, n, err)
+			}
+			got := make([]byte, 10)
+			if _, err := io.ReadFull(f, got); err != nil || !bytes.Equal(got, want[off:off+10]) {
+				t.Errorf("10 bytes at %d = %q, %v; want %q", off, got, err, want[off:off+10])
+			}
 		}
 	})
 

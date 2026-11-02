@@ -14,8 +14,8 @@ telescope is somewhere else.
 ## What it doesn't do
 
 - It never writes to the telescope, except when you run `delete --force`:
-  it doesn't rename or upload anything there, and `sync` and `find` only
-  read.
+  it doesn't rename or upload anything there, and `sync`, `find` and
+  `browse` only read.
 - It doesn't delete or move anything in your folder, sort images by night, or
   stack or process them. What you do with the files after they land is up to
   you.
@@ -88,6 +88,16 @@ telescope writes it.
 Each line of its log says what it copied, and each pass ends with a summary.
 The [command reference](docs/reference.md) has every flag, log line and exit
 code.
+
+To look through the telescope's files in your web browser, run:
+
+```sh
+seestar-copy-cli browse --endpoint 127.0.0.1:4445 --open
+```
+
+The page shows one folder at a time, shows the telescope's `.jpg` images,
+`.txt` logs and FITS headers, and saves any file you pick; it changes nothing. It is for this computer only
+unless you ask otherwise. See [browse](docs/reference.md#browse).
 
 To free space on the telescope once your images are safe, run sync, then
 make your own export or backup of the folder, then preview with

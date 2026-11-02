@@ -128,13 +128,6 @@ func runFind(ctx context.Context, o findOptions, out io.Writer, log *slog.Logger
 	return list(ctx, o, records, out, log)
 }
 
-// File statuses against a destination's state.
-const (
-	statusCopied  = "copied"
-	statusChanged = "changed"
-	statusNew     = "new"
-)
-
 // listed is one line of find's output. Its JSON form is the jsonl format.
 type listed struct {
 	Path string `json:"path"`
@@ -158,7 +151,8 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		args := []any{"files", files, "folders", folders, "bytes", bytes, "recent", recent,
 			"skipped", len(left.skipped), "unmatched", left.unmatched}
 		if records != nil {
-			args = append(args, statusCopied, statuses[statusCopied], statusChanged, statuses[statusChanged], statusNew, statuses[statusNew])
+			args = append(args, plan.StatusCopied, statuses[plan.StatusCopied], plan.StatusChanged, statuses[plan.StatusChanged],
+				plan.StatusNew, statuses[plan.StatusNew])
 		}
 		args = append(args, "elapsed", time.Since(start).Round(time.Millisecond))
 		if err != nil {
@@ -226,16 +220,11 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 	return nil
 }
 
-// fileStatus compares a listed file with its record, as a sync pass does.
+// fileStatus looks up a listed file's record and gives its status.
 func fileStatus(records map[string]state.Record, e remote.Entry) string {
 	rec, ok := records[e.Path]
-	switch {
-	case !ok:
-		return statusNew
-	case rec.Size == e.Size && rec.MTime.Equal(e.ModTime):
-		return statusCopied
-	}
-	return statusChanged
+	return plan.FileStatus(plan.Entry{Path: e.Path, Size: e.Size, ModTime: e.ModTime, Regular: e.Kind == remote.Regular},
+		plan.Recorded{Size: rec.Size, ModTime: rec.MTime}, ok)
 }
 
 // writeText writes l as a text line: type, size, mtime, the status if

@@ -73,6 +73,8 @@ type peer struct {
 	file   string // SMB spelling, with backslashes
 	data   []byte
 	deny   string
+	// notDir is a name CREATE refuses as not a directory.
+	notDir string
 	// tree, if not zero, is the status TREE_CONNECT fails with.
 	tree uint32
 	// hold lists commands the peer reads but never answers, from the
@@ -290,6 +292,9 @@ func (p *peer) respond(req wire.PacketCodec) (wire.Packet, uint32) {
 		case p.deny:
 			return nil, statusAccessDenied
 		}
+		if p.notDir != "" && c.Name() == p.notDir {
+			return nil, statusNotADirectory
+		}
 		return nil, statusObjectNameNotFound
 	case wire.SMB2_READ:
 		r := wire.ReadRequestDecoder(req.Body())
@@ -383,7 +388,16 @@ func TestSMBRequestsAreReadOnly(t *testing.T) {
 		if got, err := io.ReadAll(struct{ io.Reader }{f}); err != nil || !bytes.Equal(got, data) {
 			t.Errorf("ReadAll = %d bytes, %v; want %d", len(got), err, len(data))
 		}
+		if n, err := f.Seek(10, io.SeekStart); n != 10 || err != nil {
+			t.Errorf("Seek = %d, %v; want 10", n, err)
+		}
+		// The peer does not answer QUERY_INFO; only the request matters.
+		_, _ = f.Stat()
+		_, _ = f.Seek(0, io.SeekEnd)
 		_ = f.Close()
+		if _, err := s.ReadDir(ctx, "MyWorks"); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("ReadDir = %v, want fs.ErrNotExist", err)
+		}
 		// The peer reports every name but its file, the root too, as missing.
 		if _, err := s.Walk(ctx, nil); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("Walk = %v, want fs.ErrNotExist", err)
@@ -777,6 +791,50 @@ func TestSMBRemoverRefusesInvalidPaths(t *testing.T) {
 			if req.Command() == wire.SMB2_CREATE {
 				t.Errorf("a CREATE reached the share: %v", req)
 			}
+		}
+	})
+}
+
+// TestSMBReadsRefuseInvalidPaths checks that Open and ReadDir refuse every
+// invalid path before any request reaches the share: no CREATE goes out for
+// any of them.
+func TestSMBReadsRefuseInvalidPaths(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		p := startPeer(t, &peer{file: `a\b`})
+		defer p.stop()
+		ctx := t.Context()
+		s := p.mustDial(t, ctx)
+		defer s.Close()
+		for _, path := range invalidRemovePaths {
+			if _, err := s.Open(ctx, path); !errors.Is(err, fs.ErrInvalid) {
+				t.Errorf("Open(%q) = %v, want fs.ErrInvalid", path, err)
+			}
+			if path == "." {
+				continue // the root, which ReadDir lists
+			}
+			if _, err := s.ReadDir(ctx, path); !errors.Is(err, fs.ErrInvalid) {
+				t.Errorf("ReadDir(%q) = %v, want fs.ErrInvalid", path, err)
+			}
+		}
+		for _, req := range p.seen() {
+			if req.Command() == wire.SMB2_CREATE {
+				t.Errorf("a CREATE reached the share: %v", req)
+			}
+		}
+	})
+}
+
+// TestSMBReadDirOfAFile checks that the share's STATUS_NOT_A_DIRECTORY
+// becomes ErrNotDir.
+func TestSMBReadDirOfAFile(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		p := startPeer(t, &peer{notDir: `MyWorks\a.fit`})
+		defer p.stop()
+		ctx := t.Context()
+		s := p.mustDial(t, ctx)
+		defer s.Close()
+		if _, err := s.ReadDir(ctx, "MyWorks/a.fit"); !errors.Is(err, ErrNotDir) {
+			t.Errorf("ReadDir of a file = %v, want ErrNotDir", err)
 		}
 	})
 }

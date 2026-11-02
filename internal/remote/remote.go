@@ -12,8 +12,9 @@
 // and NewFakeDir one over a local folder for tests.
 //
 // Paths are share-relative, slash-separated and kept byte for byte. A path
-// handed to Open, RemoveFile or RemoveDir must pass ValidPath; any other
-// path is refused with fs.ErrInvalid rather than cleaned.
+// handed to Open, ReadDir (other than "." for the root), RemoveFile or
+// RemoveDir must pass ValidPath; any other path is refused with
+// fs.ErrInvalid rather than cleaned.
 package remote
 
 import (
@@ -28,6 +29,9 @@ import (
 
 // ShareName is the telescope's share. It is not configurable.
 const ShareName = "EMMC Images"
+
+// ErrNotDir is returned, wrapped, by ReadDir for a path that is not a folder.
+var ErrNotDir = errors.New("not a folder")
 
 // Kind is the type of a listed entry.
 type Kind uint8
@@ -83,6 +87,12 @@ type Session interface {
 	// An entry for which it returns true is left out, and so is everything
 	// below it: that directory is never read.
 	Walk(ctx context.Context, skip func(path string, dir bool) bool) ([]Entry, error)
+	// ReadDir lists one folder, dir, which is "." for the root or a path
+	// ValidPath accepts; any other is refused with fs.ErrInvalid before
+	// any request. Its entries are in name order, with the listing rules
+	// of Walk. A path that is not a folder gives an error matching
+	// ErrNotDir.
+	ReadDir(ctx context.Context, dir string) ([]Entry, error)
 	// Open opens a file for reading only. ctx stays bound to the file: once
 	// it is done, reads and Close fail with its error.
 	Open(ctx context.Context, path string) (File, error)
@@ -93,17 +103,21 @@ type Session interface {
 
 // File is a remote file open for reading. WriteTo is the fast path: for the
 // SMB implementation it keeps several reads in flight, and io.Copy uses it.
+// Seek and Stat use the context the file was opened with.
 type File interface {
 	io.Reader
+	io.Seeker
 	io.WriterTo
 	io.Closer
+	Stat() (fs.FileInfo, error)
 }
 
 // ValidPath reports whether p is a path the share would receive exactly as
 // given: a valid io/fs path other than ".", with no backslash (the SMB
-// separator). Open, RemoveFile and RemoveDir refuse any other path.
+// separator) and no NUL. Open, ReadDir, RemoveFile and RemoveDir refuse any
+// other path.
 func ValidPath(p string) bool {
-	return p != "." && fs.ValidPath(p) && !strings.Contains(p, `\`)
+	return p != "." && fs.ValidPath(p) && !strings.ContainsAny(p, `\`+"\x00")
 }
 
 // validName reports whether a listed name is one path element, so joining
@@ -171,3 +185,33 @@ func walk(ctx context.Context, fsys fs.FS, skip func(string, bool) bool) ([]Entr
 	}
 	return entries, nil
 }
+
+// readDir lists the folder dir of fsys for Session.ReadDir. dir has passed
+// validDir.
+func readDir(fsys fs.FS, dir string) ([]Entry, error) {
+	des, err := fs.ReadDir(fsys, dir)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]Entry, 0, len(des))
+	for _, d := range des {
+		// Joining a name such as ".." or "a/b" would name another path.
+		if !validName(d.Name()) {
+			return nil, fmt.Errorf("listing %q: invalid name %q", dir, d.Name())
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil, err
+		}
+		p := d.Name()
+		if dir != "." {
+			p = dir + "/" + p
+		}
+		entries = append(entries, Entry{Path: p, Size: info.Size(), ModTime: info.ModTime(), Kind: kindOf(info.Mode())})
+	}
+	return entries, nil
+}
+
+// validDir reports whether dir may be given to ReadDir: the root, ".", or
+// a path ValidPath accepts.
+func validDir(dir string) bool { return dir == "." || ValidPath(dir) }

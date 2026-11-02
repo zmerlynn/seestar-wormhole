@@ -18,36 +18,39 @@ the release workflow from an annotated tag.
 
 The [command reference](reference.md) has the detail of each item.
 
-1. **Commands and flags.** `sync`, `find`, `delete`, `licenses`, `help` and the top-level `--version`; flag names,
-   meanings and grammar; the defaults of every `sync`, `find` and `delete` flag, as in [flags](reference.md#flags),
-   [find flags](reference.md#find-flags) and [delete flags](reference.md#delete-flags), including delete's
-   `--older-than` default of `7d`; and the rules about which values are refused. `--older-than` takes a Go
-   duration or a whole number of days such as `7d`, not both, for find and delete alike. For delete:
-   `--trust-state` and `--ignore-state` cannot be combined; `--ignore-state` needs at least one `--include` and
-   refuses `--dest` and `--state-dir`; without `--force`, delete only previews, as `--dry-run` does, and `--force`
-   with `--dry-run` is refused. `--force` only means "act": it never skips or weakens the proof, and
-   `--trust-state` and `--ignore-state` are the only ways to ask for less. A new flag whose default keeps the old behavior is
-   additive. The [selection](reference.md#selection), the same for sync and find: the whole share except what an
-   exclude pattern matches; the built-in patterns are exactly the listed `--exclude` flags, and adding, removing or
-   changing one is breaking;
-   `--exclude` adds to them and `--no-default-excludes` removes them all; with one or more `--include` patterns,
-   only files that an include matches, or that are in a folder an include matches, are selected; excludes always
-   win over includes, whatever the order; one pattern grammar for both flags, that an excluded folder is not
-   listed, and that case is ignored by lowercasing with no Unicode normalization.
+1. **Commands and flags.** `sync`, `find`, `delete`, `browse`, `licenses`, `help` and the top-level `--version`; flag
+   names, meanings and grammar; the defaults of every `sync`, `find` and `delete` flag, as in
+   [flags](reference.md#flags), [find flags](reference.md#find-flags) and [delete flags](reference.md#delete-flags),
+   including delete's `--older-than` default of `7d`; and the rules about which values are refused. `--older-than` takes
+   a Go duration or a whole number of days such as `7d`, not both, for find and delete alike. For delete:
+   `--trust-state` and `--ignore-state` cannot be combined; `--ignore-state` needs at least one `--include` and refuses
+   `--dest` and `--state-dir`; without `--force`, delete only previews, as `--dry-run` does, and `--force` with
+   `--dry-run` is refused. `--force` only means "act": it never skips or weakens the proof, and `--trust-state` and
+   `--ignore-state` are the only ways to ask for less. A new flag whose default keeps the old behavior is additive. The
+   [selection](reference.md#selection), the same for sync and find: the whole share except what an exclude pattern
+   matches; the built-in patterns are exactly the listed `--exclude` flags, and adding, removing or changing one is
+   breaking; `--exclude` adds to them and `--no-default-excludes` removes them all; with one or more `--include`
+   patterns, only files that an include matches, or that are in a folder an include matches, are selected; excludes
+   always win over includes, whatever the order; one pattern grammar for both flags, that an excluded folder is not
+   listed, and that case is ignored by lowercasing with no Unicode normalization. For browse, as in [browse
+   flags](reference.md#browse-flags): `--endpoint`, `--listen` with its default `127.0.0.1:0`, `--open`, off by default,
+   `--dest` and `--state-dir`; `--listen` takes an IP address and a port, never a host name; and browse has no selection
+   flags, so it shows the whole share.
 2. **Runtime inputs.** The binary reads no configuration file and no environment variables of its own; every
    setting is a flag. The default `--state-dir` comes from the operating system's per-user config folder, as in
    [location](reference.md#location). Adding opt-in configuration later is additive and must not override explicit
    flags.
-3. **Exit codes.** 0, 1 and 2, as in [exit codes](reference.md#exit-codes),
-   [find exit codes](reference.md#find-exit-codes) and [delete exit codes](reference.md#delete-exit-codes), and which
-   outcome maps to which code. For delete, kept files never change the exit code.
+3. **Exit codes.** 0, 1 and 2, as in [exit codes](reference.md#exit-codes), [find exit
+   codes](reference.md#find-exit-codes), [delete exit codes](reference.md#delete-exit-codes) and [browse exit
+   codes](reference.md#browse-exit-codes), and which outcome maps to which code. For delete, kept files never change the
+   exit code.
 4. **What the commands do to the device.** Every command logs in as guest to the share `EMMC Images`. `sync` and
-   `find` only read: they never create, change, rename, delete or lock anything on the share. `delete` is the only
-   command that changes the share. It removes regular files that pass its proof mode and folders that the same run
-   emptied, and never the share root. It never writes file contents, and never creates, renames or locks anything.
-   To remove a file or folder that the share marks read-only, it may first clear that read-only attribute. The
-   attribute can stay cleared if the removal then fails. A release in which `sync` or `find` changes the device, or
-   in which `delete` does more than this, is breaking.
+   `find` only read: they never create, change, rename, delete or lock anything on the share. `browse` only reads from
+   the device, as they do. `delete` is the only command that changes the share. It removes regular files that pass its
+   proof mode and folders that the same run emptied, and never the share root. It never writes file contents, and never
+   creates, renames or locks anything. To remove a file or folder that the share marks read-only, it may first clear
+   that read-only attribute. The attribute can stay cleared if the removal then fails. A release in which `sync`, `find`
+   or `browse` changes the device, or in which `delete` does more than this, is breaking.
 
    The [proof modes](reference.md#proof-modes): by default a file is removed only when the state records its path
    with the size and mtime the device lists and the local copy's SHA-256 is the recorded one; with `--trust-state`
@@ -97,6 +100,8 @@ The [command reference](reference.md) has the detail of each item.
     [statuses](reference.md#statuses) `copied`, `changed` and `new` and the rule for each. Find writes nothing on
     disk and never creates `--dest` or the state. Adding a JSONL member is additive; removing or renaming one,
     adding or changing a text field, adding a status or changing what one means is breaking.
+11. **browse's output.** Once it is listening, browse prints exactly one line to stdout, a URL that opens the page,
+    and nothing else.
 
 ## Not in the contract
 
@@ -107,7 +112,9 @@ The [command reference](reference.md) has the detail of each item.
 - scripts/, docs/development/ and the test fixtures.
 - Timing and throughput: pass duration, the order files are copied in, and how reads are split on the wire. The
   meaning of `--interval`, `--ready-age` and `--first-pass-age` is in the contract; how long a pass takes is not.
-- Which SMB dialect and features are negotiated with the device, as long as items 1-10 hold.
+- Which SMB dialect and features are negotiated with the device, as long as items 1-11 hold.
+- browse's page and server: its URLs and routes, the exact form of the printed URL, the `/api/` JSON, the HTML, CSS
+  and JavaScript, the HTTP headers, and the idle and grace times of its device session.
 
 ## Bumps
 

@@ -14,6 +14,8 @@ log line. The [README](../README.md) has a first run.
 - [Windows](#windows)
 - [find](#find): listing the share, its [text](#text-format) and
   [JSONL](#jsonl-format) formats, and [statuses](#statuses)
+- [browse](#browse): a read-only web page over the share, and
+  [who can use it](#who-can-use-the-page)
 - [delete](#delete): [proof modes](#proof-modes),
   [how delete decides](#how-delete-decides), [emptied folders](#emptied-folders)
   and [the check-then-remove race](#the-check-then-remove-race)
@@ -585,7 +587,8 @@ Without `--once` or `--dry-run`, failed passes and failed files do not end
 sync: it logs them and tries again on the next pass.
 
 For `find`, see [find exit codes](#find-exit-codes); for `delete`, see
-[delete exit codes](#delete-exit-codes).
+[delete exit codes](#delete-exit-codes); for `browse`, see
+[browse exit codes](#browse-exit-codes).
 
 ## Names that fail
 
@@ -821,6 +824,186 @@ time=2026-11-09T09:00:01.502Z level=INFO msg="listing done" files=212 folders=9 
 | 0 | The listing is complete. |
 | 1 | The state could not be read, the connection or a listing failed (`connect to ...` or `list the share: ...`), the output could not be written, or a signal stopped find before it wrote the whole listing. |
 | 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--format` or `--older-than`, an empty `--dest` or `--state-dir`, `--state-dir` without `--dest`, or a positional argument. |
+
+## browse
+
+```sh
+seestar-copy-cli browse --endpoint HOST:PORT [--dest DIR] [--listen ADDR] [--open]
+```
+
+Serves a read-only web page for looking through the telescope's share. The
+page lists one folder at a time, shows a `.jpg`, a `.txt` or a FITS header
+when you click it, and saves any file to this computer through the browser. With `--dest`, each file
+shows its [status](#statuses) in that destination's state, as for find.
+Like sync and find, browse only reads from the telescope, and it writes
+nothing on disk: not the destination, not the state, not a lock.
+
+```sh
+seestar-copy-cli browse --endpoint 127.0.0.1:4445 --open
+seestar-copy-cli browse --endpoint 127.0.0.1:4445 --dest ~/Seestar
+```
+
+Once it is listening, browse prints exactly one line to stdout, the page's
+URL, and serves until Ctrl+C or SIGTERM:
+
+```text
+http://127.0.0.1:53817/
+```
+
+For `--listen` `0.0.0.0` or `::`, the URL uses `127.0.0.1` or `[::1]`, with
+the port browse listens on.
+
+### browse flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--endpoint` | none; required | As for sync. See [endpoint](#endpoint). |
+| `--listen` | `127.0.0.1:0` | The IP address and port to serve the page on. Port `0` picks a free port. See below. |
+| `--open` | off | Also open the page in the default browser. The URL is printed either way. |
+| `--dest` | none | As for find: a destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
+| `--state-dir` | as for sync | As for find: the folder that holds the state file of `--dest`. Only with `--dest`, and it must not be empty when given. |
+
+Browse has no selection: it shows the whole share, and `--exclude`,
+`--no-default-excludes` and `--include` are unknown flags.
+
+`--listen` takes an IP address and a port, such as `127.0.0.1:0`,
+`[::1]:8080`, `192.168.1.5:0` or `0.0.0.0:0`, never a host name, not even
+`localhost`. An IPv4-mapped IPv6 address, such as `[::ffff:192.168.1.5]:0`,
+and an address with a zone, such as `[fe80::1%en0]:0`, are refused too. Use
+the plain IPv4 address for a mapped address. An IPv6 address with a zone is
+not supported; choose another address, such as `[::1]:0` or an available IPv4
+address.
+
+Loopback addresses, such as the default, serve this computer only. A
+non-loopback address, including `0.0.0.0` or `::`, serves the share without a
+password to anyone who can reach it, and browse logs a WARN line,
+`serving the share unauthenticated to the network`, when it starts.
+
+All flags are checked before anything touches the network or the disk, and a
+bad one exits 2.
+
+### The page
+
+The page shows the endpoint, the path of the folder as links back to each
+parent, and one row per folder and regular file in it, folders first, with a
+preview, the name, the size, the modification time, the status with
+`--dest`, and a Save link for each file. Links and other kinds of entries
+are left out, as find leaves them out. Click a folder to open it; the
+browser's Back button returns to the previous folder.
+
+A file's preview is the telescope's own small image: for a file `S.ext`,
+`S_thn.jpg` in the same folder if there is one, and otherwise `S.jpg`. Browse
+renders no FITS image, plays no video and processes no image.
+
+Clicking the name or the preview of a file opens a viewer with its own Save
+link for these names, matched in any case:
+
+| Name ends in | Clicking it shows |
+| --- | --- |
+| `.jpg` | The image. |
+| `.txt` | Its text, read as UTF-8. For a file over 1 MiB, only the first 1 MiB is shown, with a note; save the file to see all of it. |
+| `.fit` or `.fits` | Its FITS primary header as text, one card per line, up to the `END` card, without blank cards. Browse reads at most the first 28,800 bytes (ten 2,880-byte blocks); if no `END` card is in them, it shows what it read, with a note. The image itself is never shown. |
+
+The browser is given a `.jpg` as `image/jpeg` and a `.txt` as
+`text/plain; charset=utf-8`. Every other file, whatever its name, including
+a FITS file, is sent as a download, never shown by the browser itself; the
+page reads a FITS header on its own. Save links save the file under its name
+on the share, through the browser's own download.
+
+Each listing reads the folder from the telescope again, and with `--dest`
+reads the state again whenever the state file's size or modification time
+has changed, so the statuses follow a sync running at the same time. Browse takes no [lock](#lock). A file still being written can be shown
+or saved torn; open it again once it has stopped changing.
+
+A failed request never stops browse. A telescope that cannot be reached, a
+listing or read that fails and a state file that fails to load are shown on
+the page, and the next click tries again. A download that breaks partway
+fails in the browser.
+
+### The device session
+
+Browse logs in to the share on the first request, uses that one session for
+every request, and logs off after 30 seconds without one. An SMB error
+other than a missing path, a refused access or the wrong kind of entry
+closes the session, and so does a request
+whose device call is still running 5 seconds after its browser went away.
+The next request logs in again. A login that takes longer than 30 seconds
+fails. None of these times is a flag.
+
+### Who can use the page
+
+Browse has no password or token. The page and everything it reads are open
+to:
+
+- **Any program and any account on this computer**, through the loopback
+  port. That gives them nothing new on the share, which they can reach as
+  guest through the same endpoint, but with `--dest` they also see which
+  files the state records as copied.
+- **Anyone on the network who can reach the address**, when `--listen` is
+  not a loopback address. They get the same read-only access to the share
+  and the statuses. Browse speaks plain HTTP, as the telescope's SMB guest
+  access is unencrypted too.
+
+Browse answers only requests whose `Host` is the address it listens on, or,
+for `0.0.0.0` or `::`, any IP address with its port. A host name is
+refused, so a web site cannot reach browse by pointing its own name at
+`127.0.0.1`. A browser that sends Fetch Metadata marks a request that comes
+from another web site, and browse refuses it with 403 before it touches the
+telescope or the state, on every route, the page included. Browse sends no
+CORS headers, so another site's script cannot read its answers, and it sends
+`Cross-Origin-Resource-Policy: same-origin`, so the browser does not hand a
+file to another site's page.
+
+When Fetch Metadata is absent, including on ordinary HTTP LAN URLs and in
+older browsers, cross-site requests can reach the share if other browser
+restrictions permit them. SOP and no CORS prevent script access to response
+bodies. CORP additionally blocks cross-origin no-cors resource delivery in
+browsers that implement it. Browsers lacking CORP can expose image load
+results and dimensions, and response timing can expose information. Browse
+does not promise zero blind reads or zero metadata leakage in this case.
+Such requests can still change nothing: browse only reads.
+
+A browser extension allowed on every site, and malware running as you, can
+read the page as you do.
+
+### Stopping browse
+
+Ctrl+C or SIGTERM stops browse: it logs off the device, which ends any read
+in progress, gives open requests a second to finish, closes the rest and
+exits 0. A download cut off this way fails in the browser.
+
+### browse logs
+
+Browse logs to stderr as sync does. It logs no line per request, and none
+for a refused request, so a hostile page cannot fill the log. An open with
+`--dest` looks like this:
+
+```text
+time=2026-11-09T09:00:00.004Z level=INFO msg="browse listening" addr=127.0.0.1:53817 endpoint=127.0.0.1:4445 dest=/home/me/Seestar
+time=2026-11-09T09:00:02.310Z level=INFO msg="session opened" endpoint=127.0.0.1:4445
+time=2026-11-09T09:01:12.950Z level=INFO msg="session closed" endpoint=127.0.0.1:4445 reason=idle
+```
+
+| Level | Message | Keys | When |
+| --- | --- | --- | --- |
+| INFO | `browse listening` | `addr`, `endpoint`, and `dest` when given | Browse is serving. |
+| WARN | `serving the share unauthenticated to the network` | `addr` | At start, when `--listen` is not a loopback address. |
+| INFO | `session opened` | `endpoint` | The login to the share succeeded. |
+| INFO | `session closed` | `endpoint`, `reason` | The session logged off. `reason` is `idle` after 30 seconds unused, `failed` after an SMB error, `stuck` when a call outlived its request by 5 seconds, or `stopped` when browse stopped. |
+| WARN | `connect failed` | `endpoint`, `error` | The login failed or took longer than 30 seconds. The requests waiting on it are answered with the error. |
+| WARN | `request failed` | `path`, `error` | A listing or file read failed on the device, the state could not be read, or a download broke after it started. Not for a refused request, a path that does not exist, or a browser that went away. |
+| WARN | `could not open a browser` | `error` | `--open` failed. Browse keeps serving; open the printed URL yourself. |
+| WARN | `ignored the torn final line of the state file` | `file`, `line`, `reason` | As in find. |
+| INFO | `browse stopped` | | A signal stopped browse. |
+| ERROR | `browse failed` | `error` | Browse is exiting 1. |
+
+### browse exit codes
+
+| Code | Meaning |
+| --- | --- |
+| 0 | Stopped by a signal. |
+| 1 | Browse could not start or keep serving: the address could not be listened on, the state of `--dest` could not be read when browse started, the URL could not be written to stdout, or the HTTP server stopped with an error. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--state-dir`, `--state-dir` without `--dest`, or a positional argument. |
 
 ## delete
 
@@ -1060,6 +1243,8 @@ the output exits 1. See [NOTICE](../NOTICE).
   need no value; `--once=false` turns one off. A flag given twice keeps the
   last value, except `--exclude`, which collects every value.
 - Help and version need no network and touch no files.
+- `sync` without `--once` or `--dry-run`, and `browse`, run until Ctrl+C or
+  SIGTERM stops them. The other commands run once and exit.
 
 ## Verifying a release
 

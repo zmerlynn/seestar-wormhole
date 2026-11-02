@@ -60,7 +60,7 @@ func newCommand(stdout io.Writer, log *slog.Logger) *cobra.Command {
 	})
 	root.SetFlagErrorFunc(flagError)
 	root.Flags().BoolVar(&showVersion, "version", false, "print version, revision and platform")
-	root.AddCommand(newSyncCommand(log), newFindCommand(log), newDeleteCommand(log), &cobra.Command{
+	root.AddCommand(newSyncCommand(log), newFindCommand(log), newBrowseCommand(log), newDeleteCommand(log), &cobra.Command{
 		Use:   "licenses",
 		Short: "Print the license of this program and of the libraries in this build",
 		Args:  noArguments,

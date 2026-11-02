@@ -18,8 +18,8 @@ import (
 
 // invalidRemovePaths are paths a remove method must refuse before it looks
 // at the share: the root, a leading or trailing slash, an empty, . or ..
-// element, and a backslash.
-var invalidRemovePaths = []string{"", ".", "/a", "a/", "a//b", "a/./b", "a/../b", "..", `a\b`}
+// element, a backslash and a NUL.
+var invalidRemovePaths = []string{"", ".", "/a", "a/", "a//b", "a/./b", "a/../b", "..", `a\b`, "a\x00b"}
 
 // removeTree makes a tree for the remove tests and returns its folder and
 // the listed entry of a/b.fit.
@@ -212,7 +212,7 @@ func TestSessionStaysReadOnly(t *testing.T) {
 	for m := range st.Methods() {
 		got = append(got, m.Name)
 	}
-	if want := []string{"Close", "Open", "Walk"}; !slices.Equal(got, want) {
+	if want := []string{"Close", "Open", "ReadDir", "Walk"}; !slices.Equal(got, want) {
 		t.Errorf("Session methods = %v, want %v", got, want)
 	}
 	rt := reflect.TypeFor[Remover]()
