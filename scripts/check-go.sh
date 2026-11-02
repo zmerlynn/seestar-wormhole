@@ -19,3 +19,6 @@ go run ./scripts/generate-licenses.go --check
 # The Samba tests run separately (scripts/test-smb.sh); here they only build.
 go vet -p 2 -tags smbintegration ./internal/remote
 go test -p 2 -race -count=2 -timeout 20m ./...
+# The release tooling is outside ./... behind the release build tag.
+go vet scripts/release.go scripts/release_test.go
+go test scripts/release.go scripts/release_test.go

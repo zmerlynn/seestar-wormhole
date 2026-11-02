@@ -9,6 +9,7 @@ is stopped.
 
 - [Architecture](#architecture)
 - [Build and check](#build-and-check)
+- [Releasing](#releasing)
 - [Project rules](#project-rules)
 - [Reviewing a change](#reviewing-a-change)
 
@@ -70,8 +71,8 @@ image with Podman, so no Go is needed on the host:
 
 The checks are in `scripts/check-go.sh`, which CI runs too: formatting,
 build, cross-builds and vet for every release target, the license catalog
-check, and the race tests. The build and module caches live under
-`${XDG_CACHE_HOME:-$HOME/.cache}/seestar-copy/`; set
+check, the race tests, and the release tooling tests. The build and module
+caches live under `${XDG_CACHE_HOME:-$HOME/.cache}/seestar-copy/`; set
 `SEESTAR_COPY_BUILD_CACHE` or `SEESTAR_COPY_MODULE_CACHE` to move them.
 
 `./scripts/test-smb.sh` runs the `internal/remote` tests against a Samba
@@ -92,6 +93,14 @@ To build the command:
 ```sh
 go build -mod=vendor ./cmd/seestar-copy-cli
 ```
+
+## Releasing
+
+A `v*` tag builds the release: Linux and Windows archives, a signed and
+notarized universal Mac DMG, and `SHA256SUMS`, in a draft GitHub Release.
+[Cutting a release](releasing.md) describes the build mechanics, the Mac
+signing secrets, rehearsing with a manual run, and checking that the
+archives are reproducible.
 
 ## Project rules
 

@@ -16,6 +16,17 @@ env:
   GOSUMDB: 'off'
 
 jobs:
+  go-support:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test Go support check
+        run: ./scripts/test-go-support.sh
+      - name: Check Go support
+        run: ./scripts/check-go-support.sh
+
   verify:
     runs-on: ubuntu-24.04
     container: golang:1.27.3
@@ -23,7 +34,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Format, build, cross-build, vet, license catalog and race tests
+      - name: Format, build, cross-build, vet, license catalog, race and release tooling tests
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           sh scripts/check-go.sh
@@ -56,6 +67,8 @@ jobs:
           else
             go test -v ./...
           fi
+      - name: Test release tooling
+        run: go test scripts/release.go scripts/release_test.go
       - name: Build and smoke test native binary
         run: |
           binary=seestar-copy-cli
