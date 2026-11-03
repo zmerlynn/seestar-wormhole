@@ -43,8 +43,8 @@ func (f pacedFile) WriteTo(w io.Writer) (int64, error) {
 	return int64(len(b)), nil
 }
 
-// Copying reports a download's bytes at most once a second and once at the
-// end, through the device file's WriteTo.
+// Copying reports a download's start, its bytes at most once a second and
+// once at the end, through the device file's WriteTo.
 func TestCopyingProgress(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		fx := newFixture(t, nil)
@@ -61,9 +61,9 @@ func TestCopyingProgress(t *testing.T) {
 			t.Fatalf("got results %+v, want one copied file", results)
 		}
 		fx.checkFile(t, "MyWorks/a.fit", "abcde")
-		// Bytes land at 0.6, 1.2, 1.8, 2.4 and 3.0 s: reports at 1.2 and
-		// 2.4 s, then the final one.
-		want := []call{{"MyWorks/a.fit", 2, 5}, {"MyWorks/a.fit", 4, 5}, {"MyWorks/a.fit", 5, 5}}
+		// The start, then bytes land at 0.6, 1.2, 1.8, 2.4 and 3.0 s:
+		// reports at 1.2 and 2.4 s, then the final one.
+		want := []call{{"MyWorks/a.fit", 0, 5}, {"MyWorks/a.fit", 2, 5}, {"MyWorks/a.fit", 4, 5}, {"MyWorks/a.fit", 5, 5}}
 		if !slices.Equal(calls, want) {
 			t.Errorf("Copying calls: got %v, want %v", calls, want)
 		}

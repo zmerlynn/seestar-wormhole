@@ -17,10 +17,15 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/zmerlynn/seestar-copy/internal/app"
+	"github.com/zmerlynn/seestar-copy/internal/remote"
 )
 
 // Builds set this with -ldflags "-X main.version=...".
 var version = "development"
+
+// testDial, if not nil, replaces the app's SMB client. Only the native
+// check's build sets it.
+var testDial func(ctx context.Context, endpoint string) (remote.Session, error)
 
 // reportStartupError shows an error that stops the app in a native
 // message, besides stderr, which a window's user may not see. Only main
@@ -72,7 +77,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		path = filepath.Join(stateDir, "app.json")
 	}
 	open, native := present(stdout)
-	err = app.Run(ctx, app.Options{SettingsPath: path, StateDir: stateDir, Version: version, Log: newLogger(stderr), Native: native}, open)
+	err = app.Run(ctx, app.Options{SettingsPath: path, StateDir: stateDir, Version: version, Log: newLogger(stderr), Native: native, Dial: testDial}, open)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		reportStartupError(err)

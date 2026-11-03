@@ -73,6 +73,7 @@ func newAppEnv(t *testing.T, fileData string) *appEnv {
 	}
 	e.s.startBrowse()
 	t.Cleanup(e.s.close)
+	t.Cleanup(e.s.copy.quit)
 	return e
 }
 

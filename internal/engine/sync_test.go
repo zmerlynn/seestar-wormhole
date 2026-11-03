@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync/atomic"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/zmerlynn/seestar-copy/internal/copier"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
+	"github.com/zmerlynn/seestar-copy/internal/state"
 )
 
 // oldMTime is the device mtime of the test files: old enough to copy.
@@ -58,10 +61,13 @@ func TestSyncHooks(t *testing.T) {
 		Listed:  func(n int) { listed = append(listed, n) },
 		Planned: func(files int, bytes int64) { planned = append(planned, [2]int64{int64(files), bytes}) },
 		Copying: func(p string, n, size int64) {
-			if n != size {
-				t.Errorf("Copying %s: got %d of %d bytes; a fast copy reports only once, at the end", p, n, size)
+			switch n {
+			case 0:
+			case size:
+				copying = append(copying, p)
+			default:
+				t.Errorf("Copying %s: got %d of %d bytes; a fast copy reports only its start and its end", p, n, size)
 			}
-			copying = append(copying, p)
 		},
 		Done:     func(r copier.Result) { done = append(done, r.Decision.Path) },
 		PassDone: func(s Summary) { sums = append(sums, s) },
@@ -208,4 +214,80 @@ func TestCheckNow(t *testing.T) {
 			t.Errorf("got err %v after a stop, want nil", err)
 		}
 	})
+}
+
+// With Recreate, a destination removed between passes is created again,
+// and a later pass copies a new file there, while the state stays open
+// and locked. Without it, as in the CLI, the new file fails.
+func TestRecreate(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows refuses to remove a folder the copier has open, so it can't go missing while copying is on")
+	}
+	for _, recreate := range []bool{true, false} {
+		t.Run(fmt.Sprint("recreate=", recreate), func(t *testing.T) {
+			check := make(chan struct{})
+			files := fstest.MapFS{"MyWorks/a.jpg": file("abc")}
+			o := syncOptions(t, files, nil)
+			o.Once, o.CheckNow, o.Recreate = false, check, recreate
+			sums := make(chan Summary)
+			o.Hooks.PassDone = func(s Summary) { sums <- s }
+			ctx, cancel := context.WithCancel(t.Context())
+			done := make(chan error)
+			go func() { done <- RunSync(ctx, o, discard) }()
+			// Each wait is bounded, so a lost pass fails here, not at the
+			// package timeout.
+			next := func() Summary {
+				t.Helper()
+				select {
+				case s := <-sums:
+					return s
+				case <-time.After(10 * time.Second):
+					t.Fatal("no pass ended")
+					return Summary{}
+				}
+			}
+			press := func() {
+				t.Helper()
+				select {
+				case check <- struct{}{}:
+				case <-time.After(10 * time.Second):
+					t.Fatal("the loop did not take Check now")
+				}
+			}
+			if s := next(); s.Copied != 1 {
+				t.Fatalf("first pass: got %+v, want 1 copied", s)
+			}
+			if err := os.RemoveAll(o.Dest); err != nil {
+				t.Fatal(err)
+			}
+			// A new file waits one pass to be seen unchanged.
+			files["MyWorks/b.jpg"] = file("b")
+			press()
+			if s := next(); s.Waiting != 1 {
+				t.Fatalf("second pass: got %+v, want b.jpg waiting", s)
+			}
+			press()
+			s := next()
+			if _, err := state.Open(o.StateDir, o.Dest, discard); !errors.Is(err, state.ErrLocked) {
+				t.Errorf("a second open during the loop: got %v, want ErrLocked", err)
+			}
+			_, statErr := os.Stat(filepath.Join(o.Dest, "MyWorks", "b.jpg"))
+			if recreate {
+				if s.Copied != 1 || len(s.Failed) != 0 || statErr != nil {
+					t.Errorf("third pass: got %+v and stat %v, want b.jpg copied", s, statErr)
+				}
+			} else if len(s.Failed) != 1 || statErr == nil {
+				t.Errorf("third pass: got %+v and stat %v, want b.jpg failed and absent", s, statErr)
+			}
+			cancel()
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Errorf("got err %v after a stop, want nil", err)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the loop did not return after a stop")
+			}
+		})
+	}
 }

@@ -7,41 +7,79 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"testing/fstest"
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+
+	"github.com/zmerlynn/seestar-copy/internal/plan"
+	"github.com/zmerlynn/seestar-copy/internal/remote"
+	"github.com/zmerlynn/seestar-copy/internal/state"
 )
 
 // fixture drives the real window for the native check in CI, which builds
-// it with -tags guitest; release builds have none. SEESTAR_COPY_GUITEST
-// says how the window is left once the page passes: "close" closes it on
-// macOS and Linux, and leaves it to the harness's WM_CLOSE on Windows;
-// "quit" waits for the harness's Quit event on macOS. It prints
+// it with -tags guitest; release builds have none. The app's telescope is
+// a fake whose one file, MyWorks/held.fit, stalls mid-download until the
+// copy is stopped. SEESTAR_COPY_GUITEST names the scenario:
+//
+//   - "close" holds that transfer, then closes the window on macOS and
+//     Linux, and leaves it to the harness's WM_CLOSE on Windows.
+//   - "quit" holds it, then waits for the harness's Quit event on macOS.
+//   - "hold" holds it and waits for the harness to stop the app.
+//   - "inuse" runs beside a "hold" app on the same folder, checks that it
+//     shows Folder in use and can't start copying, then closes as "close".
+//
+// SEESTAR_COPY_GUITEST_FOLDER is the settings' folder. The fixture prints
 // "guitest: ready" once the page has passed, and a receipt from Wails'
-// last shutdown hook once the app has stopped.
+// last shutdown hook once the app has stopped, after checking that a held
+// transfer left no temporary file and the state lock is free.
 type fixture struct {
 	ctx      context.Context // the window's
 	quit     func()
 	out      io.Writer
 	scenario string
+	folder   string
 	messages chan string   // from the page
 	loaded   chan struct{} // closed once the page has loaded
 	w        *application.WebviewWindow
 	seq      int
 }
 
+// held is closed once the fake's download of held.fit has stalled.
+var (
+	held     = make(chan struct{})
+	holdOnce = sync.OnceFunc(func() { close(held) })
+)
+
+func init() {
+	files := fstest.MapFS{"MyWorks/held.fit": {Data: make([]byte, 64<<10), ModTime: time.Unix(1761700000, 0), Mode: 0o644}}
+	testDial = func(context.Context, string) (remote.Session, error) {
+		f := remote.NewFake(files)
+		f.Faults = map[string]remote.Fault{"MyWorks/held.fit": {After: 1 << 10, Stall: holdOnce}}
+		return f, nil
+	}
+}
+
 func newFixture(ctx context.Context, quit func(), out io.Writer) (*fixture, error) {
 	scenario := os.Getenv("SEESTAR_COPY_GUITEST")
-	if scenario != "close" && scenario != "quit" {
-		return nil, errors.New(`this test build needs SEESTAR_COPY_GUITEST set to "close" or "quit"`)
+	switch scenario {
+	case "close", "quit", "hold", "inuse":
+	default:
+		return nil, errors.New(`this test build needs SEESTAR_COPY_GUITEST set to "close", "quit", "hold" or "inuse"`)
 	}
-	return &fixture{ctx: ctx, quit: quit, out: out, scenario: scenario, messages: make(chan string, 16), loaded: make(chan struct{})}, nil
+	folder := os.Getenv("SEESTAR_COPY_GUITEST_FOLDER")
+	if folder == "" {
+		return nil, errors.New("this test build needs SEESTAR_COPY_GUITEST_FOLDER set to the settings' folder")
+	}
+	return &fixture{ctx: ctx, quit: quit, out: out, scenario: scenario, folder: folder, messages: make(chan string, 16), loaded: make(chan struct{})}, nil
 }
 
 // configure takes the page's answers from the webview's own message
@@ -73,7 +111,12 @@ func (f *fixture) attach(a *application.App, w *application.WebviewWindow) {
 		select {
 		case <-f.ctx.Done():
 			fmt.Fprintln(f.out, "guitest: the app stopped before the window quit")
-		case <-time.After(5 * time.Second):
+			if f.scenario != "inuse" {
+				if err := f.checkStopped(); err != nil {
+					fmt.Fprintln(f.out, "guitest: FAIL:", err)
+				}
+			}
+		default:
 			fmt.Fprintln(f.out, "guitest: FAIL: the window quit before the app stopped")
 		}
 	})
@@ -95,26 +138,81 @@ func (f *fixture) drive() error {
 	case <-ctx.Done():
 		return fmt.Errorf("the page didn't load: %w", ctx.Err())
 	}
+	if f.scenario == "inuse" {
+		if err := f.inUse(ctx); err != nil {
+			return err
+		}
+	} else {
+		select {
+		case <-held:
+		case <-ctx.Done():
+			return fmt.Errorf("the copy didn't start held.fit: %w", ctx.Err())
+		}
+		if err := f.probe(ctx, `check(el('c-title').textContent==='Copying 1 of 1 file' && el('c-flight').textContent.includes('MyWorks/held.fit'),
+ {title:el('c-title').textContent,flight:el('c-flight').textContent})`); err != nil {
+			return fmt.Errorf("the page didn't show the held transfer: %w", err)
+		}
+	}
 	if err := f.probe(ctx, `(() => {
- const b=el('t-browse');
- if(!el('main').hidden && b.getAttribute('aria-selected')==='true') b.focus();
- return check(document.activeElement===b,{main:!el('main').hidden,browse:b.getAttribute('aria-selected'),focused:document.activeElement?.id});
+ const c=el('t-copy');
+ if(!el('main').hidden && c.getAttribute('aria-selected')==='true') c.focus();
+ return check(document.activeElement===c,{main:!el('main').hidden,copy:c.getAttribute('aria-selected'),focused:document.activeElement?.id});
 })()`); err != nil {
-		return fmt.Errorf("the page didn't show Browse: %w", err)
+		return fmt.Errorf("the page didn't show Copy: %w", err)
 	}
 	for _, k := range []struct{ key, want string }{
-		{"ArrowRight", "settings"}, {"ArrowRight", "browse"}, {"ArrowLeft", "settings"},
-		{"Home", "browse"}, {"End", "settings"}, {"End", "settings"}, {"Home", "browse"},
+		{"ArrowRight", "browse"}, {"ArrowRight", "settings"}, {"ArrowRight", "copy"}, {"ArrowLeft", "settings"},
+		{"Home", "copy"}, {"End", "settings"}, {"End", "settings"}, {"Home", "copy"},
 	} {
 		if err := f.probe(ctx, keyProbe(k.key, k.want)); err != nil {
 			return fmt.Errorf("%s: %w", k.key, err)
 		}
 	}
 	fmt.Fprintln(f.out, "guitest: ready")
-	if f.scenario == "close" && runtime.GOOS != "windows" {
+	if (f.scenario == "close" || f.scenario == "inuse") && runtime.GOOS != "windows" {
 		f.w.Close()
 	}
 	return nil
+}
+
+// inUse checks that the page shows Folder in use, and still does after
+// Start copying is pressed, which logs a second "copying stopped".
+func (f *fixture) inUse(ctx context.Context) error {
+	const shown = `el('c-title').textContent==='Another copy is already using this folder.' && !el('c-start').hidden`
+	const stops = `[...el('c-log').children].filter(li=>/ copying stopped( |$)/.test(li.textContent)).length`
+	if err := f.probe(ctx, `check(`+shown+` && `+stops+`===1,{title:el('c-title').textContent,stops:`+stops+`})`); err != nil {
+		return fmt.Errorf("the page didn't show Folder in use: %w", err)
+	}
+	if err := f.probe(ctx, `(() => {
+ if(!window.__guitestStart) {window.__guitestStart=true; el('c-start').click();}
+ return check(`+shown+` && `+stops+`===2,{title:el('c-title').textContent,stops:`+stops+`});
+})()`); err != nil {
+		return fmt.Errorf("Start copying didn't show Folder in use again: %w", err)
+	}
+	return nil
+}
+
+// checkStopped checks, once the app has stopped, that the held transfer
+// left no temporary file in the folder and that the state lock is free.
+func (f *fixture) checkStopped() error {
+	err := filepath.WalkDir(f.folder, func(p string, d fs.DirEntry, err error) error {
+		if err == nil && plan.IsTempName(d.Name()) {
+			return fmt.Errorf("a temporary file is left: %s", p)
+		}
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return err
+	}
+	st, err := state.Open(filepath.Join(base, "seestar-copy"), f.folder, nil)
+	if err != nil {
+		return fmt.Errorf("the state lock isn't free: %w", err)
+	}
+	return st.Close()
 }
 
 // keyProbe presses key on the focused tab, once, and checks that the tab

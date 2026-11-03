@@ -45,9 +45,10 @@ import (
 // Copier copies files into one destination and records them in its state.
 type Copier struct {
 	// Copying, if set, is called as a download writes its temporary file,
-	// with the share path, the bytes written so far and the listed size: at
-	// most about once a second per file, and once more when the download
-	// stops, however it stops. Calls for different files can overlap.
+	// with the share path, the bytes written so far and the listed size:
+	// once with 0 bytes when the download starts, then at most about once a
+	// second, and once more when it stops, however it stops. Calls for
+	// different files can overlap.
 	Copying func(path string, done, size int64)
 
 	root  *os.Root

@@ -64,6 +64,7 @@ func (c *Copier) download(ctx context.Context, sess remote.Session, d plan.Decis
 	if c.Copying != nil {
 		pw := &progressWriter{w: f, path: d.Path, size: d.Size, last: time.Now(), report: c.Copying}
 		w = pw
+		c.Copying(d.Path, 0, d.Size)
 		defer func() { c.Copying(d.Path, pw.done, d.Size) }()
 	}
 	sum, err := fetch(ctx, sess, d, w)

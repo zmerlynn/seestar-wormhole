@@ -11,20 +11,23 @@ const { expect } = base;
 const share = '127.0.0.1:14450';
 const refused = '127.0.0.1:1';
 
-// launch writes settings (an object, or a string as is; no file if
-// undefined) to app.json in dir and starts the app on it.
-async function launch(dir, settings) {
+// env is the environment of a program run with home as its home folder,
+// so that its state folder is home/config/seestar-copy.
+const env = (home) => ({ ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, 'config') });
+
+// launch writes settings (an object, a function of the app's folder that
+// returns one, or a string as is; no file if undefined) to app.json in dir
+// and starts the app on it, with home as its home folder (dir if not given).
+async function launch(dir, settings, home = dir) {
   const file = path.join(dir, 'config', 'app.json');
-  const folder = path.join(dir, 'Seestar');
+  const folder = path.join(home, 'Seestar');
+  if (typeof settings === 'function') settings = settings(folder);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   if (settings !== undefined) {
     fs.writeFileSync(file, typeof settings === 'string' ? settings : JSON.stringify(settings));
   }
-  const child = spawn(process.env.APP_BIN, ['--settings', file], {
-    env: { ...process.env, HOME: dir, XDG_CONFIG_HOME: path.join(dir, 'config') },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-  const app = { file, folder, home: dir, child, log: '' };
+  const child = spawn(process.env.APP_BIN, ['--settings', file], { env: env(home), stdio: ['ignore', 'pipe', 'pipe'] });
+  const app = { file, folder, home, child, log: '' };
   child.stderr.on('data', (b) => (app.log += b));
   app.exited = new Promise((resolve) => child.on('exit', resolve));
   app.url = await new Promise((resolve, reject) => {
@@ -40,13 +43,14 @@ async function launch(dir, settings) {
 
 // test gives each test startApp, which returns the app's URL, settings
 // file and folder for images; every app is stopped after the test and its
-// log attached.
+// log attached. startApp(settings, home) shares another app's home, and so
+// its state folder.
 const test = base.test.extend({
   // eslint-disable-next-line no-empty-pattern
   startApp: async ({}, use, testInfo) => {
     const apps = [];
-    await use(async (settings) => {
-      const app = await launch(testInfo.outputPath('app-' + apps.length), settings);
+    await use(async (settings, home) => {
+      const app = await launch(testInfo.outputPath('app-' + apps.length), settings, home);
       apps.push(app);
       return app;
     });
@@ -72,4 +76,43 @@ async function openApp(page, url) {
   await expect(page.locator('#loading')).toBeHidden();
 }
 
-module.exports = { test, expect, share, refused, readSettings, frame, browseStatus, tab, field, openApp };
+// fakeStatus answers the page's status polls with the real status, its
+// copy view replaced by view() when that returns one. A view's activity,
+// if any, replaces Recent activity.
+async function fakeStatus(page, view) {
+  await page.route('**/app/api/status', async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    const v = view();
+    if (v) {
+      const { activity, ...copy } = v;
+      data.copy = { on: true, contact: 'ok', chip: 'Copying', ...copy };
+      if (activity) Object.assign(data, { activity, activity_seq: activity.length });
+    }
+    await route.fulfill({ response, json: data });
+  });
+}
+
+// Synthetic Copy views of an active pass, with a long path in flight and
+// failed, for screenshots and layouts.
+const longPath = 'MyWorks/NGC 7000 North America Nebula/Stacked_210_NGC7000_10.0s_IRCUT_' + '20261029-033119'.repeat(4) + '.fit';
+const copyViews = {
+  copying: {
+    state: 'copying', title: 'Copying 3 of 12 files',
+    progress: {
+      done: 1200, total: 4000, bytes: '1.2 GB of 4.0 GB', speed: '9.8 MB/s', left: 'About 5 min left', found: 'Found already in your folder: 3',
+      flight: [{ path: longPath, percent: 40 }, { path: 'MyWorks/M 31/Stacked_M 31.jpg', percent: 5 }],
+    },
+  },
+  failures: {
+    state: 'failures', title: 'Check finished with 1 file not copied. Next check at 21:40.', chip: '1 file not copied',
+    summary: 'Copied 11 files (3.9 GB) in 7 min. 1 failed.',
+    notice: '1 file couldn\'t be copied. It will be tried again at the next check.',
+    failed: [{ path: longPath, reason: "The telescope's file changed size while copying" }],
+    activity: [{ time: '21:35:02', warn: true, text: `copy failed path="${longPath}" err="the connection was reset"` }],
+  },
+};
+
+module.exports = {
+  test, expect, share, refused, env, readSettings, frame, browseStatus, tab, field, openApp, fakeStatus, longPath, copyViews,
+};

@@ -11,6 +11,8 @@ import (
 	"net/netip"
 	"sync"
 	"time"
+
+	"github.com/zmerlynn/seestar-copy/internal/remote"
 )
 
 // Options is what the app runs with.
@@ -20,6 +22,9 @@ type Options struct {
 	Version      string
 	Log          *slog.Logger
 	Native       *Native // the window's dialogs; nil without a window
+	// Dial opens the telescope's sessions, for Browse and copying; nil is
+	// remote.Dial. Tests replace it.
+	Dial func(ctx context.Context, endpoint string) (remote.Session, error)
 }
 
 // Native is the window's own dialogs. Each may be called from any
@@ -58,7 +63,15 @@ func Run(ctx context.Context, o Options, open func(ctx context.Context, url stri
 	addr := netip.AddrPortFrom(netip.AddrFrom4([4]byte{127, 0, 0, 1}), uint16(ln.Addr().(*net.TCPAddr).Port))
 	s := newServer(running, addr, hex.EncodeToString(raw), o.Version, o.StateDir, file, o.Log)
 	s.native = o.Native
+	if o.Dial != nil {
+		s.dial = o.Dial
+	}
 	s.startBrowse()
+	if file.setUp() && file.settings.StartCopying {
+		if err := s.startCopying(); err != nil {
+			o.Log.Error("start copying", "err", err)
+		}
+	}
 	srv := &http.Server{
 		Handler:           s,
 		ReadHeaderTimeout: 3 * time.Second,
@@ -92,6 +105,7 @@ func Run(ctx context.Context, o Options, open func(ctx context.Context, url stri
 		// waiting on one finish within a second.
 		stopRunning()
 		s.close()
+		s.copy.quit()
 		stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 		srv.Shutdown(stop)
 		cancel()

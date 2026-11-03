@@ -1,16 +1,18 @@
 // The seestar-copy app page: Setup, Settings, field errors and the Browse
 // tab, against the browser-only app and the Samba fixture's browse tree.
+// The Copy tab's tests are in copy.spec.js.
 const path = require('node:path');
-const { test, expect, share, refused, readSettings, frame, browseStatus, tab, field, openApp } = require('./app');
+const { test, expect, share, refused, readSettings, frame, browseStatus, tab, field, openApp, fakeStatus, copyViews } = require('./app');
 
 const rootStatus = '2 folders, 2 files.';
 const connected = /^Connected\. The telescope's share has the folders (Long names and MyWorks|MyWorks and Long names)\.$/;
 const refusedMessage = "127.0.0.1 answered but refused port 1. Is this the telescope's address?";
 
-// setUp is a saved Setup for the fixture, with a key from a later version.
-const setUp = (folder) => ({ version: 1, address: share, folder, later: { kept: true } });
+// setUp is a saved Setup for the fixture that doesn't start copying, with
+// a key from a later version.
+const setUp = (folder) => ({ version: 1, address: share, folder, start_copying: false, later: { kept: true } });
 
-test('Setup saves the address and folder and opens the Browse tab', async ({ page, startApp }) => {
+test('Setup saves the address and folder and opens the Copy tab', async ({ page, startApp }) => {
   const app = await startApp();
   await openApp(page, app.url);
   await expect(page.getByRole('heading', { name: 'Welcome to seestar-copy' })).toBeVisible();
@@ -25,18 +27,21 @@ test('Setup saves the address and folder and opens the Browse tab', async ({ pag
   await field(page, 'Folder for your images').fill(app.folder);
   await page.getByRole('button', { name: 'Save without copying' }).click();
 
-  // Save went away: focus is on the new state's heading, with Browse selected.
-  await expect(tab(page, 'Browse')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.locator('#h-main')).toBeFocused();
+  // Save went away: focus is on the new state's heading, with Copy selected.
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#c-title')).toBeFocused();
+  await expect(page.locator('#c-title')).toHaveText('Copying is off.');
   await expect(page.locator('#haddr')).toHaveText(share);
+  // Test ran on Save; the header shows the contact, and focus stays.
+  await expect(page.locator('#hdot')).toHaveText('Reachable');
+  await expect(page.locator('#c-title')).toBeFocused();
+
+  await tab(page, 'Browse').click();
   await expect(browseStatus(page)).toHaveText(rootStatus);
   // Browse's own header is hidden; its statuses are on, all new.
   await expect(frame(page).locator('header')).toBeHidden();
   await expect(frame(page).locator('#list.statuses')).toBeVisible();
   await expect(frame(page).locator('.badge.new').first()).toBeVisible();
-  // Test ran on Save; the header shows the contact, and focus stays.
-  await expect(page.locator('#hdot')).toHaveText('Reachable');
-  await expect(page.locator('#h-main')).toBeFocused();
 
   const saved = readSettings(app.file);
   expect(saved).toMatchObject({ version: 1, address: share, folder: app.folder, interval_minutes: 5, skip_built_in: true, start_copying: true });
@@ -62,6 +67,7 @@ test('a Test passed before Setup is saved shows in the header without another Te
   await page.getByRole('button', { name: 'Save without copying' }).click();
   await expect(page.locator('#hdot')).toHaveText('Reachable');
   await expect(page.locator('#hdot')).toBeVisible();
+  await tab(page, 'Browse').click();
   await expect(browseStatus(page)).toHaveText(rootStatus);
   expect(n.tests).toBe(1);
 });
@@ -119,25 +125,31 @@ test('Test reports success and failure under the address', async ({ page, startA
 test('the tabs follow the tab pattern', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openApp(page, app.url);
+  const copy = tab(page, 'Copy');
   const browse = tab(page, 'Browse');
   const settings = tab(page, 'Settings');
-  await expect(browse).toHaveAttribute('aria-selected', 'true');
-  await expect(browse).toHaveAttribute('tabindex', '0');
+  await expect(copy).toHaveAttribute('aria-selected', 'true');
+  await expect(copy).toHaveAttribute('tabindex', '0');
+  await expect(browse).toHaveAttribute('tabindex', '-1');
   await expect(settings).toHaveAttribute('tabindex', '-1');
+  await expect(page.locator('#p-browse')).toBeHidden();
   await expect(page.locator('#p-settings')).toBeHidden();
 
-  await browse.focus();
-  await page.keyboard.press('ArrowRight');
-  await expect(settings).toBeFocused();
-  await expect(settings).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('tabpanel', { name: 'Settings' })).toBeVisible();
-  await expect(page.locator('#p-browse')).toBeHidden();
+  await copy.focus();
   await page.keyboard.press('ArrowRight');
   await expect(browse).toBeFocused();
+  await expect(browse).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByRole('tabpanel', { name: 'Browse' })).toBeVisible();
+  await expect(page.locator('#p-copy')).toBeHidden();
+  await page.keyboard.press('ArrowRight');
+  await expect(settings).toBeFocused();
+  await expect(page.getByRole('tabpanel', { name: 'Settings' })).toBeVisible();
+  await page.keyboard.press('ArrowRight');
+  await expect(copy).toBeFocused();
   await page.keyboard.press('End');
   await expect(settings).toBeFocused();
   await page.keyboard.press('Home');
-  await expect(browse).toBeFocused();
+  await expect(copy).toBeFocused();
   await page.keyboard.press('ArrowLeft');
   await expect(settings).toBeFocused();
   await expect(settings).toHaveAttribute('aria-selected', 'true');
@@ -208,6 +220,7 @@ test('a new address replaces Browse, and its errors say to select Share', async 
   const app = await startApp(setUp('/nowhere'));
   await openApp(page, app.url);
   const n = countTests(page);
+  await tab(page, 'Browse').click();
   await expect(browseStatus(page)).toHaveText(rootStatus);
   await frame(page).getByRole('link', { name: 'MyWorks/', exact: true }).click();
   await expect(browseStatus(page)).toHaveText('1 folder, 0 files.');
@@ -291,6 +304,9 @@ for (const colorScheme of ['light', 'dark']) {
 
     const app = await startApp(setUp('/nowhere'));
     await openApp(page, app.url);
+    await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+    await shot('copy-off');
+    await tab(page, 'Browse').click();
     await expect(browseStatus(page)).toHaveText(rootStatus);
     await shot('browse');
     await tab(page, 'Settings').click();
@@ -371,6 +387,13 @@ for (const [layout, { width }] of Object.entries(layouts)) {
 
     const app = await startApp(setUp('/nowhere'));
     await openApp(page, app.url);
+    await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+    await restyle(page, layout);
+    await fits(page);
+    await tabsWrap(page);
+    await shot('copy');
+
+    await tab(page, 'Browse').click();
     await expect(browseStatus(page)).toHaveText(rootStatus);
     const browse = await (await page.locator('#b-frame').elementHandle()).contentFrame();
     await restyle(page, layout);
@@ -389,5 +412,21 @@ for (const [layout, { width }] of Object.entries(layouts)) {
     await fits(page);
     await tabsWrap(page);
     await shot('settings');
+
+    // An active pass, with long paths in flight and failed, and the lists
+    // open.
+    let v = null;
+    await fakeStatus(page, () => v);
+    for (const [name, view] of Object.entries(copyViews)) {
+      v = view;
+      await page.reload();
+      await expect(page.locator('#loading')).toBeHidden();
+      await expect(page.locator('#c-title')).toHaveText(view.title);
+      if (view.failed) await page.getByText('Show files').click();
+      if (view.activity) await page.getByText('Recent activity').click();
+      await restyle(page, layout);
+      await fits(page);
+      await shot('copy-' + name);
+    }
   });
 }

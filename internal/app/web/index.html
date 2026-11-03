@@ -21,20 +21,51 @@
 <h1 id="h-main" tabindex="-1"><img src="/app/icon.svg" alt="">seestar-copy</h1>
 <span id="haddr" class="mono"></span>
 <span id="hdot" class="dot" hidden></span>
+<span id="hchip" class="chip off"></span>
 </header>
 <nav class="tabs" role="tablist" aria-label="seestar-copy">
+<button class="tab" role="tab" id="t-copy" aria-controls="p-copy" data-tab="copy" type="button">Copy</button>
 <button class="tab" role="tab" id="t-browse" aria-controls="p-browse" data-tab="browse" type="button">Browse</button>
 <button class="tab" role="tab" id="t-settings" aria-controls="p-settings" data-tab="settings" type="button">Settings</button>
 </nav>
-<section id="p-browse" role="tabpanel" aria-labelledby="t-browse">
+<section id="p-copy" role="tabpanel" aria-labelledby="t-copy">
+<p class="hide" role="status" id="c-live"></p>
+<div id="c-box">
+<p class="big" id="c-title" tabindex="-1"></p>
+<p id="c-text"></p>
+<progress id="c-busy" hidden></progress>
+<div id="c-copying" hidden>
+<progress id="c-bar" aria-label="Copied so far"></progress>
+<div class="stats"><span id="c-bytes"></span><span id="c-speed"></span><span id="c-left"></span><span class="note" id="c-found"></span></div>
+<ul class="flight" id="c-flight" aria-label="Files being copied"></ul>
+</div>
+<p class="note" id="c-summary"></p>
+<p id="c-settling"></p>
+</div>
+<div id="c-failed" class="notice err" hidden><p id="c-notice"></p>
+<details><summary>Show files</summary><ul class="log" id="c-files"></ul></details></div>
+<p class="result err" id="c-err"></p>
+<div class="row">
+<button class="btn primary" type="button" id="c-start" hidden>Start copying</button>
+<button class="btn" type="button" id="c-check" hidden>Check now</button>
+<button class="btn" type="button" id="c-stop" hidden>Stop copying</button>
+</div>
+<p class="help" id="c-help" hidden>Copying continues while this window is open, even minimized. Closing it quits seestar-copy. New images arrive a few minutes after the telescope saves them.</p>
+<details><summary>Recent activity</summary>
+<ul class="log" id="c-log"></ul>
+<button class="btn" type="button" id="c-clip">Copy to clipboard</button></details>
+</section>
+<section id="p-browse" role="tabpanel" aria-labelledby="t-browse" hidden>
 <iframe id="b-frame" title="The telescope's files"></iframe>
 </section>
 <section id="p-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
+<p id="s-locked" class="notice" hidden>Stop copying to change settings. <button class="linkbtn" type="button" id="s-stop">Stop copying</button></p>
 <p id="version" class="note footer"></p>
 </section>
 </div>
 
 <form id="form" novalidate hidden>
+<fieldset id="f-set">
 <label for="f-addr">Telescope address</label>
 <div class="inline"><input id="f-addr" type="text" class="mono" spellcheck="false" autocomplete="off" aria-describedby="f-addr-help f-addr-err"><button class="btn" type="button" id="f-test-btn">Test</button></div>
 <p class="help" id="f-addr-help">Your Seestar's IP address on this network, such as 192.0.2.10, or seestar-wormhole's address, such as 127.0.0.1:4445.</p>
@@ -58,9 +89,10 @@
 <label class="check"><input type="checkbox" id="f-skip"> <span><b>Skip the telescope's logs, scratch and system files</b> (recommended)<br><span class="note mono" id="f-builtin"></span></span></label>
 <label class="check"><input type="checkbox" id="f-start"> <span><b>Start copying when the app opens</b></span></label>
 </div>
-<div class="row"><button class="btn primary" type="submit" id="f-save"></button></div>
+<div class="row"><button class="btn primary" type="submit" id="f-save"></button><button class="linkbtn only-setup" type="button" id="f-save-only">Save without copying</button></div>
 <p class="result" id="f-saved" role="status"></p>
 <p class="note only-setup">You can change these later in Settings.</p>
+</fieldset>
 </form>
 </body>
 </html>

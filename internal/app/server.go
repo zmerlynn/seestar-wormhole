@@ -64,6 +64,7 @@ type server struct {
 	dial   func(ctx context.Context, endpoint string) (remote.Session, error)
 	test   func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	native *Native // nil without a window
+	copy   *controller
 
 	mu       sync.Mutex
 	file     *settingsFile
@@ -77,6 +78,9 @@ func newServer(ctx context.Context, addr netip.AddrPort, token, version, stateDi
 		dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return remote.Dial(ctx, endpoint) },
 		test: engine.Test,
 	}
+	s.copy = newController(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
+		return s.dial(ctx, endpoint)
+	})
 	return s
 }
 
@@ -110,6 +114,19 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	})
 	return h, sessions
 }
+
+// startCopying turns copying on with the saved settings. Holding s.mu
+// keeps a Save from landing between the check and the start.
+func (s *server) startCopying() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.file.setUp() {
+		return errNotSetUp
+	}
+	return s.copy.start(s.file.settings)
+}
+
+var errNotSetUp = errors.New("finish Setup first")
 
 // close ends the current browse pool.
 func (s *server) close() {
@@ -182,7 +199,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.status(w)
 		return
-	case "/app/api/test", "/app/api/settings":
+	case "/app/api/test", "/app/api/settings", "/app/api/copy":
 	case "/app/api/folder":
 		if s.native == nil {
 			fail(http.StatusNotFound)
@@ -220,6 +237,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.runTest(w, r.Context(), in)
 	case "/app/api/folder":
 		s.chooseFolder(w, in)
+	case "/app/api/copy":
+		s.copyAction(w, in.Action)
 	default:
 		s.save(w, in)
 	}
@@ -245,19 +264,24 @@ type input struct {
 	Includes     []string `json:"includes"`
 	SkipBuiltIn  bool     `json:"skip_built_in"`
 	StartCopying bool     `json:"start_copying"`
+	Action       string   `json:"action"` // the copy API's: start, stop or check
 }
 
 func (s *server) status(w http.ResponseWriter) {
 	s.mu.Lock()
 	set, setUp := s.file.settings, s.file.setUp()
 	s.mu.Unlock()
+	lines, seq := s.copy.activity.lines()
 	respond(w, http.StatusOK, struct {
 		Version         string   `json:"version"`
 		SetUp           bool     `json:"set_up"`
 		Settings        Settings `json:"settings"`
 		DefaultExcludes []string `json:"default_excludes"`
 		Native          bool     `json:"native"` // the window's dialogs are there
-	}{s.version, setUp, set, engine.DefaultExcludes, s.native != nil})
+		Copy            copyView `json:"copy"`
+		Activity        []entry  `json:"activity"` // newest first
+		ActivitySeq     int      `json:"activity_seq"`
+	}{s.version, setUp, set, engine.DefaultExcludes, s.native != nil, s.copy.view(time.Now()), lines, seq})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -292,6 +316,13 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		return
 	}
 	s.mu.Lock()
+	if s.copy.on() {
+		s.mu.Unlock()
+		respond(w, http.StatusConflict, struct {
+			Error string `json:"error"`
+		}{"Stop copying to change settings."})
+		return
+	}
 	old, wasSetUp := s.file.settings, s.file.setUp()
 	if err := s.file.save(set); err != nil {
 		s.mu.Unlock()
@@ -318,6 +349,30 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		Settings      Settings `json:"settings"`
 		BrowseChanged bool     `json:"browse_changed"`
 	}{set, changed})
+}
+
+// copyAction starts or stops copying, or starts the next pass now, and
+// answers the Copy tab's new state.
+func (s *server) copyAction(w http.ResponseWriter, action string) {
+	var err error
+	switch action {
+	case "start":
+		err = s.startCopying()
+	case "stop":
+		s.copy.stop()
+	case "check":
+		s.copy.check()
+	default:
+		http.Error(w, "Request rejected", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		respond(w, http.StatusConflict, struct {
+			Error string `json:"error"`
+		}{"Couldn't start copying: " + err.Error() + "."})
+		return
+	}
+	respond(w, http.StatusOK, s.copy.view(time.Now()))
 }
 
 func respond(w http.ResponseWriter, code int, v any) {

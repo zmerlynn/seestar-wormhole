@@ -2,14 +2,18 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
+	"os"
 	"runtime"
 	"strings"
 	"time"
 
 	"github.com/zmerlynn/seestar-copy/internal/copier"
 	"github.com/zmerlynn/seestar-copy/internal/plan"
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
@@ -42,6 +46,10 @@ type SyncOptions struct {
 	// received. Only a wait receives: send without blocking, so that a
 	// press during a pass, or a second one, is dropped. Nil never wakes.
 	CheckNow <-chan struct{}
+	// Recreate, before each pass after the first, creates Dest again if
+	// it is missing and reopens it there, while the state stays open (and
+	// locked). Without it, a removed Dest fails each later download.
+	Recreate bool
 }
 
 // Summary is what one sync pass did: the counts its pass line logs, and
@@ -84,10 +92,17 @@ func RunSync(ctx context.Context, o SyncOptions, log *slog.Logger) error {
 	if err != nil {
 		return err
 	}
-	defer cp.Close()
 	cp.Copying = o.Hooks.Copying
+	defer func() { cp.Close() }()
 	s := &syncer{opts: o, log: log, records: st.Snapshot, stat: cp.Stat, copier: cp, firstPass: true}
-	for {
+	for first := true; ; first = false {
+		if o.Recreate && !first {
+			if cp, err = reopen(cp, o.Dest, st, log); err != nil {
+				return err
+			}
+			cp.Copying = o.Hooks.Copying
+			s.stat, s.copier = cp.Stat, cp
+		}
 		sum := s.pass(ctx)
 		failed, err := len(sum.Failed), sum.Err
 		switch {
@@ -107,6 +122,26 @@ func RunSync(ctx context.Context, o SyncOptions, log *slog.Logger) error {
 		case <-o.CheckNow:
 		}
 	}
+}
+
+// reopen returns cp, or, if dest is missing, a new copier on dest created
+// again, with cp closed. The new copier's sweep for temporary files then
+// runs over an empty folder.
+func reopen(cp *copier.Copier, dest string, st *state.State, log *slog.Logger) (*copier.Copier, error) {
+	readonly.Check("engine.reopen")
+	if _, err := os.Stat(dest); !errors.Is(err, fs.ErrNotExist) {
+		return cp, nil
+	}
+	log.Warn("destination missing; creating it again", "dest", dest)
+	if err := os.MkdirAll(dest, 0o777); err != nil {
+		return cp, fmt.Errorf("create destination: %w", err)
+	}
+	next, err := copier.New(dest, st, log)
+	if err != nil {
+		return cp, err
+	}
+	cp.Close()
+	return next, nil
 }
 
 // dryRun runs one pass that only reports what a real pass would do. It

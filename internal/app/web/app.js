@@ -1,9 +1,9 @@
-// The seestar-copy app page: Setup, then the Browse and Settings tabs. The
-// token in the URL fragment goes with every API call.
+// The seestar-copy app page: Setup, then the Copy, Browse and Settings
+// tabs. The token in the URL fragment goes with every API call.
 const $ = (s) => document.querySelector(s);
 const token = location.hash.slice(1);
 const form = $('#form');
-const TABS = ['browse', 'settings'];
+const TABS = ['copy', 'browse', 'settings'];
 // Each field the server can refuse, and the control that shows it.
 const FIELDS = { address: '#f-addr', folder: '#f-folder', interval: '#f-int', excludes: '#f-ex', includes: '#f-in' };
 
@@ -76,11 +76,17 @@ function result(sel, text, cls) {
   el.textContent = text;
 }
 
-// The header's dot shows the last contact with the saved address only.
+// The header's dot shows the last contact with the saved address only:
+// true, false or 'connecting'.
 function contact(address, ok) {
   if (!saved || address !== saved.address) return;
   const dot = $('#hdot');
   dot.hidden = false;
+  if (ok === 'connecting') {
+    dot.className = 'dot';
+    dot.textContent = 'Connecting…';
+    return;
+  }
   dot.className = 'dot ' + (ok ? 'ok' : 'err');
   dot.textContent = ok ? 'Reachable' : "Can't reach";
 }
@@ -126,19 +132,21 @@ async function choose() {
 
 // save sends the form; Save is disabled until the answer is in, so two
 // saves' answers can't arrive out of order.
-async function save(ev) {
+async function save(ev, startCopying = document.body.classList.contains('in-setup')) {
   ev.preventDefault();
   const btn = $('#f-save');
   if (btn.disabled) return;
   btn.disabled = true;
+  $('#f-save-only').disabled = true;
   try {
-    await saveForm();
+    await saveForm(startCopying);
   } finally {
     btn.disabled = false;
+    $('#f-save-only').disabled = false;
   }
 }
 
-async function saveForm() {
+async function saveForm(startCopying) {
   const setup = document.body.classList.contains('in-setup');
   result('#f-saved', '');
   const { status, data } = await api('settings', input());
@@ -158,8 +166,10 @@ async function saveForm() {
   if (setup) {
     // Save went away with Setup: focus moves to the new state's heading.
     main();
-    select('browse');
-    $('#h-main').focus();
+    select('copy');
+    if (startCopying) await copyAction('start');
+    else await poll();
+    $('#c-title').focus();
   } else {
     result('#f-saved', 'Settings saved.', 'ok');
   }
@@ -191,6 +201,134 @@ function main() {
   $('#p-settings').insertBefore(form, $('#version'));
   $('#f-save').textContent = 'Save';
   result('#f-test', '');
+  if (!polling) polling = setInterval(poll, 1000);
+}
+
+// The Copy tab: the server words each state; the page shows its parts.
+// Each state's buttons, and the states the help line shows in.
+const SHOWS = {
+  '#c-start': ['off', 'stopped', 'inuse', 'cantwrite'],
+  '#c-check': ['uptodate', 'failures', 'listfail', 'unreachable'],
+  '#c-stop': ['connecting', 'listing', 'copying', 'uptodate', 'failures', 'listfail', 'unreachable'],
+  '#c-help': ['connecting', 'listing', 'copying', 'uptodate', 'failures', 'listfail', 'unreachable'],
+};
+const BUSY = { connecting: 'Connecting', listing: 'Looking for new files' };
+
+let polling = 0;
+let shown = { state: '', contact: '', files: '', seq: -1 };
+let pressed = null; // a button the user pressed, until the state after it is shown
+
+function text(sel, s) {
+  $(sel).textContent = s || '';
+}
+
+function list(sel, items, li) {
+  const ul = $(sel);
+  ul.replaceChildren(...items.map(li));
+}
+
+function renderCopy(v) {
+  const st = v.state;
+  text('#c-title', v.title);
+  text('#c-text', v.text);
+  $('#c-box').className = ['listfail', 'inuse', 'cantwrite'].includes(st) ? 'notice err' : '';
+  $('#c-busy').hidden = !BUSY[st];
+  if (BUSY[st]) $('#c-busy').setAttribute('aria-label', BUSY[st]);
+  const p = v.progress;
+  $('#c-copying').hidden = !p;
+  if (p) {
+    $('#c-bar').max = p.total;
+    $('#c-bar').value = p.done;
+    text('#c-bytes', p.bytes);
+    text('#c-speed', p.speed);
+    text('#c-left', p.left);
+    text('#c-found', p.found);
+    list('#c-flight', p.flight, (f) => {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.textContent = f.path;
+      const pct = document.createElement('span');
+      pct.textContent = f.percent + '%';
+      li.append(name, pct);
+      return li;
+    });
+  }
+  text('#c-summary', v.summary);
+  text('#c-settling', v.settling);
+  $('#c-failed').hidden = !v.failed;
+  text('#c-notice', v.notice);
+  const files = JSON.stringify(v.failed || []);
+  if (files !== shown.files) {
+    shown.files = files;
+    list('#c-files', v.failed || [], (f) => {
+      const li = document.createElement('li');
+      li.textContent = f.path + ' — ' + f.reason;
+      return li;
+    });
+  }
+  for (const [sel, states] of Object.entries(SHOWS)) $(sel).hidden = !states.includes(st);
+  // A stage change is announced; ticks within a stage are not.
+  if (st !== shown.state) $('#c-live').textContent = v.title;
+  shown.state = st;
+  const chip = $('#hchip');
+  chip.className = 'chip ' + (st === 'failures' ? 'warn' : v.on ? 'on' : 'off');
+  chip.textContent = v.chip;
+  if (v.contact !== shown.contact) {
+    shown.contact = v.contact;
+    if (v.contact) contact(saved.address, v.contact === 'connecting' ? 'connecting' : v.contact === 'ok');
+  }
+  // Settings can't change while copying is on.
+  $('#f-set').disabled = v.on;
+  $('#s-locked').hidden = !v.on;
+  // When the button pressed went away, focus moves to the new state's
+  // heading; background updates never move focus.
+  if (pressed && pressed.offsetParent === null) {
+    const lost = document.activeElement === pressed || document.activeElement === document.body;
+    if (lost) (pressed.id === 's-stop' ? $('#f-addr') : $('#c-title')).focus();
+    pressed = null;
+  }
+}
+
+function renderActivity(lines, seq) {
+  if (seq === shown.seq) return;
+  shown.seq = seq;
+  list('#c-log', lines, (e) => {
+    const li = document.createElement('li');
+    li.textContent = e.time + ' ' + e.text;
+    if (e.warn) li.className = 'w';
+    return li;
+  });
+}
+
+async function poll() {
+  const { status, data } = await api('status');
+  if (status !== 200 || !data) return;
+  renderCopy(data.copy);
+  renderActivity(data.activity, data.activity_seq);
+}
+
+async function copyAction(action) {
+  const { status, data } = await api('copy', { action });
+  result('#c-err', status === 200 ? '' : (data && data.error) || "Couldn't reach seestar-copy. Close this window and reopen seestar-copy.", 'err');
+  if (status === 200 && data) renderCopy(data);
+  else pressed = null;
+}
+
+async function press(ev, action) {
+  pressed = ev.currentTarget;
+  await copyAction(action);
+}
+
+async function copyLog() {
+  const btn = $('#c-clip');
+  const all = [...$('#c-log').children].map((li) => li.textContent).join('\n');
+  try {
+    await navigator.clipboard.writeText(all);
+    btn.textContent = 'Copied';
+  } catch {
+    btn.textContent = "Couldn't copy";
+  }
+  setTimeout(() => (btn.textContent = 'Copy to clipboard'), 2000);
 }
 
 async function start() {
@@ -209,13 +347,15 @@ async function start() {
     saved = data.settings;
     $('#haddr').textContent = saved.address;
     main();
-    select('browse');
+    select('copy');
     $('#b-frame').src = '/';
+    renderCopy(data.copy);
+    renderActivity(data.activity, data.activity_seq);
   } else {
     document.body.classList.add('in-setup');
     $('#setup').hidden = false;
     $('#setup').after(form);
-    $('#f-save').textContent = 'Save without copying';
+    $('#f-save').textContent = 'Save and start copying';
     $('#f-addr').focus();
   }
 }
@@ -223,6 +363,12 @@ async function start() {
 $('#f-test-btn').addEventListener('click', test);
 $('#f-choose').addEventListener('click', choose);
 form.addEventListener('submit', save);
+$('#f-save-only').addEventListener('click', (ev) => save(ev, false));
+$('#c-start').addEventListener('click', (ev) => press(ev, 'start'));
+$('#c-check').addEventListener('click', (ev) => press(ev, 'check'));
+$('#c-stop').addEventListener('click', (ev) => press(ev, 'stop'));
+$('#s-stop').addEventListener('click', (ev) => press(ev, 'stop'));
+$('#c-clip').addEventListener('click', copyLog);
 document.querySelector('nav.tabs').addEventListener('click', (ev) => {
   const t = ev.target.closest('.tab');
   if (t) select(t.dataset.tab);

@@ -32,4 +32,4 @@ podman run --rm --pull=never --network "$task_name" --memory=2g --cpus=2 \
  -e SEESTAR_COPY_SMB_ENDPOINT="$task_ip:$task_port" \
  -v "$task_src:/src:ro,Z" "${task_git[@]}" -v "$task_cache:/root/.cache/go-build:Z" -v "$task_mod:/go/pkg/mod:Z" \
  -w /src docker.io/library/golang:1.27 \
- go test -tags smbintegration -race -count=1 -timeout 10m -v ./internal/remote || { podman logs "$task_name" | tail -50; exit 1; }
+ go test -tags smbintegration -race -count=1 -timeout 10m -v ./internal/remote ./internal/app || { podman logs "$task_name" | tail -50; exit 1; }
