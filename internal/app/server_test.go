@@ -74,6 +74,7 @@ func newAppEnv(t *testing.T, fileData string) *appEnv {
 	e.s.startBrowse()
 	t.Cleanup(e.s.close)
 	t.Cleanup(e.s.copy.quit)
+	t.Cleanup(e.s.free.quit)
 	return e
 }
 
@@ -386,7 +387,7 @@ func TestSaveWritesAndKeepsUnknown(t *testing.T) {
 		BrowseChanged bool     `json:"browse_changed"`
 	}](t, w)
 	want := Settings{Version: 1, Address: "192.0.2.10:445", Folder: abs("/data/Seestar"), IntervalMinutes: 5,
-		Excludes: []string{"Video", "/Preview"}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false}
+		Excludes: []string{"Video", "/Preview"}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false, OlderThanDays: 7}
 	if fmt.Sprint(got.Settings) != fmt.Sprint(want) || !got.BrowseChanged {
 		t.Errorf("got %+v, want %+v and a browse change", got, want)
 	}

@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"math"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
@@ -514,8 +515,8 @@ func (c *controller) view(now time.Time) copyView {
 		v.Title = "Another copy is already using this folder."
 		v.Text = "It's in another seestar-copy window or seestar-copy-cli. Stop that copy, then start copying here."
 	case stCantWrite:
-		// Only a refused write names the folder as the cause.
-		if errors.Is(st.startErr, fs.ErrPermission) {
+		// Only a refused write in the folder names it as the cause.
+		if errors.Is(st.startErr, fs.ErrPermission) && inFolder(st.startErr, st.folder) {
 			v.Title = "Can't write to " + st.folder + ": " + reason(st.startErr) + "."
 			v.Text = "Choose a writable folder in Settings, then start copying."
 		} else {
@@ -568,6 +569,16 @@ func (st *status) progress(now time.Time) *progressView {
 	}
 	slices.SortFunc(p.Flight, func(a, b flight) int { return strings.Compare(a.Path, b.Path) })
 	return p
+}
+
+// inFolder reports whether err's path is folder or inside it.
+func inFolder(err error, folder string) bool {
+	var pe *fs.PathError
+	if !errors.As(err, &pe) {
+		return false
+	}
+	rel, err := filepath.Rel(folder, pe.Path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
 // unread names the folder a failed listing couldn't read.

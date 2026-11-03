@@ -77,12 +77,15 @@ async function openApp(page, url) {
 }
 
 // fakeStatus answers the page's status polls with the real status, its
-// copy view replaced by view() when that returns one. A view's activity,
-// if any, replaces Recent activity.
-async function fakeStatus(page, view) {
+// copy view replaced by view() when that returns one, and its Free up
+// space view by free(). A view's activity, if any, replaces Recent
+// activity.
+async function fakeStatus(page, view, free = () => null) {
   await page.route('**/app/api/status', async (route) => {
     const response = await route.fetch();
     const data = await response.json();
+    const f = free();
+    if (f) data.free = f;
     const v = view();
     if (v) {
       const { activity, ...copy } = v;
@@ -113,6 +116,27 @@ const copyViews = {
   },
 };
 
+// Synthetic Free up space views, with a long path, for layouts.
+const longDir = longPath.slice(0, longPath.lastIndexOf('/'));
+const freeViews = {
+  preview: {
+    state: 'preview', id: 1, title: '2 files (33.2 MB) are copied and safe to delete.',
+    sub: 'Only files older than 7 days · your copies checked',
+    groups: [
+      { folder: longDir, name: longDir, bytes: 33200000, size: '33.2 MB', files: [{ path: longPath, size: '33.2 MB' }] },
+      { folder: 'MyWorks/M 31', name: 'MyWorks/M 31', bytes: 1000, size: '1.0 KB', files: [{ path: 'MyWorks/M 31/Stacked_M 31.jpg', size: '1.0 KB' }] },
+    ],
+    kept: 'Kept: 1 changed on the telescope',
+    kept_list: [{ path: longPath, reason: 'changed on the telescope since it was copied' }],
+  },
+  deleting: { state: 'deleting', title: 'Deleting 2 of 2…', progress: { done: 1, total: 2 }, file: 'Last deleted: ' + longPath },
+  done: {
+    state: 'done', title: 'Deleted 1 file.', text: 'Freed 33.2 MB on the telescope.', kept: '1 file was kept.',
+    kept_list: [{ path: longPath, reason: 'kept: changed on the telescope since it was copied' }],
+  },
+  failed: { state: 'failed', title: `Stopped: the telescope refused to delete ${longPath} (access denied).`, text: 'No files were deleted.' },
+};
+
 module.exports = {
-  test, expect, share, refused, env, readSettings, frame, browseStatus, tab, field, openApp, fakeStatus, longPath, copyViews,
+  test, expect, share, refused, env, readSettings, frame, browseStatus, tab, field, openApp, fakeStatus, longPath, copyViews, freeViews,
 };

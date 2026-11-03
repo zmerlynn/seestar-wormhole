@@ -190,8 +190,8 @@ jobs:
         run: |
           cat > "$RUNNER_TEMP/guitest.py" <<'PY'
           import json, os, subprocess, sys, time
-          # The guitest build copies from its own fake telescope, whose one
-          # file stalls mid-download; the address is never dialed.
+          # The guitest build copies from its own fake telescope, whose
+          # held file stalls mid-download; the address is never dialed.
           tmp, scenario = os.environ["RUNNER_TEMP"], sys.argv[1]
           folder = os.path.join(tmp, "images-" + scenario)
           def start(name, mode):

@@ -1,0 +1,139 @@
+// The app's Free up space tab against the Samba fixture's browse tree,
+// which is read-only: a preview, the confirm dialog and Cancel, and a
+// settings save that clears the preview. The confirmed delete is tested
+// in the Samba job.
+const { test, expect, share, tab, field, openApp } = require('./app');
+
+const upToDate = /^Up to date\. Next check at \d\d:\d\d\.$/;
+const safe = /^7 files \(\d.*\) are copied and safe to delete\.$/;
+
+const button = (page, name) => page.getByRole('button', { name, exact: true });
+const title = (page) => page.locator('#x-title');
+const deleteButton = (page) => page.locator('#x-go');
+const days = (page) => page.locator('#x-days');
+const trust = (page) => page.getByLabel(/My copies have moved or the drive is offline/);
+
+// copied starts an app that copies the browse tree, and waits for the
+// pass, then opens Free up space.
+async function copied(page, startApp) {
+  const app = await startApp((folder) => ({ version: 1, address: share, folder, start_copying: true }));
+  await openApp(page, app.url);
+  await expect(page.locator('#c-title')).toHaveText(upToDate, { timeout: 30000 });
+  await tab(page, 'Free up space').click();
+  await expect(page.getByRole('tabpanel', { name: 'Free up space' })).toBeVisible();
+  return app;
+}
+
+// find finds files of any age, and waits for the preview's title.
+async function find(page, want = safe) {
+  await days(page).fill('0');
+  await button(page, 'Find files to delete').click();
+  await expect(title(page)).toHaveText(want, { timeout: 30000 });
+}
+
+test('a preview groups the files by folder, and the confirm dialog cancels back to Delete', async ({ page, startApp }) => {
+  await copied(page, startApp);
+  await expect(page.locator('#x-intro')).toHaveText(/^Free up space deletes files from the telescope only after/);
+  await expect(page.locator('#x-restack')).toBeVisible();
+  await find(page);
+  // Find went away: focus moves to the new state's heading, and the
+  // status region says the stage.
+  await expect(title(page)).toBeFocused();
+  await expect(page.locator('#x-live')).toHaveText(safe);
+  await expect(page.locator('#x-sub')).toHaveText('Any age · your copies checked');
+  await expect(button(page, 'Find files to delete')).toBeHidden();
+  await expect(deleteButton(page)).toHaveText('Delete 7 files…');
+
+  // Unchecking a folder narrows Delete's count.
+  const rows = page.locator('#x-groups tr');
+  expect(await rows.count()).toBeGreaterThan(1);
+  const first = Number(await rows.first().locator('td.num').first().textContent());
+  await rows.first().getByRole('checkbox').uncheck();
+  const left = 7 - first;
+  const files = left === 1 ? '1 file' : `${left} files`;
+  await expect(deleteButton(page)).toHaveText(`Delete ${files}…`);
+  await rows.first().locator('summary').click();
+  await expect(rows.first().locator('li').first()).toBeVisible();
+
+  await deleteButton(page).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('#x-ctitle')).toHaveText(`Delete ${files} from the telescope?`);
+  await expect(dialog.locator('#x-cbody')).toHaveText(/^This frees \d.*\. It can't be undone: the telescope keeps no trash\. Each file is checked again just before it's deleted\.$/);
+  await expect(button(page, 'Cancel')).toBeFocused();
+  await button(page, 'Cancel').click();
+  await expect(dialog).toBeHidden();
+  await expect(deleteButton(page)).toBeFocused();
+
+  // Escape closes it too.
+  await deleteButton(page).click();
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(deleteButton(page)).toBeFocused();
+  await expect(title(page)).toHaveText(safe);
+
+  // Change options goes back to Start, with the options as found.
+  await button(page, 'Change options').click();
+  await expect(days(page)).toHaveValue('0');
+  await expect(page.locator('#x-restack')).toBeHidden();
+  await expect(page.locator('#x-intro')).toBeFocused();
+});
+
+test('a different preview closes an open confirm dialog', async ({ page, startApp }) => {
+  // Another view's Find replaces the preview between two polls: the
+  // status answers the same files under the next id.
+  let replaced = false;
+  await page.route('**/app/api/status', async (route) => {
+    const response = await route.fetch();
+    const data = await response.json();
+    if (replaced && data.free.state === 'preview') data.free.id += 1;
+    await route.fulfill({ response, json: data });
+  });
+  const deletes = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/app/api/delete') && r.postDataJSON().action === 'delete') deletes.push(r.postDataJSON());
+  });
+  await copied(page, startApp);
+  await find(page);
+  await page.locator('#x-groups tr').first().getByRole('checkbox').uncheck();
+  await deleteButton(page).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+
+  replaced = true;
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#x-cgo')).toBeHidden();
+  // The new preview's folders are all checked, and only a new confirm
+  // can delete them.
+  await expect(deleteButton(page)).toHaveText('Delete 7 files…');
+  expect(deletes).toEqual([]);
+});
+
+test('a settings save that changes a pattern clears the preview', async ({ page, startApp }) => {
+  await copied(page, startApp);
+  await trust(page).check();
+  await expect(page.locator('#x-intro')).toHaveText(/^Free up space uses seestar-copy's saved copy records\./);
+  await find(page, /^7 files \(\d.*\) match the saved copy records\.$/);
+  await expect(page.locator('#x-sub')).toHaveText('Any age · Your copies were not checked.');
+
+  await tab(page, 'Settings').click();
+  await page.locator('#s-stop').click();
+  await field(page, 'Leave out').fill('Notes');
+  await button(page, 'Save').click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await tab(page, 'Free up space').click();
+  await expect(page.locator('#x-changed')).toHaveText('Settings changed. Find files again before deleting.');
+  await expect(button(page, 'Find files to delete')).toBeVisible();
+  await expect(deleteButton(page)).toBeHidden();
+  await expect(trust(page)).toBeChecked();
+});
+
+test('a bad number of days is refused at its field', async ({ page, startApp }) => {
+  await copied(page, startApp);
+  await days(page).fill('-1');
+  await button(page, 'Find files to delete').click();
+  await expect(page.locator('#x-days-err')).toHaveText('Enter a whole number of days, 0 or more.');
+  await expect(days(page)).toHaveAttribute('aria-invalid', 'true');
+  await expect(days(page)).toBeFocused();
+});

@@ -24,6 +24,9 @@ type Settings struct {
 	Includes        []string `json:"includes"`
 	SkipBuiltIn     bool     `json:"skip_built_in"`
 	StartCopying    bool     `json:"start_copying"`
+	// The Free up space options.
+	OlderThanDays int  `json:"older_than_days"`
+	TrustState    bool `json:"trust_state"`
 }
 
 // defaultSettings is what a missing file, or a field absent from one,
@@ -36,6 +39,7 @@ func defaultSettings() Settings {
 		Includes:        []string{},
 		SkipBuiltIn:     true,
 		StartCopying:    true,
+		OlderThanDays:   7,
 	}
 	if home, err := os.UserHomeDir(); err == nil {
 		s.Folder = filepath.Join(home, "Seestar")

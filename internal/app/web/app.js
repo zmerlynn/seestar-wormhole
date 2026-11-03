@@ -1,9 +1,9 @@
-// The seestar-copy app page: Setup, then the Copy, Browse and Settings
-// tabs. The token in the URL fragment goes with every API call.
+// The seestar-copy app page: Setup, then the Copy, Browse, Free up space
+// and Settings tabs. The token in the URL fragment goes with every API call.
 const $ = (s) => document.querySelector(s);
 const token = location.hash.slice(1);
 const form = $('#form');
-const TABS = ['copy', 'browse', 'settings'];
+const TABS = ['copy', 'browse', 'free', 'settings'];
 // Each field the server can refuse, and the control that shows it.
 const FIELDS = { address: '#f-addr', folder: '#f-folder', interval: '#f-int', excludes: '#f-ex', includes: '#f-in' };
 
@@ -304,6 +304,7 @@ async function poll() {
   const { status, data } = await api('status');
   if (status !== 200 || !data) return;
   renderCopy(data.copy);
+  renderFree(data.free);
   renderActivity(data.activity, data.activity_seq);
 }
 
@@ -317,6 +318,206 @@ async function copyAction(action) {
 async function press(ev, action) {
   pressed = ev.currentTarget;
   await copyAction(action);
+}
+
+// The Free up space tab: the server words each state, as for Copy. The
+// options show in these states, and each button in its own.
+const XSHOWS = {
+  '#x-options': ['start', 'nothing', 'checkfail'],
+  '#x-find': ['start', 'nothing', 'checkfail'],
+  '#x-cancel': ['checking'],
+  '#x-preview': ['preview'],
+  '#x-go': ['preview'],
+  '#x-change': ['preview'],
+  '#x-deleting': ['deleting'],
+  '#x-stop': ['deleting'],
+  '#x-done': ['done', 'stopped', 'failed'],
+};
+const XBOX = { checkfail: 'notice err', failed: 'notice err', nothing: 'notice', stopped: 'notice', done: 'notice ok' };
+
+let free = { state: '', id: 0, kept: '', groups: [], trust: false };
+let xpressed = null; // as pressed, for this tab
+
+// size words a byte count as the server does: decimal units, with one
+// decimal below 100.
+function size(n) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000;
+    i++;
+  }
+  if (i === 0) return n + ' B';
+  return (n < 100 ? n.toFixed(1) : n.toFixed(0)) + ' ' + units[i];
+}
+
+const files = (n) => (n === 1 ? '1 file' : n.toLocaleString('en-US') + ' files');
+
+function fillFree(s) {
+  $('#x-days').value = String(s.older_than_days);
+  $('#x-trust').checked = s.trust_state;
+  intro();
+}
+
+// intro words the Start text for the options as set.
+function intro() {
+  text(
+    '#x-intro',
+    $('#x-trust').checked
+      ? "Free up space uses seestar-copy's saved copy records. Your copies will not be checked. Nothing is deleted until you confirm."
+      : 'Free up space deletes files from the telescope only after seestar-copy has copied them and checked that your copy still matches. Nothing is deleted until you confirm.',
+  );
+  const days = Number($('#x-days').value);
+  $('#x-restack').hidden = !(days > 0);
+}
+
+function daysError(msg) {
+  text('#x-days-err', msg);
+  $('#x-days-err').hidden = !msg;
+  if (msg) $('#x-days').setAttribute('aria-invalid', 'true');
+  else $('#x-days').removeAttribute('aria-invalid');
+}
+
+function renderFree(v) {
+  const st = v.state;
+  text('#x-title', v.title);
+  text('#x-text', v.text);
+  text('#x-sub', v.sub);
+  $('#x-box').className = XBOX[st] || '';
+  $('#x-changed').hidden = !v.changed;
+  const p = v.progress;
+  $('#x-busy').hidden = st !== 'checking' || !!p;
+  $('#x-hash').hidden = st !== 'checking' || !p;
+  if (p && st === 'checking') {
+    $('#x-hbar').max = p.total;
+    $('#x-hbar').value = p.done;
+    text('#x-htext', p.text);
+  }
+  if (p && st === 'deleting') {
+    $('#x-dbar').max = p.total;
+    $('#x-dbar').value = p.done;
+  }
+  text('#x-dfile', v.file);
+  for (const [sel, states] of Object.entries(XSHOWS)) $(sel).hidden = !states.includes(st);
+  if (v.stopping) $('#x-stop').hidden = true;
+  // An open confirm belongs to the preview it words: it closes before
+  // another preview, or none, replaces that one's id and folders.
+  if ((st !== 'preview' || v.id !== free.id) && $('#x-confirm').open) $('#x-confirm').close();
+  if (st === 'preview' && v.id !== free.id) {
+    free.id = v.id;
+    free.trust = v.trust;
+    free.groups = v.groups;
+    list('#x-groups', v.groups, (g, i) => {
+      const tr = document.createElement('tr');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      box.dataset.i = String(i);
+      box.setAttribute('aria-label', 'Include ' + g.name);
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = g.name;
+      const ul = document.createElement('ul');
+      ul.append(
+        ...g.files.map((f) => {
+          const li = document.createElement('li');
+          const name = document.createElement('span');
+          name.textContent = f.path;
+          const sz = document.createElement('span');
+          sz.textContent = f.size;
+          li.append(name, sz);
+          return li;
+        }),
+      );
+      details.append(summary, ul);
+      const cells = [box, details, String(g.files.length), g.size].map((c) => {
+        const td = document.createElement('td');
+        td.append(c);
+        return td;
+      });
+      cells[2].className = cells[3].className = 'num';
+      tr.append(...cells);
+      return tr;
+    });
+    count();
+  }
+  const kept = JSON.stringify([v.kept, v.kept_list]);
+  if (kept !== free.kept) {
+    free.kept = kept;
+    text('#x-ksum', v.kept || '');
+    list('#x-klist', v.kept_list || [], (f) => {
+      const li = document.createElement('li');
+      li.textContent = f.path + ' — ' + f.reason;
+      return li;
+    });
+  }
+  $('#x-kept').hidden = !v.kept || !v.kept_list || !['preview', 'nothing', 'done'].includes(st);
+  if (st !== free.state) $('#x-live').textContent = v.title || '';
+  free.state = st;
+  // As for Copy: focus moves to the new state's heading only when the
+  // button pressed went away.
+  if (xpressed && xpressed.offsetParent === null) {
+    const lost = document.activeElement === xpressed || document.activeElement === document.body;
+    if (lost) (v.title ? $('#x-title') : $('#x-intro')).focus();
+    xpressed = null;
+  }
+}
+
+// checked is the preview's groups whose box is checked.
+function checked() {
+  return [...$('#x-groups').querySelectorAll('input:checked')].map((b) => free.groups[Number(b.dataset.i)]);
+}
+
+// count labels Delete with the checked folders' files.
+function count() {
+  const n = checked().reduce((a, g) => a + g.files.length, 0);
+  text('#x-go', 'Delete ' + files(n) + '…');
+  $('#x-go').disabled = n === 0;
+}
+
+async function freeAction(body) {
+  const { status, data } = await api('delete', body);
+  if (status === 400 && data && data.fields) {
+    daysError(data.fields.days || '');
+    $('#x-days').focus();
+    xpressed = null;
+    return;
+  }
+  daysError('');
+  result('#x-err', status === 200 ? '' : (data && data.error) || "Couldn't reach seestar-copy. Close this window and reopen seestar-copy.", 'err');
+  if (status === 200 && data) renderFree(data);
+  else xpressed = null;
+}
+
+async function freePress(ev, body) {
+  xpressed = ev.currentTarget;
+  await freeAction(body);
+}
+
+function find(ev) {
+  return freePress(ev, { action: 'find', days: $('#x-days').value, trust: $('#x-trust').checked });
+}
+
+// ask shows the confirm dialog for the checked folders.
+function ask() {
+  const groups = checked();
+  const n = groups.reduce((a, g) => a + g.files.length, 0);
+  const bytes = groups.reduce((a, g) => a + g.bytes, 0);
+  text('#x-ctitle', 'Delete ' + files(n) + ' from the telescope?');
+  text(
+    '#x-cbody',
+    'This frees ' + size(bytes) + ". It can't be undone: the telescope keeps no trash. Each file is checked again just before it's deleted." +
+      (free.trust ? ' Your copies were not checked.' : ''),
+  );
+  text('#x-cgo', 'Delete ' + files(n));
+  $('#x-confirm').showModal();
+}
+
+async function confirmDelete() {
+  const folders = checked().map((g) => g.folder);
+  xpressed = $('#x-go');
+  $('#x-confirm').close();
+  await freeAction({ action: 'delete', id: free.id, folders });
 }
 
 async function copyLog() {
@@ -341,6 +542,7 @@ async function start() {
   $('#version').textContent = 'seestar-copy ' + data.version;
   $('#f-builtin').textContent = data.default_excludes.join(' · ');
   fill(data.settings);
+  fillFree(data.settings);
   $('#f-choose').hidden = !data.native;
   form.hidden = false;
   if (data.set_up) {
@@ -350,6 +552,7 @@ async function start() {
     select('copy');
     $('#b-frame').src = '/';
     renderCopy(data.copy);
+    renderFree(data.free);
     renderActivity(data.activity, data.activity_seq);
   } else {
     document.body.classList.add('in-setup');
@@ -382,5 +585,21 @@ document.querySelector('nav.tabs').addEventListener('keydown', (ev) => {
   ev.preventDefault();
   select(TABS[j]);
   $('#t-' + TABS[j]).focus();
+});
+$('#x-find').addEventListener('click', (ev) => find(ev));
+$('#x-days').addEventListener('keydown', (ev) => ev.key === 'Enter' && find(ev));
+$('#x-days').addEventListener('input', intro);
+$('#x-trust').addEventListener('change', intro);
+$('#x-cancel').addEventListener('click', (ev) => freePress(ev, { action: 'cancel' }));
+$('#x-stop').addEventListener('click', (ev) => freePress(ev, { action: 'stop' }));
+$('#x-change').addEventListener('click', (ev) => freePress(ev, { action: 'reset' }));
+$('#x-done').addEventListener('click', (ev) => freePress(ev, { action: 'reset' }));
+$('#x-go').addEventListener('click', ask);
+$('#x-groups').addEventListener('change', count);
+$('#x-ccancel').addEventListener('click', () => $('#x-confirm').close());
+$('#x-cgo').addEventListener('click', confirmDelete);
+// Escape and Cancel close the dialog; focus goes back to Delete.
+$('#x-confirm').addEventListener('close', () => {
+  if (!$('#x-go').hidden) $('#x-go').focus();
 });
 start();

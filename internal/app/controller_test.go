@@ -286,6 +286,14 @@ func TestCopyCantWrite(t *testing.T) {
 	if v.Title != "Can't write to "+e.set.Folder+": permission denied." || v.Text != "Choose a writable folder in Settings, then start copying." {
 		t.Errorf("can't write: %+v", v)
 	}
+	// A refused write elsewhere, such as the state's folder, isn't the
+	// folder's fault.
+	stateErr := fmt.Errorf("open state: %w", &fs.PathError{Op: "open", Path: filepath.Join(e.c.stateDir, "sync", "x.lock"), Err: fs.ErrPermission})
+	e.c.finish(stateErr)
+	v = e.c.view(time.Now())
+	if v.Title != "Couldn't start copying: "+stateErr.Error()+"." || v.Text != "Fix the problem, then start copying." {
+		t.Errorf("can't write the state: %+v", v)
+	}
 }
 
 // A failed connection keeps copying on, and Check now tries again.

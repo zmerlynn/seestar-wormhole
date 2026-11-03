@@ -111,9 +111,24 @@ func (o *DeleteOptions) proof() string {
 	return proofHash
 }
 
-// errNoDest is the error for a missing destination when the copies prove
+// The reasons a delete run keeps a file for, besides plan's: four from
+// checking the local copy, and two from the removal itself.
+const (
+	KeepMissing    = "local copy missing; give --trust-state if it was moved"
+	KeepNotRegular = "local copy is not a regular file"
+	KeepSize       = "local copy size differs from the state"
+	KeepHash       = "local copy's SHA-256 differs from the state"
+	KeepRaced      = "changed on the device during this run"
+	KeepGone       = "no longer on the device"
+)
+
+// ErrFailedFiles is the end of a run that went through every file but
+// failed some locally.
+var ErrFailedFiles = errors.New("failed files")
+
+// ErrNoDest is the error for a missing destination when the copies prove
 // the files.
-var errNoDest = errors.New("destination not found; give --trust-state if the copies were moved or the drive is offline")
+var ErrNoDest = errors.New("destination not found; give --trust-state if the copies were moved or the drive is offline")
 
 // RunDelete loads the state, lists the share and deletes what is proven,
 // or in a dry run (a preview) reports what it would delete, and returns
@@ -129,7 +144,7 @@ func RunDelete(ctx context.Context, o DeleteOptions, log *slog.Logger) (DeleteRe
 			root, err := os.OpenRoot(o.Dest)
 			switch {
 			case errors.Is(err, fs.ErrNotExist):
-				return DeleteResult{}, errNoDest
+				return DeleteResult{}, ErrNoDest
 			case err != nil:
 				return DeleteResult{}, fmt.Errorf("open destination: %w", err)
 			}
@@ -151,7 +166,7 @@ func RunDelete(ctx context.Context, o DeleteOptions, log *slog.Logger) (DeleteRe
 	}
 	switch {
 	case failed > 0:
-		return d.result, fmt.Errorf("failed files: %d", failed)
+		return d.result, fmt.Errorf("%w: %d", ErrFailedFiles, failed)
 	}
 	return d.result, nil
 }
@@ -334,10 +349,10 @@ func (d *deleter) file(ctx context.Context, e remote.Entry, dec plan.DeleteDecis
 	case ctx.Err() != nil:
 		return false, nil
 	case errors.Is(err, remote.ErrChanged):
-		d.keep(e, "changed on the device during this run", true)
+		d.keep(e, KeepRaced, true)
 		return false, nil
 	case errors.Is(err, fs.ErrNotExist):
-		d.keep(e, "no longer on the device", false)
+		d.keep(e, KeepGone, false)
 		return false, nil
 	}
 	d.fail(e, err)
@@ -408,23 +423,22 @@ func (d *deleter) folder(ctx context.Context, p string) (bool, error) {
 // whether that is worth a warning, or an error if the copy could not be
 // read, and the bytes it read. It only reads.
 func proveFile(ctx context.Context, dest *os.Root, p string, rec state.Record) (reason string, warn bool, n int64, err error) {
-	const missing = "local copy missing; give --trust-state if it was moved"
 	name := filepath.FromSlash(p)
 	fi, err := dest.Lstat(name)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return missing, false, 0, nil
+		return KeepMissing, false, 0, nil
 	case err != nil:
 		return "", false, 0, err
 	case !fi.Mode().IsRegular():
-		return "local copy is not a regular file", true, 0, nil
+		return KeepNotRegular, true, 0, nil
 	case fi.Size() != rec.Size:
-		return "local copy size differs from the state", true, 0, nil
+		return KeepSize, true, 0, nil
 	}
 	f, err := dest.Open(name)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
-		return missing, false, 0, nil
+		return KeepMissing, false, 0, nil
 	case err != nil:
 		return "", false, 0, err
 	}
@@ -435,7 +449,7 @@ func proveFile(ctx context.Context, dest *os.Root, p string, rec state.Record) (
 	case err != nil:
 		return "", false, n, err
 	case hex.EncodeToString(h.Sum(nil)) != rec.SHA256:
-		return "local copy's SHA-256 differs from the state", true, n, nil
+		return KeepHash, true, n, nil
 	}
 	return "", false, n, nil
 }

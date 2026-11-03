@@ -26,6 +26,7 @@
 <nav class="tabs" role="tablist" aria-label="seestar-copy">
 <button class="tab" role="tab" id="t-copy" aria-controls="p-copy" data-tab="copy" type="button">Copy</button>
 <button class="tab" role="tab" id="t-browse" aria-controls="p-browse" data-tab="browse" type="button">Browse</button>
+<button class="tab" role="tab" id="t-free" aria-controls="p-free" data-tab="free" type="button">Free up space</button>
 <button class="tab" role="tab" id="t-settings" aria-controls="p-settings" data-tab="settings" type="button">Settings</button>
 </nav>
 <section id="p-copy" role="tabpanel" aria-labelledby="t-copy">
@@ -58,11 +59,47 @@
 <section id="p-browse" role="tabpanel" aria-labelledby="t-browse" hidden>
 <iframe id="b-frame" title="The telescope's files"></iframe>
 </section>
+<section id="p-free" role="tabpanel" aria-labelledby="t-free" hidden>
+<p class="hide" role="status" id="x-live"></p>
+<p id="x-changed" class="notice" hidden>Settings changed. Find files again before deleting.</p>
+<div id="x-box">
+<p class="big" id="x-title" tabindex="-1"></p>
+<p id="x-text"></p>
+<p class="note" id="x-sub"></p>
+<progress id="x-busy" aria-label="Checking files" hidden></progress>
+<div id="x-hash" hidden><p id="x-htext"></p><progress id="x-hbar" aria-label="Copies checked"></progress></div>
+<div id="x-deleting" hidden><progress id="x-dbar" aria-label="Files deleted"></progress><p class="note mono" id="x-dfile"></p></div>
+</div>
+<div id="x-preview" class="scroll" hidden><table class="groups"><thead><tr><th><span class="hide">Include</span></th><th>Folder</th><th class="num">Files</th><th class="num">Size</th></tr></thead><tbody id="x-groups"></tbody></table></div>
+<details id="x-kept" hidden><summary id="x-ksum"></summary><ul class="log" id="x-klist"></ul></details>
+<div id="x-options">
+<p id="x-intro" tabindex="-1"></p>
+<label class="check strong">Only files older than <input type="number" id="x-days" min="0" aria-describedby="x-days-help x-days-err"> days</label>
+<p class="help" id="x-days-help">0 means any age.<span id="x-restack"> Recent sessions stay on the telescope so you can restack them.</span></p>
+<p class="result err" id="x-days-err" hidden></p>
+<label class="check"><input type="checkbox" id="x-trust"> <span><b>My copies have moved or the drive is offline</b><br><span class="note">Checks only seestar-copy's record of each copy, not the copy itself. Leave this off if your images are still in your folder.</span></span></label>
+</div>
+<p class="result err" id="x-err"></p>
+<div class="row">
+<button class="btn primary" type="button" id="x-find">Find files to delete</button>
+<button class="btn" type="button" id="x-cancel">Cancel</button>
+<button class="btn danger" type="button" id="x-go"></button>
+<button class="linkbtn" type="button" id="x-change">Change options</button>
+<button class="btn" type="button" id="x-stop">Stop</button>
+<button class="btn" type="button" id="x-done">Done</button>
+</div>
+</section>
 <section id="p-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
 <p id="s-locked" class="notice" hidden>Stop copying to change settings. <button class="linkbtn" type="button" id="s-stop">Stop copying</button></p>
 <p id="version" class="note footer"></p>
 </section>
 </div>
+
+<dialog id="x-confirm" aria-labelledby="x-ctitle" aria-describedby="x-cbody">
+<h2 id="x-ctitle"></h2>
+<p id="x-cbody"></p>
+<div class="row"><button class="btn danger" type="button" id="x-cgo"></button><button class="btn" type="button" id="x-ccancel" autofocus>Cancel</button></div>
+</dialog>
 
 <form id="form" novalidate hidden>
 <fieldset id="f-set">

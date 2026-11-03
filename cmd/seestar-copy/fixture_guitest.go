@@ -27,10 +27,12 @@ import (
 
 // fixture drives the real window for the native check in CI, which builds
 // it with -tags guitest; release builds have none. The app's telescope is
-// a fake whose one file, MyWorks/held.fit, stalls mid-download until the
-// copy is stopped. SEESTAR_COPY_GUITEST names the scenario:
+// a fake with two files: MyWorks/done.fit copies, and MyWorks/held.fit
+// stalls mid-download until the copy is stopped. SEESTAR_COPY_GUITEST
+// names the scenario:
 //
-//   - "close" holds that transfer, then closes the window on macOS and
+//   - "close" holds that transfer, previews Free up space, opens the
+//     confirm dialog and cancels it, then closes the window on macOS and
 //     Linux, and leaves it to the harness's WM_CLOSE on Windows.
 //   - "quit" holds it, then waits for the harness's Quit event on macOS.
 //   - "hold" holds it and waits for the harness to stop the app.
@@ -60,7 +62,10 @@ var (
 )
 
 func init() {
-	files := fstest.MapFS{"MyWorks/held.fit": {Data: make([]byte, 64<<10), ModTime: time.Unix(1761700000, 0), Mode: 0o644}}
+	files := fstest.MapFS{
+		"MyWorks/done.fit": {Data: make([]byte, 1<<10), ModTime: time.Unix(1761700000, 0), Mode: 0o644},
+		"MyWorks/held.fit": {Data: make([]byte, 64<<10), ModTime: time.Unix(1761700000, 0), Mode: 0o644},
+	}
 	testDial = func(context.Context, string) (remote.Session, error) {
 		f := remote.NewFake(files)
 		f.Faults = map[string]remote.Fault{"MyWorks/held.fit": {After: 1 << 10, Stall: holdOnce}}
@@ -148,7 +153,7 @@ func (f *fixture) drive() error {
 		case <-ctx.Done():
 			return fmt.Errorf("the copy didn't start held.fit: %w", ctx.Err())
 		}
-		if err := f.probe(ctx, `check(el('c-title').textContent==='Copying 1 of 1 file' && el('c-flight').textContent.includes('MyWorks/held.fit'),
+		if err := f.probe(ctx, `check(el('c-title').textContent==='Copying 2 of 2 files' && el('c-flight').textContent.includes('MyWorks/held.fit'),
  {title:el('c-title').textContent,flight:el('c-flight').textContent})`); err != nil {
 			return fmt.Errorf("the page didn't show the held transfer: %w", err)
 		}
@@ -161,11 +166,16 @@ func (f *fixture) drive() error {
 		return fmt.Errorf("the page didn't show Copy: %w", err)
 	}
 	for _, k := range []struct{ key, want string }{
-		{"ArrowRight", "browse"}, {"ArrowRight", "settings"}, {"ArrowRight", "copy"}, {"ArrowLeft", "settings"},
+		{"ArrowRight", "browse"}, {"ArrowRight", "free"}, {"ArrowRight", "settings"}, {"ArrowRight", "copy"}, {"ArrowLeft", "settings"},
 		{"Home", "copy"}, {"End", "settings"}, {"End", "settings"}, {"Home", "copy"},
 	} {
 		if err := f.probe(ctx, keyProbe(k.key, k.want)); err != nil {
 			return fmt.Errorf("%s: %w", k.key, err)
+		}
+	}
+	if f.scenario != "inuse" {
+		if err := f.confirm(ctx); err != nil {
+			return err
 		}
 	}
 	fmt.Fprintln(f.out, "guitest: ready")
@@ -188,6 +198,52 @@ func (f *fixture) inUse(ctx context.Context) error {
  return check(`+shown+` && `+stops+`===2,{title:el('c-title').textContent,stops:`+stops+`});
 })()`); err != nil {
 		return fmt.Errorf("Start copying didn't show Folder in use again: %w", err)
+	}
+	return nil
+}
+
+// confirm waits until done.fit's copy is in the state, previews Free up
+// space, opens the confirm dialog and cancels it, which must focus Delete
+// again. It never deletes.
+func (f *fixture) confirm(ctx context.Context) error {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return err
+	}
+	for {
+		records, err := state.Load(filepath.Join(base, "seestar-copy"), f.folder, nil)
+		if err != nil {
+			return err
+		}
+		if _, ok := records["MyWorks/done.fit"]; ok {
+			break
+		}
+		select {
+		case <-time.After(100 * time.Millisecond):
+		case <-ctx.Done():
+			return fmt.Errorf("done.fit wasn't copied: %w", ctx.Err())
+		}
+	}
+	if err := f.probe(ctx, `(() => {
+ if(!window.__guitestFind) {window.__guitestFind=true; el('t-free').click(); el('x-find').click();}
+ const go=el('x-go');
+ return check(!go.hidden && !go.disabled && go.textContent==='Delete 1 file…',{title:el('x-title').textContent,go:go.textContent,hidden:go.hidden});
+})()`); err != nil {
+		return fmt.Errorf("Find files didn't show a preview: %w", err)
+	}
+	if err := f.probe(ctx, `(() => {
+ if(!window.__guitestAsk) {window.__guitestAsk=true; el('x-go').click();}
+ const d=el('x-confirm');
+ return check(d.open && document.activeElement===el('x-ccancel'),{open:d.open,focused:document.activeElement?.id});
+})()`); err != nil {
+		return fmt.Errorf("Delete didn't open the confirm dialog: %w", err)
+	}
+	if err := f.probe(ctx, `(() => {
+ if(!window.__guitestCancel) {window.__guitestCancel=true; el('x-ccancel').click();}
+ const d=el('x-confirm');
+ return check(!d.open && document.activeElement===el('x-go'),{open:d.open,focused:document.activeElement?.id});
+})()`); err != nil {
+		return fmt.Errorf("Cancel didn't close the dialog and focus Delete: %w", err)
 	}
 	return nil
 }

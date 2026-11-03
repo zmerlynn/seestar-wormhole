@@ -15,6 +15,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -65,6 +67,7 @@ type server struct {
 	test   func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	native *Native // nil without a window
 	copy   *controller
+	free   *freer
 
 	mu       sync.Mutex
 	file     *settingsFile
@@ -79,6 +82,9 @@ func newServer(ctx context.Context, addr netip.AddrPort, token, version, stateDi
 		test: engine.Test,
 	}
 	s.copy = newController(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
+		return s.dial(ctx, endpoint)
+	})
+	s.free = newFreer(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
 		return s.dial(ctx, endpoint)
 	})
 	return s
@@ -199,7 +205,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.status(w)
 		return
-	case "/app/api/test", "/app/api/settings", "/app/api/copy":
+	case "/app/api/test", "/app/api/settings", "/app/api/copy", "/app/api/delete":
 	case "/app/api/folder":
 		if s.native == nil {
 			fail(http.StatusNotFound)
@@ -239,6 +245,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.chooseFolder(w, in)
 	case "/app/api/copy":
 		s.copyAction(w, in.Action)
+	case "/app/api/delete":
+		s.freeAction(w, in)
 	default:
 		s.save(w, in)
 	}
@@ -264,7 +272,12 @@ type input struct {
 	Includes     []string `json:"includes"`
 	SkipBuiltIn  bool     `json:"skip_built_in"`
 	StartCopying bool     `json:"start_copying"`
-	Action       string   `json:"action"` // the copy API's: start, stop or check
+	Action       string   `json:"action"` // the copy and delete APIs'
+	// The delete API's: Find's options, and Delete's preview and folders.
+	Days    string   `json:"days"`
+	Trust   bool     `json:"trust"`
+	ID      int      `json:"id"`
+	Folders []string `json:"folders"`
 }
 
 func (s *server) status(w http.ResponseWriter) {
@@ -279,9 +292,10 @@ func (s *server) status(w http.ResponseWriter) {
 		DefaultExcludes []string `json:"default_excludes"`
 		Native          bool     `json:"native"` // the window's dialogs are there
 		Copy            copyView `json:"copy"`
+		Free            freeView `json:"free"`
 		Activity        []entry  `json:"activity"` // newest first
 		ActivitySeq     int      `json:"activity_seq"`
-	}{s.version, setUp, set, engine.DefaultExcludes, s.native != nil, s.copy.view(time.Now()), lines, seq})
+	}{s.version, setUp, set, engine.DefaultExcludes, s.native != nil, s.copy.view(time.Now()), s.free.view(), lines, seq})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -324,6 +338,8 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		return
 	}
 	old, wasSetUp := s.file.settings, s.file.setUp()
+	// The Free up space options are saved by Find, not by this form.
+	set.OlderThanDays, set.TrustState = old.OlderThanDays, old.TrustState
 	if err := s.file.save(set); err != nil {
 		s.mu.Unlock()
 		s.log.Error("save settings", "path", s.file.path, "err", err)
@@ -334,6 +350,9 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		return
 	}
 	changed := !wasSetUp || old.Address != set.Address || old.Folder != set.Folder
+	if changed || !slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn {
+		s.free.clear()
+	}
 	var oldSessions *browse.Sessions
 	if changed {
 		oldSessions = s.sessions
@@ -374,6 +393,69 @@ func (s *server) copyAction(w http.ResponseWriter, action string) {
 	}
 	respond(w, http.StatusOK, s.copy.view(time.Now()))
 }
+
+// freeAction is the Free up space tab's: find, cancel, delete, stop or
+// reset. It answers the tab's new state.
+func (s *server) freeAction(w http.ResponseWriter, in input) {
+	conflict := func(msg string) {
+		respond(w, http.StatusConflict, struct {
+			Error string `json:"error"`
+		}{msg})
+	}
+	switch in.Action {
+	case "find":
+		days, err := strconv.Atoi(strings.TrimSpace(in.Days))
+		if err != nil || days < 0 || days > maxDays {
+			respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"days": "Enter a whole number of days, 0 or more."}})
+			return
+		}
+		// Holding s.mu keeps a Save from landing between the read and
+		// the start; it is released before logging or answering.
+		s.mu.Lock()
+		if !s.file.setUp() {
+			s.mu.Unlock()
+			conflict("Couldn't find files: " + errNotSetUp.Error() + ".")
+			return
+		}
+		set, old := s.file.settings, s.file.settings
+		set.OlderThanDays, set.TrustState = days, in.Trust
+		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState {
+			if err := s.file.save(set); err != nil {
+				s.mu.Unlock()
+				s.log.Error("save settings", "path", s.file.path, "err", err)
+				conflict("Couldn't save the options: " + reason(err) + ". Try again.")
+				return
+			}
+		}
+		err = s.free.find(set)
+		s.mu.Unlock()
+		if err != nil {
+			conflict("Couldn't find files: " + err.Error() + ".")
+			return
+		}
+	case "cancel":
+		s.free.cancelCheck()
+	case "delete":
+		if err := s.free.confirm(in.ID, in.Folders); errors.Is(err, errStale) {
+			conflict("Find files again before deleting.")
+			return
+		} else if err != nil {
+			conflict("Couldn't delete: " + err.Error() + ".")
+			return
+		}
+	case "stop":
+		s.free.halt()
+	case "reset":
+		s.free.reset()
+	default:
+		http.Error(w, "Request rejected", http.StatusBadRequest)
+		return
+	}
+	respond(w, http.StatusOK, s.free.view())
+}
+
+// maxDays caps Only files older than N days: 100 years.
+const maxDays = 36500
 
 func respond(w http.ResponseWriter, code int, v any) {
 	b, err := json.Marshal(v)

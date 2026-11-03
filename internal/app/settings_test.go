@@ -27,7 +27,7 @@ func TestLoadMissingIsDefaults(t *testing.T) {
 	}
 	home, _ := os.UserHomeDir()
 	want := Settings{Version: 1, Folder: filepath.Join(home, "Seestar"), IntervalMinutes: 5,
-		Excludes: []string{}, Includes: []string{}, SkipBuiltIn: true, StartCopying: true}
+		Excludes: []string{}, Includes: []string{}, SkipBuiltIn: true, StartCopying: true, OlderThanDays: 7}
 	if f.exists || !reflect.DeepEqual(f.settings, want) {
 		t.Errorf("missing file = %+v (exists %v), want %+v", f.settings, f.exists, want)
 	}
@@ -44,7 +44,7 @@ func TestLoadAbsentFieldsTakeDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Settings{Version: 1, Address: "192.0.2.10:445", Folder: "/data/Seestar", IntervalMinutes: 5,
-		Excludes: []string{}, Includes: []string{}, SkipBuiltIn: false, StartCopying: true}
+		Excludes: []string{}, Includes: []string{}, SkipBuiltIn: false, StartCopying: true, OlderThanDays: 7}
 	if !f.exists || !reflect.DeepEqual(f.settings, want) {
 		t.Errorf("got %+v, want %+v", f.settings, want)
 	}
@@ -75,7 +75,7 @@ func TestSaveRoundTripKeepsUnknownKeys(t *testing.T) {
 		"version": 1.0, "address": "192.0.2.10:445", "folder": "/x/y", "interval_minutes": 30.0,
 		"excludes": []any{"Video", "/Preview"}, "includes": []any{"MyWorks"},
 		"skip_built_in": false, "start_copying": false,
-		"from_a_later_version": map[string]any{"x": []any{1.0, 2.0}}, "older_than_days": 3.0,
+		"from_a_later_version": map[string]any{"x": []any{1.0, 2.0}}, "older_than_days": 3.0, "trust_state": false,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("saved\n%s\nwant %v", b, want)

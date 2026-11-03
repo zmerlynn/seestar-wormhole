@@ -11,6 +11,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -184,6 +185,30 @@ func TestDeleteResultFailed(t *testing.T) {
 	}
 	if r.Files[0].Reason != err.Error() {
 		t.Errorf("got reason %q, want the run's error %q", r.Files[0].Reason, err)
+	}
+}
+
+// A local copy that can't be read fails its file, and the run goes on to
+// the end and returns ErrFailedFiles, with the CLI's text.
+func TestDeleteFailedFiles(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows reports a file in the path as a missing copy")
+	}
+	s := newShare(t)
+	put(t, s.dir, "MyWorks/a.jpg", "a")
+	put(t, s.dir, "Other/b.jpg", "b")
+	s.record(t, map[string]string{"MyWorks/a.jpg": "a", "Other/b.jpg": "b"})
+	// MyWorks is a file in the destination, so a.jpg's copy can't be read.
+	put(t, s.dest, "MyWorks", "not a folder")
+	put(t, s.dest, "Other/b.jpg", "b")
+	o := s.options()
+	o.DryRun = true
+	r, err := RunDelete(t.Context(), o, discard)
+	if !errors.Is(err, ErrFailedFiles) || err.Error() != "failed files: 1" {
+		t.Fatalf("got err %v, want ErrFailedFiles as failed files: 1", err)
+	}
+	if got, want := outcomes(r), []string{"Other/b.jpg deleted", "MyWorks/a.jpg failed"}; !slices.Equal(got, want) {
+		t.Errorf("got outcomes %q, want %q", got, want)
 	}
 }
 
