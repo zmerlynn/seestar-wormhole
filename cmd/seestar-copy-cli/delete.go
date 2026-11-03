@@ -76,9 +76,8 @@ Only files whose device mtime is at least --older-than old are deleted.
 --exclude, --no-default-excludes and --include select exactly as for sync
 (see ` + programName + ` help sync). A folder that held entries and that
 the run left empty is removed too; the share root never is.
-Do not run delete while the telescope is capturing, restacking or managing
-files in its app: delete checks each file just before it removes it, but a
-file rewritten between that check and the removal is lost.
+A file the telescope rewrites between delete's check and its removal is
+lost, so avoid running delete while the telescope is busy.
 Durations use Go units, such as 36h, or whole days, such as 7d.
 Logs and errors go to stderr.
 Exit 0 when the run finishes, however many files it kept, or is stopped;

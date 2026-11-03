@@ -329,7 +329,7 @@ func TestDeleteHelp(t *testing.T) {
 	for _, want := range []string{
 		"--endpoint string", "--dest string", "--state-dir string", "--trust-state", "--ignore-state",
 		"--older-than age", "(default 7d)", "--force", "--exclude stringArray", "--no-default-excludes", "--include stringArray", "--dry-run",
-		"Without\n--force it only previews", "Do not run delete while the telescope is capturing",
+		"Without\n--force it only previews", "avoid running delete while the telescope is busy",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("delete help lacks %q:\n%s", want, stdout)

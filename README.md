@@ -105,8 +105,8 @@ make your own export or backup of the folder, then preview with
 only reports what it would delete. When the preview looks right, add
 `--force`. By default delete removes only files that sync recorded, that have
 not changed on the telescope, that are at least 7 days old, and whose copy in
-your folder still matches. Don't run it while the telescope is capturing or
-restacking. See [delete](docs/reference.md#delete).
+your folder still matches. Avoid running it while the telescope is busy.
+See [delete](docs/reference.md#delete).
 
 ## Things to know
 

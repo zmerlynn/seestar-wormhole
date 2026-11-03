@@ -1029,9 +1029,6 @@ seestar-copy-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar --force
 seestar-copy-cli delete --endpoint 127.0.0.1:4445 --ignore-state --include '*.jpg' --older-than 30d --force
 ```
 
-**Do not run delete while the telescope is capturing, restacking, or
-managing files in its app.** See [the check-then-remove race](#the-check-then-remove-race).
-
 ### delete flags
 
 | Flag | Default | Meaning |
@@ -1126,21 +1123,14 @@ remove it, and delete logs `folder kept` with the reason
 
 ### The check-then-remove race
 
-Delete checks each file on the device just before it removes it (check 9),
-but the check and the removal are separate requests by name. If the
-telescope rewrites the file between them, for example by restacking an old
-target, delete removes the new bytes. They were never copied, and nothing can
-bring them back. This holds in every mode, and `--older-than` does not
-prevent it, because a restack can rewrite an old file. A folder can likewise
-be removed if it is made again, empty, at the same path between its check and
-its removal.
+Delete checks each file just before it removes it (check 9), in a separate
+request. If the telescope rewrites the file in that gap, for example by
+restacking, the new bytes are lost. So avoid running delete while the
+telescope is busy.
 
 To remove a file or folder that the share marks read-only, delete may first
 clear that read-only attribute; if the removal then fails, the attribute can
 stay cleared.
-
-Delete cannot tell what the telescope is doing. So: do not run delete while
-the telescope is capturing, restacking, or managing files in its app.
 
 ### delete and sync
 
