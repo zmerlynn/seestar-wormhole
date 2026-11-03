@@ -38,7 +38,9 @@ var allowed = map[string]string{}
 // (including function literals in it) refers to a name in writeNames, or
 // calls a package-level variable initialized with one (a test seam such as
 // syncFile = (*os.File).Sync), starts with a call to readonly.Check. It also
-// checks that only tests call Reset.
+// checks that only tests call Reset, and only commands call Enable: a
+// package such as internal/engine, which several programs share, never
+// turns the guard on for them.
 func TestWritesAreGuarded(t *testing.T) {
 	var guarded []string
 	for _, top := range []string{"internal", "cmd"} {
@@ -104,8 +106,15 @@ func TestWritesAreGuarded(t *testing.T) {
 				}
 				if rel != "internal/readonly" {
 					ast.Inspect(f, func(n ast.Node) bool {
-						if sel, ok := n.(*ast.SelectorExpr); ok && sel.Sel.Name == "Reset" && isIdent(sel.X, "readonly") {
+						sel, ok := n.(*ast.SelectorExpr)
+						if !ok || !isIdent(sel.X, "readonly") {
+							return true
+						}
+						switch {
+						case sel.Sel.Name == "Reset":
 							t.Errorf("%s: readonly.Reset outside a test", fset.Position(sel.Pos()))
+						case sel.Sel.Name == "Enable" && !strings.HasPrefix(rel, "cmd/"):
+							t.Errorf("%s: readonly.Enable outside a command", fset.Position(sel.Pos()))
 						}
 						return true
 					})
@@ -123,7 +132,7 @@ func TestWritesAreGuarded(t *testing.T) {
 		"internal/state.Open", "internal/state.create", "internal/state.lockFile", "internal/state.Append",
 		"internal/state.syncDir", "internal/copier.removeTemps", "internal/copier.download", "internal/copier.syncFolder",
 		"internal/remote.RemoveFile", "internal/remote.RemoveDir",
-		"cmd/seestar-copy-cli.deleteFile", "cmd/seestar-copy-cli.removeFolder",
+		"internal/engine.deleteFile", "internal/engine.removeFolder",
 	} {
 		if !slices.Contains(guarded, want) {
 			t.Errorf("the scan did not find the writes in %s; found %q", want, guarded)

@@ -6,9 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"go/ast"
-	"go/parser"
-	"go/token"
 	"io/fs"
 	"log/slog"
 	"maps"
@@ -266,6 +263,7 @@ func TestDeleteModes(t *testing.T) {
 // With --trust-state, the destination need not exist; without it, a
 // missing destination is a runtime failure that deletes nothing.
 func TestDeleteMissingDest(t *testing.T) {
+	const noDest = "destination not found; give --trust-state if the copies were moved or the drive is offline"
 	rec := stateRec{"MyWorks/a.fit", "aaa", deleteOld}
 	for _, trust := range []bool{true, false} {
 		s := newWritableShare(t)
@@ -281,8 +279,8 @@ func TestDeleteMissingDest(t *testing.T) {
 		switch {
 		case trust && (code != exitOK || s.has(t, rec.path)):
 			t.Errorf("--trust-state: code=%d, file there %t; want 0 and deleted:\n%s", code, s.has(t, rec.path), stderr)
-		case !trust && (code != exitFailure || !s.has(t, rec.path) || !strings.Contains(stderr, errNoDest.Error())):
-			t.Errorf("code=%d, file there %t; want 1, kept and %q:\n%s", code, s.has(t, rec.path), errNoDest, stderr)
+		case !trust && (code != exitFailure || !s.has(t, rec.path) || !strings.Contains(stderr, noDest)):
+			t.Errorf("code=%d, file there %t; want 1, kept and %q:\n%s", code, s.has(t, rec.path), noDest, stderr)
 		}
 		if _, err := os.Stat(dest); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("trust %t: destination created: %v", trust, err)
@@ -682,39 +680,6 @@ func TestDeleteBetweenSyncs(t *testing.T) {
 		t.Errorf("sync of a new file:\n%s", log)
 	}
 	checkLocal(t, dest, "MyWorks/M 31/a.fit", "new", newer)
-}
-
-// proveFile only reads: it calls nothing that removes.
-func TestProveFileRemovesNothing(t *testing.T) {
-	fset := token.NewFileSet()
-	f, err := parser.ParseFile(fset, "delete.go", nil, parser.SkipObjectResolution)
-	if err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, d := range f.Decls {
-		fn, ok := d.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "proveFile" {
-			continue
-		}
-		found = true
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			var name string
-			switch n := n.(type) {
-			case *ast.Ident:
-				name = n.Name
-			case *ast.SelectorExpr:
-				name = n.Sel.Name
-			}
-			if strings.Contains(name, "Remove") || name == "deleteFile" || name == "removeFolder" || name == "rm" {
-				t.Errorf("%s: proveFile refers to %s", fset.Position(n.Pos()), name)
-			}
-			return true
-		})
-	}
-	if !found {
-		t.Fatal("proveFile not found")
-	}
 }
 
 // Without --force, delete only previews: it logs the same lines as

@@ -34,7 +34,7 @@ judgment call; the table is a starting point.
 | Lane | Run it when the change touches |
 |---|---|
 | correctness | any non-test Go |
-| concurrency | goroutines, channels, locks, atomics, contexts, timers or signals; anything in `internal/copy/` or the pass loop in `cmd/seestar-copy-cli/` |
+| concurrency | goroutines, channels, locks, atomics, contexts, timers or signals; anything in `internal/copy/` or the pass loop in `internal/engine/` |
 | tests | any Go, including tests alone |
 | simplicity | any non-test Go, or a new flag, option or file format |
 | operability-security | logging, file writes, paths from the device, budgets; `internal/remote/`, `internal/copy/`, `internal/state/` |

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/zmerlynn/seestar-copy/internal/engine"
 )
 
 // ageValue is the value of an --older-than flag: a Go duration, such as 36h
@@ -34,15 +36,6 @@ func (a *ageValue) Set(s string) error {
 
 // String prints a whole number of days as days, so a default of 7d shows as
 // 7d in the help, and zero as 0, which the help leaves out.
-func (a *ageValue) String() string {
-	d := time.Duration(*a)
-	switch {
-	case d == 0:
-		return "0"
-	case d%day == 0:
-		return strconv.FormatInt(int64(d/day), 10) + "d"
-	}
-	return d.String()
-}
+func (a *ageValue) String() string { return engine.FormatAge(time.Duration(*a)) }
 
 func (a *ageValue) Type() string { return "age" }

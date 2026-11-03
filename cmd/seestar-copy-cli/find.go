@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/cobra"
+	"github.com/zmerlynn/seestar-copy/internal/engine"
 	"github.com/zmerlynn/seestar-copy/internal/plan"
 	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
@@ -23,7 +24,7 @@ type findOptions struct {
 	endpoint  string
 	selection selectionFlags
 	// selector is set by validate from selection.
-	selector    selector
+	selector    engine.Selector
 	olderThan   time.Duration
 	format      string
 	dest        string
@@ -143,13 +144,13 @@ type listed struct {
 // give each file a status.
 func list(ctx context.Context, o findOptions, records map[string]state.Record, out io.Writer, log *slog.Logger) (err error) {
 	start := time.Now()
-	var left leftOut
+	var left engine.LeftOut
 	var files, folders, recent int
 	var bytes int64
 	statuses := map[string]int{}
 	defer func() {
 		args := []any{"files", files, "folders", folders, "bytes", bytes, "recent", recent,
-			"skipped", len(left.skipped), "unmatched", left.unmatched}
+			"skipped", len(left.Skipped), "unmatched", left.Unmatched}
 		if records != nil {
 			args = append(args, plan.StatusCopied, statuses[plan.StatusCopied], plan.StatusChanged, statuses[plan.StatusChanged],
 				plan.StatusNew, statuses[plan.StatusNew])
@@ -166,9 +167,9 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		return fmt.Errorf("connect to %s: %w", o.endpoint, err)
 	}
 	defer sess.Close()
-	entries, left, err := o.selector.walk(ctx, sess)
-	for _, x := range left.skipped {
-		log.Info("skipped", "path", x.path, "exclude", x.by.flag)
+	entries, left, err := o.selector.Walk(ctx, sess)
+	for _, x := range left.Skipped {
+		log.Info("skipped", "path", x.Path, "exclude", x.Exclude)
 	}
 	if err != nil {
 		return fmt.Errorf("list the share: %w", err)
