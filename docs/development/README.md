@@ -84,6 +84,35 @@ Samba; the tests run on a private Podman network. CI runs them too. They
 need the `smbintegration` build tag and `SEESTAR_COPY_SMB_ENDPOINT`
 (`host:port`) naming the fixture.
 
+`test/browser` holds browser tests of the `browse` page, written with
+[Playwright](https://playwright.dev/) and run in Chromium and WebKit. CI
+runs them in the `browser` job. They cover the listing and its count,
+folder navigation with Back, Forward and breadcrumb focus, thumbnails, the
+image, text and FITS viewers, Save, closing the viewer, a missing folder, a
+long name in a narrow window, and the favicon. They also save screenshots
+of the page in light and dark, which CI uploads. The tests need the Samba
+fixture's `browse` target, a tree of real files from `make-browse.sh`
+instead of `tree.txt`'s. To run them locally, with Node.js and Podman:
+
+```sh
+podman build --target browse -t seestar-copy-samba-browse internal/remote/testdata/samba
+podman run -d --rm --name seestar-copy-samba-browse -p 127.0.0.1:14450:14450 seestar-copy-samba-browse
+go build -mod=vendor ./cmd/seestar-copy-cli
+./seestar-copy-cli browse --endpoint 127.0.0.1:14450
+```
+
+browse prints its URL. In another terminal:
+
+```sh
+cd test/browser
+npm ci && npx playwright install chromium webkit
+BROWSE_URL=http://127.0.0.1:PORT/ npx playwright test
+```
+
+Use the URL browse printed for `BROWSE_URL`. Screenshots go to
+`test/browser/screenshots`. Stop the fixture with
+`podman stop seestar-copy-samba-browse`.
+
 With Go 1.27 installed, the same checks run directly:
 
 ```sh

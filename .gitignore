@@ -12,3 +12,10 @@
 **/.seestar-copy-*.tmp
 **/*.fit
 **/*.fits
+
+# The browser tests' dependencies and output.
+/test/browser/node_modules/
+/test/browser/test-results/
+/test/browser/playwright-report/
+/test/browser/blob-report/
+/test/browser/screenshots/

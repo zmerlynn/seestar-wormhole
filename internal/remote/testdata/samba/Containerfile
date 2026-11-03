@@ -1,7 +1,8 @@
 # A guest-only, read-only Samba share named like the telescope's, for the
 # smbintegration tests, and a guest-writable scratch share for the remove
-# tests. Build with this directory as the context.
-FROM docker.io/library/ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852
+# tests. Build with this directory as the context. The browse target serves
+# the browser tests' tree instead of tree.txt's.
+FROM docker.io/library/ubuntu:24.04@sha256:fe81560990fae86dc4743202b2cb4d3df98d0bcf949173cecef15ce1127ef852 AS samba
 RUN apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends samba \
  && rm -rf /var/lib/apt/lists/*
@@ -15,3 +16,10 @@ RUN mkdir /srv/scratch && chown nobody:nogroup /srv/scratch && chmod 0755 /srv/s
 ENV SMB_PORT=14450
 EXPOSE 14450
 CMD ["sh", "-c", "exec smbd --foreground --no-process-group --debug-stdout --option=\"smb ports=$SMB_PORT\""]
+
+FROM samba AS browse
+COPY make-browse.sh /fixture/
+RUN rm -rf /srv/emmc && sh /fixture/make-browse.sh /srv/emmc
+
+# The default target: tree.txt's tree.
+FROM samba
