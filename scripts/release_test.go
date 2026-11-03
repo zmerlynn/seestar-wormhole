@@ -34,6 +34,41 @@ func TestReleaseAssetNames(t *testing.T) {
 	if got := archiveName("v0.5.0-rc.1", "windows", "arm64"); got != "seestar-copy_v0.5.0-rc.1_windows_arm64.zip" {
 		t.Fatal(got)
 	}
+	for _, tc := range []struct {
+		goos string
+		app  bool
+		want string
+	}{
+		{"linux", false, "seestar-copy-cli_v0.5.0_linux_arm64"},
+		{"linux", true, "seestar-copy_v0.5.0_linux_arm64"},
+		{"windows", false, "seestar-copy-cli_v0.5.0_windows_arm64.exe"},
+		{"windows", true, "seestar-copy_v0.5.0_windows_arm64.exe"},
+	} {
+		if got := assetName("v0.5.0", tc.goos, "arm64", tc.app); got != tc.want {
+			t.Errorf("assetName(%s, app=%t)=%s, want %s", tc.goos, tc.app, got, tc.want)
+		}
+	}
+}
+
+// The CLI keeps its reproducible build; the app is the Windows window build.
+func TestBuildCommand(t *testing.T) {
+	for _, tc := range []struct {
+		app  bool
+		want []string
+	}{
+		{false, []string{"go", "build", "-mod=vendor", "-trimpath", "-buildvcs=false",
+			"-ldflags", "-s -w -X main.version=v0.5.0 -X main.revision=0123456789ab", "-o", "out", "./cmd/seestar-copy-cli"}},
+		{true, []string{"go", "build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-tags=gui,production",
+			"-ldflags", "-s -w -X main.version=v0.5.0 -H windowsgui", "-o", "out", "./cmd/seestar-copy"}},
+	} {
+		cmd := buildCommand("v0.5.0", "0123456789ab", "windows", "arm64", tc.app, "out")
+		if got := append([]string{filepath.Base(cmd.Args[0])}, cmd.Args[1:]...); !slices.Equal(got, tc.want) {
+			t.Errorf("app=%t args=%q, want %q", tc.app, got, tc.want)
+		}
+		if env := cmd.Env[len(cmd.Env)-3:]; !slices.Equal(env, []string{"GOOS=windows", "GOARCH=arm64", "CGO_ENABLED=0"}) {
+			t.Errorf("app=%t env=%q", tc.app, env)
+		}
+	}
 }
 
 func archiveFixtures(t *testing.T) {
@@ -45,12 +80,18 @@ func archiveFixtures(t *testing.T) {
 	}
 }
 
-func fakeBuild(version, revision, goos, arch, path string) error {
-	return os.WriteFile(path, []byte(fmt.Sprintf("%s %s %s %s", version, revision, goos, arch)), 0600)
+func fakeBuild(version, revision, goos, arch string, app bool, path string) error {
+	return os.WriteFile(path, []byte(fmt.Sprintf("%s %s %s %s app=%t", version, revision, goos, arch, app)), 0600)
 }
 
+// nativeParts adds what the native jobs build: the two Linux apps and the DMG.
 func nativeParts(t *testing.T) {
 	t.Helper()
+	for _, arch := range []string{"amd64", "arm64"} {
+		if err := fakeBuild("v0.5.0", "revision", "linux", arch, true, "dist/parts/"+assetName("v0.5.0", "linux", arch, true)); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := os.WriteFile("dist/parts/seestar-copy_v0.5.0_darwin_universal.dmg", []byte("synthetic dmg"), 0600); err != nil {
 		t.Fatal(err)
 	}
@@ -60,38 +101,56 @@ func TestReleaseArchivesAndChecksums(t *testing.T) {
 	t.Chdir(t.TempDir())
 	archiveFixtures(t)
 	var built []string
-	if err := release("v0.5.0", "revision", archiveTime, func(v, r, goos, arch, path string) error {
+	if err := release("v0.5.0", "revision", archiveTime, func(v, r, goos, arch string, app bool, path string) error {
 		built = append(built, filepath.Base(path))
-		return fakeBuild(v, r, goos, arch, path)
+		return fakeBuild(v, r, goos, arch, app, path)
 	}); err != nil {
 		t.Fatal(err)
 	}
 	wantBuilt := []string{
 		"seestar-copy-cli_v0.5.0_linux_amd64", "seestar-copy-cli_v0.5.0_linux_arm64",
 		"seestar-copy-cli_v0.5.0_darwin_amd64", "seestar-copy-cli_v0.5.0_darwin_arm64",
-		"seestar-copy-cli_v0.5.0_windows_amd64.exe", "seestar-copy-cli_v0.5.0_windows_arm64.exe",
+		"seestar-copy-cli_v0.5.0_windows_amd64.exe", "seestar-copy_v0.5.0_windows_amd64.exe",
+		"seestar-copy-cli_v0.5.0_windows_arm64.exe", "seestar-copy_v0.5.0_windows_arm64.exe",
 	}
 	if !slices.Equal(built, wantBuilt) {
 		t.Fatalf("built=%v, want %v", built, wantBuilt)
 	}
-	// The portable build packages Linux and Windows for local rehearsals, and
-	// never publishes a partial checksum file.
+	// The portable build packages Windows for local rehearsals; Linux waits
+	// for its native app. It never publishes a partial checksum file.
 	if err := checkInventory("dist/parts", slices.Sorted(slices.Values(wantBuilt))); err != nil {
 		t.Fatal(err)
 	}
-	portable := []string{"seestar-copy_v0.5.0_linux_amd64.tar.gz", "seestar-copy_v0.5.0_linux_arm64.tar.gz", "seestar-copy_v0.5.0_windows_amd64.zip", "seestar-copy_v0.5.0_windows_arm64.zip"}
-	for _, name := range portable {
-		if _, err := os.Stat(filepath.Join("dist", name)); err != nil {
-			t.Fatal(err)
-		}
+	entries, err := os.ReadDir("dist")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, err := os.Stat("dist/SHA256SUMS"); !os.IsNotExist(err) {
-		t.Fatal("portable build must not publish a partial checksum file")
+	var got []string
+	for _, entry := range entries {
+		got = append(got, entry.Name())
+	}
+	if want := []string{"parts", "seestar-copy_v0.5.0_windows_amd64.zip", "seestar-copy_v0.5.0_windows_arm64.zip"}; !slices.Equal(got, want) {
+		t.Fatalf("portable output=%v, want %v", got, want)
 	}
 	if err := finalChecksums("v0.5.0", archiveTime); err == nil {
 		t.Fatal("accepted incomplete release")
 	}
 	nativeParts(t)
+	// Every native part is required: a missing Linux app refuses the release.
+	linuxApp := "dist/parts/" + assetName("v0.5.0", "linux", "arm64", true)
+	data, err := os.ReadFile(linuxApp)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(linuxApp); err != nil {
+		t.Fatal(err)
+	}
+	if err := finalChecksums("v0.5.0", archiveTime); err == nil {
+		t.Fatal("accepted a release without the Linux arm64 app")
+	}
+	if err := os.WriteFile(linuxApp, data, 0600); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile("dist/parts/unexpected", nil, 0644); err != nil {
 		t.Fatal(err)
 	}
@@ -113,12 +172,12 @@ func TestReleaseArchivesAndChecksums(t *testing.T) {
 	if err := finalChecksums("v0.5.0", archiveTime); err != nil {
 		t.Fatal(err)
 	}
-	entries, err := os.ReadDir("dist")
+	entries, err = os.ReadDir("dist")
 	if err != nil {
 		t.Fatal(err)
 	}
 	want := []string{"SHA256SUMS", "seestar-copy_v0.5.0_darwin_universal.dmg", "seestar-copy_v0.5.0_linux_amd64.tar.gz", "seestar-copy_v0.5.0_linux_arm64.tar.gz", "seestar-copy_v0.5.0_windows_amd64.zip", "seestar-copy_v0.5.0_windows_arm64.zip"}
-	var got []string
+	got = nil
 	for _, entry := range entries {
 		got = append(got, entry.Name())
 	}
@@ -133,7 +192,7 @@ func TestReleaseArchivesAndChecksums(t *testing.T) {
 		}
 		fmt.Fprintf(&sums, "%x  %s\n", sha256.Sum256(data), name)
 	}
-	data, err := os.ReadFile("dist/SHA256SUMS")
+	data, err = os.ReadFile("dist/SHA256SUMS")
 	if err != nil || string(data) != sums.String() {
 		t.Fatalf("checksums=%s err=%v", data, err)
 	}
@@ -147,15 +206,18 @@ func TestArchiveContentsModesAndDeterminism(t *testing.T) {
 	}
 	for _, goos := range []string{"linux", "windows"} {
 		for _, arch := range []string{"amd64", "arm64"} {
-			part := filepath.Join("parts", assetName("v0.5.0", goos, arch))
-			if err := fakeBuild("v0.5.0", "revision", goos, arch, part); err != nil {
-				t.Fatal(err)
+			cliPart := filepath.Join("parts", assetName("v0.5.0", goos, arch, false))
+			appPart := filepath.Join("parts", assetName("v0.5.0", goos, arch, true))
+			for _, part := range []string{cliPart, appPart} {
+				if err := fakeBuild("v0.5.0", "revision", goos, arch, part == appPart, part); err != nil {
+					t.Fatal(err)
+				}
 			}
 			name := archiveName("v0.5.0", goos, arch)
 			var first []byte
 			for run := range 2 {
 				// Change source metadata: the archive must ignore it.
-				for _, input := range []string{"LICENSE", "NOTICE", part} {
+				for _, input := range []string{"LICENSE", "NOTICE", cliPart, appPart} {
 					if err := os.Chtimes(input, archiveTime.Add(time.Duration(run)*time.Hour), archiveTime.Add(time.Duration(run)*time.Hour)); err != nil {
 						t.Fatal(err)
 					}
@@ -176,19 +238,19 @@ func TestArchiveContentsModesAndDeterminism(t *testing.T) {
 					t.Fatalf("%s is not deterministic", name)
 				}
 			}
-			ext := ""
+			// Sorted by byte: "seestar-copy-cli.exe" sorts before "seestar-copy.exe".
+			wantNames := []string{"LICENSE", "NOTICE", "seestar-copy", "seestar-copy-cli"}
 			if goos == "windows" {
-				ext = ".exe"
+				wantNames = []string{"LICENSE", "NOTICE", "seestar-copy-cli.exe", "seestar-copy.exe"}
 			}
-			wantNames := []string{"LICENSE", "NOTICE", "seestar-copy-cli" + ext}
 			var names []string
 			check := func(name string, mode os.FileMode, stamp time.Time, data []byte) {
 				t.Helper()
 				names = append(names, name)
 				wantMode, wantData := os.FileMode(0644), name+" fixture"
-				if name == "seestar-copy-cli"+ext {
+				if strings.HasPrefix(name, "seestar-copy") {
 					wantMode = 0755
-					wantData = fmt.Sprintf("v0.5.0 revision %s %s", goos, arch)
+					wantData = fmt.Sprintf("v0.5.0 revision %s %s app=%t", goos, arch, !strings.HasPrefix(name, "seestar-copy-cli"))
 				}
 				if mode != wantMode || !stamp.Equal(archiveTime) || string(data) != wantData {
 					t.Fatalf("%s mode=%v time=%v data=%q", name, mode, stamp, data)
@@ -273,7 +335,7 @@ func TestChecksumsHashEachFileAndSortByName(t *testing.T) {
 
 func TestReleaseDoesNotPublishFailedBuilds(t *testing.T) {
 	t.Chdir(t.TempDir())
-	err := release("v0.5.0", "revision", archiveTime, func(_, _, _, _, path string) error {
+	err := release("v0.5.0", "revision", archiveTime, func(_, _, _, _ string, _ bool, path string) error {
 		if strings.Contains(path, "arm64") {
 			return errors.New("build failed")
 		}

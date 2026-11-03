@@ -3,6 +3,7 @@ package licenses
 import (
 	"bytes"
 	"debug/buildinfo"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -64,15 +65,20 @@ func TestTargetNotices(t *testing.T) {
 	}
 }
 
-// noticeParts splits the repository's NOTICE where the Linux native GUI
-// section starts.
-func noticeParts(t *testing.T) (common, native string) {
+// noticeParts splits the repository's NOTICE into its common part, the
+// Linux native GUI section and the app's module texts, which are not
+// embedded.
+func noticeParts(t *testing.T) (common, native, app string) {
 	t.Helper()
-	common, native, ok := strings.Cut(string(repoFile(t, "NOTICE")), "\nLinux native GUI\n")
+	head, app, ok := strings.Cut(string(repoFile(t, "NOTICE")), "\nModules only seestar-copy links\n")
+	if !ok {
+		t.Fatal("NOTICE lacks the section of the app's module texts")
+	}
+	common, native, ok = strings.Cut(head, "\nLinux native GUI\n")
 	if !ok {
 		t.Fatal("NOTICE lacks the Linux native GUI section")
 	}
-	return common, "\nLinux native GUI\n" + native
+	return common, "\nLinux native GUI\n" + native, app
 }
 
 func TestOnlyLinkedModules(t *testing.T) {
@@ -81,7 +87,7 @@ func TestOnlyLinkedModules(t *testing.T) {
 	if err := writeForBuild(&out, info); err != nil {
 		t.Fatal(err)
 	}
-	notice, _ := noticeParts(t)
+	notice, _, _ := noticeParts(t)
 	license, pflag := repoFile(t, "LICENSE"), repoFile(t, "vendor/github.com/spf13/pflag/LICENSE")
 	want := notice + "\n--- LICENSE ---\n" + string(license) +
 		"\nModule: github.com/spf13/pflag\nSPDX: BSD-3-Clause\n\n--- vendor/github.com/spf13/pflag/LICENSE ---\n" + string(pflag)
@@ -94,7 +100,7 @@ func TestOnlyLinkedModules(t *testing.T) {
 // which is the one build that links them: a Linux cgo build that links
 // Wails. Tags alone don't select it.
 func TestNativeLinuxNotice(t *testing.T) {
-	_, native := noticeParts(t)
+	_, native, _ := noticeParts(t)
 	const wails = "github.com/wailsapp/wails/v3"
 	for _, c := range []struct {
 		goos, cgo, tags, dep string
@@ -124,11 +130,12 @@ func TestNativeLinuxNotice(t *testing.T) {
 	}
 }
 
-// The window build for Windows, the one cross-built without cgo, prints
-// Wails' notices with its supplements.
-func TestWindowNotices(t *testing.T) {
-	binary := filepath.Join(t.TempDir(), "seestar-copy.exe")
-	cmd := exec.Command("go", "build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-tags=gui,production", "-ldflags=-s -w", "-o", binary, "./cmd/seestar-copy")
+// windowsBuildInfo cross-builds a command for windows/amd64 without cgo and
+// returns its build information.
+func windowsBuildInfo(t *testing.T, tags, command string) *debug.BuildInfo {
+	t.Helper()
+	binary := filepath.Join(t.TempDir(), "program.exe")
+	cmd := exec.Command("go", "build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-tags="+tags, "-ldflags=-s -w", "-o", binary, command)
 	cmd.Dir = "../.."
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=windows", "GOARCH=amd64")
 	if out, err := cmd.CombinedOutput(); err != nil {
@@ -138,6 +145,13 @@ func TestWindowNotices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return info
+}
+
+// The window build for Windows, the one cross-built without cgo, prints
+// Wails' notices with its supplements.
+func TestWindowNotices(t *testing.T) {
+	info := windowsBuildInfo(t, "gui,production", "./cmd/seestar-copy")
 	var out bytes.Buffer
 	if err := writeForBuild(&out, info); err != nil {
 		t.Fatal(err)
@@ -167,7 +181,7 @@ func TestUnknownLinkedModule(t *testing.T) {
 }
 
 func TestEmbeddedProjectFiles(t *testing.T) {
-	common, native := noticeParts(t)
+	common, native, _ := noticeParts(t)
 	for name, want := range map[string]string{"NOTICE": common, "native-linux/NOTICE": native, "LICENSE": string(repoFile(t, "LICENSE"))} {
 		got, err := notices.ReadFile("embed/" + name)
 		if err != nil {
@@ -176,5 +190,48 @@ func TestEmbeddedProjectFiles(t *testing.T) {
 		if string(got) != want {
 			t.Errorf("embedded %s differs from the repository's; run go run ./scripts/generate-licenses.go", name)
 		}
+	}
+}
+
+// The app prints no notices, so NOTICE's last section carries the full texts
+// of each module the Windows window build links and the CLI does not.
+func TestAppOnlyModuleTexts(t *testing.T) {
+	_, _, app := noticeParts(t)
+	cli := map[string]bool{}
+	for _, dep := range windowsBuildInfo(t, "", "./cmd/seestar-copy-cli").Deps {
+		cli[dep.Path] = true
+	}
+	manifest, err := notices.ReadFile("embed/modules.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []module
+	if err := json.Unmarshal(manifest, &entries); err != nil {
+		t.Fatal(err)
+	}
+	files := map[string][]string{}
+	for _, entry := range entries {
+		files[entry.Path] = entry.Files
+	}
+	checked := 0
+	for _, dep := range windowsBuildInfo(t, "gui,production", "./cmd/seestar-copy").Deps {
+		if cli[dep.Path] {
+			if strings.Contains(app, "\nModule: "+dep.Path+"\n") {
+				t.Errorf("NOTICE's app section has %s, which the CLI links", dep.Path)
+			}
+			continue
+		}
+		if !strings.Contains(app, "\nModule: "+dep.Path+"\n") {
+			t.Errorf("NOTICE's app section lacks %s", dep.Path)
+		}
+		for _, name := range files[dep.Path] {
+			if want := "\n--- " + name + " ---\n" + string(repoFile(t, name)); !strings.Contains(app, want) {
+				t.Errorf("NOTICE's app section lacks the text of %s", name)
+			}
+			checked++
+		}
+	}
+	if checked == 0 {
+		t.Error("no app-only module texts checked")
 	}
 }

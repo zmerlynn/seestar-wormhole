@@ -11,7 +11,9 @@
 // in no separate file. The NOTICE file must contain the module table this
 // generator renders, so the table cannot drift from vendor/. Its Linux
 // native GUI section is embedded apart, as native-linux/NOTICE, since only
-// the Linux window build links those libraries.
+// the Linux window build links those libraries. The generator writes NOTICE's
+// last section, the full texts of the modules only the app links, which the
+// app cannot print itself; it is not embedded.
 package main
 
 import (
@@ -42,6 +44,9 @@ var builds = []struct{ command, tags string }{
 
 // nativeHeading starts NOTICE's Linux native GUI section.
 const nativeHeading = "\nLinux native GUI\n"
+
+// appHeading starts NOTICE's generated last section.
+const appHeading = "\nModules only seestar-copy links\n"
 
 var targets = []string{
 	"darwin/amd64", "darwin/arm64",
@@ -97,7 +102,7 @@ func generate(check bool) error {
 	if err := os.Chdir(filepath.Dir(strings.TrimSpace(string(modfile)))); err != nil {
 		return err
 	}
-	paths, err := linkedModules()
+	paths, cli, err := linkedModules()
 	if err != nil {
 		return err
 	}
@@ -114,7 +119,8 @@ func generate(check bool) error {
 	if err != nil {
 		return err
 	}
-	common, native, ok := bytes.Cut(notice, []byte(nativeHeading))
+	head, _, _ := bytes.Cut(notice, []byte(appHeading))
+	common, native, ok := bytes.Cut(head, []byte(nativeHeading))
 	if !ok {
 		return errors.New("NOTICE lacks the Linux native GUI section")
 	}
@@ -153,8 +159,15 @@ func generate(check bool) error {
 		return err
 	}
 	files["modules.json"] = append(manifest, '\n')
+	want := append(slices.Clip(head), appSection(entries, cli, files)...)
 	if check {
+		if !bytes.Equal(notice, want) {
+			return errors.New("NOTICE lacks the current texts of the modules only seestar-copy links; run go run ./scripts/generate-licenses.go")
+		}
 		return compare(files)
+	}
+	if err := os.WriteFile("NOTICE", want, 0o644); err != nil {
+		return err
 	}
 	if err := os.RemoveAll(dest); err != nil {
 		return err
@@ -173,9 +186,10 @@ func generate(check bool) error {
 }
 
 // linkedModules returns the sorted non-main modules that any release build
-// links.
-func linkedModules() ([]string, error) {
+// links, and the set of those the CLI links.
+func linkedModules() ([]string, map[string]bool, error) {
 	seen := map[string]bool{}
+	cli := map[string]bool{}
 	for _, target := range targets {
 		for _, build := range builds {
 			goos, goarch, _ := strings.Cut(target, "/")
@@ -188,7 +202,7 @@ func linkedModules() ([]string, error) {
 			cmd.Stderr = os.Stderr
 			out, err := cmd.Output()
 			if err != nil {
-				return nil, fmt.Errorf("go list %s -tags=%q for %s: %w", build.command, build.tags, target, err)
+				return nil, nil, fmt.Errorf("go list %s -tags=%q for %s: %w", build.command, build.tags, target, err)
 			}
 			decoder := json.NewDecoder(bytes.NewReader(out))
 			for {
@@ -201,10 +215,13 @@ func linkedModules() ([]string, error) {
 				if err := decoder.Decode(&pkg); errors.Is(err, io.EOF) {
 					break
 				} else if err != nil {
-					return nil, err
+					return nil, nil, err
 				}
 				if pkg.Module != nil && !pkg.Module.Main {
 					seen[pkg.Module.Path] = true
+					if build.command == "./cmd/seestar-copy-cli" {
+						cli[pkg.Module.Path] = true
+					}
 				}
 			}
 		}
@@ -214,7 +231,7 @@ func linkedModules() ([]string, error) {
 		paths = append(paths, path)
 	}
 	slices.Sort(paths)
-	return paths, nil
+	return paths, cli, nil
 }
 
 // licenseFiles lists a module's vendored license and notice files, sorted,
@@ -267,6 +284,31 @@ func noticeTable(entries []module) string {
 	}
 	b.WriteString("\n")
 	return b.String()
+}
+
+// appSection renders NOTICE's last section: the full license and notice
+// texts of the modules the app links and the CLI does not, which
+// seestar-copy-cli licenses leaves out, in that command's format.
+func appSection(entries []module, cli map[string]bool, files map[string][]byte) []byte {
+	var b bytes.Buffer
+	b.WriteString(appHeading)
+	b.WriteString(strings.Repeat("-", len(appHeading)-2) + "\n\n")
+	b.WriteString("seestar-copy, the desktop app, also links the modules below, which\n")
+	b.WriteString("seestar-copy-cli does not. Their full license and notice texts follow.\n")
+	for _, entry := range entries {
+		if cli[entry.Path] {
+			continue
+		}
+		fmt.Fprintf(&b, "\nModule: %s\nSPDX: %s\n", entry.Path, entry.SPDX)
+		for _, name := range entry.Files {
+			fmt.Fprintf(&b, "\n--- %s ---\n", name)
+			b.Write(files[name])
+			if !bytes.HasSuffix(files[name], []byte("\n")) {
+				b.WriteString("\n")
+			}
+		}
+	}
+	return b.Bytes()
 }
 
 // compare fails unless the embed directory holds exactly the generated files.

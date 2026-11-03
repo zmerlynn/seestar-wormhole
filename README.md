@@ -13,16 +13,16 @@ telescope is somewhere else.
 
 ## What it doesn't do
 
-- It never writes to the telescope, except when you run `delete --force`:
-  it doesn't rename or upload anything there, and `sync`, `find` and
-  `browse` only read.
+- It only changes the telescope when you confirm Free up space in the app or
+  run `delete --force`. It never renames or uploads anything there, and
+  `sync`, `find` and `browse` only read.
 - It doesn't delete or move anything in your folder, sort images by night, or
   stack or process them. What you do with the files after they land is up to
   you.
 - It isn't a general SMB client. It always logs in as guest to the
   telescope's `EMMC Images` share.
-- It doesn't limit its bandwidth, and it has no configuration file: every
-  setting is a flag.
+- It doesn't limit its bandwidth, and the command-line tool has no
+  configuration file: every setting is a flag.
 
 ## Install
 
@@ -42,6 +42,12 @@ your `PATH`, such as `/usr/local/bin` on Linux or macOS. Then check it with:
 ```sh
 seestar-copy-cli --version
 ```
+
+Every download also has the desktop app, `seestar-copy`, which copies,
+browses and frees up space in a window. On macOS, drag `seestar-copy.app`
+from the DMG to Applications and open it. On Windows, open
+`seestar-copy.exe`. On Linux, run `./seestar-copy`; it needs GTK 4 and
+WebKitGTK 6.0. See [the desktop app](docs/reference.md#the-desktop-app).
 
 Every download also has the LICENSE and NOTICE files. To check a download's
 checksum and build provenance, see

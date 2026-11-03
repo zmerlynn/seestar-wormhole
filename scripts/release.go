@@ -1,7 +1,7 @@
 //go:build release
 
-// Release builds the CLI for every platform and writes deterministic archives.
-// Invoke through release.sh from any directory.
+// Release builds the CLI for every platform and the Windows app, and writes
+// deterministic archives. Invoke through release.sh from any directory.
 package main
 
 import (
@@ -25,13 +25,13 @@ import (
 
 func main() { os.Exit(releaseCode(os.Args[1:], os.Stderr)) }
 
-const program = "seestar-copy-cli"
-
 var releaseVersion = regexp.MustCompile(`^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.(0|[1-9][0-9]*))?$`)
 var platforms = []string{"linux/amd64", "linux/arm64", "darwin/amd64", "darwin/arm64", "windows/amd64", "windows/arm64"}
 
-// The archives built from portable parts; the DMG comes from the Mac job.
+// The archives built from parts; the DMG comes from the Mac job. The Linux
+// app needs cgo, so only the final job, with the native parts, packs Linux.
 var archived = [][2]string{{"linux", "amd64"}, {"linux", "arm64"}, {"windows", "amd64"}, {"windows", "arm64"}}
+var portable = [][2]string{{"windows", "amd64"}, {"windows", "arm64"}}
 
 func releaseCode(args []string, stderr io.Writer) int {
 	if (len(args) != 2 && !(len(args) == 3 && args[2] == "checksums")) || !releaseVersion.MatchString(args[0]) {
@@ -58,13 +58,23 @@ func releaseCode(args []string, stderr io.Writer) int {
 	return 0
 }
 
-// assetName names one built executable in dist/parts.
-func assetName(version, goos, arch string) string {
-	ext := ""
-	if goos == "windows" {
-		ext = ".exe"
+// program names the CLI or the app executable inside a download.
+func program(goos string, app bool) string {
+	name := "seestar-copy-cli"
+	if app {
+		name = "seestar-copy"
 	}
-	return program + "_" + version + "_" + goos + "_" + arch + ext
+	if goos == "windows" {
+		name += ".exe"
+	}
+	return name
+}
+
+// assetName names one built executable in dist/parts.
+func assetName(version, goos, arch string, app bool) string {
+	name := program(goos, app)
+	base := strings.TrimSuffix(name, ".exe")
+	return base + "_" + version + "_" + goos + "_" + arch + name[len(base):]
 }
 
 func archiveName(version, goos, arch string) string {
@@ -88,17 +98,29 @@ func expectedAssets(version string) []string {
 	return names
 }
 
-func buildBinary(version, revision, goos, arch, path string) error {
-	fmt.Printf("Building %s/%s (%s, %s)\n", goos, arch, version, revision)
-	// Keep module build info: licenses relies on debug.ReadBuildInfo even with -s -w.
-	flags := "-s -w -X main.version=" + version + " -X main.revision=" + revision
-	cmd := exec.Command("go", "build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-ldflags", flags, "-o", path, "./cmd/seestar-copy-cli")
-	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+arch, "CGO_ENABLED=0")
+func buildBinary(version, revision, goos, arch string, app bool, path string) error {
+	fmt.Printf("Building %s/%s app=%t (%s, %s)\n", goos, arch, app, version, revision)
+	cmd := buildCommand(version, revision, goos, arch, app, path)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
 }
 
-func release(version, revision string, mtime time.Time, build func(string, string, string, string, string) error) error {
+// buildCommand is the go build for one part. The app is the Windows window
+// build: no cgo, no console window, and no revision, which it does not show.
+func buildCommand(version, revision, goos, arch string, app bool, path string) *exec.Cmd {
+	// Keep module build info: licenses relies on debug.ReadBuildInfo even with -s -w.
+	args := []string{"build", "-mod=vendor", "-trimpath", "-buildvcs=false"}
+	flags, pkg := "-s -w -X main.version="+version+" -X main.revision="+revision, "./cmd/seestar-copy-cli"
+	if app {
+		args = append(args, "-tags=gui,production")
+		flags, pkg = "-s -w -X main.version="+version+" -H windowsgui", "./cmd/seestar-copy"
+	}
+	cmd := exec.Command("go", append(args, "-ldflags", flags, "-o", path, pkg)...)
+	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+arch, "CGO_ENABLED=0")
+	return cmd
+}
+
+func release(version, revision string, mtime time.Time, build func(string, string, string, string, bool, string) error) error {
 	if err := os.MkdirAll("dist", 0755); err != nil {
 		return err
 	}
@@ -113,15 +135,20 @@ func release(version, revision string, mtime time.Time, build func(string, strin
 	var names []string
 	for _, platform := range platforms {
 		goos, arch, _ := strings.Cut(platform, "/")
-		name := assetName(version, goos, arch)
-		if err := build(version, revision, goos, arch, filepath.Join(stage, "parts", name)); err != nil {
-			return fmt.Errorf("build %s: %w", name, err)
+		for _, app := range []bool{false, true} {
+			if app && goos != "windows" {
+				continue
+			}
+			name := assetName(version, goos, arch, app)
+			if err := build(version, revision, goos, arch, app, filepath.Join(stage, "parts", name)); err != nil {
+				return fmt.Errorf("build %s: %w", name, err)
+			}
+			names = append(names, name)
 		}
-		names = append(names, name)
 	}
-	// Package the Linux and Windows archives for local portable rehearsals.
-	// CI transfers only parts, and the final job assembles the archives again.
-	for _, p := range archived {
+	// Package the Windows archives for local portable rehearsals. CI transfers
+	// only parts, and the final job assembles the archives again.
+	for _, p := range portable {
 		if err := writeArchive(stage, filepath.Join(stage, "parts"), version, p[0], p[1], mtime); err != nil {
 			return err
 		}
@@ -135,7 +162,7 @@ func release(version, revision string, mtime time.Time, build func(string, strin
 			return err
 		}
 	}
-	for _, p := range archived {
+	for _, p := range portable {
 		name := archiveName(version, p[0], p[1])
 		if err := os.Rename(filepath.Join(stage, name), filepath.Join("dist", name)); err != nil {
 			return err
@@ -146,12 +173,9 @@ func release(version, revision string, mtime time.Time, build func(string, strin
 
 // Headers are independent of the input files' ownership, modes and timestamps.
 func writeArchive(dir, parts, version, goos, arch string, mtime time.Time) (err error) {
-	ext := ""
-	if goos == "windows" {
-		ext = ".exe"
-	}
-	// Sorted member order: LICENSE, NOTICE, then the executable.
-	members := []string{"LICENSE", "NOTICE", program + ext}
+	cli, app := program(goos, false), program(goos, true)
+	members := []string{"LICENSE", "NOTICE", cli, app}
+	slices.Sort(members)
 	f, err := os.Create(filepath.Join(dir, archiveName(version, goos, arch)))
 	if err != nil {
 		return err
@@ -174,8 +198,8 @@ func writeArchive(dir, parts, version, goos, arch string, mtime time.Time) (err 
 	}
 	for _, name := range members {
 		path, mode := name, int64(0644)
-		if name == program+ext {
-			path = filepath.Join(parts, assetName(version, goos, arch))
+		if name == cli || name == app {
+			path = filepath.Join(parts, assetName(version, goos, arch, name == app))
 			mode = 0755
 		}
 		data, e := os.ReadFile(path)
@@ -225,12 +249,16 @@ func writeChecksums(dir string, names []string) error {
 }
 
 // Final assembly accepts exactly the builder parts and publishes only the five
-// downloads plus SHA256SUMS. The raw Darwin CLIs were consumed by the Mac job.
+// downloads plus SHA256SUMS. The raw Darwin CLIs were consumed by the Mac job,
+// which built the Mac app itself.
 func finalChecksums(version string, mtime time.Time) error {
 	var wantParts []string
 	for _, platform := range platforms {
 		goos, arch, _ := strings.Cut(platform, "/")
-		wantParts = append(wantParts, assetName(version, goos, arch))
+		wantParts = append(wantParts, assetName(version, goos, arch, false))
+		if goos != "darwin" {
+			wantParts = append(wantParts, assetName(version, goos, arch, true))
+		}
 	}
 	dmg := archiveName(version, "darwin", "universal")
 	wantParts = append(wantParts, dmg)

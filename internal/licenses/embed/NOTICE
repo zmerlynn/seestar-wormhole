@@ -5,7 +5,8 @@ Copyright 2026 Zach Loafman. The project's own code is released under the
 Unlicense; see LICENSE. Files under vendor/ retain their upstream licenses.
 
 Run `seestar-copy-cli licenses` for the notices of the libraries linked into
-that build.
+that build. The NOTICE file in each download ends with the full license and
+notice texts of the modules that only the desktop app, seestar-copy, links.
 
 Modules that release builds link, and their license files under vendor/
 (mousetrap is linked into Windows builds only, and Wails and the modules it
@@ -37,8 +38,8 @@ The Apache-2.0 modules and folders above supply no NOTICE file.
 
 The Wails pkg/w32 sources also include Winc Authors and W32 Authors
 attributions and atotto/clipboard-derived code (Ato Araki, BSD-3-Clause).
-Their supplemental notices and full upstream license texts are included in
-the generated catalog.
+Their supplemental notices and full upstream license texts are included
+with Wails' texts at the end of the NOTICE file in each download.
 
 Wails system tray code includes portions derived from fyne-io/systray, a fork
 of getlantern/systray, under Apache-2.0. Its upstream license is included in

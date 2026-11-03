@@ -36,8 +36,8 @@ The [command reference](reference.md) has the detail of each item.
    flags](reference.md#browse-flags): `--endpoint`, `--listen` with its default `127.0.0.1:0`, `--open`, off by default,
    `--dest` and `--state-dir`; `--listen` takes an IP address and a port, never a host name; and browse has no selection
    flags, so it shows the whole share.
-2. **Runtime inputs.** The binary reads no configuration file and no environment variables of its own; every
-   setting is a flag. The default `--state-dir` comes from the operating system's per-user config folder, as in
+2. **Runtime inputs.** `seestar-copy-cli` reads no configuration file and no environment variables of its own;
+   every setting is a flag. It never reads the desktop app's settings file, `app.json`. The default `--state-dir` comes from the operating system's per-user config folder, as in
    [location](reference.md#location). Adding opt-in configuration later is additive and must not override explicit
    flags.
 3. **Exit codes.** 0, 1 and 2, as in [exit codes](reference.md#exit-codes), [find exit
@@ -81,16 +81,18 @@ The [command reference](reference.md) has the detail of each item.
    files' names are not promised. delete never writes the state file, and takes no lock.
 8. **Distribution.** `<version>` below is the release's tag, such as `v0.1.0`. Linux archives are named
    `seestar-copy_<version>_linux_<arch>.tar.gz` and Windows archives `seestar-copy_<version>_windows_<arch>.zip`,
-   for amd64 and arm64. Each contains `seestar-copy-cli` (with `.exe` on Windows), LICENSE and NOTICE at the archive
-   root. The macOS download is
-   `seestar-copy_<version>_darwin_universal.dmg`, containing a universal `seestar-copy-cli`, LICENSE and NOTICE.
+   for amd64 and arm64. Each contains `seestar-copy-cli` and the desktop app `seestar-copy` (both with `.exe` on
+   Windows), LICENSE and NOTICE at the archive root. The macOS download is
+   `seestar-copy_<version>_darwin_universal.dmg`, containing `seestar-copy.app`, an `Applications` symlink to
+   `/Applications`, a universal `seestar-copy-cli`, LICENSE and NOTICE.
    The single release `SHA256SUMS` lists exactly these five downloads as lowercase SHA-256, two spaces, filename,
    newline. Names, contents, checksum syntax and these targets are promises. Removing a target or a program is
-   breaking; adding one, such as the planned desktop app, is not. Linux and Windows CLI executables are
+   breaking; adding one is not. Linux and Windows CLI executables are
    byte-for-byte reproducible with identical source, version, revision and Go toolchain; verify by rebuilding and
    comparing with the executable unpacked from the archive. The Mac CLI is combined with lipo and signed, so it is
-   not byte-reproducible; the DMG is verified by `SHA256SUMS` and attestation only. See
-   [verifying a release](reference.md#verifying-a-release).
+   not byte-reproducible. The app has no byte-reproducibility promise on any platform: the Mac and Linux apps are
+   built with each platform's native libraries. App executables and the DMG are verified by `SHA256SUMS` and
+   attestation only. See [verifying a release](reference.md#verifying-a-release).
 9. **`--version`.** One line on stdout, `seestar-copy-cli <version> (<revision>, <os>/<arch>)`, where a release's
    `<version>` is its tag, such as `v0.1.0`, and `<revision>` is the first 12 hex digits of its commit.
 10. **find's output.** The listing goes to stdout, one line per entry, in listing order, and lists the folders the
@@ -113,6 +115,8 @@ The [command reference](reference.md) has the detail of each item.
 - Timing and throughput: pass duration, the order files are copied in, and how reads are split on the wire. The
   meaning of `--interval`, `--ready-age` and `--first-pass-age` is in the contract; how long a pass takes is not.
 - Which SMB dialect and features are negotiated with the device, as long as items 1-11 hold.
+- The desktop app beyond its place in the downloads (item 8): its window, page, wording, `--settings` flag and
+  settings file.
 - browse's page and server: its URLs and routes, the exact form of the printed URL, the `/api/` JSON, the HTML, CSS
   and JavaScript, the HTTP headers, and the idle and grace times of its device session.
 

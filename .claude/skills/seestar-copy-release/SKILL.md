@@ -27,14 +27,17 @@ with `--network none`, following
 [releasing.md](../../../docs/development/releasing.md):
 
 - [ ] `./scripts/check.sh` passes, along with the release tooling tests;
-- [ ] `./scripts/release.sh vX.Y.Z` produces six CLI parts and the four Linux
-  and Windows archives;
-- [ ] a second run produces byte-identical outputs; rebuilt Linux and Windows
-  CLIs match those unpacked from the archives;
+- [ ] `./scripts/release.sh vX.Y.Z` produces six CLI parts, two Windows app
+  parts and the two Windows archives;
+- [ ] a second run produces byte-identical CLI parts; rebuilt Linux and
+  Windows CLIs match those unpacked from the archives (the apps have no
+  reproducibility promise);
 - [ ] an artifact-only workflow dispatch with an RC version produces all five
-  downloads and the single `SHA256SUMS`, with a signed and notarized DMG;
-- [ ] `--version` prints the version, commit and platform, and `licenses`
-  lists `github.com/hirochachacha/go-smb2/v2`.
+  downloads and the single `SHA256SUMS`, with a signed and notarized DMG
+  holding `seestar-copy.app`;
+- [ ] the host's CLI part in `dist/parts/` prints the version, commit and
+  platform with `--version`, and `licenses` lists
+  `github.com/hirochachacha/go-smb2/v2`.
 
 ## 3. Check the compatibility record
 
@@ -68,11 +71,13 @@ developers:
    is not in the contract. Leave out internals such as package names and
    test names.
 3. **Breaking changes**, with recovery steps, or "No breaking changes."
-4. **Install:** unpack the Linux or Windows archive, or open the Mac DMG, and
-   copy `seestar-copy-cli` onto the `PATH`; check
-   `seestar-copy-cli --version`. Point to
+4. **Install:** unpack the Linux or Windows archive, or open the Mac DMG.
+   Open the desktop app `seestar-copy`, or copy `seestar-copy-cli` onto the
+   `PATH` and check `seestar-copy-cli --version`. Point to
+   [the desktop app](../../../docs/reference.md#the-desktop-app) for its
+   runtime needs and
    [verifying a release](../../../docs/reference.md#verifying-a-release)
-   without repeating its commands.
+   without repeating their commands.
 5. **Compatibility record:** the date, model and firmware, a short tested
    list, and what was not tested.
 6. The no-affiliation line.
@@ -105,9 +110,11 @@ When the release workflow finishes, check:
 - [ ] the downloaded assets pass `sha256sum --check`, and unpacked Linux and
   Windows CLIs match the local reproducible build; the Mac CLI is
   lipo-combined and signed, so it is not byte-reproducible;
-- [ ] each archive holds exactly `seestar-copy-cli` (`.exe` on Windows),
-  LICENSE and NOTICE at its root, and the DMG holds the universal
-  `seestar-copy-cli`, LICENSE and NOTICE;
+- [ ] each archive holds exactly `seestar-copy` and `seestar-copy-cli`
+  (`.exe` on Windows), LICENSE and NOTICE at its root, and the DMG holds
+  `seestar-copy.app`, the `Applications` link, the universal
+  `seestar-copy-cli`, LICENSE and NOTICE, with LICENSE and NOTICE also in
+  `seestar-copy.app/Contents/Resources/`;
 - [ ] `gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-copy`
   passes for each of the four archives and the DMG.
 

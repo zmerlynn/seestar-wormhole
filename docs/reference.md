@@ -21,6 +21,8 @@ log line. The [README](../README.md) has a first run.
   and [the check-then-remove race](#the-check-then-remove-race)
 - [licenses](#licenses)
 - [Global command behavior](#global-command-behavior)
+- [The desktop app](#the-desktop-app): opening it, what it needs, and its
+  settings
 - [Verifying a release](#verifying-a-release)
 
 ## sync
@@ -1237,6 +1239,33 @@ the output exits 1. See [NOTICE](../NOTICE).
 - `sync` without `--once` or `--dry-run`, and `browse`, run until Ctrl+C or
   SIGTERM stops them. The other commands run once and exit.
 
+## The desktop app
+
+Every download also holds the desktop app, `seestar-copy`. It copies, browses
+and frees up space in one window, with the same rules and state files as
+`sync`, `browse` and `delete`.
+
+- **macOS:** open the DMG and drag `seestar-copy.app` to Applications, then
+  open it from there.
+- **Windows:** unpack the archive and open `seestar-copy.exe`. It needs the
+  Microsoft Edge WebView2 Runtime, which Windows 10 and 11 normally include;
+  if it is missing or broken, the app says so. The app is not code-signed, so
+  Windows may say "Windows protected your PC": choose **More info**, then
+  **Run anyway**.
+- **Linux:** unpack the archive and run `./seestar-copy`. It needs GTK 4,
+  WebKitGTK 6.0 and bubblewrap (on Ubuntu 24.04: `libgtk-4-1`,
+  `libwebkitgtk-6.0-4` and `bubblewrap`), and WebKit's sandbox needs
+  unprivileged user namespaces. Without them the app says what is missing
+  and exits. `seestar-copy-cli` needs none of these.
+
+The app keeps its settings in `app.json` in the default state folder (see
+[location](#location)), or in the file `--settings FILE` names. Each settings
+file is one window; run the app again with another `--settings` file for
+another setup. `seestar-copy-cli` never reads `app.json`. While copying is on,
+the app holds the folder's state lock, as `sync` does, so a `sync` for the
+same folder exits with its usual error, and the app shows "Folder in use"
+while a `sync` holds it.
+
 ## Verifying a release
 
 Each release lists a SHA-256 checksum for its four archives and universal Mac
@@ -1249,10 +1278,11 @@ sha256sum --check --ignore-missing SHA256SUMS
 gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-copy
 ```
 
-Linux and Windows executables are byte-for-byte reproducible with identical
-source, version, revision and Go toolchain: rebuild and compare against
-`seestar-copy-cli` (with `.exe` on Windows) unpacked from the archive. See
-[cutting a release](development/releasing.md). The Mac executable is combined
-with lipo and signed, so it is not byte-reproducible; the DMG is verified by
+Linux and Windows CLI executables are byte-for-byte reproducible with
+identical source, version, revision and Go toolchain: rebuild and compare
+against `seestar-copy-cli` (with `.exe` on Windows) unpacked from the archive.
+See [cutting a release](development/releasing.md). The Mac CLI is combined
+with lipo and signed, so it is not byte-reproducible. The desktop app has no
+byte-reproducibility promise. The app executables and the DMG are verified by
 `SHA256SUMS` and attestation only. See [versioning](versioning.md) for what a
 release promises.

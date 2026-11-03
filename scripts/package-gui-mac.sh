@@ -1,31 +1,25 @@
 #!/usr/bin/env bash
-# Combine the two Darwin CLI parts from release.sh into a universal binary,
-# sign it, and package, notarize and staple the DMG. Run on a Mac with Xcode
-# Command Line Tools, with scripts/dmg-requirements.txt installed in an active
-# Python venv. Usable locally and in release.yml.
+# Sign and package a built universal app and its sibling universal CLI. Usable locally and in release.yml.
+# Install scripts/dmg-requirements.txt in an active Python venv before packaging.
 # Never trace credentials, even when invoked by a shell with xtrace enabled.
 set +x
 set -euo pipefail
 [[ $(uname -s) == Darwin ]] || { echo 'Run on macOS with Xcode Command Line Tools' >&2; exit 1; }
-[[ $# == 3 && $1 == /* && $3 == /* ]] || {
- echo 'Usage: scripts/package-mac.sh /absolute/parts-directory version /absolute/output-directory' >&2
+[[ $# == 2 && $1 == /* && $2 == /* && $1 == *.app && $2 == *.dmg ]] || {
+ echo 'Usage: scripts/package-gui-mac.sh /absolute/seestar-copy.app /absolute/output.dmg' >&2
  exit 2
 }
-task_scripts=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-"$task_scripts/release.sh" --validate-only "$2"
 command -v dmgbuild >/dev/null 2>&1 || {
  echo 'dmgbuild is required: python3 -m pip install --require-hashes --only-binary :all: -r scripts/dmg-requirements.txt' >&2
  exit 1
 }
-task_parts=$1
-task_version=$2
-task_dmg="$3/seestar-copy_${task_version}_darwin_universal.dmg"
-for task_arch in arm64 amd64; do
- [[ -f "$task_parts/seestar-copy-cli_${task_version}_darwin_${task_arch}" ]] || {
-  echo "Darwin $task_arch CLI part is missing from $task_parts" >&2
-  exit 1
- }
-done
+task_app=$1
+task_dmg=$2
+task_cli="$(dirname "$task_app")/seestar-copy-cli"
+[[ -f "$task_cli" ]] || { echo 'Universal CLI is missing beside the app' >&2; exit 1; }
+chmod 0755 "$task_cli"
+task_scripts=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+[[ -d "$task_app/Contents/MacOS" ]] || { echo 'App bundle is missing' >&2; exit 1; }
 # All credentials absent means an explicit ad-hoc release. Partial setup fails.
 task_secret_names=(MACOS_CERT_P12_BASE64 MACOS_CERT_PASSWORD MACOS_SIGN_IDENTITY APPLE_TEAM_ID APPLE_NOTARY_KEY_ID APPLE_NOTARY_ISSUER_ID APPLE_NOTARY_KEY_P8_BASE64)
 task_present=0
@@ -49,14 +43,6 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-# The DMG payload must be readable by every user; credentials stay private.
-mkdir -p "$task_temp/image"
-chmod 0755 "$task_temp/image"
-task_cli="$task_temp/image/seestar-copy-cli"
-lipo -create "$task_parts/seestar-copy-cli_${task_version}_darwin_arm64" \
- "$task_parts/seestar-copy-cli_${task_version}_darwin_amd64" -output "$task_cli"
-lipo "$task_cli" -verify_arch arm64 x86_64
-chmod 0755 "$task_cli"
 if [[ $task_present != 0 ]]; then
  [[ ! -e "$task_keychain" ]] || { echo 'Temporary signing keychain already exists' >&2; exit 1; }
  task_password=$(openssl rand -hex 32)
@@ -72,18 +58,27 @@ if [[ $task_present != 0 ]]; then
   < <(security list-keychains -d user)
  security list-keychains -d user -s "$task_keychain" ${task_old_keychains[@]+"${task_old_keychains[@]}"}
  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$task_password" "$task_keychain" >/dev/null
- # A static Go CLI needs no entitlements under the hardened runtime.
- codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$task_keychain" --options runtime --timestamp "$task_cli"
- task_team=$(codesign -dv --verbose=4 "$task_cli" 2>&1 | awk -F= '$1 == "TeamIdentifier" {print $2}')
- [[ "$task_team" == "$APPLE_TEAM_ID" ]] || { echo 'Signing certificate team does not match APPLE_TEAM_ID' >&2; exit 1; }
+ for task_program in "$task_app" "$task_cli"; do
+  codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$task_keychain" \
+   --options runtime --timestamp --entitlements "$task_scripts/macos-entitlements.plist" "$task_program"
+  task_team=$(codesign -dv --verbose=4 "$task_program" 2>&1 | awk -F= '$1 == "TeamIdentifier" {print $2}')
+  [[ "$task_team" == "$APPLE_TEAM_ID" ]] || { echo 'Signing certificate team does not match APPLE_TEAM_ID' >&2; exit 1; }
+ done
 else
  echo 'No Developer ID credentials: ad-hoc signing; this DMG is not notarized.'
+ codesign --force --sign - "$task_app"
  codesign --force --sign - "$task_cli"
 fi
+codesign --verify --strict --verbose=2 "$task_app"
 codesign --verify --strict --verbose=2 "$task_cli"
+mkdir -p "$task_temp/image" "$(dirname "$task_dmg")"
+# Credentials stay private; the mounted payload must be readable by every user.
+chmod 0755 "$task_temp/image"
+ditto "$task_app" "$task_temp/image/seestar-copy.app"
+cp "$task_cli" "$task_temp/image/seestar-copy-cli"
+chmod 0755 "$task_temp/image/seestar-copy-cli"
 cp "$task_scripts/../LICENSE" "$task_scripts/../NOTICE" "$task_temp/image/"
 chmod 0644 "$task_temp/image/LICENSE" "$task_temp/image/NOTICE"
-mkdir -p "$3"
 (
  umask 022
  dmgbuild -s "$task_scripts/dmg-settings.py" -D "stage=$task_temp/image" seestar-copy "$task_dmg"

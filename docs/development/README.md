@@ -61,8 +61,11 @@ keeps in no separate file, and refuses to run if a module has no license file
 or no SPDX entry in the generator. `NOTICE` must contain the module table the
 generator prints when it is out of date. At run time, `licenses` uses the
 executable's build information to print only the modules linked into that
-build. `NOTICE`'s last section, on the GTK and WebKitGTK libraries the Linux
-window links, is embedded apart and printed only by that build.
+build. `NOTICE`'s section on the GTK and WebKitGTK libraries the Linux
+window links is embedded apart and printed only by that build. The app has no
+`licenses` command, so the generator writes `NOTICE`'s last section itself:
+the full texts of the modules the app links and the CLI does not. That
+section is not embedded, and `--check` fails when it is stale.
 
 ## Build and check
 
