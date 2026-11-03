@@ -65,6 +65,52 @@ test('the first run opens on Settings and the first Save opens Copy, with copyin
   expect(saved).toMatchObject({ version: 1, address: share, folder: app.folder, interval_minutes: 5, skip_built_in: true, start_copying: false });
 });
 
+test("the first-run line's Save and continue saves as Save does", async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  const go = page.locator('#s-first').getByRole('button', { name: 'Save and continue' });
+  await expect(go).toBeInViewport();
+  // Off until the address and the folder are both filled in.
+  await expect(go).toBeDisabled();
+  await field(page, 'Telescope address').fill(share);
+  await expect(go).toBeEnabled();
+  await field(page, 'Folder for your images').fill('');
+  await expect(go).toBeDisabled();
+  // A folder from the desktop picker counts too.
+  await page.route('**/app/api/folder', (route) => route.fulfill({ json: { folder: app.folder } }));
+  await page.locator('#f-choose').dispatchEvent('click');
+  await expect(go).toBeEnabled();
+
+  // A failed save is off while it runs, and its message takes focus.
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route('**/app/api/settings', async (route) => {
+    await held;
+    await route.fulfill({ status: 500, body: 'no' });
+  });
+  try {
+    await go.click();
+    await expect(go).toBeDisabled();
+    await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(page.locator('#f-saved')).toHaveText("Couldn't save settings. Your changes have not been saved. Try saving again.");
+  await expect(page.locator('#f-saved')).toBeFocused();
+  await expect(page.locator('#f-saved')).toBeInViewport();
+  await expect(go).toBeEnabled();
+  await page.unroute('**/app/api/settings');
+
+  // Pressed from the keyboard, it saves and opens Copy with copying off.
+  await go.focus();
+  await page.keyboard.press('Enter');
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#c-title')).toBeFocused();
+  await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+  await expect(page.locator('#s-first')).toBeHidden();
+  expect(readSettings(app.file)).toMatchObject({ address: share, folder: app.folder, start_copying: false });
+});
+
 // countTests counts the page's Test requests.
 function countTests(page) {
   const n = { tests: 0 };
@@ -256,7 +302,8 @@ test('a new address replaces Browse, and its errors say to select Share', async 
   await expect(page.locator('#f-test')).toHaveText(connected);
   await expect(page.locator('#hdot')).toHaveText('Reachable');
   await field(page, 'Telescope address').fill(refused);
-  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  // Enter in a field saves, as Save does.
+  await field(page, 'Telescope address').press('Enter');
   await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
   await expect(page.locator('#haddr')).toHaveText(refused);
   // Test ran on Save, for the saved address.

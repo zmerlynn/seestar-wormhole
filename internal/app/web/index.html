@@ -99,7 +99,7 @@
 </div>
 </section>
 <section id="p-settings" role="tabpanel" aria-labelledby="t-settings" hidden>
-<p id="s-first" class="notice" hidden>Set the telescope and folder first. Copy, Browse and Free up space open once you save.</p>
+<p id="s-first" class="notice" hidden>Set the telescope and folder first. Copy, Browse and Free up space open once you save. <button class="btn small" type="button" id="s-save">Save and continue</button></p>
 <p id="s-locked" class="notice" hidden>Stop copying to change settings. <button class="linkbtn" type="button" id="s-stop">Stop copying</button></p>
 <form id="form" novalidate>
 <fieldset id="f-set">
@@ -132,7 +132,7 @@
 <label class="check"><input type="checkbox" id="f-skip"> <span><b>Skip the telescope's logs, scratch and system files</b> (recommended)<br><span class="note mono" id="f-builtin"></span></span></label>
 <label class="check"><input type="checkbox" id="f-start"> <span><b>Start copying when the app opens</b></span></label>
 <div class="row"><button class="btn primary" type="submit" id="f-save">Save</button></div>
-<p class="result" id="f-saved" role="status"></p>
+<p class="result" id="f-saved" role="status" tabindex="-1"></p>
 </fieldset>
 </form>
 <div class="footer">

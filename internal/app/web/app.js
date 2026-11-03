@@ -126,6 +126,7 @@ async function choose() {
   if (status === 200 && data && data.folder) {
     $('#f-folder').value = data.folder;
     renderHistory();
+    renderFirst();
     showErrors({ ...currentErrors(), folder: '' });
   } else if (status !== 200) {
     showErrors({ ...currentErrors(), folder: (data && data.error) || "Couldn't open the folder picker. Type the folder's full path instead." });
@@ -140,11 +141,17 @@ async function save(ev) {
   const btn = $('#f-save');
   if (btn.disabled) return;
   btn.disabled = true;
+  renderFirst();
   try {
     await saveForm();
   } finally {
     btn.disabled = false;
+    renderFirst();
   }
+}
+
+function renderFirst() {
+  $('#s-save').disabled = $('#f-save').disabled || !$('#f-addr').value.trim() || !$('#f-folder').value.trim();
 }
 
 async function saveForm() {
@@ -159,6 +166,8 @@ async function saveForm() {
   showErrors({});
   if (status !== 200 || !data) {
     result('#f-saved', (data && data.error) || "Couldn't save settings. Your changes have not been saved. Try saving again.", 'err');
+    // Focus brings the answer into view, below the form.
+    $('#f-saved').focus();
     return;
   }
   const changed = !saved || saved.address !== data.settings.address;
@@ -200,6 +209,7 @@ function select(tab) {
 function gate() {
   for (const t of TABS) if (t !== 'settings') $('#t-' + t).disabled = !saved;
   $('#s-first').hidden = !!saved;
+  renderFirst();
   $('#haddr').hidden = !saved;
 }
 
@@ -669,6 +679,10 @@ $('#s-clip').addEventListener('click', (ev) =>
   clip(ev.currentTarget, $('#s-file').textContent, '#f-saved', 'Settings file path copied.'),
 );
 $('#f-folder').addEventListener('input', renderHistory);
+$('#f-folder').addEventListener('input', renderFirst);
+$('#f-addr').addEventListener('input', renderFirst);
+// Keep the bottom Save as the default submit button for Enter in a field.
+$('#s-save').addEventListener('click', () => form.requestSubmit());
 $('#h-clear').addEventListener('click', () => {
   result('#h-result', '');
   $('#h-confirm').showModal();

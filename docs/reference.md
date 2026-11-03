@@ -1268,7 +1268,8 @@ while a `sync` holds it.
 
 The first time the app opens on a settings file, it opens on the Settings
 tab, and the Copy, Browse and Free up space tabs stay unavailable until the
-telescope address and the folder are saved. After that first **Save**, the
+telescope address and the folder are saved. **Save and continue**, at the top
+of the tab, does what **Save** at the bottom does. After that first save, the
 app shows the Copy tab with copying off; **Start copying** begins. **Start
 copying when the app opens** is off for a new settings file. A settings file
 that already exists keeps its value, which is on if the file does not have the
