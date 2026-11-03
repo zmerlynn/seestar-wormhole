@@ -71,7 +71,7 @@ summary { cursor: pointer; font-weight: 600; padding: 0.3rem 0; }
 fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
 fieldset:disabled { opacity: 0.6; }
 .hide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-#c-box p:empty { display: none; }
+#c-box p:empty, #c-preview p:empty { display: none; }
 .btn.danger { color: #fff; background: var(--err); border-color: var(--err); font-weight: 600; }
 @media (prefers-color-scheme: dark) { .btn.danger { color: #161616; } }
 .notice.ok { border-left-color: var(--ok); }
@@ -81,7 +81,7 @@ fieldset:disabled { opacity: 0.6; }
 table.groups { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 table.groups th, table.groups td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line2); vertical-align: top; }
 table.groups .num { text-align: right; white-space: nowrap; }
-table.groups td:nth-child(2) { overflow-wrap: anywhere; min-width: 10rem; }
+table.groups td.name { overflow-wrap: anywhere; min-width: 10rem; }
 table.groups details { margin: 0; }
 table.groups summary { font-weight: 400; }
 table.groups ul { list-style: none; padding: 0; margin: 0.3rem 0; font: 12px/1.6 ui-monospace, monospace; }

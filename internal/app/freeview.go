@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"fmt"
+	"iter"
 	"path"
 	"slices"
 	"strconv"
@@ -50,19 +51,19 @@ type freeStatus struct {
 
 // freeView is the Free up space tab's state and its text, for the page.
 type freeView struct {
-	State    string      `json:"state"`
-	Changed  bool        `json:"changed,omitempty"`
-	Title    string      `json:"title,omitempty"` // also the status region's text
-	Text     string      `json:"text,omitempty"`
-	Sub      string      `json:"sub,omitempty"`
-	Progress *freeBar    `json:"progress,omitempty"`
-	File     string      `json:"file,omitempty"`
-	Stopping bool        `json:"stopping,omitempty"`
-	ID       int         `json:"id,omitempty"` // the preview's
-	Groups   []freeGroup `json:"groups,omitempty"`
-	Trust    bool        `json:"trust,omitempty"` // the preview's proof is the records alone
-	Kept     string      `json:"kept,omitempty"`  // "Kept: …" or the Done counts
-	KeptList []failure   `json:"kept_list,omitempty"`
+	State    string        `json:"state"`
+	Changed  bool          `json:"changed,omitempty"`
+	Title    string        `json:"title,omitempty"` // also the status region's text
+	Text     string        `json:"text,omitempty"`
+	Sub      string        `json:"sub,omitempty"`
+	Progress *freeBar      `json:"progress,omitempty"`
+	File     string        `json:"file,omitempty"`
+	Stopping bool          `json:"stopping,omitempty"`
+	ID       int           `json:"id,omitempty"` // the preview's
+	Groups   []folderGroup `json:"groups,omitempty"`
+	Trust    bool          `json:"trust,omitempty"` // the preview's proof is the records alone
+	Kept     string        `json:"kept,omitempty"`  // "Kept: …" or the Done counts
+	KeptList []failure     `json:"kept_list,omitempty"`
 }
 
 type freeBar struct {
@@ -71,13 +72,14 @@ type freeBar struct {
 	Text  string `json:"text,omitempty"`
 }
 
-// freeGroup is one folder of a preview's files to delete.
-type freeGroup struct {
+// folderGroup is one folder of a preview's files: to delete, or to copy.
+type folderGroup struct {
 	Folder string     `json:"folder"` // the key the page posts back
 	Name   string     `json:"name"`
+	Count  int        `json:"count"`
 	Bytes  int64      `json:"bytes"`
 	Size   string     `json:"size"`
-	Files  []freeFile `json:"files"`
+	Files  []freeFile `json:"files,omitempty"`
 }
 
 type freeFile struct {
@@ -107,33 +109,18 @@ func (st *freeStatus) view() freeView {
 		}
 	case frPreview:
 		n, bytes := 0, int64(0)
-		var groups []freeGroup
-		for _, d := range st.preview.Files {
-			if d.Outcome != engine.FileDeleted {
-				continue
-			}
-			n++
-			bytes += d.Size
-			dir := path.Dir(d.Path)
-			i := slices.IndexFunc(groups, func(g freeGroup) bool { return g.Folder == dir })
-			if i < 0 {
-				name := dir
-				if dir == "." {
-					name = "Share"
+		groups := groupByFolder(func(yield func(string, int64) bool) {
+			for _, d := range st.preview.Files {
+				if d.Outcome != engine.FileDeleted {
+					continue
 				}
-				groups = append(groups, freeGroup{Folder: dir, Name: name})
-				i = len(groups) - 1
+				n++
+				bytes += d.Size
+				if !yield(d.Path, d.Size) {
+					return
+				}
 			}
-			g := &groups[i]
-			g.Bytes += d.Size
-			g.Files = append(g.Files, freeFile{d.Path, size(float64(d.Size))})
-		}
-		slices.SortFunc(groups, func(a, b freeGroup) int { return strings.Compare(a.Folder, b.Folder) })
-		for i := range groups {
-			g := &groups[i]
-			g.Size = size(float64(g.Bytes))
-			slices.SortFunc(g.Files, func(a, b freeFile) int { return strings.Compare(a.Path, b.Path) })
-		}
+		}, true)
 		v.Groups, v.ID, v.Trust = groups, st.id, st.set.TrustState
 		v.Title = fmt.Sprintf("%s (%s) are copied and safe to delete.", many(n, "file", "files"), size(float64(bytes)))
 		if n == 1 {
@@ -200,6 +187,38 @@ func (st *freeStatus) view() freeView {
 		}
 	}
 	return v
+}
+
+// groupByFolder groups files, given as path and size, by folder: groups
+// in folder order, with the share's root named Share, and, with keepFiles,
+// each group's files in path order.
+func groupByFolder(files iter.Seq2[string, int64], keepFiles bool) []folderGroup {
+	var groups []folderGroup
+	for p, n := range files {
+		dir := path.Dir(p)
+		i := slices.IndexFunc(groups, func(g folderGroup) bool { return g.Folder == dir })
+		if i < 0 {
+			name := dir
+			if dir == "." {
+				name = "Share"
+			}
+			groups = append(groups, folderGroup{Folder: dir, Name: name})
+			i = len(groups) - 1
+		}
+		g := &groups[i]
+		g.Count++
+		g.Bytes += n
+		if keepFiles {
+			g.Files = append(g.Files, freeFile{p, size(float64(n))})
+		}
+	}
+	slices.SortFunc(groups, func(a, b folderGroup) int { return strings.Compare(a.Folder, b.Folder) })
+	for i := range groups {
+		g := &groups[i]
+		g.Size = size(float64(g.Bytes))
+		slices.SortFunc(g.Files, func(a, b freeFile) int { return strings.Compare(a.Path, b.Path) })
+	}
+	return groups
 }
 
 // noDest is what to do when the folder is missing and the copies prove

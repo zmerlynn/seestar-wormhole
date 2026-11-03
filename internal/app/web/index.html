@@ -43,8 +43,18 @@
 <p class="result err" id="c-err"></p>
 <div class="row">
 <button class="btn primary" type="button" id="c-start" hidden>Start copying</button>
+<button class="btn" type="button" id="c-pbtn" aria-describedby="c-pnote" hidden>Preview</button>
+<span class="note" id="c-pnote" hidden>Nothing is copied until you start.</span>
+<button class="btn" type="button" id="c-pcancel" hidden>Cancel</button>
 <button class="btn" type="button" id="c-check" hidden>Check now</button>
 <button class="btn" type="button" id="c-stop" hidden>Stop copying</button>
+</div>
+<div id="c-preview" hidden>
+<p class="big" id="c-ptitle" tabindex="-1"></p>
+<p id="c-ptext"></p>
+<p class="note" id="c-psub"></p>
+<progress id="c-pbusy" aria-label="Previewing" hidden></progress>
+<div id="c-ptable" class="scroll" hidden><table class="groups"><thead><tr><th>Folder</th><th class="num">Copy</th><th class="num">Size</th></tr></thead><tbody id="c-pgroups"></tbody></table></div>
 </div>
 <p class="help" id="c-help" hidden>Copying continues while this window is open, even minimized. Closing it quits seestar-copy. New images arrive a few minutes after the telescope saves them.</p>
 <details><summary>Recent activity</summary>

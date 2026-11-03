@@ -29,7 +29,7 @@ func TestFreeWording(t *testing.T) {
 		{"trusted", freeStatus{state: frPreview, set: Settings{TrustState: true}, id: 2,
 			preview: &engine.DeleteResult{Files: []engine.DeleteFile{{Path: "a.jpg", Size: 3, Outcome: engine.FileDeleted}}}},
 			freeView{Title: "1 file (3 B) matches the saved copy records.", Sub: "Any age · Your copies were not checked.", ID: 2, Trust: true,
-				Groups: []freeGroup{{Folder: ".", Name: "Share", Bytes: 3, Size: "3 B", Files: []freeFile{{"a.jpg", "3 B"}}}}}},
+				Groups: []folderGroup{{Folder: ".", Name: "Share", Count: 1, Bytes: 3, Size: "3 B", Files: []freeFile{{"a.jpg", "3 B"}}}}}},
 		{"done with kept", freeStatus{state: frDone, set: Settings{OlderThanDays: 7}, deleted: 1, bytes: 2000, result: engine.DeleteResult{Files: []engine.DeleteFile{
 			{Path: "a", Outcome: engine.FileDeleted}, {Path: "b", Outcome: engine.FileKept, Reason: engine.KeepRaced},
 			{Path: "c", Outcome: engine.FileFailed, Reason: "open: no such file"}, {Path: "d", Outcome: engine.FileRecent}}}},

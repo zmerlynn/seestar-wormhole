@@ -64,11 +64,12 @@ type server struct {
 	stateDir string
 	log      *slog.Logger
 	// dial opens a browse session; test runs Test. Tests replace both.
-	dial   func(ctx context.Context, endpoint string) (remote.Session, error)
-	test   func(ctx context.Context, endpoint string) ([]remote.Entry, error)
-	native *Native // nil without a window
-	copy   *controller
-	free   *freer
+	dial    func(ctx context.Context, endpoint string) (remote.Session, error)
+	test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	native  *Native // nil without a window
+	copy    *controller
+	preview *previewer
+	free    *freer
 
 	mu       sync.Mutex
 	file     *settingsFile
@@ -83,6 +84,9 @@ func newServer(ctx context.Context, addr netip.AddrPort, token, version, stateDi
 		test: engine.Test,
 	}
 	s.copy = newController(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
+		return s.dial(ctx, endpoint)
+	})
+	s.preview = newPreviewer(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
 		return s.dial(ctx, endpoint)
 	})
 	s.free = newFreer(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
@@ -123,15 +127,42 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	return h, sessions
 }
 
-// startCopying turns copying on with the saved settings. Holding s.mu
-// keeps a Save from landing between the check and the start.
+// startCopying turns copying on with the saved settings, which discards
+// a preview. Holding s.mu keeps a Save from landing between the check and
+// the start.
 func (s *server) startCopying() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.file.setUp() {
 		return errNotSetUp
 	}
-	return s.copy.start(s.file.settings)
+	if err := s.copy.start(s.file.settings); err != nil {
+		return err
+	}
+	s.preview.discard()
+	return nil
+}
+
+// startPreview runs a preview with the saved settings while copying is
+// off. Holding s.mu keeps a Save or a Start from landing between the
+// checks and the start.
+func (s *server) startPreview() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case !s.file.setUp():
+		return errNotSetUp
+	case s.copy.on():
+		return errors.New("copying is on")
+	}
+	return s.preview.start(s.file.settings)
+}
+
+// copyView is the Copy tab with its preview.
+func (s *server) copyView() copyView {
+	v := s.copy.view(time.Now())
+	v.Preview = s.preview.view()
+	return v
 }
 
 var errNotSetUp = errors.New("set the telescope and folder in Settings first")
@@ -306,7 +337,7 @@ func (s *server) status(w http.ResponseWriter) {
 		Free            freeView `json:"free"`
 		Activity        []entry  `json:"activity"` // newest first
 		ActivitySeq     int      `json:"activity_seq"`
-	}{s.version, setUp, set, file, history, engine.DefaultExcludes, s.native != nil, s.copy.view(time.Now()), s.free.view(), lines, seq})
+	}{s.version, setUp, set, file, history, engine.DefaultExcludes, s.native != nil, s.copyView(), s.free.view(), lines, seq})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -363,6 +394,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	changed := !wasSetUp || old.Address != set.Address || old.Folder != set.Folder
 	if changed || !slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn {
 		s.free.clear()
+		s.preview.discard()
 	}
 	var oldSessions *browse.Sessions
 	if changed {
@@ -381,10 +413,11 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	}{set, changed})
 }
 
-// copyAction starts or stops copying, or starts the next pass now, and
-// answers the Copy tab's new state.
+// copyAction starts or stops copying, starts the next pass now, or starts
+// or cancels a preview, and answers the Copy tab's new state.
 func (s *server) copyAction(w http.ResponseWriter, action string) {
 	var err error
+	verb := "start copying"
 	switch action {
 	case "start":
 		err = s.startCopying()
@@ -392,6 +425,10 @@ func (s *server) copyAction(w http.ResponseWriter, action string) {
 		s.copy.stop()
 	case "check":
 		s.copy.check()
+	case "preview":
+		err, verb = s.startPreview(), "preview"
+	case "cancel":
+		s.preview.discard()
 	default:
 		http.Error(w, "Request rejected", http.StatusBadRequest)
 		return
@@ -399,10 +436,10 @@ func (s *server) copyAction(w http.ResponseWriter, action string) {
 	if err != nil {
 		respond(w, http.StatusConflict, struct {
 			Error string `json:"error"`
-		}{"Couldn't start copying: " + err.Error() + "."})
+		}{"Couldn't " + verb + ": " + err.Error() + "."})
 		return
 	}
-	respond(w, http.StatusOK, s.copy.view(time.Now()))
+	respond(w, http.StatusOK, s.copyView())
 }
 
 // freeAction is the Free up space tab's: find, cancel, delete, stop or
@@ -489,6 +526,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 		err = errors.New("wait for Free up space to finish")
 	default:
 		err = state.Remove(s.stateDir, folder)
+		s.preview.discard()
 	}
 	s.mu.Unlock()
 	switch {

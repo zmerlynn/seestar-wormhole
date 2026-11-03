@@ -44,6 +44,9 @@ const (
 	stCantWrite   = "cantwrite" // the loop ended with an error, other than the lock
 )
 
+// checkReach is what to check when the telescope can't be reached.
+const checkReach = "Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."
+
 // errBusy is a start while copying is on or stopping, or the app quitting.
 var errBusy = errors.New("copying is already on")
 
@@ -437,6 +440,7 @@ type copyView struct {
 	Notice   string        `json:"notice,omitempty"`
 	Failed   []failure     `json:"failed,omitempty"`
 	Progress *progressView `json:"progress,omitempty"`
+	Preview  *previewView  `json:"preview,omitempty"`
 }
 
 type failure struct {
@@ -496,7 +500,7 @@ func (c *controller) view(now time.Time) copyView {
 		v.Text = "No files were copied. Trying again at " + at(st.next) + "."
 	case stUnreachable:
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."
-		v.Text = "Trying again at " + at(st.next) + ". Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running. Copying stays on and keeps trying."
+		v.Text = "Trying again at " + at(st.next) + ". " + checkReach + " Copying stays on and keeps trying."
 	case stStopping:
 		v.Title = "Stopping…"
 	case stStopped:

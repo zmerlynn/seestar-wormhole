@@ -1,6 +1,9 @@
 package engine
 
-import "github.com/zmerlynn/seestar-copy/internal/copier"
+import (
+	"github.com/zmerlynn/seestar-copy/internal/copier"
+	"github.com/zmerlynn/seestar-copy/internal/plan"
+)
 
 // Hooks are calls the engine makes as it works, for a caller that shows
 // progress. Each is optional: a nil func is never called, and the CLI sets
@@ -9,6 +12,10 @@ type Hooks struct {
 	// Listed is called while a sync pass or a delete run lists the share,
 	// once for each folder it will read, with the number so far.
 	Listed func(folders int)
+	// Decided is called once by a sync dry run that listed the share,
+	// with every listed file's decision, in path order, and what the
+	// selection left out. A real pass never calls it.
+	Decided func([]plan.Decision, LeftOut)
 	// Planned is called after a sync pass's decisions, with the files it
 	// will download (copies and replacements) and their listed bytes.
 	Planned func(files int, bytes int64)

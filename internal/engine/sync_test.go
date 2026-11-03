@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"slices"
 	"strings"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-copy/internal/copier"
+	"github.com/zmerlynn/seestar-copy/internal/plan"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
@@ -289,5 +291,103 @@ func TestRecreate(t *testing.T) {
 				t.Fatal("the loop did not return after a stop")
 			}
 		})
+	}
+}
+
+// A dry run calls Decided once with every listed file's decision and what
+// the selection left out, and logs exactly what it logs without the hook.
+// A real pass never calls it.
+func TestDryRunDecided(t *testing.T) {
+	files := fstest.MapFS{
+		"MyWorks/M 31/done.fit": file("aaa"),
+		"MyWorks/M 31/re.fit":   file("bb"),
+	}
+	o := syncOptions(t, files, nil)
+	o.Hooks.Decided = func([]plan.Decision, LeftOut) { t.Error("a real pass called Decided") }
+	if err := RunSync(t.Context(), o, discard); err != nil {
+		t.Fatal(err)
+	}
+	files["MyWorks/M 31/re.fit"] = file("bbb")
+	files["MyWorks/M 42/new.fit"] = file("nnnn")
+	files["MyWorks/M 42/have.fit"] = file("hh")
+	files["MyWorks/young.fit"] = &fstest.MapFile{Data: []byte("y"), ModTime: time.Now()}
+	files["MyWorks/x.jpg"] = file("x")
+	files["MyWorks/X.jpg"] = file("X")
+	files["MyWorks/s.tmp"] = file("s")
+	files["Other/o.fit"] = file("o")
+	have := filepath.Join(o.Dest, "MyWorks", "M 42", "have.fit")
+	if err := os.MkdirAll(filepath.Dir(have), 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(have, []byte("hh"), 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(have, oldMTime, oldMTime); err != nil {
+		t.Fatal(err)
+	}
+	o.DryRun, o.FirstPassAge = true, time.Hour
+	for _, s := range []string{"*.tmp", "/MyWorks"} {
+		p, err := ParsePattern(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if s == "*.tmp" {
+			o.Selector.Excludes = append(o.Selector.Excludes, p)
+		} else {
+			o.Selector.Includes = append(o.Selector.Includes, p)
+		}
+	}
+	// run runs the dry run, with the hook or without, and returns its log
+	// without the times.
+	times := regexp.MustCompile(`(time|elapsed)=\S+`)
+	run := func(hooked bool) (string, error) {
+		var b strings.Builder
+		o.Hooks.Decided = nil
+		if hooked {
+			calls := 0
+			o.Hooks.Decided = func(ds []plan.Decision, out LeftOut) {
+				calls++
+				var got []string
+				for _, d := range ds {
+					got = append(got, fmt.Sprintf("%s %s %d", d.Kind, d.Path, d.Size))
+				}
+				want := []string{
+					"done MyWorks/M 31/done.fit 3",
+					"replace MyWorks/M 31/re.fit 3",
+					"adopt MyWorks/M 42/have.fit 2",
+					"copy MyWorks/M 42/new.fit 4",
+					"fail MyWorks/X.jpg 1",
+					"fail MyWorks/x.jpg 1",
+					"wait MyWorks/young.fit 1",
+				}
+				if !slices.Equal(got, want) {
+					t.Errorf("Decided decisions:\ngot  %q\nwant %q", got, want)
+				}
+				if len(out.Skipped) != 1 || out.Skipped[0].Path != "MyWorks/s.tmp" || out.Unmatched != 1 {
+					t.Errorf("Decided left out: got %+v, want MyWorks/s.tmp skipped and 1 unmatched", out)
+				}
+			}
+			defer func() {
+				if calls != 1 {
+					t.Errorf("Decided called %d times, want once", calls)
+				}
+			}()
+		}
+		err := RunSync(t.Context(), o, slog.New(slog.NewTextHandler(&b, nil)))
+		return times.ReplaceAllString(b.String(), "$1=X"), err
+	}
+	plain, err := run(false)
+	if err == nil || err.Error() != "failed files: 2" {
+		t.Errorf("without the hook: got err %v, want failed files: 2", err)
+	}
+	hooked, err := run(true)
+	if err == nil || err.Error() != "failed files: 2" {
+		t.Errorf("with the hook: got err %v, want failed files: 2", err)
+	}
+	if plain != hooked {
+		t.Errorf("the hook changed the log:\nwithout:\n%s\nwith:\n%s", plain, hooked)
+	}
+	if !strings.Contains(plain, `msg="dry run done" copy=1 replace=1 adopt=1 waiting=1 failed=2 skipped=1 unmatched=1 bytes=7`) {
+		t.Errorf("log lacks the dry run's summary:\n%s", plain)
 	}
 }

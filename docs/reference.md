@@ -1274,6 +1274,16 @@ copying when the app opens** is off for a new settings file. A settings file
 that already exists keeps its value, which is on if the file does not have the
 setting.
 
+While copying is off, **Preview** on the Copy tab shows what **Start
+copying** would do, from one [dry run](#dry-run) with the saved settings: how
+many files it would copy and their size and how many can't be copied, with a
+row per folder, then how many are already copied or in your folder, still
+being written, or left out by the selection. A replaced file counts as a
+copy. Nothing is copied, and the state file and the folder are not changed.
+**Cancel** stops a preview that is running. Start copying, a Save that
+changes the address, folder or selection, and Clear history discard the
+preview.
+
 Settings shows, under the folder, **Copy history**: the path of the folder's
 state file (see [the state file](#the-state-file)), which `sync` uses too. It
 shows the folder as saved; while the Folder field holds a folder not yet
@@ -1282,7 +1292,7 @@ after a confirmation, so seestar-copy forgets what it copied to the folder.
 Files still in the folder are kept and adopted on the next pass; files moved
 out of it are copied again. Clear history is unavailable while copying is on,
 and it refuses while Free up space is checking or deleting, or while a `sync`
-holds the folder's lock. It also discards a Free up space preview.
+holds the folder's lock. It also discards a Free up space preview and a Copy preview.
 
 The bottom of Settings shows the settings file in use. To start over with a
 new setup, quit the app and delete that file, or open the app with

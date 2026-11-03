@@ -40,7 +40,8 @@ type SyncOptions struct {
 	Workers int
 	// Dial opens a pass's session.
 	Dial func(ctx context.Context, endpoint string) (remote.Session, error)
-	// Hooks report the passes' progress; a dry run calls only Listed.
+	// Hooks report the passes' progress; a dry run calls only Listed
+	// and Decided.
 	Hooks Hooks
 	// CheckNow ends a wait between passes early when a send on it is
 	// received. Only a wait receives: send without blocking, so that a
@@ -347,6 +348,9 @@ func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 		case plan.Wait:
 			s.log.Info("would wait", args...)
 		}
+	}
+	if h := s.opts.Hooks.Decided; h != nil {
+		h(decisions, sel.LeftOut)
 	}
 	return counts.Fail, nil
 }

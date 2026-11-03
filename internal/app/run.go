@@ -106,6 +106,7 @@ func Run(ctx context.Context, o Options, open func(ctx context.Context, url stri
 		stopRunning()
 		s.close()
 		s.copy.quit()
+		s.preview.quit()
 		s.free.quit()
 		stop, cancel := context.WithTimeout(context.WithoutCancel(ctx), time.Second)
 		srv.Shutdown(stop)
