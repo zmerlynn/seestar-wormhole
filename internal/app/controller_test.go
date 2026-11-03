@@ -516,8 +516,8 @@ func TestActivity(t *testing.T) {
 // while copying is on.
 func TestCopyAPI(t *testing.T) {
 	e := newAppEnv(t, "")
-	if w := e.post("/app/api/copy", `{"action":"start"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "finish Setup first") {
-		t.Errorf("start before Setup: %d %q", w.Code, w.Body.String())
+	if w := e.post("/app/api/copy", `{"action":"start"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't start copying: set the telescope and folder in Settings first.") {
+		t.Errorf("start before settings are saved: %d %q", w.Code, w.Body.String())
 	}
 	input := `{"address":"192.0.2.10","folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`
 	if w := e.post("/app/api/settings", input); w.Code != 200 {

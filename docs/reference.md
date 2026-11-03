@@ -1266,6 +1266,28 @@ the app holds the folder's state lock, as `sync` does, so a `sync` for the
 same folder exits with its usual error, and the app shows "Folder in use"
 while a `sync` holds it.
 
+The first time the app opens on a settings file, it opens on the Settings
+tab, and the Copy, Browse and Free up space tabs stay unavailable until the
+telescope address and the folder are saved. After that first **Save**, the
+app shows the Copy tab with copying off; **Start copying** begins. **Start
+copying when the app opens** is off for a new settings file. A settings file
+that already exists keeps its value, which is on if the file does not have the
+setting.
+
+Settings shows, under the folder, **Copy history**: the path of the folder's
+state file (see [the state file](#the-state-file)), which `sync` uses too. It
+shows the folder as saved; while the Folder field holds a folder not yet
+saved, it says to save first. **Clear history…** deletes that state file
+after a confirmation, so seestar-copy forgets what it copied to the folder.
+Files still in the folder are kept and adopted on the next pass; files moved
+out of it are copied again. Clear history is unavailable while copying is on,
+and it refuses while Free up space is checking or deleting, or while a `sync`
+holds the folder's lock. It also discards a Free up space preview.
+
+The bottom of Settings shows the settings file in use. To start over with a
+new setup, quit the app and delete that file, or open the app with
+`--settings` and a new file.
+
 ## Verifying a release
 
 Each release lists a SHA-256 checksum for its four archives and universal Mac

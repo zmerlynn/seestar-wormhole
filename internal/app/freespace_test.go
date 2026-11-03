@@ -381,7 +381,7 @@ func TestFreeCheckFail(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := e.wait(frCheckFail)
-	if v.Title != "Couldn't finish checking files: connect to 192.0.2.10:445: no route." || v.Text != "Find files again to retry." {
+	if v.Title != "Couldn't finish checking files: connect to 192.0.2.10:445: no route." || v.Text != "Preview again to retry." {
 		t.Errorf("check failed: %+v", v)
 	}
 }

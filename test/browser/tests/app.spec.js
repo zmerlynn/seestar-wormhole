@@ -1,5 +1,6 @@
-// The seestar-copy app page: Setup, Settings, field errors and the Browse
-// tab, against the browser-only app and the Samba fixture's browse tree.
+// The seestar-copy app page: the first run, Settings, field errors and the
+// Browse tab, against the browser-only app and the Samba fixture's browse
+// tree.
 // The Copy tab's tests are in copy.spec.js.
 const path = require('node:path');
 const { test, expect, share, refused, readSettings, frame, browseStatus, tab, field, openApp, fakeStatus, copyViews, freeViews } = require('./app');
@@ -8,26 +9,42 @@ const rootStatus = '2 folders, 2 files.';
 const connected = /^Connected\. The telescope's share has the folders (Long names and MyWorks|MyWorks and Long names)\.$/;
 const refusedMessage = "127.0.0.1 answered but refused port 1. Is this the telescope's address?";
 
-// setUp is a saved Setup for the fixture that doesn't start copying, with
+// setUp is saved settings for the fixture that doesn't start copying, with
 // a key from a later version.
 const setUp = (folder) => ({ version: 1, address: share, folder, start_copying: false, later: { kept: true } });
 
-test('Setup saves the address and folder and opens the Copy tab', async ({ page, startApp }) => {
+test('the first run opens on Settings and the first Save opens Copy, with copying off', async ({ page, startApp }) => {
   const app = await startApp();
   await openApp(page, app.url);
-  await expect(page.getByRole('heading', { name: 'Welcome to seestar-copy' })).toBeVisible();
-  await expect(page.getByRole('tablist')).toBeHidden();
+  const settings = tab(page, 'Settings');
+  await expect(settings).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#s-first')).toHaveText(/^Set the telescope and folder first\./);
+  for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeDisabled();
   await expect(field(page, 'Telescope address')).toBeFocused();
   await expect(field(page, 'Folder for your images')).toHaveValue(path.join(app.home, 'Seestar'));
-  // Setup has only the two fields.
-  await expect(field(page, 'Leave out')).toBeHidden();
-  await expect(page.getByText('Start copying when the app opens')).toBeHidden();
+  // Every setting shows, with no example values in the fields.
+  await expect(field(page, 'Leave out')).toBeVisible();
+  await expect(page.getByLabel('Start copying when the app opens')).not.toBeChecked();
+  for (const box of await page.locator('#form input, #form textarea').all()) {
+    expect(await box.getAttribute('placeholder')).toBeNull();
+  }
+  await expect(page.locator('#f-ex-help')).toContainText('For example: Video, /Preview.');
+  // No history until a folder is saved; the settings file shows below.
+  await expect(page.locator('#h-box')).toBeHidden();
+  await expect(page.locator('#s-file')).toHaveText(app.file);
+  // The arrow keys stay on the open tab.
+  await settings.focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(settings).toBeFocused();
+  await expect(settings).toHaveAttribute('aria-selected', 'true');
+  await page.keyboard.press('Home');
+  await expect(settings).toBeFocused();
 
   await field(page, 'Telescope address').fill(share);
   await field(page, 'Folder for your images').fill(app.folder);
-  await page.getByRole('button', { name: 'Save without copying' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
 
-  // Save went away: focus is on the new state's heading, with Copy selected.
+  // Focus is on the Copy tab's heading, and copying is off.
   await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#c-title')).toBeFocused();
   await expect(page.locator('#c-title')).toHaveText('Copying is off.');
@@ -35,6 +52,7 @@ test('Setup saves the address and folder and opens the Copy tab', async ({ page,
   // Test ran on Save; the header shows the contact, and focus stays.
   await expect(page.locator('#hdot')).toHaveText('Reachable');
   await expect(page.locator('#c-title')).toBeFocused();
+  await expect(page.locator('#s-first')).toBeHidden();
 
   await tab(page, 'Browse').click();
   await expect(browseStatus(page)).toHaveText(rootStatus);
@@ -44,7 +62,7 @@ test('Setup saves the address and folder and opens the Copy tab', async ({ page,
   await expect(frame(page).locator('.badge.new').first()).toBeVisible();
 
   const saved = readSettings(app.file);
-  expect(saved).toMatchObject({ version: 1, address: share, folder: app.folder, interval_minutes: 5, skip_built_in: true, start_copying: true });
+  expect(saved).toMatchObject({ version: 1, address: share, folder: app.folder, interval_minutes: 5, skip_built_in: true, start_copying: false });
 });
 
 // countTests counts the page's Test requests.
@@ -56,7 +74,7 @@ function countTests(page) {
   return n;
 }
 
-test('a Test passed before Setup is saved shows in the header without another Test', async ({ page, startApp }) => {
+test('a Test passed before the first Save shows in the header without another Test', async ({ page, startApp }) => {
   const app = await startApp();
   await openApp(page, app.url);
   const n = countTests(page);
@@ -64,7 +82,7 @@ test('a Test passed before Setup is saved shows in the header without another Te
   await page.getByRole('button', { name: 'Test' }).click();
   await expect(page.locator('#f-test')).toHaveText(connected);
   await field(page, 'Folder for your images').fill(app.folder);
-  await page.getByRole('button', { name: 'Save without copying' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#hdot')).toHaveText('Reachable');
   await expect(page.locator('#hdot')).toBeVisible();
   await tab(page, 'Browse').click();
@@ -72,12 +90,12 @@ test('a Test passed before Setup is saved shows in the header without another Te
   expect(n.tests).toBe(1);
 });
 
-test('Setup field errors block saving and focus the first field', async ({ page, startApp }) => {
+test('first-run field errors block saving and focus the first field', async ({ page, startApp }) => {
   const app = await startApp();
   await openApp(page, app.url);
   await field(page, 'Telescope address').fill('http://192.0.2.10/');
   await field(page, 'Folder for your images').fill('Seestar');
-  await page.getByRole('button', { name: 'Save without copying' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
 
   const addr = field(page, 'Telescope address');
   const folder = field(page, 'Folder for your images');
@@ -90,11 +108,12 @@ test('Setup field errors block saving and focus the first field', async ({ page,
   await expect(folder).toHaveValue('Seestar');
 
   await addr.fill(share);
-  await page.getByRole('button', { name: 'Save without copying' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.locator('#f-addr-err')).toBeHidden();
   await expect(addr).not.toHaveAttribute('aria-invalid', 'true');
   await expect(folder).toBeFocused();
-  await expect(page.getByRole('heading', { name: 'Welcome to seestar-copy' })).toBeVisible();
+  await expect(tab(page, 'Settings')).toHaveAttribute('aria-selected', 'true');
+  await expect(tab(page, 'Copy')).toBeDisabled();
   expect(() => readSettings(app.file)).toThrow();
 });
 
@@ -273,11 +292,15 @@ test('Save is off until its answer is in', async ({ page, startApp }) => {
     await route.continue();
   });
   const save = page.getByRole('button', { name: 'Save', exact: true });
-  await save.click();
-  await expect(save).toBeDisabled();
-  // Enter in a field would submit again.
-  await field(page, 'Folder for your images').press('Enter');
-  release();
+  // A failure here still lets the held request go, so teardown can drain it.
+  try {
+    await save.click();
+    await expect(save).toBeDisabled();
+    // Enter in a field would submit again.
+    await field(page, 'Folder for your images').press('Enter');
+  } finally {
+    release();
+  }
   await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
   await expect(save).toBeEnabled();
   expect(posts).toBe(1);
@@ -296,18 +319,59 @@ test('the app page refuses a request without its token', async ({ page, startApp
   await expect(page.locator('#loading')).toHaveText("Can't load seestar-copy. Close this window and reopen seestar-copy.");
 });
 
+test('Settings shows the history and settings files, with Copy buttons', async ({ page, startApp }) => {
+  // window.copied records what the page copies.
+  await page.addInitScript(() => {
+    window.copied = [];
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText: async (s) => window.copied.push(s) } });
+  });
+  const app = await startApp(setUp('/nowhere'));
+  await openApp(page, app.url);
+  await tab(page, 'Settings').click();
+  const history = page.locator('#h-path');
+  await expect(history).toHaveText(/^\/.*[/\\]seestar-copy[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
+  const first = await history.textContent();
+  await page.locator('#h-clip').click();
+  await expect(page.locator('#h-clip')).toHaveText('Copied');
+  await expect(page.locator('#h-result')).toHaveText('Copy history path copied.');
+  await page.locator('#s-clip').click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings file path copied.');
+  expect(await page.evaluate(() => window.copied)).toEqual([first, app.file]);
+  await page.evaluate(() => (navigator.clipboard.writeText = async () => { throw new Error('denied'); }));
+  await page.locator('#h-clip').click();
+  await expect(page.locator('#h-result')).toHaveText("Couldn't copy the path. Select it and copy it manually.");
+
+  // A folder from the desktop picker is an edit too.
+  await page.route('**/app/api/folder', (route) => route.fulfill({ json: { folder: app.folder } }));
+  await page.locator('#f-choose').dispatchEvent('click');
+  await expect(field(page, 'Folder for your images')).toHaveValue(app.folder);
+  expect(await page.locator('#h-saved').isHidden()).toBe(true);
+
+  // An edited folder has no history to show until it is saved.
+  await field(page, 'Folder for your images').fill(app.folder);
+  await expect(page.locator('#h-unsaved')).toHaveText("Save to see this folder's copy history.");
+  await expect(page.locator('#h-saved')).toBeHidden();
+  await field(page, 'Folder for your images').fill('/nowhere');
+  await expect(page.locator('#h-saved')).toBeVisible();
+  await field(page, 'Folder for your images').fill(app.folder);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#h-saved')).toBeVisible();
+  await expect(history).not.toHaveText(first);
+  await expect(history).toHaveText(/\.jsonl$/);
+});
+
 for (const colorScheme of ['light', 'dark']) {
   test(`app screenshots in ${colorScheme}`, async ({ page, startApp }, testInfo) => {
     await page.emulateMedia({ colorScheme });
     const shot = (name) => page.screenshot({
       path: path.join(__dirname, '..', 'screenshots', `${testInfo.project.name}-${colorScheme}-app-${name}.png`),
     });
-    const setup = await startApp();
-    await openApp(page, setup.url);
+    const fresh = await startApp();
+    await openApp(page, fresh.url);
     await field(page, 'Telescope address').fill('a b');
     await page.getByRole('button', { name: 'Test' }).click();
     await expect(page.locator('#f-addr-err')).toBeVisible();
-    await shot('setup-error');
+    await shot('first-run-error');
 
     const app = await startApp(setUp('/nowhere'));
     await openApp(page, app.url);
@@ -386,11 +450,11 @@ for (const [layout, { width }] of Object.entries(layouts)) {
       path: path.join(__dirname, '..', 'screenshots', `${testInfo.project.name}-app-${layout}-${name}.png`),
     });
 
-    const setup = await startApp();
-    await openApp(page, setup.url);
+    const fresh = await startApp();
+    await openApp(page, fresh.url);
     await restyle(page, layout);
     await fits(page);
-    await shot('setup');
+    await shot('first-run');
 
     const app = await startApp(setUp('/nowhere'));
     await openApp(page, app.url);

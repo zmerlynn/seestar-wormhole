@@ -19,7 +19,7 @@ is stopped.
 | --- | --- |
 | `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the read-only guard before a dry run, `find`'s listing, and `browse`'s listener and `--open`. |
 | `cmd/seestar-copy` | The app's command: `--settings`, logging, and how the page is shown. The `gui` build shows it in a [Wails](https://wails.io) window, with native folder and save dialogs, and quits the app when the window closes. The build without the tag prints the page's URL to open in a browser and serves until Ctrl+C. |
-| `internal/app` | The app: `app.json` (read at startup, written atomically on Save), and the loopback server for its page, with a per-run token and Host, Origin and Fetch Metadata checks, Setup, Settings, Test, and the Browse tab, which is `internal/browse` in its in-app mode. |
+| `internal/app` | The app: `app.json` (read at startup, written atomically on Save), and the loopback server for its page, with a per-run token and Host, Origin and Fetch Metadata checks, Settings, Test, and the Browse tab, which is `internal/browse` in its in-app mode. |
 | `internal/engine` | The work the commands share: the `--exclude` and `--include` selection and its walk of the share, the `sync` pass loop (dial, list, plan, copy, log off, sleep) and its dry run, and `delete`'s run. It never turns the read-only guard on. |
 | `internal/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
 | `internal/state` | The per-destination state file: JSON Lines, last record per path wins, torn-tail tolerance, append with fsync, and the exclusive lock. |
@@ -102,9 +102,10 @@ image, text and FITS viewers, Save, closing the viewer, a missing folder, a
 long name in a narrow window, and the favicon. They also save screenshots
 of the page in light and dark, which CI uploads. The app's tests start the
 browser-only `seestar-copy` themselves, each with its own settings file, and
-cover Setup, Settings and their field errors, Test's messages, the tabs, and
-the Browse tab, including a new address replacing it, and the layout at
-200% text, wider text spacing and 480 px wide. The tests need the Samba
+cover the first run, Settings and their field errors, the history and
+settings paths, Clear history, Test's messages, the tabs, and the Browse
+tab, including a new address replacing it, and the layout at 200% text,
+wider text spacing and 480 px wide. The tests need the Samba
 fixture's `browse` target, a tree of real files from `make-browse.sh`
 instead of `tree.txt`'s. To run them locally, with Node.js and Podman:
 

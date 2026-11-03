@@ -40,11 +40,10 @@ textarea { min-height: 3.6rem; }
 .result:empty { display: none; }
 .result.ok { color: var(--ok); }
 .result.err { color: var(--err); }
-.setup { max-width: 36rem; margin: 2rem auto 0; }
-.setup + form { max-width: 36rem; margin: 0 auto; }
-.setup h1 { display: flex; align-items: center; gap: 0.6rem; font-size: 1.5rem; }
-.setup h1 img { width: 40px; height: 40px; }
-body.in-setup .only-settings, body:not(.in-setup) .only-setup { display: none; }
+.path { overflow-wrap: anywhere; }
+.path .mono { user-select: all; }
+.btn.small { font-size: 0.85em; padding: 0.1em 0.6em; margin-left: 0.3rem; }
+.tab:disabled { color: var(--muted); cursor: default; }
 .footer { margin-top: 1.5rem; border-top: 1px solid var(--line); padding-top: 0.7rem; }
 #b-frame { display: block; width: 100%; height: calc(100vh - 8.5rem); min-height: 20rem; border: 0; }
 .chip { padding: 0 0.5rem; border-radius: 0.7rem; border: 1px solid; font-size: 0.85em; margin-left: auto; }

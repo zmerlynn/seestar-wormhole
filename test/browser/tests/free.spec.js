@@ -1,6 +1,6 @@
 // The app's Free up space tab against the Samba fixture's browse tree,
 // which is read-only: a preview, the confirm dialog and Cancel, and a
-// settings save that clears the preview. The confirmed delete is tested
+// settings save and a history clear that clear the preview. The confirmed delete is tested
 // in the Samba job.
 const { test, expect, share, tab, field, openApp } = require('./app');
 
@@ -24,10 +24,10 @@ async function copied(page, startApp) {
   return app;
 }
 
-// find finds files of any age, and waits for the preview's title.
+// find previews files of any age, and waits for the preview's title.
 async function find(page, want = safe) {
   await days(page).fill('0');
-  await button(page, 'Find files to delete').click();
+  await button(page, 'Preview what to delete').click();
   await expect(title(page)).toHaveText(want, { timeout: 30000 });
 }
 
@@ -35,13 +35,14 @@ test('a preview groups the files by folder, and the confirm dialog cancels back 
   await copied(page, startApp);
   await expect(page.locator('#x-intro')).toHaveText(/^Free up space deletes files from the telescope only after/);
   await expect(page.locator('#x-restack')).toBeVisible();
+  await expect(page.locator('#x-find-note')).toHaveText('Nothing is deleted until you confirm.');
   await find(page);
-  // Find went away: focus moves to the new state's heading, and the
+  // Preview went away: focus moves to the new state's heading, and the
   // status region says the stage.
   await expect(title(page)).toBeFocused();
   await expect(page.locator('#x-live')).toHaveText(safe);
   await expect(page.locator('#x-sub')).toHaveText('Any age · your copies checked');
-  await expect(button(page, 'Find files to delete')).toBeHidden();
+  await expect(button(page, 'Preview what to delete')).toBeHidden();
   await expect(deleteButton(page)).toHaveText('Delete 7 files…');
 
   // Unchecking a folder narrows Delete's count.
@@ -123,16 +124,32 @@ test('a settings save that changes a pattern clears the preview', async ({ page,
   await button(page, 'Save').click();
   await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
   await tab(page, 'Free up space').click();
-  await expect(page.locator('#x-changed')).toHaveText('Settings changed. Find files again before deleting.');
-  await expect(button(page, 'Find files to delete')).toBeVisible();
+  await expect(page.locator('#x-changed')).toHaveText('Settings or copy history changed. Preview again before deleting.');
+  await expect(button(page, 'Preview what to delete')).toBeVisible();
   await expect(deleteButton(page)).toBeHidden();
   await expect(trust(page)).toBeChecked();
+});
+
+test('Clear history clears the preview', async ({ page, startApp }) => {
+  await copied(page, startApp);
+  await find(page);
+  await tab(page, 'Settings').click();
+  await page.locator('#s-stop').click();
+  await button(page, 'Clear history…').click();
+  await button(page, 'Clear history').click();
+  await expect(page.locator('#h-result')).toHaveText('Copy history cleared.');
+  await tab(page, 'Free up space').click();
+  await expect(page.locator('#x-changed')).toHaveText('Settings or copy history changed. Preview again before deleting.');
+  await expect(button(page, 'Preview what to delete')).toBeVisible();
+  await expect(deleteButton(page)).toBeHidden();
+  // With no history, nothing is safe to delete.
+  await find(page, /^Nothing to delete yet\./);
 });
 
 test('a bad number of days is refused at its field', async ({ page, startApp }) => {
   await copied(page, startApp);
   await days(page).fill('-1');
-  await button(page, 'Find files to delete').click();
+  await button(page, 'Preview what to delete').click();
   await expect(page.locator('#x-days-err')).toHaveText('Enter a whole number of days, 0 or more.');
   await expect(days(page)).toHaveAttribute('aria-invalid', 'true');
   await expect(days(page)).toBeFocused();

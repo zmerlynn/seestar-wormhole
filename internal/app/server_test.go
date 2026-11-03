@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -295,18 +297,29 @@ func TestStatus(t *testing.T) {
 		Version         string   `json:"version"`
 		SetUp           bool     `json:"set_up"`
 		Settings        Settings `json:"settings"`
+		SettingsFile    string   `json:"settings_file"`
+		History         string   `json:"history"`
 		DefaultExcludes []string `json:"default_excludes"`
 	}](t, w)
 	if got.Version != "v9.9.9" || !got.SetUp || got.Settings.Address != "192.0.2.10:445" || got.Settings.IntervalMinutes != 5 || len(got.DefaultExcludes) != 9 {
 		t.Errorf("status = %+v", got)
 	}
+	// The history is the saved folder's state file, where sync keeps it.
+	sum := sha256.Sum256([]byte(abs("/data/Seestar")))
+	if want := filepath.Join(e.s.stateDir, "sync", hex.EncodeToString(sum[:])+".jsonl"); got.History != want {
+		t.Errorf("history = %q, want %q", got.History, want)
+	}
+	if got.SettingsFile != e.path {
+		t.Errorf("settings file = %q, want %q", got.SettingsFile, e.path)
+	}
 	for _, data := range []string{"", `{"version":1,"folder":"/data/Seestar"}`, `{"address":"a:445","folder":""}`} {
 		e := newAppEnv(t, data)
 		got := decode[struct {
-			SetUp bool `json:"set_up"`
+			SetUp   bool   `json:"set_up"`
+			History string `json:"history"`
 		}](t, e.serve("GET", "/app/api/status", "", tokenHeader, testToken))
-		if got.SetUp {
-			t.Errorf("%q: set up", data)
+		if got.SetUp || got.History != "" {
+			t.Errorf("%q: set up %v, history %q", data, got.SetUp, got.History)
 		}
 	}
 }

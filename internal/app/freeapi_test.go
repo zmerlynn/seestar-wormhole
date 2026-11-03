@@ -17,8 +17,8 @@ import (
 // options.
 func TestFreeAPI(t *testing.T) {
 	e := newAppEnv(t, "")
-	if w := e.post("/app/api/delete", `{"action":"find","days":"7"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't find files: finish Setup first.") {
-		t.Errorf("before Setup: %d %s", w.Code, w.Body)
+	if w := e.post("/app/api/delete", `{"action":"find","days":"7"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: set the telescope and folder in Settings first.") {
+		t.Errorf("before settings are saved: %d %s", w.Code, w.Body)
 	}
 	e = newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":`+quote(abs("/data/Seestar"))+`}`)
 	for _, days := range []string{"", "x", "-1", "1.5", "36501"} {
@@ -32,7 +32,7 @@ func TestFreeAPI(t *testing.T) {
 		t.Errorf("unknown action: %d", w.Code)
 	}
 	w := e.post("/app/api/delete", `{"action":"delete","id":1,"folders":["MyWorks"]}`)
-	if w.Code != 409 || !strings.Contains(w.Body.String(), `"Find files again before deleting."`) {
+	if w.Code != 409 || !strings.Contains(w.Body.String(), `"Preview again before deleting."`) {
 		t.Errorf("delete without a preview: %d %s", w.Code, w.Body)
 	}
 

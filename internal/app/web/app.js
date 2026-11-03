@@ -1,5 +1,6 @@
-// The seestar-copy app page: Setup, then the Copy, Browse, Free up space
-// and Settings tabs. The token in the URL fragment goes with every API call.
+// The seestar-copy app page: the Copy, Browse, Free up space and Settings
+// tabs. Until settings are saved, only Settings opens. The token in the URL
+// fragment goes with every API call.
 const $ = (s) => document.querySelector(s);
 const token = location.hash.slice(1);
 const form = $('#form');
@@ -9,6 +10,7 @@ const FIELDS = { address: '#f-addr', folder: '#f-folder', interval: '#f-int', ex
 
 let saved = null; // the settings as saved
 let passed = ''; // the address the last Test reached, until a Test of it fails
+let history = ''; // the saved folder's copy history file, from status
 
 async function api(path, body) {
   const init = { headers: { 'X-Seestar-Copy-Token': token } };
@@ -123,6 +125,7 @@ async function choose() {
   const { status, data } = await api('folder', { folder: $('#f-folder').value });
   if (status === 200 && data && data.folder) {
     $('#f-folder').value = data.folder;
+    renderHistory();
     showErrors({ ...currentErrors(), folder: '' });
   } else if (status !== 200) {
     showErrors({ ...currentErrors(), folder: (data && data.error) || "Couldn't open the folder picker. Type the folder's full path instead." });
@@ -132,23 +135,22 @@ async function choose() {
 
 // save sends the form; Save is disabled until the answer is in, so two
 // saves' answers can't arrive out of order.
-async function save(ev, startCopying = document.body.classList.contains('in-setup')) {
+async function save(ev) {
   ev.preventDefault();
   const btn = $('#f-save');
   if (btn.disabled) return;
   btn.disabled = true;
-  $('#f-save-only').disabled = true;
   try {
-    await saveForm(startCopying);
+    await saveForm();
   } finally {
     btn.disabled = false;
-    $('#f-save-only').disabled = false;
   }
 }
 
-async function saveForm(startCopying) {
-  const setup = document.body.classList.contains('in-setup');
+async function saveForm() {
+  const first = !saved;
   result('#f-saved', '');
+  result('#h-result', '');
   const { status, data } = await api('settings', input());
   if (status === 400 && data && data.fields) {
     showErrors(data.fields).focus();
@@ -163,12 +165,12 @@ async function saveForm(startCopying) {
   saved = data.settings;
   fill(saved);
   $('#haddr').textContent = saved.address;
-  if (setup) {
-    // Save went away with Setup: focus moves to the new state's heading.
-    main();
+  await poll();
+  if (first) {
+    // The first Save opens the other tabs and goes to Copy, with copying
+    // off; focus moves to its heading.
+    gate();
     select('copy');
-    if (startCopying) await copyAction('start');
-    else await poll();
     $('#c-title').focus();
   } else {
     result('#f-saved', 'Settings saved.', 'ok');
@@ -194,14 +196,21 @@ function select(tab) {
   }
 }
 
-function main() {
-  document.body.classList.remove('in-setup');
-  $('#setup').hidden = true;
-  $('#main').hidden = false;
-  $('#p-settings').insertBefore(form, $('#version'));
-  $('#f-save').textContent = 'Save';
-  result('#f-test', '');
-  if (!polling) polling = setInterval(poll, 1000);
+// gate keeps every tab but Settings shut until settings are saved.
+function gate() {
+  for (const t of TABS) if (t !== 'settings') $('#t-' + t).disabled = !saved;
+  $('#s-first').hidden = !!saved;
+  $('#haddr').hidden = !saved;
+}
+
+// renderHistory shows the saved folder's history file, or, while the
+// Folder field holds an unsaved folder, a line saying to save first.
+function renderHistory() {
+  const edited = !!saved && $('#f-folder').value !== saved.folder;
+  $('#h-box').hidden = !history;
+  $('#h-saved').hidden = edited;
+  $('#h-unsaved').hidden = !edited;
+  text('#h-path', history);
 }
 
 // The Copy tab: the server words each state; the page shows its parts.
@@ -214,7 +223,7 @@ const SHOWS = {
 };
 const BUSY = { connecting: 'Connecting', listing: 'Looking for new files' };
 
-let polling = 0;
+let copyOn = false;
 let shown = { state: '', contact: '', files: '', seq: -1 };
 let pressed = null; // a button the user pressed, until the state after it is shown
 
@@ -277,9 +286,11 @@ function renderCopy(v) {
     shown.contact = v.contact;
     if (v.contact) contact(saved.address, v.contact === 'connecting' ? 'connecting' : v.contact === 'ok');
   }
-  // Settings can't change while copying is on.
-  $('#f-set').disabled = v.on;
+  // Settings can't change, nor the history clear, while copying is on.
+  $('#f-set').disabled = $('#f-set2').disabled = v.on;
   $('#s-locked').hidden = !v.on;
+  copyOn = v.on;
+  clearable();
   // When the button pressed went away, focus moves to the new state's
   // heading; background updates never move focus.
   if (pressed && pressed.offsetParent === null) {
@@ -303,6 +314,8 @@ function renderActivity(lines, seq) {
 async function poll() {
   const { status, data } = await api('status');
   if (status !== 200 || !data) return;
+  history = data.history;
+  renderHistory();
   renderCopy(data.copy);
   renderFree(data.free);
   renderActivity(data.activity, data.activity_seq);
@@ -325,6 +338,7 @@ async function press(ev, action) {
 const XSHOWS = {
   '#x-options': ['start', 'nothing', 'checkfail'],
   '#x-find': ['start', 'nothing', 'checkfail'],
+  '#x-find-note': ['start', 'nothing', 'checkfail'],
   '#x-cancel': ['checking'],
   '#x-preview': ['preview'],
   '#x-go': ['preview'],
@@ -364,8 +378,8 @@ function intro() {
   text(
     '#x-intro',
     $('#x-trust').checked
-      ? "Free up space uses seestar-copy's saved copy records. Your copies will not be checked. Nothing is deleted until you confirm."
-      : 'Free up space deletes files from the telescope only after seestar-copy has copied them and checked that your copy still matches. Nothing is deleted until you confirm.',
+      ? "Free up space uses seestar-copy's saved copy records. Your copies will not be checked."
+      : 'Free up space deletes files from the telescope only after seestar-copy has copied them and checked that your copy still matches.',
   );
   const days = Number($('#x-days').value);
   $('#x-restack').hidden = !(days > 0);
@@ -454,6 +468,7 @@ function renderFree(v) {
   $('#x-kept').hidden = !v.kept || !v.kept_list || !['preview', 'nothing', 'done'].includes(st);
   if (st !== free.state) $('#x-live').textContent = v.title || '';
   free.state = st;
+  clearable();
   // As for Copy: focus moves to the new state's heading only when the
   // button pressed went away.
   if (xpressed && xpressed.offsetParent === null) {
@@ -520,16 +535,34 @@ async function confirmDelete() {
   await freeAction({ action: 'delete', id: free.id, folders });
 }
 
-async function copyLog() {
-  const btn = $('#c-clip');
-  const all = [...$('#c-log').children].map((li) => li.textContent).join('\n');
+// clip copies s to the clipboard and says so on the button for a moment.
+// For a path, the status region live also says so, in words a screen
+// reader announces.
+async function clip(btn, s, live, copied) {
+  const label = (btn.dataset.label ||= btn.textContent);
   try {
-    await navigator.clipboard.writeText(all);
+    await navigator.clipboard.writeText(s);
     btn.textContent = 'Copied';
+    if (live) result(live, copied, 'ok');
   } catch {
     btn.textContent = "Couldn't copy";
+    if (live) result(live, "Couldn't copy the path. Select it and copy it manually.", 'err');
   }
-  setTimeout(() => (btn.textContent = 'Copy to clipboard'), 2000);
+  setTimeout(() => (btn.textContent = label), 2000);
+}
+
+// clearable disables Clear history while copying is on or Free up space
+// is checking or deleting; the server refuses those too.
+function clearable() {
+  $('#h-clear').disabled = copyOn || ['checking', 'deleting'].includes(free.state);
+}
+
+async function clearHistory() {
+  $('#h-confirm').close();
+  const { status, data } = await api('clear', {});
+  if (status === 200) result('#h-result', 'Copy history cleared.', 'ok');
+  else result('#h-result', (data && data.error) || "Couldn't reach seestar-copy. Close this window and reopen seestar-copy.", 'err');
+  await poll();
 }
 
 async function start() {
@@ -540,25 +573,28 @@ async function start() {
   }
   $('#loading').hidden = true;
   $('#version').textContent = 'seestar-copy ' + data.version;
+  $('#s-file').textContent = data.settings_file;
   $('#f-builtin').textContent = data.default_excludes.join(' · ');
   fill(data.settings);
   fillFree(data.settings);
   $('#f-choose').hidden = !data.native;
-  form.hidden = false;
+  $('#main').hidden = false;
   if (data.set_up) {
     saved = data.settings;
     $('#haddr').textContent = saved.address;
-    main();
-    select('copy');
     $('#b-frame').src = '/';
-    renderCopy(data.copy);
-    renderFree(data.free);
-    renderActivity(data.activity, data.activity_seq);
+  }
+  gate();
+  history = data.history;
+  renderHistory();
+  renderCopy(data.copy);
+  renderFree(data.free);
+  renderActivity(data.activity, data.activity_seq);
+  setInterval(poll, 1000);
+  if (saved) {
+    select('copy');
   } else {
-    document.body.classList.add('in-setup');
-    $('#setup').hidden = false;
-    $('#setup').after(form);
-    $('#f-save').textContent = 'Save and start copying';
+    select('settings');
     $('#f-addr').focus();
   }
 }
@@ -566,25 +602,41 @@ async function start() {
 $('#f-test-btn').addEventListener('click', test);
 $('#f-choose').addEventListener('click', choose);
 form.addEventListener('submit', save);
-$('#f-save-only').addEventListener('click', (ev) => save(ev, false));
 $('#c-start').addEventListener('click', (ev) => press(ev, 'start'));
 $('#c-check').addEventListener('click', (ev) => press(ev, 'check'));
 $('#c-stop').addEventListener('click', (ev) => press(ev, 'stop'));
 $('#s-stop').addEventListener('click', (ev) => press(ev, 'stop'));
-$('#c-clip').addEventListener('click', copyLog);
+$('#c-clip').addEventListener('click', (ev) =>
+  clip(ev.currentTarget, [...$('#c-log').children].map((li) => li.textContent).join('\n')),
+);
+$('#h-clip').addEventListener('click', (ev) => clip(ev.currentTarget, history, '#h-result', 'Copy history path copied.'));
+$('#s-clip').addEventListener('click', (ev) =>
+  clip(ev.currentTarget, $('#s-file').textContent, '#f-saved', 'Settings file path copied.'),
+);
+$('#f-folder').addEventListener('input', renderHistory);
+$('#h-clear').addEventListener('click', () => {
+  result('#h-result', '');
+  $('#h-confirm').showModal();
+});
+$('#h-ccancel').addEventListener('click', () => $('#h-confirm').close());
+$('#h-cgo').addEventListener('click', clearHistory);
+// Escape and Cancel close the dialog; focus goes back to Clear history.
+$('#h-confirm').addEventListener('close', () => $('#h-clear').focus());
 document.querySelector('nav.tabs').addEventListener('click', (ev) => {
   const t = ev.target.closest('.tab');
   if (t) select(t.dataset.tab);
 });
-// Tab keys: Arrow, Home and End move and select; focus follows.
+// Tab keys: Arrow, Home and End move and select among the open tabs;
+// focus follows.
 document.querySelector('nav.tabs').addEventListener('keydown', (ev) => {
-  const i = TABS.findIndex((t) => $('#t-' + t).getAttribute('aria-selected') === 'true');
-  const n = TABS.length;
+  const open = TABS.filter((t) => !$('#t-' + t).disabled);
+  const i = open.findIndex((t) => $('#t-' + t).getAttribute('aria-selected') === 'true');
+  const n = open.length;
   const j = { ArrowRight: (i + 1) % n, ArrowLeft: (i + n - 1) % n, Home: 0, End: n - 1 }[ev.key];
   if (j === undefined) return;
   ev.preventDefault();
-  select(TABS[j]);
-  $('#t-' + TABS[j]).focus();
+  select(open[j]);
+  $('#t-' + open[j]).focus();
 });
 $('#x-find').addEventListener('click', (ev) => find(ev));
 $('#x-days').addEventListener('keydown', (ev) => ev.key === 'Enter' && find(ev));

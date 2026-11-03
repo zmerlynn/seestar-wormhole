@@ -16,7 +16,7 @@ import (
 // The refusals of a Free up space action.
 var (
 	errFreeBusy = errors.New("a check or a delete is already running")
-	errStale    = errors.New("find files again before deleting")
+	errStale    = errors.New("preview again before deleting")
 )
 
 // freer runs Free up space: at most one preview or delete at a time. Its
@@ -221,6 +221,21 @@ func (f *freer) clear() {
 	case frChecking:
 		f.st.stale = true
 	}
+}
+
+// forget is a clear of the copy history: a preview goes back to Start,
+// as for clear. It returns false, and changes nothing, while a check or
+// a delete runs.
+func (f *freer) forget() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.done != nil {
+		return false
+	}
+	if f.st.state == frPreview || f.st.state == frNothing {
+		f.st = freeStatus{state: frStart, changed: true}
+	}
+	return true
 }
 
 // quit cancels any run for good and waits for it to return.

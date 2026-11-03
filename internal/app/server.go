@@ -23,6 +23,7 @@ import (
 
 	"github.com/zmerlynn/seestar-copy/internal/browse"
 	"github.com/zmerlynn/seestar-copy/internal/engine"
+	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
@@ -90,12 +91,13 @@ func newServer(ctx context.Context, addr netip.AddrPort, token, version, stateDi
 	return s
 }
 
-// setUp reports whether Setup is done: an address and a folder are saved.
+// setUp reports whether an address and a folder are saved. Until they
+// are, only Settings is open.
 func (f *settingsFile) setUp() bool {
 	return f.exists && f.settings.Address != "" && f.settings.Folder != ""
 }
 
-// startBrowse serves Browse for the saved settings, if Setup is done. It
+// startBrowse serves Browse for the saved settings, if they are set up. It
 // is called once the server's fields are set and before it serves.
 func (s *server) startBrowse() {
 	if s.file.setUp() {
@@ -132,7 +134,7 @@ func (s *server) startCopying() error {
 	return s.copy.start(s.file.settings)
 }
 
-var errNotSetUp = errors.New("finish Setup first")
+var errNotSetUp = errors.New("set the telescope and folder in Settings first")
 
 // close ends the current browse pool.
 func (s *server) close() {
@@ -205,7 +207,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.status(w)
 		return
-	case "/app/api/test", "/app/api/settings", "/app/api/copy", "/app/api/delete":
+	case "/app/api/test", "/app/api/settings", "/app/api/copy", "/app/api/delete", "/app/api/clear":
 	case "/app/api/folder":
 		if s.native == nil {
 			fail(http.StatusNotFound)
@@ -247,6 +249,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.copyAction(w, in.Action)
 	case "/app/api/delete":
 		s.freeAction(w, in)
+	case "/app/api/clear":
+		s.clearHistory(w)
 	default:
 		s.save(w, in)
 	}
@@ -282,20 +286,27 @@ type input struct {
 
 func (s *server) status(w http.ResponseWriter) {
 	s.mu.Lock()
-	set, setUp := s.file.settings, s.file.setUp()
+	set, setUp, file := s.file.settings, s.file.setUp(), s.file.path
 	s.mu.Unlock()
+	// The saved folder's state file, as sync names it.
+	var history string
+	if setUp {
+		history, _ = state.Path(s.stateDir, set.Folder)
+	}
 	lines, seq := s.copy.activity.lines()
 	respond(w, http.StatusOK, struct {
 		Version         string   `json:"version"`
 		SetUp           bool     `json:"set_up"`
 		Settings        Settings `json:"settings"`
+		SettingsFile    string   `json:"settings_file"`
+		History         string   `json:"history"` // "" until set up
 		DefaultExcludes []string `json:"default_excludes"`
 		Native          bool     `json:"native"` // the window's dialogs are there
 		Copy            copyView `json:"copy"`
 		Free            freeView `json:"free"`
 		Activity        []entry  `json:"activity"` // newest first
 		ActivitySeq     int      `json:"activity_seq"`
-	}{s.version, setUp, set, engine.DefaultExcludes, s.native != nil, s.copy.view(time.Now()), s.free.view(), lines, seq})
+	}{s.version, setUp, set, file, history, engine.DefaultExcludes, s.native != nil, s.copy.view(time.Now()), s.free.view(), lines, seq})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -414,7 +425,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		s.mu.Lock()
 		if !s.file.setUp() {
 			s.mu.Unlock()
-			conflict("Couldn't find files: " + errNotSetUp.Error() + ".")
+			conflict("Couldn't preview: " + errNotSetUp.Error() + ".")
 			return
 		}
 		set, old := s.file.settings, s.file.settings
@@ -430,14 +441,14 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		err = s.free.find(set)
 		s.mu.Unlock()
 		if err != nil {
-			conflict("Couldn't find files: " + err.Error() + ".")
+			conflict("Couldn't preview: " + err.Error() + ".")
 			return
 		}
 	case "cancel":
 		s.free.cancelCheck()
 	case "delete":
 		if err := s.free.confirm(in.ID, in.Folders); errors.Is(err, errStale) {
-			conflict("Find files again before deleting.")
+			conflict("Preview again before deleting.")
 			return
 		} else if err != nil {
 			conflict("Couldn't delete: " + err.Error() + ".")
@@ -452,6 +463,44 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		return
 	}
 	respond(w, http.StatusOK, s.free.view())
+}
+
+// clearHistory deletes the saved folder's state file, as a reset of sync
+// does, so the next pass adopts the files still in the folder and copies
+// the rest again. It refuses while copying is on, while a Free up space
+// check or delete runs, and while another copy holds the folder's lock.
+// A Free up space preview goes back to Start, since its proof is gone.
+func (s *server) clearHistory(w http.ResponseWriter) {
+	readonly.Check("clear history")
+	conflict := func(msg string) {
+		respond(w, http.StatusConflict, struct {
+			Error string `json:"error"`
+		}{msg})
+	}
+	s.mu.Lock()
+	folder := s.file.settings.Folder
+	var err error
+	switch {
+	case !s.file.setUp():
+		err = errNotSetUp
+	case s.copy.on():
+		err = errors.New("stop copying first")
+	case !s.free.forget():
+		err = errors.New("wait for Free up space to finish")
+	default:
+		err = state.Remove(s.stateDir, folder)
+	}
+	s.mu.Unlock()
+	switch {
+	case errors.Is(err, state.ErrLocked):
+		conflict("Couldn't clear the history: another copy is using this folder, in another seestar-copy window or seestar-copy-cli. Stop that copy, then try again.")
+	case err != nil:
+		s.log.Warn("clear history", "dest", folder, "err", err)
+		conflict("Couldn't clear the history: " + reason(err) + ".")
+	default:
+		s.log.Info("copy history cleared", "dest", folder)
+		respond(w, http.StatusOK, struct{}{})
+	}
 }
 
 // maxDays caps Only files older than N days: 100 years.

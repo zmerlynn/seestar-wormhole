@@ -29,7 +29,7 @@ const (
 // freeStatus is the run's state, for the page.
 type freeStatus struct {
 	state   string
-	changed bool // Start, after a Save changed what a preview showed
+	changed bool // Start, after a Save or a Clear history changed what a preview showed
 	stale   bool // a Save changed the inputs of the running check
 	set     Settings
 	// Checking.
@@ -100,7 +100,7 @@ func (st *freeStatus) view() freeView {
 		}
 	case frCheckFail:
 		v.Title = "Couldn't finish checking files: " + st.err.Error() + "."
-		v.Text = "Find files again to retry."
+		v.Text = "Preview again to retry."
 		if errors.Is(st.err, engine.ErrNoDest) {
 			v.Title = "Couldn't finish checking files: " + st.set.Folder + " isn't there."
 			v.Text = noDest
@@ -204,7 +204,7 @@ func (st *freeStatus) view() freeView {
 
 // noDest is what to do when the folder is missing and the copies prove
 // the files.
-const noDest = "If your copies have moved or the drive is offline, turn on \"My copies have moved or the drive is offline\" and find files again."
+const noDest = "If your copies have moved or the drive is offline, turn on \"My copies have moved or the drive is offline\" and preview again."
 
 // keptSummary words the files a preview keeps: "Kept: 40 newer than 7
 // days, 12 not copied yet", and each file with its reason.

@@ -46,18 +46,26 @@ async function launch(dir, settings, home = dir) {
 // log attached. startApp(settings, home) shares another app's home, and so
 // its state folder.
 const test = base.test.extend({
-  // eslint-disable-next-line no-empty-pattern
-  startApp: async ({}, use, testInfo) => {
+  startApp: async ({ context }, use, testInfo) => {
     const apps = [];
     await use(async (settings, home) => {
       const app = await launch(testInfo.outputPath('app-' + apps.length), settings, home);
       apps.push(app);
       return app;
     });
-    for (const app of apps) {
-      app.child.kill('SIGINT');
-      await app.exited;
-      await testInfo.attach('app log', { body: app.log, contentType: 'text/plain' });
+    // Each page's route handlers finish, and the page stops polling, while
+    // its app still runs; the apps stop even if that fails.
+    try {
+      for (const p of context.pages()) {
+        await p.unrouteAll({ behavior: 'wait' });
+        await p.close();
+      }
+    } finally {
+      for (const app of apps) {
+        app.child.kill('SIGINT');
+        await app.exited;
+        await testInfo.attach('app log', { body: app.log, contentType: 'text/plain' });
+      }
     }
   },
 });
@@ -70,7 +78,7 @@ const browseStatus = (page) => frame(page).locator('#status');
 const tab = (page, name) => page.getByRole('tab', { name, exact: true });
 const field = (page, label) => page.getByLabel(label, { exact: true });
 
-// openApp loads the page and waits for it to show Setup or the tabs.
+// openApp loads the page and waits for it to show the tabs.
 async function openApp(page, url) {
   await page.goto(url);
   await expect(page.locator('#loading')).toBeHidden();

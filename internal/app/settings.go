@@ -31,6 +31,8 @@ type Settings struct {
 
 // defaultSettings is what a missing file, or a field absent from one,
 // means. The folder is ~/Seestar, or empty if there is no home folder.
+// A new file does not start copying when the app opens; loadSettings
+// keeps the earlier default, on, for a file without start_copying.
 func defaultSettings() Settings {
 	s := Settings{
 		Version:         settingsVersion,
@@ -38,7 +40,6 @@ func defaultSettings() Settings {
 		Excludes:        []string{},
 		Includes:        []string{},
 		SkipBuiltIn:     true,
-		StartCopying:    true,
 		OlderThanDays:   7,
 	}
 	if home, err := os.UserHomeDir(); err == nil {
@@ -96,6 +97,7 @@ func loadSettings(path string) (*settingsFile, error) {
 	if err != nil {
 		return nil, &loadError{path, err.Error()}
 	}
+	f.settings.StartCopying = true
 	if err := json.Unmarshal(b, &f.settings); err != nil {
 		return nil, &loadError{path, err.Error()}
 	}

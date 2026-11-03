@@ -12,21 +12,23 @@ const upToDate = /^Up to date\. Next check at \d\d:\d\d\.$/;
 const off = 'Copying is off.';
 const inUse = 'Another copy is already using this folder.';
 
-// copying is a saved Setup for the fixture that copies to the app's folder.
+// copying is saved settings for the fixture that copies to the app's folder.
 const copying = (start) => (folder) => ({ version: 1, address: share, folder, start_copying: start });
 
 const title = (page) => page.locator('#c-title');
 const button = (page, name) => page.getByRole('button', { name, exact: true });
 const passes = (page) => page.locator('#c-log li', { hasText: /^\S+ pass done( |$)/ });
 
-test('Save and start copying runs a pass, and Settings are locked while copying is on', async ({ page, startApp }) => {
+test('Start copying after the first Save runs a pass, and Settings are locked while copying is on', async ({ page, startApp }) => {
   const app = await startApp();
   await openApp(page, app.url);
   await field(page, 'Telescope address').fill(share);
   await field(page, 'Folder for your images').fill(app.folder);
-  await button(page, 'Save and start copying').click();
+  await button(page, 'Save').click();
 
   await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(title(page)).toHaveText(off);
+  await button(page, 'Start copying').click();
   await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
   await expect(title(page)).toBeFocused();
   await expect(page.locator('#c-live')).toHaveText(upToDate);
@@ -45,10 +47,13 @@ test('Save and start copying runs a pass, and Settings are locked while copying 
   await expect(passes(page)).toHaveCount(1);
   await expect(page.locator('#c-log li', { hasText: 'copying started' })).toHaveCount(1);
 
-  // Settings can't change while copying is on; its Stop copying unlocks them.
+  // Settings can't change, nor the history clear, while copying is on;
+  // its Stop copying unlocks them.
   await tab(page, 'Settings').click();
   await expect(page.locator('#s-locked')).toBeVisible();
   await expect(field(page, 'Telescope address')).toBeDisabled();
+  await expect(button(page, 'Clear history…')).toBeDisabled();
+  await expect(page.locator('#h-clip')).toBeEnabled();
   await page.locator('#s-stop').click();
   await expect(page.locator('#s-locked')).toBeHidden();
   await expect(field(page, 'Telescope address')).toBeEnabled();
@@ -58,6 +63,37 @@ test('Save and start copying runs a pass, and Settings are locked while copying 
   await expect(title(page)).toHaveText(off);
   // The last pass's summary stays.
   await expect(page.locator('#c-summary')).toHaveText(copiedAll);
+});
+
+test('Clear history forgets the folder, and the next pass copies nothing again', async ({ page, startApp }) => {
+  const app = await startApp(copying(true));
+  await openApp(page, app.url);
+  await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
+  await expect(page.locator('#c-summary')).toHaveText(copiedAll);
+  await button(page, 'Stop copying').click();
+  await expect(title(page)).toHaveText(off);
+
+  await tab(page, 'Settings').click();
+  const history = await page.locator('#h-path').textContent();
+  expect(fs.existsSync(history)).toBe(true);
+  // Cancel keeps it; focus goes back to the button.
+  await button(page, 'Clear history…').click();
+  await expect(page.getByRole('dialog', { name: 'Clear the copy history?' })).toContainText('No images will be deleted.');
+  await page.keyboard.press('Escape');
+  await expect(button(page, 'Clear history…')).toBeFocused();
+  expect(fs.existsSync(history)).toBe(true);
+
+  await button(page, 'Clear history…').click();
+  await button(page, 'Clear history').click();
+  await expect(page.locator('#h-result')).toHaveText('Copy history cleared.');
+  expect(fs.existsSync(history)).toBe(false);
+
+  // The files still in the folder are adopted, not copied again.
+  await tab(page, 'Copy').click();
+  await button(page, 'Start copying').click();
+  await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
+  await expect(page.locator('#c-summary')).toHaveText('No files were copied. 7 were already in your folder.');
+  expect(fs.existsSync(history)).toBe(true);
 });
 
 test('Check now runs another pass, and Stop and Start move focus to the heading', async ({ page, startApp }) => {

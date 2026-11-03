@@ -229,7 +229,7 @@ func (f *fixture) confirm(ctx context.Context) error {
  const go=el('x-go');
  return check(!go.hidden && !go.disabled && go.textContent==='Delete 1 file…',{title:el('x-title').textContent,go:go.textContent,hidden:go.hidden});
 })()`); err != nil {
-		return fmt.Errorf("Find files didn't show a preview: %w", err)
+		return fmt.Errorf("Preview what to delete didn't show a preview: %w", err)
 	}
 	if err := f.probe(ctx, `(() => {
  if(!window.__guitestAsk) {window.__guitestAsk=true; el('x-go').click();}
