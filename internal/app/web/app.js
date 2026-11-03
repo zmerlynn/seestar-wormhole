@@ -231,6 +231,12 @@ function text(sel, s) {
   $(sel).textContent = s || '';
 }
 
+// crawl shows what a run is looking at on one line, whole in its title.
+function crawl(sel, s) {
+  text(sel, s);
+  $(sel).title = s || '';
+}
+
 function list(sel, items, li) {
   const ul = $(sel);
   ul.replaceChildren(...items.map(li));
@@ -264,6 +270,7 @@ function renderPreview(v, st) {
   text('#c-ptitle', p && p.title);
   text('#c-ptext', p && p.text);
   text('#c-psub', p && p.sub);
+  crawl('#c-ppath', p && p.path);
   $('#c-pbusy').hidden = ps !== 'running';
   const groups = (p && p.groups) || [];
   $('#c-ptable').hidden = !groups.length;
@@ -290,6 +297,8 @@ function renderCopy(v) {
   const st = v.state;
   text('#c-title', v.title);
   text('#c-text', v.text);
+  // The path changes each second; it is not announced.
+  crawl('#c-path', v.path);
   $('#c-box').className = ['listfail', 'inuse', 'cantwrite'].includes(st) ? 'notice err' : '';
   $('#c-busy').hidden = !BUSY[st];
   if (BUSY[st]) $('#c-busy').setAttribute('aria-label', BUSY[st]);
@@ -395,6 +404,7 @@ const XSHOWS = {
   '#x-go': ['preview'],
   '#x-change': ['preview'],
   '#x-deleting': ['deleting'],
+  '#x-file': ['checking', 'deleting'],
   '#x-stop': ['deleting'],
   '#x-done': ['done', 'stopped', 'failed'],
 };
@@ -462,7 +472,7 @@ function renderFree(v) {
     $('#x-dbar').max = p.total;
     $('#x-dbar').value = p.done;
   }
-  text('#x-dfile', v.file);
+  crawl('#x-file', v.file);
   for (const [sel, states] of Object.entries(XSHOWS)) $(sel).hidden = !states.includes(st);
   if (v.stopping) $('#x-stop').hidden = true;
   // An open confirm belongs to the preview it words: it closes before

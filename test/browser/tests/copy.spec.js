@@ -212,11 +212,19 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   v = { state: 'listing', title: 'Looking for new files…' };
   await expect(live).toHaveText('Looking for new files…');
   await expect(busy).toHaveAttribute('aria-label', 'Looking for new files');
-  // Folder counts within listing change the heading, not the status region.
-  v = { state: 'listing', title: 'Looking for new files… 3 folders checked.' };
+  // Folder counts within listing change the heading, and the folder being
+  // listed the line under the bar, not the status region.
+  const path = page.locator('#c-path');
+  v = { state: 'listing', title: 'Looking for new files… 3 folders checked.', path: 'Listing MyWorks/M 31…' };
   await expect(title(page)).toHaveText('Looking for new files… 3 folders checked.');
-  v = { state: 'listing', title: 'Looking for new files… 4 folders checked.' };
+  await expect(path).toHaveText('Listing MyWorks/M 31…');
+  v = { state: 'listing', title: 'Looking for new files… 4 folders checked.', path: 'Listing MyWorks/M 42…' };
   await expect(title(page)).toHaveText('Looking for new files… 4 folders checked.');
+  await expect(path).toHaveText('Listing MyWorks/M 42…');
+  // It keeps one line, with the whole path in its title.
+  await expect(path).toHaveAttribute('title', 'Listing MyWorks/M 42…');
+  await expect(path).toHaveCSS('white-space', 'nowrap');
+  await expect(path).toHaveCSS('text-overflow', 'ellipsis');
   await expect(live).toHaveText('Looking for new files…');
 
   // Copying has a determinate bar with value and max, and per-file lines
@@ -232,6 +240,7 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   await expect(title(page)).toHaveText('Copying 1 of 4 files');
   await expect(live).toHaveText('Copying 1 of 4 files');
   await expect(busy).toBeHidden();
+  await expect(path).toBeHidden();
   await expect(bar).toBeVisible();
   await expect(bar).toHaveAttribute('aria-label', 'Copied so far');
   await expect(bar).toHaveJSProperty('max', 4000);
@@ -345,9 +354,13 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   await expect(page.locator('#c-pbusy')).toHaveAttribute('aria-label', 'Previewing');
   await expect(button(page, 'Preview')).toBeHidden();
   await expect(button(page, 'Start copying')).toBeVisible();
-  // Folder counts change the heading, not the status region.
-  v = { ...base, preview: { state: 'running', title: 'Looking for new files… 4 folders checked.' } };
+  // Folder counts change the heading, and the folder being listed the line
+  // under the bar, not the status region.
+  v = { ...base, preview: { state: 'running', title: 'Looking for new files… 4 folders checked.', path: 'Listing MyWorks/M 31…' } };
   await expect(page.locator('#c-ptitle')).toHaveText('Looking for new files… 4 folders checked.');
+  await expect(page.locator('#c-ppath')).toHaveText('Listing MyWorks/M 31…');
+  await expect(page.locator('#c-ppath')).toHaveAttribute('title', 'Listing MyWorks/M 31…');
+  await expect(page.locator('#c-ppath')).toHaveCSS('text-overflow', 'ellipsis');
   await expect(page.locator('#c-live')).toHaveText('Looking for new files… 3 folders checked.');
 
   // A preview that ends while Cancel has focus moves it to the result.
@@ -356,6 +369,7 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   await expect(page.locator('#c-ptitle')).toBeFocused();
   await expect(page.locator('#c-live')).toHaveText('Would copy 2 files (2 B)');
   await expect(button(page, 'Cancel')).toBeHidden();
+  await expect(page.locator('#c-ppath')).toBeHidden();
 
   // Cancel goes to the app, which has no preview to drop.
   v = { ...base, preview: { state: 'running', title: 'Looking for new files…' } };

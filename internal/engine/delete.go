@@ -56,8 +56,8 @@ type DeleteOptions struct {
 	// checked or deleted finishes and is counted, and nothing after it
 	// starts.
 	Stop <-chan struct{}
-	// Hooks report the run's progress: Listed, Checked, Hashed and
-	// Deleted.
+	// Hooks report the run's progress: Listed, Checked, Hashing, Hashed
+	// and Deleted.
 	Hooks Hooks
 }
 
@@ -311,6 +311,9 @@ func (d *deleter) file(ctx context.Context, e remote.Entry, dec plan.DeleteDecis
 		return false, nil
 	}
 	if d.dest != nil {
+		if h := d.opts.Hooks.Hashing; h != nil {
+			h(e.Path)
+		}
 		reason, warn, n, err := proveFile(ctx, d.dest, e.Path, d.records[e.Path])
 		d.hashed += n
 		if h := d.opts.Hooks.Hashed; h != nil {

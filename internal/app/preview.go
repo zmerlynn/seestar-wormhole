@@ -51,6 +51,7 @@ type previewStatus struct {
 	listing     bool // the session is open
 	unreachable bool // the session failed to open
 	folders     int
+	listed      string // the folder being listed
 	err         error
 	// Done: what Start would do.
 	files   int // copies and replacements
@@ -100,11 +101,11 @@ func (p *previewer) start(set Settings) error {
 			return sess, err
 		},
 		Hooks: engine.Hooks{
-			Listed: func(n int) {
+			Listed: func(f string, n int) {
 				p.mu.Lock()
 				defer p.mu.Unlock()
 				if p.st.state == pvRunning {
-					p.st.folders = n
+					p.st.folders, p.st.listed = n, f
 				}
 			},
 			Decided: func(ds []plan.Decision, out engine.LeftOut) { result = decided(ds, out) },
@@ -193,6 +194,7 @@ type previewView struct {
 	Title  string        `json:"title"` // also the status region's text
 	Text   string        `json:"text,omitempty"`
 	Sub    string        `json:"sub,omitempty"`
+	Path   string        `json:"path,omitempty"` // what is being looked at
 	Groups []folderGroup `json:"groups,omitempty"`
 }
 
@@ -213,6 +215,7 @@ func (p *previewer) view() *previewView {
 			if st.folders > 0 {
 				v.Title += " " + count(st.folders, "folder", "folders") + " checked."
 			}
+			v.Path = listingLine(st.listed)
 		}
 	case pvFailed:
 		v.Text = "Preview again to retry."

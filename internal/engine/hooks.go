@@ -10,8 +10,9 @@ import (
 // none. A hook runs on the engine's goroutines and should return quickly.
 type Hooks struct {
 	// Listed is called while a sync pass or a delete run lists the share,
-	// once for each folder it will read, with the number so far.
-	Listed func(folders int)
+	// once for each folder it will read, before reading it, with its path
+	// and the number of folders so far.
+	Listed func(folder string, folders int)
 	// Decided is called once by a sync dry run that listed the share,
 	// with every listed file's decision, in path order, and what the
 	// selection left out. A real pass never calls it.
@@ -31,6 +32,9 @@ type Hooks struct {
 	// Checked is called once in a delete run, after the listing, with the
 	// number of listed files it will decide on.
 	Checked func(files int)
+	// Hashing is called in a delete run before each local copy is checked
+	// against its SHA-256, with the file's path.
+	Hashing func(path string)
 	// Hashed is called in a delete run after each local copy is checked
 	// against its SHA-256, with the bytes read so far and the bytes all
 	// such checks of the run plan to read: the listed sizes of the files

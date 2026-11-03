@@ -186,6 +186,13 @@ func TestFreePreviewAndDelete(t *testing.T) {
 	if !slices.Equal(v.KeptList, wantKept) {
 		t.Errorf("kept list %+v", v.KeptList)
 	}
+	// The check cleared the line once its last copy was checked.
+	e.f.mu.Lock()
+	current := e.f.st.current
+	e.f.mu.Unlock()
+	if current != "" {
+		t.Errorf("after the check: current %q, want it empty", current)
+	}
 
 	if err := e.f.confirm(v.ID, []string{"MyWorks/M 42"}); err != nil {
 		t.Fatal(err)
@@ -335,7 +342,9 @@ func TestFreeStopHeld(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("no removal was held")
 	}
-	if d := e.f.view(); d.State != frDeleting || d.Title != "Deleting 1 of 3…" || d.Progress == nil || d.Progress.Total != 3 || d.Stopping {
+	// The held file's copy is checked, so no line names it yet.
+	if d := e.f.view(); d.State != frDeleting || d.Title != "Deleting 1 of 3…" || d.Progress == nil || d.Progress.Total != 3 || d.Stopping ||
+		d.File != "" {
 		t.Errorf("deleting: %+v", d)
 	}
 	e.f.halt()

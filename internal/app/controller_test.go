@@ -364,6 +364,22 @@ func TestCopyPassStates(t *testing.T) {
 	}
 }
 
+// While a pass lists the share, a line under the title names the folder
+// being listed; it goes once the pass has planned.
+func TestCopyListingPath(t *testing.T) {
+	c := newCopyEnv(t, nil).c
+	c.st = status{state: stConnecting}
+	h := c.hooks(t.Context())
+	h.Listed("MyWorks/M 31", 2)
+	if v := c.view(time.Now()); v.State != stListing || v.Title != "Looking for new files… 2 folders checked." || v.Path != "Listing MyWorks/M 31…" {
+		t.Errorf("listing: %+v", v)
+	}
+	h.Planned(0, 0)
+	if v := c.view(time.Now()); v.Path != "" {
+		t.Errorf("after planning: %+v", v)
+	}
+}
+
 // The progress view combines the hooks' calls: a fixed total, bytes done
 // and in flight, each file's percentage, and speed and time left only
 // once they are known. A failed file's bytes leave the count, and the

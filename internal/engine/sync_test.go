@@ -55,12 +55,12 @@ func TestSyncHooks(t *testing.T) {
 		"MyWorks/M 31/c.fit": file("ab"),
 	}, nil)
 	o.Workers = 1
-	var listed []int
+	var listed []string
 	var planned [][2]int64
 	var copying, done []string
 	var sums []Summary
 	o.Hooks = Hooks{
-		Listed:  func(n int) { listed = append(listed, n) },
+		Listed:  func(p string, n int) { listed = append(listed, fmt.Sprint(n, " ", p)) },
 		Planned: func(files int, bytes int64) { planned = append(planned, [2]int64{int64(files), bytes}) },
 		Copying: func(p string, n, size int64) {
 			switch n {
@@ -77,8 +77,8 @@ func TestSyncHooks(t *testing.T) {
 	if err := RunSync(t.Context(), o, discard); err != nil {
 		t.Fatal(err)
 	}
-	if want := []int{1, 2, 3}; !slices.Equal(listed, want) {
-		t.Errorf("Listed: got %v, want %v", listed, want)
+	if want := []string{"1 MyWorks", "2 MyWorks/M 31", "3 MyWorks/M 42"}; !slices.Equal(listed, want) {
+		t.Errorf("Listed: got %q, want %q", listed, want)
 	}
 	if want := [][2]int64{{3, 9}}; !slices.Equal(planned, want) {
 		t.Errorf("Planned: got %v, want %v", planned, want)

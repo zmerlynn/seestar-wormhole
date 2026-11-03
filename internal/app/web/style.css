@@ -42,6 +42,9 @@ textarea { min-height: 3.6rem; }
 .result.err { color: var(--err); }
 .path { overflow-wrap: anywhere; }
 .path .mono { user-select: all; }
+/* The line naming what a run looks at keeps one line, so the controls below
+   it stay put; its title holds the whole path. */
+.crawl { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .btn.small { font-size: 0.85em; padding: 0.1em 0.6em; margin-left: 0.3rem; }
 .tab:disabled { color: var(--muted); cursor: default; }
 .footer { margin-top: 1.5rem; border-top: 1px solid var(--line); padding-top: 0.7rem; }
@@ -76,7 +79,10 @@ fieldset:disabled { opacity: 0.6; }
 @media (prefers-color-scheme: dark) { .btn.danger { color: #161616; } }
 .notice.ok { border-left-color: var(--ok); }
 .notice:empty { display: none; }
-#x-box p:empty { display: none; }
+#x-box p:not(.crawl):empty { display: none; }
+/* #x-file shows only while a check or delete runs, and keeps its line then
+   even when empty, so Stop stays put. */
+#x-file:empty::before { content: '\a0'; }
 .scroll { overflow-x: auto; margin: 0.8rem 0; }
 table.groups { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
 table.groups th, table.groups td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--line2); vertical-align: top; }

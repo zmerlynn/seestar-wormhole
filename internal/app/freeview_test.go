@@ -20,6 +20,8 @@ func TestFreeWording(t *testing.T) {
 	}{
 		{"counted", freeStatus{state: frChecking, files: 1204, hashed: 1500, toHash: 3_000_000},
 			freeView{Title: "Checking 1,204 files…", Progress: &freeBar{1500, 3_000_000, "Checking your copies: 1.5 KB of 3.0 MB"}}},
+		{"hashing", freeStatus{state: frChecking, files: 3, hashed: 0, toHash: 9, current: "Checking MyWorks/M 31/a.fit…"},
+			freeView{Title: "Checking 3 files…", Progress: &freeBar{0, 9, "Checking your copies: 0 B of 9 B"}, File: "Checking MyWorks/M 31/a.fit…"}},
 		{"nothing", freeStatus{state: frNothing, set: Settings{OlderThanDays: 7}, preview: &engine.DeleteResult{}},
 			freeView{Title: "Nothing to delete yet.", Text: "Files become eligible once they're copied and older than 7 days."}},
 		{"nothing any age", freeStatus{state: frNothing, preview: &engine.DeleteResult{}},
@@ -36,7 +38,7 @@ func TestFreeWording(t *testing.T) {
 			freeView{Title: "Deleted 1 file.", Text: "Freed 2.0 KB on the telescope.", Kept: "2 files were kept. 1 file couldn't be checked.",
 				KeptList: []failure{{"b", "kept: changed on the telescope since it was copied"}, {"c", "couldn't be checked: open: no such file"},
 					{"d", "kept: newer than 7 days"}}}},
-		{"deleting", freeStatus{state: frDeleting, deleted: 2, total: 5, current: "MyWorks/b.jpg"},
+		{"deleting", freeStatus{state: frDeleting, deleted: 2, total: 5, current: "Last deleted: MyWorks/b.jpg"},
 			freeView{Title: "Deleting 3 of 5…", Progress: &freeBar{Done: 2, Total: 5}, File: "Last deleted: MyWorks/b.jpg"}},
 		{"deleting the first", freeStatus{state: frDeleting, total: 5},
 			freeView{Title: "Deleting 1 of 5…", Progress: &freeBar{Done: 0, Total: 5}}},
@@ -52,6 +54,33 @@ func TestFreeWording(t *testing.T) {
 		c.want.State = c.st.state
 		if !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s:\n got %+v\nwant %+v", c.name, got, c.want)
+		}
+	}
+}
+
+// The hooks of a preview and a delete keep one line saying what the run
+// is looking at, and clear it once that is done.
+func TestFreeHooks(t *testing.T) {
+	for _, state := range []string{frChecking, frDeleting} {
+		f := &freer{st: freeStatus{state: state}}
+		h := f.hooks()
+		for _, c := range []struct {
+			call func()
+			want string
+		}{
+			{func() { h.Listed("MyWorks", 1) }, "Listing MyWorks… (1 folder)"},
+			{func() { h.Listed("MyWorks/M 31", 1830) }, "Listing MyWorks/M 31… (1,830 folders)"},
+			{func() { h.Checked(2) }, ""},
+			{func() { h.Hashing("MyWorks/M 31/a.fit") }, "Checking MyWorks/M 31/a.fit…"},
+			{func() { h.Hashed(3, 6) }, ""},
+			{func() { h.Deleted("MyWorks/M 31/a.fit", 3) }, "Last deleted: MyWorks/M 31/a.fit"},
+			{func() { h.Hashing("MyWorks/M 31/b.fit") }, "Checking MyWorks/M 31/b.fit…"},
+			{func() { h.Hashed(6, 6) }, ""},
+		} {
+			c.call()
+			if got := f.view().File; got != c.want {
+				t.Errorf("%s: got %q, want %q", state, got, c.want)
+			}
 		}
 	}
 }

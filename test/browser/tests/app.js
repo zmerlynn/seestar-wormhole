@@ -107,7 +107,9 @@ async function fakeStatus(page, view, free = () => null) {
 // Synthetic Copy views of an active pass, with a long path in flight and
 // failed, for screenshots and layouts.
 const longPath = 'MyWorks/NGC 7000 North America Nebula/Stacked_210_NGC7000_10.0s_IRCUT_' + '20261029-033119'.repeat(4) + '.fit';
+const longDir = longPath.slice(0, longPath.lastIndexOf('/'));
 const copyViews = {
+  listing: { state: 'listing', title: 'Looking for new files… 37 folders checked.', path: 'Listing ' + longDir + '…' },
   copying: {
     state: 'copying', title: 'Copying 3 of 12 files',
     progress: {
@@ -125,8 +127,11 @@ const copyViews = {
 };
 
 // Synthetic Free up space views, with a long path, for layouts.
-const longDir = longPath.slice(0, longPath.lastIndexOf('/'));
 const freeViews = {
+  checking: {
+    state: 'checking', title: 'Checking 1,830 files…', progress: { done: 1200, total: 4000, text: 'Checking your copies: 1.2 GB of 4.0 GB' },
+    file: 'Checking ' + longPath + '…',
+  },
   preview: {
     state: 'preview', id: 1, title: '2 files (33.2 MB) are copied and safe to delete.',
     sub: 'Only files older than 7 days · your copies checked',

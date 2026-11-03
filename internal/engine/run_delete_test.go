@@ -126,12 +126,13 @@ func TestDeleteResultAndHooks(t *testing.T) {
 	for _, dry := range []bool{true, false} {
 		o := s.options()
 		o.DryRun = dry
-		var listed, checked []int
+		var checked []int
 		var hashed [][2]int64
-		var deleted []string
+		var listed, hashing, deleted []string
 		o.Hooks = Hooks{
-			Listed:  func(n int) { listed = append(listed, n) },
+			Listed:  func(p string, n int) { listed = append(listed, fmt.Sprint(n, " ", p)) },
 			Checked: func(n int) { checked = append(checked, n) },
+			Hashing: func(p string) { hashing = append(hashing, p) },
 			Hashed:  func(done, total int64) { hashed = append(hashed, [2]int64{done, total}) },
 			Deleted: func(p string, size int64) { deleted = append(deleted, fmt.Sprint(p, " ", size)) },
 		}
@@ -150,8 +151,12 @@ func TestDeleteResultAndHooks(t *testing.T) {
 		if r.Folders != 0 {
 			t.Errorf("dry run %v: got %d folders, want 0: MyWorks keeps new.jpg", dry, r.Folders)
 		}
-		if !slices.Equal(listed, []int{1}) || !slices.Equal(checked, []int{3}) {
-			t.Errorf("dry run %v: got Listed %v and Checked %v, want [1] and [3]", dry, listed, checked)
+		if !slices.Equal(listed, []string{"1 MyWorks"}) || !slices.Equal(checked, []int{3}) {
+			t.Errorf("dry run %v: got Listed %q and Checked %v, want [\"1 MyWorks\"] and [3]", dry, listed, checked)
+		}
+		// new.jpg has no record, so it is kept without a check.
+		if want := []string{"MyWorks/b.jpg", "MyWorks/a.jpg"}; !slices.Equal(hashing, want) {
+			t.Errorf("dry run %v: got Hashing %q, want %q", dry, hashing, want)
 		}
 		if want := [][2]int64{{2, 5}, {5, 5}}; !slices.Equal(hashed, want) {
 			t.Errorf("dry run %v: got Hashed %v, want %v", dry, hashed, want)
@@ -331,6 +336,8 @@ func TestDeleteOnlyProof(t *testing.T) {
 	o = s.options()
 	o.Only = only
 	var hashed [][2]int64
+	var hashing []string
+	o.Hooks.Hashing = func(p string) { hashing = append(hashing, p) }
 	o.Hooks.Hashed = func(done, total int64) { hashed = append(hashed, [2]int64{done, total}) }
 	r, err := RunDelete(t.Context(), o, discard)
 	if err != nil {
@@ -353,9 +360,34 @@ func TestDeleteOnlyProof(t *testing.T) {
 	if s.has(t, "MyWorks/a.jpg") {
 		t.Error("MyWorks/a.jpg: still on the device, want it deleted")
 	}
+	// Every file Only holds is checked, read or not.
+	if want := []string{"MyWorks/size.jpg", "MyWorks/gone.jpg", "MyWorks/bad.jpg", "MyWorks/a.jpg"}; !slices.Equal(hashing, want) {
+		t.Errorf("got Hashing %q, want %q", hashing, want)
+	}
 	// The resized and missing copies are not read; the corrupted one is.
 	if want := [][2]int64{{0, 60}, {0, 60}, {16, 60}, {20, 60}}; !slices.Equal(hashed, want) {
 		t.Errorf("got Hashed %v, want %v", hashed, want)
+	}
+}
+
+// Hashing comes before the copy is read: a copy changed from inside
+// Hashing is the one checked, so the file is kept.
+func TestDeleteHashingBeforeRead(t *testing.T) {
+	s := newShare(t)
+	put(t, s.dir, "MyWorks/a.jpg", "aaaa")
+	put(t, s.dest, "MyWorks/a.jpg", "aaaa")
+	s.record(t, map[string]string{"MyWorks/a.jpg": "aaaa"})
+	o := s.options()
+	o.Hooks.Hashing = func(p string) { put(t, s.dest, p, "xxxx") }
+	r, err := RunDelete(t.Context(), o, discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []DeleteFile{{"MyWorks/a.jpg", 4, FileKept, "local copy's SHA-256 differs from the state"}}; !slices.Equal(r.Files, want) {
+		t.Errorf("got files %+v, want %+v", r.Files, want)
+	}
+	if !s.has(t, "MyWorks/a.jpg") {
+		t.Error("MyWorks/a.jpg: gone from the device, want it kept")
 	}
 }
 

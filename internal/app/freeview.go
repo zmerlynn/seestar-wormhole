@@ -33,7 +33,7 @@ type freeStatus struct {
 	changed bool // Start, after a Save or a Clear history changed what a preview showed
 	stale   bool // a Save changed the inputs of the running check
 	set     Settings
-	// Checking.
+	// Checking, and Deleting before each delete.
 	files          int // Checked
 	hashed, toHash int64
 	// Preview and Nothing: the preview, and its number.
@@ -43,7 +43,7 @@ type freeStatus struct {
 	total    int // the files Only holds
 	deleted  int
 	bytes    int64
-	current  string // the last file deleted
+	current  string // Checking and Deleting: what the run is looking at, or the last file deleted
 	stopping bool
 	result   engine.DeleteResult
 	err      error
@@ -100,6 +100,7 @@ func (st *freeStatus) view() freeView {
 		if st.toHash > 0 {
 			v.Progress = &freeBar{st.hashed, st.toHash, "Checking your copies: " + size(float64(st.hashed)) + " of " + size(float64(st.toHash))}
 		}
+		v.File = st.current
 	case frCheckFail:
 		v.Title = "Couldn't finish checking files: " + st.err.Error() + "."
 		v.Text = "Preview again to retry."
@@ -156,10 +157,7 @@ func (st *freeStatus) view() freeView {
 	case frDeleting:
 		v.Title = fmt.Sprintf("Deleting %s of %s…", num(min(st.deleted+1, st.total)), num(st.total))
 		v.Progress = &freeBar{Done: int64(st.deleted), Total: int64(st.total)}
-		// The engine reports a file once it is deleted, not as it starts.
-		if st.current != "" {
-			v.File = "Last deleted: " + st.current
-		}
+		v.File = st.current
 		v.Stopping = st.stopping
 	case frDone:
 		v.Title = "Deleted " + many(st.deleted, "file", "files")

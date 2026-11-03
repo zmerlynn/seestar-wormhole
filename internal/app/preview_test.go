@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -259,9 +260,41 @@ func TestPreviewListing(t *testing.T) {
 		t.Errorf("listing: %+v", v)
 	}
 	e.p.st.folders = 12
-	if v := e.p.view(); v.Title != "Looking for new files… 12 folders checked." {
+	if v := e.p.view(); v.Title != "Looking for new files… 12 folders checked." || v.Path != "" {
 		t.Errorf("listing: %+v", v)
 	}
+	// A real run names each folder as it is listed.
+	e = newPreviewEnv(t, fstest.MapFS{"MyWorks/M 31/a.jpg": image("a")})
+	var seen []string
+	dial := e.p.dial
+	e.p.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+		sess, err := dial(ctx, endpoint)
+		return walkSpy{sess, func(p string, dir bool) {
+			if v := e.p.view(); dir && v != nil {
+				seen = append(seen, v.Title+" "+v.Path)
+			}
+		}}, err
+	}
+	e.run()
+	want := []string{"Looking for new files… 1 folder checked. Listing MyWorks…", "Looking for new files… 2 folders checked. Listing MyWorks/M 31…"}
+	if !slices.Equal(seen, want) {
+		t.Errorf("while listing: got %q, want %q", seen, want)
+	}
+}
+
+// walkSpy is a session that calls after with each entry of a walk, after
+// the walk's own skip func.
+type walkSpy struct {
+	remote.Session
+	after func(p string, dir bool)
+}
+
+func (s walkSpy) Walk(ctx context.Context, skip func(string, bool) bool) ([]remote.Entry, error) {
+	return s.Session.Walk(ctx, func(p string, dir bool) bool {
+		out := skip(p, dir)
+		s.after(p, dir)
+		return out
+	})
 }
 
 // The copy API runs and cancels a preview while copying is off. Start,

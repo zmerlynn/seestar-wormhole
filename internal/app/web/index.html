@@ -30,6 +30,7 @@
 <p class="big" id="c-title" tabindex="-1"></p>
 <p id="c-text"></p>
 <progress id="c-busy" hidden></progress>
+<p class="note crawl mono" id="c-path"></p>
 <div id="c-copying" hidden>
 <progress id="c-bar" aria-label="Copied so far"></progress>
 <div class="stats"><span id="c-bytes"></span><span id="c-speed"></span><span id="c-left"></span><span class="note" id="c-found"></span></div>
@@ -54,6 +55,7 @@
 <p id="c-ptext"></p>
 <p class="note" id="c-psub"></p>
 <progress id="c-pbusy" aria-label="Previewing" hidden></progress>
+<p class="note crawl mono" id="c-ppath"></p>
 <div id="c-ptable" class="scroll" hidden><table class="groups"><thead><tr><th>Folder</th><th class="num">Copy</th><th class="num">Size</th></tr></thead><tbody id="c-pgroups"></tbody></table></div>
 </div>
 <p class="help" id="c-help" hidden>Copying continues while this window is open, even minimized. Closing it quits seestar-copy. New images arrive a few minutes after the telescope saves them.</p>
@@ -73,7 +75,8 @@
 <p class="note" id="x-sub"></p>
 <progress id="x-busy" aria-label="Checking files" hidden></progress>
 <div id="x-hash" hidden><p id="x-htext"></p><progress id="x-hbar" aria-label="Copies checked"></progress></div>
-<div id="x-deleting" hidden><progress id="x-dbar" aria-label="Files deleted"></progress><p class="note mono" id="x-dfile"></p></div>
+<div id="x-deleting" hidden><progress id="x-dbar" aria-label="Files deleted"></progress></div>
+<p class="note crawl mono" id="x-file"></p>
 </div>
 <div id="x-preview" class="scroll" hidden><table class="groups"><thead><tr><th><span class="hide">Include</span></th><th>Folder</th><th class="num">Files</th><th class="num">Size</th></tr></thead><tbody id="x-groups"></tbody></table></div>
 <details id="x-kept" hidden><summary id="x-ksum"></summary><ul class="log" id="x-klist"></ul></details>

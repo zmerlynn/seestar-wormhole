@@ -81,7 +81,8 @@ type status struct {
 	// The current pass.
 	unreachable   bool // its connection failed
 	folders       int
-	files         int // planned downloads
+	listed        string // the folder being listed
+	files         int    // planned downloads
 	bytes         int64
 	finished      int   // downloads finished, copied or failed
 	finishedBytes int64 // bytes of those copied
@@ -276,18 +277,18 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 // done, from a stopped pass, change only the stop's counts.
 func (c *controller) hooks(ctx context.Context) engine.Hooks {
 	return engine.Hooks{
-		Listed: func(n int) {
+		Listed: func(p string, n int) {
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			if ctx.Err() == nil {
-				c.st.state, c.st.folders = stListing, n
+				c.st.state, c.st.folders, c.st.listed = stListing, n, p
 			}
 		},
 		Planned: func(files int, bytes int64) {
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			st := &c.st
-			st.files, st.bytes = files, bytes
+			st.files, st.bytes, st.listed = files, bytes, ""
 			if files > 0 && ctx.Err() == nil {
 				now := time.Now()
 				st.state, st.copyStart = stCopying, now
@@ -435,6 +436,7 @@ type copyView struct {
 	Contact  string        `json:"contact"`
 	Title    string        `json:"title"`
 	Text     string        `json:"text,omitempty"`
+	Path     string        `json:"path,omitempty"` // what is being looked at
 	Summary  string        `json:"summary,omitempty"`
 	Settling string        `json:"settling,omitempty"`
 	Notice   string        `json:"notice,omitempty"`
@@ -480,6 +482,7 @@ func (c *controller) view(now time.Time) copyView {
 		if st.folders > 0 {
 			v.Title += " " + count(st.folders, "folder", "folders") + " checked."
 		}
+		v.Path = listingLine(st.listed)
 	case stCopying:
 		v.Title = fmt.Sprintf("Copying %d of %s", min(st.finished+len(st.flight), st.files), count(st.files, "file", "files"))
 		v.Progress = st.progress(now)
@@ -615,6 +618,15 @@ func summaryLine(s engine.Summary) string {
 		parts = append(parts, fmt.Sprintf("%d failed.", n))
 	}
 	return strings.Join(parts, " ")
+}
+
+// listingLine words the folder being listed, if any, for the line under a
+// stage's title. The title alone is announced.
+func listingLine(folder string) string {
+	if folder == "" {
+		return ""
+	}
+	return "Listing " + folder + "…"
 }
 
 // count is n with the singular or plural words after it.

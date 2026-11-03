@@ -99,19 +99,7 @@ func (f *freer) find(set Settings) error {
 	if err != nil {
 		return err
 	}
-	o.DryRun, o.Dial = true, f.dial
-	o.Hooks = engine.Hooks{
-		Checked: func(n int) {
-			f.mu.Lock()
-			defer f.mu.Unlock()
-			f.st.files = n
-		},
-		Hashed: func(done, total int64) {
-			f.mu.Lock()
-			defer f.mu.Unlock()
-			f.st.hashed, f.st.toHash = done, total
-		},
-	}
+	o.DryRun, o.Dial, o.Hooks = true, f.dial, f.hooks()
 	return f.run(freeStatus{state: frChecking, set: set}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
 		st := &f.st
 		switch {
@@ -151,16 +139,7 @@ func (f *freer) confirm(id int, folders []string) error {
 	if err != nil {
 		return err
 	}
-	o.OpenRemover, o.Only = f.remover, only
-	o.Hooks = engine.Hooks{
-		Deleted: func(p string, size int64) {
-			f.mu.Lock()
-			defer f.mu.Unlock()
-			f.st.deleted++
-			f.st.bytes += size
-			f.st.current = p
-		},
-	}
+	o.OpenRemover, o.Only, o.Hooks = f.remover, only, f.hooks()
 	if f.prepared != nil {
 		f.prepared()
 	}
@@ -179,6 +158,41 @@ func (f *freer) confirm(id int, folders []string) error {
 			st.state = frDone
 		}
 	})
+}
+
+// hooks keep a preview's or a delete's status: its counts, and in
+// current the one line saying what it is looking at, cleared once that is
+// done. The title alone is announced.
+func (f *freer) hooks() engine.Hooks {
+	return engine.Hooks{
+		Listed: func(p string, n int) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.st.current = listingLine(p) + " (" + many(n, "folder", "folders") + ")"
+		},
+		Checked: func(n int) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.st.files, f.st.current = n, ""
+		},
+		Hashing: func(p string) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.st.current = "Checking " + p + "…"
+		},
+		Hashed: func(done, total int64) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.st.hashed, f.st.toHash, f.st.current = done, total, ""
+		},
+		Deleted: func(p string, size int64) {
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			f.st.deleted++
+			f.st.bytes += size
+			f.st.current = "Last deleted: " + p
+		},
+	}
 }
 
 // cancelCheck ends a running preview; the tab goes back to Start.

@@ -61,9 +61,9 @@ func (s Selector) Walk(ctx context.Context, sess remote.Session) ([]remote.Entry
 	return s.walk(ctx, sess, nil)
 }
 
-// walk is [Selector.Walk] that also calls listed, if not nil, with the
-// number of folders kept so far as each one is kept, before it is read.
-func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folders int)) ([]remote.Entry, LeftOut, error) {
+// walk is [Selector.Walk] that also calls listed, if not nil, with each
+// folder kept and the number kept so far, before it is read.
+func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folder string, folders int)) ([]remote.Entry, LeftOut, error) {
 	out := LeftOut{keptParents: map[string]bool{}}
 	folders := 0
 	entries, err := sess.Walk(ctx, func(p string, dir bool) bool {
@@ -81,7 +81,7 @@ func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(fol
 		}
 		if dir && listed != nil {
 			folders++
-			listed(folders)
+			listed(p, folders)
 		}
 		return false
 	})
