@@ -126,6 +126,10 @@ func (p *Sessions) startDial() *dialing {
 	timer := time.AfterFunc(dialTimeout, cancel)
 	go func() {
 		s, err := p.dial(dctx)
+		if err != nil {
+			// remote.Dial's nil *SMB is not a nil Session.
+			s = nil
+		}
 		if !timer.Stop() {
 			if err == nil {
 				s.Close()

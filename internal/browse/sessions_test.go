@@ -171,6 +171,22 @@ func TestFailedDialCancelsItsContext(t *testing.T) {
 	})
 }
 
+// remote.Dial returns a nil *SMB with its error; as a Session that is not
+// a nil interface, and the failed dial must not close it.
+func TestFailedDialNilPointer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		log, _ := newLog()
+		p := NewSessions(context.Background(), func(context.Context) (remote.Session, error) {
+			var s *remote.SMB
+			return s, errors.New("connection refused")
+		}, log)
+		defer p.Close()
+		if _, err := p.Get(context.Background()); err == nil || err.Error() != "connection refused" {
+			t.Fatalf("Get = %v, want the dial error", err)
+		}
+	})
+}
+
 // A dial whose every waiter left still publishes a timed session.
 func TestAbandonedDial(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
