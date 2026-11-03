@@ -24,7 +24,10 @@ const plainClick = (ev) => ev.button === 0 && !ev.ctrlKey && !ev.metaKey && !ev.
 const count = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
 // withHint ends a message as a sentence and adds how to retry.
 const withHint = (msg, hint) => msg.replace(/[^.!?]$/, '$&.') + ' ' + hint;
-const listHint = 'Select Share or a parent folder above, or reload this page to retry.';
+// In the app, the page has no address bar to reload from.
+const listHint = document.documentElement.classList.contains('in-app')
+  ? 'Select Share or a parent folder above to retry.'
+  : 'Select Share or a parent folder above, or reload this page to retry.';
 const viewHint = 'Close this preview and reopen the file to retry.';
 
 function el(tag, text, cls) {

@@ -144,6 +144,10 @@ jobs:
           done
           cat "$RUNNER_TEMP/browse.log"
           exit 1
+      - name: Build the app
+        run: |
+          go build -o "$RUNNER_TEMP/seestar-copy" ./cmd/seestar-copy
+          echo "APP_BIN=$RUNNER_TEMP/seestar-copy" >> "$GITHUB_ENV"
       - name: Install Playwright and its browsers
         working-directory: test/browser
         run: |

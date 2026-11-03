@@ -132,7 +132,7 @@ func TestWritesAreGuarded(t *testing.T) {
 		"internal/state.Open", "internal/state.create", "internal/state.lockFile", "internal/state.Append",
 		"internal/state.syncDir", "internal/copier.removeTemps", "internal/copier.download", "internal/copier.syncFolder",
 		"internal/remote.RemoveFile", "internal/remote.RemoveDir",
-		"internal/engine.deleteFile", "internal/engine.removeFolder",
+		"internal/engine.deleteFile", "internal/engine.removeFolder", "internal/app.writeFileAtomic",
 	} {
 		if !slices.Contains(guarded, want) {
 			t.Errorf("the scan did not find the writes in %s; found %q", want, guarded)

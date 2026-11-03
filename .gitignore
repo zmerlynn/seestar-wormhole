@@ -4,6 +4,8 @@
 /.cache/
 /seestar-copy-cli
 /seestar-copy-cli.exe
+/seestar-copy
+/seestar-copy.exe
 
 # Local state, logs and copied images.
 **/*.jsonl

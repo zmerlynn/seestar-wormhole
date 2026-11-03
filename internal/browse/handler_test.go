@@ -70,6 +70,7 @@ type envOptions struct {
 	dialErr    error
 	setup      func(*spy)
 	extra      fstest.MapFS // added to the fixture
+	inApp      bool
 }
 
 func newEnv(t *testing.T, o envOptions) *env {
@@ -83,7 +84,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	e := &env{d: &dialer{fsys: fsys, err: o.dialErr, setup: o.setup}, addr: netip.MustParseAddrPort(o.addr), logs: logs}
 	e.p = NewSessions(context.Background(), e.d.dial, log)
 	t.Cleanup(e.p.Close)
-	cfg := Config{Addr: e.addr, Endpoint: "127.0.0.1:4445", Sessions: e.p, Log: log}
+	cfg := Config{Addr: e.addr, Endpoint: "127.0.0.1:4445", Sessions: e.p, Log: log, InApp: o.inApp}
 	if o.dest {
 		cfg.Records = func() (map[string]state.Record, error) {
 			e.loads.Add(1)
@@ -334,6 +335,45 @@ func TestHeaders(t *testing.T) {
 			if strings.HasPrefix(k, "Access-Control-") {
 				t.Errorf("%s %s: has %s", tt.method, tt.target, k)
 			}
+		}
+	}
+}
+
+func TestInApp(t *testing.T) {
+	app := newEnv(t, envOptions{inApp: true})
+	cli := newEnv(t, envOptions{})
+	for _, route := range routes {
+		w := app.serve("GET", route)
+		policy := cspInApp
+		if strings.HasPrefix(route, "/file") {
+			policy += "; sandbox"
+		}
+		if got := w.Header().Get("Content-Security-Policy"); got != policy {
+			t.Errorf("in app, %s: CSP = %q, want %q", route, got, policy)
+		}
+		if got := w.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
+			t.Errorf("in app, %s: X-Frame-Options = %q, want SAMEORIGIN", route, got)
+		}
+	}
+	if !strings.Contains(cspInApp, "frame-ancestors 'self';") || strings.Count(cspInApp, "frame-ancestors") != 1 {
+		t.Errorf("in-app CSP %q must allow framing by its own origin only", cspInApp)
+	}
+	if strings.Replace(cspInApp, "'self'; base-uri", "'none'; base-uri", 1) != csp {
+		t.Errorf("in-app CSP %q differs from %q in more than frame-ancestors", cspInApp, csp)
+	}
+	if page := app.serve("GET", "/").Body.String(); !strings.Contains(page, `<html lang="en" class="in-app">`) {
+		t.Error("in app, index.html lacks the in-app class")
+	}
+	if page := cli.serve("GET", "/").Body.String(); strings.Contains(page, "in-app") {
+		t.Error("outside the app, index.html has the in-app class")
+	}
+	for _, f := range []string{"web/index.html", "web/style.css", "web/app.js"} {
+		b, _ := assets.ReadFile(f)
+		if f == "web/index.html" && !strings.Contains(string(b), `<html lang="en">`) {
+			t.Errorf("%s lacks the <html> tag the in-app class is added to", f)
+		}
+		if f != "web/index.html" && !strings.Contains(string(b), "in-app") {
+			t.Errorf("%s does not handle the in-app class", f)
 		}
 	}
 }

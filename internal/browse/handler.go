@@ -1,6 +1,7 @@
 package browse
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
@@ -28,10 +29,19 @@ type Config struct {
 	Sessions *Sessions                               // the shared SMB session
 	Records  func() (map[string]state.Record, error) // a destination's state; nil for no statuses
 	Log      *slog.Logger
+	// InApp serves the page for the seestar-copy app, which shows it in a
+	// frame of its own origin and has its own header: the page may be
+	// framed by that origin only, hides its header, and its error hint
+	// does not say to reload a page the user cannot see.
+	InApp bool
 }
 
-const csp = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; " +
-	"frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+const (
+	cspStart = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; "
+	cspEnd   = "; base-uri 'none'; form-action 'none'"
+	csp      = cspStart + "frame-ancestors 'none'" + cspEnd
+	cspInApp = cspStart + "frame-ancestors 'self'" + cspEnd
+)
 
 // static are the page's files, by route.
 var static = map[string]struct{ file, typ string }{
@@ -51,13 +61,16 @@ func NewHandler(cfg Config) http.Handler { return &handler{cfg: cfg} }
 
 func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hd := w.Header()
-	policy := csp
+	policy, frames := csp, "DENY"
+	if h.cfg.InApp {
+		policy, frames = cspInApp, "SAMEORIGIN"
+	}
 	if r.URL.Path == "/file" {
 		policy += "; sandbox"
 	}
 	hd.Set("Content-Security-Policy", policy)
 	hd.Set("Cross-Origin-Resource-Policy", "same-origin")
-	hd.Set("X-Frame-Options", "DENY")
+	hd.Set("X-Frame-Options", frames)
 	hd.Set("Referrer-Policy", "no-referrer")
 	hd.Set("X-Content-Type-Options", "nosniff")
 	hd.Set("Cache-Control", "no-store")
@@ -85,6 +98,9 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			http.Error(w, "Not found", http.StatusNotFound)
 			return
+		}
+		if h.cfg.InApp && asset.file == "web/index.html" {
+			b = bytes.Replace(b, []byte(`<html lang="en">`), []byte(`<html lang="en" class="in-app">`), 1)
 		}
 		hd.Set("Content-Type", asset.typ)
 		w.Write(b)
