@@ -150,8 +150,9 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 			return err
 		}
 	}
-	return engine.RunDelete(ctx, engine.DeleteOptions{
+	_, err := engine.RunDelete(ctx, engine.DeleteOptions{
 		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
 		OlderThan: o.olderThan, Selector: o.selector, DryRun: o.dryRun, Dial: dial, OpenRemover: dialRemover,
 	}, log)
+	return err
 }

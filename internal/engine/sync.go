@@ -36,6 +36,36 @@ type SyncOptions struct {
 	Workers int
 	// Dial opens a pass's session.
 	Dial func(ctx context.Context, endpoint string) (remote.Session, error)
+	// Hooks report the passes' progress; a dry run calls only Listed.
+	Hooks Hooks
+	// CheckNow ends a wait between passes early when a send on it is
+	// received. Only a wait receives: send without blocking, so that a
+	// press during a pass, or a second one, is dropped. Nil never wakes.
+	CheckNow <-chan struct{}
+}
+
+// Summary is what one sync pass did: the counts its pass line logs, and
+// every file that failed.
+type Summary struct {
+	Copied, Replaced, Adopted, Waiting int
+	// Skipped and Unmatched are what the selection left out.
+	Skipped, Unmatched int
+	// Bytes are the bytes copied and replaced.
+	Bytes   int64
+	Elapsed time.Duration
+	// Failed has each file that failed: first those the decisions refused,
+	// such as a bad name or a case clash, in path order, then those whose
+	// copy failed, as they finished. After a stop it also has the files
+	// cut off or not started.
+	Failed []Failure
+	// Err is why the pass ended before copying anything: the session or
+	// the listing failed.
+	Err error
+}
+
+// Failure is a file that failed, and why.
+type Failure struct {
+	Path, Reason string
 }
 
 // RunSync opens the state and the destination, then runs passes until ctx is
@@ -55,9 +85,11 @@ func RunSync(ctx context.Context, o SyncOptions, log *slog.Logger) error {
 		return err
 	}
 	defer cp.Close()
+	cp.Copying = o.Hooks.Copying
 	s := &syncer{opts: o, log: log, records: st.Snapshot, stat: cp.Stat, copier: cp, firstPass: true}
 	for {
-		failed, err := s.pass(ctx)
+		sum := s.pass(ctx)
+		failed, err := len(sum.Failed), sum.Err
 		switch {
 		case ctx.Err() != nil:
 			return nil
@@ -72,6 +104,7 @@ func RunSync(ctx context.Context, o SyncOptions, log *slog.Logger) error {
 		case <-ctx.Done():
 			return nil
 		case <-time.After(o.Interval):
+		case <-o.CheckNow:
 		}
 	}
 }
@@ -120,49 +153,57 @@ type syncer struct {
 }
 
 // pass runs one pass, logs a line for each entry an exclude skipped and a
-// summary, which also counts what the includes left out, and returns how
-// many files failed. An error means the session or a listing failed, and
-// nothing was copied.
-func (s *syncer) pass(ctx context.Context) (failed int, err error) {
+// summary, which also counts what the includes left out, calls the hooks,
+// and returns the summary. If the session or a listing fails, nothing is
+// copied.
+func (s *syncer) pass(ctx context.Context) (sum Summary) {
 	start := time.Now()
-	var copied, replaced, adopted, waiting, skipped, unmatched int
-	var bytes int64
 	defer func() {
-		elapsed := time.Since(start)
-		args := []any{"copied", copied, "replaced", replaced, "adopted", adopted, "waiting", waiting,
-			"failed", failed, "skipped", skipped, "unmatched", unmatched, "bytes", bytes, "elapsed", elapsed.Round(time.Millisecond)}
-		if bytes > 0 && elapsed > 0 {
-			args = append(args, "rate", fmt.Sprintf("%.1fMiB/s", float64(bytes)/(1<<20)/elapsed.Seconds()))
-		}
-		switch {
-		case ctx.Err() != nil:
-			s.log.Info("pass stopped", args...)
-		case err != nil:
-			s.log.Error("pass failed", append(args, "error", err)...)
-		default:
-			s.log.Info("pass done", args...)
+		sum.Elapsed = time.Since(start)
+		s.logPass(ctx, sum)
+		if h := s.opts.Hooks.PassDone; h != nil {
+			h(sum)
 		}
 	}()
 	// The session lives as long as ctx, not just this call: a stop then
 	// ends a call the server does not answer.
 	sess, err := s.opts.Dial(ctx, s.opts.Endpoint)
 	if err != nil {
-		return 0, fmt.Errorf("connect to %s: %w", s.opts.Endpoint, err)
+		sum.Err = fmt.Errorf("connect to %s: %w", s.opts.Endpoint, err)
+		return sum
 	}
 	defer sess.Close()
 	// A failed listing still logs and counts what it skipped before failing.
 	decisions, counts, sel, err := s.decide(ctx, sess)
-	skipped, unmatched = len(sel.Skipped), sel.Unmatched
+	sum.Skipped, sum.Unmatched = len(sel.Skipped), sel.Unmatched
 	for _, x := range sel.Skipped {
 		s.log.Info("skipped", "path", x.Path, "exclude", x.Exclude)
 	}
 	if err != nil {
-		return 0, err
+		sum.Err = err
+		return sum
+	}
+	var files int
+	var bytes int64
+	for _, d := range decisions {
+		switch d.Kind {
+		case plan.Fail:
+			sum.Failed = append(sum.Failed, Failure{d.Path, d.Reason})
+		case plan.Copy, plan.Replace:
+			files++
+			bytes += d.Size
+		}
+	}
+	if h := s.opts.Hooks.Planned; h != nil {
+		h(files, bytes)
 	}
 	// Each file is logged as it finishes, not at the end of the pass.
 	s.copier.Run(ctx, sess, s.opts.Workers, decisions, func(r copier.Result) {
+		if h := s.opts.Hooks.Done; h != nil {
+			h(r)
+		}
 		if r.Err != nil {
-			failed++
+			sum.Failed = append(sum.Failed, Failure{r.Decision.Path, r.Err.Error()})
 			// After a stop, every unfinished file fails for that reason.
 			if ctx.Err() == nil {
 				s.log.Warn("file failed", "path", r.Decision.Path, "reason", r.Err)
@@ -172,24 +213,41 @@ func (s *syncer) pass(ctx context.Context) (failed int, err error) {
 		args := []any{"path", r.Record.Path, "size", r.Record.Size}
 		switch r.Record.How {
 		case state.Copied:
-			copied++
-			bytes += r.Record.Size
+			sum.Copied++
+			sum.Bytes += r.Record.Size
 			if r.Decision.Overwrite {
 				args = append(args, "overwrote", true)
 			}
 			args = append(args, "elapsed", r.Elapsed.Round(time.Millisecond))
 		case state.Replaced:
-			replaced++
-			bytes += r.Record.Size
+			sum.Replaced++
+			sum.Bytes += r.Record.Size
 			args = append(args, "elapsed", r.Elapsed.Round(time.Millisecond))
 		case state.Adopted:
-			adopted++
+			sum.Adopted++
 		}
 		s.log.Info("file "+string(r.Record.How), args...)
 	})
-	failed += counts.Fail
-	waiting = counts.Wait
-	return failed, nil
+	sum.Waiting = counts.Wait
+	return sum
+}
+
+// logPass logs the pass line of sum.
+func (s *syncer) logPass(ctx context.Context, sum Summary) {
+	args := []any{"copied", sum.Copied, "replaced", sum.Replaced, "adopted", sum.Adopted, "waiting", sum.Waiting,
+		"failed", len(sum.Failed), "skipped", sum.Skipped, "unmatched", sum.Unmatched, "bytes", sum.Bytes,
+		"elapsed", sum.Elapsed.Round(time.Millisecond)}
+	if sum.Bytes > 0 && sum.Elapsed > 0 {
+		args = append(args, "rate", fmt.Sprintf("%.1fMiB/s", float64(sum.Bytes)/(1<<20)/sum.Elapsed.Seconds()))
+	}
+	switch {
+	case ctx.Err() != nil:
+		s.log.Info("pass stopped", args...)
+	case sum.Err != nil:
+		s.log.Error("pass failed", append(args, "error", sum.Err)...)
+	default:
+		s.log.Info("pass done", args...)
+	}
 }
 
 // dryPass is a pass that only logs what [syncer.pass] would do: a line for
@@ -305,7 +363,7 @@ type selection struct {
 // listing failure, of the root or of a folder that is kept, fails the pass;
 // the returned selection then holds what was left out before it.
 func (s *syncer) list(ctx context.Context, sess remote.Session) ([]plan.Entry, selection, error) {
-	entries, out, err := s.opts.Selector.Walk(ctx, sess)
+	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed)
 	sel := selection{LeftOut: out}
 	if err != nil {
 		return nil, sel, fmt.Errorf("list the share: %w", err)

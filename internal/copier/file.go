@@ -60,7 +60,13 @@ func (c *Copier) download(ctx context.Context, sess remote.Session, d plan.Decis
 			err = fmt.Errorf("%w; removing the temporary file failed too: %w", err, rerr)
 		}
 	}()
-	sum, err := fetch(ctx, sess, d, f)
+	var w io.Writer = f
+	if c.Copying != nil {
+		pw := &progressWriter{w: f, path: d.Path, size: d.Size, last: time.Now(), report: c.Copying}
+		w = pw
+		defer func() { c.Copying(d.Path, pw.done, d.Size) }()
+	}
+	sum, err := fetch(ctx, sess, d, w)
 	if err != nil {
 		return rec, err
 	}
@@ -214,5 +220,27 @@ func (lw *limitWriter) Write(p []byte) (int, error) {
 	}
 	n, err := lw.w.Write(p)
 	lw.left -= int64(n)
+	return n, err
+}
+
+// progressWriter passes writes to w and reports the bytes written so far
+// to report at most once a second. It sits below the hash's writer, so the
+// device file's WriteTo still drives the copy.
+type progressWriter struct {
+	w      io.Writer
+	path   string
+	size   int64
+	done   int64
+	last   time.Time // of the last report, or of the start
+	report func(path string, done, size int64)
+}
+
+func (pw *progressWriter) Write(p []byte) (int, error) {
+	n, err := pw.w.Write(p)
+	pw.done += int64(n)
+	if now := time.Now(); now.Sub(pw.last) >= time.Second {
+		pw.last = now
+		pw.report(pw.path, pw.done, pw.size)
+	}
 	return n, err
 }

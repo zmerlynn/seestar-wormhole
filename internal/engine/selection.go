@@ -58,7 +58,14 @@ type Skipped struct {
 // read. Any listing failure, of the root or of a folder that is kept, fails
 // the walk; what was left out before it is still returned.
 func (s Selector) Walk(ctx context.Context, sess remote.Session) ([]remote.Entry, LeftOut, error) {
+	return s.walk(ctx, sess, nil)
+}
+
+// walk is [Selector.Walk] that also calls listed, if not nil, with the
+// number of folders kept so far as each one is kept, before it is read.
+func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folders int)) ([]remote.Entry, LeftOut, error) {
 	out := LeftOut{keptParents: map[string]bool{}}
+	folders := 0
 	entries, err := sess.Walk(ctx, func(p string, dir bool) bool {
 		for _, e := range s.Excludes {
 			if e.match(p) {
@@ -71,6 +78,10 @@ func (s Selector) Walk(ctx context.Context, sess remote.Session) ([]remote.Entry
 			out.Unmatched++
 			out.keptParents[path.Dir(p)] = true
 			return true
+		}
+		if dir && listed != nil {
+			folders++
+			listed(folders)
 		}
 		return false
 	})
