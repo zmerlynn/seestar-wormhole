@@ -112,6 +112,18 @@ function currentErrors() {
   return out;
 }
 
+// choose shows the window's folder picker; Cancel changes nothing.
+async function choose() {
+  const { status, data } = await api('folder', { folder: $('#f-folder').value });
+  if (status === 200 && data && data.folder) {
+    $('#f-folder').value = data.folder;
+    showErrors({ ...currentErrors(), folder: '' });
+  } else if (status !== 200) {
+    showErrors({ ...currentErrors(), folder: (data && data.error) || "Couldn't open the folder picker. Type the folder's full path instead." });
+  }
+  $('#f-folder').focus();
+}
+
 // save sends the form; Save is disabled until the answer is in, so two
 // saves' answers can't arrive out of order.
 async function save(ev) {
@@ -191,6 +203,7 @@ async function start() {
   $('#version').textContent = 'seestar-copy ' + data.version;
   $('#f-builtin').textContent = data.default_excludes.join(' · ');
   fill(data.settings);
+  $('#f-choose').hidden = !data.native;
   form.hidden = false;
   if (data.set_up) {
     saved = data.settings;
@@ -208,6 +221,7 @@ async function start() {
 }
 
 $('#f-test-btn').addEventListener('click', test);
+$('#f-choose').addEventListener('click', choose);
 form.addEventListener('submit', save);
 document.querySelector('nav.tabs').addEventListener('click', (ev) => {
   const t = ev.target.closest('.tab');

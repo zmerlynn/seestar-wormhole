@@ -188,6 +188,7 @@ func TestAPIChecks(t *testing.T) {
 		{"test", "POST", "/app/api/test", ok, 200},
 		{"test without token", "POST", "/app/api/test", without(tokenHeader), 403},
 		{"test other Origin", "POST", "/app/api/test", with("Origin", "http://evil.example"), 403},
+		{"folder without a window", "POST", "/app/api/folder", ok, 404},
 		{"unknown api", "GET", "/app/api/nothing", ok, 404},
 		{"unknown api without token", "GET", "/app/api/nothing", nil, 403},
 		{"page", "GET", "/app/", nil, 200},
@@ -589,7 +590,7 @@ func TestRunStartupError(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	opened := false
 	err := Run(context.Background(), Options{SettingsPath: path, StateDir: t.TempDir(), Version: "v", Log: log},
-		func(context.Context, string) error { opened = true; return nil })
+		func(context.Context, string, func()) error { opened = true; return nil })
 	want := "Couldn't read settings from " + path + ": unexpected end of JSON input. Fix or remove the file, then reopen seestar-copy."
 	if err == nil || err.Error() != want || opened {
 		t.Errorf("Run = %v (opened %v), want %q", err, opened, want)
@@ -602,7 +603,7 @@ func TestRunServes(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var url string
-	err := Run(ctx, Options{SettingsPath: path, StateDir: t.TempDir(), Version: "v", Log: log}, func(ctx context.Context, u string) error {
+	err := Run(ctx, Options{SettingsPath: path, StateDir: t.TempDir(), Version: "v", Log: log}, func(ctx context.Context, u string, _ func()) error {
 		url = u
 		base, tok, ok := strings.Cut(u, "/app/#")
 		if !ok || !strings.HasPrefix(base, "http://127.0.0.1:") || len(tok) != 64 {

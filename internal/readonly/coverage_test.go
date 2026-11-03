@@ -28,10 +28,12 @@ var writeNames = map[string]bool{
 }
 
 // allowed lists functions, as "<dir>.<name>" with the directory relative to
-// the repository root, that change the local filesystem without calling
-// Check, each with the reason. It is empty: every such function is guarded.
-// scripts/ is outside the scan, and so are _test.go files and vendor/.
-var allowed = map[string]string{}
+// the repository root, that the scan matches but that do not change the
+// local filesystem without calling Check, each with the reason. scripts/ is
+// outside the scan, and so are _test.go files and vendor/.
+var allowed = map[string]string{
+	"cmd/seestar-copy.present": "Wails' Dialog.OpenFile shows the folder picker; it opens no file",
+}
 
 // TestWritesAreGuarded checks, without type information, the rule this
 // package rests on: every function under internal/ and cmd/ whose body
@@ -132,7 +134,7 @@ func TestWritesAreGuarded(t *testing.T) {
 		"internal/state.Open", "internal/state.create", "internal/state.lockFile", "internal/state.Append",
 		"internal/state.syncDir", "internal/copier.removeTemps", "internal/copier.download", "internal/copier.syncFolder",
 		"internal/remote.RemoveFile", "internal/remote.RemoveDir",
-		"internal/engine.deleteFile", "internal/engine.removeFolder", "internal/app.writeFileAtomic",
+		"internal/engine.deleteFile", "internal/engine.removeFolder", "internal/app.writeFileAtomic", "internal/browse.Save",
 	} {
 		if !slices.Contains(guarded, want) {
 			t.Errorf("the scan did not find the writes in %s; found %q", want, guarded)

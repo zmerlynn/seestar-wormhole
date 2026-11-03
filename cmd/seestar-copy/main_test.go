@@ -51,11 +51,18 @@ func TestStartupError(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{"version":3}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// The error is shown natively too, since a window's user has no stderr.
+	var shown []string
+	defer func(old func(error)) { reportStartupError = old }(reportStartupError)
+	reportStartupError = func(err error) { shown = append(shown, err.Error()) }
 	var stdout, stderr bytes.Buffer
 	code := run(context.Background(), []string{"--settings", path}, &stdout, &stderr)
 	want := "Couldn't read settings from " + path + ": it has version 3, and this seestar-copy reads version 1. Fix or remove the file, then reopen seestar-copy.\n"
 	if code != 1 || stdout.Len() != 0 || stderr.String() != want {
 		t.Errorf("exit %d, stdout %q, stderr %q; want 1 and %q", code, stdout.String(), stderr.String(), want)
+	}
+	if len(shown) != 1 || shown[0]+"\n" != want {
+		t.Errorf("shown %q, want %q", shown, want)
 	}
 }
 

@@ -22,7 +22,13 @@ import (
 // Builds set this with -ldflags "-X main.version=...".
 var version = "development"
 
+// reportStartupError shows an error that stops the app in a native
+// message, besides stderr, which a window's user may not see. Only main
+// sets it, so tests never show one.
+var reportStartupError = func(error) {}
+
 func main() {
+	reportStartupError = showStartupError
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	code := run(ctx, os.Args[1:], os.Stdout, os.Stderr)
 	stop()
@@ -55,7 +61,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	// history per folder.
 	base, err := os.UserConfigDir()
 	if err != nil {
-		fmt.Fprintf(stderr, "Couldn't find the per-user config folder: %v\n", err)
+		err = fmt.Errorf("Couldn't find the per-user config folder: %w", err)
+		fmt.Fprintln(stderr, err)
+		reportStartupError(err)
 		return 1
 	}
 	stateDir := filepath.Join(base, "seestar-copy")
@@ -63,9 +71,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if path == "" {
 		path = filepath.Join(stateDir, "app.json")
 	}
-	err = app.Run(ctx, app.Options{SettingsPath: path, StateDir: stateDir, Version: version, Log: newLogger(stderr)}, present(stdout))
+	open, native := present(stdout)
+	err = app.Run(ctx, app.Options{SettingsPath: path, StateDir: stateDir, Version: version, Log: newLogger(stderr), Native: native}, open)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		reportStartupError(err)
 		return 1
 	}
 	return 0

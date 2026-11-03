@@ -8,14 +8,18 @@ Run `seestar-copy-cli licenses` for the notices of the libraries linked into
 that build.
 
 Modules that release builds link, and their license files under vendor/
-(mousetrap is linked into Windows builds only):
+(mousetrap is linked into Windows builds only, and Wails and the modules it
+needs into seestar-copy's window build only):
 
 | Module | License files under vendor/ | SPDX identifier |
 | --- | --- | --- |
+| github.com/adrg/xdg | vendor/github.com/adrg/xdg/LICENSE | MIT |
 | github.com/geoffgarside/ber | vendor/github.com/geoffgarside/ber/LICENSE | BSD-3-Clause |
 | github.com/go-crypt/x | vendor/github.com/go-crypt/x/LICENSE | BSD-3-Clause |
 | github.com/go-krb5/krb5 | vendor/github.com/go-krb5/krb5/LICENSE | Apache-2.0 |
 | github.com/go-krb5/x | vendor/github.com/go-krb5/x/LICENSE and vendor/github.com/go-krb5/x/aescts/LICENSE and vendor/github.com/go-krb5/x/dns/LICENSE and vendor/github.com/go-krb5/x/identity/LICENSE and vendor/github.com/go-krb5/x/rpc/LICENSE | BSD-3-Clause AND Apache-2.0 |
+| github.com/go-ole/go-ole | vendor/github.com/go-ole/go-ole/LICENSE | MIT |
+| github.com/godbus/dbus/v5 | vendor/github.com/godbus/dbus/v5/LICENSE | BSD-2-Clause |
 | github.com/google/uuid | vendor/github.com/google/uuid/LICENSE | BSD-3-Clause |
 | github.com/hirochachacha/go-smb2/v2 | vendor/github.com/hirochachacha/go-smb2/v2/LICENSE | BSD-2-Clause |
 | github.com/inconshreveable/mousetrap | vendor/github.com/inconshreveable/mousetrap/LICENSE | Apache-2.0 |
@@ -23,9 +27,19 @@ Modules that release builds link, and their license files under vendor/
 | github.com/quic-go/quic-go | vendor/github.com/quic-go/quic-go/LICENSE | MIT |
 | github.com/spf13/cobra | vendor/github.com/spf13/cobra/LICENSE.txt | Apache-2.0 |
 | github.com/spf13/pflag | vendor/github.com/spf13/pflag/LICENSE | BSD-3-Clause |
+| github.com/wailsapp/wails/v3 | vendor/github.com/wailsapp/wails/v3/LICENSE and vendor/github.com/wailsapp/wails/v3/internal/go-common-file-dialog/LICENSE and vendor/github.com/wailsapp/wails/v3/internal/webview2/webviewloader/LICENSE | MIT AND ISC AND BSD-3-Clause AND Apache-2.0 |
 | golang.org/x/crypto | vendor/golang.org/x/crypto/LICENSE | BSD-3-Clause |
 | golang.org/x/net | vendor/golang.org/x/net/LICENSE | BSD-3-Clause |
 | golang.org/x/sys | vendor/golang.org/x/sys/LICENSE | BSD-3-Clause |
 | golang.org/x/text | vendor/golang.org/x/text/LICENSE | BSD-3-Clause |
 
 The Apache-2.0 modules and folders above supply no NOTICE file.
+
+The Wails pkg/w32 sources also include Winc Authors and W32 Authors
+attributions and atotto/clipboard-derived code (Ato Araki, BSD-3-Clause).
+Their supplemental notices and full upstream license texts are included in
+the generated catalog.
+
+Wails system tray code includes portions derived from fyne-io/systray, a fork
+of getlantern/systray, under Apache-2.0. Its upstream license is included in
+the Wails supplemental notices; upstream supplies no NOTICE file.

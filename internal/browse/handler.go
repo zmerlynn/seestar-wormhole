@@ -51,15 +51,26 @@ var static = map[string]struct{ file, typ string }{
 	"/icon.svg":  {"web/icon.svg", "image/svg+xml"},
 }
 
-type handler struct{ cfg Config }
+// Handler is the browse page and its API.
+type Handler struct{ cfg Config }
 
 // NewHandler returns the browse page and its API. It answers GET and HEAD
 // only, refuses a Host that is not an IP literal for cfg.Addr and any
 // cross-site request, and touches neither the state nor the device until a
 // request has passed every check.
-func NewHandler(cfg Config) http.Handler { return &handler{cfg: cfg} }
+func NewHandler(cfg Config) *Handler { return &Handler{cfg: cfg} }
 
-func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.serve(w, r, false) }
+
+// Download serves r as ServeHTTP does, except a /file request with
+// download=1 that passes every check: that GET it leaves unanswered and
+// returns the file's share path and true, so the caller can save the file
+// itself. A refused request gets ServeHTTP's answer.
+func (h *Handler) Download(w http.ResponseWriter, r *http.Request) (string, bool) {
+	return h.serve(w, r, true)
+}
+
+func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) (string, bool) {
 	hd := w.Header()
 	policy, frames := csp, "DENY"
 	if h.cfg.InApp {
@@ -77,34 +88,34 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	reject := func(code int) { http.Error(w, "Request rejected", code) }
 	if !h.hostAllowed(r.Host) {
 		reject(http.StatusForbidden)
-		return
+		return "", false
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		hd.Set("Allow", "GET, HEAD")
 		reject(http.StatusMethodNotAllowed)
-		return
+		return "", false
 	}
 	asset, isStatic := static[r.URL.Path]
 	if !isStatic && r.URL.Path != "/api/list" && r.URL.Path != "/file" {
 		http.Error(w, "Not found", http.StatusNotFound)
-		return
+		return "", false
 	}
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
 		reject(http.StatusForbidden)
-		return
+		return "", false
 	}
 	if isStatic {
 		b, err := assets.ReadFile(asset.file)
 		if err != nil {
 			http.Error(w, "Not found", http.StatusNotFound)
-			return
+			return "", false
 		}
 		if h.cfg.InApp && asset.file == "web/index.html" {
 			b = bytes.Replace(b, []byte(`<html lang="en">`), []byte(`<html lang="en" class="in-app">`), 1)
 		}
 		hd.Set("Content-Type", asset.typ)
 		w.Write(b)
-		return
+		return "", false
 	}
 	list := r.URL.Path == "/api/list"
 	fail := h.fileError
@@ -121,13 +132,13 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if err != nil {
 		fail(w, http.StatusBadRequest, "bad_query", "The request's query is malformed.")
-		return
+		return "", false
 	}
 	p := q.Get("path")
 	root := list && p == "" // the share root, which only a listing names
 	if !utf8.ValidString(p) || !(root || remote.ValidPath(p)) {
 		fail(w, http.StatusBadRequest, "bad_path", "The path is not a valid share path.")
-		return
+		return "", false
 	}
 	if list {
 		dir := p
@@ -135,15 +146,18 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			dir = "."
 		}
 		h.list(w, r, p, dir)
+	} else if download := q.Get("download") == "1"; intercept && download && r.Method == http.MethodGet {
+		return p, true
 	} else {
-		h.file(w, r, p, q.Get("download") == "1")
+		h.file(w, r, p, download)
 	}
+	return "", false
 }
 
 // hostAllowed is the Host check. A Host without a port means port 80. For a
 // specific address the Host must be exactly that address; for a wildcard,
 // any IP literal with the listener's port. A host name is always refused.
-func (h *handler) hostAllowed(host string) bool {
+func (h *Handler) hostAllowed(host string) bool {
 	if _, err := netip.ParseAddrPort(host); err != nil {
 		host += ":80"
 	}
@@ -172,7 +186,7 @@ type item struct {
 	View   string `json:"view,omitempty"` // the page's viewer: viewKind
 }
 
-func (h *handler) list(w http.ResponseWriter, r *http.Request, shown, dir string) {
+func (h *Handler) list(w http.ResponseWriter, r *http.Request, shown, dir string) {
 	var records map[string]state.Record
 	if h.cfg.Records != nil {
 		var err error
@@ -235,7 +249,7 @@ func (h *handler) list(w http.ResponseWriter, r *http.Request, shown, dir string
 	w.Write(b)
 }
 
-func (h *handler) file(w http.ResponseWriter, r *http.Request, p string, download bool) {
+func (h *Handler) file(w http.ResponseWriter, r *http.Request, p string, download bool) {
 	lease, err := h.cfg.Sessions.Get(r.Context())
 	if err != nil {
 		h.deviceError(w, r, p, err, h.fileError)
@@ -274,7 +288,7 @@ func (h *handler) file(w http.ResponseWriter, r *http.Request, p string, downloa
 // deviceError answers a failed Get or SMB call: 404 for a missing path, 400
 // for a path of the wrong kind, and 502 for anything else, which is logged
 // unless the client has gone away.
-func (h *handler) deviceError(w http.ResponseWriter, r *http.Request, p string, err error,
+func (h *Handler) deviceError(w http.ResponseWriter, r *http.Request, p string, err error,
 	fail func(http.ResponseWriter, int, string, string)) {
 	switch {
 	case r.Context().Err() != nil:
@@ -290,7 +304,7 @@ func (h *handler) deviceError(w http.ResponseWriter, r *http.Request, p string, 
 }
 
 // listError answers an /api/list request with a JSON error.
-func (h *handler) listError(w http.ResponseWriter, status int, code, message string) {
+func (h *Handler) listError(w http.ResponseWriter, status int, code, message string) {
 	b, _ := json.Marshal(struct {
 		Error   string `json:"error"`
 		Message string `json:"message"`
@@ -301,6 +315,6 @@ func (h *handler) listError(w http.ResponseWriter, status int, code, message str
 }
 
 // fileError answers a /file request with plain text.
-func (h *handler) fileError(w http.ResponseWriter, status int, _, message string) {
+func (h *Handler) fileError(w http.ResponseWriter, status int, _, message string) {
 	http.Error(w, message, status)
 }

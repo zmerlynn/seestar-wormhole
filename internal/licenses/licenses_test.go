@@ -64,17 +64,93 @@ func TestTargetNotices(t *testing.T) {
 	}
 }
 
+// noticeParts splits the repository's NOTICE where the Linux native GUI
+// section starts.
+func noticeParts(t *testing.T) (common, native string) {
+	t.Helper()
+	common, native, ok := strings.Cut(string(repoFile(t, "NOTICE")), "\nLinux native GUI\n")
+	if !ok {
+		t.Fatal("NOTICE lacks the Linux native GUI section")
+	}
+	return common, "\nLinux native GUI\n" + native
+}
+
 func TestOnlyLinkedModules(t *testing.T) {
 	var out bytes.Buffer
 	info := &debug.BuildInfo{Deps: []*debug.Module{{Path: "github.com/spf13/pflag"}}}
 	if err := writeForBuild(&out, info); err != nil {
 		t.Fatal(err)
 	}
-	notice, license, pflag := repoFile(t, "NOTICE"), repoFile(t, "LICENSE"), repoFile(t, "vendor/github.com/spf13/pflag/LICENSE")
-	want := string(notice) + "\n--- LICENSE ---\n" + string(license) +
+	notice, _ := noticeParts(t)
+	license, pflag := repoFile(t, "LICENSE"), repoFile(t, "vendor/github.com/spf13/pflag/LICENSE")
+	want := notice + "\n--- LICENSE ---\n" + string(license) +
 		"\nModule: github.com/spf13/pflag\nSPDX: BSD-3-Clause\n\n--- vendor/github.com/spf13/pflag/LICENSE ---\n" + string(pflag)
 	if got := out.String(); got != want {
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
+	}
+}
+
+// The GTK and WebKitGTK notice is printed by the Linux window build only,
+// which is the one build that links them: a Linux cgo build that links
+// Wails. Tags alone don't select it.
+func TestNativeLinuxNotice(t *testing.T) {
+	_, native := noticeParts(t)
+	const wails = "github.com/wailsapp/wails/v3"
+	for _, c := range []struct {
+		goos, cgo, tags, dep string
+		want                 bool
+	}{
+		{"linux", "1", "gui,production", wails, true},
+		{"linux", "1", "", wails, true},
+		{"linux", "1", "gui,production", "github.com/spf13/pflag", false},
+		{"linux", "0", "gui,production", wails, false},
+		{"darwin", "1", "gui,production", wails, false},
+		{"windows", "0", "gui,production", wails, false},
+	} {
+		info := &debug.BuildInfo{
+			Deps:     []*debug.Module{{Path: c.dep}},
+			Settings: []debug.BuildSetting{{Key: "GOOS", Value: c.goos}, {Key: "CGO_ENABLED", Value: c.cgo}},
+		}
+		if c.tags != "" {
+			info.Settings = append(info.Settings, debug.BuildSetting{Key: "-tags", Value: c.tags})
+		}
+		var out bytes.Buffer
+		if err := writeForBuild(&out, info); err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.HasSuffix(out.String(), native); got != c.want || strings.Contains(strings.TrimSuffix(out.String(), native), "LGPL") {
+			t.Errorf("%+v: native notice at the end %t, want %t", c, got, c.want)
+		}
+	}
+}
+
+// The window build for Windows, the one cross-built without cgo, prints
+// Wails' notices with its supplements.
+func TestWindowNotices(t *testing.T) {
+	binary := filepath.Join(t.TempDir(), "seestar-copy.exe")
+	cmd := exec.Command("go", "build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-tags=gui,production", "-ldflags=-s -w", "-o", binary, "./cmd/seestar-copy")
+	cmd.Dir = "../.."
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS=windows", "GOARCH=amd64")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("build: %v\n%s", err, out)
+	}
+	info, err := buildinfo.ReadFile(binary)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := writeForBuild(&out, info); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"\nModule: github.com/wailsapp/wails/v3\nSPDX: MIT AND ISC AND BSD-3-Clause AND Apache-2.0\n\n--- internal/licenses/notices/github.com/wailsapp/wails/v3/fyne-systray.txt ---\n",
+		"\n--- internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-clipboard.go.txt ---\n",
+		"\n--- vendor/github.com/wailsapp/wails/v3/LICENSE ---\n",
+		"\nModule: github.com/go-ole/go-ole\nSPDX: MIT\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("missing %q", want)
+		}
 	}
 }
 
@@ -91,12 +167,13 @@ func TestUnknownLinkedModule(t *testing.T) {
 }
 
 func TestEmbeddedProjectFiles(t *testing.T) {
-	for _, name := range []string{"NOTICE", "LICENSE"} {
+	common, native := noticeParts(t)
+	for name, want := range map[string]string{"NOTICE": common, "native-linux/NOTICE": native, "LICENSE": string(repoFile(t, "LICENSE"))} {
 		got, err := notices.ReadFile("embed/" + name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if !bytes.Equal(got, repoFile(t, name)) {
+		if string(got) != want {
 			t.Errorf("embedded %s differs from the repository's; run go run ./scripts/generate-licenses.go", name)
 		}
 	}

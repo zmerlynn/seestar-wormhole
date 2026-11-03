@@ -79,6 +79,172 @@ jobs:
           "./$binary" --version
           "./$binary" sync --help
 
+  window:
+    # The app's window on each OS's own webview. macOS and Linux need cgo, so
+    # only these runners build it; check-go.sh cross-builds Windows.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev bubblewrap xvfb xauth dbus-x11
+          # Ubuntu restricts the unprivileged user namespaces WebKit's
+          # sandbox needs; lift that for this job.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Build and vet the window
+        run: |
+          ext=''; ldflags=''
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            export CGO_ENABLED=0
+            ext=.exe; ldflags='-H windowsgui'
+          else
+            export CGO_ENABLED=1
+            if [[ "$RUNNER_OS" == macOS ]]; then
+              export CC="$PWD/scripts/gui-mac-clang.sh" MACOSX_DEPLOYMENT_TARGET=13.0
+            fi
+          fi
+          go vet -tags gui,production ./...
+          go build -tags gui,production -ldflags="$ldflags" -o "$RUNNER_TEMP/seestar-copy$ext" ./cmd/seestar-copy
+          echo "WINDOW_BIN=$RUNNER_TEMP/seestar-copy$ext" >> "$GITHUB_ENV"
+          # The native check's build, with its test-only driver.
+          go vet -tags gui,guitest,production ./cmd/seestar-copy
+          bin="$RUNNER_TEMP/seestar-copy-guitest$ext"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            # A registered bundle, so that a Quit event can name it.
+            bundle="$RUNNER_TEMP/Guitest.app"
+            mkdir -p "$bundle/Contents/MacOS"
+            bin="$bundle/Contents/MacOS/seestar-copy"
+            cat > "$bundle/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleIdentifier</key><string>net.zml.seestar-copy.guitest</string>
+            <key>CFBundleExecutable</key><string>seestar-copy</string>
+            <key>CFBundleName</key><string>seestar-copy</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>CFBundleShortVersionString</key><string>0.0.0</string>
+          </dict>
+          </plist>
+          PLIST
+          fi
+          go build -tags gui,guitest,production -ldflags="$ldflags" -o "$bin" ./cmd/seestar-copy
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            plutil -lint "$bundle/Contents/Info.plist"
+            /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$bundle"
+          fi
+          echo "GUITEST_BIN=$bin" >> "$GITHUB_ENV"
+      - name: Open the window, load Browse and quit
+        run: |
+          cat > "$RUNNER_TEMP/window.py" <<'PY'
+          import json, os, socket, subprocess, sys
+          tmp = os.environ["RUNNER_TEMP"]
+          # Browse dials the saved address once the page and its frame have
+          # loaded, so a connection here shows the window works end to end.
+          device = socket.create_server(("127.0.0.1", 0))
+          device.settimeout(120)
+          settings = os.path.join(tmp, "app.json")
+          with open(settings, "w") as f:
+              json.dump({"version": 1, "address": "127.0.0.1:%d" % device.getsockname()[1], "folder": os.path.join(tmp, "images")}, f)
+          log = open(os.path.join(tmp, "window.log"), "w")
+          app = subprocess.Popen([os.environ["WINDOW_BIN"], "--settings", settings], stdout=log, stderr=log)
+          try:
+              device.accept()[0].close()
+          except TimeoutError:
+              app.kill()
+              sys.exit("the window never loaded Browse")
+          print("Browse loaded in the window")
+          # Closing the window (WM_CLOSE on Windows) or SIGTERM quits the app.
+          if os.name == "nt":
+              subprocess.run(["taskkill", "/PID", str(app.pid)], check=True)
+          else:
+              app.terminate()
+          code = app.wait(timeout=60)
+          sys.exit("the app exited %d" % code if code else 0)
+          PY
+          python=$(command -v python3 || command -v python)
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            GDK_BACKEND=x11 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' "$python" "$RUNNER_TEMP/window.py"
+          else
+            "$python" "$RUNNER_TEMP/window.py"
+          fi
+      - name: Press the tab keys in the window, then close it or quit
+        run: |
+          cat > "$RUNNER_TEMP/guitest.py" <<'PY'
+          import json, os, socket, subprocess, sys, time
+          tmp, scenario = os.environ["RUNNER_TEMP"], sys.argv[1]
+          # Nothing listens at the saved address: the check needs the
+          # page's tabs, not a device.
+          s = socket.create_server(("127.0.0.1", 0))
+          port = s.getsockname()[1]
+          s.close()
+          settings = os.path.join(tmp, "guitest.json")
+          with open(settings, "w") as f:
+              json.dump({"version": 1, "address": "127.0.0.1:%d" % port, "folder": os.path.join(tmp, "images")}, f)
+          path = os.path.join(tmp, "guitest-%s.log" % scenario)
+          log = open(path, "w")
+          app = subprocess.Popen([os.environ["GUITEST_BIN"], "--settings", settings], stdout=log, stderr=log,
+                                 env=dict(os.environ, SEESTAR_COPY_GUITEST=scenario))
+          def text():
+              with open(path) as f:
+                  return f.read()
+          def fail(why):
+              if app.poll() is None:
+                  app.kill()
+              print(text())
+              sys.exit("%s: %s" % (scenario, why))
+          deadline = time.monotonic() + 120
+          while "guitest: ready" not in text():
+              if "guitest: FAIL" in text() or app.poll() is not None:
+                  fail("the page check failed")
+              if time.monotonic() > deadline:
+                  fail("the page check didn't finish")
+              time.sleep(0.2)
+          if os.name == "nt":
+              # Closing the window: WM_CLOSE.
+              subprocess.run(["taskkill", "/PID", str(app.pid)], check=True)
+          elif scenario == "quit":
+              # The Quit menu item's event, through AppKit's own termination.
+              q = subprocess.run(["osascript", "-e", 'tell application id "net.zml.seestar-copy.guitest" to quit'],
+                                 capture_output=True, text=True, timeout=30)
+              if q.returncode or "-128" in q.stdout + q.stderr:
+                  fail("Quit was refused: %s%s" % (q.stdout, q.stderr))
+          try:
+              code = app.wait(timeout=60)
+          except subprocess.TimeoutExpired:
+              fail("the app didn't exit")
+          out = text()
+          print(out)
+          if code or "guitest: FAIL" in out or "guitest: the app stopped before the window quit" not in out:
+              sys.exit("%s: the app exited %d without a clean shutdown" % (scenario, code))
+          PY
+          python=$(command -v python3 || command -v python)
+          case "$RUNNER_OS" in
+            Linux) GDK_BACKEND=x11 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' "$python" "$RUNNER_TEMP/guitest.py" close ;;
+            macOS) "$python" "$RUNNER_TEMP/guitest.py" close && "$python" "$RUNNER_TEMP/guitest.py" quit ;;
+            *) "$python" "$RUNNER_TEMP/guitest.py" close ;;
+          esac
+      - name: App log
+        if: failure()
+        run: cat "$RUNNER_TEMP/window.log" || true
+
   smb:
     runs-on: ubuntu-24.04
     steps:

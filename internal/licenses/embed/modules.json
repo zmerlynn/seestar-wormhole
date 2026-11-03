@@ -1,5 +1,12 @@
 [
   {
+    "Path": "github.com/adrg/xdg",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/adrg/xdg/LICENSE"
+    ]
+  },
+  {
     "Path": "github.com/geoffgarside/ber",
     "SPDX": "BSD-3-Clause",
     "Files": [
@@ -29,6 +36,20 @@
       "vendor/github.com/go-krb5/x/dns/LICENSE",
       "vendor/github.com/go-krb5/x/identity/LICENSE",
       "vendor/github.com/go-krb5/x/rpc/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-ole/go-ole",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/go-ole/go-ole/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/godbus/dbus/v5",
+    "SPDX": "BSD-2-Clause",
+    "Files": [
+      "vendor/github.com/godbus/dbus/v5/LICENSE"
     ]
   },
   {
@@ -78,6 +99,22 @@
     "SPDX": "BSD-3-Clause",
     "Files": [
       "vendor/github.com/spf13/pflag/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/wailsapp/wails/v3",
+    "SPDX": "MIT AND ISC AND BSD-3-Clause AND Apache-2.0",
+    "Files": [
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/fyne-systray.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/guid-MIT.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/internal-assetserver-ringqueue.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-clipboard.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-guid.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-user32.go.txt",
+      "internal/licenses/notices/github.com/wailsapp/wails/v3/pkg-w32-winc.txt",
+      "vendor/github.com/wailsapp/wails/v3/LICENSE",
+      "vendor/github.com/wailsapp/wails/v3/internal/go-common-file-dialog/LICENSE",
+      "vendor/github.com/wailsapp/wails/v3/internal/webview2/webviewloader/LICENSE"
     ]
   },
   {

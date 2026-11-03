@@ -56,7 +56,7 @@ func fixture() fstest.MapFS {
 type env struct {
 	d     *dialer
 	p     *Sessions
-	h     http.Handler
+	h     *Handler
 	addr  netip.AddrPort
 	loads atomic.Int32
 	logs  *logBuffer

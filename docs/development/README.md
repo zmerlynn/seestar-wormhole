@@ -18,7 +18,7 @@ is stopped.
 | Path | What it does |
 | --- | --- |
 | `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the read-only guard before a dry run, `find`'s listing, and `browse`'s listener and `--open`. |
-| `cmd/seestar-copy` | The app's command: `--settings`, logging, and how the page is shown. The build without the `gui` tag prints the page's URL to open in a browser and serves until Ctrl+C. |
+| `cmd/seestar-copy` | The app's command: `--settings`, logging, and how the page is shown. The `gui` build shows it in a [Wails](https://wails.io) window, with native folder and save dialogs, and quits the app when the window closes. The build without the tag prints the page's URL to open in a browser and serves until Ctrl+C. |
 | `internal/app` | The app: `app.json` (read at startup, written atomically on Save), and the loopback server for its page, with a per-run token and Host, Origin and Fetch Metadata checks, Setup, Settings, Test, and the Browse tab, which is `internal/browse` in its in-app mode. |
 | `internal/engine` | The work the commands share: the `--exclude` and `--include` selection and its walk of the share, the `sync` pass loop (dial, list, plan, copy, log off, sleep) and its dry run, and `delete`'s run. It never turns the read-only guard on. |
 | `internal/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
@@ -54,11 +54,15 @@ go run ./scripts/generate-licenses.go --check
 ```
 
 The generator asks `go list -deps` which modules each release target links,
-copies their license and notice files verbatim from `vendor/`, and refuses to
-run if a module has no license file or no SPDX entry in the generator. `NOTICE`
-must contain the module table the generator prints when it is out of date. At
-run time, `licenses` uses the executable's build information to print only the
-modules linked into that build.
+for both commands and for the app with and without its window. It copies their
+license and notice files verbatim from `vendor/`, adds the supplemental notices
+under `internal/licenses/notices/<module>/` for source-file terms upstream
+keeps in no separate file, and refuses to run if a module has no license file
+or no SPDX entry in the generator. `NOTICE` must contain the module table the
+generator prints when it is out of date. At run time, `licenses` uses the
+executable's build information to print only the modules linked into that
+build. `NOTICE`'s last section, on the GTK and WebKitGTK libraries the Linux
+window links, is embedded apart and printed only by that build.
 
 ## Build and check
 

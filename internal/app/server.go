@@ -13,6 +13,8 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -59,12 +61,13 @@ type server struct {
 	stateDir string
 	log      *slog.Logger
 	// dial opens a browse session; test runs Test. Tests replace both.
-	dial func(ctx context.Context, endpoint string) (remote.Session, error)
-	test func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	dial   func(ctx context.Context, endpoint string) (remote.Session, error)
+	test   func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	native *Native // nil without a window
 
 	mu       sync.Mutex
 	file     *settingsFile
-	browse   http.Handler // nil until an address and a folder are saved
+	browse   *browse.Handler // nil until an address and a folder are saved
 	sessions *browse.Sessions
 }
 
@@ -92,7 +95,7 @@ func (s *server) startBrowse() {
 
 // newBrowse builds a browse handler with its own session pool for the
 // address and records for the folder.
-func (s *server) newBrowse(set Settings) (http.Handler, *browse.Sessions) {
+func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	endpoint, folder := set.Address, set.Folder
 	log := s.log.With("endpoint", endpoint)
 	sessions := browse.NewSessions(s.ctx, func(ctx context.Context) (remote.Session, error) {
@@ -120,14 +123,20 @@ func (s *server) close() {
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(r.URL.Path, "/app/") {
 		s.mu.Lock()
-		h := s.browse
+		h, sessions := s.browse, s.sessions
 		s.mu.Unlock()
 		if h == nil {
 			setHeaders(w)
 			http.Error(w, "Not found", http.StatusNotFound)
 			return
 		}
-		h.ServeHTTP(w, r)
+		// A window's webview may not save a download itself, so the app
+		// does, with a native save dialog.
+		if s.native == nil {
+			h.ServeHTTP(w, r)
+		} else if p, ok := h.Download(w, r); ok {
+			s.saveFile(w, r, sessions, p)
+		}
 		return
 	}
 	setHeaders(w)
@@ -174,6 +183,11 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.status(w)
 		return
 	case "/app/api/test", "/app/api/settings":
+	case "/app/api/folder":
+		if s.native == nil {
+			fail(http.StatusNotFound)
+			return
+		}
 	default:
 		fail(http.StatusNotFound)
 		return
@@ -201,9 +215,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest)
 		return
 	}
-	if r.URL.Path == "/app/api/test" {
+	switch r.URL.Path {
+	case "/app/api/test":
 		s.runTest(w, r.Context(), in)
-	} else {
+	case "/app/api/folder":
+		s.chooseFolder(w, in)
+	default:
 		s.save(w, in)
 	}
 }
@@ -239,7 +256,8 @@ func (s *server) status(w http.ResponseWriter) {
 		SetUp           bool     `json:"set_up"`
 		Settings        Settings `json:"settings"`
 		DefaultExcludes []string `json:"default_excludes"`
-	}{s.version, setUp, set, engine.DefaultExcludes})
+		Native          bool     `json:"native"` // the window's dialogs are there
+	}{s.version, setUp, set, engine.DefaultExcludes, s.native != nil})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -279,16 +297,9 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		s.mu.Unlock()
 		s.log.Error("save settings", "path", s.file.path, "err", err)
 		// The page shows the reason without the temp file's name.
-		var pe *fs.PathError
-		var le *os.LinkError
-		if errors.As(err, &pe) {
-			err = pe.Err
-		} else if errors.As(err, &le) {
-			err = le.Err
-		}
 		respond(w, http.StatusInternalServerError, struct {
 			Error string `json:"error"`
-		}{"Couldn't save settings: " + err.Error() + ". Your changes have not been saved. Try saving again."})
+		}{"Couldn't save settings: " + reason(err) + ". Your changes have not been saved. Try saving again."})
 		return
 	}
 	changed := !wasSetUp || old.Address != set.Address || old.Folder != set.Folder
@@ -318,4 +329,67 @@ func respond(w http.ResponseWriter, code int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	w.Write(b)
+}
+
+// reason is err's text without the path a file error names.
+func reason(err error) string {
+	var pe *fs.PathError
+	var le *os.LinkError
+	if errors.As(err, &pe) {
+		err = pe.Err
+	} else if errors.As(err, &le) {
+		err = le.Err
+	}
+	return err.Error()
+}
+
+// chooseFolder shows the folder picker, starting at the typed folder or
+// the nearest folder above it that exists, and answers the folder chosen,
+// or "" on Cancel.
+func (s *server) chooseFolder(w http.ResponseWriter, in input) {
+	dir := strings.TrimSpace(in.Folder)
+	for filepath.IsAbs(dir) {
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			break
+		}
+		up := filepath.Dir(dir)
+		if up == dir {
+			dir = ""
+		} else {
+			dir = up
+		}
+	}
+	if !filepath.IsAbs(dir) {
+		dir = ""
+	}
+	chosen, err := s.native.ChooseFolder(dir)
+	if err != nil {
+		s.log.Error("folder picker", "err", err)
+		respond(w, http.StatusInternalServerError, struct {
+			Error string `json:"error"`
+		}{"Couldn't open the folder picker: " + err.Error() + ". Type the folder's full path instead."})
+		return
+	}
+	respond(w, http.StatusOK, struct {
+		Folder string `json:"folder"`
+	}{chosen})
+}
+
+// saveFile asks where to save the device's file p and saves it there. It
+// answers 204 in every case, so the page stays where it is; a failed save
+// is shown in a native message, unless the app is stopping.
+func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
+	name := path.Base(p)
+	dst, err := s.native.SaveFile(name)
+	if err == nil && dst != "" {
+		err = browse.Save(r.Context(), sessions, p, dst)
+		if err == nil {
+			s.log.Info("file saved", "path", p, "to", dst)
+		}
+	}
+	if err != nil && r.Context().Err() == nil {
+		s.log.Warn("save failed", "path", p, "to", dst, "err", err)
+		s.native.Alert("Couldn't save " + name + ": " + reason(err) + ". Try saving it again.")
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
