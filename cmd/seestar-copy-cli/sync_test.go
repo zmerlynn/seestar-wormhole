@@ -32,7 +32,9 @@ type device struct {
 	// unreadable folders fail to list.
 	unreadable []string
 	// dialErrs fail the first dials, one each.
-	dialErrs      []error
+	dialErrs []error
+	// openDelay is how long each Open takes.
+	openDelay     time.Duration
 	dials, closes int
 }
 
@@ -70,7 +72,7 @@ func (d *device) use(t *testing.T) {
 		}
 		f := remote.NewFake(unreadableFS{snapshot, d.unreadable})
 		f.Faults = d.faults
-		return &deviceSession{Fake: f, d: d}, nil
+		return &deviceSession{Fake: f, d: d, delay: d.openDelay}, nil
 	}
 }
 
@@ -87,10 +89,16 @@ func (u unreadableFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return u.MapFS.ReadDir(name)
 }
 
-// deviceSession counts Close.
+// deviceSession counts Close and delays Open.
 type deviceSession struct {
 	*remote.Fake
-	d *device
+	d     *device
+	delay time.Duration
+}
+
+func (s *deviceSession) Open(ctx context.Context, path string) (remote.File, error) {
+	time.Sleep(s.delay)
+	return s.Fake.Open(ctx, path)
 }
 
 func (s *deviceSession) Close() error {
@@ -234,9 +242,9 @@ func TestSyncPasses(t *testing.T) {
 		// Pass 1: only files at least --first-pass-age old are stable.
 		synctest.Wait()
 		if got, want := logs.next(), logLines(t0,
-			`INFO msg="file copied" path=Autorun/Dark/dark.fit size=2`,
+			`INFO msg="file copied" path=Autorun/Dark/dark.fit size=2 elapsed=0s`,
 			`INFO msg="file adopted" path="MyWorks/M 31/have.fit" size=2`,
-			`INFO msg="file copied" path="MyWorks/M 31/old.fit" size=3`,
+			`INFO msg="file copied" path="MyWorks/M 31/old.fit" size=3 elapsed=0s`,
 			`INFO msg="pass done" copied=2 replaced=0 adopted=1 waiting=3 failed=0 skipped=0 unmatched=0 bytes=5 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 1 log:\n%s\nwant:\n%s", got, want)
@@ -253,7 +261,7 @@ func TestSyncPasses(t *testing.T) {
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
 		if got, want := logs.next(), logLines(t0.Add(5*time.Minute),
-			`INFO msg="file copied" path="MyWorks/M 31/settled.fit" size=3`,
+			`INFO msg="file copied" path="MyWorks/M 31/settled.fit" size=3 elapsed=0s`,
 			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=3 failed=0 skipped=0 unmatched=0 bytes=3 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 2 log:\n%s\nwant:\n%s", got, want)
@@ -263,9 +271,9 @@ func TestSyncPasses(t *testing.T) {
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
 		if got, want := logs.next(), logLines(t0.Add(10*time.Minute),
-			`INFO msg="file replaced" path=Autorun/Dark/dark.fit size=3`,
-			`INFO msg="file copied" path="MyWorks/M 31/growing.fit" size=2`,
-			`INFO msg="file copied" path="MyWorks/M 31/young.fit" size=2`,
+			`INFO msg="file replaced" path=Autorun/Dark/dark.fit size=3 elapsed=0s`,
+			`INFO msg="file copied" path="MyWorks/M 31/growing.fit" size=2 elapsed=0s`,
+			`INFO msg="file copied" path="MyWorks/M 31/young.fit" size=2 elapsed=0s`,
 			`INFO msg="pass done" copied=2 replaced=1 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=7 elapsed=0s`,
 		); got != want {
 			t.Fatalf("pass 3 log:\n%s\nwant:\n%s", got, want)
@@ -317,8 +325,8 @@ func TestSyncOnce(t *testing.T) {
 		{name: "overwrite", files: []string{"MyWorks/a.fit", "MyWorks/b.fit"}, local: []string{"MyWorks/a.fit"}, code: exitOK,
 			copied: []string{"MyWorks/a.fit", "MyWorks/b.fit"},
 			log: []string{
-				`msg="file copied" path=MyWorks/a.fit size=3 overwrote=true` + "\n",
-				`msg="file copied" path=MyWorks/b.fit size=3` + "\n",
+				`msg="file copied" path=MyWorks/a.fit size=3 overwrote=true elapsed=`,
+				`msg="file copied" path=MyWorks/b.fit size=3 elapsed=`,
 			}},
 		{name: "copy fails", files: []string{"MyWorks/a.fit", "MyWorks/b.fit"},
 			faults: map[string]remote.Fault{"MyWorks/a.fit": {OpenErr: errors.New("open refused")}}, code: exitFailure,
@@ -382,6 +390,25 @@ func TestSyncOnce(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A file's line has its download time, and the summary the pass's rate.
+func TestSyncLogsRate(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		t0 := time.Now()
+		dev := newDevice()
+		dev.set("MyWorks/a.fit", strings.Repeat("x", 4<<20), t0.Add(-time.Hour))
+		dev.openDelay = 500 * time.Millisecond
+		dev.use(t)
+		var stderr bytes.Buffer
+		code := run(t.Context(), []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--state-dir", t.TempDir(), "--once"}, io.Discard, &stderr)
+		if want := logLines(t0.Add(500*time.Millisecond),
+			`INFO msg="file copied" path=MyWorks/a.fit size=4194304 elapsed=500ms`,
+			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=4194304 elapsed=500ms rate=8.0MiB/s`,
+		); code != exitOK || stderr.String() != want {
+			t.Errorf("exit %d, log:\n%s\nwant:\n%s", code, stderr.String(), want)
+		}
+	})
 }
 
 // A failed pass is logged and retried after the interval; it does not stop
@@ -456,7 +483,7 @@ func TestSyncLogsEachFileAsItFinishes(t *testing.T) {
 				"--workers", "2", "--once"}, io.Discard, logs)
 		}()
 		synctest.Wait() // a.fit is done and b.fit is stalled mid-file
-		if got, want := logs.next(), logLines(t0, `INFO msg="file copied" path=MyWorks/a.fit size=3`); got != want {
+		if got, want := logs.next(), logLines(t0, `INFO msg="file copied" path=MyWorks/a.fit size=3 elapsed=0s`); got != want {
 			t.Fatalf("log while b.fit is read %q, want %q", got, want)
 		}
 		cancel()

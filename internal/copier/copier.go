@@ -172,6 +172,8 @@ type Result struct {
 	// temporary file was removed. A file that was not started because ctx
 	// was done has an Err wrapping ctx's error.
 	Err error
+	// Elapsed is how long the file took once a worker started it.
+	Elapsed time.Duration
 }
 
 // Run carries out the Copy, Replace and Adopt decisions in ds, with up to
@@ -226,12 +228,14 @@ func (c *Copier) Run(ctx context.Context, sess remote.Session, workers int, ds [
 }
 
 // do carries out one decision.
-func (c *Copier) do(ctx context.Context, sess remote.Session, d plan.Decision) Result {
-	r := Result{Decision: d}
+func (c *Copier) do(ctx context.Context, sess remote.Session, d plan.Decision) (r Result) {
+	r = Result{Decision: d}
 	if err := ctx.Err(); err != nil {
 		r.Err = fmt.Errorf("not started: %w", err)
 		return r
 	}
+	start := time.Now()
+	defer func() { r.Elapsed = time.Since(start) }()
 	switch d.Kind {
 	case plan.Adopt:
 		r.Record, r.Err = c.adopt(ctx, d)

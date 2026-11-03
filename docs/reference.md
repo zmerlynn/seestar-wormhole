@@ -507,9 +507,9 @@ looks like this:
 
 ```text
 time=2026-11-02T03:10:00.118Z level=INFO msg=skipped path=log exclude=/log
-time=2026-11-02T03:10:01.620Z level=INFO msg="file copied" path="MyWorks/M 31/light_002.fit" size=16000000
-time=2026-11-02T03:10:03.290Z level=INFO msg="file copied" path="MyWorks/M 31/light_003.fit" size=16000000
-time=2026-11-02T03:10:03.502Z level=INFO msg="pass done" copied=2 replaced=0 adopted=0 waiting=1 failed=0 skipped=1 unmatched=0 bytes=32000000 elapsed=3.502s
+time=2026-11-02T03:10:01.620Z level=INFO msg="file copied" path="MyWorks/M 31/light_002.fit" size=16000000 elapsed=1.497s
+time=2026-11-02T03:10:03.290Z level=INFO msg="file copied" path="MyWorks/M 31/light_003.fit" size=16000000 elapsed=1.668s
+time=2026-11-02T03:10:03.502Z level=INFO msg="pass done" copied=2 replaced=0 adopted=0 waiting=1 failed=0 skipped=1 unmatched=0 bytes=32000000 elapsed=3.502s rate=8.7MiB/s
 ```
 
 The format is logfmt-like `key=value` pairs, as Go's `log/slog` text handler
@@ -525,8 +525,8 @@ changes them says so in its notes.
 
 | Level | Message | Keys | When |
 | --- | --- | --- | --- |
-| INFO | `file copied` | `path`, `size`, and `overwrote=true` when it replaced a different local file | A file was downloaded and recorded. |
-| INFO | `file replaced` | `path`, `size` | A file that changed on the device was downloaded again. |
+| INFO | `file copied` | `path`, `size`, `overwrote=true` when it replaced a different local file, and `elapsed`, the file's download time | A file was downloaded and recorded. |
+| INFO | `file replaced` | `path`, `size`, `elapsed` | A file that changed on the device was downloaded again. |
 | INFO | `file adopted` | `path`, `size` | A file already in the destination was hashed and recorded. |
 | WARN | `file failed` | `path`, `reason` | A file failed this pass; it is tried again next pass. |
 | INFO | `skipped` | `path`, `exclude` | The file or folder matches the pattern `exclude`, the first one that matched, and is left out, by a pass or by `find`. A folder has one line; what is in it is not listed. See [selection](#selection). |
@@ -565,6 +565,7 @@ Every pass ends with one summary line, whose keys are:
 | `unmatched` | Files and folders that no `--include` selects and no exclude matches. They have no line of their own. What is in a folder that is not listed is not counted. Always 0 without `--include`. |
 | `bytes` | Bytes downloaded: the sizes of the copied and replaced files. |
 | `elapsed` | The pass's duration, as a Go duration such as `3.502s` or `2m5.1s`. |
+| `rate` | `bytes` over `elapsed`, in MiB/s, such as `8.7MiB/s`. Left out when nothing was downloaded. |
 
 Files that are done are not counted. A usage error is a single line naming the
 flag and the rule it broke, and the help command to run:

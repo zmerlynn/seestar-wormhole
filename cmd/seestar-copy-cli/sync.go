@@ -271,8 +271,12 @@ func (s *syncer) pass(ctx context.Context) (failed int, err error) {
 	var copied, replaced, adopted, waiting, skipped, unmatched int
 	var bytes int64
 	defer func() {
+		elapsed := time.Since(start)
 		args := []any{"copied", copied, "replaced", replaced, "adopted", adopted, "waiting", waiting,
-			"failed", failed, "skipped", skipped, "unmatched", unmatched, "bytes", bytes, "elapsed", time.Since(start).Round(time.Millisecond)}
+			"failed", failed, "skipped", skipped, "unmatched", unmatched, "bytes", bytes, "elapsed", elapsed.Round(time.Millisecond)}
+		if bytes > 0 && elapsed > 0 {
+			args = append(args, "rate", fmt.Sprintf("%.1fMiB/s", float64(bytes)/(1<<20)/elapsed.Seconds()))
+		}
 		switch {
 		case ctx.Err() != nil:
 			s.log.Info("pass stopped", args...)
@@ -316,9 +320,11 @@ func (s *syncer) pass(ctx context.Context) (failed int, err error) {
 			if r.Decision.Overwrite {
 				args = append(args, "overwrote", true)
 			}
+			args = append(args, "elapsed", r.Elapsed.Round(time.Millisecond))
 		case state.Replaced:
 			replaced++
 			bytes += r.Record.Size
+			args = append(args, "elapsed", r.Elapsed.Round(time.Millisecond))
 		case state.Adopted:
 			adopted++
 		}
