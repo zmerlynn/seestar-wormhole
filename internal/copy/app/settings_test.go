@@ -398,6 +398,33 @@ func TestLoadRefusesAndLeavesFile(t *testing.T) {
 	}
 }
 
+// An includes or excludes element that is not a string or null refuses the
+// file, also after a repeated list or a null element.
+func TestLoadRefusesWrongListElements(t *testing.T) {
+	for _, data := range []string{
+		`{"version":1,"includes":[1]}`,
+		`{"version":1,"excludes":["Video",true]}`,
+		`{"version":1,"includes":[{"name":"Light"}]}`,
+		`{"version":1,"excludes":[["Video"]]}`,
+		`{"version":1,"includes":["a","b"],"includes":["x",2]}`,
+		`{"version":1,"excludes":["a"],"excludes":[null,false]}`,
+		`{"version":1,"includes":["a"],"includes":[null,{}]}`,
+		`{"version":1,"excludes":[null,[]]}`,
+	} {
+		t.Run(data, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "app.json")
+			writeFile(t, path, data)
+			f, err := loadSettings(path)
+			if err == nil || f != nil {
+				t.Fatalf("loaded %+v, err %v; want a refusal", f, err)
+			}
+			if b, _ := os.ReadFile(path); string(b) != data {
+				t.Errorf("the file changed to %q", b)
+			}
+		})
+	}
+}
+
 func TestLoadRelativePathIsShownAbsolute(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
