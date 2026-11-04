@@ -1,0 +1,386 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=vendor
+  GOTOOLCHAIN: local
+  GOPROXY: 'off'
+  GOSUMDB: 'off'
+
+jobs:
+  go-support:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test Go support check
+        run: ./scripts/test-go-support.sh
+      - name: Check Go support
+        run: ./scripts/check-go-support.sh
+
+  verify:
+    runs-on: ubuntu-24.04
+    container: golang:1.27.3
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Format, build, cross-build, vet, license catalog, race and release tooling tests
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sh scripts/check-go.sh
+
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-2025]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Build vendored source
+        run: go build ./...
+      - name: Vet vendored source
+        run: go vet ./...
+      - name: Test vendored source
+        run: |
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            go test -race ./...
+          else
+            go test -v ./...
+          fi
+      - name: Test release tooling
+        run: go test scripts/release.go scripts/release_test.go
+      - name: Build and smoke test native binary
+        run: |
+          binary=seestar-copy-cli
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            binary+=.exe
+          fi
+          go build -o "$binary" ./cmd/seestar-copy-cli
+          "./$binary" --version
+          "./$binary" sync --help
+
+  window:
+    # The app's window on each OS's own webview. macOS and Linux need cgo, so
+    # only these runners build it; check-go.sh cross-builds Windows.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-26, windows-2025, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Install Linux native dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgtk-4-dev libwebkitgtk-6.0-dev bubblewrap xvfb xauth dbus-x11
+          # Ubuntu restricts the unprivileged user namespaces WebKit's
+          # sandbox needs; lift that for this job.
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: Build and vet the window
+        run: |
+          ext=''; ldflags=''
+          if [[ "$RUNNER_OS" == Windows ]]; then
+            export CGO_ENABLED=0
+            ext=.exe; ldflags='-H windowsgui'
+          else
+            export CGO_ENABLED=1
+            if [[ "$RUNNER_OS" == macOS ]]; then
+              export CC="$PWD/scripts/gui-mac-clang.sh" MACOSX_DEPLOYMENT_TARGET=13.0
+            fi
+          fi
+          go vet -tags gui,production ./...
+          go build -tags gui,production -ldflags="$ldflags" -o "$RUNNER_TEMP/seestar-copy$ext" ./cmd/seestar-copy
+          echo "WINDOW_BIN=$RUNNER_TEMP/seestar-copy$ext" >> "$GITHUB_ENV"
+          # The native check's build, with its test-only driver.
+          go vet -tags gui,guitest,production ./cmd/seestar-copy
+          bin="$RUNNER_TEMP/seestar-copy-guitest$ext"
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            # A registered bundle, so that a Quit event can name it.
+            bundle="$RUNNER_TEMP/Guitest.app"
+            mkdir -p "$bundle/Contents/MacOS"
+            bin="$bundle/Contents/MacOS/seestar-copy"
+            cat > "$bundle/Contents/Info.plist" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleIdentifier</key><string>net.zml.seestar-copy.guitest</string>
+            <key>CFBundleExecutable</key><string>seestar-copy</string>
+            <key>CFBundleName</key><string>seestar-copy</string>
+            <key>CFBundlePackageType</key><string>APPL</string>
+            <key>CFBundleVersion</key><string>1</string>
+            <key>CFBundleShortVersionString</key><string>0.0.0</string>
+          </dict>
+          </plist>
+          PLIST
+          fi
+          go build -tags gui,guitest,production -ldflags="$ldflags" -o "$bin" ./cmd/seestar-copy
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            plutil -lint "$bundle/Contents/Info.plist"
+            /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$bundle"
+          fi
+          echo "GUITEST_BIN=$bin" >> "$GITHUB_ENV"
+      - name: Open the window, load Browse and quit
+        run: |
+          cat > "$RUNNER_TEMP/window.py" <<'PY'
+          import json, os, socket, subprocess, sys
+          tmp = os.environ["RUNNER_TEMP"]
+          # Browse dials the saved address once the page and its frame have
+          # loaded, so a connection here shows the window works end to end.
+          device = socket.create_server(("127.0.0.1", 0))
+          device.settimeout(120)
+          settings = os.path.join(tmp, "app.json")
+          with open(settings, "w") as f:
+              json.dump({"version": 1, "address": "127.0.0.1:%d" % device.getsockname()[1], "folder": os.path.join(tmp, "images"),
+                         "start_copying": False}, f)
+          log = open(os.path.join(tmp, "window.log"), "w")
+          app = subprocess.Popen([os.environ["WINDOW_BIN"], "--settings", settings], stdout=log, stderr=log)
+          try:
+              device.accept()[0].close()
+          except TimeoutError:
+              app.kill()
+              sys.exit("the window never loaded Browse")
+          print("Browse loaded in the window")
+          # Closing the window (WM_CLOSE on Windows) or SIGTERM quits the app.
+          if os.name == "nt":
+              subprocess.run(["taskkill", "/PID", str(app.pid)], check=True)
+          else:
+              app.terminate()
+          code = app.wait(timeout=60)
+          sys.exit("the app exited %d" % code if code else 0)
+          PY
+          python=$(command -v python3 || command -v python)
+          if [[ "$RUNNER_OS" == Linux ]]; then
+            GDK_BACKEND=x11 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' "$python" "$RUNNER_TEMP/window.py"
+          else
+            "$python" "$RUNNER_TEMP/window.py"
+          fi
+      - name: Hold a copy in the window, press the tab keys, then close it or quit
+        run: |
+          cat > "$RUNNER_TEMP/guitest.py" <<'PY'
+          import json, os, subprocess, sys, time
+          # The guitest build copies from its own fake telescope, whose
+          # held file stalls mid-download; the address is never dialed.
+          tmp, scenario = os.environ["RUNNER_TEMP"], sys.argv[1]
+          folder = os.path.join(tmp, "images-" + scenario)
+          def start(name, mode):
+              settings = os.path.join(tmp, "guitest-%s.json" % name)
+              with open(settings, "w") as f:
+                  json.dump({"version": 1, "address": "127.0.0.1:1", "folder": folder, "start_copying": True}, f)
+              path = os.path.join(tmp, "guitest-%s.log" % name)
+              app = subprocess.Popen([os.environ["GUITEST_BIN"], "--settings", settings], stdout=open(path, "w"), stderr=subprocess.STDOUT,
+                                     env=dict(os.environ, SEESTAR_COPY_GUITEST=mode, SEESTAR_COPY_GUITEST_FOLDER=folder))
+              app.name, app.path = name, path
+              return app
+          def text(app):
+              with open(app.path) as f:
+                  return f.read()
+          apps = []
+          def fail(why):
+              for app in apps:
+                  if app.poll() is None:
+                      app.kill()
+                  print(text(app))
+              sys.exit("%s: %s" % (scenario, why))
+          def ready(app):
+              deadline = time.monotonic() + 120
+              while "guitest: ready" not in text(app):
+                  if "guitest: FAIL" in text(app) or app.poll() is not None:
+                      fail("%s: the page check failed" % app.name)
+                  if time.monotonic() > deadline:
+                      fail("%s: the page check didn't finish" % app.name)
+                  time.sleep(0.2)
+          def stop(app):
+              if os.name == "nt":
+                  # Closing the window: WM_CLOSE.
+                  subprocess.run(["taskkill", "/PID", str(app.pid)], check=True)
+              elif app.mode == "hold":
+                  app.terminate()
+              elif app.mode == "quit":
+                  # The Quit menu item's event, through AppKit's own termination.
+                  q = subprocess.run(["osascript", "-e", 'tell application id "net.zml.seestar-copy.guitest" to quit'],
+                                     capture_output=True, text=True, timeout=30)
+                  if q.returncode or "-128" in q.stdout + q.stderr:
+                      fail("Quit was refused: %s%s" % (q.stdout, q.stderr))
+          def exited(app):
+              try:
+                  code = app.wait(timeout=60)
+              except subprocess.TimeoutExpired:
+                  fail("%s: the app didn't exit" % app.name)
+              out = text(app)
+              print(out)
+              if code or "guitest: FAIL" in out or "guitest: the app stopped before the window quit" not in out:
+                  fail("%s: the app exited %d without a clean shutdown" % (app.name, code))
+          # close and quit hold a transfer and stop during it; inuse runs a
+          # second window on the folder of a first that holds one.
+          modes = {"close": ["close"], "quit": ["quit"], "inuse": ["hold", "inuse"]}[scenario]
+          for mode in modes:
+              app = start(mode, mode)
+              app.mode = mode
+              apps.append(app)
+              ready(app)
+          for app in reversed(apps):
+              stop(app)
+              exited(app)
+          PY
+          python=$(command -v python3 || command -v python)
+          case "$RUNNER_OS" in
+            Linux)
+              for s in close inuse; do
+                GDK_BACKEND=x11 dbus-run-session -- xvfb-run -a -s '-screen 0 1280x900x24' "$python" "$RUNNER_TEMP/guitest.py" "$s" || exit 1
+              done ;;
+            macOS) "$python" "$RUNNER_TEMP/guitest.py" close && "$python" "$RUNNER_TEMP/guitest.py" quit && "$python" "$RUNNER_TEMP/guitest.py" inuse ;;
+            *) "$python" "$RUNNER_TEMP/guitest.py" close && "$python" "$RUNNER_TEMP/guitest.py" inuse ;;
+          esac
+      - name: App log
+        if: failure()
+        run: cat "$RUNNER_TEMP/window.log" || true
+
+  smb:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Start the Samba fixture
+        run: |
+          docker build -f internal/remote/testdata/samba/Containerfile -t seestar-copy-samba internal/remote/testdata/samba
+          docker run -d --name samba -p 127.0.0.1:14450:14450 seestar-copy-samba
+          for try in $(seq 50); do
+            if docker exec samba bash -c 'exec 3<>/dev/tcp/127.0.0.1/14450'; then exit 0; fi
+            sleep 0.2
+          done
+          docker logs samba
+          exit 1
+      - name: SMB integration tests
+        env:
+          SEESTAR_COPY_SMB_ENDPOINT: 127.0.0.1:14450
+        run: go test -tags smbintegration -race -count=1 -timeout 10m -v ./internal/remote ./internal/app
+      - name: Samba log
+        if: failure()
+        run: docker logs samba
+
+  browser:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Start the Samba fixture with the browse tree
+        run: |
+          docker build --target browse -f internal/remote/testdata/samba/Containerfile -t seestar-copy-samba-browse internal/remote/testdata/samba
+          docker run -d --name samba -p 127.0.0.1:14450:14450 seestar-copy-samba-browse
+          for try in $(seq 50); do
+            if docker exec samba bash -c 'exec 3<>/dev/tcp/127.0.0.1/14450'; then exit 0; fi
+            sleep 0.2
+          done
+          docker logs samba
+          exit 1
+      - name: Start browse
+        run: |
+          go build -o "$RUNNER_TEMP/seestar-copy-cli" ./cmd/seestar-copy-cli
+          echo "CLI_BIN=$RUNNER_TEMP/seestar-copy-cli" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/seestar-copy-cli" browse --endpoint 127.0.0.1:14450 --listen 127.0.0.1:0 \
+            > "$RUNNER_TEMP/browse.url" 2> "$RUNNER_TEMP/browse.log" &
+          for try in $(seq 50); do
+            if [ -s "$RUNNER_TEMP/browse.url" ]; then
+              echo "BROWSE_URL=$(head -n 1 "$RUNNER_TEMP/browse.url")" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 0.2
+          done
+          cat "$RUNNER_TEMP/browse.log"
+          exit 1
+      - name: Build the app
+        run: |
+          go build -o "$RUNNER_TEMP/seestar-copy" ./cmd/seestar-copy
+          echo "APP_BIN=$RUNNER_TEMP/seestar-copy" >> "$GITHUB_ENV"
+      - name: Install Playwright and its browsers
+        working-directory: test/browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+      - name: Browser tests
+        working-directory: test/browser
+        run: npx playwright test
+      - name: Upload screenshots
+        if: success() || failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-screenshots
+          path: test/browser/screenshots
+          if-no-files-found: ignore
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            test/browser/playwright-report
+            test/browser/test-results
+          if-no-files-found: ignore
+      - name: browse and Samba logs
+        if: failure()
+        run: |
+          cat "$RUNNER_TEMP/browse.log" || true
+          docker logs samba
+
+  vendor:
+    runs-on: ubuntu-24.04
+    container: golang:1.27.3
+    env:
+      GOFLAGS: ''
+      GOPROXY: https://proxy.golang.org,direct
+      GOSUMDB: sum.golang.org
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Vendor tree is reproducible
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go mod tidy
+          go mod vendor
+          test -z "$(git status --porcelain -- go.mod go.sum vendor)" || { git status --porcelain -- go.mod go.sum vendor; exit 1; }

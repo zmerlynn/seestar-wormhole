@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>seestar-copy browse</title>
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
+<link rel="stylesheet" href="/style.css">
+<script type="module" src="/app.js"></script>
+</head>
+<body>
+<header>
+<h1>seestar-copy browse</h1>
+<span id="endpoint"></span>
+<span class="note">Read-only view of the telescope's share</span>
+</header>
+<nav id="crumbs" aria-label="Folder"></nav>
+<p id="status" role="status">Loading…</p>
+<div class="scroll">
+<table id="list" hidden>
+<thead><tr><th><span class="hide">Preview</span></th><th>Name</th><th class="num">Size</th><th>Modified</th><th class="st">Status</th><th><span class="hide">Save</span></th></tr></thead>
+<tbody></tbody>
+</table>
+</div>
+<p id="key" class="note" hidden>new: not copied yet · copied: already copied · changed: differs from the copy · left out: not copied by the selection</p>
+<dialog id="viewer" aria-labelledby="vname">
+<div id="vbody">
+<img alt="">
+<pre id="vtext" hidden></pre>
+<p id="vnote" role="status"></p>
+<p><span id="vname"></span> <a id="vsave" class="btn" download>Save</a> <button id="vclose" class="btn" type="button">Close</button></p>
+</div>
+</dialog>
+</body>
+</html>

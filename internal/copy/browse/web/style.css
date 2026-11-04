@@ -1,0 +1,46 @@
+[hidden] { display: none !important; }
+:root { color-scheme: light dark; }
+body { font: 14px/1.4 system-ui, sans-serif; margin: 0 1rem 2rem; color: #1b1b1b; background: #fff; }
+.in-app header { display: none; }
+header { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: baseline; padding: 0.75rem 0; border-bottom: 1px solid #ddd; }
+h1 { font-size: 1.1rem; margin: 0; }
+#endpoint { font-family: ui-monospace, monospace; }
+.note { color: #555; }
+nav { margin: 0.75rem 0; overflow-wrap: anywhere; }
+a { color: #0b57d0; }
+.scroll { max-width: 100%; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #eee; vertical-align: middle; }
+th { font-weight: 600; border-bottom-color: #ccc; }
+.num { text-align: right; white-space: nowrap; }
+td.name { overflow-wrap: anywhere; }
+td.thumb { width: 48px; padding: 2px; }
+td.thumb img { width: 48px; height: 48px; object-fit: cover; display: block; }
+td.thumb img.open { cursor: pointer; }
+table:not(.statuses) .st { display: none; }
+.badge { padding: 0 0.4rem; border-radius: 0.6rem; border: 1px solid; font-size: 0.85em; }
+.badge.copied { color: #146c2e; }
+.badge.changed { color: #8a4b00; }
+.badge.new { color: #0b57d0; }
+.badge.left-out { color: #555; border-style: dashed; }
+.hide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+dialog { max-width: 95vw; max-height: 95vh; padding: 0; }
+#vbody { padding: 0.5rem; }
+dialog img { display: block; max-width: calc(95vw - 2rem); max-height: calc(95vh - 5rem); margin: auto; }
+dialog pre { max-width: calc(95vw - 2rem); max-height: calc(95vh - 6rem); overflow: auto; margin: 0; font-family: ui-monospace, monospace; }
+#vnote:empty { display: none; }
+dialog p { margin: 0.5rem 0 0; display: flex; gap: 1rem; align-items: center; }
+#vname { flex: 1; overflow-wrap: anywhere; }
+.btn { font: inherit; color: inherit; text-decoration: none; padding: 0.2em 0.8em; border: 1px solid #767676; border-radius: 0.3rem; background: #f0f0f0; cursor: pointer; }
+.btn:focus-visible { outline: 2px solid #0b57d0; outline-offset: 2px; }
+@media (prefers-color-scheme: dark) {
+  body { color: #e6e6e6; background: #161616; }
+  .note, .badge.left-out { color: #aaa; }
+  a, .badge.new { color: #8ab4f8; }
+  th, td { border-bottom-color: #333; }
+  .badge.copied { color: #7fd18b; }
+  .badge.changed { color: #f2b45a; }
+  dialog { color: inherit; background: #222; }
+  .btn { background: #333; border-color: #888; }
+  .btn:focus-visible { outline-color: #8ab4f8; }
+}
