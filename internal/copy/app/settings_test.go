@@ -240,7 +240,9 @@ func TestLoadRefusesAndLeavesFile(t *testing.T) {
 			writeFile(t, path, tt.data)
 			_, err := loadSettings(path)
 			want := "Couldn't read settings from " + path + ": " + tt.reason + ". Fix or remove the file, then reopen seestar-copy."
-			if err == nil || err.Error() != want {
+			// encoding/json/v2 says "cannot" or "unable to", chosen at
+			// random once per process.
+			if err == nil || strings.Replace(err.Error(), "json: unable to ", "json: cannot ", 1) != want {
 				t.Fatalf("err = %v\nwant %s", err, want)
 			}
 			if b, _ := os.ReadFile(path); string(b) != tt.data {
