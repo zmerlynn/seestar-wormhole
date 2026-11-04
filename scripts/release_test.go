@@ -610,6 +610,61 @@ func TestWorkflowArchiveAssembly(t *testing.T) {
 	}
 }
 
+// CI's Linux job must keep the checks the copy workflow ran before the merge:
+// a gofmt check that fails on any unformatted file, and the race suite over
+// the whole module.
+func TestWorkflowVerifyChecks(t *testing.T) {
+	if _, err := os.Stat(".github/workflows/ci.yml"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	data, err := os.ReadFile(".github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			Container string
+			Steps     []workflowStep
+		}
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	verify := workflow.Jobs["verify"]
+	if !strings.HasPrefix(verify.Container, "golang:") {
+		t.Fatalf("verify runs in %q, want a golang container", verify.Container)
+	}
+	var format string
+	race := false
+	for _, step := range verify.Steps {
+		if strings.Contains(step.Run, "gofmt -l") {
+			format = step.Run
+		}
+		for line := range strings.SplitSeq(step.Run, "\n") {
+			race = race || strings.TrimSpace(line) == "go test -race -count=2 -timeout 20m ./..."
+		}
+	}
+	if !race {
+		t.Error("verify must run go test -race -count=2 -timeout 20m ./...")
+	}
+	if format == "" {
+		t.Fatal("verify must check formatting with gofmt -l")
+	}
+	// Run the step with a gofmt that reports a file, and one that reports none.
+	for _, out := range []string{"", "bad.go"} {
+		bin := t.TempDir()
+		if err := os.WriteFile(filepath.Join(bin, "gofmt"), []byte("#!/bin/sh\nprintf '%s' '"+out+"'\n"), 0700); err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command("bash", "-e", "-c", format)
+		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+		output, err := cmd.CombinedOutput()
+		if (err != nil) != (out != "") {
+			t.Errorf("gofmt reporting %q: error=%v, output=%s", out, err, output)
+		}
+	}
+}
+
 func TestWorkflowYAML(t *testing.T) {
 	if _, err := os.Stat(".github/workflows"); os.IsNotExist(err) {
 		t.Chdir("..")

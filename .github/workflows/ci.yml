@@ -34,12 +34,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Check formatting
+        run: |
+          unformatted=$(find . \( -type d -name '.*' ! -name . -o -path ./vendor \) -prune -o -type f -name '*.go' -print | xargs gofmt -l)
+          if [ -n "$unformatted" ]; then
+            printf 'gofmt needed:\n%s\n' "$unformatted" >&2
+            exit 1
+          fi
       - name: Build, vet and test vendored source
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           go build ./...
           go vet ./...
-          go test ./...
+          go test -race -count=2 -timeout 20m ./...
           go test scripts/release.go scripts/release_test.go
           ./scripts/test-check.sh
           sh scripts/copy/check-go.sh
