@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/zmerlynn/seestar-copy/internal/engine"
-	"github.com/zmerlynn/seestar-copy/internal/readonly"
-	"github.com/zmerlynn/seestar-copy/internal/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
 // maxWorkers bounds --workers; every worker shares the one SMB session.

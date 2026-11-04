@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
-	"github.com/zmerlynn/seestar-copy/internal/licenses"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/licenses"
 )
 
 // usageError names an option and the rule it broke. It maps to exit code 2.

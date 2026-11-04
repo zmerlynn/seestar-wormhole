@@ -12,7 +12,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
-	"github.com/zmerlynn/seestar-copy/internal/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 )
 
 // icon is a placeholder, rendered from the page's icon.svg.

@@ -11,11 +11,11 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/zmerlynn/seestar-copy/internal/browse"
-	"github.com/zmerlynn/seestar-copy/internal/engine"
-	"github.com/zmerlynn/seestar-copy/internal/readonly"
-	"github.com/zmerlynn/seestar-copy/internal/remote"
-	"github.com/zmerlynn/seestar-copy/internal/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/browse"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 type browseOptions struct {

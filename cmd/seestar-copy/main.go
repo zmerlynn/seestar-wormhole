@@ -16,8 +16,8 @@ import (
 
 	"github.com/spf13/pflag"
 
-	"github.com/zmerlynn/seestar-copy/internal/app"
-	"github.com/zmerlynn/seestar-copy/internal/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
 // Builds set this with -ldflags "-X main.version=...".

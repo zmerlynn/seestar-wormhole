@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/zmerlynn/seestar-copy/internal/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 )
 
 // ageValue is the value of an --older-than flag: a Go duration, such as 36h

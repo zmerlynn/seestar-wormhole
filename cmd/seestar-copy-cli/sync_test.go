@@ -19,8 +19,8 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/zmerlynn/seestar-copy/internal/plan"
-	"github.com/zmerlynn/seestar-copy/internal/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
 // device is the share the fake dial serves. Each dial gets a snapshot of

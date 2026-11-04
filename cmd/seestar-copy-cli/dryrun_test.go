@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zmerlynn/seestar-copy/internal/plan"
-	"github.com/zmerlynn/seestar-copy/internal/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 )
 
 // dryRun runs sync --dry-run, leaving the read-only guard off afterward

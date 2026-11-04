@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zmerlynn/seestar-copy/internal/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
 // binary is the command built once by TestMain, with release-style link-time

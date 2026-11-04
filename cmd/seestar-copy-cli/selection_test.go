@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zmerlynn/seestar-copy/internal/readonly"
-	"github.com/zmerlynn/seestar-copy/internal/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // literalDefaultFlags are the flags the built-in patterns must equal, as

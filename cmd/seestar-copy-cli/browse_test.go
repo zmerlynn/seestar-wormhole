@@ -16,8 +16,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/zmerlynn/seestar-copy/internal/readonly"
-	"github.com/zmerlynn/seestar-copy/internal/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // lineWriter hands each write to the test.

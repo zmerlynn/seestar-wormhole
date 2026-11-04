@@ -2,7 +2,7 @@ package main
 
 import (
 	"github.com/spf13/pflag"
-	"github.com/zmerlynn/seestar-copy/internal/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 )
 
 // selectionFlags are the flags that choose which part of the share a

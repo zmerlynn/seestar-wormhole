@@ -19,9 +19,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/zmerlynn/seestar-copy/internal/readonly"
-	"github.com/zmerlynn/seestar-copy/internal/remote"
-	"github.com/zmerlynn/seestar-copy/internal/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // deleteOld is an mtime well past delete's default age limit, with 100 ns

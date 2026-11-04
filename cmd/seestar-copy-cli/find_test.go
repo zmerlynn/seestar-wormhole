@@ -15,8 +15,8 @@ import (
 	"testing/fstest"
 	"time"
 
-	"github.com/zmerlynn/seestar-copy/internal/readonly"
-	"github.com/zmerlynn/seestar-copy/internal/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // find runs find against the fake share, leaving the read-only guard off

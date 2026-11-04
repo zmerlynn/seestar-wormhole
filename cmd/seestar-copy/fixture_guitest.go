@@ -20,9 +20,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
-	"github.com/zmerlynn/seestar-copy/internal/plan"
-	"github.com/zmerlynn/seestar-copy/internal/remote"
-	"github.com/zmerlynn/seestar-copy/internal/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // fixture drives the real window for the native check in CI, which builds

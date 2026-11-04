@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/zmerlynn/seestar-copy/internal/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 )
 
 // present shows the app without a window, for tests and development: it
