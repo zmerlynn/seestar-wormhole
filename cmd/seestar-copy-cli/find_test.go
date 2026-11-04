@@ -256,7 +256,7 @@ func TestFindMissingDestinationWithState(t *testing.T) {
 }
 
 // find turns the read-only guard on, so the coverage test of
-// internal/readonly protects it as it does a dry run.
+// internal/copy/readonly protects it as it does a dry run.
 func TestFindIsReadOnly(t *testing.T) {
 	statusDevice(t)
 	if code, _, stderr := find(t); code != exitOK {

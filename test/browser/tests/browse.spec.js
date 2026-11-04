@@ -1,5 +1,5 @@
 // The browse page against the Samba fixture's browse tree, made by
-// internal/remote/testdata/samba/make-browse.sh.
+// internal/copy/remote/testdata/samba/make-browse.sh.
 const { test, expect } = require('@playwright/test');
 const { m31, folderURL, fileURL, statusLine, currentCrumb, viewer, link, open, loaded, headerText } = require('./page');
 

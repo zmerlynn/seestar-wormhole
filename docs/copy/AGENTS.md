@@ -1,6 +1,6 @@
 # Notes for coding agents
 
-Read [docs/development/README.md](development/README.md) before changing
+Read [docs/copy/development/README.md](development/README.md) before changing
 anything. It describes the offline check (`./scripts/check.sh`) and
 the [project rules](development/README.md#project-rules).
 
@@ -14,4 +14,4 @@ Things it doesn't say, because a person wouldn't need telling:
   pass opens a session on the telescope's share, then logs off and
   disconnects before sleeping.
 - **Reviewing a change:** follow [.claude/skills/seestar-copy-review](../../.claude/skills/seestar-copy-review/SKILL.md).
-- **Cutting a release:** follow [.claude/skills/seestar-copy-release](../../.claude/skills/seestar-copy-release/SKILL.md).
+- **Cutting a release:** seestar-copy is not released from this repository yet.

@@ -2,8 +2,8 @@
 
 package app
 
-// This test needs the Samba fixture in internal/remote/testdata/samba,
-// reachable at SEESTAR_COPY_SMB_ENDPOINT (host:port). scripts/test-smb.sh
+// This test needs the Samba fixture in internal/copy/remote/testdata/samba,
+// reachable at SEESTAR_COPY_SMB_ENDPOINT (host:port). scripts/copy/test-smb.sh
 // and CI start it.
 
 import (

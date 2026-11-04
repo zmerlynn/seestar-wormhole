@@ -45,7 +45,7 @@ type DeleteOptions struct {
 	Dial func(ctx context.Context, endpoint string) (remote.Session, error)
 	// OpenRemover opens the session a real run deletes through. The
 	// engine never dials one itself: only a caller that passes this can
-	// delete, and a test in internal/remote limits who may.
+	// delete, and a test in internal/copy/remote limits who may.
 	OpenRemover func(ctx context.Context, endpoint string) (remote.Remover, error)
 	// Only, if not nil, limits the run to the files it holds, such as
 	// those a preview showed: any other file is left alone, and is neither

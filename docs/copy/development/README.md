@@ -19,15 +19,15 @@ is stopped.
 | --- | --- |
 | `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the read-only guard before a dry run, `find`'s listing, and `browse`'s listener and `--open`. |
 | `cmd/seestar-copy` | The app's command: `--settings`, logging, and how the page is shown. The `gui` build shows it in a [Wails](https://wails.io) window, with native folder and save dialogs, and quits the app when the window closes. The build without the tag prints the page's URL to open in a browser and serves until Ctrl+C. |
-| `internal/app` | The app: `app.json` (read at startup, written atomically on Save), and the loopback server for its page, with a per-run token and Host, Origin and Fetch Metadata checks, Settings, Test, and the Browse tab, which is `internal/browse` in its in-app mode. |
-| `internal/engine` | The work the commands share: the `--exclude` and `--include` selection and its walk of the share, the `sync` pass loop (dial, list, plan, copy, log off, sleep) and its dry run, and `delete`'s run. It never turns the read-only guard on. |
-| `internal/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
-| `internal/state` | The per-destination state file: JSON Lines, last record per path wins, torn-tail tolerance, append with fsync, and the exclusive lock. |
-| `internal/plan` | The pass decisions: wait, done, copy, replace, adopt or fail for each listed file, and `delete`'s decisions on files and emptied folders. Pure functions with no I/O; the current time is an input. |
-| `internal/copier` | Carries out a pass's decisions over the one session with a worker pool: temporary file beside the final one, hash, size check, fsync, mtime, rename, then the state record. |
-| `internal/browse` | `browse`'s web server: the HTTP handler with its Host, Fetch Metadata and path checks, the embedded page, and the pool that shares one SMB session between requests, closing it when idle, failed or stuck. |
-| `internal/readonly` | The dry-run guard: once enabled, every function that changes the local filesystem or the device panics. A test checks that each such function calls it first. |
-| `internal/licenses` | The `licenses` command's output: the project's `NOTICE` and `LICENSE`, then the license texts of each module linked into the running build. |
+| `internal/copy/app` | The app: `app.json` (read at startup, written atomically on Save), and the loopback server for its page, with a per-run token and Host, Origin and Fetch Metadata checks, Settings, Test, and the Browse tab, which is `internal/copy/browse` in its in-app mode. |
+| `internal/copy/engine` | The work the commands share: the `--exclude` and `--include` selection and its walk of the share, the `sync` pass loop (dial, list, plan, copy, log off, sleep) and its dry run, and `delete`'s run. It never turns the read-only guard on. |
+| `internal/copy/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
+| `internal/copy/state` | The per-destination state file: JSON Lines, last record per path wins, torn-tail tolerance, append with fsync, and the exclusive lock. |
+| `internal/copy/plan` | The pass decisions: wait, done, copy, replace, adopt or fail for each listed file, and `delete`'s decisions on files and emptied folders. Pure functions with no I/O; the current time is an input. |
+| `internal/copy/copier` | Carries out a pass's decisions over the one session with a worker pool: temporary file beside the final one, hash, size check, fsync, mtime, rename, then the state record. |
+| `internal/copy/browse` | `browse`'s web server: the HTTP handler with its Host, Fetch Metadata and path checks, the embedded page, and the pool that shares one SMB session between requests, closing it when idle, failed or stuck. |
+| `internal/copy/readonly` | The dry-run guard: once enabled, every function that changes the local filesystem or the device panics. A test checks that each such function calls it first. |
+| `internal/licenses` | Shared with seestar-wormhole: the `licenses` command's output, the project's `NOTICE`, then the license texts of each module linked into the running build. |
 | `scripts/generate-licenses.go` | Writes the license catalog that `internal/licenses` embeds. |
 
 The command keeps one rule from the start: a usage error is reported before
@@ -45,27 +45,16 @@ revision comes from Go's VCS build stamp, or is `development`.
 
 ### License catalog
 
-`internal/licenses/embed/` is generated; don't edit it by hand. After changing
-dependencies, `NOTICE` or `LICENSE`, run from the repository root:
+The license catalog is seestar-wormhole's: `internal/licenses` and
+`scripts/generate-licenses.go`, described in the
+[development guide](../../development/README.md). The generator checks
+that every module `seestar-wormhole` and `seestar-copy-cli` link has a
+license in the catalog and a row in `NOTICE`. Run from the repository root:
 
 ```sh
 go run ./scripts/generate-licenses.go
 go run ./scripts/generate-licenses.go --check
 ```
-
-The generator asks `go list -deps` which modules each release target links,
-for both commands and for the app with and without its window. It copies their
-license and notice files verbatim from `vendor/`, adds the supplemental notices
-under `internal/licenses/notices/<module>/` for source-file terms upstream
-keeps in no separate file, and refuses to run if a module has no license file
-or no SPDX entry in the generator. `NOTICE` must contain the module table the
-generator prints when it is out of date. At run time, `licenses` uses the
-executable's build information to print only the modules linked into that
-build. `NOTICE`'s section on the GTK and WebKitGTK libraries the Linux
-window links is embedded apart and printed only by that build. The app has no
-`licenses` command, so the generator writes `NOTICE`'s last section itself:
-the full texts of the modules the app links and the CLI does not. That
-section is not embedded, and `--check` fails when it is stale.
 
 ## Build and check
 
@@ -73,26 +62,22 @@ The tool is written in Go 1.27 or newer and builds with `CGO_ENABLED=0` for
 Windows, macOS and Linux on amd64 and arm64. Dependencies are pinned in
 `go.mod`/`go.sum` and checked into `vendor/`; builds use `-mod=vendor`.
 
-`./scripts/check.sh` runs the checks in the `docker.io/library/golang:1.27`
-image with Podman, so no Go is needed on the host:
+`./scripts/check.sh` runs the repository's checks, seestar-copy's included,
+in the `docker.io/library/golang:1.27` image with Podman, so no Go is needed
+on the host. See the [development guide](../../development/README.md) for its
+`prepare` step and caches.
 
-1. Pull the image once: `podman pull docker.io/library/golang:1.27`.
-2. Download and verify the pinned modules into the module cache, the only
-   step that uses the network: `./scripts/check.sh prepare`.
-3. Run the checks with no network: `./scripts/check.sh`.
+seestar-copy's own steps are in `scripts/copy/check-go.sh`, which
+`check.sh` and CI run: cross-builds and vet of the copy commands and
+packages for every target with `CGO_ENABLED=0`, the Windows app with its
+window, the license catalog check, and vet of the Samba tests.
 
-The checks are in `scripts/check-go.sh`, which CI runs too: formatting,
-build, cross-builds and vet for every release target, the license catalog
-check, the race tests, and the release tooling tests. The build and module
-caches live under `${XDG_CACHE_HOME:-$HOME/.cache}/seestar-copy/`; set
-`SEESTAR_COPY_BUILD_CACHE` or `SEESTAR_COPY_MODULE_CACHE` to move them.
-
-`./scripts/test-smb.sh` runs the `internal/remote` tests against a Samba
-fixture, a guest-only, read-only share like the telescope's, built from
-`internal/remote/testdata/samba`. Building the fixture image downloads
-Samba; the tests run on a private Podman network. CI runs them too. They
-need the `smbintegration` build tag and `SEESTAR_COPY_SMB_ENDPOINT`
-(`host:port`) naming the fixture.
+`./scripts/copy/test-smb.sh` runs the `internal/copy/remote` and
+`internal/copy/app` Samba tests against a fixture, a guest-only, read-only
+share like the telescope's, built from `internal/copy/remote/testdata/samba`.
+Building the fixture image downloads Samba; the tests run on a private
+Podman network. CI runs them too. They need the `smbintegration` build tag
+and `SEESTAR_COPY_SMB_ENDPOINT` (`host:port`) naming the fixture.
 
 `test/browser` holds browser tests of the `browse` page, written with
 [Playwright](https://playwright.dev/) and run in Chromium and WebKit. CI
@@ -110,7 +95,7 @@ fixture's `browse` target, a tree of real files from `make-browse.sh`
 instead of `tree.txt`'s. To run them locally, with Node.js and Podman:
 
 ```sh
-podman build --target browse -t seestar-copy-samba-browse internal/remote/testdata/samba
+podman build --target browse -t seestar-copy-samba-browse internal/copy/remote/testdata/samba
 podman run -d --rm --name seestar-copy-samba-browse -p 127.0.0.1:14450:14450 seestar-copy-samba-browse
 go build -mod=vendor ./cmd/seestar-copy-cli
 go build -mod=vendor ./cmd/seestar-copy
@@ -129,10 +114,10 @@ Use the URL browse printed for `BROWSE_URL`. Screenshots go to
 `test/browser/screenshots`. Stop the fixture with
 `podman stop seestar-copy-samba-browse`.
 
-With Go 1.27 installed, the same checks run directly:
+With Go 1.27 installed, seestar-copy's steps run directly:
 
 ```sh
-GOFLAGS=-mod=vendor sh scripts/check-go.sh
+GOFLAGS=-mod=vendor sh scripts/copy/check-go.sh
 ```
 
 To build the command:
@@ -141,20 +126,10 @@ To build the command:
 go build -mod=vendor ./cmd/seestar-copy-cli
 ```
 
-`main` changes only through a pull request. The optional pre-push hook
-rejects pushes to `main`. It is enabled once per clone with:
-
-```sh
-git config core.hooksPath .githooks
-```
-
 ## Releasing
 
-A `v*` tag builds the release: Linux and Windows archives, a signed and
-notarized universal Mac DMG, and `SHA256SUMS`, in a draft GitHub Release.
-[Cutting a release](releasing.md) describes the build mechanics, the Mac
-signing secrets, rehearsing with a manual run, and checking that the
-archives are reproducible.
+seestar-copy is not released from this repository yet; seestar-wormhole's
+release does not include its binaries.
 
 ## Project rules
 

@@ -1334,7 +1334,7 @@ gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-copy
 Linux and Windows CLI executables are byte-for-byte reproducible with
 identical source, version, revision and Go toolchain: rebuild and compare
 against `seestar-copy-cli` (with `.exe` on Windows) unpacked from the archive.
-See [cutting a release](development/releasing.md). The Mac CLI is combined
+The Mac CLI is combined
 with lipo and signed, so it is not byte-reproducible. The desktop app has no
 byte-reproducibility promise. The app executables and the DMG are verified by
 `SHA256SUMS` and attestation only. See [versioning](versioning.md) for what a
