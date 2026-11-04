@@ -117,6 +117,24 @@ func TestListErrors(t *testing.T) {
 	}
 }
 
+// An error message lists as encoding/json wrote it: HTML characters,
+// U+2028 and U+2029 escaped, and a byte that is not UTF-8 as U+FFFD.
+func TestListErrorStrings(t *testing.T) {
+	tests := []struct{ message, want string }{
+		{"<a>&b", `{"error":"state","message":"\u003ca\u003e\u0026b"}`},
+		{"a\u2028b\u2029c", `{"error":"state","message":"a\u2028b\u2029c"}`},
+		{"bad\xff", `{"error":"state","message":"bad` + "\ufffd" + `"}`},
+		{"\xed\xa0\x80", `{"error":"state","message":"` + "\ufffd\ufffd\ufffd" + `"}`},
+	}
+	for _, tt := range tests {
+		e := newEnv(t, envOptions{dest: true, recordsErr: errors.New(tt.message)})
+		w := e.serve("GET", "/api/list")
+		if w.Code != http.StatusInternalServerError || w.Header().Get("Content-Type") != "application/json" || w.Body.String() != tt.want {
+			t.Errorf("message %q: /api/list = %d %q %q; want 500 %q", tt.message, w.Code, w.Header().Get("Content-Type"), w.Body, tt.want)
+		}
+	}
+}
+
 // TestListLeftOut checks that, with statuses, an entry the selection
 // leaves out says so whatever its record, and that every other entry keeps
 // its status.
