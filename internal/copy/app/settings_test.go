@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -243,6 +244,42 @@ func TestSaveBytes(t *testing.T) {
 		"}\n"
 	if b, _ := os.ReadFile(path); string(b) != want {
 		t.Errorf("saved\n%q\nwant\n%q", b, want)
+	}
+}
+
+// Keys are saved sorted, whatever order the file and the map held them in.
+func TestSaveSortsKeys(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "app.json")
+	in, keys := `{"version":1`, ""
+	for i := 19; i >= 0; i-- {
+		in += fmt.Sprintf(`,"k%02d":%d`, i, i)
+	}
+	for i := range 20 {
+		keys += fmt.Sprintf("  \"k%02d\": %d,\n", i, i)
+	}
+	writeFile(t, path, in+"}")
+	f, err := loadSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.save(Settings{Address: "192.0.2.10:445", Folder: "/data", IntervalMinutes: 5, OlderThanDays: 7}); err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n" +
+		"  \"address\": \"192.0.2.10:445\",\n" +
+		"  \"excludes\": null,\n" +
+		"  \"folder\": \"/data\",\n" +
+		"  \"includes\": null,\n" +
+		"  \"interval_minutes\": 5,\n" +
+		keys +
+		"  \"older_than_days\": 7,\n" +
+		"  \"skip_built_in\": false,\n" +
+		"  \"start_copying\": false,\n" +
+		"  \"trust_state\": false,\n" +
+		"  \"version\": 1\n" +
+		"}\n"
+	if b, _ := os.ReadFile(path); string(b) != want {
+		t.Errorf("saved\n%s\nwant\n%s", b, want)
 	}
 }
 

@@ -685,6 +685,56 @@ func TestRunServes(t *testing.T) {
 	}
 }
 
+// The page reads these bytes; they must stay as they were: zero and false
+// fields left out, map members sorted.
+func TestRespondShapes(t *testing.T) {
+	fields := map[string]string{}
+	want := `{"fields":{`
+	for i := range 20 {
+		k := fmt.Sprintf("f%02d", i)
+		fields[k] = "x"
+		if i > 0 {
+			want += ","
+		}
+		want += `"` + k + `":"x"`
+	}
+	want += "}}"
+	for _, tc := range []struct {
+		name string
+		v    any
+		want string
+	}{
+		{"zero and false", freeView{State: "start"}, `{"state":"start"}`},
+		{"sorted map", fieldErrors{fields}, want},
+	} {
+		w := httptest.NewRecorder()
+		respond(w, 200, tc.v)
+		if got := w.Body.String(); got != tc.want {
+			t.Errorf("%s: respond wrote\n%s\nwant\n%s", tc.name, got, tc.want)
+		}
+	}
+}
+
+// The API reads a request strictly: a repeated name, a byte that is not
+// UTF-8 or a name in the wrong case is not the page's, and is refused or
+// ignored, where encoding/json took the last value, the bytes and any case.
+func TestAPIReadsStrictly(t *testing.T) {
+	e := newAppEnv(t, "")
+	for _, tc := range []struct {
+		body string
+		code int
+	}{
+		{`{"action":"start"}`, http.StatusConflict}, // no settings yet
+		{`{"action":"jump","action":"start"}`, http.StatusBadRequest},
+		{`{"action":"start","folder":"` + "\xff" + `"}`, http.StatusBadRequest},
+		{`{"Action":"start"}`, http.StatusBadRequest}, // no action
+	} {
+		if w := e.post("/app/api/copy", tc.body); w.Code != tc.code {
+			t.Errorf("%q = %d, want %d", tc.body, w.Code, tc.code)
+		}
+	}
+}
+
 func TestRespondStrings(t *testing.T) {
 	w := httptest.NewRecorder()
 	respond(w, 200, struct {

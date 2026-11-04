@@ -228,6 +228,13 @@ func TestOpenPermissive(t *testing.T) {
 	}
 }
 
+// Lines no writer of this format makes: a record line is read strictly, so
+// these are a torn tail at the end and refused before it.
+const (
+	dupLine     = `{"path":"a","size":1,"size":2,"mtime":"2026-10-29T03:31:19Z"}` + "\n"
+	badUTF8Line = `{"path":"a` + "\xff" + `","size":1,"mtime":"2026-10-29T03:31:19Z"}` + "\n"
+)
+
 func TestOpenDropsTornFinalLine(t *testing.T) {
 	for _, tc := range []struct{ name, torn, reason string }{
 		{"no newline", `{"path":"MyWorks/M 31/Light_2.fit","si`, "no newline"},
@@ -235,6 +242,8 @@ func TestOpenDropsTornFinalLine(t *testing.T) {
 		{"garbled with newline", "{\"path\":\"x\x00\n", "invalid character"},
 		{"invalid record", `{"path":"../x","size":1,"mtime":"2026-10-29T03:31:19Z"}` + "\n", "invalid record"},
 		{"blank", "\n", "jsontext: unexpected EOF"},
+		{"duplicate name", dupLine, "duplicate object member name"},
+		{"not UTF-8", badUTF8Line, "invalid UTF-8"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stateDir, dest := dirs(t)
@@ -263,6 +272,8 @@ func TestOpenRefusesBadLine(t *testing.T) {
 		{"no mtime", `{"path":"a","size":1}` + "\n" + lineDark, "line 2: invalid record: mtime is missing"},
 		{"bad line then torn tail", "{nope\n" + `{"path":"a","si`, "line 2: jsontext: invalid character"},
 		{"overlong line", strings.Repeat("x", maxLine) + "\n", "line 2 is longer than 1048576 bytes"},
+		{"duplicate name middle", dupLine + lineDark, "line 2: jsontext: duplicate object member name"},
+		{"not UTF-8 middle", badUTF8Line + lineDark, "line 2: jsontext: invalid UTF-8"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stateDir, dest := dirs(t)
