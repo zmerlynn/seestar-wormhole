@@ -214,6 +214,21 @@ func TestFindWithoutDestReadsNoState(t *testing.T) {
 	}
 }
 
+// jsonl is written as v0.4.0 wrote it with encoding/json: <, > and & as they
+// are, U+2028 and U+2029 escaped, and a byte that is not UTF-8 as U+FFFD.
+func TestFindJSONLStrings(t *testing.T) {
+	dev := newDevice()
+	dev.set("A<B>&C\u2028\u2029.fit", "x", findDir)
+	dev.set("bad\xff.fit", "x", findDir)
+	dev.use(t)
+	code, stdout, stderr := find(t, "--format", "jsonl")
+	want := `{"path":"A<B>&C\u2028\u2029.fit","type":"file","size":1,"mtime":"2026-10-31T01:00:00Z"}` + "\n" +
+		`{"path":"bad` + "\ufffd" + `.fit","type":"file","size":1,"mtime":"2026-10-31T01:00:00Z"}` + "\n"
+	if code != exitOK || stdout != want {
+		t.Errorf("exit %d, stdout\n%q\nwant\n%q\n%s", code, stdout, want, stderr)
+	}
+}
+
 // A destination and state folder that do not exist: every file is new, as
 // in a dry run, and neither is created.
 func TestFindMissingDestination(t *testing.T) {

@@ -287,6 +287,22 @@ func TestOpenRefusesBadLine(t *testing.T) {
 	}
 }
 
+// A line is written as encoding/json wrote it for seestar-copy-cli 0.4.0:
+// <, > and & as they are, U+2028 and U+2029 escaped, and a byte that is not
+// UTF-8 as U+FFFD.
+func TestEncodeLineStrings(t *testing.T) {
+	rec := Record{Path: "A<B>&\u2028\u2029\xff.fit", Size: 1, MTime: mustTime(t, "2026-10-29T03:31:19Z"),
+		SHA256: shaA, At: mustTime(t, "2026-11-02T01:02:03Z"), How: Copied}
+	got, err := encodeLine(rec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `{"path":"A<B>&\u2028\u2029` + "\ufffd" + `.fit","size":1,"mtime":"2026-10-29T03:31:19Z","sha256":"` + shaA + `","at":"2026-11-02T01:02:03Z","how":"copied"}` + "\n"
+	if string(got) != want {
+		t.Errorf("line\n%q\nwant\n%q", got, want)
+	}
+}
+
 // seestar-copy-cli 0.4.0 wrote paths with encoding/json: <, > and & as they
 // are, U+2028 and U+2029 escaped, and a byte that is not UTF-8 as an escaped
 // U+FFFD. Its state files load.

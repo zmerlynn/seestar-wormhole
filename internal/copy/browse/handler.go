@@ -250,9 +250,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, shown, dir string
 		}
 		out.Entries = append(out.Entries, it)
 	}
-	// As before the move to encoding/json/v2: a folder with no entries lists
-	// them as null, and HTML characters are escaped.
-	b, err := json.Marshal(out, json.FormatNilSliceAsNull(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
+	b, err := json.Marshal(out, listOptions)
 	if err != nil {
 		h.listError(w, http.StatusInternalServerError, "encode", err.Error())
 		return
@@ -315,12 +313,18 @@ func (h *Handler) deviceError(w http.ResponseWriter, r *http.Request, p string, 
 	}
 }
 
+// listOptions write /api/list's JSON as it was before the move to
+// encoding/json/v2: nil slices are null, HTML characters, U+2028 and U+2029
+// are escaped, and a byte that is not UTF-8 is written as U+FFFD.
+var listOptions = json.JoinOptions(json.FormatNilSliceAsNull(true),
+	jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true), jsontext.AllowInvalidUTF8(true))
+
 // listError answers an /api/list request with a JSON error.
 func (h *Handler) listError(w http.ResponseWriter, status int, code, message string) {
 	b, _ := json.Marshal(struct {
 		Error   string `json:"error"`
 		Message string `json:"message"`
-	}{code, message})
+	}{code, message}, listOptions)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	w.Write(b)

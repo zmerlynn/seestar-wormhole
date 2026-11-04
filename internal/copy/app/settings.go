@@ -62,14 +62,16 @@ type settingsFile struct {
 // settingsRead and settingsWrite read and write app.json as encoding/json
 // did, so that a file an earlier seestar-copy wrote, with the keys it kept,
 // still loads and saves the same: duplicate names and invalid UTF-8 are
-// allowed, a null field keeps its default, and a kept value's strings keep
-// their escapes. The page's requests are read strictly, by server.go.
+// allowed, a null field keeps its default, a kept value's strings keep
+// their escapes, HTML characters, U+2028 and U+2029 are escaped, and a nil
+// list is null. The page's requests are read strictly, by server.go.
 var (
 	settingsRead = json.JoinOptions(jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true),
 		json.WithUnmarshalers(json.JoinUnmarshalers(json.UnmarshalFromFunc(keepOnNull[*int]),
 			json.UnmarshalFromFunc(keepOnNull[*string]), json.UnmarshalFromFunc(keepOnNull[*bool]))))
 	settingsWrite = json.JoinOptions(jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true),
-		jsontext.PreserveRawStrings(true), json.Deterministic(true), jsontext.WithIndent("  "))
+		jsontext.PreserveRawStrings(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true),
+		json.Deterministic(true), json.FormatNilSliceAsNull(true), jsontext.WithIndent("  "))
 )
 
 // keepOnNull leaves a field as it was when its value is null.

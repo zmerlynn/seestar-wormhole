@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
 	"io"
@@ -202,7 +203,9 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 			continue
 		}
 		if o.format == "jsonl" {
-			if err = json.MarshalWrite(w, l); err == nil {
+			// As encoding/json wrote it: U+2028 and U+2029 escaped, a byte
+			// that is not UTF-8 as U+FFFD, and HTML characters as they are.
+			if err = json.MarshalWrite(w, l, jsontext.EscapeForJS(true), jsontext.AllowInvalidUTF8(true)); err == nil {
 				err = w.WriteByte('\n')
 			}
 		} else {

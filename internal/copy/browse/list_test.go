@@ -3,6 +3,7 @@ package browse
 import (
 	"encoding/json"
 	"errors"
+	"io/fs"
 	"net/http"
 	"path"
 	"strings"
@@ -56,6 +57,19 @@ func TestList(t *testing.T) {
 		if w.Code != http.StatusOK || w.Header().Get("Content-Type") != "application/json" || w.Body.String() != tt.want {
 			t.Errorf("dest %v, /api/list%s = %d %q\n%s\nwant\n%s", tt.dest, tt.query, w.Code, w.Header().Get("Content-Type"), w.Body, tt.want)
 		}
+	}
+}
+
+// A name with U+2028 or a byte that is not UTF-8 lists as encoding/json
+// wrote it: the separator escaped, the byte as U+FFFD.
+func TestListStrings(t *testing.T) {
+	dir := &fstest.MapFile{Mode: fs.ModeDir | 0o755, ModTime: t0}
+	e := newEnv(t, envOptions{extra: fstest.MapFS{"MyWorks/x": dir, "MyWorks/x/a\u2028b\xff.txt": {Data: []byte("x"), ModTime: t0}}})
+	w := e.serve("GET", "/api/list?path=MyWorks%2Fx")
+	want := `{"path":"MyWorks/x","endpoint":"127.0.0.1:4445","statuses":false,"entries":[` +
+		`{"path":"MyWorks/x/a\u2028b` + "\ufffd" + `.txt","type":"file","size":1,"mtime":"2026-11-01T03:10:00.1Z","view":"text"}]}`
+	if w.Code != http.StatusOK || w.Body.String() != want {
+		t.Errorf("/api/list = %d\n%s\nwant\n%s", w.Code, w.Body, want)
 	}
 }
 

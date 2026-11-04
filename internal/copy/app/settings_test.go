@@ -211,6 +211,41 @@ func TestSaveKeepsWhatEarlierVersionsKept(t *testing.T) {
 	}
 }
 
+// A save writes what v0.4.0's encoding/json wrote: sorted keys, two-space
+// indent, <, >, &, U+2028 and U+2029 escaped in known and kept values alike,
+// a byte that is not UTF-8 as U+FFFD, and a nil list as null.
+func TestSaveBytes(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "app.json")
+	writeFile(t, path, `{"version":1,"future":"x<y`+"\u2028"+`"}`)
+	f, err := loadSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := Settings{Address: "192.0.2.10:445", Folder: "/data/A<B>&C\u2028\u2029", IntervalMinutes: 5,
+		Includes: []string{"a\xffb"}, SkipBuiltIn: true, OlderThanDays: 7}
+	if err := f.save(s); err != nil {
+		t.Fatal(err)
+	}
+	want := "{\n" +
+		"  \"address\": \"192.0.2.10:445\",\n" +
+		"  \"excludes\": null,\n" +
+		"  \"folder\": \"/data/A\\u003cB\\u003e\\u0026C\\u2028\\u2029\",\n" +
+		"  \"future\": \"x\\u003cy\\u2028\",\n" +
+		"  \"includes\": [\n" +
+		"    \"a\ufffdb\"\n" +
+		"  ],\n" +
+		"  \"interval_minutes\": 5,\n" +
+		"  \"older_than_days\": 7,\n" +
+		"  \"skip_built_in\": true,\n" +
+		"  \"start_copying\": false,\n" +
+		"  \"trust_state\": false,\n" +
+		"  \"version\": 1\n" +
+		"}\n"
+	if b, _ := os.ReadFile(path); string(b) != want {
+		t.Errorf("saved\n%q\nwant\n%q", b, want)
+	}
+}
+
 func TestSaveCreatesFolder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new", "seestar-copy", "app.json")
 	f, err := loadSettings(path)

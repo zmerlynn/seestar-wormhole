@@ -684,3 +684,16 @@ func TestRunServes(t *testing.T) {
 		t.Error("the app still serves after Run returned")
 	}
 }
+
+func TestRespondStrings(t *testing.T) {
+	w := httptest.NewRecorder()
+	respond(w, 200, struct {
+		Slice []string          `json:"slice"`
+		Map   map[string]string `json:"map"`
+		Text  string            `json:"text"`
+	}{Text: "<>&\u2028\u2029\xff"})
+	want := `{"slice":null,"map":null,"text":"\u003c\u003e\u0026\u2028\u2029` + "\ufffd" + `"}`
+	if got := w.Body.String(); got != want {
+		t.Errorf("respond wrote\n%s\nwant\n%s", got, want)
+	}
+}

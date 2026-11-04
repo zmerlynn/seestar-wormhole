@@ -2,6 +2,7 @@ package state
 
 import (
 	"bufio"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -507,10 +508,14 @@ func (s *State) Close() error {
 	return err
 }
 
-// encodeLine encodes v as one JSON line. HTML characters are left as they
-// are, so paths stay readable.
+// lineOptions write a line as encoding/json did: HTML characters are left as
+// they are, so paths stay readable, U+2028 and U+2029 are escaped, and a byte
+// that is not UTF-8 is written as U+FFFD.
+var lineOptions = json.JoinOptions(jsontext.EscapeForJS(true), jsontext.AllowInvalidUTF8(true))
+
+// encodeLine encodes v as one JSON line.
 func encodeLine(v any) ([]byte, error) {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, lineOptions)
 	if err != nil {
 		return nil, err
 	}
