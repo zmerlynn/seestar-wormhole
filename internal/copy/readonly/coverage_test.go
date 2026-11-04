@@ -36,19 +36,20 @@ var allowed = map[string]string{
 }
 
 // TestWritesAreGuarded checks, without type information, the rule this
-// package rests on: every function under internal/ and cmd/ whose body
+// package rests on: every function in seestar-copy's code (internal/copy/,
+// cmd/seestar-copy/ and cmd/seestar-copy-cli/) whose body
 // (including function literals in it) refers to a name in writeNames, or
 // calls a package-level variable initialized with one (a test seam such as
 // syncFile = (*os.File).Sync), starts with a call to readonly.Check. It also
 // checks that only tests call Reset, and only commands call Enable: a
-// package such as internal/engine, which several programs share, never
+// package such as internal/copy/engine, which several programs share, never
 // turns the guard on for them.
 func TestWritesAreGuarded(t *testing.T) {
 	var guarded []string
-	for _, top := range []string{"internal", "cmd"} {
+	for _, top := range []string{"internal/copy", "cmd/seestar-copy", "cmd/seestar-copy-cli"} {
 		dirs := map[string][]*ast.File{}
 		fset := token.NewFileSet()
-		err := filepath.WalkDir(filepath.Join("..", "..", top), func(p string, de fs.DirEntry, err error) error {
+		err := filepath.WalkDir(filepath.Join("..", "..", "..", filepath.FromSlash(top)), func(p string, de fs.DirEntry, err error) error {
 			if err != nil {
 				return err
 			}
@@ -72,7 +73,7 @@ func TestWritesAreGuarded(t *testing.T) {
 			t.Fatal(err)
 		}
 		for dir, files := range dirs {
-			rel := filepath.ToSlash(strings.TrimPrefix(dir, filepath.Join("..", "..")+string(filepath.Separator)))
+			rel := filepath.ToSlash(strings.TrimPrefix(dir, filepath.Join("..", "..", "..")+string(filepath.Separator)))
 			seams := seamVars(files)
 			check := func(name string, body *ast.BlockStmt, pos token.Pos) {
 				if body == nil || !writes(body, seams) {
@@ -106,7 +107,7 @@ func TestWritesAreGuarded(t *testing.T) {
 						}
 					}
 				}
-				if rel != "internal/readonly" {
+				if rel != "internal/copy/readonly" {
 					ast.Inspect(f, func(n ast.Node) bool {
 						sel, ok := n.(*ast.SelectorExpr)
 						if !ok || !isIdent(sel.X, "readonly") {
@@ -131,10 +132,10 @@ func TestWritesAreGuarded(t *testing.T) {
 	}
 	// The scan must see the writes it is meant to catch.
 	for _, want := range []string{
-		"internal/state.Open", "internal/state.create", "internal/state.lockFile", "internal/state.Append",
-		"internal/state.syncDir", "internal/copier.removeTemps", "internal/copier.download", "internal/copier.syncFolder",
-		"internal/remote.RemoveFile", "internal/remote.RemoveDir",
-		"internal/engine.deleteFile", "internal/engine.removeFolder", "internal/app.writeFileAtomic", "internal/browse.Save",
+		"internal/copy/state.Open", "internal/copy/state.create", "internal/copy/state.lockFile", "internal/copy/state.Append",
+		"internal/copy/state.syncDir", "internal/copy/copier.removeTemps", "internal/copy/copier.download", "internal/copy/copier.syncFolder",
+		"internal/copy/remote.RemoveFile", "internal/copy/remote.RemoveDir",
+		"internal/copy/engine.deleteFile", "internal/copy/engine.removeFolder", "internal/copy/app.writeFileAtomic", "internal/copy/browse.Save",
 	} {
 		if !slices.Contains(guarded, want) {
 			t.Errorf("the scan did not find the writes in %s; found %q", want, guarded)
