@@ -1,6 +1,8 @@
 # Version updates for the SHA-pinned workflow actions and the Containerfile's
 # digest-pinned build image, whose CA bundle ships in the image. Go modules get
-# security updates alone.
+# security updates alone. The Samba test fixture's image is pinned by digest to
+# match the telescope's Samba version, and nothing built from it ships, so it is
+# updated by hand.
 version: 2
 updates:
   - package-ecosystem: github-actions

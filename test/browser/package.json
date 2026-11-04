@@ -1,0 +1,12 @@
+{
+  "name": "seestar-copy-browser-tests",
+  "private": true,
+  "description": "Browser tests of the page seestar-copy-cli browse serves",
+  "license": "Unlicense",
+  "scripts": {
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.64.1"
+  }
+}

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <title>Deep Blue Throat</title>
+  <defs>
+    <radialGradient id="tile" cx="38%" cy="24%" r="90%"><stop stop-color="#123D78"/><stop offset="1" stop-color="#071225"/></radialGradient>
+    <linearGradient id="rim" x1="15%" y1="5%" x2="85%" y2="100%"><stop stop-color="#BFEFFF"/><stop offset=".38" stop-color="#4DADFF"/><stop offset="1" stop-color="#123D78"/></linearGradient>
+    <linearGradient id="flow" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#4DADFF"/><stop offset="1" stop-color="#BFEFFF"/></linearGradient>
+    <radialGradient id="halo"><stop stop-color="#4DADFF" stop-opacity=".68"/><stop offset=".55" stop-color="#4DADFF" stop-opacity=".18"/><stop offset="1" stop-color="#4DADFF" stop-opacity="0"/></radialGradient>
+    <radialGradient id="well" cx="65%" cy="30%"><stop stop-color="#071225"/><stop offset=".6" stop-color="#071225"/><stop offset="1" stop-color="#123D78"/></radialGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="218" fill="url(#tile)" stroke="#60718C" stroke-width="8"/>
+  <circle cx="510" cy="520" r="412" fill="url(#halo)"/>
+  <ellipse cx="490" cy="535" rx="330" ry="345" fill="url(#well)" stroke="url(#rim)" stroke-width="62"/>
+  <ellipse cx="542" cy="485" rx="244" ry="254" fill="none" stroke="#489BE4" stroke-width="38"/>
+  <ellipse cx="587" cy="444" rx="158" ry="165" fill="none" stroke="#85DCFF" stroke-width="28"/>
+  <ellipse cx="616" cy="420" rx="83" ry="88" fill="#071225"/>
+<path d="M616 355 L634.85 401.15 L681 420 L634.85 438.85 L616 485 L597.15 438.85 L551 420 L597.15 401.15 Z" fill="#FFF1CD"/>
+</svg>

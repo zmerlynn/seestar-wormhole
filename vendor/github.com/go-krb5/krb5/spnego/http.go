@@ -1,0 +1,634 @@
+package spnego
+
+import (
+	"bytes"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/http/cookiejar"
+	"net/url"
+	"strings"
+
+	"github.com/go-krb5/x/encoding/asn1"
+	"github.com/go-krb5/x/identity"
+
+	"github.com/go-krb5/krb5/client"
+	"github.com/go-krb5/krb5/credentials"
+	"github.com/go-krb5/krb5/gssapi"
+	"github.com/go-krb5/krb5/iana/nametype"
+	"github.com/go-krb5/krb5/keytab"
+	"github.com/go-krb5/krb5/krberror"
+	"github.com/go-krb5/krb5/service"
+	"github.com/go-krb5/krb5/types"
+)
+
+var lookupCNAME = net.LookupCNAME
+
+// DefaultMaxRedirects is the number of redirects the SPNEGO client will follow when no other limit is configured.
+const DefaultMaxRedirects = 10
+
+// Client will negotiate authentication with a server using SPNEGO.
+type Client struct {
+	*http.Client
+	krb5Client         *client.Client
+	spn                string
+	reqs               []*http.Request
+	maxRedirects       int
+	tokenOptions       []KRB5TokenOption
+	autoChannelBinding bool
+	legs               int
+}
+
+type redirectErr struct {
+	reqTarget *http.Request
+}
+
+func (e redirectErr) Error() string {
+	return fmt.Sprintf("redirect to %v", e.reqTarget.URL)
+}
+
+type teeReadCloser struct {
+	io.Reader
+	io.Closer
+}
+
+// NewClient returns a SPNEGO enabled HTTP client.
+// Be careful when passing in the *http.Client if it is being reused in multiple calls to this function.
+// Ensure reuse of the provided *http.Client is for the same user as a session cookie may have been added to
+// http.Client's cookie jar.
+// Incorrect reuse of the provided *http.Client could lead to access to the wrong user's session.
+func NewClient(krb5Cl *client.Client, httpCl *http.Client, spn string, settings ...func(*Client)) *Client {
+	if httpCl == nil {
+		httpCl = &http.Client{}
+	}
+	// Add a cookie jar if there isn't one.
+	if httpCl.Jar == nil {
+		httpCl.Jar, _ = cookiejar.New(nil)
+	}
+	// Add a CheckRedirect function that will execute any functional already defined and then error with a redirectErr.
+	f := httpCl.CheckRedirect
+	httpCl.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if f != nil {
+			err := f(req, via)
+			if err != nil {
+				return err
+			}
+		}
+
+		return redirectErr{reqTarget: req}
+	}
+
+	c := &Client{
+		Client:       httpCl,
+		krb5Client:   krb5Cl,
+		spn:          spn,
+		maxRedirects: DefaultMaxRedirects,
+	}
+
+	for _, set := range settings {
+		set(c)
+	}
+
+	if c.maxRedirects < 1 {
+		c.maxRedirects = DefaultMaxRedirects
+	}
+
+	return c
+}
+
+// MaxRedirects configures the maximum number of redirects the SPNEGO client will follow. Values less than one
+// configure the client with DefaultMaxRedirects.
+//
+// cl := NewClient(krb5Cl, httpCl, spn, MaxRedirects(20)).
+func MaxRedirects(n int) func(*Client) {
+	return func(c *Client) {
+		c.maxRedirects = n
+	}
+}
+
+// TokenOptions configures options applied to every AP_REQ the client creates.
+//
+// cl := NewClient(krb5Cl, httpCl, spn, TokenOptions(ChannelBinding(cb))).
+func TokenOptions(opts ...KRB5TokenOption) func(*Client) {
+	return func(c *Client) {
+		c.tokenOptions = append(c.tokenOptions, opts...)
+	}
+}
+
+// ChannelBindingTLSServerEndPoint configures the client to derive a tls-server-end-point channel binding, as
+// described by RFC 5929 Section 4, from the TLS state of the response that challenged it. This is what Microsoft's
+// Extended Protection for Authentication requires and it needs no further configuration.
+//
+// Requests that are not over TLS, or whose peer sent no certificate, proceed without a channel binding: there is no
+// channel to bind to. A binding configured explicitly through TokenOptions takes precedence over the derived one.
+//
+// A request that is over TLS but whose certificate yields no binding also proceeds without one, logging the reason
+// through the krb5 client. RFC 5929 Section 4.1 leaves the binding undefined for a certificate whose signature
+// algorithm has no single hash function, Ed25519 being the case in practice. This is a silent downgrade in both
+// directions: against a service that requires a binding the request fails authentication with nothing in the response
+// naming the certificate as the cause, and against a service that does not, the protection this option was enabled
+// for is simply absent. Callers who need the guarantee rather than the attempt should derive the binding themselves
+// with gssapi.NewChannelBindingTLSServerEndPoint, which reports the error, and pass it through TokenOptions.
+//
+// cl := NewClient(krb5Cl, httpCl, spn, ChannelBindingTLSServerEndPoint()).
+func ChannelBindingTLSServerEndPoint() func(*Client) {
+	return func(c *Client) {
+		c.autoChannelBinding = true
+	}
+}
+
+// Do is the SPNEGO enabled HTTP client's equivalent of the http.Client's Do method.
+func (c *Client) Do(req *http.Request) (resp *http.Response, err error) {
+	var body bytes.Buffer
+	if req.Body != nil {
+		// Use a tee reader to capture any body sent in case we have to replay it again.
+		teeR := io.TeeReader(req.Body, &body)
+		teeRC := teeReadCloser{teeR, req.Body}
+		req.Body = teeRC
+	}
+
+	resp, err = c.Client.Do(req)
+	if err != nil {
+		if ue, ok := err.(*url.Error); ok {
+			if e, ok := ue.Err.(redirectErr); ok {
+				// Picked up a redirect.
+				e.reqTarget.Header.Del(HTTPHeaderAuthRequest)
+
+				if rerr := c.checkRedirectHost(req, e.reqTarget); rerr != nil {
+					c.endNegotiation()
+
+					return resp, rerr
+				}
+
+				c.reqs = append(c.reqs, e.reqTarget)
+				if len(c.reqs) >= c.maxRedirects {
+					c.reqs = c.reqs[:0]
+
+					return resp, fmt.Errorf("stopped after %d redirects", c.maxRedirects)
+				}
+
+				if req.Body != nil {
+					// Refresh the body reader so the body can be sent again.
+					e.reqTarget.Body = io.NopCloser(&body)
+				}
+
+				return c.Do(e.reqTarget)
+			}
+		}
+
+		return resp, err
+	}
+
+	token, challenged, cerr := negotiateChallenge(resp)
+	if cerr != nil {
+		c.endNegotiation()
+
+		return resp, cerr
+	}
+
+	if challenged {
+		send, nerr := c.nextNegotiationLeg(req, resp, token)
+		if nerr != nil {
+			c.endNegotiation()
+
+			return resp, nerr
+		}
+
+		if send {
+			if req.Body != nil {
+				// Refresh the body reader so the body can be sent again.
+				req.Body = io.NopCloser(&body)
+			}
+
+			_, _ = io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+
+			return c.Do(req)
+		}
+	}
+
+	c.endNegotiation()
+
+	return resp, err
+}
+
+// checkRedirectHost refuses a redirect that leaves the host the configured service principal name belongs to.
+//
+// Deleting the Authorization header before following a redirect closes only half of the hazard: the negotiation
+// then starts again against the new host, and a configured name is used verbatim there. The client would obtain a
+// ticket for the host the caller named and send it to whichever host the redirect points at, in an AP_REQ the real
+// service has never seen and so will not have in its replay cache. Nothing binds an AP_REQ to the connection that
+// carried it unless channel bindings are configured, so that ticket is enough for the redirect target to
+// authenticate as the user against the service the caller meant to reach.
+//
+// The name is compared on the host alone: setRequestSPN builds "HTTP/<host>" with no port, so two ports on one
+// host are one service principal, and a redirect between them stays with the service the caller named. Where no
+// name is configured there is nothing to leave, and the SPN derived per request already follows the host being
+// addressed.
+func (c *Client) checkRedirectHost(from, to *http.Request) error {
+	if c.spn == "" || strings.EqualFold(from.URL.Hostname(), to.URL.Hostname()) {
+		return nil
+	}
+
+	return fmt.Errorf("stopped at the redirect from %s to %s: the service principal name %s the client is configured with does not name the redirect target", from.URL.Hostname(), to.URL.Hostname(), c.spn)
+}
+
+// nextNegotiationLeg sets the Authorization header answering a challenge, reporting whether there is a leg to send.
+//
+// The legs already spent bound the exchange. Without a bound a target that answers every token with another
+// challenge, which the bare Negotiate of RFC 4559 Section 4 is, keeps this client answering it indefinitely.
+func (c *Client) nextNegotiationLeg(req *http.Request, resp *http.Response, token []byte) (bool, error) {
+	if c.legs >= MaxNegotiationLegs {
+		return false, fmt.Errorf("SPNEGO negotiation did not complete within %d legs", MaxNegotiationLegs)
+	}
+
+	c.legs++
+
+	return c.negotiate(req, resp, token)
+}
+
+// endNegotiation clears the state held for the exchange that has finished.
+func (c *Client) endNegotiation() {
+	c.reqs = c.reqs[:0]
+	c.legs = 0
+}
+
+// requestTokenOptions returns the token options to use for the response that challenged the client, deriving a
+// channel binding from its TLS state when the client is configured to. Derived options come first so that anything
+// configured explicitly overrides them.
+func (c *Client) requestTokenOptions(resp *http.Response) []KRB5TokenOption {
+	var opts []KRB5TokenOption
+
+	if c.autoChannelBinding && resp.TLS != nil && len(resp.TLS.PeerCertificates) > 0 {
+		cb, err := gssapi.NewChannelBindingTLSServerEndPoint(resp.TLS.PeerCertificates[0])
+		if err != nil && c.krb5Client != nil {
+			c.krb5Client.Log("could not derive tls-server-end-point channel binding: %v", err)
+		}
+
+		if cb != nil {
+			opts = append(opts, ChannelBinding(cb))
+		}
+	}
+
+	return append(opts, c.tokenOptions...)
+}
+
+// Get is the SPNEGO enabled HTTP client's equivalent of the http.Client's Get method.
+func (c *Client) Get(url string) (resp *http.Response, err error) {
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.Do(req)
+}
+
+// Post is the SPNEGO enabled HTTP client's equivalent of the http.Client's Post method.
+func (c *Client) Post(url, contentType string, body io.Reader) (resp *http.Response, err error) {
+	req, err := http.NewRequest("POST", url, body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Content-Type", contentType)
+
+	return c.Do(req)
+}
+
+// PostForm is the SPNEGO enabled HTTP client's equivalent of the http.Client's PostForm method.
+func (c *Client) PostForm(url string, data url.Values) (resp *http.Response, err error) {
+	return c.Post(url, "application/x-www-form-urlencoded", strings.NewReader(data.Encode()))
+}
+
+// Head is the SPNEGO enabled HTTP client's equivalent of the http.Client's Head method.
+func (c *Client) Head(url string) (resp *http.Response, err error) {
+	req, err := http.NewRequest("HEAD", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return c.Do(req)
+}
+
+// setRequestSPN derives the service principal name for the request and updates the request's Host to match.
+//
+// canonicalize is the dns_canonicalize_hostname setting of krb5.conf. It is a security control as much as a
+// convenience: the service principal name decides which service key the KDC encrypts the ticket to, so a client
+// that canonicalizes is letting DNS choose that principal. An attacker able to influence the answer can steer the
+// ticket to a principal it holds a key for, which is why the setting exists and why MIT moved its default.
+func setRequestSPN(r *http.Request, canonicalize bool) (types.PrincipalName, error) {
+	h := strings.TrimSuffix(r.URL.Host, ".")
+
+	// This if statement checks if the host includes a port number.
+	if strings.LastIndex(r.URL.Host, ":") > strings.LastIndex(r.URL.Host, "]") {
+		h, p, err := net.SplitHostPort(h)
+		if err != nil {
+			return types.PrincipalName{}, err
+		}
+
+		h = canonicalHost(h, canonicalize)
+
+		r.Host = fmt.Sprintf("%s:%s", h, p)
+
+		return types.NewPrincipalName(nametype.KRB_NT_PRINCIPAL, "HTTP/"+h), nil
+	}
+
+	h = canonicalHost(h, canonicalize)
+	r.Host = h
+
+	return types.NewPrincipalName(nametype.KRB_NT_PRINCIPAL, "HTTP/"+h), nil
+}
+
+func canonicalHost(h string, canonicalize bool) string {
+	if canonicalize {
+		if name, err := lookupCNAME(h); err == nil && name != "" {
+			h = strings.ToLower(name)
+		}
+	}
+
+	return strings.TrimSuffix(h, ".")
+}
+
+func canonicalizeHostname(cl *client.Client) bool {
+	if cl == nil || cl.Config == nil {
+		return true
+	}
+
+	return cl.Config.LibDefaults.DNSCanonicalizeHostname
+}
+
+// SetSPNEGOHeader gets the service ticket and sets it as the SPNEGO authorization header on HTTP request object.
+// To auto generate the SPN from the request object pass a null string "".
+func SetSPNEGOHeader(cl *client.Client, r *http.Request, spn string, opts ...KRB5TokenOption) error {
+	spn, err := requestSPN(cl, r, spn)
+	if err != nil {
+		return err
+	}
+
+	cl.Log("using SPN %s", spn)
+	s := SPNEGOClient(cl, spn, opts...)
+
+	if err = s.AcquireCred(); err != nil {
+		return fmt.Errorf("could not acquire client credential: %w", err)
+	}
+
+	st, err := s.InitSecContext()
+	if err != nil {
+		return fmt.Errorf("could not initialize context: %w", err)
+	}
+
+	nb, err := st.Marshal()
+	if err != nil {
+		return krberror.Errorf(err, krberror.EncodingError, "could not marshal SPNEGO")
+	}
+
+	hs := "Negotiate " + base64.StdEncoding.EncodeToString(nb)
+	r.Header.Set(HTTPHeaderAuthRequest, hs)
+
+	return nil
+}
+
+// Service side functionality //.
+
+type ctxKey string
+
+const (
+	credentialsKey = "github.com/go-krb5/krb5/spnego/credentials"
+
+	// spnegoNegTokenRespKRBAcceptCompleted - The response on successful authentication always has this header. Capturing as const so we don't have marshaling and encoding overhead.
+	spnegoNegTokenRespKRBAcceptCompleted = "Negotiate oRQwEqADCgEAoQsGCSqGSIb3EgECAg=="
+
+	// spnegoNegTokenRespReject - The response on a failed authentication always has this rejection header. Capturing as const so we don't have marshaling and encoding overhead.
+	spnegoNegTokenRespReject = "Negotiate oQcwBaADCgEC"
+
+	// spnegoNegTokenRespIncompleteKRB5 - Response token specifying incomplete context and KRB5 as the supported mechtype.
+	spnegoNegTokenRespIncompleteKRB5 = "Negotiate oRQwEqADCgEBoQsGCSqGSIb3EgECAg=="
+
+	// HTTPHeaderAuthRequest is the header that will hold authn/z information.
+	HTTPHeaderAuthRequest = "Authorization"
+
+	// HTTPHeaderAuthResponse is the header that will hold SPNEGO data from the server.
+	HTTPHeaderAuthResponse = "WWW-Authenticate"
+
+	// HTTPHeaderAuthResponseValueKey is the key in the auth header for SPNEGO.
+	HTTPHeaderAuthResponseValueKey = "Negotiate"
+
+	// UnauthorizedMsg is the message returned in the body when authentication fails.
+	UnauthorizedMsg = "Unauthorised.\n"
+
+	// CTXKey is the Credentials Context Key for spnego.
+	CTXKey ctxKey = credentialsKey
+)
+
+// SPNEGOKRB5Authenticate is a Kerberos SPNEGO authentication HTTP handler wrapper.
+func SPNEGOKRB5Authenticate(inner http.Handler, kt *keytab.Keytab, settings ...func(*service.Settings)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var spnego *SPNEGO
+
+		h, err := types.GetHostAddress(r.RemoteAddr)
+		if err == nil {
+			o := append([]func(*service.Settings){service.ClientAddress(h)}, settings...)
+			spnego = SPNEGOService(kt, o...)
+		} else {
+			spnego = SPNEGOService(kt, settings...)
+			spnego.Log("%s - SPNEGO could not parse client address: %v", r.RemoteAddr, err)
+		}
+
+		// Check if there is a session manager and if there is an already established session for this client.
+		id, err := getSessionCredentials(spnego, r)
+		if err == nil && id.Authenticated() {
+			// There is an established session so bypass auth and serve.
+			spnego.Log("%s - SPNEGO request served under session %s", r.RemoteAddr, id.SessionID())
+			inner.ServeHTTP(w, identity.AddToHTTPRequestContext(&id, r))
+
+			return
+		}
+
+		st, err := getAuthorizationNegotiationHeaderAsSPNEGOToken(spnego, r, w)
+		if st == nil || err != nil {
+			// response to client and logging handled in function above so just return.
+			return
+		}
+
+		// Validate the context token.
+		authed, ctx, status := spnego.AcceptSecContext(st)
+		if status.Code != gssapi.StatusComplete && status.Code != gssapi.StatusContinueNeeded {
+			spnegoResponseReject(spnego, w, "%s - SPNEGO validation error: %v", r.RemoteAddr, status)
+			return
+		}
+
+		if status.Code == gssapi.StatusContinueNeeded {
+			spnegoNegotiateKRB5MechType(spnego, w, "%s - SPNEGO GSS-API continue needed", r.RemoteAddr)
+			return
+		}
+
+		if authed {
+			// Authentication successful; get user's credentials from the context.
+			id := ctx.Value(CTXKey).(*credentials.Credentials)
+			// Create a new session if a session manager has been configured.
+			err = newSession(spnego, r, w, id)
+			if err != nil {
+				return
+			}
+
+			if err = spnegoResponseAcceptCompleted(spnego, w, "%s %s@%s - SPNEGO authentication succeeded", r.RemoteAddr, id.UserName(), id.Domain()); err != nil {
+				return
+			}
+			// Add the identity to the context and serve the inner/wrapped handler.
+			inner.ServeHTTP(w, identity.AddToHTTPRequestContext(id, r))
+
+			return
+		}
+		// If we get to here we have not authenticationed so just reject.
+		spnegoResponseReject(spnego, w, "%s - SPNEGO Kerberos authentication failed", r.RemoteAddr)
+	})
+}
+
+func getAuthorizationNegotiationHeaderAsSPNEGOToken(spnego *SPNEGO, r *http.Request, w http.ResponseWriter) (*SPNEGOToken, error) {
+	s := strings.SplitN(r.Header.Get(HTTPHeaderAuthRequest), " ", 2)
+	if len(s) != 2 || s[0] != HTTPHeaderAuthResponseValueKey {
+		// No Authorization header set so return 401 with WWW-Authenticate Negotiate header.
+		w.Header().Set(HTTPHeaderAuthResponse, HTTPHeaderAuthResponseValueKey)
+		http.Error(w, UnauthorizedMsg, http.StatusUnauthorized)
+
+		return nil, errors.New("client did not provide a negotiation authorization header")
+	}
+
+	// Decode the header into an SPNEGO context token.
+	b, err := base64.StdEncoding.DecodeString(s[1])
+	if err != nil {
+		err = fmt.Errorf("error in base64 decoding negotiation header: %w", err)
+		spnegoNegotiateKRB5MechType(spnego, w, "%s - SPNEGO %v", r.RemoteAddr, err)
+
+		return nil, err
+	}
+
+	var st SPNEGOToken
+
+	err = st.Unmarshal(b)
+	if err != nil {
+		// Check if this is a raw KRB5 context token - issue #347.
+		var k5t KRB5Token
+		if k5t.Unmarshal(b) != nil {
+			err = fmt.Errorf("error in unmarshalling SPNEGO token: %w", err)
+			spnegoNegotiateKRB5MechType(spnego, w, "%s - SPNEGO %v", r.RemoteAddr, err)
+
+			return nil, err
+		}
+		// Wrap it into an SPNEGO context token.
+		st.Init = true
+		st.NegTokenInit = NegTokenInit{
+			MechTypes:      []asn1.ObjectIdentifier{k5t.OID},
+			MechTokenBytes: b,
+		}
+	}
+
+	return &st, nil
+}
+
+func getSessionCredentials(spnego *SPNEGO, r *http.Request) (credentials.Credentials, error) {
+	var creds credentials.Credentials
+	// Check if there is a session manager and if there is an already established session for this client.
+	if sm := spnego.serviceSettings.SessionManager(); sm != nil {
+		cb, err := sm.Get(r, credentialsKey)
+		if err != nil || cb == nil || len(cb) < 1 {
+			return creds, fmt.Errorf("%s - SPNEGO error getting session and credentials for request: %w", r.RemoteAddr, err)
+		}
+
+		err = creds.Unmarshal(cb)
+		if err != nil {
+			return creds, fmt.Errorf("%s - SPNEGO credentials malformed in session: %w", r.RemoteAddr, err)
+		}
+
+		return creds, nil
+	}
+
+	return creds, errors.New("no session manager configured")
+}
+
+func newSession(spnego *SPNEGO, r *http.Request, w http.ResponseWriter, id *credentials.Credentials) error {
+	if sm := spnego.serviceSettings.SessionManager(); sm != nil {
+		// create new session.
+		idb, err := id.Marshal()
+		if err != nil {
+			spnegoInternalServerError(spnego, w, "SPNEGO could not marshal credentials to add to the session: %v", err)
+			return err
+		}
+
+		err = sm.New(w, r, credentialsKey, idb)
+		if err != nil {
+			spnegoInternalServerError(spnego, w, "SPNEGO could not create new session: %v", err)
+			return err
+		}
+
+		spnego.Log("%s %s@%s - SPNEGO new session (%s) created", r.RemoteAddr, id.UserName(), id.Domain(), id.SessionID())
+	}
+
+	return nil
+}
+
+// Log and respond to client for error conditions.
+
+func spnegoNegotiateKRB5MechType(s *SPNEGO, w http.ResponseWriter, format string, v ...any) {
+	s.Log(format, v...)
+	w.Header().Set(HTTPHeaderAuthResponse, spnegoNegTokenRespIncompleteKRB5)
+	http.Error(w, UnauthorizedMsg, http.StatusUnauthorized)
+}
+
+func spnegoResponseReject(s *SPNEGO, w http.ResponseWriter, format string, v ...any) {
+	s.Log(format, v...)
+	w.Header().Set(HTTPHeaderAuthResponse, spnegoNegTokenRespReject)
+	http.Error(w, UnauthorizedMsg, http.StatusUnauthorized)
+}
+
+func spnegoResponseAcceptCompleted(s *SPNEGO, w http.ResponseWriter, format string, v ...any) error {
+	h, err := spnegoAcceptCompletedHeader(s)
+	if err != nil {
+		spnegoInternalServerError(s, w, "SPNEGO could not build the accept-completed response: %v", err)
+
+		return err
+	}
+
+	s.Log(format, v...)
+	w.Header().Set(HTTPHeaderAuthResponse, h)
+
+	return nil
+}
+
+// spnegoAcceptCompletedHeader returns the WWW-Authenticate value ending a successful negotiation.
+//
+// RFC 4178 Section 5(c)(I) has the reply carry a mechListMIC whenever the initiator sent one, and the initiator MUST
+// verify it, so the token has to be built for that exchange. The constant covers every other exchange, which is the
+// common one and the reason it is a constant: the same accept-completed state and Kerberos supportedMech, with
+// nothing variable in it.
+//
+// A failure to build the token is returned rather than answered with the constant. Replying accept-completed without
+// the MIC that was asked for would leave the initiator terminating a negotiation this acceptor had already
+// completed, having decided a request was authentic and then told the client it was not.
+func spnegoAcceptCompletedHeader(s *SPNEGO) (string, error) {
+	mic := s.MechListMIC()
+	if len(mic) == 0 {
+		return spnegoNegTokenRespKRBAcceptCompleted, nil
+	}
+
+	nt := NegTokenResp{
+		NegState:      asn1.Enumerated(NegStateAcceptCompleted),
+		SupportedMech: gssapi.OIDKRB5.OID(),
+		MechListMIC:   mic,
+	}
+
+	b, err := nt.Marshal()
+	if err != nil {
+		return "", err
+	}
+
+	return HTTPHeaderAuthResponseValueKey + " " + base64.StdEncoding.EncodeToString(b), nil
+}
+
+func spnegoInternalServerError(s *SPNEGO, w http.ResponseWriter, format string, v ...any) {
+	s.Log(format, v...)
+	http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+}

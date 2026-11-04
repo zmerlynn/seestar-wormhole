@@ -21,6 +21,38 @@
     ]
   },
   {
+    "Path": "github.com/geoffgarside/ber",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/geoffgarside/ber/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-crypt/x",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/go-crypt/x/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-krb5/krb5",
+    "SPDX": "Apache-2.0",
+    "Files": [
+      "vendor/github.com/go-krb5/krb5/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/go-krb5/x",
+    "SPDX": "BSD-3-Clause AND Apache-2.0",
+    "Files": [
+      "vendor/github.com/go-krb5/x/LICENSE",
+      "vendor/github.com/go-krb5/x/aescts/LICENSE",
+      "vendor/github.com/go-krb5/x/dns/LICENSE",
+      "vendor/github.com/go-krb5/x/identity/LICENSE",
+      "vendor/github.com/go-krb5/x/rpc/LICENSE"
+    ]
+  },
+  {
     "Path": "github.com/go-ole/go-ole",
     "SPDX": "MIT",
     "Files": [
@@ -32,6 +64,20 @@
     "SPDX": "BSD-2-Clause",
     "Files": [
       "vendor/github.com/godbus/dbus/v5/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/google/uuid",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/google/uuid/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/hirochachacha/go-smb2/v2",
+    "SPDX": "BSD-2-Clause",
+    "Files": [
+      "vendor/github.com/hirochachacha/go-smb2/v2/LICENSE"
     ]
   },
   {
@@ -56,6 +102,13 @@
     ]
   },
   {
+    "Path": "github.com/pierrec/lz4/v4",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/github.com/pierrec/lz4/v4/LICENSE"
+    ]
+  },
+  {
     "Path": "github.com/pion/dtls/v3",
     "SPDX": "MIT",
     "Files": [
@@ -74,6 +127,13 @@
     "SPDX": "MIT",
     "Files": [
       "vendor/github.com/pion/transport/v5/LICENSE"
+    ]
+  },
+  {
+    "Path": "github.com/quic-go/quic-go",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/quic-go/quic-go/LICENSE"
     ]
   },
   {
@@ -150,6 +210,13 @@
     "SPDX": "BSD-3-Clause",
     "Files": [
       "vendor/golang.org/x/sys/LICENSE"
+    ]
+  },
+  {
+    "Path": "golang.org/x/text",
+    "SPDX": "BSD-3-Clause",
+    "Files": [
+      "vendor/golang.org/x/text/LICENSE"
     ]
   }
 ]

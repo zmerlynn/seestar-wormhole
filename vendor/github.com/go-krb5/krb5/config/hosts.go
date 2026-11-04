@@ -1,0 +1,174 @@
+package config
+
+import (
+	"fmt"
+	"math/rand"
+	"net"
+	"strconv"
+	"strings"
+
+	"github.com/go-krb5/x/dns"
+)
+
+// GetKDCs returns the count of KDCs available and a map of KDC host names keyed on preference order.
+func (c *Config) GetKDCs(realm string, tcp bool) (int, map[int]string, error) {
+	if realm == "" {
+		realm = c.LibDefaults.DefaultRealm
+	}
+
+	kdcs := make(map[int]string)
+
+	var count int
+
+	var ks []string
+
+	for _, r := range c.Realms {
+		if r.Realm != realm {
+			continue
+		}
+
+		ks = r.KDC
+	}
+
+	count = len(ks)
+
+	if count > 0 {
+		kdcs = randServOrder(ks)
+		return count, kdcs, nil
+	}
+
+	if !c.LibDefaults.DNSLookupKDC {
+		return count, kdcs, fmt.Errorf("no KDCs defined in configuration for realm %s", realm)
+	}
+
+	proto := protoUDP
+	if tcp {
+		proto = protoTCP
+	}
+
+	index, addrs, err := dns.OrderedSRV(svcKerberos, proto, realm)
+	if err != nil {
+		return count, kdcs, err
+	}
+
+	if len(addrs) < 1 {
+		return count, kdcs, fmt.Errorf("no KDC SRV records found for realm %s", realm)
+	}
+
+	count = index
+
+	for k, v := range addrs {
+		kdcs[k] = strings.TrimRight(v.Target, ".") + ":" + strconv.Itoa(int(v.Port))
+	}
+
+	return count, kdcs, nil
+}
+
+// GetKpasswdServers returns the count of kpasswd servers available and a map of kpasswd host names keyed on preference
+// order.
+//
+// See Also: https://web.mit.edu/kerberos/krb5-latest/doc/admin/conf_files/krb5_conf.html#realms.
+func (c *Config) GetKpasswdServers(realm string, tcp bool) (int, map[int]string, error) {
+	kdcs := make(map[int]string)
+
+	var count int
+
+	if c.LibDefaults.DNSLookupKDC {
+		proto := protoUDP
+		if tcp {
+			proto = protoTCP
+		}
+
+		c, addrs, err := dns.OrderedSRV(svcKerberosPassword, proto, realm)
+		if err != nil {
+			return count, kdcs, err
+		}
+
+		if c < 1 {
+			c, addrs, err = dns.OrderedSRV(svcKerberosAdmin, proto, realm)
+			if err != nil {
+				return count, kdcs, err
+			}
+		}
+
+		if len(addrs) < 1 {
+			return count, kdcs, fmt.Errorf("no kpasswd or kadmin SRV records found for realm %s", realm)
+		}
+
+		count = c
+
+		for k, v := range addrs {
+			kdcs[k] = strings.TrimRight(v.Target, ".") + ":" + strconv.Itoa(int(v.Port))
+		}
+	} else {
+		var (
+			ks []string
+			ka []string
+		)
+
+		for _, r := range c.Realms {
+			if r.Realm == realm {
+				ks = r.KPasswdServer
+				ka = r.AdminServer
+
+				break
+			}
+		}
+
+		if len(ks) < 1 {
+			for _, k := range ka {
+				h, _, err := net.SplitHostPort(k)
+				if err != nil {
+					continue
+				}
+
+				ks = append(ks, h+":464")
+			}
+		}
+
+		count = len(ks)
+		if count < 1 {
+			return count, kdcs, fmt.Errorf("no kpasswd or kadmin defined in configuration for realm %s", realm)
+		}
+
+		kdcs = randServOrder(ks)
+	}
+
+	return count, kdcs, nil
+}
+
+// randServOrder returns the servers keyed by a randomised preference order.
+//
+// The shuffle works on a copy. The slice a caller passes is the Config's own, and a *Config is documented as
+// shareable between clients with every exchange calling GetKDCs, so permuting it in place would both reorder the
+// configured servers permanently and race with any concurrent call reading the same array.
+func randServOrder(ks []string) map[int]string {
+	ks = append([]string(nil), ks...)
+
+	kdcs := make(map[int]string)
+	count := len(ks)
+	i := 1
+
+	if count > 1 {
+		l := len(ks)
+		for l > 0 {
+			ri := rand.Intn(l)
+
+			kdcs[i] = ks[ri]
+			if l > 1 {
+				// Remove the entry from the source slice by swapping with the last entry and truncating.
+				ks[len(ks)-1], ks[ri] = ks[ri], ks[len(ks)-1]
+				ks = ks[:len(ks)-1]
+				l = len(ks)
+			} else {
+				l = 0
+			}
+
+			i++
+		}
+	} else {
+		kdcs[i] = ks[0]
+	}
+
+	return kdcs
+}

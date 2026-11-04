@@ -1,0 +1,33 @@
+# The fixture tree, shared by the Samba image and the fake's tests.
+# Each line is <size or dir> <mtime in Unix seconds> <path>, in fs.WalkDir order.
+# A file of size N holds the first N bytes of `seq -w 0 9999999`.
+dir 1761690000 Autorun
+dir 1761690100 Autorun/Dark
+4321 1761690200 Autorun/Dark/Dark_10.0s_IRCUT_20261029-020000.fit
+dir 1761700000 MyWorks
+1001 1761700010 MyWorks/Café.fit
+1002 1761700020 MyWorks/Café.fit
+dir 1761700100 MyWorks/M 31
+16384 1761700110 MyWorks/M 31/Light_M 31_10.0s_IRCUT_20261029-033119.fit
+16385 1761700120 MyWorks/M 31/Light_M 31_10.0s_IRCUT_20261029-033129.fit
+dir 1761700130 MyWorks/M 31/sub dir
+dir 1761700140 MyWorks/M 31/sub dir/deeper
+77 1761700150 MyWorks/M 31/sub dir/deeper/x.fit
+dir 1761700200 MyWorks/NGC 7000 – Nördlich
+2048 1761700210 MyWorks/NGC 7000 – Nördlich/Stacked 🔭.fit
+999 1761700220 MyWorks/NGC 7000 – Nördlich/星雲 01.fit
+dir 1761700300 MyWorks/big
+20983865 1761700310 MyWorks/big/Stacked_big.fit
+dir 1761700400 MyWorks/case
+3 1761700410 MyWorks/case/A.fit
+5 1761700420 MyWorks/case/a.fit
+dir 1761700500 MyWorks/empty
+dir 1761700600 MyWorks/odd
+11 1761700610 MyWorks/odd/#%&'()+,;=@[]^_`{}~!$.fit
+12 1761700620 MyWorks/odd/-leading-dash
+13 1761700630 MyWorks/odd/.hidden
+0 1761700640 MyWorks/odd/a..b.fit
+14 1761700650 MyWorks/odd/two  spaces.fit
+dir 1761700700 MyWorks2
+15 1761700710 MyWorks2/y.fit
+16 1761700800 outside.txt
