@@ -121,12 +121,8 @@ func TestBinaryLicenses(t *testing.T) {
 	// The CLI links no native GUI library, so NOTICE's section on them,
 	// the last, is left out.
 	notice, native, _ := strings.Cut(read("NOTICE"), "\nLinux native GUI\n")
-	license := read("LICENSE")
 	if !strings.HasPrefix(text, notice) || native == "" || strings.Contains(text, "Linux native GUI") {
 		t.Error("licenses output must start with the project NOTICE, without its Linux native GUI section")
-	}
-	if !strings.Contains(text, "\n--- LICENSE ---\n"+license) || !strings.Contains(license, "This is free and unencumbered software released into the public domain.") {
-		t.Error("licenses output lacks the full Unlicense text")
 	}
 	// Go's own list of the modules this target links decides what must appear.
 	deps, err := exec.Command("go", "list", "-mod=vendor", "-deps", "-f", "{{with .Module}}{{if not .Main}}{{.Path}}{{end}}{{end}}", ".").Output()

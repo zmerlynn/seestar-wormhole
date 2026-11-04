@@ -5,7 +5,7 @@ Linux native GUI
 The Linux GUI dynamically links the system GTK 4, WebKitGTK (webkitgtk-6.0),
 JavaScriptCoreGTK, libsoup 3 and GLib/GIO libraries, covered by
 LGPL-2.1-or-later. They are used as shared libraries the user can replace
-with interface-compatible versions. The CLI (CGO_ENABLED=0) and the macOS
+with interface-compatible versions. The CLIs (CGO_ENABLED=0) and the macOS
 and Windows GUI do not use these Linux libraries.
 
 The GNU Lesser General Public License version 2.1 follows.

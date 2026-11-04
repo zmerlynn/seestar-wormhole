@@ -44,7 +44,8 @@ Vendored modules and the license files copied into vendor/:
 The macOS implementation in github.com/zalando/go-keyring carries a Google
 copyright and Apache-2.0 notice in keyring_darwin.go. The supplemental notice
 and full Apache license are included in the generated license catalog.
-The other Apache-2.0 modules and folders above supply no NOTICE file.
+Of the other Apache-2.0 modules and folders above, only go.yaml.in/yaml/v3
+supplies a NOTICE file; it is vendored and included in the catalog.
 
 The Wails pkg/w32 sources also include Winc Authors and W32 Authors
 attributions and atotto/clipboard-derived code (Ato Araki, BSD-3-Clause).

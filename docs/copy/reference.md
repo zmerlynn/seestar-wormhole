@@ -1228,7 +1228,7 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 seestar-copy-cli licenses
 ```
 
-Prints the project's NOTICE and LICENSE, then, for each third-party module
+Prints the project's NOTICE, then, for each third-party module
 linked into this binary, a `Module:` line with its path, an `SPDX:` line with
 its license identifier, and the full texts of its license and notice files.
 It needs no network and no source checkout. It takes no flags except
