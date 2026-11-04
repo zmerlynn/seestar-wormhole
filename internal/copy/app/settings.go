@@ -59,11 +59,18 @@ type settingsFile struct {
 	exists   bool
 }
 
-// settingsRead reads app.json as encoding/json did, so that a file an
-// earlier seestar-copy wrote loads the same: a null field keeps its
-// default.
-var settingsRead = json.WithUnmarshalers(json.JoinUnmarshalers(json.UnmarshalFromFunc(keepOnNull[*int]),
-	json.UnmarshalFromFunc(keepOnNull[*string]), json.UnmarshalFromFunc(keepOnNull[*bool])))
+// settingsRead and settingsWrite read and write app.json as encoding/json
+// did, so that a file an earlier seestar-copy wrote, with the keys it kept,
+// still loads and saves the same: duplicate names and invalid UTF-8 are
+// allowed, a null field keeps its default, and a kept value's strings keep
+// their escapes. The page's requests are read strictly, by server.go.
+var (
+	settingsRead = json.JoinOptions(jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true),
+		json.WithUnmarshalers(json.JoinUnmarshalers(json.UnmarshalFromFunc(keepOnNull[*int]),
+			json.UnmarshalFromFunc(keepOnNull[*string]), json.UnmarshalFromFunc(keepOnNull[*bool]))))
+	settingsWrite = json.JoinOptions(jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true),
+		jsontext.PreserveRawStrings(true), json.Deterministic(true), jsontext.WithIndent("  "))
+)
 
 // keepOnNull leaves a field as it was when its value is null.
 func keepOnNull[T any](dec *jsontext.Decoder, _ T) error {
@@ -104,7 +111,7 @@ func loadSettings(path string) (*settingsFile, error) {
 		}
 		return nil, &loadError{path, err.Error()}
 	}
-	err = json.Unmarshal(b, &f.raw)
+	err = json.Unmarshal(b, &f.raw, settingsRead)
 	var typeErr *json.SemanticError
 	if errors.As(err, &typeErr) || err == nil && f.raw == nil {
 		// An array, a string, a number or null.
@@ -135,12 +142,12 @@ func loadSettings(path string) (*settingsFile, error) {
 // it becomes the file's settings; on failure the file and f are unchanged.
 func (f *settingsFile) save(s Settings) error {
 	s.Version = settingsVersion
-	known, err := json.Marshal(s)
+	known, err := json.Marshal(s, settingsWrite)
 	if err != nil {
 		return err
 	}
 	var fields map[string]jsontext.Value
-	if err := json.Unmarshal(known, &fields); err != nil {
+	if err := json.Unmarshal(known, &fields, settingsRead); err != nil {
 		return err
 	}
 	raw := make(map[string]jsontext.Value, len(f.raw)+len(fields))
@@ -150,7 +157,7 @@ func (f *settingsFile) save(s Settings) error {
 	for k, v := range fields {
 		raw[k] = v
 	}
-	b, err := json.Marshal(raw, json.Deterministic(true), jsontext.WithIndent("  "))
+	b, err := json.Marshal(raw, settingsWrite)
 	if err != nil {
 		return err
 	}

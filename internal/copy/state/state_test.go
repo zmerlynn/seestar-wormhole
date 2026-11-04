@@ -287,6 +287,23 @@ func TestOpenRefusesBadLine(t *testing.T) {
 	}
 }
 
+// seestar-copy-cli 0.4.0 wrote paths with encoding/json: <, > and & as they
+// are, U+2028 and U+2029 escaped, and a byte that is not UTF-8 as an escaped
+// U+FFFD. Its state files load.
+func TestOpenReadsEarlierWriterLines(t *testing.T) {
+	stateDir, dest := dirs(t)
+	line := func(path string) string {
+		return `{"path":"` + path + `","size":1,"mtime":"2026-10-29T03:31:19Z","sha256":"` + shaA + `","at":"2026-11-02T01:02:03Z","how":"copied"}` + "\n"
+	}
+	writeState(t, stateDir, dest, headerLine(dest)+line(`A<B>&C.fit`)+line(`line\u2028para\u2029.fit`)+line(`bad\ufffd.fit`))
+	s := mustOpen(t, stateDir, dest, nil)
+	for _, p := range []string{"A<B>&C.fit", "line\u2028para\u2029.fit", "bad\ufffd.fit"} {
+		if _, ok := s.Lookup(p); !ok {
+			t.Errorf("no record for %q", p)
+		}
+	}
+}
+
 func TestOpenLongestLine(t *testing.T) {
 	stateDir, dest := dirs(t)
 	// A record line of exactly maxLine bytes, newline included, loads.

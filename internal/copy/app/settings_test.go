@@ -164,6 +164,53 @@ func TestSaveRoundTripKeepsUnknownKeys(t *testing.T) {
 	}
 }
 
+// v0.4.0 kept an unknown key's value as it was, even one that encoding/json
+// read but RFC 7493 does not allow: a duplicate name, an unpaired escaped
+// surrogate or a byte that is not UTF-8. These files are as its save wrote
+// them; they load, and a save writes them again byte for byte.
+func TestSaveKeepsWhatEarlierVersionsKept(t *testing.T) {
+	for _, tt := range []struct{ name, future string }{
+		{"duplicate name", "{\n    \"member\": 1,\n    \"member\": 2\n  }"},
+		{"unpaired surrogate", `"\ud800"`},
+		{"invalid UTF-8", "\"bad\xff\""},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			data := "{\n" +
+				"  \"address\": \"\",\n" +
+				"  \"excludes\": [],\n" +
+				"  \"folder\": \"/data/synthetic\",\n" +
+				"  \"future\": " + tt.future + ",\n" +
+				"  \"includes\": [],\n" +
+				"  \"interval_minutes\": 5,\n" +
+				"  \"older_than_days\": 7,\n" +
+				"  \"skip_built_in\": true,\n" +
+				"  \"start_copying\": true,\n" +
+				"  \"trust_state\": false,\n" +
+				"  \"version\": 1\n" +
+				"}\n"
+			path := filepath.Join(t.TempDir(), "app.json")
+			writeFile(t, path, data)
+			f, err := loadSettings(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := f.save(f.settings); err != nil {
+				t.Fatal(err)
+			}
+			if b, _ := os.ReadFile(path); string(b) != data {
+				t.Errorf("saved\n%q\nwant\n%q", b, data)
+			}
+			again, err := loadSettings(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(again.settings, f.settings) {
+				t.Errorf("reloaded %+v, want %+v", again.settings, f.settings)
+			}
+		})
+	}
+}
+
 func TestSaveCreatesFolder(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "new", "seestar-copy", "app.json")
 	f, err := loadSettings(path)
