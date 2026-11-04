@@ -129,13 +129,13 @@ func TestSaveCreatesFolder(t *testing.T) {
 
 func TestLoadRefusesAndLeavesFile(t *testing.T) {
 	for _, tt := range []struct{ name, data, reason string }{
-		{"syntax", `{"address": `, "unexpected end of JSON input"},
-		{"empty", ``, "unexpected end of JSON input"},
+		{"syntax", `{"address": `, `jsontext: unexpected EOF within "/address" after offset 12`},
+		{"empty", ``, "jsontext: unexpected EOF"},
 		{"array", `[1]`, "it is not a JSON object"},
 		{"null", `null`, "it is not a JSON object"},
 		{"version", `{"version":2,"address":"a:445"}`, "it has version 2, and this seestar-copy reads version 1"},
 		{"version 0", `{"version":0}`, "it has version 0, and this seestar-copy reads version 1"},
-		{"field type", `{"interval_minutes":"5"}`, "json: cannot unmarshal string into Go struct field Settings.interval_minutes of type int"},
+		{"field type", `{"interval_minutes":"5"}`, `json: cannot unmarshal JSON string into Go int within "/interval_minutes"`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			path := filepath.Join(t.TempDir(), "app.json")

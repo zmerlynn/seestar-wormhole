@@ -3,7 +3,8 @@ package browse
 import (
 	"bytes"
 	"embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io/fs"
 	"log/slog"
@@ -249,7 +250,9 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, shown, dir string
 		}
 		out.Entries = append(out.Entries, it)
 	}
-	b, err := json.Marshal(out)
+	// As before the move to encoding/json/v2: a folder with no entries lists
+	// them as null, and HTML characters are escaped.
+	b, err := json.Marshal(out, json.FormatNilSliceAsNull(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
 	if err != nil {
 		h.listError(w, http.StatusInternalServerError, "encode", err.Error())
 		return

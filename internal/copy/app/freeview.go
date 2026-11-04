@@ -52,17 +52,17 @@ type freeStatus struct {
 // freeView is the Free up space tab's state and its text, for the page.
 type freeView struct {
 	State    string        `json:"state"`
-	Changed  bool          `json:"changed,omitempty"`
+	Changed  bool          `json:"changed,omitzero"`
 	Title    string        `json:"title,omitempty"` // also the status region's text
 	Text     string        `json:"text,omitempty"`
 	Sub      string        `json:"sub,omitempty"`
 	Progress *freeBar      `json:"progress,omitempty"`
 	File     string        `json:"file,omitempty"`
-	Stopping bool          `json:"stopping,omitempty"`
-	ID       int           `json:"id,omitempty"` // the preview's
+	Stopping bool          `json:"stopping,omitzero"`
+	ID       int           `json:"id,omitzero"` // the preview's
 	Groups   []folderGroup `json:"groups,omitempty"`
-	Trust    bool          `json:"trust,omitempty"` // the preview's proof is the records alone
-	Kept     string        `json:"kept,omitempty"`  // "Kept: …" or the Done counts
+	Trust    bool          `json:"trust,omitzero"` // the preview's proof is the records alone
+	Kept     string        `json:"kept,omitempty"` // "Kept: …" or the Done counts
 	KeptList []failure     `json:"kept_list,omitempty"`
 }
 

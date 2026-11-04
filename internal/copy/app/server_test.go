@@ -646,7 +646,7 @@ func TestRunStartupError(t *testing.T) {
 	opened := false
 	err := Run(context.Background(), Options{SettingsPath: path, StateDir: t.TempDir(), Version: "v", Log: log},
 		func(context.Context, string, func()) error { opened = true; return nil })
-	want := "Couldn't read settings from " + path + ": unexpected end of JSON input. Fix or remove the file, then reopen seestar-copy."
+	want := "Couldn't read settings from " + path + ": jsontext: unexpected EOF after offset 1. Fix or remove the file, then reopen seestar-copy."
 	if err == nil || err.Error() != want || opened {
 		t.Errorf("Run = %v (opened %v), want %q", err, opened, want)
 	}

@@ -392,7 +392,7 @@ not json
 		t.Fatal(err)
 	}
 	code, stdout, stderr := find(t, "--dest", dest, "--state-dir", stateDir)
-	if dials, _ := dev.counts(); code != exitFailure || stdout != "" || dials != 0 || !strings.Contains(stderr, "line 2: invalid character") {
+	if dials, _ := dev.counts(); code != exitFailure || stdout != "" || dials != 0 || !strings.Contains(stderr, "line 2: jsontext: invalid character") {
 		t.Errorf("exit %d, stdout %q, dials %d; want 1, none, 0\n%s", code, stdout, dials, stderr)
 	}
 }

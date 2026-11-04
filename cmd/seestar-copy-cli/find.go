@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"log/slog"
@@ -176,8 +176,6 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 	}
 	now := time.Now()
 	w := bufio.NewWriter(out)
-	enc := json.NewEncoder(w)
-	enc.SetEscapeHTML(false)
 	for _, e := range entries {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("write the listing: %w", err)
@@ -204,7 +202,9 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 			continue
 		}
 		if o.format == "jsonl" {
-			err = enc.Encode(l)
+			if err = json.MarshalWrite(w, l); err == nil {
+				err = w.WriteByte('\n')
+			}
 		} else {
 			err = writeText(w, l, records != nil)
 		}

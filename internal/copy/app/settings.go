@@ -1,7 +1,8 @@
 package app
 
 import (
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -54,7 +55,7 @@ func defaultSettings() Settings {
 type settingsFile struct {
 	path     string
 	settings Settings
-	raw      map[string]json.RawMessage
+	raw      map[string]jsontext.Value
 	exists   bool
 }
 
@@ -76,7 +77,7 @@ func loadSettings(path string) (*settingsFile, error) {
 	if abs, err := filepath.Abs(path); err == nil {
 		path = abs
 	}
-	f := &settingsFile{path: path, settings: defaultSettings(), raw: map[string]json.RawMessage{}}
+	f := &settingsFile{path: path, settings: defaultSettings(), raw: map[string]jsontext.Value{}}
 	b, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return f, nil
@@ -89,7 +90,7 @@ func loadSettings(path string) (*settingsFile, error) {
 		return nil, &loadError{path, err.Error()}
 	}
 	err = json.Unmarshal(b, &f.raw)
-	var typeErr *json.UnmarshalTypeError
+	var typeErr *json.SemanticError
 	if errors.As(err, &typeErr) || err == nil && f.raw == nil {
 		// An array, a string, a number or null.
 		return nil, &loadError{path, "it is not a JSON object"}
@@ -123,18 +124,18 @@ func (f *settingsFile) save(s Settings) error {
 	if err != nil {
 		return err
 	}
-	var fields map[string]json.RawMessage
+	var fields map[string]jsontext.Value
 	if err := json.Unmarshal(known, &fields); err != nil {
 		return err
 	}
-	raw := make(map[string]json.RawMessage, len(f.raw)+len(fields))
+	raw := make(map[string]jsontext.Value, len(f.raw)+len(fields))
 	for k, v := range f.raw {
 		raw[k] = v
 	}
 	for k, v := range fields {
 		raw[k] = v
 	}
-	b, err := json.MarshalIndent(raw, "", "  ")
+	b, err := json.Marshal(raw, json.Deterministic(true), jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

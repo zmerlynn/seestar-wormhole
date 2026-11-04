@@ -139,7 +139,7 @@ func TestOpenRefusesHeader(t *testing.T) {
 		{"no version", withV(`"v":1,`, ``), "line 1: not a state header: no version"},
 		{"version string", withV(`"v":1`, `"v":"1"`), "line 1: not a state header"},
 		{"record first", func(string) string { return lineDark + lineDark }, "line 1: not a state header: no version"},
-		{"garbled", func(string) string { return "{\"v\":1,\"de\x00\n" + lineDark }, "line 1: not a state header: invalid character"},
+		{"garbled", func(string) string { return "{\"v\":1,\"de\x00\n" + lineDark }, "line 1: not a state header: jsontext: invalid character"},
 		{"blank first line", func(d string) string { return "\n" + headerLine(d) }, "line 1: not a state header"},
 		{"header without newline", func(d string) string { return strings.TrimSuffix(headerLine(d), "\n") }, "line 1: the header has no newline"},
 	} {
@@ -234,7 +234,7 @@ func TestOpenDropsTornFinalLine(t *testing.T) {
 		{"complete record without newline", strings.TrimSuffix(lineDark, "\n"), "no newline"},
 		{"garbled with newline", "{\"path\":\"x\x00\n", "invalid character"},
 		{"invalid record", `{"path":"../x","size":1,"mtime":"2026-10-29T03:31:19Z"}` + "\n", "invalid record"},
-		{"blank", "\n", "unexpected end of JSON input"},
+		{"blank", "\n", "jsontext: unexpected EOF"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			stateDir, dest := dirs(t)
@@ -256,12 +256,12 @@ func TestOpenDropsTornFinalLine(t *testing.T) {
 
 func TestOpenRefusesBadLine(t *testing.T) {
 	for _, tc := range []struct{ name, body, want string }{
-		{"garbled middle", lineM31Copied + "{nope\n" + lineDark, "line 3: invalid character"},
-		{"blank middle", lineM31Copied + "\n" + lineDark, "line 3: unexpected end of JSON input"},
+		{"garbled middle", lineM31Copied + "{nope\n" + lineDark, "line 3: jsontext: invalid character"},
+		{"blank middle", lineM31Copied + "\n" + lineDark, "line 3: jsontext: unexpected EOF"},
 		{"invalid middle record", `{"path":"/abs","size":1,"mtime":"2026-10-29T03:31:19Z"}` + "\n" + lineDark, `line 2: invalid record: path "/abs"`},
 		{"negative size", `{"path":"a","size":-1,"mtime":"2026-10-29T03:31:19Z"}` + "\n" + lineDark, "line 2: invalid record: size -1 is negative"},
 		{"no mtime", `{"path":"a","size":1}` + "\n" + lineDark, "line 2: invalid record: mtime is missing"},
-		{"bad line then torn tail", "{nope\n" + `{"path":"a","si`, "line 2: invalid character"},
+		{"bad line then torn tail", "{nope\n" + `{"path":"a","si`, "line 2: jsontext: invalid character"},
 		{"overlong line", strings.Repeat("x", maxLine) + "\n", "line 2 is longer than 1048576 bytes"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

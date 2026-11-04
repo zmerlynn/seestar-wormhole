@@ -4,7 +4,8 @@ import (
 	"context"
 	"crypto/subtle"
 	"embed"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"errors"
 	"io"
 	"io/fs"
@@ -548,8 +549,14 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 // maxDays caps Only files older than N days: 100 years.
 const maxDays = 36500
 
+// respondOptions keep the page's JSON as it was before the move to
+// encoding/json/v2: nil slices and maps are null, map members are sorted, and
+// HTML characters are escaped.
+var respondOptions = json.JoinOptions(json.Deterministic(true), json.FormatNilSliceAsNull(true), json.FormatNilMapAsNull(true),
+	jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true))
+
 func respond(w http.ResponseWriter, code int, v any) {
-	b, err := json.Marshal(v)
+	b, err := json.Marshal(v, respondOptions)
 	if err != nil {
 		http.Error(w, "Response unavailable", http.StatusInternalServerError)
 		return

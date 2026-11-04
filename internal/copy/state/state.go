@@ -2,8 +2,7 @@ package state
 
 import (
 	"bufio"
-	"bytes"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"io"
@@ -511,16 +510,15 @@ func (s *State) Close() error {
 // encodeLine encodes v as one JSON line. HTML characters are left as they
 // are, so paths stay readable.
 func encodeLine(v any) ([]byte, error) {
-	var b bytes.Buffer
-	enc := json.NewEncoder(&b)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(v); err != nil {
+	b, err := json.Marshal(v)
+	if err != nil {
 		return nil, err
 	}
-	if b.Len() > maxLine {
-		return nil, fmt.Errorf("line is %d bytes, more than %d", b.Len(), maxLine)
+	b = append(b, '\n')
+	if len(b) > maxLine {
+		return nil, fmt.Errorf("line is %d bytes, more than %d", len(b), maxLine)
 	}
-	return b.Bytes(), nil
+	return b, nil
 }
 
 // checkLoaded holds a loaded record to what the pass decisions rely on.
