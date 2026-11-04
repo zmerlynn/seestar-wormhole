@@ -1,5 +1,4 @@
-// The browse page: lists one folder of the share at a time. Every name is set
-// with textContent and every URL built with encodeURIComponent.
+// Names use textContent; URLs use encodeURIComponent.
 const $ = (id) => document.getElementById(id);
 const statusLine = $('status');
 const table = $('list');
@@ -82,8 +81,6 @@ function fitsCards(text) {
   return { cards, end: false };
 }
 
-// showText reads the start of a file, up to limit bytes, and shows it as
-// text: a .txt as UTF-8, a FITS file as its header cards.
 async function showText(e, kind, signal) {
   const limit = kind === 'fits' ? fitsLimit : textLimit;
   viewNote.textContent = 'Loading…';
@@ -122,7 +119,7 @@ function showImage(e, name, signal) {
   viewed.addEventListener('load', () => { viewNote.textContent = ''; }, { signal });
   viewed.addEventListener('error', () => {
     viewed.hidden = true;
-    viewNote.textContent = 'Could not load this image. Close this preview and reopen the file to retry.';
+    viewNote.textContent = withHint('Could not load this image', viewHint);
   }, { signal });
   viewed.src = fileURL(e.path);
 }
@@ -181,7 +178,7 @@ function row(e) {
   const modified = el('td', new Date(e.mtime).toLocaleString());
   modified.title = e.mtime;
   const status = el('td', undefined, 'st');
-  if (e.status) status.append(el('span', e.status, 'badge ' + e.status));
+  if (e.status) status.append(el('span', e.status, 'badge ' + e.status.replace(' ', '-')));
   const save = el('td');
   if (file) {
     const a = el('a', 'Save');
@@ -202,6 +199,7 @@ function render(data) {
   const files = data.entries.filter((e) => e.type === 'file');
   rows.replaceChildren(...dirs.map(row), ...files.map(row));
   table.hidden = rows.children.length === 0;
+  $('key').hidden = table.hidden || !data.statuses;
   statusLine.textContent = table.hidden ? 'Empty folder' : count(dirs.length, 'folder') + ', ' + count(files.length, 'file') + '.';
 }
 
@@ -215,6 +213,7 @@ async function load(p, focus) {
   if (focus) crumbs.lastChild.focus();
   statusLine.textContent = 'Loading…';
   table.hidden = true;
+  $('key').hidden = true;
   rows.replaceChildren();
   let data;
   try {

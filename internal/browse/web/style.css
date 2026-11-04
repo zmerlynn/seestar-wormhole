@@ -22,6 +22,7 @@ table:not(.statuses) .st { display: none; }
 .badge.copied { color: #146c2e; }
 .badge.changed { color: #8a4b00; }
 .badge.new { color: #0b57d0; }
+.badge.left-out { color: #555; border-style: dashed; }
 .hide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 dialog { max-width: 95vw; max-height: 95vh; padding: 0; }
 #vbody { padding: 0.5rem; }
@@ -34,7 +35,7 @@ dialog p { margin: 0.5rem 0 0; display: flex; gap: 1rem; align-items: center; }
 .btn:focus-visible { outline: 2px solid #0b57d0; outline-offset: 2px; }
 @media (prefers-color-scheme: dark) {
   body { color: #e6e6e6; background: #161616; }
-  .note { color: #aaa; }
+  .note, .badge.left-out { color: #aaa; }
   a, .badge.new { color: #8ab4f8; }
   th, td { border-bottom-color: #333; }
   .badge.copied { color: #7fd18b; }

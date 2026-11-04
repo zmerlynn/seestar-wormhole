@@ -11,6 +11,9 @@ test('the root lists folders before files, with a count', async ({ page }) => {
   const names = await page.locator('#list tbody td.name').allTextContents();
   expect(names.slice(0, 2).sort()).toEqual(['Long names/', 'MyWorks/']);
   expect(names.slice(2).sort()).toEqual(['00-notes.txt', 'empty.txt']);
+  // Without --dest there are no statuses and no key to them.
+  await expect(page.locator('#key')).toBeHidden();
+  await expect(page.locator('.badge')).toHaveCount(0);
 });
 
 test('the initial load does not move focus', async ({ page }) => {

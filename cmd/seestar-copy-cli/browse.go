@@ -12,16 +12,20 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-copy/internal/browse"
+	"github.com/zmerlynn/seestar-copy/internal/engine"
 	"github.com/zmerlynn/seestar-copy/internal/readonly"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
 
 type browseOptions struct {
-	endpoint    string
-	listen      string
-	addr        netip.AddrPort // set by validate from listen
-	open        bool
+	endpoint  string
+	listen    string
+	addr      netip.AddrPort // set by validate from listen
+	open      bool
+	selection selectionFlags
+	// selector is set by validate from selection.
+	selector    engine.Selector
 	dest        string
 	destSet     bool
 	stateDir    string
@@ -36,10 +40,11 @@ func newBrowseCommand(log *slog.Logger) *cobra.Command {
 		Long: `Serve a read-only web page for looking through the telescope's share.
 The page lists one folder at a time and saves any file to this computer
 through the browser. Clicking a .jpg shows the image, a .txt its text, and a
-.fit or .fits its FITS header as text. It shows the whole share:
-browse has no --exclude or --include. With --dest, each file shows its
-status in that destination's state, as for find --dest: copied, changed or
-new.
+.fit or .fits its FITS header as text. It shows the whole share.
+With --dest, each file shows its status in that destination's state, as
+for find --dest: copied, changed or new, or left out for a file or folder
+that the selection leaves out. --exclude, --no-default-excludes and
+--include select exactly as for sync, and need --dest.
 Once listening, browse prints one line to stdout, the page's URL, and
 serves until Ctrl+C. --open also opens that URL in the default browser.
 --listen takes an IP address and a port, never a host name; port 0 picks a
@@ -64,6 +69,11 @@ a usage error.`,
 			if err := o.validate(); err != nil {
 				return err
 			}
+			for _, name := range []string{"exclude", "no-default-excludes", "include"} {
+				if !o.destSet && cmd.Flags().Changed(name) {
+					return &usageError{Option: "--" + name, Rule: "give --dest with it; browse shows what the selection leaves out only with statuses"}
+				}
+			}
 			return runBrowse(cmd.Context(), o, cmd.OutOrStdout(), log)
 		},
 	}
@@ -71,6 +81,7 @@ a usage error.`,
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.listen, "listen", "127.0.0.1:0", "IP address and port to serve the page on; port 0 picks a free one")
 	f.BoolVar(&o.open, "open", false, "also open the page in the default browser")
+	o.selection.register(f)
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state gives each file a status; never created")
 	f.StringVar(&o.stateDir, "state-dir", "", "folder for the state file of --dest (default: the per-user config folder's seestar-copy)")
 	return cmd
@@ -98,6 +109,11 @@ func (o *browseOptions) validate() error {
 	if o.stateDirSet && !o.destSet {
 		return &usageError{Option: "--state-dir", Rule: "give --dest with it; browse reads a state file only for a destination"}
 	}
+	sel, err := o.selection.parse()
+	if err != nil {
+		return err
+	}
+	o.selector = sel
 	return nil
 }
 
@@ -167,7 +183,7 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 	}, log.With("endpoint", o.endpoint))
 	srv := &http.Server{
 		Handler: browse.NewHandler(browse.Config{
-			Addr: addr, Endpoint: o.endpoint, Sessions: sessions, Records: records, Log: log,
+			Addr: addr, Endpoint: o.endpoint, Sessions: sessions, Records: records, Selector: o.selector, Log: log,
 		}),
 		ReadHeaderTimeout: 3 * time.Second,
 		ReadTimeout:       5 * time.Second,

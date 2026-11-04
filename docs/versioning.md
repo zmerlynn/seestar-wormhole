@@ -34,8 +34,8 @@ The [command reference](reference.md) has the detail of each item.
    always win over includes, whatever the order; one pattern grammar for both flags, that an excluded folder is not
    listed, and that case is ignored by lowercasing with no Unicode normalization. For browse, as in [browse
    flags](reference.md#browse-flags): `--endpoint`, `--listen` with its default `127.0.0.1:0`, `--open`, off by default,
-   `--dest` and `--state-dir`; `--listen` takes an IP address and a port, never a host name; and browse has no selection
-   flags, so it shows the whole share.
+   `--dest` and `--state-dir`; `--listen` takes an IP address and a port, never a host name; and browse shows the whole
+   share, with the selection flags, only with `--dest`, choosing only what shows as left out.
 2. **Runtime inputs.** `seestar-copy-cli` reads no configuration file and no environment variables of its own;
    every setting is a flag. It never reads the desktop app's settings file, `app.json`. The default `--state-dir` comes from the operating system's per-user config folder, as in
    [location](reference.md#location). Adding opt-in configuration later is additive and must not override explicit

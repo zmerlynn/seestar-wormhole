@@ -67,12 +67,10 @@ func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(fol
 	out := LeftOut{keptParents: map[string]bool{}}
 	folders := 0
 	entries, err := sess.Walk(ctx, func(p string, dir bool) bool {
-		for _, e := range s.Excludes {
-			if e.match(p) {
-				out.Skipped = append(out.Skipped, Skipped{p, e.flag})
-				out.keptParents[path.Dir(p)] = true
-				return true
-			}
+		if e, ok := s.excluder(p); ok {
+			out.Skipped = append(out.Skipped, Skipped{p, e.flag})
+			out.keptParents[path.Dir(p)] = true
+			return true
 		}
 		if !s.included(p, dir) {
 			out.Unmatched++
@@ -89,6 +87,34 @@ func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(fol
 		return nil, out, err
 	}
 	return entries, out, nil
+}
+
+// LeavesOut reports whether a walk leaves out the share path p, a file if
+// not dir: whether an exclude matches p or a folder above it, or the
+// includes keep one of them out, as [Selector.Walk] decides.
+func (s Selector) LeavesOut(p string, dir bool) bool {
+	for i := range len(p) {
+		if p[i] == '/' && s.skips(p[:i], true) {
+			return true
+		}
+	}
+	return s.skips(p, dir)
+}
+
+// skips reports whether a walk that reached p would leave it out.
+func (s Selector) skips(p string, dir bool) bool {
+	_, excluded := s.excluder(p)
+	return excluded || !s.included(p, dir)
+}
+
+// excluder returns the first exclude that matches p.
+func (s Selector) excluder(p string) (Pattern, bool) {
+	for _, e := range s.Excludes {
+		if e.match(p) {
+			return e, true
+		}
+	}
+	return Pattern{}, false
 }
 
 // included reports whether the includes keep p: with none, everything; a

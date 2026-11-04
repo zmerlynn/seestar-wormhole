@@ -326,6 +326,57 @@ test('a new address replaces Browse, and its errors say to select Share', async 
   expect(n.tests).toBe(2);
 });
 
+// contrast is the WCAG contrast ratio of two computed rgb() colors.
+function contrast(a, b) {
+  const lum = (c) => {
+    const [r, g, b2] = c.match(/\d+/g).slice(0, 3).map((v) => {
+      const x = v / 255;
+      return x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b2;
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+test('Browse marks what Leave out leaves out, with a key', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openApp(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const key = frame(page).locator('#key');
+  await expect(key).toHaveText('new: not copied yet · copied: already copied · changed: differs from the copy · left out: not copied by the selection');
+  await expect(key).toBeVisible();
+  const badge = (name) => frame(page).locator('#list tbody tr').filter({ has: frame(page).getByText(name, { exact: true }) }).locator('.badge');
+  await expect(badge('empty.txt')).toHaveText('new');
+  await expect(frame(page).locator('.badge.left-out')).toHaveCount(0);
+
+  await tab(page, 'Settings').click();
+  await field(page, 'Leave out').fill('empty.txt\nLong names');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  await expect(badge('empty.txt')).toHaveText('left out');
+  await expect(badge('empty.txt')).toHaveClass('badge left-out');
+  await expect(badge('Long names/')).toHaveText('left out');
+  await expect(badge('00-notes.txt')).toHaveText('new');
+  await expect(badge('MyWorks/')).toHaveCount(0);
+  await expect(key).toBeVisible();
+
+  // Muted against new: a dashed border, and readable in light and dark.
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    const style = (loc, prop) => loc.evaluate((e, p) => getComputedStyle(e)[p], prop);
+    const bg = await style(frame(page).locator('body'), 'backgroundColor');
+    const muted = await style(badge('empty.txt'), 'color');
+    expect(await style(badge('empty.txt'), 'borderTopStyle')).toBe('dashed');
+    expect(await style(badge('00-notes.txt'), 'borderTopStyle')).toBe('solid');
+    expect(muted).not.toBe(await style(badge('00-notes.txt'), 'color'));
+    expect(contrast(muted, bg), colorScheme).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
 test('Save is off until its answer is in', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openApp(page, app.url);

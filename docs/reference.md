@@ -831,13 +831,15 @@ time=2026-11-09T09:00:01.502Z level=INFO msg="listing done" files=212 folders=9 
 ## browse
 
 ```sh
-seestar-copy-cli browse --endpoint HOST:PORT [--dest DIR] [--listen ADDR] [--open]
+seestar-copy-cli browse --endpoint HOST:PORT [--dest DIR] [--listen ADDR] [--open] [selection flags]
 ```
 
 Serves a read-only web page for looking through the telescope's share. The
 page lists one folder at a time, shows a `.jpg`, a `.txt` or a FITS header
 when you click it, and saves any file to this computer through the browser. With `--dest`, each file
-shows its [status](#statuses) in that destination's state, as for find.
+shows its [status](#statuses) in that destination's state, as for find, and
+a file or folder that the [selection](#selection) leaves out shows
+[`left out`](#left-out-in-browse).
 Like sync and find, browse only reads from the telescope, and it writes
 nothing on disk: not the destination, not the state, not a lock.
 
@@ -865,9 +867,10 @@ the port browse listens on.
 | `--open` | off | Also open the page in the default browser. The URL is printed either way. |
 | `--dest` | none | As for find: a destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
 | `--state-dir` | as for sync | As for find: the folder that holds the state file of `--dest`. Only with `--dest`, and it must not be empty when given. |
+| `--exclude`, `--no-default-excludes`, `--include` | as for sync | The [selection](#selection) whose left-out files and folders show [`left out`](#left-out-in-browse). Only with `--dest`. |
 
-Browse has no selection: it shows the whole share, and `--exclude`,
-`--no-default-excludes` and `--include` are unknown flags.
+Browse always shows the whole share. The selection flags only choose what
+shows as `left out`, and with no flags the built-in patterns do.
 
 `--listen` takes an IP address and a port, such as `127.0.0.1:0`,
 `[::1]:8080`, `192.168.1.5:0` or `0.0.0.0:0`, never a host name, not even
@@ -891,8 +894,18 @@ The page shows the endpoint, the path of the folder as links back to each
 parent, and one row per folder and regular file in it, folders first, with a
 preview, the name, the size, the modification time, the status with
 `--dest`, and a Save link for each file. Links and other kinds of entries
-are left out, as find leaves them out. Click a folder to open it; the
+are not shown, as find does not list them. Click a folder to open it; the
 browser's Back button returns to the previous folder.
+
+#### Left out in browse
+
+With statuses, an entry that the selection leaves out shows `left out`
+instead of `copied`, `changed` or `new`: a sync pass would not copy it,
+whatever the state records. That is a file or folder an exclude matches,
+anything inside such a folder, and, with includes, whatever no include
+selects, by the same rules a pass uses. Folders show only `left out`; a
+folder the selection keeps has no status. A key under the table explains
+the statuses.
 
 A file's preview is the telescope's own small image: for a file `S.ext`,
 `S_thn.jpg` in the same folder if there is one, and otherwise `S.jpg`. Browse
@@ -1006,7 +1019,7 @@ time=2026-11-09T09:01:12.950Z level=INFO msg="session closed" endpoint=127.0.0.1
 | --- | --- |
 | 0 | Stopped by a signal. |
 | 1 | Browse could not start or keep serving: the address could not be listened on, the state of `--dest` could not be read when browse started, the URL could not be written to stdout, or the HTTP server stopped with an error. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--state-dir`, `--state-dir` without `--dest`, or a positional argument. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--state-dir`, `--state-dir` or a selection flag without `--dest`, a bad pattern, or a positional argument. |
 
 ## delete
 
@@ -1284,6 +1297,13 @@ copy. Nothing is copied, and the state file and the folder are not changed.
 **Cancel** stops a preview that is running. Start copying, a Save that
 changes the address, folder or selection, and Clear history discard the
 preview.
+
+The Browse tab is browse's page for the saved address, with the saved
+folder's [statuses](#statuses). What **Leave out**, **Only copy** and **Skip
+the telescope's logs, scratch and system files** leave out shows
+[`left out`](#left-out-in-browse). A Save that
+changes the address, the folder or the selection reloads the tab at the
+share's top.
 
 Settings shows, under the folder, **Copy history**: the path of the folder's
 state file (see [the state file](#the-state-file)), which `sync` uses too. It

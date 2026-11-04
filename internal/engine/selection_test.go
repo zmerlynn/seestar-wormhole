@@ -194,3 +194,64 @@ func TestWalkKeptParents(t *testing.T) {
 		t.Errorf("keptParents = %v, want %v", out.keptParents, want)
 	}
 }
+
+// TestLeavesOut checks that LeavesOut leaves out exactly what a walk with
+// the same selection does not list: by name, by path, inside a folder left
+// out, and outside the includes.
+func TestLeavesOut(t *testing.T) {
+	file := &fstest.MapFile{Data: []byte("x")}
+	share := remote.NewFake(fstest.MapFS{
+		"top.jpg":              file,
+		".DS_Store":            file,
+		"log/a.txt":            file,
+		"MyWorks/a/x.jpg":      file,
+		"MyWorks/a/x.fit":      file,
+		"MyWorks/a/._x.jpg":    file,
+		"MyWorks/skip/in.jpg":  file,
+		"MyWorks/skip/d/z.jpg": file,
+		"MyWorks/log/b.txt":    file,
+		"Video/v.mp4":          file,
+	})
+	all, _, err := Selector{}.Walk(t.Context(), share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		excludes, includes []string
+		left               []string
+	}{
+		{nil, nil, nil},
+		{DefaultExcludes, nil, []string{".DS_Store", "log", "log/a.txt", "MyWorks/a/._x.jpg"}},
+		{[]string{"/MyWorks/skip"}, nil, []string{"MyWorks/skip", "MyWorks/skip/in.jpg", "MyWorks/skip/d", "MyWorks/skip/d/z.jpg"}},
+		{[]string{"*.FIT", "skip"}, []string{"/MyWorks"}, []string{
+			"top.jpg", ".DS_Store", "log", "log/a.txt", "MyWorks/a/x.fit", "MyWorks/skip", "MyWorks/skip/in.jpg",
+			"MyWorks/skip/d", "MyWorks/skip/d/z.jpg", "Video", "Video/v.mp4",
+		}},
+		{nil, []string{"*.jpg"}, []string{".DS_Store", "log/a.txt", "MyWorks/a/x.fit", "MyWorks/log/b.txt", "Video/v.mp4"}},
+	} {
+		s := selector(t, tc.excludes, tc.includes)
+		kept, _, err := s.Walk(t.Context(), share)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listed := map[string]bool{}
+		for _, e := range kept {
+			listed[e.Path] = true
+		}
+		var left []string
+		for _, e := range all {
+			got := s.LeavesOut(e.Path, e.Kind == remote.Dir)
+			if got == listed[e.Path] {
+				t.Errorf("%q %q: LeavesOut(%q) = %t, but the walk listed it: %t", tc.excludes, tc.includes, e.Path, got, listed[e.Path])
+			}
+			if got {
+				left = append(left, e.Path)
+			}
+		}
+		slices.Sort(left)
+		want := slices.Sorted(slices.Values(tc.left))
+		if !slices.Equal(left, want) {
+			t.Errorf("%q %q: left out %q, want %q", tc.excludes, tc.includes, left, want)
+		}
+	}
+}

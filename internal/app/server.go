@@ -110,10 +110,14 @@ func (s *server) startBrowse() {
 }
 
 // newBrowse builds a browse handler with its own session pool for the
-// address and records for the folder.
+// address, records for the folder, and what the selection leaves out.
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	endpoint, folder := set.Address, set.Folder
 	log := s.log.With("endpoint", endpoint)
+	sel, err := selector(set)
+	if err != nil {
+		log.Warn("browse shows nothing as left out", "err", err)
+	}
 	sessions := browse.NewSessions(s.ctx, func(ctx context.Context) (remote.Session, error) {
 		return s.dial(ctx, endpoint)
 	}, log)
@@ -122,7 +126,7 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 		records = browse.CacheRecords(file, records)
 	}
 	h := browse.NewHandler(browse.Config{
-		Addr: s.addr, Endpoint: endpoint, Sessions: sessions, Records: records, Log: log, InApp: true,
+		Addr: s.addr, Endpoint: endpoint, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true,
 	})
 	return h, sessions
 }
@@ -391,13 +395,13 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		}{"Couldn't save settings: " + reason(err) + ". Your changes have not been saved. Try saving again."})
 		return
 	}
-	changed := !wasSetUp || old.Address != set.Address || old.Folder != set.Folder
-	if changed || !slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn {
-		s.free.clear()
-		s.preview.discard()
-	}
+	// A new selection replaces browse too, which shows what it leaves out.
+	changed := !wasSetUp || old.Address != set.Address || old.Folder != set.Folder ||
+		!slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn
 	var oldSessions *browse.Sessions
 	if changed {
+		s.free.clear()
+		s.preview.discard()
 		oldSessions = s.sessions
 		s.browse, s.sessions = s.newBrowse(set)
 	}

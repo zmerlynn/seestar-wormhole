@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -165,6 +166,47 @@ func TestBrowseStatuses(t *testing.T) {
 	}
 }
 
+// With --dest, the selection flags, the built-in patterns included, mark
+// what they leave out.
+func TestBrowseLeftOut(t *testing.T) {
+	dev := newDevice()
+	dev.folder("MyWorks", findDir)
+	dev.folder("MyWorks/skip", findDir)
+	dev.folder("log", findDir)
+	dev.set("MyWorks/a.fit", "abc", findT0)
+	dev.set("MyWorks/a.jpg", "abc", findT0)
+	dev.set("MyWorks/.DS_Store", "abc", findT0)
+	dev.set("MyWorks/skip/b.fit", "abc", findT0)
+	dev.use(t)
+	dest, stateDir := filepath.Join(t.TempDir(), "dest"), filepath.Join(t.TempDir(), "state")
+	writeFindState(t, dest, stateDir)
+	const fileMT, dirMT = `"mtime":"2026-11-01T05:04:05.1234567Z"`, `"mtime":"2026-10-31T01:00:00Z"`
+	for _, tc := range []struct {
+		args []string
+		path string
+		want []string
+	}{
+		{nil, "", []string{`"path":"MyWorks","type":"dir",` + dirMT + `}`, `"path":"log","type":"dir",` + dirMT + `,"status":"left out"}`}},
+		{nil, "MyWorks", []string{`"MyWorks/.DS_Store","type":"file","size":3,` + fileMT + `,"status":"left out"`,
+			`"MyWorks/a.fit","type":"file","size":3,` + fileMT + `,"status":"copied"`, `"MyWorks/a.jpg","type":"file","size":3,` + fileMT + `,"status":"new"`}},
+		{[]string{"--no-default-excludes"}, "", []string{`"path":"log","type":"dir",` + dirMT + `}`}},
+		{[]string{"--exclude", "/MyWorks/skip", "--include", "*.fit"}, "MyWorks/skip", []string{`"MyWorks/skip/b.fit","type":"file","size":3,` + fileMT + `,"status":"left out"`}},
+		{[]string{"--include", "*.fit"}, "MyWorks", []string{`"MyWorks/a.fit","type":"file","size":3,` + fileMT + `,"status":"copied"`,
+			`"MyWorks/a.jpg","type":"file","size":3,` + fileMT + `,"status":"left out"`, `"MyWorks/skip","type":"dir",` + dirMT + `}`}},
+	} {
+		b := startBrowse(t, append([]string{"--dest", dest, "--state-dir", stateDir}, tc.args...)...)
+		code, body := b.get(t, "api/list?path="+url.QueryEscape(tc.path))
+		for _, want := range tc.want {
+			if code != 200 || !strings.Contains(body, want) {
+				t.Errorf("%q: listing = %d, lacks %s:\n%s", tc.args, code, want, body)
+			}
+		}
+		if code := b.end(); code != exitOK {
+			t.Errorf("%q: exit %d", tc.args, code)
+		}
+	}
+}
+
 // --open gets the printed URL and browse's log; a failing opener is a
 // warning and browse keeps serving.
 func TestBrowseOpen(t *testing.T) {
@@ -262,6 +304,7 @@ func TestBrowseUsage(t *testing.T) {
 	dev := newDevice()
 	dev.use(t)
 	const listenRule = "give an IP address and port, such as 127.0.0.1:0"
+	const selRule = "give --dest with it; browse shows what the selection leaves out only with statuses"
 	for _, tc := range []struct {
 		args         []string
 		option, rule string
@@ -275,9 +318,12 @@ func TestBrowseUsage(t *testing.T) {
 		{[]string{"browse", "--endpoint", "h:445", "--listen", "127.0.0.1"}, "--listen", listenRule},
 		{[]string{"browse", "--endpoint", "h:445", "--listen", "127.0.0.1:70000"}, "--listen", listenRule},
 		{[]string{"browse", "--endpoint", "h:445", "--listen="}, "--listen", listenRule},
-		{[]string{"browse", "--endpoint", "h:445", "--exclude", "x"}, "--exclude", "unknown flag"},
-		{[]string{"browse", "--endpoint", "h:445", "--include", "x"}, "--include", "unknown flag"},
-		{[]string{"browse", "--endpoint", "h:445", "--no-default-excludes"}, "--no-default-excludes", "unknown flag"},
+		{[]string{"browse", "--endpoint", "h:445", "--exclude", "x"}, "--exclude", selRule},
+		{[]string{"browse", "--endpoint", "h:445", "--include", "x", "--exclude", "y"}, "--exclude", selRule},
+		{[]string{"browse", "--endpoint", "h:445", "--include", "x"}, "--include", selRule},
+		{[]string{"browse", "--endpoint", "h:445", "--no-default-excludes"}, "--no-default-excludes", selRule},
+		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--exclude", "[x]"}, "--exclude", `[ and \ are not supported; use * and ?, and / between folders`},
+		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--include", "a/"}, "--include", "omit the trailing /; a pattern matches files and folders"},
 		{[]string{"browse", "--endpoint", "h:445", "--dest="}, "--dest", "must not be empty; omit it to browse without a status"},
 		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--state-dir="}, "--state-dir", "must not be empty; omit it for the default"},
 		{[]string{"browse", "--endpoint", "h:445", "--state-dir", "s"}, "--state-dir", "give --dest with it; browse reads a state file only for a destination"},

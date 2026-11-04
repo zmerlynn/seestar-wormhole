@@ -14,6 +14,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/zmerlynn/seestar-copy/internal/engine"
 	"github.com/zmerlynn/seestar-copy/internal/state"
 )
 
@@ -71,6 +72,7 @@ type envOptions struct {
 	setup      func(*spy)
 	extra      fstest.MapFS // added to the fixture
 	inApp      bool
+	selector   engine.Selector
 }
 
 func newEnv(t *testing.T, o envOptions) *env {
@@ -84,7 +86,7 @@ func newEnv(t *testing.T, o envOptions) *env {
 	e := &env{d: &dialer{fsys: fsys, err: o.dialErr, setup: o.setup}, addr: netip.MustParseAddrPort(o.addr), logs: logs}
 	e.p = NewSessions(context.Background(), e.d.dial, log)
 	t.Cleanup(e.p.Close)
-	cfg := Config{Addr: e.addr, Endpoint: "127.0.0.1:4445", Sessions: e.p, Log: log, InApp: o.inApp}
+	cfg := Config{Addr: e.addr, Endpoint: "127.0.0.1:4445", Sessions: e.p, Log: log, InApp: o.inApp, Selector: o.selector}
 	if o.dest {
 		cfg.Records = func() (map[string]state.Record, error) {
 			e.loads.Add(1)

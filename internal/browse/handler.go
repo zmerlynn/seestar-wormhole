@@ -14,6 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/zmerlynn/seestar-copy/internal/engine"
 	"github.com/zmerlynn/seestar-copy/internal/plan"
 	"github.com/zmerlynn/seestar-copy/internal/remote"
 	"github.com/zmerlynn/seestar-copy/internal/state"
@@ -28,6 +29,7 @@ type Config struct {
 	Endpoint string                                  // shown in the page header
 	Sessions *Sessions                               // the shared SMB session
 	Records  func() (map[string]state.Record, error) // a destination's state; nil for no statuses
+	Selector engine.Selector                         // with statuses, what shows as left out
 	Log      *slog.Logger
 	// InApp serves the page for the seestar-copy app, which shows it in a
 	// frame of its own origin and has its own header: the page may be
@@ -168,6 +170,10 @@ func (h *Handler) hostAllowed(host string) bool {
 	return err == nil && ap.Port() == h.cfg.Addr.Port()
 }
 
+// statusLeftOut is the status, beside plan's, of an entry the selection
+// leaves out.
+const statusLeftOut = "left out"
+
 // The JSON of /api/list.
 type listing struct {
 	Path     string `json:"path"`
@@ -237,6 +243,9 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, shown, dir string
 			}
 		default:
 			continue
+		}
+		if records != nil && h.cfg.Selector.LeavesOut(e.Path, e.Kind == remote.Dir) {
+			it.Status = statusLeftOut
 		}
 		out.Entries = append(out.Entries, it)
 	}
