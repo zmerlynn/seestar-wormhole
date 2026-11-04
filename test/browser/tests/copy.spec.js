@@ -218,9 +218,18 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   v = { state: 'listing', title: 'Looking for new files… 3 folders checked.', path: 'Listing MyWorks/M 31…' };
   await expect(title(page)).toHaveText('Looking for new files… 3 folders checked.');
   await expect(path).toHaveText('Listing MyWorks/M 31…');
-  v = { state: 'listing', title: 'Looking for new files… 4 folders checked.', path: 'Listing MyWorks/M 42…' };
+  v = { state: 'listing', title: 'Looking for new files… 4 folders checked.', path: 'Listing MyWorks/M 42…', tocopy: '312 to copy so far (4.1 GB)' };
   await expect(title(page)).toHaveText('Looking for new files… 4 folders checked.');
   await expect(path).toHaveText('Listing MyWorks/M 42…');
+  // What is found to copy so far is under the title, not in the status
+  // region, and wraps rather than losing its size.
+  const tocopy = page.locator('#c-tocopy');
+  await expect(tocopy).toHaveText('312 to copy so far (4.1 GB)');
+  await expect(tocopy).toHaveCSS('white-space', 'normal');
+  expect(await page.evaluate(() => {
+    const t = document.querySelector('#c-title');
+    return t.nextElementSibling.id;
+  })).toBe('c-tocopy');
   // It keeps one line, with the whole path in its title.
   await expect(path).toHaveAttribute('title', 'Listing MyWorks/M 42…');
   await expect(path).toHaveCSS('white-space', 'nowrap');
@@ -241,6 +250,7 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   await expect(live).toHaveText('Copying 1 of 4 files');
   await expect(busy).toBeHidden();
   await expect(path).toBeHidden();
+  await expect(tocopy).toBeHidden();
   await expect(bar).toBeVisible();
   await expect(bar).toHaveAttribute('aria-label', 'Copied so far');
   await expect(bar).toHaveJSProperty('max', 4000);
@@ -356,8 +366,10 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   await expect(button(page, 'Start copying')).toBeVisible();
   // Folder counts change the heading, and the folder being listed the line
   // under the bar, not the status region.
-  v = { ...base, preview: { state: 'running', title: 'Looking for new files… 4 folders checked.', path: 'Listing MyWorks/M 31…' } };
+  v = { ...base, preview: { state: 'running', title: 'Looking for new files… 4 folders checked.', path: 'Listing MyWorks/M 31…', tocopy: '1 to copy so far (2 B)' } };
   await expect(page.locator('#c-ptitle')).toHaveText('Looking for new files… 4 folders checked.');
+  await expect(page.locator('#c-ptocopy')).toHaveText('1 to copy so far (2 B)');
+  await expect(page.locator('#c-ptocopy')).toHaveCSS('white-space', 'normal');
   await expect(page.locator('#c-ppath')).toHaveText('Listing MyWorks/M 31…');
   await expect(page.locator('#c-ppath')).toHaveAttribute('title', 'Listing MyWorks/M 31…');
   await expect(page.locator('#c-ppath')).toHaveCSS('text-overflow', 'ellipsis');
@@ -370,6 +382,7 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   await expect(page.locator('#c-live')).toHaveText('Would copy 2 files (2 B)');
   await expect(button(page, 'Cancel')).toBeHidden();
   await expect(page.locator('#c-ppath')).toBeHidden();
+  await expect(page.locator('#c-ptocopy')).toBeHidden();
 
   // Cancel goes to the app, which has no preview to drop.
   v = { ...base, preview: { state: 'running', title: 'Looking for new files…' } };

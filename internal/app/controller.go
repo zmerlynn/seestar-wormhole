@@ -82,7 +82,7 @@ type status struct {
 	unreachable   bool // its connection failed
 	folders       int
 	listed        string // the folder being listed
-	files         int    // planned downloads
+	files         int    // planned downloads, or while listing those so far
 	bytes         int64
 	finished      int   // downloads finished, copied or failed
 	finishedBytes int64 // bytes of those copied
@@ -284,6 +284,13 @@ func (c *controller) hooks(ctx context.Context) engine.Hooks {
 				c.st.state, c.st.folders, c.st.listed = stListing, n, p
 			}
 		},
+		ToCopy: func(files int, bytes int64) {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if ctx.Err() == nil {
+				c.st.files, c.st.bytes = files, bytes
+			}
+		},
 		Planned: func(files int, bytes int64) {
 			c.mu.Lock()
 			defer c.mu.Unlock()
@@ -437,6 +444,7 @@ type copyView struct {
 	Title    string        `json:"title"`
 	Text     string        `json:"text,omitempty"`
 	Path     string        `json:"path,omitempty"` // what is being looked at
+	ToCopy   string        `json:"tocopy,omitempty"`
 	Summary  string        `json:"summary,omitempty"`
 	Settling string        `json:"settling,omitempty"`
 	Notice   string        `json:"notice,omitempty"`
@@ -483,6 +491,7 @@ func (c *controller) view(now time.Time) copyView {
 			v.Title += " " + count(st.folders, "folder", "folders") + " checked."
 		}
 		v.Path = listingLine(st.listed)
+		v.ToCopy = toCopyLine(st.files, st.bytes)
 	case stCopying:
 		v.Title = fmt.Sprintf("Copying %d of %s", min(st.finished+len(st.flight), st.files), count(st.files, "file", "files"))
 		v.Progress = st.progress(now)
@@ -627,6 +636,15 @@ func listingLine(folder string) string {
 		return ""
 	}
 	return "Listing " + folder + "…"
+}
+
+// toCopyLine words what a listing has found to copy so far, for the line
+// under a stage's title.
+func toCopyLine(files int, bytes int64) string {
+	if files == 0 {
+		return "Nothing to copy so far"
+	}
+	return num(files) + " to copy so far (" + size(float64(bytes)) + ")"
 }
 
 // count is n with the singular or plural words after it.

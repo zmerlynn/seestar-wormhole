@@ -13,6 +13,15 @@ type Hooks struct {
 	// once for each folder it will read, before reading it, with its path
 	// and the number of folders so far.
 	Listed func(folder string, folders int)
+	// ToCopy is called while a sync pass or a dry run lists the share:
+	// for the first entry listed, then at most once a second, or less
+	// often on a share large enough that deciding takes a while. It gets
+	// the files the pass would download (copies and replacements) and
+	// their listed bytes, decided by the pass's rules on what is listed so
+	// far, at that time. The count can drop: a folder listed later can
+	// make a name clash with files already counted. Planned has the
+	// pass's own total.
+	ToCopy func(files int, bytes int64)
 	// Decided is called once by a sync dry run that listed the share,
 	// with every listed file's decision, in path order, and what the
 	// selection left out. A real pass never calls it.

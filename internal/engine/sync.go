@@ -40,8 +40,8 @@ type SyncOptions struct {
 	Workers int
 	// Dial opens a pass's session.
 	Dial func(ctx context.Context, endpoint string) (remote.Session, error)
-	// Hooks report the passes' progress; a dry run calls only Listed
-	// and Decided.
+	// Hooks report the passes' progress; a dry run calls only Listed,
+	// ToCopy and Decided.
 	Hooks Hooks
 	// CheckNow ends a wait between passes early when a send on it is
 	// received. Only a wait receives: send without blocking, so that a
@@ -219,19 +219,13 @@ func (s *syncer) pass(ctx context.Context) (sum Summary) {
 		sum.Err = err
 		return sum
 	}
-	var files int
-	var bytes int64
 	for _, d := range decisions {
-		switch d.Kind {
-		case plan.Fail:
+		if d.Kind == plan.Fail {
 			sum.Failed = append(sum.Failed, Failure{d.Path, d.Reason})
-		case plan.Copy, plan.Replace:
-			files++
-			bytes += d.Size
 		}
 	}
 	if h := s.opts.Hooks.Planned; h != nil {
-		h(files, bytes)
+		h(downloads(decisions))
 	}
 	// Each file is logged as it finishes, not at the end of the pass.
 	s.copier.Run(ctx, sess, s.opts.Workers, decisions, func(r copier.Result) {
@@ -364,31 +358,74 @@ func (s *syncer) decide(ctx context.Context, sess remote.Session) ([]plan.Decisi
 	if err != nil {
 		return nil, plan.Counts{}, sel, err
 	}
-	in := plan.Input{
-		Listing:      listing,
-		FirstPass:    s.firstPass,
-		Previous:     s.previous,
-		State:        map[string]plan.Recorded{},
-		Local:        map[string]plan.Local{},
-		Now:          time.Now(),
-		ReadyAge:     s.opts.ReadyAge,
-		FirstPassAge: s.opts.FirstPassAge,
-		Windows:      runtime.GOOS == "windows",
-	}
+	decisions, counts := plan.Decide(s.input(listing, time.Now()))
 	s.previous, s.firstPass = listing, false
-	for p, rec := range s.records() {
-		in.State[p] = plan.Recorded{Size: rec.Size, ModTime: rec.MTime}
-	}
-	for _, p := range plan.NeedLocal(in) {
-		in.Local[p] = s.stat(p)
-	}
-	decisions, counts := plan.Decide(in)
 	for _, d := range decisions {
 		if d.Kind == plan.Fail {
 			s.log.Warn("file failed", "path", d.Path, "reason", d.Reason)
 		}
 	}
 	return decisions, counts, sel, nil
+}
+
+// input is the decisions' input for listing at now: the pass's rules, the
+// state's records and the local stats the decisions need.
+func (s *syncer) input(listing []plan.Entry, now time.Time) plan.Input {
+	in := plan.Input{
+		Listing:      listing,
+		FirstPass:    s.firstPass,
+		Previous:     s.previous,
+		State:        map[string]plan.Recorded{},
+		Local:        map[string]plan.Local{},
+		Now:          now,
+		ReadyAge:     s.opts.ReadyAge,
+		FirstPassAge: s.opts.FirstPassAge,
+		Windows:      runtime.GOOS == "windows",
+	}
+	for p, rec := range s.records() {
+		in.State[p] = plan.Recorded{Size: rec.Size, ModTime: rec.MTime}
+	}
+	for _, p := range plan.NeedLocal(in) {
+		in.Local[p] = s.stat(p)
+	}
+	return in
+}
+
+// downloads returns how many decisions download a file, copies and
+// replacements, and their listed bytes.
+func downloads(decisions []plan.Decision) (files int, bytes int64) {
+	for _, d := range decisions {
+		if d.Kind == plan.Copy || d.Kind == plan.Replace {
+			files++
+			bytes += d.Size
+		}
+	}
+	return files, bytes
+}
+
+// toCopy returns a kept func for [remote.Session.Walk] that keeps the entries
+// listed so far and calls h, as [Hooks.ToCopy] says, with what the pass
+// would download if the listing ended there. Deciding blocks the listing,
+// so the next count also waits nine times as long as one took: a large
+// share's listing then spends under a tenth of its time on counts.
+func (s *syncer) toCopy(h func(int, int64)) func(remote.Entry) {
+	var listing []plan.Entry
+	var next time.Time
+	return func(e remote.Entry) {
+		listing = append(listing, entry(e))
+		now := time.Now()
+		if now.Before(next) {
+			return
+		}
+		decisions, _ := plan.Decide(s.input(listing, now))
+		h(downloads(decisions))
+		next = now.Add(max(time.Second, 10*time.Since(now)))
+	}
+}
+
+// entry is the decisions' view of a listed entry.
+func entry(e remote.Entry) plan.Entry {
+	return plan.Entry{Path: e.Path, Size: e.Size, ModTime: e.ModTime, Regular: e.Kind == remote.Regular}
 }
 
 // selection is what one listing left out, and its top-level folders.
@@ -402,14 +439,18 @@ type selection struct {
 // listing failure, of the root or of a folder that is kept, fails the pass;
 // the returned selection then holds what was left out before it.
 func (s *syncer) list(ctx context.Context, sess remote.Session) ([]plan.Entry, selection, error) {
-	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed)
+	var kept func(remote.Entry)
+	if h := s.opts.Hooks.ToCopy; h != nil {
+		kept = s.toCopy(h)
+	}
+	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed, kept)
 	sel := selection{LeftOut: out}
 	if err != nil {
 		return nil, sel, fmt.Errorf("list the share: %w", err)
 	}
 	listing := make([]plan.Entry, 0, len(entries))
 	for _, e := range entries {
-		listing = append(listing, plan.Entry{Path: e.Path, Size: e.Size, ModTime: e.ModTime, Regular: e.Kind == remote.Regular})
+		listing = append(listing, entry(e))
 		if e.Kind == remote.Dir && !strings.Contains(e.Path, "/") {
 			sel.folders = append(sel.folders, e.Path)
 		}

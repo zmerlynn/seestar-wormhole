@@ -228,7 +228,7 @@ func (d *deleter) run(ctx context.Context) (failed int, err error) {
 		return 0, fmt.Errorf("connect to %s: %w", d.opts.Endpoint, err)
 	}
 	defer sess.Close()
-	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed)
+	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed, nil)
 	skip := "skipped"
 	if d.opts.DryRun {
 		skip = "would skip"

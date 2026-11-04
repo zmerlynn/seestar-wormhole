@@ -53,7 +53,8 @@ type previewStatus struct {
 	folders     int
 	listed      string // the folder being listed
 	err         error
-	// Done: what Start would do.
+	// Done: what Start would do. Running: files and bytes are those found
+	// so far.
 	files   int // copies and replacements
 	bytes   int64
 	groups  []folderGroup
@@ -106,6 +107,13 @@ func (p *previewer) start(set Settings) error {
 				defer p.mu.Unlock()
 				if p.st.state == pvRunning {
 					p.st.folders, p.st.listed = n, f
+				}
+			},
+			ToCopy: func(files int, bytes int64) {
+				p.mu.Lock()
+				defer p.mu.Unlock()
+				if p.st.state == pvRunning {
+					p.st.files, p.st.bytes = files, bytes
 				}
 			},
 			Decided: func(ds []plan.Decision, out engine.LeftOut) { result = decided(ds, out) },
@@ -195,6 +203,7 @@ type previewView struct {
 	Text   string        `json:"text,omitempty"`
 	Sub    string        `json:"sub,omitempty"`
 	Path   string        `json:"path,omitempty"` // what is being looked at
+	ToCopy string        `json:"tocopy,omitempty"`
 	Groups []folderGroup `json:"groups,omitempty"`
 }
 
@@ -216,6 +225,7 @@ func (p *previewer) view() *previewView {
 				v.Title += " " + count(st.folders, "folder", "folders") + " checked."
 			}
 			v.Path = listingLine(st.listed)
+			v.ToCopy = toCopyLine(st.files, st.bytes)
 		}
 	case pvFailed:
 		v.Text = "Preview again to retry."

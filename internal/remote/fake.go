@@ -47,11 +47,11 @@ func NewFake(fsys fs.FS) *Fake {
 }
 
 // Walk lists the share; see Session.
-func (f *Fake) Walk(ctx context.Context, skip func(string, bool) bool) ([]Entry, error) {
+func (f *Fake) Walk(ctx context.Context, skip func(string, bool) bool, kept func(Entry)) ([]Entry, error) {
 	if f.closed() {
 		return nil, &fs.PathError{Op: "walk", Path: ".", Err: fs.ErrClosed}
 	}
-	return walk(ctx, f.fsys, skip)
+	return walk(ctx, f.fsys, skip, kept)
 }
 
 // ReadDir lists one folder; see Session. A path that is not a folder is

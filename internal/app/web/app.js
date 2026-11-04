@@ -281,6 +281,7 @@ function renderPreview(v, st) {
   text('#c-ptext', p && p.text);
   text('#c-psub', p && p.sub);
   crawl('#c-ppath', p && p.path);
+  text('#c-ptocopy', p && p.tocopy);
   $('#c-pbusy').hidden = ps !== 'running';
   const groups = (p && p.groups) || [];
   $('#c-ptable').hidden = !groups.length;
@@ -307,8 +308,9 @@ function renderCopy(v) {
   const st = v.state;
   text('#c-title', v.title);
   text('#c-text', v.text);
-  // The path changes each second; it is not announced.
+  // The path and the count change each second; they are not announced.
   crawl('#c-path', v.path);
+  text('#c-tocopy', v.tocopy);
   $('#c-box').className = ['listfail', 'inuse', 'cantwrite'].includes(st) ? 'notice err' : '';
   $('#c-busy').hidden = !BUSY[st];
   if (BUSY[st]) $('#c-busy').setAttribute('aria-label', BUSY[st]);

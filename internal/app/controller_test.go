@@ -364,19 +364,50 @@ func TestCopyPassStates(t *testing.T) {
 	}
 }
 
-// While a pass lists the share, a line under the title names the folder
-// being listed; it goes once the pass has planned.
+// While a pass lists the share, lines under the title name the folder
+// being listed and what is found to copy so far. The folder goes once the
+// pass has planned, and the count then is the planned one, until copying
+// starts.
 func TestCopyListingPath(t *testing.T) {
 	c := newCopyEnv(t, nil).c
 	c.st = status{state: stConnecting}
 	h := c.hooks(t.Context())
 	h.Listed("MyWorks/M 31", 2)
-	if v := c.view(time.Now()); v.State != stListing || v.Title != "Looking for new files… 2 folders checked." || v.Path != "Listing MyWorks/M 31…" {
+	if v := c.view(time.Now()); v.State != stListing || v.Title != "Looking for new files… 2 folders checked." || v.Path != "Listing MyWorks/M 31…" ||
+		v.ToCopy != "Nothing to copy so far" {
 		t.Errorf("listing: %+v", v)
 	}
+	for _, tc := range []struct {
+		files int
+		bytes int64
+		want  string
+	}{{1, 2, "1 to copy so far (2 B)"}, {1234, 4_100_000_000, "1,234 to copy so far (4.1 GB)"}, {0, 0, "Nothing to copy so far"}} {
+		h.ToCopy(tc.files, tc.bytes)
+		if v := c.view(time.Now()); v.ToCopy != tc.want {
+			t.Errorf("ToCopy(%d, %d): got %q, want %q", tc.files, tc.bytes, v.ToCopy, tc.want)
+		}
+	}
+	h.ToCopy(5, 50)
 	h.Planned(0, 0)
-	if v := c.view(time.Now()); v.Path != "" {
-		t.Errorf("after planning: %+v", v)
+	if v := c.view(time.Now()); v.Path != "" || v.ToCopy != "Nothing to copy so far" {
+		t.Errorf("after planning nothing: %+v", v)
+	}
+	h.ToCopy(5, 50)
+	h.Planned(3, 9)
+	if v := c.view(time.Now()); v.State != stCopying || v.Title != "Copying 0 of 3 files" || v.ToCopy != "" {
+		t.Errorf("after planning 3: %+v", v)
+	}
+	h.PassDone(engine.Summary{Copied: 3, Bytes: 9})
+	if v := c.view(time.Now()); v.ToCopy != "" {
+		t.Errorf("after the pass: %+v", v)
+	}
+	// A stopped pass's count changes nothing.
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	c.st = status{state: stListing}
+	c.hooks(ctx).ToCopy(7, 70)
+	if v := c.view(time.Now()); v.ToCopy != "Nothing to copy so far" {
+		t.Errorf("after a stopped pass's count: %+v", v)
 	}
 }
 

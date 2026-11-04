@@ -399,7 +399,7 @@ func TestSMBRequestsAreReadOnly(t *testing.T) {
 			t.Errorf("ReadDir = %v, want fs.ErrNotExist", err)
 		}
 		// The peer reports every name but its file, the root too, as missing.
-		if _, err := s.Walk(ctx, nil); !errors.Is(err, fs.ErrNotExist) {
+		if _, err := s.Walk(ctx, nil, nil); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("Walk = %v, want fs.ErrNotExist", err)
 		}
 		if _, err := s.Open(ctx, "MyWorks/locked.fit"); !errors.Is(err, fs.ErrPermission) {
@@ -474,7 +474,7 @@ func TestSMBErrorsNameEndpointAndPath(t *testing.T) {
 		if !errors.Is(err, fs.ErrPermission) || !errors.As(err, &pe) || !strings.Contains(err.Error(), wireEndpoint) || !strings.Contains(err.Error(), `"MyWorks/locked.fit"`) {
 			t.Errorf("denied Open = %v, want fs.ErrPermission naming %s and the path", err, wireEndpoint)
 		}
-		_, err = s.Walk(ctx, nil)
+		_, err = s.Walk(ctx, nil, nil)
 		if !errors.Is(err, fs.ErrNotExist) || !strings.Contains(err.Error(), wireEndpoint) {
 			t.Errorf("Walk of a missing root = %v, want fs.ErrNotExist naming %s", err, wireEndpoint)
 		}
@@ -712,7 +712,7 @@ func TestPendingCallsEnd(t *testing.T) {
 	}
 	calls := map[string]call{
 		"Open":    {wire.SMB2_CREATE, func(s *SMB) error { _, err := s.Open(context.Background(), "MyWorks/a.fit"); return err }},
-		"Walk":    {wire.SMB2_CREATE, func(s *SMB) error { _, err := s.Walk(context.Background(), nil); return err }},
+		"Walk":    {wire.SMB2_CREATE, func(s *SMB) error { _, err := s.Walk(context.Background(), nil, nil); return err }},
 		"Read":    {wire.SMB2_READ, func(s *SMB) error { return read(s, false) }},
 		"WriteTo": {wire.SMB2_READ, func(s *SMB) error { return read(s, true) }},
 	}

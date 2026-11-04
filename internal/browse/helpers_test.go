@@ -91,9 +91,9 @@ func (s *spy) closed() bool {
 	}
 }
 
-func (s *spy) Walk(ctx context.Context, skip func(string, bool) bool) ([]remote.Entry, error) {
+func (s *spy) Walk(ctx context.Context, skip func(string, bool) bool, kept func(remote.Entry)) ([]remote.Entry, error) {
 	s.count("Walk")
-	return s.fake.Walk(ctx, skip)
+	return s.fake.Walk(ctx, skip, kept)
 }
 
 func (s *spy) ReadDir(ctx context.Context, dir string) ([]remote.Entry, error) {

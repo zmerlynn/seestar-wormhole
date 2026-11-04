@@ -39,7 +39,7 @@ func TestWalkKinds(t *testing.T) {
 		"pipe": {Mode: fs.ModeNamedPipe, ModTime: mtime},
 		"dev":  {Mode: fs.ModeDevice, ModTime: mtime},
 	}
-	got, err := NewFake(fsys).Walk(t.Context(), nil)
+	got, err := NewFake(fsys).Walk(t.Context(), nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestWalkRefusesNamesThatAreNotOneElement(t *testing.T) {
 	base := fstest.MapFS{"a/b": {Data: []byte("x")}, "c": {Data: []byte("y")}}
 	for _, name := range []string{"", ".", "..", "x/y", "../c"} {
 		for _, dir := range []string{".", "a"} {
-			_, err := NewFake(renamingFS{base, dir, name}).Walk(t.Context(), nil)
+			_, err := NewFake(renamingFS{base, dir, name}).Walk(t.Context(), nil, nil)
 			if err == nil {
 				t.Errorf("listing %q in %s: err = %v, want a refusal", name, dir, err)
 			}
@@ -93,7 +93,7 @@ func TestWalkRefusesNamesThatAreNotOneElement(t *testing.T) {
 	}
 	// Names that only look odd are kept byte for byte.
 	for _, name := range []string{"...", ".x", "a\\b", "a b ", "\xff"} {
-		got, err := NewFake(renamingFS{base, ".", name}).Walk(t.Context(), nil)
+		got, err := NewFake(renamingFS{base, ".", name}).Walk(t.Context(), nil, nil)
 		if err != nil {
 			t.Errorf("listing %q: %v", name, err)
 			continue
@@ -126,7 +126,7 @@ func TestWalkErrors(t *testing.T) {
 		dir string
 		err error
 	}{{"a", fs.ErrNotExist}, {"a", boom}, {".", fs.ErrPermission}} {
-		got, err := NewFake(failingFS{base, tc.dir, tc.err}).Walk(t.Context(), nil)
+		got, err := NewFake(failingFS{base, tc.dir, tc.err}).Walk(t.Context(), nil, nil)
 		if !errors.Is(err, tc.err) || got != nil {
 			t.Errorf("ReadDir(%q) failing with %v: Walk = %v, %v", tc.dir, tc.err, got, err)
 		}
@@ -168,7 +168,7 @@ func TestWalkSkip(t *testing.T) {
 		}
 		asked = append(asked, p)
 		return skip[strings.TrimSuffix(p, "/")]
-	})
+	}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,12 +187,12 @@ func TestWalkSkip(t *testing.T) {
 	}
 
 	reads = nil
-	got, err = NewFake(readsFS{base, "bad", &reads}).Walk(t.Context(), func(p string, _ bool) bool { return p != "bad" })
+	got, err = NewFake(readsFS{base, "bad", &reads}).Walk(t.Context(), func(p string, _ bool) bool { return p != "bad" }, nil)
 	if !errors.Is(err, fs.ErrPermission) || got != nil {
 		t.Errorf("unreadable folder not skipped: Walk = %v, %v; want the error and no listing", got, err)
 	}
 
-	got, err = NewFake(base).Walk(t.Context(), func(string, bool) bool { return true })
+	got, err = NewFake(base).Walk(t.Context(), func(string, bool) bool { return true }, nil)
 	if err != nil || len(got) != 0 {
 		t.Errorf("skipping every entry: Walk = %v, %v; want an empty listing", got, err)
 	}
@@ -212,11 +212,54 @@ func (c cancelingFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return c.MapFS.ReadDir(name)
 }
 
+// Walk's kept func gets each entry kept, with its size and mtime, as it
+// is listed: before the walk reads the next folder, and also when a later
+// folder fails the walk. Skipped entries never reach it.
+func TestWalkListed(t *testing.T) {
+	mtime := time.Unix(1761000000, 0)
+	base := fstest.MapFS{
+		"a/x":   {Data: []byte("xx"), ModTime: mtime},
+		"a/y":   {Data: []byte("y"), ModTime: mtime},
+		"b/z":   {Data: []byte("z"), ModTime: mtime},
+		"bad/z": {Data: []byte("z"), ModTime: mtime},
+	}
+	var log []string
+	var listed []Entry
+	kept := func(e Entry) {
+		listed = append(listed, e)
+		log = append(log, "listed "+e.Path)
+	}
+	got, err := NewFake(readsFS{base, "bad", &log}).Walk(t.Context(), func(p string, _ bool) bool { return p == "a/y" || p == "bad" }, kept)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sameEntries(t, listed, got)
+	if want := []string{".", "listed a", "a", "listed a/x", "listed b", "b", "listed b/z"}; !slices.Equal(log, want) {
+		t.Errorf("calls %q, want %q", log, want)
+	}
+	if len(listed) != 4 || listed[1].Size != 2 || !listed[1].ModTime.Equal(mtime) {
+		t.Errorf("listed %v, want a/x with size 2 and its mtime", listed)
+	}
+
+	listed = nil
+	got, err = NewFake(readsFS{base, "bad", &log}).Walk(t.Context(), nil, kept)
+	if !errors.Is(err, fs.ErrPermission) || got != nil {
+		t.Fatalf("Walk = %v, %v; want the error and no listing", got, err)
+	}
+	var paths []string
+	for _, e := range listed {
+		paths = append(paths, e.Path)
+	}
+	if want := []string{"a", "a/x", "a/y", "b", "b/z", "bad"}; !slices.Equal(paths, want) {
+		t.Errorf("listed before the failure %q, want %q", paths, want)
+	}
+}
+
 func TestWalkStopsWhenCanceledMidway(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	fsys := cancelingFS{fstest.MapFS{"a/b": {Data: []byte("x")}, "c": {Data: []byte("y")}}, "a", cancel}
-	got, err := NewFake(fsys).Walk(ctx, nil)
+	got, err := NewFake(fsys).Walk(ctx, nil, nil)
 	if !errors.Is(err, context.Canceled) || got != nil {
 		t.Errorf("Walk = %v, %v; want context.Canceled and no listing", got, err)
 	}
@@ -330,7 +373,7 @@ func TestWalkRefusesDirectoryAliases(t *testing.T) {
 	// before its contents are listed.
 	for _, name := range []string{"", ".", "..", "x/y"} {
 		fsys := &countingFS{MapFS: fstest.MapFS{"a/file": {Data: []byte("x")}}, name: name, max: 5}
-		got, err := NewFake(fsys).Walk(t.Context(), nil)
+		got, err := NewFake(fsys).Walk(t.Context(), nil, nil)
 		if err == nil || errors.Is(err, errTooManyReadDirs) || got != nil {
 			t.Errorf("directory listed as %q: Walk = %v, %v; want a refusal", name, got, err)
 		}
@@ -357,12 +400,12 @@ func (s statErrorFS) Stat(name string) (fs.FileInfo, error) {
 func TestWalkRootErrors(t *testing.T) {
 	base := fstest.MapFS{"a": {Data: []byte("x")}}
 	for _, want := range []error{fs.ErrNotExist, fs.ErrPermission, errors.New("i/o error")} {
-		got, err := NewFake(statErrorFS{base, ".", want}).Walk(t.Context(), nil)
+		got, err := NewFake(statErrorFS{base, ".", want}).Walk(t.Context(), nil, nil)
 		if !errors.Is(err, want) || got != nil {
 			t.Errorf("root Stat failing with %v: Walk = %v, %v; want that error and no listing", want, got, err)
 		}
 	}
-	got, err := NewFake(fstest.MapFS{".": {Data: []byte("x")}}).Walk(t.Context(), nil)
+	got, err := NewFake(fstest.MapFS{".": {Data: []byte("x")}}).Walk(t.Context(), nil, nil)
 	if err == nil || got != nil {
 		t.Errorf("root that is a file: Walk = %v, %v; want a refusal", got, err)
 	}

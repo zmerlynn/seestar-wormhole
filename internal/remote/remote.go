@@ -86,7 +86,10 @@ type Session interface {
 	// whether it is a directory, before a directory's contents are read.
 	// An entry for which it returns true is left out, and so is everything
 	// below it: that directory is never read.
-	Walk(ctx context.Context, skip func(path string, dir bool) bool) ([]Entry, error)
+	//
+	// kept, if not nil, is called with each entry kept as it is listed,
+	// before the walk goes on, including those listed before a failure.
+	Walk(ctx context.Context, skip func(path string, dir bool) bool, kept func(Entry)) ([]Entry, error)
 	// ReadDir lists one folder, dir, which is "." for the root or a path
 	// ValidPath accepts; any other is refused with fs.ErrInvalid before
 	// any request. Its entries are in name order, with the listing rules
@@ -138,7 +141,7 @@ func kindOf(mode fs.FileMode) Kind {
 }
 
 // walk lists the root of fsys for Session.Walk.
-func walk(ctx context.Context, fsys fs.FS, skip func(string, bool) bool) ([]Entry, error) {
+func walk(ctx context.Context, fsys fs.FS, skip func(string, bool) bool, kept func(Entry)) ([]Entry, error) {
 	var entries []Entry
 	// The root is the first call. Telling it apart by path would not do: a
 	// listed name of "" or "." joins back to the root itself.
@@ -177,7 +180,11 @@ func walk(ctx context.Context, fsys fs.FS, skip func(string, bool) bool) ([]Entr
 		if err != nil {
 			return err
 		}
-		entries = append(entries, Entry{Path: p, Size: info.Size(), ModTime: info.ModTime(), Kind: kindOf(info.Mode())})
+		e := Entry{Path: p, Size: info.Size(), ModTime: info.ModTime(), Kind: kindOf(info.Mode())}
+		entries = append(entries, e)
+		if kept != nil {
+			kept(e)
+		}
 		return nil
 	})
 	if err != nil {

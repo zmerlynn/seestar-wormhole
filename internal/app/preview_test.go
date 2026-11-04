@@ -154,7 +154,7 @@ type failDir struct {
 	dir string
 }
 
-func (f failDir) Walk(context.Context, func(string, bool) bool) ([]remote.Entry, error) {
+func (f failDir) Walk(context.Context, func(string, bool) bool, func(remote.Entry)) ([]remote.Entry, error) {
 	return nil, &fs.PathError{Op: "readdir", Path: f.dir, Err: errors.New("access denied")}
 }
 
@@ -256,27 +256,38 @@ func TestPreviewDiscardAtEnd(t *testing.T) {
 func TestPreviewListing(t *testing.T) {
 	e := newPreviewEnv(t, nil)
 	e.p.st = previewStatus{state: pvRunning, endpoint: "192.0.2.10:445", listing: true}
-	if v := e.p.view(); v.Title != "Looking for new files…" {
+	if v := e.p.view(); v.Title != "Looking for new files…" || v.ToCopy != "Nothing to copy so far" {
 		t.Errorf("listing: %+v", v)
 	}
 	e.p.st.folders = 12
 	if v := e.p.view(); v.Title != "Looking for new files… 12 folders checked." || v.Path != "" {
 		t.Errorf("listing: %+v", v)
 	}
-	// A real run names each folder as it is listed.
-	e = newPreviewEnv(t, fstest.MapFS{"MyWorks/M 31/a.jpg": image("a")})
+	e.p.st.files, e.p.st.bytes = 2, 3_000_000
+	if v := e.p.view(); v.ToCopy != "2 to copy so far (3.0 MB)" {
+		t.Errorf("listing: %+v", v)
+	}
+	e.p.st.listing = false
+	if v := e.p.view(); v.ToCopy != "" {
+		t.Errorf("connecting: %+v", v)
+	}
+	// A real run names each folder as it is listed, and counts A.jpg,
+	// listed first.
+	e = newPreviewEnv(t, fstest.MapFS{"A.jpg": image("a"), "MyWorks/M 31/a.jpg": image("a")})
 	var seen []string
 	dial := e.p.dial
 	e.p.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
 		sess, err := dial(ctx, endpoint)
 		return walkSpy{sess, func(p string, dir bool) {
 			if v := e.p.view(); dir && v != nil {
-				seen = append(seen, v.Title+" "+v.Path)
+				seen = append(seen, v.Title+" "+v.Path+" "+v.ToCopy)
 			}
 		}}, err
 	}
-	e.run()
-	want := []string{"Looking for new files… 1 folder checked. Listing MyWorks…", "Looking for new files… 2 folders checked. Listing MyWorks/M 31…"}
+	if v := e.run(); v == nil || v.ToCopy != "" {
+		t.Errorf("done: %+v", v)
+	}
+	want := []string{"Looking for new files… 1 folder checked. Listing MyWorks… 1 to copy so far (1 B)", "Looking for new files… 2 folders checked. Listing MyWorks/M 31… 1 to copy so far (1 B)"}
 	if !slices.Equal(seen, want) {
 		t.Errorf("while listing: got %q, want %q", seen, want)
 	}
@@ -289,12 +300,12 @@ type walkSpy struct {
 	after func(p string, dir bool)
 }
 
-func (s walkSpy) Walk(ctx context.Context, skip func(string, bool) bool) ([]remote.Entry, error) {
+func (s walkSpy) Walk(ctx context.Context, skip func(string, bool) bool, kept func(remote.Entry)) ([]remote.Entry, error) {
 	return s.Session.Walk(ctx, func(p string, dir bool) bool {
 		out := skip(p, dir)
 		s.after(p, dir)
 		return out
-	})
+	}, kept)
 }
 
 // The copy API runs and cancels a preview while copying is off. Start,

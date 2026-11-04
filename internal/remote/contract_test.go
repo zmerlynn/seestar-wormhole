@@ -111,7 +111,7 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 	ctx := t.Context()
 
 	t.Run("WalkRoot", func(t *testing.T) {
-		got, err := session.Walk(ctx, nil)
+		got, err := session.Walk(ctx, nil, nil)
 		if err != nil {
 			t.Fatalf("Walk: %v", err)
 		}
@@ -127,7 +127,7 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 		got, err := session.Walk(ctx, func(p string, dir bool) bool {
 			asked = append(asked, fmt.Sprintf("%s %t", p, dir))
 			return skipped[p]
-		})
+		}, nil)
 		if err != nil {
 			t.Fatalf("Walk with skip: %v", err)
 		}
@@ -336,7 +336,7 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 	t.Run("CanceledWalk", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
-		if _, err := session.Walk(ctx, nil); !errors.Is(err, context.Canceled) {
+		if _, err := session.Walk(ctx, nil, nil); !errors.Is(err, context.Canceled) {
 			t.Errorf("Walk with a canceled context = %v", err)
 		}
 	})
@@ -353,7 +353,7 @@ func runContract(t *testing.T, dial func(t *testing.T) Session) {
 		if err := s.Close(); err != nil {
 			t.Errorf("second Close: %v", err)
 		}
-		if _, err := s.Walk(ctx, nil); err == nil {
+		if _, err := s.Walk(ctx, nil, nil); err == nil {
 			t.Error("Walk after Close succeeded")
 		}
 		if _, err := s.Open(ctx, "MyWorks2/y.fit"); err == nil {
