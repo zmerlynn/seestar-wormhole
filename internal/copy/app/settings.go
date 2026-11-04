@@ -59,6 +59,21 @@ type settingsFile struct {
 	exists   bool
 }
 
+// settingsRead reads app.json as encoding/json did, so that a file an
+// earlier seestar-copy wrote loads the same: a null field keeps its
+// default.
+var settingsRead = json.WithUnmarshalers(json.JoinUnmarshalers(json.UnmarshalFromFunc(keepOnNull[*int]),
+	json.UnmarshalFromFunc(keepOnNull[*string]), json.UnmarshalFromFunc(keepOnNull[*bool])))
+
+// keepOnNull leaves a field as it was when its value is null.
+func keepOnNull[T any](dec *jsontext.Decoder, _ T) error {
+	if dec.PeekKind() != 'n' {
+		return errors.ErrUnsupported
+	}
+	_, err := dec.ReadToken()
+	return err
+}
+
 // loadError is a settings file that can't be read. Its text is the startup
 // error the app shows before it exits.
 type loadError struct {
@@ -99,7 +114,7 @@ func loadSettings(path string) (*settingsFile, error) {
 		return nil, &loadError{path, err.Error()}
 	}
 	f.settings.StartCopying = true
-	if err := json.Unmarshal(b, &f.settings); err != nil {
+	if err := json.Unmarshal(b, &f.settings, settingsRead); err != nil {
 		return nil, &loadError{path, err.Error()}
 	}
 	if _, ok := f.raw["version"]; ok && f.settings.Version != settingsVersion {

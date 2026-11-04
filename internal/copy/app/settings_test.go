@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"testing/fstest"
+	"time"
 )
 
 func writeFile(t *testing.T, path, data string) {
@@ -67,6 +69,55 @@ func TestLoadStartCopying(t *testing.T) {
 		if f.settings.StartCopying != c.want {
 			t.Errorf("file with %q: start_copying %v, want %v", c.member, f.settings.StartCopying, c.want)
 		}
+	}
+}
+
+// A null field keeps its default, as it did when app.json was read with
+// encoding/json: v0.4.0 read these files so, and a zero interval would start
+// each pass as the last one ended.
+func TestLoadNullFieldsTakeDefaults(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	defaults := Settings{Version: 1, Folder: filepath.Join(home, "Seestar"), IntervalMinutes: 5,
+		Excludes: []string{}, Includes: []string{}, SkipBuiltIn: true, StartCopying: true, OlderThanDays: 7}
+	for _, tt := range []struct {
+		name, data string
+		want       Settings
+	}{
+		{"some", `{"version":1,"interval_minutes":null,"skip_built_in":null,"start_copying":true}`, defaults},
+		{"all", `{"version":null,"address":null,"folder":null,"interval_minutes":null,"excludes":null,"includes":null,` +
+			`"skip_built_in":null,"start_copying":null,"older_than_days":null,"trust_state":null}`, defaults},
+		{"an element", `{"excludes":["Video",null]}`, func() Settings { s := defaults; s.Excludes = []string{"Video", ""}; return s }()},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "app.json")
+			writeFile(t, path, tt.data)
+			f, err := loadSettings(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(f.settings, tt.want) {
+				t.Errorf("got %+v, want %+v", f.settings, tt.want)
+			}
+		})
+	}
+
+	path := filepath.Join(t.TempDir(), "app.json")
+	writeFile(t, path, `{"version":1,"address":"192.0.2.10:445","interval_minutes":null,"start_copying":true}`)
+	f, err := loadSettings(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := newCopyEnv(t, fstest.MapFS{})
+	if err := e.c.start(f.settings); err != nil {
+		t.Fatal(err)
+	}
+	e.c.mu.Lock()
+	interval := e.c.st.interval
+	e.c.mu.Unlock()
+	if interval != 5*time.Minute {
+		t.Errorf("copying started with a pass every %v, want 5m", interval)
 	}
 }
 
