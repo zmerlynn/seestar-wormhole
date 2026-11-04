@@ -42,6 +42,7 @@ jobs:
           go test ./...
           go test scripts/release.go scripts/release_test.go
           ./scripts/test-check.sh
+          sh scripts/copy/check-go.sh
 
   native:
     strategy:
@@ -82,6 +83,118 @@ jobs:
           go build -o "$binary" ./cmd/seestar-wormhole
           "./$binary" --version
           "./$binary" proxy --help
+      - name: Build and smoke test native seestar-copy-cli
+        run: |
+          binary=seestar-copy-cli
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            binary+=.exe
+          fi
+          go build -o "$binary" ./cmd/seestar-copy-cli
+          "./$binary" --version
+          "./$binary" sync --help
+
+  copy-smb:
+    # seestar-copy's Samba tests against the fixture share.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - name: Start the Samba fixture
+        run: |
+          docker build -f internal/copy/remote/testdata/samba/Containerfile -t seestar-copy-samba internal/copy/remote/testdata/samba
+          docker run -d --name samba -p 127.0.0.1:14450:14450 seestar-copy-samba
+          for try in $(seq 50); do
+            if docker exec samba bash -c 'exec 3<>/dev/tcp/127.0.0.1/14450'; then exit 0; fi
+            sleep 0.2
+          done
+          docker logs samba
+          exit 1
+      - name: SMB integration tests
+        env:
+          SEESTAR_COPY_SMB_ENDPOINT: 127.0.0.1:14450
+        run: go test -tags smbintegration -race -count=1 -timeout 10m -v ./internal/copy/remote ./internal/copy/app
+      - name: Samba log
+        if: failure()
+        run: docker logs samba
+
+
+  copy-browser:
+    # Playwright tests of seestar-copy's browse page and app page.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: '1.27.3'
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Start the Samba fixture with the browse tree
+        run: |
+          docker build --target browse -f internal/copy/remote/testdata/samba/Containerfile -t seestar-copy-samba-browse internal/copy/remote/testdata/samba
+          docker run -d --name samba -p 127.0.0.1:14450:14450 seestar-copy-samba-browse
+          for try in $(seq 50); do
+            if docker exec samba bash -c 'exec 3<>/dev/tcp/127.0.0.1/14450'; then exit 0; fi
+            sleep 0.2
+          done
+          docker logs samba
+          exit 1
+      - name: Start browse
+        run: |
+          go build -o "$RUNNER_TEMP/seestar-copy-cli" ./cmd/seestar-copy-cli
+          echo "CLI_BIN=$RUNNER_TEMP/seestar-copy-cli" >> "$GITHUB_ENV"
+          "$RUNNER_TEMP/seestar-copy-cli" browse --endpoint 127.0.0.1:14450 --listen 127.0.0.1:0 \
+            > "$RUNNER_TEMP/browse.url" 2> "$RUNNER_TEMP/browse.log" &
+          for try in $(seq 50); do
+            if [ -s "$RUNNER_TEMP/browse.url" ]; then
+              echo "BROWSE_URL=$(head -n 1 "$RUNNER_TEMP/browse.url")" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 0.2
+          done
+          cat "$RUNNER_TEMP/browse.log"
+          exit 1
+      - name: Build the app
+        run: |
+          go build -o "$RUNNER_TEMP/seestar-copy" ./cmd/seestar-copy
+          echo "APP_BIN=$RUNNER_TEMP/seestar-copy" >> "$GITHUB_ENV"
+      - name: Install Playwright and its browsers
+        working-directory: test/browser
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium webkit
+      - name: Browser tests
+        working-directory: test/browser
+        run: npx playwright test
+      - name: Upload screenshots
+        if: success() || failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: copy-browser-screenshots
+          path: test/browser/screenshots
+          if-no-files-found: ignore
+      - name: Upload the Playwright report
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: copy-playwright-report
+          path: |
+            test/browser/playwright-report
+            test/browser/test-results
+          if-no-files-found: ignore
+      - name: browse and Samba logs
+        if: failure()
+        run: |
+          cat "$RUNNER_TEMP/browse.log" || true
+          docker logs samba
 
   vendor:
     runs-on: ubuntu-24.04
