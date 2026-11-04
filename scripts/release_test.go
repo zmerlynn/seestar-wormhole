@@ -6,6 +6,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"crypto/sha256"
 	"errors"
@@ -636,7 +637,9 @@ func TestWorkflowVerifyChecks(t *testing.T) {
 }
 
 // The verify check refuses edits that drop a required check or let it be
-// skipped or fail, and accepts harmless ones.
+// skipped or fail, and accepts harmless ones. Each edit works on the parsed
+// workflow and finds the step it changes by its run block, so renaming or
+// moving a step does not break the cases.
 func TestWorkflowVerifyChecksRefuse(t *testing.T) {
 	if _, err := os.Stat(".github/workflows/ci.yml"); os.IsNotExist(err) {
 		t.Chdir("..")
@@ -645,41 +648,94 @@ func TestWorkflowVerifyChecksRefuse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	const race = "          go test -race -count=2 -timeout 20m ./...\n"
-	const build = "      - name: Build, vet and test vendored source\n"
-	const job = "  verify:\n"
-	const shell = "    defaults:\n      run:\n        shell: python\n"
+	const race = "go test -race -count=2 -timeout 20m ./..."
+	get := func(m *yaml.Node, key string) *yaml.Node {
+		for i := 0; i+1 < len(m.Content); i += 2 {
+			if m.Content[i].Value == key {
+				return m.Content[i+1]
+			}
+		}
+		return nil
+	}
+	set := func(m *yaml.Node, key, value string) {
+		var v yaml.Node
+		if err := yaml.Unmarshal([]byte(value), &v); err != nil {
+			t.Fatal(err)
+		}
+		if old := get(m, key); old != nil {
+			*old = *v.Content[0]
+			return
+		}
+		m.Content = append(m.Content, &yaml.Node{Kind: yaml.ScalarNode, Value: key}, v.Content[0])
+	}
+	// rewrite replaces line, wherever a verify step's run block has it.
+	rewrite := func(job *yaml.Node, line string, with ...string) {
+		for _, step := range get(job, "steps").Content {
+			if run := get(step, "run"); run != nil {
+				lines := strings.Split(run.Value, "\n")
+				for i := len(lines) - 1; i >= 0; i-- {
+					if strings.TrimSpace(lines[i]) == line {
+						lines = slices.Replace(lines, i, i+1, with...)
+					}
+				}
+				run.Value = strings.Join(lines, "\n")
+			}
+		}
+	}
 	type edit struct {
-		name, old, new string
-		ok             bool
+		name string
+		fn   func(root, job, step *yaml.Node)
+		ok   bool
 	}
 	edits := []edit{
-		{"race commented", race, "          # go test -race -count=2 -timeout 20m ./...\n", false},
-		{"step if false", build, build + "        if: ${{ false }}\n", false},
-		{"step continue-on-error", build, build + "        continue-on-error: true\n", false},
-		{"step shell", build, build + "        shell: pwsh\n", false},
-		{"job if", job, job + "    if: github.event_name == 'push'\n", false},
-		{"job continue-on-error", job, job + "    continue-on-error: true\n", false},
-		{"job shell", job, job + shell, false},
-		{"workflow shell", "\njobs:\n", "\ndefaults:\n  run:\n    shell: python\n\njobs:\n", false},
-		{"step renamed", build, "      - name: Verify\n", true},
-		{"step if true", build, build + "        if: ${{ true }}\n", true},
-		{"step continue-on-error false", build, build + "        continue-on-error: false\n", true},
-		{"step shell bash", build, build + "        shell: bash\n", true},
+		{"race commented", func(_, job, _ *yaml.Node) { rewrite(job, race, "# "+race) }, false},
+		{"step if false", func(_, _, step *yaml.Node) { set(step, "if", "${{ false }}") }, false},
+		{"step continue-on-error", func(_, _, step *yaml.Node) { set(step, "continue-on-error", "true") }, false},
+		{"step shell", func(_, _, step *yaml.Node) { set(step, "shell", "pwsh") }, false},
+		{"job if", func(_, job, _ *yaml.Node) { set(job, "if", "github.event_name == 'push'") }, false},
+		{"job continue-on-error", func(_, job, _ *yaml.Node) { set(job, "continue-on-error", "true") }, false},
+		{"job shell", func(_, job, _ *yaml.Node) { set(job, "defaults", "run: {shell: python}") }, false},
+		{"workflow shell", func(root, _, _ *yaml.Node) { set(root, "defaults", "run: {shell: python}") }, false},
+		{"step renamed", func(_, _, step *yaml.Node) { set(step, "name", "Verify") }, true},
+		{"step if true", func(_, _, step *yaml.Node) { set(step, "if", "'${{ true }}'") }, true},
+		{"step continue-on-error false", func(_, _, step *yaml.Node) { set(step, "continue-on-error", "false") }, true},
+		{"step shell bash", func(_, _, step *yaml.Node) { set(step, "shell", "bash") }, true},
+		{"job if true", func(_, job, _ *yaml.Node) { set(job, "if", "'${{ true }}'") }, true},
+		{"job continue-on-error false", func(_, job, _ *yaml.Node) { set(job, "continue-on-error", "false") }, true},
+		{"job shell bash", func(_, job, _ *yaml.Node) { set(job, "defaults", "run: {shell: bash}") }, true},
+		{"job shell sh", func(_, job, _ *yaml.Node) { set(job, "defaults", "run: {shell: sh}") }, true},
+		{"workflow shell bash", func(root, _, _ *yaml.Node) { set(root, "defaults", "run: {shell: bash}") }, true},
+		{"workflow shell overridden", func(root, job, _ *yaml.Node) {
+			set(root, "defaults", "run: {shell: python}")
+			set(job, "defaults", "run: {shell: sh}")
+		}, true},
 	}
 	for _, line := range verifyLines {
-		indent := "          "
-		if line == "exit 1" {
-			indent += "  "
-		}
-		edits = append(edits, edit{"without " + line, "\n" + indent + line + "\n", "\n", false})
+		edits = append(edits, edit{"without " + line, func(_, job, _ *yaml.Node) { rewrite(job, line) }, false})
 	}
 	for _, tt := range edits {
 		t.Run(tt.name, func(t *testing.T) {
-			if bytes.Count(data, []byte(tt.old)) != 1 {
-				t.Fatalf("ci.yml no longer has %q once", tt.old)
+			var doc yaml.Node
+			if err := yaml.Unmarshal(data, &doc); err != nil {
+				t.Fatal(err)
 			}
-			err := checkVerify(bytes.Replace(data, []byte(tt.old), []byte(tt.new), 1))
+			root := doc.Content[0]
+			job := get(get(root, "jobs"), "verify")
+			var step *yaml.Node
+			for _, s := range get(job, "steps").Content {
+				if run := get(s, "run"); run != nil && slices.Contains(strings.Split(run.Value, "\n"), race) {
+					step = s
+				}
+			}
+			if step == nil {
+				t.Fatalf("ci.yml's verify job has no step running %s", race)
+			}
+			tt.fn(root, job, step)
+			edited, err := yaml.Marshal(&doc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = checkVerify(edited)
 			if (err == nil) != tt.ok {
 				t.Errorf("accepted=%t, want %t: %v", err == nil, tt.ok, err)
 			}
@@ -689,8 +745,9 @@ func TestWorkflowVerifyChecksRefuse(t *testing.T) {
 
 // checkVerify checks ci.yml's verify job structurally: each required line is
 // a whole line of a step's run block, and nothing at the workflow, job or
-// step level can skip that step, let it fail or change its shell. It guards
-// against accidental removal; review covers deliberate obfuscation.
+// step level can skip that step, let it fail or give it a shell other than
+// bash or sh. It guards against accidental removal; review covers deliberate
+// obfuscation.
 func checkVerify(data []byte) error {
 	type shellDefaults struct{ Run struct{ Shell string } }
 	var workflow struct {
@@ -713,9 +770,9 @@ func checkVerify(data []byte) error {
 		return errors.New("ci.yml has no verify job")
 	}
 	var problems []error
-	if verify.If != "" || verify.ContinueOnError != "" || verify.Defaults.Run.Shell != "" || workflow.Defaults.Run.Shell != "" {
-		problems = append(problems, fmt.Errorf("verify has if %q, continue-on-error %q, job shell %q, workflow shell %q",
-			verify.If, verify.ContinueOnError, verify.Defaults.Run.Shell, workflow.Defaults.Run.Shell))
+	ifs, continues, shells := []string{"", "true", "${{ true }}"}, []string{"", "false"}, []string{"", "bash", "sh"}
+	if !slices.Contains(ifs, verify.If) || !slices.Contains(continues, verify.ContinueOnError) {
+		problems = append(problems, fmt.Errorf("verify has if %q, continue-on-error %q", verify.If, verify.ContinueOnError))
 	}
 	found := map[string]bool{}
 	for _, step := range verify.Steps {
@@ -726,10 +783,10 @@ func checkVerify(data []byte) error {
 				found[line], carries = true, true
 			}
 		}
-		if carries && (!slices.Contains([]string{"", "true", "${{ true }}"}, step.If) ||
-			!slices.Contains([]string{"", "false"}, step.ContinueOnError) || !slices.Contains([]string{"", "bash", "sh"}, step.Shell)) {
+		shell := cmp.Or(step.Shell, verify.Defaults.Run.Shell, workflow.Defaults.Run.Shell)
+		if carries && (!slices.Contains(ifs, step.If) || !slices.Contains(continues, step.ContinueOnError) || !slices.Contains(shells, shell)) {
 			problems = append(problems, fmt.Errorf("verify step %q has if %q, continue-on-error %q, shell %q",
-				step.Name, step.If, step.ContinueOnError, step.Shell))
+				step.Name, step.If, step.ContinueOnError, shell))
 		}
 	}
 	for _, line := range verifyLines {
