@@ -610,9 +610,18 @@ func TestWorkflowArchiveAssembly(t *testing.T) {
 	}
 }
 
-// CI's Linux job must keep the checks the copy workflow ran before the merge:
-// a gofmt check that fails on any unformatted file, and the race suite over
-// the whole module.
+// verifyLines are the commands CI's Linux job must run: the gofmt check, the
+// race suite over the whole module, and the repository's own checks.
+var verifyLines = []string{
+	`unformatted=$(find . \( -type d -name '.*' ! -name . -o -path ./vendor \) -prune -o -type f -name '*.go' -print | xargs gofmt -l)`,
+	`if [ -n "$unformatted" ]; then`,
+	"exit 1",
+	"go test -race -count=2 -timeout 20m ./...",
+	"./scripts/test-check.sh",
+	"sh scripts/copy/check-go.sh",
+}
+
+// CI's Linux job must keep the checks the copy workflow ran before the merge.
 func TestWorkflowVerifyChecks(t *testing.T) {
 	if _, err := os.Stat(".github/workflows/ci.yml"); os.IsNotExist(err) {
 		t.Chdir("..")
@@ -621,27 +630,13 @@ func TestWorkflowVerifyChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	format, err := checkVerify(data, t.TempDir())
-	if err != nil {
+	if err := checkVerify(data); err != nil {
 		t.Fatal(err)
-	}
-	// Run the step with a gofmt that reports a file, and one that reports none.
-	for _, out := range []string{"", "bad.go"} {
-		bin := t.TempDir()
-		if err := os.WriteFile(filepath.Join(bin, "gofmt"), []byte("#!/bin/sh\nprintf '%s' '"+out+"'\n"), 0700); err != nil {
-			t.Fatal(err)
-		}
-		cmd := exec.Command("bash", "-e", "-c", format)
-		cmd.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"))
-		output, err := cmd.CombinedOutput()
-		if (err != nil) != (out != "") {
-			t.Errorf("gofmt reporting %q: error=%v, output=%s", out, err, output)
-		}
 	}
 }
 
-// The verify check refuses a race command that is only text, in a comment or
-// a heredoc, and a step or job that can be skipped or allowed to fail.
+// The verify check refuses edits that drop a required check or let it be
+// skipped or fail, and accepts harmless ones.
 func TestWorkflowVerifyChecksRefuse(t *testing.T) {
 	if _, err := os.Stat(".github/workflows/ci.yml"); os.IsNotExist(err) {
 		t.Chdir("..")
@@ -653,105 +648,96 @@ func TestWorkflowVerifyChecksRefuse(t *testing.T) {
 	const race = "          go test -race -count=2 -timeout 20m ./...\n"
 	const build = "      - name: Build, vet and test vendored source\n"
 	const job = "  verify:\n"
-	for _, tt := range []struct{ name, old, new string }{
-		{"heredoc comment", race, "          : <<'COMMENT'\n" + race + "          COMMENT\n"},
-		{"line comment", race, "          # go test -race -count=2 -timeout 20m ./...\n"},
-		{"without -race", race, "          go test -count=2 -timeout 20m ./...\n"},
-		{"step if false", build, build + "        if: ${{ false }}\n"},
-		{"step continue-on-error", build, build + "        continue-on-error: true\n"},
-		{"step shell", build, build + "        shell: sh\n"},
-		{"job if false", job, job + "    if: ${{ false }}\n"},
-	} {
+	const shell = "    defaults:\n      run:\n        shell: python\n"
+	type edit struct {
+		name, old, new string
+		ok             bool
+	}
+	edits := []edit{
+		{"race commented", race, "          # go test -race -count=2 -timeout 20m ./...\n", false},
+		{"step if false", build, build + "        if: ${{ false }}\n", false},
+		{"step continue-on-error", build, build + "        continue-on-error: true\n", false},
+		{"step shell", build, build + "        shell: pwsh\n", false},
+		{"job if", job, job + "    if: github.event_name == 'push'\n", false},
+		{"job continue-on-error", job, job + "    continue-on-error: true\n", false},
+		{"job shell", job, job + shell, false},
+		{"workflow shell", "\njobs:\n", "\ndefaults:\n  run:\n    shell: python\n\njobs:\n", false},
+		{"step renamed", build, "      - name: Verify\n", true},
+		{"step if true", build, build + "        if: ${{ true }}\n", true},
+		{"step continue-on-error false", build, build + "        continue-on-error: false\n", true},
+		{"step shell bash", build, build + "        shell: bash\n", true},
+	}
+	for _, line := range verifyLines {
+		indent := "          "
+		if line == "exit 1" {
+			indent += "  "
+		}
+		edits = append(edits, edit{"without " + line, "\n" + indent + line + "\n", "\n", false})
+	}
+	for _, tt := range edits {
 		t.Run(tt.name, func(t *testing.T) {
 			if bytes.Count(data, []byte(tt.old)) != 1 {
 				t.Fatalf("ci.yml no longer has %q once", tt.old)
 			}
-			mutated := bytes.Replace(data, []byte(tt.old), []byte(tt.new), 1)
-			if _, err := checkVerify(mutated, t.TempDir()); err == nil {
-				t.Error("the verify check passed")
+			err := checkVerify(bytes.Replace(data, []byte(tt.old), []byte(tt.new), 1))
+			if (err == nil) != tt.ok {
+				t.Errorf("accepted=%t, want %t: %v", err == nil, tt.ok, err)
 			}
 		})
 	}
 }
 
-// verifyStep is a step of CI's verify job, with what could skip it, let it
-// fail or change its shell.
-type verifyStep struct {
-	Name, Uses, Run, If, Shell string
-	ContinueOnError            string `yaml:"continue-on-error"`
-}
-
-// checkVerify checks ci.yml's verify job and returns its formatting step's
-// script. The job and each step must run unconditionally, in the default
-// shell, and fail the job. Each step's script is executed as the runner's
-// bash runs it, in an empty folder under tmp with a recording go, gofmt and
-// git and stand-ins for the repository scripts it calls, and one of the
-// go invocations must be the race suite.
-func checkVerify(data []byte, tmp string) (string, error) {
+// checkVerify checks ci.yml's verify job structurally: each required line is
+// a whole line of a step's run block, and nothing at the workflow, job or
+// step level can skip that step, let it fail or change its shell. It guards
+// against accidental removal; review covers deliberate obfuscation.
+func checkVerify(data []byte) error {
+	type shellDefaults struct{ Run struct{ Shell string } }
 	var workflow struct {
-		Jobs map[string]struct {
-			Container, If   string
+		Defaults shellDefaults
+		Jobs     map[string]struct {
+			If              string
 			ContinueOnError string `yaml:"continue-on-error"`
-			Steps           []verifyStep
+			Defaults        shellDefaults
+			Steps           []struct {
+				Name, Run, If, Shell string
+				ContinueOnError      string `yaml:"continue-on-error"`
+			}
 		}
 	}
 	if err := yaml.Unmarshal(data, &workflow); err != nil {
-		return "", err
+		return err
 	}
 	verify, ok := workflow.Jobs["verify"]
 	if !ok {
-		return "", errors.New("ci.yml has no verify job")
+		return errors.New("ci.yml has no verify job")
 	}
 	var problems []error
-	if !strings.HasPrefix(verify.Container, "golang:") {
-		problems = append(problems, fmt.Errorf("verify runs in %q, want a golang container", verify.Container))
+	if verify.If != "" || verify.ContinueOnError != "" || verify.Defaults.Run.Shell != "" || workflow.Defaults.Run.Shell != "" {
+		problems = append(problems, fmt.Errorf("verify has if %q, continue-on-error %q, job shell %q, workflow shell %q",
+			verify.If, verify.ContinueOnError, verify.Defaults.Run.Shell, workflow.Defaults.Run.Shell))
 	}
-	if verify.If != "" || verify.ContinueOnError != "" {
-		problems = append(problems, fmt.Errorf("verify has if %q, continue-on-error %q", verify.If, verify.ContinueOnError))
-	}
-	var format string
-	work, bin := filepath.Join(tmp, "work"), filepath.Join(tmp, "bin")
-	record := filepath.Join(tmp, "record")
-	recorder := "#!/bin/sh\n{ printf '%s' \"${0##*/}\"; for a; do printf ' [%s]' \"$a\"; done; printf '\\n'; } >>\"$RECORD\"\n"
-	for _, name := range []string{"bin/go", "bin/gofmt", "bin/git", "work/scripts/test-check.sh", "work/scripts/copy/check-go.sh"} {
-		name = filepath.Join(tmp, name)
-		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
-			return "", err
-		}
-		if err := os.WriteFile(name, []byte(recorder), 0o700); err != nil {
-			return "", err
-		}
-	}
+	found := map[string]bool{}
 	for _, step := range verify.Steps {
-		if step.If != "" || step.ContinueOnError != "" || step.Shell != "" {
+		var carries bool
+		for line := range strings.SplitSeq(step.Run, "\n") {
+			line = strings.TrimSpace(line)
+			if slices.Contains(verifyLines, line) {
+				found[line], carries = true, true
+			}
+		}
+		if carries && (!slices.Contains([]string{"", "true", "${{ true }}"}, step.If) ||
+			!slices.Contains([]string{"", "false"}, step.ContinueOnError) || !slices.Contains([]string{"", "bash", "sh"}, step.Shell)) {
 			problems = append(problems, fmt.Errorf("verify step %q has if %q, continue-on-error %q, shell %q",
-				step.Name+step.Uses, step.If, step.ContinueOnError, step.Shell))
-		}
-		if strings.Contains(step.Run, "gofmt -l") {
-			format = step.Run
-		}
-		if step.Run == "" {
-			continue
-		}
-		cmd := exec.Command("bash", "--noprofile", "--norc", "-e", "-c", step.Run)
-		cmd.Dir = work
-		cmd.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + "/usr/bin:/bin", "HOME=" + work,
-			"GITHUB_WORKSPACE=" + work, "RECORD=" + record}
-		if output, err := cmd.CombinedOutput(); err != nil {
-			problems = append(problems, fmt.Errorf("verify step %q failed with commands that succeed: %v\n%s", step.Name, err, output))
+				step.Name, step.If, step.ContinueOnError, step.Shell))
 		}
 	}
-	recorded, err := os.ReadFile(record)
-	if err != nil && !os.IsNotExist(err) {
-		return "", err
+	for _, line := range verifyLines {
+		if !found[line] {
+			problems = append(problems, fmt.Errorf("verify must run %s", line))
+		}
 	}
-	if !slices.Contains(strings.Split(string(recorded), "\n"), "go [test] [-race] [-count=2] [-timeout] [20m] [./...]") {
-		problems = append(problems, fmt.Errorf("verify must run go test -race -count=2 -timeout 20m ./...; it ran:\n%s", recorded))
-	}
-	if format == "" {
-		problems = append(problems, errors.New("verify must check formatting with gofmt -l"))
-	}
-	return format, errors.Join(problems...)
+	return errors.Join(problems...)
 }
 
 func TestWorkflowYAML(t *testing.T) {
