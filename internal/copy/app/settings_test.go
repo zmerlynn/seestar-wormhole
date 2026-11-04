@@ -122,6 +122,80 @@ func TestLoadNullFieldsTakeDefaults(t *testing.T) {
 	}
 }
 
+// A repeated includes or excludes is read into the list before it, as
+// encoding/json read it for v0.4.0: a null element keeps the string an
+// earlier list had in its place. The expected lists are what v0.4.0 loaded.
+// The selection they make is accepted, and a save keeps it.
+func TestLoadRepeatedListsMerge(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	for _, tt := range []struct {
+		data               string
+		includes, excludes []string
+	}{
+		{`{"version":1,"includes":["Light"],"includes":[null]}`, []string{"Light"}, []string{}},
+		{`{"version":1,"excludes":["Light"],"excludes":[null]}`, []string{}, []string{"Light"}},
+		{`{"version":1,"includes":["a","b"],"includes":[null]}`, []string{"a"}, []string{}},
+		{`{"version":1,"includes":["a","z"],"includes":[null,"b"]}`, []string{"a", "b"}, []string{}},
+		{`{"version":1,"includes":["a","b"],"includes":["x"],"includes":[null,null]}`, []string{"x", "b"}, []string{}},
+		{`{"version":1,"excludes":["a","b"],"excludes":["x"],"excludes":[null,null],"includes":["p"],"includes":[null]}`,
+			[]string{"p"}, []string{"x", "b"}},
+		{`{"version":1,"includes":["a"],"includes":[null],"includes":[]}`, []string{}, []string{}},
+		{`{"version":1,"includes":["a"],"includes":null}`, []string{}, []string{}},
+	} {
+		t.Run(tt.data, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "app.json")
+			writeFile(t, path, tt.data)
+			f, err := loadSettings(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(f.settings.Includes, tt.includes) || !reflect.DeepEqual(f.settings.Excludes, tt.excludes) {
+				t.Fatalf("includes %q, excludes %q; want %q, %q", f.settings.Includes, f.settings.Excludes, tt.includes, tt.excludes)
+			}
+			if _, err := selector(f.settings); err != nil {
+				t.Errorf("selection refused: %v", err)
+			}
+			if err := f.save(f.settings); err != nil {
+				t.Fatal(err)
+			}
+			again, err := loadSettings(path)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(again.settings, f.settings) {
+				t.Errorf("reloaded %+v, want %+v", again.settings, f.settings)
+			}
+		})
+	}
+
+	// Where the earlier list had nothing in that place, a null element is
+	// empty, as it was for v0.4.0, and the selection is refused.
+	for _, tt := range []struct {
+		data     string
+		includes []string
+	}{
+		{`{"version":1,"includes":["a"],"includes":[],"includes":[null]}`, []string{""}},
+		{`{"version":1,"includes":["a"],"includes":null,"includes":[null]}`, []string{""}},
+		{`{"version":1,"includes":["a"],"includes":["b",null]}`, []string{"b", ""}},
+		{`{"version":1,"includes":["a","b","c"],"includes":["x"],"includes":[null,null,null,null]}`, []string{"x", "b", "c", ""}},
+	} {
+		path := filepath.Join(t.TempDir(), "app.json")
+		writeFile(t, path, tt.data)
+		f, err := loadSettings(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(f.settings.Includes, tt.includes) {
+			t.Errorf("%s: includes %q, want %q", tt.data, f.settings.Includes, tt.includes)
+		}
+		if _, err := selector(f.settings); err == nil {
+			t.Errorf("%s: selection accepted", tt.data)
+		}
+	}
+}
+
 func TestSaveRoundTripKeepsUnknownKeys(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "app.json")
 	writeFile(t, path, `{"version":1,"address":"a:445","from_a_later_version":{"x":[1,2]},"older_than_days":3}`)

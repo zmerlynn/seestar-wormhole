@@ -62,13 +62,15 @@ type settingsFile struct {
 // settingsRead and settingsWrite read and write app.json as encoding/json
 // did, so that a file an earlier seestar-copy wrote, with the keys it kept,
 // still loads and saves the same: duplicate names and invalid UTF-8 are
-// allowed, a null field keeps its default, a kept value's strings keep
-// their escapes, HTML characters, U+2028 and U+2029 are escaped, and a nil
-// list is null. The page's requests are read strictly, by server.go.
+// allowed, a null field keeps its default, a repeated list is read into
+// the one before it, a kept value's strings keep their escapes, HTML
+// characters, U+2028 and U+2029 are escaped, and a nil list is null. The
+// page's requests are read strictly, by server.go.
 var (
 	settingsRead = json.JoinOptions(jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true),
 		json.WithUnmarshalers(json.JoinUnmarshalers(json.UnmarshalFromFunc(keepOnNull[*int]),
-			json.UnmarshalFromFunc(keepOnNull[*string]), json.UnmarshalFromFunc(keepOnNull[*bool]))))
+			json.UnmarshalFromFunc(keepOnNull[*string]), json.UnmarshalFromFunc(keepOnNull[*bool]),
+			json.UnmarshalFromFunc(mergeStrings))))
 	settingsWrite = json.JoinOptions(jsontext.AllowDuplicateNames(true), jsontext.AllowInvalidUTF8(true),
 		jsontext.PreserveRawStrings(true), jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true),
 		json.Deterministic(true), json.FormatNilSliceAsNull(true), jsontext.WithIndent("  "))
@@ -81,6 +83,40 @@ func keepOnNull[T any](dec *jsontext.Decoder, _ T) error {
 	}
 	_, err := dec.ReadToken()
 	return err
+}
+
+// mergeStrings reads a list into the one already there, as encoding/json
+// did: element by element over the list's storage, so that a null element,
+// which keepOnNull leaves alone, keeps the string an earlier list for the
+// same name had in its place. {"includes":["Light"],"includes":[null]} is
+// ["Light"]. An empty list is empty, and null or a non-list is left to the
+// default.
+func mergeStrings(dec *jsontext.Decoder, s *[]string) error {
+	if dec.PeekKind() != '[' {
+		return errors.ErrUnsupported
+	}
+	if _, err := dec.ReadToken(); err != nil {
+		return err
+	}
+	v := (*s)[:cap(*s)]
+	n := 0
+	for dec.PeekKind() != ']' {
+		if n == len(v) {
+			v = append(v, "")
+		}
+		if err := json.UnmarshalDecode(dec, &v[n]); err != nil {
+			return err
+		}
+		n++
+	}
+	if _, err := dec.ReadToken(); err != nil {
+		return err
+	}
+	if n == 0 {
+		v = []string{}
+	}
+	*s = v[:n]
+	return nil
 }
 
 // loadError is a settings file that can't be read. Its text is the startup
