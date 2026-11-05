@@ -186,25 +186,82 @@ func (r *lanRetry) again(err error) bool {
 	return false
 }
 
+// finish notes that a dial has used the limit.
+func (r *lanRetry) finish() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.done = true
+}
+
+// left is how long a try may run before the cutoff, if any time is left.
+func (r *lanRetry) left() (time.Duration, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	d := r.cutoff.Sub(r.now())
+	if r.done || d <= 0 {
+		r.done = true
+		return 0, false
+	}
+	return d, true
+}
+
 // retryLAN runs try, a dial to an address on this network, and on macOS
 // runs it again while it fails with [connectBlocked]: the system fails
 // connects that way while its Local Network prompt is open, and the first
 // one after the user allows access goes through. Only the app's first such
-// dial does, until r's limit has passed or ctx is done, and it returns the
-// last try's result. Any other failure, a timeout, a refusal or anything
-// the server said, returns at once.
-func retryLAN[T any](ctx context.Context, r *lanRetry, try func() (T, error)) (T, error) {
+// dial does, for at most r's limit in all: a try again is bounded by the
+// time left. Once ctx is done it returns too. It returns the last try's
+// result, or the last failure before the limit cut a try short. Any other
+// failure, a timeout, a refusal or anything the server said, returns at
+// once.
+func retryLAN[T any](ctx context.Context, r *lanRetry, try func(context.Context) (T, error)) (T, error) {
 	r.begin()
-	v, err := try()
+	v, err := try(ctx)
 	for ctx.Err() == nil && r.again(err) {
 		select {
 		case <-ctx.Done():
 			return v, err
 		case <-r.after(r.every):
 		}
-		v, err = try()
+		d, ok := r.left()
+		if !ok || ctx.Err() != nil {
+			return v, err
+		}
+		next, nextErr, cut := tryWithin(ctx, d, try)
+		if cut && ctx.Err() == nil {
+			r.finish()
+			var zero T
+			return zero, err
+		}
+		v, err = next, nextErr
 	}
 	return v, err
+}
+
+// tryWithin runs try with a context that ends after d unless try has
+// returned by then, so a session it dials keeps ctx's lifetime. cut
+// reports that d ran out first: a session try dialed is then closed.
+func tryWithin[T any](ctx context.Context, d time.Duration, try func(context.Context) (T, error)) (v T, err error, cut bool) {
+	tctx, cancel := context.WithCancel(ctx)
+	var mu sync.Mutex
+	returned := false
+	timer := time.AfterFunc(d, func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if !returned {
+			cut = true
+			cancel()
+		}
+	})
+	v, err = try(tctx)
+	timer.Stop()
+	mu.Lock()
+	returned = true
+	mu.Unlock()
+	if err != nil || cut {
+		cancel()
+	}
+	return v, err, cut
 }
 
 // testMessage words Test's result for the page on goos. Test checks an

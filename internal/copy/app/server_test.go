@@ -23,6 +23,7 @@ import (
 	"syscall"
 	"testing"
 	"testing/fstest"
+	"testing/synctest"
 	"time"
 
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
@@ -478,6 +479,12 @@ func setRetry(t *testing.T, goos string) *atomic.Int64 {
 	return &waited
 }
 
+// newRetry is a new localNetworkRetry on macOS with the real clock, for a
+// synctest bubble.
+func newRetry() *lanRetry {
+	return &lanRetry{goos: "darwin", every: localNetworkRetry.every, limit: localNetworkRetry.limit, now: time.Now, after: time.After}
+}
+
 // On macOS, a dial the system failed at once is tried again every second,
 // as when the Local Network prompt is open, until it goes through or 5 s
 // have passed. A timeout, a refusal, a DNS failure or any SMB answer
@@ -510,7 +517,7 @@ func TestRetryLAN(t *testing.T) {
 		waited := setRetry(t, tt.goos)
 		tries := 0
 		// The third try goes through.
-		got, err := retryLAN(t.Context(), localNetworkRetry, func() (int, error) {
+		got, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) {
 			if tries++; tries < 3 {
 				return 0, tt.err
 			}
@@ -527,7 +534,7 @@ func TestRetryLAN(t *testing.T) {
 		}
 		// Only the first dial waits: one after it fails at once.
 		tries, before := 0, waited.Load()
-		if _, err := retryLAN(t.Context(), localNetworkRetry, func() (int, error) { tries++; return 0, noRoute }); err != noRoute || tries != 1 || waited.Load() != before {
+		if _, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute || tries != 1 || waited.Load() != before {
 			t.Errorf("%s on %s, then a blocked connect: %v after %d tries over %v", tt.name, tt.goos, err, tries, time.Duration(waited.Load()-before))
 		}
 	}
@@ -537,7 +544,7 @@ func TestRetryLAN(t *testing.T) {
 	waited := setRetry(t, "darwin")
 	for _, want := range []int{5, 1} {
 		tries := 0
-		if _, err := retryLAN(t.Context(), localNetworkRetry, func() (int, error) { tries++; return 0, noRoute }); err != noRoute ||
+		if _, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute ||
 			tries != want || time.Duration(waited.Load()) != 4*time.Second {
 			t.Errorf("a blocked connect: %v after %d tries over %v, want %d tries over 4s", err, tries, time.Duration(waited.Load()), want)
 		}
@@ -547,7 +554,7 @@ func TestRetryLAN(t *testing.T) {
 	waited = setRetry(t, "darwin")
 	ctx, cancel := context.WithCancel(t.Context())
 	tries := 0
-	if _, err := retryLAN(ctx, localNetworkRetry, func() (int, error) {
+	if _, err := retryLAN(ctx, localNetworkRetry, func(context.Context) (int, error) {
 		if tries++; tries == 2 {
 			cancel()
 		}
@@ -556,7 +563,7 @@ func TestRetryLAN(t *testing.T) {
 		t.Errorf("a canceled retry: %v after %d tries", err, tries)
 	}
 	tries = 0
-	if _, err := retryLAN(t.Context(), localNetworkRetry, func() (int, error) {
+	if _, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) {
 		if tries++; tries < 2 {
 			return 0, noRoute
 		}
@@ -564,6 +571,65 @@ func TestRetryLAN(t *testing.T) {
 	}); err != nil || tries != 2 || time.Duration(waited.Load()) != 2*time.Second {
 		t.Errorf("after a canceled retry: %v after %d tries over %v", err, tries, time.Duration(waited.Load()))
 	}
+}
+
+// The limit counts the time spent dialing, not just waiting: a try again
+// gets only what is left, and the failure before it is returned.
+func TestRetryLANLimitCountsDials(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRetry()
+		start := time.Now()
+		tries := 0
+		var cut context.Context
+		_, err := retryLAN(t.Context(), r, func(ctx context.Context) (int, error) {
+			tries++
+			select {
+			case <-time.After(3 * time.Second):
+				return 0, noRoute
+			case <-ctx.Done():
+				cut = ctx
+				return 0, ctx.Err()
+			}
+		})
+		if elapsed := time.Since(start); elapsed != r.limit || tries != 2 || err != noRoute || cut == nil {
+			t.Errorf("%v after %d tries over %v, cut %v", err, tries, elapsed, cut != nil)
+		}
+	})
+}
+
+// A try again that goes through keeps the caller's context: the limit
+// doesn't end the session it dialed.
+func TestRetryLANKeepsSession(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tries := 0
+		sess, err := retryLAN(t.Context(), newRetry(), func(ctx context.Context) (context.Context, error) {
+			if tries++; tries == 1 {
+				return nil, noRoute
+			}
+			return ctx, nil
+		})
+		time.Sleep(time.Minute)
+		if err != nil || tries != 2 || sess.Err() != nil {
+			t.Errorf("%v after %d tries; session context %v", err, tries, sess.Err())
+		}
+	})
+}
+
+// A timer that fires late doesn't start a dial past the limit.
+func TestRetryLANLateTimer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRetry()
+		r.after = func(d time.Duration) <-chan time.Time { return time.After(d + 10*time.Second) }
+		tries := 0
+		for range 2 {
+			if _, err := retryLAN(t.Context(), r, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute {
+				t.Errorf("err %v", err)
+			}
+		}
+		if tries != 2 {
+			t.Errorf("%d tries, want one for each dial", tries)
+		}
+	})
 }
 
 // Test, from the page and from a route's Save, waits out the Local Network
@@ -609,6 +675,29 @@ func TestTestWaitsForLocalNetwork(t *testing.T) {
 		time.Duration(waited.Load()) != 4*time.Second {
 		t.Errorf("test = %+v after %v", got, time.Duration(waited.Load()))
 	}
+}
+
+// When the limit cuts a Test's try short, Test still says where to allow
+// access.
+func TestTestLimitKeepsHint(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		old := localNetworkRetry
+		localNetworkRetry = newRetry()
+		defer func() { localNetworkRetry = old }()
+		tries := 0
+		s := &server{test: func(ctx context.Context, _ string) ([]remote.Entry, error) {
+			if tries++; tries == 1 {
+				return nil, noRoute
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}}
+		start := time.Now()
+		_, err := s.testLAN(t.Context(), "192.0.2.10:445")
+		if elapsed := time.Since(start); elapsed != 5*time.Second || tries != 2 || LocalNetworkHint("darwin", err) == "" {
+			t.Errorf("%v after %d tries over %v", err, tries, elapsed)
+		}
+	})
 }
 
 func TestTestAPI(t *testing.T) {

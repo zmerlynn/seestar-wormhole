@@ -336,14 +336,14 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 	var sess remote.Session
 	if err == nil {
 		// On this network, the dial waits out macOS's Local Network prompt.
-		dial := func() (remote.Session, error) { return c.dial(ctx, endpoint) }
+		dial := func(ctx context.Context) (remote.Session, error) { return c.dial(ctx, endpoint) }
 		c.mu.Lock()
 		lan := c.bound.onLAN()
 		c.mu.Unlock()
 		if lan {
 			sess, err = retryLAN(ctx, localNetworkRetry, dial)
 		} else {
-			sess, err = dial()
+			sess, err = dial(ctx)
 		}
 	}
 	c.mu.Lock()

@@ -388,7 +388,7 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 func (s *server) testLAN(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
-	return retryLAN(ctx, localNetworkRetry, func() ([]remote.Entry, error) { return s.test(ctx, endpoint) })
+	return retryLAN(ctx, localNetworkRetry, func(ctx context.Context) ([]remote.Entry, error) { return s.test(ctx, endpoint) })
 }
 
 type fieldErrors struct {
