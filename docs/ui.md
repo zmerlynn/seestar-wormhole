@@ -18,7 +18,7 @@ Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
 between them. Copy, Browse and Free up space open once you connect through
 your account, or save an address on this network; until then they are
-unavailable and say so. Quit and the version are below every tab.
+dimmed, show a padlock, and say so. Quit and the version are below every tab.
 
 ## Reaching the telescope
 

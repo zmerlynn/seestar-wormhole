@@ -283,6 +283,41 @@ test('the tabs follow the tab pattern', async ({ page, startApp }) => {
   await expect(page.getByRole('tabpanel', { name: 'Browse' })).toBeVisible();
 });
 
+// A locked tab is dimmed, refuses the pointer and shows a padlock, and
+// its label stays legible, in light and dark.
+test('locked tabs look locked', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  const look = (name) => tab(page, name).evaluate((e) => {
+    const s = getComputedStyle(e), before = getComputedStyle(e, '::before'), after = getComputedStyle(e, '::after');
+    let bg = e, color = 'rgba(0, 0, 0, 0)';
+    while (bg && /^rgba\(.*, 0\)$|^transparent$/.test(color = getComputedStyle(bg).backgroundColor)) bg = bg.parentElement;
+    return {
+      cursor: s.cursor, opacity: Number(s.opacity), color: s.color, bg: color,
+      lock: before.content !== 'none' && after.content !== 'none' && after.backgroundColor === s.color,
+    };
+  });
+  // shown is color seen at opacity over bg.
+  const shown = (color, opacity, bg) => {
+    const [c, b] = [color, bg].map((v) => v.match(/\d+/g).slice(0, 3).map(Number));
+    return `rgb(${c.map((v, i) => Math.round(v * opacity + b[i] * (1 - opacity))).join(', ')})`;
+  };
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    const open = await look('Activity');
+    expect(open, colorScheme).toMatchObject({ cursor: 'pointer', opacity: 1, lock: false });
+    for (const name of ['Copy', 'Browse', 'Free up space']) {
+      await expect(tab(page, name)).toHaveAttribute('aria-describedby', 'tabs-note');
+      const locked = await look(name);
+      expect(locked, `${name} ${colorScheme}`).toMatchObject({ cursor: 'not-allowed', lock: true });
+      expect(locked.opacity, `${name} ${colorScheme}`).toBeLessThanOrEqual(0.75);
+      expect(contrast(shown(locked.color, locked.opacity, locked.bg), locked.bg), `${name} ${colorScheme}`).toBeGreaterThanOrEqual(3);
+      expect(contrast(shown(locked.color, locked.opacity, locked.bg), locked.bg)).toBeLessThan(contrast(open.color, open.bg));
+    }
+  }
+  await expect(page.locator('#tabs-note')).toBeVisible();
+});
+
 test('Copy settings save every field and keep unknown keys', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openCopy(page, app.url);

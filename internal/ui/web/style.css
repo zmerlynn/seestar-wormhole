@@ -293,9 +293,36 @@ header {
   border-bottom-color:var(--focus);
   font-weight:600
 }
+/* A locked tab is dimmed, refuses the pointer and shows a padlock: its
+   shackle and body, drawn in the label's color. */
 [role=tab]:disabled {
-  opacity:1;
-  color:var(--muted)
+  position:relative;
+  padding-left:1.75rem;
+  opacity:.7;
+  color:var(--muted);
+  cursor:not-allowed
+}
+[role=tab]:disabled::before,[role=tab]:disabled::after {
+  content:'';
+  position:absolute;
+  left:.75rem;
+  top:50%;
+  box-sizing:border-box;
+  width:.7em
+}
+[role=tab]:disabled::before {
+  width:.5em;
+  height:.55em;
+  margin:-.6em 0 0 .1em;
+  border:.13em solid currentColor;
+  border-bottom:0;
+  border-radius:.3em .3em 0 0
+}
+[role=tab]:disabled::after {
+  height:.5em;
+  margin-top:-.1em;
+  border-radius:.1em;
+  background:currentColor
 }
 #tabs-note {
   margin-bottom:1rem
