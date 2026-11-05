@@ -562,6 +562,9 @@ async function reopen(page, name) {
 
 for (const [layout, { width }] of Object.entries(layouts)) {
   test(`the app fits with ${layout}`, async ({ page, startApp }, testInfo) => {
+    // Every tab and state, each restyled, measured control by control and
+    // shot full page: about 30 s in WebKit, more than the default budget.
+    test.slow();
     await page.setViewportSize({ width, height: 800 });
     const shot = (name) => page.screenshot({
       fullPage: true,
