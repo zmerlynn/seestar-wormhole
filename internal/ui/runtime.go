@@ -133,6 +133,12 @@ func Run(ctx context.Context, root string, out, logs io.Writer, run runFunc, ver
 	return runPlatformUI(context.WithValue(ctx, versionKey{}, version), root, out, logs, run)
 }
 
+// newHTTPServer is the local controls' server. Its write timeout bounds
+// every response but Browse's, which clears it for a download.
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
+}
+
 // windowFunc runs on the caller's main thread. Its context ends only after
 // proxy cleanup and HTTP shutdown; close requests must call quit and wait.
 type windowFunc func(context.Context, string, func(), <-chan struct{}) error
@@ -216,7 +222,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		}
 	}
 	requestQuit := func() { handler.quitOnce.Do(func() { close(handler.quit) }) }
-	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
+	httpServer := newHTTPServer(handler)
 	if err = st.write("ui-runtime.json", record); err != nil {
 		return err
 	}

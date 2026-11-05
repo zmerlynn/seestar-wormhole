@@ -62,6 +62,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(http.StatusNotFound)
 			return
 		}
+		// A download from the telescope may take longer than the
+		// server's write timeout, which bounds every other response.
+		http.NewResponseController(w).SetWriteDeadline(time.Time{})
 		s.copy.ServeHTTP(w, r)
 		return
 	}
