@@ -31,6 +31,9 @@ unavailable and say so. Quit and the version are below every tab.
   Enter its address, with an optional port (445 by default). **Test** checks
   that it answers file sharing; **Save** tests it first, unless it has just
   passed, and saves it only if it answers. Otherwise the saved route stays.
+  On a Mac, when it can't reach the address, Test also says to enable
+  seestar-wormhole in System Settings → Privacy & Security → Local Network,
+  which macOS may be blocking; see [Local Network access](copying.md#things-to-know).
   This route doesn't start the proxy or use your account.
 
 You can't change the choice while a connection is running or while copying or

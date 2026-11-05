@@ -74,6 +74,13 @@ history.
 - **Some names fail.** A name Windows can't store fails on Windows, and two
   names that differ only in upper and lower case fail everywhere. They are
   never renamed. See [names that fail](copy-reference.md#names-that-fail).
+- **On a Mac, allow Local Network access.** The app asks macOS for Local
+  Network access the first time it reaches an address on this network; allow
+  it. If it is blocked, **Test**, Copy and Preview can't reach the telescope
+  there, and on a Mac they say where to allow it: enable seestar-wormhole in
+  System Settings → Privacy & Security → Local Network, then **Test** again.
+  If a permission request is open, allow access first. Through your account,
+  copying doesn't need it.
 - **Through your account, a large copy is shared.** It uses the same telescope
   session as the phone app and control clients, and delays their status
   replies.
