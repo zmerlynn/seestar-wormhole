@@ -158,7 +158,7 @@ func launch(ctx context.Context, bin, dir, root, scenario string) (*exec.Cmd, <-
 	return cmd, done, nil
 }
 
-func runScenario(ctx context.Context, bin, dir, scenario string) (result error) {
+func runScenario(ctx context.Context, bin, dir, scenario string) error {
 	// A rerun gets fresh state and cannot accidentally use a previous checkpoint.
 	if err := os.RemoveAll(dir); err != nil {
 		return err
@@ -179,10 +179,12 @@ func runScenario(ctx context.Context, bin, dir, scenario string) (result error) 
 		}
 		defer restore()
 	}
+	var hold *exec.Cmd
+	var holdDone <-chan error
+	holdDir := filepath.Join(dir, "hold")
 	if scenario == "copy-inuse" {
 		// A first app holds a transfer into the shared folder.
-		holdDir := filepath.Join(dir, "hold")
-		hold, holdDone, err := launch(ctx, bin, holdDir, filepath.Join(state, "hold"), "copy-hold")
+		hold, holdDone, err = launch(ctx, bin, holdDir, filepath.Join(state, "hold"), "copy-hold")
 		if err != nil {
 			return err
 		}
@@ -190,11 +192,6 @@ func runScenario(ctx context.Context, bin, dir, scenario string) (result error) 
 		if err := waitExit(ctx, holdDone, filepath.Join(holdDir, "trigger")); err != nil {
 			return fmt.Errorf("copy-hold: %w", err)
 		}
-		defer func() {
-			if result == nil {
-				result = stopHold(ctx, hold, holdDone, holdDir, guitest.CopyFolder(root))
-			}
-		}()
 	}
 	cmd, done, err := launch(ctx, bin, dir, root, scenario)
 	if err != nil {
@@ -297,6 +294,13 @@ func runScenario(ctx context.Context, bin, dir, scenario string) (result error) 
 	}
 	if exists(filepath.Join(root, "ui-runtime.json")) {
 		return errors.New("runtime record survived exit")
+	}
+	if hold != nil {
+		// The fresh launch starts copying into the shared folder, so the
+		// copy-hold app lets it go first.
+		if err := stopHold(ctx, hold, holdDone, holdDir, guitest.CopyFolder(root)); err != nil {
+			return err
+		}
 	}
 	child, childDone, e := launch(ctx, bin, filepath.Join(dir, "relaunch"), root, relaunchScenario(scenario))
 	if e != nil {
