@@ -251,7 +251,7 @@ func TestRouteSave(t *testing.T) {
 	s, _ := copyServer(t)
 	path := filepath.Join(s.storage.root, "config.json")
 	// A future member survives the save.
-	if err := os.WriteFile(path, []byte(`{"version":1,"bind":"0.0.0.0","idle":"0","discovery":true,"email":"synthetic@example.invalid","future":{"kept":true}}`), 0o600); err != nil {
+	if err := s.storage.writeBytes("config.json", []byte(`{"version":1,"bind":"0.0.0.0","idle":"0","discovery":true,"email":"synthetic@example.invalid","future":{"kept":true}}`)); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := loadSettings(s.storage)

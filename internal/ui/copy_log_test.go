@@ -38,11 +38,14 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
 	root := filepath.Join(t.TempDir(), "state")
-	if err := os.Mkdir(root, 0o700); err != nil {
+	st, err := openStorage(root)
+	if err != nil {
 		t.Fatal(err)
 	}
 	const config = `{"version":1,"bind":"0.0.0.0","idle":"0","discovery":true,"route":"lan","lan_address":"192.0.2.10:4450"}`
-	if err := os.WriteFile(filepath.Join(root, "config.json"), []byte(config), 0o600); err != nil {
+	err = st.writeBytes("config.json", []byte(config))
+	st.directory.Close()
+	if err != nil {
 		t.Fatal(err)
 	}
 	folder := filepath.Join(t.TempDir(), "a-file")
@@ -50,7 +53,7 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out, logs lockedBuffer
-	err := runUIPresented(t.Context(), root, &out, &logs, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(ctx context.Context, url string, closeWindow func(), _ <-chan struct{}) error {
+	err = runUIPresented(t.Context(), root, &out, &logs, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(ctx context.Context, url string, closeWindow func(), _ <-chan struct{}) error {
 		defer func() {
 			closeWindow()
 			<-ctx.Done()

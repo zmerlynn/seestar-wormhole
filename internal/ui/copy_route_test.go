@@ -949,7 +949,7 @@ func TestRouteReload(t *testing.T) {
 	const fixture = `{"version":1,"bind":"0.0.0.0","idle":"0","discovery":true,"email":"synthetic@example.invalid","route":"lan","lan_address":"192.0.2.10:4450"}`
 	s := testServer(t)
 	path := filepath.Join(s.storage.root, "config.json")
-	if err := os.WriteFile(path, []byte(fixture), 0o600); err != nil {
+	if err := s.storage.writeBytes("config.json", []byte(fixture)); err != nil {
 		t.Fatal(err)
 	}
 	fresh := reload(s.storage.root)
