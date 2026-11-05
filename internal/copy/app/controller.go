@@ -613,7 +613,7 @@ func (c *controller) view(now time.Time) copyView {
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."
 		v.Text = "Trying again at " + at(st.next) + ". " + checkReach + " Copying stays on and keeps trying."
 		if c.bound.onLAN() {
-			v.Text += localNetworkHint(hostOS, st.reachErr)
+			v.Text += LocalNetworkHint(hostOS, st.reachErr)
 		}
 	case stStopping:
 		v.Title = "Stopping…"

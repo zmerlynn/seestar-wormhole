@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 
@@ -387,34 +388,65 @@ func setHostOS(t *testing.T, goos string) {
 
 const lanHint = " On macOS, if Local Network access is blocked, enable seestar-wormhole in System Settings > Privacy & Security > Local Network, then Test again. If a permission request is open, allow access first."
 
-// On macOS, a failure where nothing answered points at Local Network
-// access; a refusal, a name not found or the SMB server's own answer
-// doesn't, and nor does any failure elsewhere.
+// connectFailed is a TCP connect that failed with errno, as net's dial
+// returns it, wrapped as Dial wraps it.
+func connectFailed(errno syscall.Errno) error {
+	return fmt.Errorf("dial 192.0.2.10:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", errno)})
+}
+
+// noRoute is a connect with no route to the host.
+var noRoute = connectFailed(syscall.EHOSTUNREACH)
+
+// On macOS, a TCP connect that nothing answered points at Local Network
+// access: a timeout, a deadline that passed while connecting, no route to
+// the host or network, or a connect the system refused to send. A
+// refusal, a name not found, a DNS server's answer and any SMB answer
+// don't, and nor does any failure elsewhere.
 func TestLocalNetworkHint(t *testing.T) {
-	timeout := fmt.Errorf("connect to x: %w", context.DeadlineExceeded)
-	noRoute := fmt.Errorf("connect to x: dial: %w", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)})
+	expired, cancel := context.WithDeadline(context.Background(), time.Unix(1, 0))
+	defer cancel()
+	// The context ends before net dials, so nothing is sent.
+	_, deadline := (&net.Dialer{}).DialContext(expired, "tcp", "192.0.2.10:445")
+	if !errors.Is(deadline, context.DeadlineExceeded) {
+		t.Fatalf("dial with an expired context = %v", deadline)
+	}
+	deadline = fmt.Errorf("dial 192.0.2.10:445: %w", deadline)
+	dnsTimeout := fmt.Errorf("dial seestar.local:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "i/o timeout", Name: "seestar.local", IsTimeout: true}})
+	signing := &protocol.InvalidResponseError{Message: "session setup response failed signature verification"}
+	// Something answered the connect, then went quiet.
+	readTimeout := fmt.Errorf("dial 192.0.2.10:445: %w", &protocol.TransportError{Err: &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ETIMEDOUT)}})
 	tests := []struct {
+		name string
 		goos string
 		err  error
 		want string
 	}{
-		{"darwin", timeout, lanHint},
-		{"darwin", noRoute, lanHint},
-		{"darwin", &net.DNSError{Err: "server misbehaving", Name: "seestar.local", IsTemporary: true}, lanHint},
-		{"linux", timeout, ""},
-		{"windows", noRoute, ""},
-		{"darwin", fmt.Errorf("connect to x: dial: %w", &net.DNSError{Err: "no such host", Name: "seestar.local", IsNotFound: true}), ""},
-		{"darwin", fmt.Errorf("connect to x: dial: %w", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}), ""},
-		{"darwin", fmt.Errorf("connect to x: dial x: %w", smbStatus(0xC000006D)), ""},
-		{"darwin", fmt.Errorf("connect to x: mount \"EMMC Images\" on x: %w", &fs.PathError{Op: "mount", Path: `\\x\EMMC Images`, Err: smbStatus(0xC00000CC)}), ""},
+		{"deadline while connecting", "darwin", deadline, lanHint},
+		{"connect timed out", "darwin", connectFailed(syscall.ETIMEDOUT), lanHint},
+		{"DNS timed out", "darwin", dnsTimeout, lanHint},
+		{"no route to host", "darwin", noRoute, lanHint},
+		{"network unreachable", "darwin", connectFailed(syscall.ENETUNREACH), lanHint},
+		{"connect not permitted", "darwin", connectFailed(syscall.EPERM), lanHint},
+		{"Linux", "linux", deadline, ""},
+		{"Windows", "windows", noRoute, ""},
+		{"refused", "darwin", connectFailed(syscall.ECONNREFUSED), ""},
+		{"name not found", "darwin", fmt.Errorf("dial seestar.local:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "seestar.local", IsNotFound: true}}), ""},
+		{"DNS server's answer", "darwin", fmt.Errorf("dial seestar.local:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "server misbehaving", Name: "seestar.local", IsTemporary: true}}), ""},
+		{"deadline after connecting", "darwin", fmt.Errorf("mount \"EMMC Images\" on 192.0.2.10:445: %w", context.DeadlineExceeded), ""},
+		{"read timed out after connecting", "darwin", readTimeout, ""},
+		{"logon failure", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", smbStatus(0xC000006D)), ""},
+		{"no share", "darwin", fmt.Errorf("mount \"EMMC Images\" on 192.0.2.10:445: %w", &fs.PathError{Op: "mount", Path: `\\192.0.2.10\EMMC Images`, Err: smbStatus(0xC00000CC)}), ""},
+		{"signature", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", signing), ""},
+		{"guest signing", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", &protocol.InvalidResponseError{Message: "guest account doesn't support signing"}), ""},
+		{"authentication", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", errors.New("auth: invalid credential")), ""},
 	}
 	for _, tt := range tests {
-		if got := localNetworkHint(tt.goos, tt.err); got != tt.want {
-			t.Errorf("localNetworkHint(%s, %v) = %q, want %q", tt.goos, tt.err, got, tt.want)
+		if got := LocalNetworkHint(tt.goos, tt.err); got != tt.want {
+			t.Errorf("%s: LocalNetworkHint(%s, %v) = %q, want %q", tt.name, tt.goos, tt.err, got, tt.want)
 		}
 	}
 	want := "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + lanHint
-	if got := testMessage("darwin", "seestar.local:4445", nil, timeout); got != want {
+	if got := testMessage("darwin", "seestar.local:4445", nil, deadline); got != want {
 		t.Errorf("Test on macOS = %q\nwant %q", got, want)
 	}
 	want = "seestar.local answered but refused port 4445. Is this the telescope's address?"

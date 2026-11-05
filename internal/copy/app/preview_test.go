@@ -163,7 +163,7 @@ func (f failDir) Walk(context.Context, func(string, bool) bool, func(remote.Entr
 func TestPreviewFails(t *testing.T) {
 	setHostOS(t, "linux")
 	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/M 42/a.jpg": image("a")})
-	e.dialErr = errors.New("no route")
+	e.dialErr = noRoute
 	v := e.run()
 	if v.State != pvFailed || v.Title != "Can't reach the telescope at 192.0.2.10:445." || v.Text != checkReach+" Preview again to retry." {
 		t.Errorf("unreachable: %+v", v)
@@ -200,7 +200,7 @@ func TestPreviewFilesAtOnce(t *testing.T) {
 func TestPreviewLocalNetworkHint(t *testing.T) {
 	setHostOS(t, "darwin")
 	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
-	e.dialErr = errors.New("no route")
+	e.dialErr = noRoute
 	if v := e.run(); v.State != pvFailed || v.Text != checkReach+" Preview again to retry."+lanHint {
 		t.Errorf("on this network: %+v", v)
 	}

@@ -365,7 +365,7 @@ func TestCopyUnreachableLocalNetworkHint(t *testing.T) {
 	for _, tt := range tests {
 		setHostOS(t, tt.goos)
 		e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
-		e.dialErr = errors.New("no route")
+		e.dialErr = noRoute
 		if err := e.c.start(e.set, tt.target(e.set.Address)); err != nil {
 			t.Fatal(err)
 		}

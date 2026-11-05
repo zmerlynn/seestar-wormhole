@@ -253,7 +253,7 @@ func (p *previewer) view() *previewView {
 			v.Title = "Can't reach the telescope at " + st.endpoint + "."
 			v.Text = checkReach + " " + v.Text
 			if st.lan {
-				v.Text += localNetworkHint(hostOS, st.reachErr)
+				v.Text += LocalNetworkHint(hostOS, st.reachErr)
 			}
 		case st.listing:
 			v.Title = "Couldn't read " + unread(st.err) + "."

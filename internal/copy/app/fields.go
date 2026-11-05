@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"os"
 	"path"
 	"path/filepath"
 	"runtime"
@@ -103,18 +104,34 @@ func checkPatterns(lines []string) ([]string, string) {
 // hostOS is the GOOS whose wording the page gets; tests replace it.
 var hostOS = runtime.GOOS
 
-// localNetworkHint is added on goos to err, a failure to reach the
+// LocalNetworkHint is added on goos to err, a failure to reach the
 // telescope at an address on this network, when nothing answered: macOS may
 // be blocking Local Network access, which the failure itself can't tell.
-// It is "" elsewhere, and for a refusal, a name not found or an SMB server's
-// answer.
-func localNetworkHint(goos string, err error) string {
-	var dnsErr *net.DNSError
-	_, answered := errors.AsType[*protocol.ResponseError](err)
-	if goos != "darwin" || answered || errors.Is(err, syscall.ECONNREFUSED) || errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+// It is "" elsewhere, and for any failure where something answered.
+func LocalNetworkHint(goos string, err error) string {
+	if goos != "darwin" || !unanswered(err) {
 		return ""
 	}
 	return " On macOS, if Local Network access is blocked, enable seestar-wormhole in System Settings > Privacy & Security > Local Network, then Test again. If a permission request is open, allow access first."
+}
+
+// unanswered reports whether err is a TCP connect that nothing answered:
+// it timed out, the context's deadline passed while it waited, or there
+// was no route to the host or network, or the system refused to send it.
+// Apple documents no errno for a Local Network denial, so these are the
+// failures where one could hide. A refusal, a name not found, a DNS
+// server's answer and anything the SMB server said after connecting are
+// answers.
+func unanswered(err error) bool {
+	op, ok := errors.AsType[*net.OpError](err)
+	if !ok || op.Op != "dial" {
+		return false
+	}
+	if op.Timeout() {
+		return true
+	}
+	sys, ok := errors.AsType[*os.SyscallError](op.Err)
+	return ok && sys.Syscall == "connect" && (errors.Is(sys.Err, syscall.EHOSTUNREACH) || errors.Is(sys.Err, syscall.ENETUNREACH) || errors.Is(sys.Err, syscall.EPERM))
 }
 
 // testMessage words Test's result for the page on goos. Test checks an
@@ -150,7 +167,7 @@ func testMessage(goos, endpoint string, entries []remote.Entry, err error) strin
 	case isNoShare(err):
 		return `Connected, but this isn't a Seestar: it has no "EMMC Images" share.`
 	default:
-		return "Can't reach " + endpoint + ". Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + localNetworkHint(goos, err)
+		return "Can't reach " + endpoint + ". Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + LocalNetworkHint(goos, err)
 	}
 }
 
