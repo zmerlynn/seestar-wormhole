@@ -29,6 +29,12 @@ fi
 if ! grep -Fq "go run ./scripts/checkjson" "$CHECK_ARGS"; then
  echo "missing JSON import check" >&2; exit 1
 fi
+if ! grep -Fq "GOOS=\${target%/*} GOARCH=\${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/..." "$CHECK_ARGS" || ! grep -Fq "windows/arm64" "$CHECK_ARGS"; then
+ echo "missing copy cross-build check" >&2; exit 1
+fi
+if ! grep -Fq "go vet -p 2 -tags smbintegration ./internal/copy/remote ./internal/copy/app" "$CHECK_ARGS"; then
+ echo "missing Samba test vet" >&2; exit 1
+fi
 "$task_src/scripts/check.sh" fuzz
 require_arg --network=none
 # Compare against every source declaration so new targets cannot be skipped.

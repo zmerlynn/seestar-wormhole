@@ -49,7 +49,12 @@ jobs:
           go test -race -count=2 -timeout 20m ./...
           go test scripts/release.go scripts/release_test.go
           ./scripts/test-check.sh
-          sh scripts/copy/check-go.sh
+          # The copy packages on every release target; the Samba tests only build here.
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go build -p 2 ./cmd/seestar-copy-cli ./internal/copy/...
+            CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/...
+          done
+          go vet -p 2 -tags smbintegration ./internal/copy/remote ./internal/copy/app
 
   native:
     strategy:

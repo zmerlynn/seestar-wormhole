@@ -619,7 +619,8 @@ var verifyLines = []string{
 	"exit 1",
 	"go test -race -count=2 -timeout 20m ./...",
 	"./scripts/test-check.sh",
-	"sh scripts/copy/check-go.sh",
+	"CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/...",
+	"go vet -p 2 -tags smbintegration ./internal/copy/remote ./internal/copy/app",
 }
 
 // CI's Linux job must keep the checks the copy workflow ran before the merge.
