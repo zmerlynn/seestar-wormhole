@@ -316,7 +316,7 @@ function connectionLine() {
   let line = 'Loading…', tone = 'off';
   const saved = state?.settings?.route === 'lan' ? state.settings.lan_address || '' : '';
   if (state && saved && !active) {
-    const tested = lanReach?.address === saved;
+    const tested = sameEndpoint(lanReach?.address, saved);
     line = !tested ? 'On this network: ' + saved : lanReach.ok ? 'On this network: reachable' : "Can't reach " + saved;
     tone = !tested ? 'off' : lanReach.ok ? 'on' : 'error';
   } else if (state) {
@@ -337,6 +337,27 @@ function lanResult(message, tone = '') {
   if (tone) $('lan-result').setAttribute('data-tone', tone);
   else $('lan-result').removeAttribute('data-tone');
 }
+// endpointKey is a host:port as the server keeps it, in one spelling for
+// every way of writing the same endpoint: a name in lower case, an IPv6
+// address compressed and in lower case, an IPv4-mapped one as IPv4, and
+// the port as a number. Anything else is kept as it is.
+function endpointKey(endpoint) {
+  const m = /^(?:\[([^\]]*)\]|([^:]*)):(\d+)$/.exec(endpoint || '');
+  if (!m) return endpoint || '';
+  let host = (m[1] ?? m[2]).toLowerCase();
+  if (m[1] !== undefined && !host.includes('%')) {
+    try {
+      host = new URL('http://[' + host + ']/').hostname.slice(1, -1);
+    } catch {}
+    const v4 = /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+    if (v4) host = [v4[1], v4[2]].map((h) => parseInt(h, 16)).flatMap((n) => [n >> 8, n & 255]).join('.');
+  }
+  return host + ':' + Number(m[3]);
+}
+// sameEndpoint reports whether a and b are the same endpoint.
+function sameEndpoint(a, b) {
+  return !!a && !!b && endpointKey(a) === endpointKey(b);
+}
 // Test checks that the address answers SMB, as seestar-copy's Test does.
 async function lanTest() {
   if (lanPending) return null;
@@ -352,7 +373,7 @@ async function lanTest() {
     lanReach = {typed, address: r.address, ok: r.ok};
     // Test saves nothing: until Save, the copy tabs use the saved route.
     const saved = state?.settings?.route === 'lan' ? state.settings.lan_address : '';
-    const unsaved = r.ok && r.address !== saved ? ' Save to use this address for Copy, Browse and Free up space.' : '';
+    const unsaved = r.ok && !sameEndpoint(r.address, saved) ? ' Save to use this address for Copy, Browse and Free up space.' : '';
     lanResult(r.message + unsaved, r.ok ? 'ok' : 'error');
   } catch (e) {
     if (e.fields?.address) {

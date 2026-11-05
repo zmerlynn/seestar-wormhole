@@ -179,6 +179,37 @@ test('a Test that passed is not run again by Save, and the header shows it', asy
   expect(n.tests).toBe(1);
 });
 
+// The suffix and the header compare endpoints, not their spelling: the
+// saved address in another case, IPv6 form or port spelling is the saved
+// address. An address kept while Telescope Network is the route is not.
+test('Test of the saved address in another spelling does not say to Save', async ({ page, startApp }) => {
+  const cases = [
+    ['scope.local:445', 'SCOPE.Local:0445'],
+    ['[2001:db8::1]:445', '[2001:DB8:0:0:0:0:0:1]:445'],
+    ['[::ffff:192.0.2.7]:445', '192.0.2.7:445'],
+  ];
+  const message = "Connected. The telescope's share has the folder MyWorks.";
+  for (const [saved, answered] of cases) {
+    const app = await startApp({ 'config.json': lan(saved) });
+    await page.route('**/copy/api/test', (r) => r.fulfill({ json: { ok: true, address: answered, message } }));
+    await openApp(page, app.url);
+    await field(page, 'Telescope address').fill(answered);
+    await page.getByRole('button', { name: 'Test' }).click();
+    await expect(lanResult(page)).toHaveText(message);
+    await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+    await page.unroute('**/copy/api/test');
+  }
+});
+
+test('Test of an address kept while Telescope Network is the route says to Save', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), route: 'account' } });
+  await openApp(page, app.url);
+  await chooseLAN(page);
+  await expect(field(page, 'Telescope address')).toHaveValue(share);
+  await page.getByRole('button', { name: 'Test' }).click();
+  await expect(lanResult(page)).toHaveText(connectedUnsaved);
+});
+
 test('Test reports success and failure under the address, and Save keeps a refused address out', async ({ page, startApp }) => {
   const app = await startApp();
   await openApp(page, app.url);
