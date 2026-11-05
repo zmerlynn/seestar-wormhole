@@ -134,6 +134,10 @@ can't change while copying runs:
 - **Folder for your images.** Images are copied there in the same folders as
   on the telescope. Each folder has its own copy history.
 - **Check for new files every** N minutes, 5 by default.
+- **Files at once**: how many files copying runs at once, 1 to 4, 4 by
+  default. Through your Seestar account, copying shares the connection with
+  the Seestar app and seestar_alp; if they are slow to respond while copying,
+  lower it to 1 or 2.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
   [`--exclude` and `--include`](copy-reference.md#selection).
 - **Skip the telescope's logs, scratch and system files**, on by default.
@@ -379,6 +383,7 @@ options, never on load.
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
 | `skip_built_in` | `true` |
 | `start_copying` | `false` |
+| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range stops the app at startup. |
 | `older_than_days` | `7` |
 | `trust_state` | `false` |
 

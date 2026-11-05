@@ -95,6 +95,11 @@ These are one setup's measurements, not guarantees. One worker was slower
 than four in these measurements. More workers may not help once the link is
 near its ceiling. All workers share one SMB session.
 
+Through your Seestar account, that session is the proxy's, shared with the
+Seestar app and control clients such as seestar_alp. If they are slow to
+respond while a copy runs, lower `--workers` to 1 or 2. The app's **Files at
+once** setting is the same choice.
+
 ### Destination layout
 
 Files mirror the share's tree under `--dest`, starting at the share root,

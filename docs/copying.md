@@ -32,8 +32,8 @@ tried on each route.
 Images land in the folder as they are on the telescope, such as
 `~/Seestar/MyWorks/M 31/`. The telescope's logs, scratch and system files are
 skipped by default. **Change…** opens the settings: the folder, how often to
-check, what to leave out or only copy, and whether to start copying when the
-app opens. [Using the UI](ui.md#copy) has every setting and message.
+check, how many files to copy at once, what to leave out or only copy, and
+whether to start copying when the app opens. [Using the UI](ui.md#copy) has every setting and message.
 
 **Browse** shows the telescope's files one folder at a time, with its `.jpg`
 images, `.txt` logs and FITS headers, and marks which are copied, changed, new
@@ -83,7 +83,9 @@ history.
   copying doesn't need it.
 - **Through your account, a large copy is shared.** It uses the same telescope
   session as the phone app and control clients, and delays their status
-  replies.
+  replies. **Files at once** in Copy settings sets how many files copying
+  runs at once, 4 by default: if the Seestar app or seestar_alp is slow to
+  respond while copying, lower it to 1 or 2.
 
 ## From the command line
 
