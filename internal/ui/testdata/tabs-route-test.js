@@ -12,7 +12,7 @@ async function checkTabs() {
     selectTab(tab);
     tabAssert(selectedTab().join() === 'connection', tab + ' was selected while disabled');
   }
-  tabAssert($('tabs-note').textContent.includes('Coming in this build'), 'disabled tabs lack their note');
+  tabAssert($('tabs-note').textContent.includes('open once you connect') && !$('tabs-note').hidden, 'disabled tabs lack their note');
   const keys = [['ArrowRight', 'activity'], ['ArrowRight', 'connection'], ['ArrowLeft', 'activity'], ['Home', 'connection'], ['End', 'activity']];
   for (const [key, want] of keys) {
     const event = keyEvent(key);
@@ -35,13 +35,16 @@ async function checkActivityMove() {
     for (let e = $(id); e; e = e.parentElement) if (e === $(panel)) return true;
     return false;
   };
-  for (const id of ['details', 'effective-settings', 'events', 'error-code', 'log-path', 'log-error', 'copy', 'copy-feedback', 'diagnostic-copy']) {
+  for (const id of ['details', 'effective-settings', 'copy-settings', 'events', 'error-code', 'log-path', 'log-error', 'config-file', 'copy-file', 'copy', 'copy-feedback', 'diagnostic-copy']) {
     tabAssert(inside(id, 'panel-activity') && !inside(id, 'panel-connection'), id + ' is not in Activity');
   }
   for (const id of ['announcements', 'status', 'primary-action', 'start', 'notice', 'settings', 'options', 'goal', 'account', 'device-picker', 'advanced', 'running', 'route-choice', 'lan-route']) {
     tabAssert(inside(id, 'panel-connection') && !inside(id, 'panel-activity'), id + ' is not in Connection');
   }
-  for (const id of ['quit', 'version', 'connection-text', 'connection-dot', 'tabs']) {
+  for (const [panel, ids] of [['panel-copy', ['c-main', 's-box', 'copy-form', 'h-details']], ['panel-browse', ['b-frame']], ['panel-free', ['x-box', 'x-find']]]) {
+    for (const id of ids) tabAssert(inside(id, panel) && !inside(id, 'panel-connection') && !inside(id, 'panel-activity'), id + ' is not in ' + panel);
+  }
+  for (const id of ['quit', 'version', 'connection-text', 'connection-dot', 'copy-chip', 'tabs', 'copy-reach', 'x-confirm', 'h-confirm']) {
     tabAssert(!inside(id, 'panel-connection') && !inside(id, 'panel-activity'), id + ' is not on every tab');
   }
   tabAssert($('details').attributes.open !== undefined, 'Activity opens with its details collapsed');
