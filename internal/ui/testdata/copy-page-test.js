@@ -56,7 +56,7 @@ async function checkCopySetup(st) {
   copyAssert(!st.before.set_up && st.after.set_up && st.saved.browse_changed, 'server statuses changed shape');
   copyRender(st.before);
   copyAssert($('c-main').hidden && !$('s-first').hidden && $('s-line').hidden, 'the first visit shows the copy controls');
-  copyAssert(!$('copy-form').hidden && $('f-cancel').hidden, 'the first visit lacks the form, or has Cancel');
+  copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
   copyAssert($('b-frame').src === undefined || $('b-frame').src === '', 'Browse loaded before settings');
   // A field error goes under its field and takes focus.
@@ -90,7 +90,7 @@ async function checkCopySetup(st) {
   copyAssert(!$('h-details').hidden && $('h-path').textContent === st.after.history, 'Copy history');
   // Change… opens the form; Cancel puts the saved values back.
   openCopyForm();
-  copyAssert(!$('copy-form').hidden && $('s-change').getAttribute('aria-expanded') === 'true' && !$('f-cancel').hidden, 'Change… did not open the form');
+  copyAssert(!$('copy-form').hidden && $('s-change').getAttribute('aria-expanded') === 'true' && !$('f-cancel').hidden && $('f-save').textContent === 'Save', 'Change… did not open the form');
   $('f-folder').value = '/elsewhere';
   renderHistory();
   copyAssert($('h-saved').hidden && !$('h-unsaved').hidden, 'an unsaved folder showed the old history');
