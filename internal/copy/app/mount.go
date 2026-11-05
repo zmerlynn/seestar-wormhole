@@ -67,22 +67,38 @@ func (t Target) sameTelescope(u Target) bool {
 // its Target rather than a saved address.
 type Mount struct {
 	s        *server
+	ctx      context.Context
 	cancel   context.CancelFunc
 	quitOnce sync.Once
+	mu       sync.Mutex // guards quitting against Start
+	quitting bool
+	starting sync.WaitGroup
 }
 
 // NewMount returns a Mount whose controllers live in ctx until Quit.
+// Nothing runs until Start.
 func NewMount(ctx context.Context, o MountOptions) *Mount {
 	ctx, cancel := context.WithCancel(ctx)
 	file := &settingsFile{settings: DefaultSettings(), write: o.Save}
 	if o.Settings != nil {
 		file.settings, file.exists = *o.Settings, true
 	}
-	m := &Mount{s: newServer(ctx, o, file), cancel: cancel}
-	if m.s.setUp() && file.settings.StartCopying {
-		go m.s.startWhenReady(ctx, startEvery)
+	return &Mount{s: newServer(ctx, o, file), ctx: ctx, cancel: cancel}
+}
+
+// Start turns copying on as the app opens, once there is a target, if the
+// settings say to. The host calls it once it is up; Quit waits for it.
+// After Quit it does nothing.
+func (m *Mount) Start() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.s.mu.Lock()
+	want := m.s.setUp() && m.s.file.settings.StartCopying
+	m.s.mu.Unlock()
+	if m.quitting || !want {
+		return
 	}
-	return m
+	m.starting.Go(func() { m.s.startWhenReady(m.ctx, startEvery) })
 }
 
 // startEvery is how often copying that starts when the app opens looks for
@@ -167,11 +183,15 @@ func (m *Mount) ServeHTTP(w http.ResponseWriter, r *http.Request) { m.s.ServeHTT
 // wait for.
 func (m *Mount) Busy() bool { return m.s.copy.on() || m.s.preview.running() || m.s.free.running() }
 
-// Quit closes Browse's session, then stops copying, the preview and Free
-// up space and waits for them. Later calls do nothing.
+// Quit closes Browse's session, then stops starting copying, copying, the
+// preview and Free up space and waits for them. Later calls do nothing.
 func (m *Mount) Quit() {
 	m.quitOnce.Do(func() {
+		m.mu.Lock()
+		m.quitting = true
+		m.mu.Unlock()
 		m.cancel()
+		m.starting.Wait()
 		m.s.close()
 		m.s.copy.quit()
 		m.s.preview.quit()

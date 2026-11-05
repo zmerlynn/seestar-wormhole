@@ -220,6 +220,7 @@ func TestMountStartsCopyingWhenReady(t *testing.T) {
 			Settings: set,
 		})
 		t.Cleanup(m.Quit)
+		m.Start()
 		return m, func() { mu.Lock(); ready = true; mu.Unlock() }
 	}
 	on := savedAt(t.TempDir())
