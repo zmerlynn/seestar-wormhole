@@ -204,3 +204,18 @@ async function checkCopyChoose(st) {
   copyAssert(document.activeElement === $('f-folder'), 'the failure did not focus the folder');
   copyAssert(!$('f-int-err').hidden, 'the failure cleared another field\'s error');
 }
+
+// A newly opened Browse says where to set the folder, and its link goes
+// there; once saved, Browse shows the telescope's files.
+async function checkBrowseSetup(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.before);
+  selectTab('browse');
+  copyAssert(!$('panel-browse').hidden && !$('b-setup').hidden && $('b-frame').hidden, 'Browse is blank before setup');
+  copyAssert(!$('b-frame').src, 'Browse loaded before setup');
+  $('b-setup-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && !$('panel-copy').hidden && document.activeElement === $('f-folder'), 'Go to Copy did not open the folder field');
+  copyRender(st.after);
+  selectTab('browse');
+  copyAssert($('b-setup').hidden && !$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse did not show after setup');
+}

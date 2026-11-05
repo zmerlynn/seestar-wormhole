@@ -163,7 +163,8 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 Browse is `seestar-copy-cli browse`'s page for the share, with the saved
 folder's [statuses](copy/reference.md#statuses). What the settings leave out
 shows as [`left out`](copy/reference.md#left-out-in-browse). A Save that
-changes the folder or the selection reloads it at the share's top. In the app's
+changes the folder or the selection reloads it at the share's top. Until the
+folder is saved, Browse says to choose it, with **Go to Copy**. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
 
 ### Free up space

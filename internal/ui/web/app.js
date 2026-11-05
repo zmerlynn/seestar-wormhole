@@ -464,9 +464,16 @@ function goReach() {
 }
 // Browse loads once there are settings, and again when they change what
 // it shows.
+// Until then its notice says where to set the folder.
 function browseFrame(reload = false) {
+  $('b-setup').hidden = !!copySaved;
+  $('b-frame').hidden = !copySaved;
   if (!copySaved || !state?.copy_unlocked) return;
   if (reload || !$('b-frame').src) $('b-frame').src = '/browse/';
+}
+function goSetup() {
+  selectTab('copy');
+  if (!$('f-folder').disabled) $('f-folder').focus();
 }
 function put(id, value) {
   text(id, value || '');
@@ -1364,6 +1371,7 @@ $('s-change').addEventListener('click', openCopyForm);
 $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);
 $('f-choose').addEventListener('click', copyChoose);
+$('b-setup-go').addEventListener('click', goSetup);
 $('c-start').addEventListener('click', e => press(e, 'start'));
 $('c-check').addEventListener('click', e => press(e, 'check'));
 $('c-stop').addEventListener('click', e => press(e, 'stop'));
