@@ -18,6 +18,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 // lineWriter hands each write to the test.
@@ -32,7 +33,7 @@ func (w lineWriter) Write(p []byte) (int, error) {
 type browsing struct {
 	url    string
 	stdout lineWriter
-	stderr *lockedBuffer
+	stderr *testlog.Buffer
 	stop   context.CancelFunc
 	code   chan int
 }
@@ -43,14 +44,14 @@ func startBrowse(t *testing.T, args ...string) *browsing {
 	t.Helper()
 	t.Cleanup(readonly.Reset)
 	ctx, stop := context.WithCancel(context.Background())
-	b := &browsing{stdout: make(lineWriter, 4), stderr: &lockedBuffer{}, stop: stop, code: make(chan int, 1)}
+	b := &browsing{stdout: make(lineWriter, 4), stderr: &testlog.Buffer{}, stop: stop, code: make(chan int, 1)}
 	go func() {
 		b.code <- run(ctx, append([]string{"browse", "--endpoint", "h:445"}, args...), b.stdout, b.stderr)
 	}()
 	select {
 	case b.url = <-b.stdout:
 	case code := <-b.code:
-		t.Fatalf("exit %d before printing a URL\n%s", code, b.stderr.next())
+		t.Fatalf("exit %d before printing a URL\n%s", code, b.stderr.Take())
 	}
 	t.Cleanup(func() { b.stop() })
 	return b
@@ -105,7 +106,7 @@ func TestBrowseRun(t *testing.T) {
 	if code := b.end(); code != exitOK {
 		t.Errorf("exit %d", code)
 	}
-	stderr := b.stderr.next()
+	stderr := b.stderr.Take()
 	for _, want := range []string{
 		`level=INFO msg="browse listening" addr=127.0.0.1:`,
 		`level=INFO msg="session opened" endpoint=h:445` + "\n",
@@ -161,7 +162,7 @@ func TestBrowseStatuses(t *testing.T) {
 	if want := `"path":"MyWorks/d.fit","type":"file","size":3,"mtime":"2026-11-01T05:04:05.1234567Z","status":"copied"`; code != 200 || !strings.Contains(body, want) {
 		t.Errorf("listing after an append = %d, lacks %s:\n%s", code, want, body)
 	}
-	if code, stderr := b.end(), b.stderr.next(); code != exitOK || !strings.Contains(stderr, " dest="+dest) {
+	if code, stderr := b.end(), b.stderr.Take(); code != exitOK || !strings.Contains(stderr, " dest="+dest) {
 		t.Errorf("exit %d\n%s", code, stderr)
 	}
 }
@@ -231,7 +232,7 @@ func TestBrowseOpen(t *testing.T) {
 		if code := b.end(); code != exitOK {
 			t.Errorf("exit %d", code)
 		}
-		stderr := b.stderr.next()
+		stderr := b.stderr.Take()
 		if warned := strings.Contains(stderr, `level=WARN msg="could not open a browser" error="no opener"`); warned != fail {
 			t.Errorf("failing opener %v, warned %v:\n%s", fail, warned, stderr)
 		}

@@ -15,6 +15,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 func TestOwnershipRecoveryAvailability(t *testing.T) {
@@ -22,7 +23,7 @@ func TestOwnershipRecoveryAvailability(t *testing.T) {
 		for _, ready := range []bool{false, true} {
 			t.Run(fmt.Sprintf("lazy=%v/ready=%v", lazy, ready), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					var logs logBuffer
+					var logs testlog.Buffer
 					calls := 0
 					f := &busyFactory{channels: make(chan *busyChannels, 128)}
 					var recoverNow atomic.Bool
@@ -67,7 +68,7 @@ func TestOwnershipRecoveryAvailability(t *testing.T) {
 					if ready {
 						reason = "release_failed"
 					}
-					records := loggingRecords(t, bytes.NewBuffer(logs.take()))
+					records := loggingRecords(t, bytes.NewBufferString(logs.Take()))
 					found := false
 					for _, r := range records {
 						if r["msg"] == "session_state" && r["phase"] == "backoff" && r["reason"] == reason && r["retry_ms"] == float64(60000) {
@@ -93,7 +94,7 @@ func TestOwnershipRecoveryAvailability(t *testing.T) {
 					if (!lazy && calls < 3) || (lazy && calls != 1) {
 						t.Fatalf("recovery demand policy: calls=%d", calls)
 					}
-					records = loggingRecords(t, bytes.NewBuffer(logs.take()))
+					records = loggingRecords(t, bytes.NewBufferString(logs.Take()))
 					warnings := 0
 					dial := false
 					for _, r := range records {
@@ -140,10 +141,10 @@ func TestOwnershipRecoveryAvailability(t *testing.T) {
 						}
 						c.Close()
 					}
-					logs.take()
+					logs.Take()
 					<-time.After(6 * time.Minute)
 					synctest.Wait()
-					for _, r := range loggingRecords(t, bytes.NewBuffer(logs.take())) {
+					for _, r := range loggingRecords(t, bytes.NewBufferString(logs.Take())) {
 						if r["msg"] == "session_unavailable" {
 							t.Fatalf("warning after ready: %v", r)
 						}
@@ -163,7 +164,7 @@ func TestOwnershipRecoveryAvailability(t *testing.T) {
 						wantReason = "transport_failed"
 					}
 					warnings = 0
-					for _, r := range loggingRecords(t, bytes.NewBuffer(logs.take())) {
+					for _, r := range loggingRecords(t, bytes.NewBufferString(logs.Take())) {
 						if r["msg"] == "session_unavailable" {
 							warnings++
 							if r["reason"] != wantReason {
@@ -242,7 +243,7 @@ func TestOwnershipRecoveryStop(t *testing.T) {
 
 func TestRefusalCleanupOwnershipDelayLogs(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var logs logBuffer
+		var logs testlog.Buffer
 		f := &busyFactory{channels: make(chan *busyChannels, 128), stopError: session.ErrReleaseAbandoned}
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return f, session.ErrBusy }
 		s, err := startWithRNG(t.Context(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
@@ -252,7 +253,7 @@ func TestRefusalCleanupOwnershipDelayLogs(t *testing.T) {
 		defer s.Close()
 		synctest.Wait()
 		found := false
-		for _, r := range loggingRecords(t, bytes.NewBuffer(logs.take())) {
+		for _, r := range loggingRecords(t, bytes.NewBufferString(logs.Take())) {
 			if r["msg"] == "session_state" && r["phase"] == "backoff" && r["reason"] == "release_failed" && r["retry_ms"] == float64(60000) {
 				found = true
 			}
@@ -263,7 +264,7 @@ func TestRefusalCleanupOwnershipDelayLogs(t *testing.T) {
 		<-time.After(5 * time.Minute)
 		synctest.Wait()
 		warnings := 0
-		for _, r := range loggingRecords(t, bytes.NewBuffer(logs.take())) {
+		for _, r := range loggingRecords(t, bytes.NewBufferString(logs.Take())) {
 			if r["msg"] == "session_unavailable" {
 				warnings++
 				if r["reason"] != "release_failed" {

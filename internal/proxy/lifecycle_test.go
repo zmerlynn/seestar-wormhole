@@ -5,6 +5,7 @@ import (
 	"context"
 	"github.com/zmerlynn/seestar-wormhole/internal/core"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 	"log/slog"
 	"strings"
 	"testing"
@@ -14,17 +15,17 @@ import (
 
 func TestBusyLifecycleWithoutClients(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var logs logBuffer
+		var logs testlog.Buffer
 		s := simulatedSession(t, context.Background(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, &simulatedCloud{busy: true})
 		defer s.Close()
 		synctest.Wait()
-		data := string(logs.take())
+		data := logs.Take()
 		if !strings.Contains(data, `"reason":"busy"`) || !strings.Contains(data, `"phase":"backoff"`) || !strings.Contains(data, `"local_clients":"accept_close"`) {
 			t.Fatalf("missing retryable busy lifecycle: %s", data)
 		}
 		<-time.After(time.Minute)
 		synctest.Wait()
-		if !strings.Contains(string(logs.take()), `"phase":"backoff"`) {
+		if !strings.Contains(logs.Take(), `"phase":"backoff"`) {
 			t.Fatal("busy did not continue retrying")
 		}
 	})

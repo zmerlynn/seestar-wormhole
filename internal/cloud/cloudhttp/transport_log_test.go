@@ -1,7 +1,6 @@
 package cloudhttp
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -13,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"testing"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 // Waiting for the transport connection to close joins its idle diagnostic path
@@ -21,7 +22,7 @@ func TestTransportDoesNotLogResponseSecrets(t *testing.T) {
 	for _, injected := range []bool{false, true} {
 		t.Run(fmt.Sprintf("injected=%t", injected), func(t *testing.T) {
 
-			var sink lockedLogBuffer
+			var sink testlog.Buffer
 			oldSlog, oldLog, oldFlags := slog.Default(), log.Writer(), log.Flags()
 			slog.SetDefault(slog.New(slog.NewJSONHandler(&sink, nil)))
 			log.SetOutput(&sink)
@@ -90,20 +91,4 @@ func (c *closeObservedConn) Close() error {
 	err := c.Conn.Close()
 	c.once.Do(func() { c.closed <- struct{}{} })
 	return err
-}
-
-type lockedLogBuffer struct {
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (b *lockedLogBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.b.Write(p)
-}
-func (b *lockedLogBuffer) String() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.b.String()
 }

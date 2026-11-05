@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
@@ -23,7 +24,7 @@ func TestHeldLockDoesNotReplaceStaleRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	acquired, err := tryLock(lock)
+	acquired, err := filelock.TryLock(lock)
 	if err != nil || !acquired {
 		t.Fatal(acquired, err)
 	}

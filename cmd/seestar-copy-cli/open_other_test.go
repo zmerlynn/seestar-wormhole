@@ -10,6 +10,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 // An opener still running after openWait is a success: no warning, and it
@@ -30,7 +32,7 @@ func TestLaunchStaysRunning(t *testing.T) {
 	defer said.Close()
 	cmd := exec.Command("/bin/sh", "-c", "read x <&3; echo alive >&4; exit 1")
 	cmd.ExtraFiles = []*os.File{hold, say}
-	var logs lockedBuffer
+	var logs testlog.Buffer
 	reaped := launch(cmd, slog.New(slog.NewTextHandler(&logs, nil)))
 	hold.Close()
 	say.Close()
@@ -40,7 +42,7 @@ func TestLaunchStaysRunning(t *testing.T) {
 		t.Fatal("the opener ended before it was released")
 	default:
 	}
-	if s := logs.next(); s != "" {
+	if s := logs.Take(); s != "" {
 		t.Errorf("logged for a running opener:\n%s", s)
 	}
 	release.Close()
@@ -48,7 +50,7 @@ func TestLaunchStaysRunning(t *testing.T) {
 		t.Errorf("the opener said %q, want alive: it was killed", b)
 	}
 	<-reaped
-	if s := logs.next(); s != "" {
+	if s := logs.Take(); s != "" {
 		t.Errorf("logged for an exit after openWait:\n%s", s)
 	}
 }
@@ -64,9 +66,9 @@ func TestLaunchFails(t *testing.T) {
 		{exec.Command("/bin/sh", "-c", "exit 3"), `level=WARN msg="could not open a browser" error="exit status 3"`},
 		{exec.Command("/bin/sh", "-c", "exit 0"), ""},
 	} {
-		var logs lockedBuffer
+		var logs testlog.Buffer
 		<-launch(tc.cmd, slog.New(slog.NewTextHandler(&logs, nil)))
-		s := logs.next()
+		s := logs.Take()
 		if tc.want == "" && s != "" || !strings.Contains(s, tc.want) || strings.Count(s, "\n") > 1 {
 			t.Errorf("%q: logged %q, want %q", tc.cmd.Args, s, tc.want)
 		}

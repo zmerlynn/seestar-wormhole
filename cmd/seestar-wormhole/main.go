@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
@@ -27,8 +28,9 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 )
 
-var revision = "development"
-var version = "development"
+// Release builds set these with -ldflags "-X main.version=... -X main.revision=...";
+// buildinfo fills in a development build's.
+var revision, version string
 
 type mappings []proxyrun.Port
 
@@ -292,7 +294,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	done := make(chan error, 1)
 	go func() { done <- proxy.Serve(ctx, s, forwards, 128, logger) }()
 	o.uiStatus.MarkArmed()
-	logger.Info("proxy_started", "revision", revision, "listeners", len(forwards), "lazy", o.idle > 0, "pause_threshold", o.pauseThreshold)
+	logger.Info("proxy_started", "revision", buildinfo.Revision(revision), "listeners", len(forwards), "lazy", o.idle > 0, "pause_threshold", o.pauseThreshold)
 	for {
 		select {
 		case <-discoveryDone:

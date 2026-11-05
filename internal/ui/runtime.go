@@ -18,8 +18,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
@@ -120,10 +122,7 @@ func StateRoot(root string) (string, error) {
 
 func uiVersion(ctx context.Context) string {
 	version, _ := ctx.Value(versionKey{}).(string)
-	if version == "" {
-		return "development"
-	}
-	return version
+	return buildinfo.Version(version)
 }
 
 type versionKey struct{}
@@ -149,7 +148,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		return errStorage
 	}
 	defer lock.Close()
-	acquired, err := tryLock(lock)
+	acquired, err := filelock.TryLock(lock)
 	if err != nil {
 		return errStorage
 	}

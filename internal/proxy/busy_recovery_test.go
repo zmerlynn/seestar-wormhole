@@ -20,6 +20,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 type recoveryBusyCloud struct {
@@ -33,7 +34,7 @@ func TestBusyListenerLogsOnce(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		var logs logBuffer
+		var logs testlog.Buffer
 		logger := slog.New(slog.NewJSONHandler(&logs, nil))
 		s := simulatedSession(t, ctx, Config{Logger: logger}, &simulatedCloud{busy: true})
 		defer s.Close()
@@ -54,7 +55,7 @@ func TestBusyListenerLogsOnce(t *testing.T) {
 		if err := <-done; err != nil {
 			t.Fatal(err)
 		}
-		logData := string(logs.take())
+		logData := logs.Take()
 		if strings.Contains(logData, `"msg":"client_rejected"`) {
 			t.Fatalf("per-client down-state logs: %s", logData)
 		}
@@ -135,7 +136,7 @@ func TestAmbientBusyRecovery(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				tr := &recoveryBusyCloud{lazyBusyCloud: lazyBusyCloud{route: route}}
 				tr.unblocked.Store(true)
-				var logs logBuffer
+				var logs testlog.Buffer
 				var s *Session
 				label := "busy_recovery_test"
 				pprof.Do(t.Context(), pprof.Labels(label, t.Name()), func(ctx context.Context) {
@@ -170,7 +171,7 @@ func TestAmbientBusyRecovery(t *testing.T) {
 				}
 				tr.mu.Unlock()
 				busy, summaries := 0, 0
-				for _, line := range strings.Split(strings.TrimSpace(string(logs.take())), "\n") {
+				for _, line := range strings.Split(strings.TrimSpace(logs.Take()), "\n") {
 					var r struct{ Msg, Level, Reason string }
 					if err := json.Unmarshal([]byte(line), &r, json.MatchCaseInsensitiveNames(true)); err != nil {
 						t.Fatal(err)
@@ -223,7 +224,7 @@ func TestAmbientFirstBusyThenReady(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				began := time.Now()
 				tr := &recoveryBusyCloud{lazyBusyCloud: lazyBusyCloud{route: route, ready: began.Add(20 * time.Minute)}}
-				var logs logBuffer
+				var logs testlog.Buffer
 				s := recoveryBusySession(t, t.Context(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, tr)
 				defer s.Close()
 				synctest.Wait()
@@ -245,7 +246,7 @@ func TestAmbientFirstBusyThenReady(t *testing.T) {
 					t.Fatalf("first busy attempts=%d after 20m, want ongoing retries", tr.attempts.Load())
 				}
 				busy, summaries := 0, 0
-				for _, line := range strings.Split(strings.TrimSpace(string(logs.take())), "\n") {
+				for _, line := range strings.Split(strings.TrimSpace(logs.Take()), "\n") {
 					var r struct {
 						Msg, Level, Reason string
 						Elapsed            int64 `json:"unavailable_ms"`
@@ -290,10 +291,10 @@ func TestAmbientFirstBusyThenReady(t *testing.T) {
 					t.Fatal(err)
 				}
 				c.Close()
-				logs.take()
+				logs.Take()
 				<-time.After(5 * time.Minute)
 				synctest.Wait()
-				if strings.Contains(string(logs.take()), `"msg":"session_unavailable"`) {
+				if strings.Contains(logs.Take(), `"msg":"session_unavailable"`) {
 					t.Fatal("warning after readiness")
 				}
 				if err := s.Close(); err != nil {

@@ -22,6 +22,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 // device is the share the fake dial serves. Each dial gets a snapshot of
@@ -107,27 +108,6 @@ func (s *deviceSession) Close() error {
 	s.d.closes++
 	s.d.mu.Unlock()
 	return s.Fake.Close()
-}
-
-// lockedBuffer collects the log of a sync running in another goroutine.
-type lockedBuffer struct {
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (b *lockedBuffer) Write(p []byte) (int, error) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	return b.b.Write(p)
-}
-
-// next returns what was logged since the last call.
-func (b *lockedBuffer) next() string {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	s := b.b.String()
-	b.b.Reset()
-	return s
 }
 
 // logLines renders the expected log lines at time at, each "level msg rest".
@@ -233,7 +213,7 @@ func TestSyncPasses(t *testing.T) {
 
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		logs := &lockedBuffer{}
+		logs := &testlog.Buffer{}
 		code := make(chan int, 1)
 		go func() {
 			code <- run(ctx, []string{"sync", "--endpoint", "127.0.0.1:4445", "--dest", dest, "--state-dir", stateDir,
@@ -242,7 +222,7 @@ func TestSyncPasses(t *testing.T) {
 
 		// Pass 1: only files at least --first-pass-age old are stable.
 		synctest.Wait()
-		if got, want := logs.next(), logLines(t0,
+		if got, want := logs.Take(), logLines(t0,
 			`INFO msg="file copied" path=Autorun/Dark/dark.fit size=2 elapsed=0s`,
 			`INFO msg="file adopted" path="MyWorks/M 31/have.fit" size=2`,
 			`INFO msg="file copied" path="MyWorks/M 31/old.fit" size=3 elapsed=0s`,
@@ -261,7 +241,7 @@ func TestSyncPasses(t *testing.T) {
 		// old, deleted locally, stays done.
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
-		if got, want := logs.next(), logLines(t0.Add(5*time.Minute),
+		if got, want := logs.Take(), logLines(t0.Add(5*time.Minute),
 			`INFO msg="file copied" path="MyWorks/M 31/settled.fit" size=3 elapsed=0s`,
 			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=3 failed=0 skipped=0 unmatched=0 bytes=3 elapsed=0s`,
 		); got != want {
@@ -271,7 +251,7 @@ func TestSyncPasses(t *testing.T) {
 		// Pass 3: everything left is stable and old enough.
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
-		if got, want := logs.next(), logLines(t0.Add(10*time.Minute),
+		if got, want := logs.Take(), logLines(t0.Add(10*time.Minute),
 			`INFO msg="file replaced" path=Autorun/Dark/dark.fit size=3 elapsed=0s`,
 			`INFO msg="file copied" path="MyWorks/M 31/growing.fit" size=2 elapsed=0s`,
 			`INFO msg="file copied" path="MyWorks/M 31/young.fit" size=2 elapsed=0s`,
@@ -284,7 +264,7 @@ func TestSyncPasses(t *testing.T) {
 		if c := <-code; c != exitOK {
 			t.Errorf("exit %d after a stop, want 0", c)
 		}
-		if got := logs.next(); got != "" {
+		if got := logs.Take(); got != "" {
 			t.Errorf("log after the stop: %q, want nothing", got)
 		}
 		if dials, closes := dev.counts(); dials != 3 || closes != 3 {
@@ -424,18 +404,18 @@ func TestSyncRetriesFailedPass(t *testing.T) {
 		dev.use(t)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		logs := &lockedBuffer{}
+		logs := &testlog.Buffer{}
 		code := make(chan int, 1)
 		go func() {
 			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--interval", "1m"}, io.Discard, logs)
 		}()
 		synctest.Wait()
-		if got, want := logs.next(), logLines(t0, `ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
+		if got, want := logs.Take(), logLines(t0, `ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
 			t.Fatalf("first pass log %q, want %q", got, want)
 		}
 		time.Sleep(time.Minute)
 		synctest.Wait()
-		if got := logs.next(); !strings.Contains(got, `msg="file copied" path=MyWorks/a.fit size=3`) {
+		if got := logs.Take(); !strings.Contains(got, `msg="file copied" path=MyWorks/a.fit size=3`) {
 			t.Fatalf("second pass log %q, want the file copied", got)
 		}
 		cancel()
@@ -477,21 +457,21 @@ func TestSyncLogsEachFileAsItFinishes(t *testing.T) {
 		dev.use(t)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		logs := &lockedBuffer{}
+		logs := &testlog.Buffer{}
 		code := make(chan int, 1)
 		go func() {
 			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--state-dir", t.TempDir(),
 				"--workers", "2", "--once"}, io.Discard, logs)
 		}()
 		synctest.Wait() // a.fit is done and b.fit is stalled mid-file
-		if got, want := logs.next(), logLines(t0, `INFO msg="file copied" path=MyWorks/a.fit size=3 elapsed=0s`); got != want {
+		if got, want := logs.Take(), logLines(t0, `INFO msg="file copied" path=MyWorks/a.fit size=3 elapsed=0s`); got != want {
 			t.Fatalf("log while b.fit is read %q, want %q", got, want)
 		}
 		cancel()
 		if c := <-code; c != exitOK {
 			t.Errorf("exit %d after a stop, want 0", c)
 		}
-		if got, want := logs.next(), logLines(t0, `INFO msg="pass stopped" copied=1 replaced=0 adopted=0 waiting=0 failed=1 skipped=0 unmatched=0 bytes=3 elapsed=0s`); got != want {
+		if got, want := logs.Take(), logLines(t0, `INFO msg="pass stopped" copied=1 replaced=0 adopted=0 waiting=0 failed=1 skipped=0 unmatched=0 bytes=3 elapsed=0s`); got != want {
 			t.Errorf("log after the stop %q, want %q", got, want)
 		}
 	})

@@ -5,6 +5,7 @@ package cloudhttp
 import (
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 	"io"
 	"os"
 	"path/filepath"
@@ -47,25 +48,13 @@ func persistentSource(stateDir string) (string, error) {
 	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
 		return "", stateError("state_identity", "unsafe_permissions_or_type")
 	}
-	deadline := time.NewTimer(time.Second)
-	defer deadline.Stop()
-	tick := time.NewTicker(10 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, syscall.EWOULDBLOCK) {
-			return "", stateError("state_identity", diagnostic.Class(err))
-		}
-		select {
-		case <-deadline.C:
-			return "", stateError("state_identity", "lock_timeout")
-		case <-tick.C:
-		}
+	switch err := filelock.Lock(f, time.Second); {
+	case errors.Is(err, filelock.ErrTimeout):
+		return "", stateError("state_identity", "lock_timeout")
+	case err != nil:
+		return "", stateError("state_identity", diagnostic.Class(err))
 	}
-	defer syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	defer filelock.Unlock(f)
 	b, err := io.ReadAll(io.LimitReader(f, 4097))
 	if len(b) > 4096 {
 		return "", stateError("state_identity", "invalid_content")

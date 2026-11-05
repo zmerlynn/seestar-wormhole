@@ -9,18 +9,17 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"runtime"
-	"runtime/debug"
 	"syscall"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 const programName = "seestar-copy-cli"
 
-// Release builds set these with -ldflags "-X main.version=... -X main.revision=...".
-var (
-	version  = "development"
-	revision = ""
-)
+// Release builds set these with -ldflags "-X main.version=... -X main.revision=...";
+// buildinfo fills in a development build's.
+var version, revision string
 
 // Exit codes, as documented in the command help.
 const (
@@ -37,9 +36,10 @@ func main() {
 }
 
 // run executes one invocation and returns its exit code. Help, version and
-// licenses go to stdout; logs and errors go to stderr.
+// licenses go to stdout; logs and errors go to stderr, as slog text lines
+// with UTC millisecond timestamps.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	logger := newLogger(stderr)
+	logger := diagnostic.Logger("text", stderr, slog.LevelInfo)
 	output := &checkedWriter{Writer: stdout}
 	root := newCommand(output, logger)
 	root.SetArgs(append([]string{}, args...))
@@ -74,36 +74,6 @@ func (w *checkedWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// newLogger writes slog text lines with UTC millisecond timestamps.
-func newLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey && len(groups) == 0 {
-				return slog.String(slog.TimeKey, a.Value.Time().UTC().Format("2006-01-02T15:04:05.000Z"))
-			}
-			return a
-		},
-	}))
-}
-
 func versionString() string {
-	info, _ := debug.ReadBuildInfo()
-	return formatVersion(version, revision, info, runtime.GOOS, runtime.GOARCH)
-}
-
-// formatVersion prints "<program> <version> (<revision>, <os>/<arch>)". A
-// revision set at link time wins; otherwise the build's VCS stamp is used,
-// shortened to 12 characters as release builds do.
-func formatVersion(version, revision string, info *debug.BuildInfo, goos, goarch string) string {
-	if revision == "" && info != nil {
-		for _, setting := range info.Settings {
-			if setting.Key == "vcs.revision" {
-				revision = setting.Value[:min(len(setting.Value), 12)]
-			}
-		}
-	}
-	if revision == "" {
-		revision = "development"
-	}
-	return programName + " " + version + " (" + revision + ", " + goos + "/" + goarch + ")"
+	return buildinfo.String(programName, version, revision)
 }

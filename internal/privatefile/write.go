@@ -1,0 +1,92 @@
+package privatefile
+
+import (
+	"crypto/rand"
+	"encoding/hex"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
+)
+
+// A Policy says how [WriteFile] protects the file it publishes. Both follow
+// the same order: exclusive temporary file, complete write, fsync, close,
+// replacement, directory sync. On Windows they differ in how the file is
+// created and replaced; see [WriteFile].
+type Policy int
+
+const (
+	// Private makes the file private as [Check] requires: 0600 on Unix and, on
+	// Windows, a protected DACL for the user and SYSTEM, which needs a
+	// filesystem with ACLs, placed with [Replace]. Replace keeps the DACL of
+	// the file it replaces, so an existing name must already be private:
+	// WriteFile refuses one that [OpenRead] does not accept. The directory
+	// must be private too, so that nobody else can swap the name in between.
+	Private Policy = iota
+	// Inherited is Private on Unix. On Windows the file keeps the ACL its
+	// folder passes down and is renamed into place, as [os.Rename] does, so
+	// it also works on filesystems without ACLs such as FAT32 and exFAT.
+	Inherited
+)
+
+// Fault-injection seams for tests.
+var (
+	syncFile      = (*os.File).Sync
+	replace       = publish
+	syncDirectory = SyncDirectory
+)
+
+// WriteFile atomically replaces name in dir, an open directory, with a file
+// holding b, protected as p says. It writes b to a new temporary file next to
+// name, created exclusively under a random name so no existing file or link is
+// opened, fsyncs and closes it, replaces name with it, and syncs dir. A crash
+// leaves the old file or the whole new one, and at worst a stray temporary
+// file. On Unix the new file is 0600 whatever the umask and owned by the user;
+// on Windows, Private requests write-through creation and uses [Replace],
+// while Inherited uses ordinary creation and [os.Rename]. The caller decides
+// whether an existing file may be replaced.
+func WriteFile(dir *os.File, name string, b []byte, p Policy) error {
+	path := filepath.Join(dir.Name(), name)
+	if p == Private {
+		if err := checkExisting(path); err != nil {
+			return err
+		}
+	}
+	var nonce [16]byte
+	if _, err := rand.Read(nonce[:]); err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir.Name(), "."+name+"."+hex.EncodeToString(nonce[:])+".tmp")
+	f, err := create(tmp, p)
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp)
+	_, err = f.Write(b)
+	if err == nil {
+		err = syncFile(f)
+	}
+	if closeErr := f.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		return err
+	}
+	if err := replace(tmp, path, p); err != nil {
+		return err
+	}
+	return syncDirectory(dir)
+}
+
+// checkExisting refuses a file at path that OpenRead does not accept as
+// private. A missing file is fine.
+func checkExisting(path string) error {
+	f, err := OpenRead(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return f.Close()
+}
