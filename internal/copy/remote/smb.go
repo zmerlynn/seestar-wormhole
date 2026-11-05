@@ -11,6 +11,8 @@ import (
 	"github.com/hirochachacha/go-smb2/v2"
 	"github.com/hirochachacha/go-smb2/v2/auth"
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 )
 
 // statusNotADirectory is STATUS_NOT_A_DIRECTORY ([MS-ERREF] 2.3.1).
@@ -74,7 +76,10 @@ func dialShare(ctx context.Context, endpoint string, dialer *smb2.Dialer, share 
 	if err != nil {
 		return nil, fmt.Errorf("mount %q on %s: %w", share, endpoint, err)
 	}
-	stop := context.AfterFunc(ctx, func() { _ = session.Close() })
+	stop := context.AfterFunc(ctx, func() {
+		defer guard.Recover(nil, "closing the device session")
+		_ = session.Close()
+	})
 	return &SMB{endpoint: endpoint, session: session, share: mounted, stopWatch: stop}, nil
 }
 
@@ -85,6 +90,7 @@ func mount(ctx context.Context, session *smb2.Session, share string) (*smb2.Shar
 	aborted := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		defer close(aborted)
+		defer guard.Recover(nil, "aborting the device session")
 		_ = session.Abort()
 	})
 	mounted, err := session.Mount(ctx, share)

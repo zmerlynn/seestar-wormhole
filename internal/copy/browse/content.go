@@ -5,9 +5,11 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"mime"
 	"strings"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
@@ -113,7 +115,9 @@ func (t thumbs) For(name string) string {
 // outlive the call, so mu is held through each Read and Seek, and stop
 // waits for one in progress and refuses any later one. mu is a channel of
 // one slot rather than a sync.Mutex, so testing/synctest sees a wait on it
-// as durably blocked.
+// as durably blocked. That goroutine is outside the handler's recovery, so a
+// panic in a device Read or Seek is recovered here and fails the read as a
+// device error.
 type fileReader struct {
 	mu      chan struct{}
 	stopped bool
@@ -124,6 +128,7 @@ type fileReader struct {
 	src     source
 	buf     *bufio.Reader
 	fail    func(error)
+	log     *slog.Logger
 }
 
 // errReaderStopped is what a fileReader answers after stop.
@@ -139,7 +144,11 @@ func (s source) Read(p []byte) (int, error) {
 	if err := s.ctx.Err(); err != nil {
 		return 0, err
 	}
-	n, err := s.r.f.Read(p)
+	var n int
+	err := guard.Run(s.r.log, "reading a file from the device", func() (err error) {
+		n, err = s.r.f.Read(p)
+		return err
+	})
 	if err != nil && err != io.EOF {
 		s.r.failed(err)
 	}
@@ -147,9 +156,10 @@ func (s source) Read(p []byte) (int, error) {
 }
 
 // newFileReader reads f, whose Stat gave size, for the request ctx. fail gets
-// every device error from a Read or Seek, but not the request's own error.
-func newFileReader(ctx context.Context, f remote.File, size int64, fail func(error)) *fileReader {
-	r := &fileReader{mu: make(chan struct{}, 1), f: f, size: size, fail: fail}
+// every device error from a Read or Seek, but not the request's own error,
+// and log gets a recovered panic.
+func newFileReader(ctx context.Context, f remote.File, size int64, fail func(error), log *slog.Logger) *fileReader {
+	r := &fileReader{mu: make(chan struct{}, 1), f: f, size: size, fail: fail, log: log}
 	r.src = source{ctx: ctx, r: r}
 	r.buf = bufio.NewReaderSize(r.src, int(min(size, maxBuffer)))
 	return r
@@ -204,7 +214,11 @@ func (r *fileReader) Seek(offset int64, whence int) (int64, error) {
 	if to < 0 {
 		return 0, errors.New("seek: negative position")
 	}
-	if _, err := r.f.Seek(to, io.SeekStart); err != nil {
+	err := guard.Run(r.log, "seeking in a file on the device", func() error {
+		_, err := r.f.Seek(to, io.SeekStart)
+		return err
+	})
+	if err != nil {
 		r.failed(err)
 		return 0, err
 	}

@@ -55,14 +55,15 @@ func newLog() (*slog.Logger, *logBuffer) {
 // "Open", "ReadDir" or "FileClose", that call ignores every context and
 // waits for the session's Close, as a call to a silent telescope does.
 type spy struct {
-	fake      *remote.Fake
-	ctx       context.Context // the dial's
-	block     string
-	openDelay time.Duration                        // each Open sleeps this long first, ignoring every context
-	seekFault func(offset int64, whence int) error // if not nil, each file Seek's error
-	readFault func() error                         // if not nil, called by each file Read first; a non-nil result is its error
-	done      chan struct{}
-	once      sync.Once
+	fake       *remote.Fake
+	ctx        context.Context // the dial's
+	block      string
+	openDelay  time.Duration                        // each Open sleeps this long first, ignoring every context
+	seekFault  func(offset int64, whence int) error // if not nil, each file Seek's error
+	readFault  func() error                         // if not nil, called by each file Read first; a non-nil result is its error
+	closePanic bool                                 // Close panics once it has closed
+	done       chan struct{}
+	once       sync.Once
 
 	mu       sync.Mutex
 	calls    map[string]int
@@ -123,7 +124,11 @@ func (s *spy) Open(ctx context.Context, p string) (remote.File, error) {
 func (s *spy) Close() error {
 	s.count("Close")
 	s.once.Do(func() { close(s.done) })
-	return s.fake.Close()
+	err := s.fake.Close()
+	if s.closePanic {
+		panic("close panic")
+	}
+	return err
 }
 
 type spyFile struct {

@@ -2,9 +2,11 @@
 //
 // The copier shares a process with the proxy, and an unrecovered panic in
 // any goroutine ends every goroutine at once, the proxy's included. net/http
-// already recovers a handler's panic; each goroutine the copier starts
-// recovers its own with [Run] or [Recover], logs it with its stack, and
-// carries on as if the work had failed.
+// already recovers a handler's panic, but not one in a goroutine it starts,
+// such as a multipart response's reads. Each goroutine the copier starts,
+// each timer and context callback it arms, and each call it makes from a
+// goroutine it doesn't own recovers its own with [Run] or [Recover], logs
+// it with its stack, and carries on as if the work had failed.
 package guard
 
 import (

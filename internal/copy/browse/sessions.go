@@ -138,7 +138,7 @@ func (p *Sessions) startDial() *dialing {
 		}
 		if !timer.Stop() {
 			if err == nil {
-				s.Close()
+				p.closeSession(s)
 				s = nil
 			}
 			err = fmt.Errorf("connect to the device: no answer after %v", dialTimeout)
@@ -166,7 +166,7 @@ func (p *Sessions) startDial() *dialing {
 		p.mu.Unlock()
 		if sess == nil {
 			if s != nil {
-				s.Close()
+				p.closeSession(s)
 			}
 			cancel()
 		}
@@ -183,10 +183,14 @@ func (p *Sessions) lease(ctx context.Context, s *session) *Lease {
 	}
 	l := &Lease{p: p, s: s, ctx: context.WithoutCancel(ctx)}
 	l.stop = context.AfterFunc(ctx, func() {
+		defer guard.Recover(p.log, "watching a request")
 		p.mu.Lock()
 		defer p.mu.Unlock()
 		if !l.released {
-			l.grace = time.AfterFunc(cancelGrace, func() { p.retire(s, "stuck", func() bool { return !l.released }) })
+			l.grace = time.AfterFunc(cancelGrace, func() {
+				defer guard.Recover(p.log, "retiring a stuck device session")
+				p.retire(s, "stuck", func() bool { return !l.released })
+			})
 		}
 	})
 	return l
@@ -198,6 +202,7 @@ func (p *Sessions) lease(ctx context.Context, s *session) *Lease {
 func (p *Sessions) armIdle(s *session) {
 	var t *time.Timer
 	t = time.AfterFunc(idleTimeout, func() {
+		defer guard.Recover(p.log, "closing an idle device session")
 		p.retire(s, "idle", func() bool { return s.idle == t && s.leases == 0 })
 	})
 	s.idle = t
@@ -220,11 +225,18 @@ func (p *Sessions) retire(s *session, reason string, ok func() bool) {
 	p.end(s, reason)
 }
 
-// end closes a detached session and ends its context.
+// end closes a detached session and ends its context, even if Close panics.
 func (p *Sessions) end(s *session, reason string) {
-	s.s.Close()
+	p.closeSession(s.s)
 	s.cancel()
 	p.log.Info("session closed", "reason", reason)
+}
+
+// closeSession closes s. A panic in Close is logged and recovered, so the
+// caller's cleanup still runs: a timer's, a dial's, or a multipart
+// response's goroutine may be the one closing it.
+func (p *Sessions) closeSession(s remote.Session) {
+	_ = guard.Run(p.log, "closing the device session", s.Close)
 }
 
 // Close closes the current session and cancels a dial in progress. Later
