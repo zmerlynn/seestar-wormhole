@@ -5,6 +5,34 @@ They share one connection to the telescope.
 
 ![Choose who can connect, then enter your Seestar account details](images/gui-setup.png)
 
+## Tabs
+
+The header shows a dot and a line with the connection's state: **Not
+connected**, the status while connecting, or **Connected to** your Seestar. On
+this network it shows the saved address, then **On this network: reachable**
+or **Can't reach** the address once **Test** has run.
+
+Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
+and **Activity**. Use the Left and Right arrow keys, Home and End to move
+between them. Copy, Browse and Free up space are not available yet; they say
+**Coming in this build**. Quit and the version are below every tab.
+
+## Reaching the telescope
+
+**Connection** starts with **Reach the telescope**:
+
+- **Through my Seestar account** is the setup on the rest of this page: the
+  proxy connects to your Seestar through your account, and copying will use
+  its file-sharing (SMB) port.
+- **On this network** is for a Seestar on the same network as this computer.
+  Enter its address, with an optional port (445 by default). **Test** checks
+  that it answers file sharing; **Save** saves the address and tests it
+  unless it has just passed. This route doesn't start the proxy or use your
+  account.
+
+You can't change the choice while a connection is running or while copying or
+deleting is running; stop it first. **Connect** saves the account route.
+
 ## Setting up
 
 Under **Use with**, choose who can connect:
@@ -114,7 +142,7 @@ for this app run, including when the controls page is reopened. Only Serial and
 Model are saved in the existing settings format. A selection failure for a
 chosen pair says **Choose “Find on my account” to reload telescopes, or check Serial and Model.**
 Absence from the catalog alone does not invalidate a saved pair; the detail
-fallback still applies. The received telescope list is included in Recent events, the private log, and Copy diagnostic summary; see [Details and logs](#details-and-logs).
+fallback still applies. The received telescope list is included in Recent events, the private log, and Copy diagnostic summary; see [Activity](#activity).
 
 After selection, status includes the escaped model and full serial. Valid serials preserve printable ASCII verbatim without truncation. Only the model is capped at 64 display characters. For example: **Connected to Seestar S50 Pro {serial}**.
 An empty model uses **Seestar {serial}**. Recent events and Copy diagnostic
@@ -154,10 +182,10 @@ that service off. Each enabled local port must be unique and between 1 and
 setup uses local port 8080 instead. SMB uses local port 4445 for Seestar port
 445. For other mappings, use the [command line](reference.md#port-mappings).
 
-## Details and logs
+## Activity
 
-**Details and logs** shows your connection settings as JSON, recent events in
-local time, error codes, and the private log's location.
+The **Activity** tab holds **Details and logs**: your connection settings as
+JSON, recent events in local time, error codes, and the private log's location.
 
 **Copy diagnostic summary** copies one JSON object with the program name,
 version, connection settings, and this launch's events in UTC. It leaves out
@@ -253,8 +281,10 @@ The controls use a separate loopback listener on an automatic port, even when fo
 request. Treat that private URL as access to the controls.
 
 To keep other websites out, the page uses exact Host checks, Origin checks on
-JSON POST writes, request limits, blocked framing, a restrictive content
-policy, and no-store/no-referrer headers. Other programs running as your user
+JSON POST writes, request limits, framing by the same page only, a restrictive
+content policy, and no-store/no-referrer headers. The copy API under
+`/copy/api/` takes the same token and checks; Browse, under `/browse/`, is
+served for a frame on the page. Other programs running as your user
 are still trusted.
 
 A browser opener gets only the path to `ui-open.html`, which redirects to the
