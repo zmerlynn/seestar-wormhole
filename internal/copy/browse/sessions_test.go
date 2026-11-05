@@ -463,11 +463,11 @@ func TestPanickingDial(t *testing.T) {
 			return remote.NewFake(fstest.MapFS{}), nil
 		}, log)
 		defer p.Close()
-		if _, err := p.Get(context.Background()); err == nil || err.Error() != "internal error while connecting to the device: boom" {
+		if _, err := p.Get(context.Background()); err == nil || err.Error() != "internal error while connecting to the device" {
 			t.Fatalf("Get = %v, want the recovered panic", err)
 		}
-		if !strings.Contains(logged.String(), "internal error recovered") {
-			t.Errorf("the panic was not logged: %s", logged)
+		if s := logged.String(); !strings.Contains(s, "internal error recovered") || strings.Contains(s, "boom") {
+			t.Errorf("the panic was not logged by its site alone: %s", s)
 		}
 		panics = false
 		l, err := p.Get(context.Background())

@@ -236,7 +236,7 @@ func TestPanicFailsTheFile(t *testing.T) {
 	if len(results) != 2 {
 		t.Fatalf("got %d results, want 2", len(results))
 	}
-	if err := results[0].Err; err == nil || err.Error() != "internal error while copying MyWorks/a.fit: boom" {
+	if err := results[0].Err; err == nil || err.Error() != "internal error while copying MyWorks/a.fit" {
 		t.Errorf("MyWorks/a.fit: got err %v", err)
 	}
 	if results[1].Err != nil {

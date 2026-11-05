@@ -20,12 +20,10 @@ func TestRun(t *testing.T) {
 		t.Errorf("logged without a panic: %s", b.String())
 	}
 	err := Run(log, "copying", func() error { panic("boom") })
-	if err == nil || err.Error() != "internal error while copying: boom" {
+	if err == nil || err.Error() != "internal error while copying" {
 		t.Errorf("Run after a panic = %v", err)
 	}
-	if s := b.String(); !strings.Contains(s, "internal error recovered") || !strings.Contains(s, "where=copying") || !strings.Contains(s, "panic=boom") || !strings.Contains(s, "guard_test.go") {
-		t.Errorf("log after a panic, want where, panic and stack: %s", s)
-	}
+	checkRecord(t, &b, "copying")
 }
 
 // Recover, deferred at a goroutine's start, ends the goroutine instead of
@@ -40,13 +38,11 @@ func TestRecover(t *testing.T) {
 		panic(errors.New("boom"))
 	}()
 	<-done
-	if s := b.String(); !strings.Contains(s, "where=deleting") || !strings.Contains(s, "panic=boom") {
-		t.Errorf("log after a panic: %s", s)
-	}
+	checkRecord(t, &b, "deleting")
 	Recover(log, "unused") // not deferred and no panic: a no-op
 }
 
-// Catch returns f's panic with its stack and logs nothing; Report then
+// Catch returns f's panic and logs nothing; Report then
 // logs it as Run would. A nil Panic reports nothing.
 func TestCatch(t *testing.T) {
 	if p := Catch(func() {}); p != nil {
@@ -55,20 +51,29 @@ func TestCatch(t *testing.T) {
 	var b bytes.Buffer
 	log := slog.New(slog.NewTextHandler(&b, nil))
 	p := Catch(func() { panic("boom") })
-	if p == nil || p.Value != "boom" || !strings.Contains(string(p.Stack), "guard_test.go") {
-		t.Fatalf("Catch after a panic = %v, want boom and a stack", p)
+	if p == nil || p.Value != "boom" {
+		t.Fatalf("Catch after a panic = %v, want boom", p)
 	}
 	if b.Len() != 0 {
 		t.Errorf("Catch logged: %s", b.String())
 	}
-	if err := p.Report(log, "aborting"); err == nil || err.Error() != "internal error while aborting: boom" {
+	if err := p.Report(log, "aborting"); err == nil || err.Error() != "internal error while aborting" {
 		t.Errorf("Report = %v", err)
 	}
-	if s := b.String(); !strings.Contains(s, "where=aborting") || !strings.Contains(s, "panic=boom") || !strings.Contains(s, "guard_test.go") {
-		t.Errorf("log after Report, want where, panic and stack: %s", s)
-	}
+	checkRecord(t, &b, "aborting")
 	var none *Panic
 	if err := none.Report(log, "unused"); err != nil {
 		t.Errorf("nil Report = %v", err)
+	}
+}
+
+// checkRecord checks that b holds one record of a panic recovered where,
+// naming the site and neither the panic value nor its stack.
+func checkRecord(t *testing.T, b *bytes.Buffer, where string) {
+	t.Helper()
+	want := `level=ERROR msg="internal error recovered" where=` + where + "\n"
+	if s := b.String(); !strings.HasSuffix(s, want) || strings.Count(s, "\n") != 1 ||
+		strings.Contains(s, "boom") || strings.Contains(s, "guard_test.go") {
+		t.Errorf("log %q, want one record ending %q", s, want)
 	}
 }

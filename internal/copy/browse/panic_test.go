@@ -10,7 +10,7 @@ import (
 
 // A panic in a device Read or Seek of a multipart response's producer,
 // which runs outside the handler's recovery, fails the response as a device
-// error: it is logged, the session retires, and the next request dials again.
+// error: its site is logged without the panic value, the session retires, and the next request dials again.
 func TestMultipartPanic(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -36,7 +36,7 @@ func TestMultipartPanic(t *testing.T) {
 				first = false
 			}})
 			e.serve("GET", fitURL, "Range", "bytes=0-9,20-29")
-			if !e.d.session(0).closed() || e.logs.count("internal error recovered", tt.name+" panic") != 1 ||
+			if !e.d.session(0).closed() || e.logs.count("internal error recovered") != 1 || e.logs.count(tt.name+" panic") != 0 ||
 				e.logs.count("session closed", "reason=failed") != 1 {
 				t.Errorf("the panic did not fail the session; logs:\n%s", e.logs)
 			}
@@ -48,8 +48,8 @@ func TestMultipartPanic(t *testing.T) {
 }
 
 // A session whose Close panics still retires from the idle timer, the
-// cancellation grace, a failed call and the pool's Close: the panic is
-// logged, and the session's context still ends.
+// cancellation grace, a failed call and the pool's Close: the panic's site
+// is logged without its value, and the session's context still ends.
 func TestClosePanic(t *testing.T) {
 	retire := map[string]func(p *Sessions){
 		"idle": func(p *Sessions) {
@@ -86,7 +86,7 @@ func TestClosePanic(t *testing.T) {
 				if !s.closed() || s.ctx.Err() == nil {
 					t.Errorf("closed %v, context %v", s.closed(), s.ctx.Err())
 				}
-				if logs.count("internal error recovered", "close panic") != 1 || logs.count("session closed", "reason="+reason) != 1 {
+				if logs.count("internal error recovered") != 1 || logs.count("close panic") != 0 || logs.count("session closed", "reason="+reason) != 1 {
 					t.Errorf("logs:\n%s", logs)
 				}
 			})
