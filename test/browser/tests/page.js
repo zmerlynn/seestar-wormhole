@@ -3,7 +3,8 @@ const { expect } = require('@playwright/test');
 
 const m31 = 'MyWorks/M 31';
 const folderURL = (p) => '/?path=' + encodeURIComponent(p);
-const fileURL = (p) => '/file?path=' + encodeURIComponent(p);
+// The page's own links are relative, so it works under a prefix too.
+const fileURL = (p) => 'file?path=' + encodeURIComponent(p);
 
 const statusLine = (page) => page.locator('#status');
 const currentCrumb = (page) => page.locator('#crumbs a[aria-current="page"]');

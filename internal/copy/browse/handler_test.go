@@ -400,10 +400,10 @@ func TestStatic(t *testing.T) {
 			t.Errorf("index.html holds %q", bad)
 		}
 	}
-	if strings.Count(page, "<script") != 1 || !strings.Contains(page, `<script type="module" src="/app.js"></script>`) {
+	if strings.Count(page, "<script") != 1 || !strings.Contains(page, `<script type="module" src="app.js"></script>`) {
 		t.Error("index.html must load app.js as its only script")
 	}
-	if !strings.Contains(page, `<link rel="icon" type="image/svg+xml" href="/icon.svg">`) {
+	if !strings.Contains(page, `<link rel="icon" type="image/svg+xml" href="icon.svg">`) {
 		t.Error("index.html must link icon.svg as its icon")
 	}
 	size := 0
