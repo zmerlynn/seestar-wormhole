@@ -187,9 +187,7 @@ func (m *Mount) Change(moves func() bool, commit func() error) error {
 
 // Test runs Test's check of endpoint, host:port, as the API's Test does.
 func (m *Mount) Test(ctx context.Context, endpoint string) error {
-	ctx, cancel := context.WithTimeout(ctx, testTimeout)
-	defer cancel()
-	_, err := m.s.test(ctx, endpoint)
+	_, err := m.s.testLAN(ctx, endpoint)
 	return err
 }
 

@@ -370,9 +370,7 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		localhttp.Respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"address": addressError}})
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, testTimeout)
-	defer cancel()
-	entries, err := s.test(ctx, endpoint)
+	entries, err := s.testLAN(ctx, endpoint)
 	if err != nil {
 		s.log.Warn("test failed", "endpoint", endpoint, "err", err)
 	} else {
@@ -383,6 +381,14 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		Address string `json:"address"`
 		Message string `json:"message"`
 	}{err == nil, endpoint, testMessage(hostOS, endpoint, entries, err)})
+}
+
+// testLAN runs Test of endpoint, an address on this network, within
+// testTimeout, waiting out macOS's Local Network prompt.
+func (s *server) testLAN(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+	ctx, cancel := context.WithTimeout(ctx, testTimeout)
+	defer cancel()
+	return retryLAN(ctx, localNetworkRetry, func() ([]remote.Entry, error) { return s.test(ctx, endpoint) })
 }
 
 type fieldErrors struct {

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 
@@ -116,23 +118,63 @@ func LocalNetworkHint(goos string, err error) string {
 }
 
 // unanswered reports whether err is a TCP connect that nothing answered:
-// it timed out, the context's deadline passed while it waited, or there
-// was no route to the host or network, the on-link host did not answer
-// (EHOSTDOWN, which macOS returns for that), or the system refused to send it.
-// Apple documents no errno for a Local Network denial, so these are the
-// failures where one could hide. A refusal, a name not found, a DNS
-// server's answer and anything the SMB server said after connecting are
-// answers.
+// it timed out, the context's deadline passed while it waited, or the
+// system failed it at once ([connectBlocked]). Apple documents no errno for
+// a Local Network denial, so these are the failures where one could hide.
+// A refusal, a name not found, a DNS server's answer and anything the SMB
+// server said after connecting are answers.
 func unanswered(err error) bool {
+	op, ok := errors.AsType[*net.OpError](err)
+	return ok && op.Op == "dial" && op.Timeout() || connectBlocked(err)
+}
+
+// connectBlocked reports whether err is a TCP connect the system failed
+// without an answer or a timeout: there was no route to the host or
+// network, the on-link host did not answer (EHOSTDOWN, which macOS returns
+// for that), or the system refused to send it. While macOS asks whether
+// the app may use the Local Network, its connects fail this way.
+func connectBlocked(err error) bool {
 	op, ok := errors.AsType[*net.OpError](err)
 	if !ok || op.Op != "dial" {
 		return false
 	}
-	if op.Timeout() {
-		return true
-	}
 	sys, ok := errors.AsType[*os.SyscallError](op.Err)
 	return ok && sys.Syscall == "connect" && (errors.Is(sys.Err, syscall.EHOSTUNREACH) || errors.Is(sys.Err, syscall.ENETUNREACH) || errors.Is(sys.Err, syscall.EHOSTDOWN) || errors.Is(sys.Err, syscall.EPERM))
+}
+
+// localNetworkRetry is how a dial to an address on this network waits out
+// macOS's Local Network prompt; tests replace it.
+var localNetworkRetry = lanRetry{goos: runtime.GOOS, every: time.Second, limit: 30 * time.Second, now: time.Now, after: time.After}
+
+// lanRetry is when [retryLAN] tries again: on goos "darwin" only, every
+// interval, until limit has passed since the first try. now and after are
+// the clock.
+type lanRetry struct {
+	goos         string
+	every, limit time.Duration
+	now          func() time.Time
+	after        func(time.Duration) <-chan time.Time
+}
+
+// retryLAN runs try, a dial to an address on this network, and on macOS
+// runs it again while it fails with [connectBlocked]: the system fails
+// connects that way while its Local Network prompt is open, and the first
+// one after the user allows access goes through. It stops at r's limit or
+// once ctx is done, and returns the last try's result. Any other failure,
+// a timeout, a refusal or anything the server said, returns at once.
+func retryLAN[T any](ctx context.Context, r lanRetry, try func() (T, error)) (T, error) {
+	start := r.now()
+	for {
+		v, err := try()
+		if err == nil || r.goos != "darwin" || !connectBlocked(err) || ctx.Err() != nil || r.now().Sub(start)+r.every > r.limit {
+			return v, err
+		}
+		select {
+		case <-ctx.Done():
+			return v, err
+		case <-r.after(r.every):
+		}
+	}
 }
 
 // testMessage words Test's result for the page on goos. Test checks an

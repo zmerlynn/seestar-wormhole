@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -32,15 +33,16 @@ func image(data string) *fstest.MapFile {
 
 // copyEnv is a controller copying from a fake share into a temp folder.
 type copyEnv struct {
-	t        *testing.T
-	c        *controller
-	files    fstest.MapFS
-	set      Settings
-	stateDir string
-	mu       sync.Mutex
-	faults   map[string]remote.Fault
-	dialErr  error
-	dials    int
+	t         *testing.T
+	c         *controller
+	files     fstest.MapFS
+	set       Settings
+	stateDir  string
+	mu        sync.Mutex
+	faults    map[string]remote.Fault
+	dialErr   error
+	failDials int // if set, only the first this many dials fail with dialErr
+	dials     int
 }
 
 func newCopyEnv(t *testing.T, files fstest.MapFS) *copyEnv {
@@ -53,7 +55,7 @@ func newCopyEnv(t *testing.T, files fstest.MapFS) *copyEnv {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		e.dials++
-		if e.dialErr != nil {
+		if e.dialErr != nil && (e.failDials == 0 || e.dials <= e.failDials) {
 			return nil, e.dialErr
 		}
 		f := remote.NewFake(e.files)
@@ -78,6 +80,13 @@ func (e *copyEnv) wait(states ...string) copyView {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// dialCount is how many dials there have been.
+func (e *copyEnv) dialCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.dials
 }
 
 // waitOff waits for the loop to return.
@@ -373,6 +382,31 @@ func TestCopyUnreachableLocalNetworkHint(t *testing.T) {
 		if !strings.HasSuffix(v.Text, " Copying stays on and keeps trying."+tt.hint) {
 			t.Errorf("%s, %+v: text %q", tt.goos, tt.target(e.set.Address), v.Text)
 		}
+	}
+}
+
+// On macOS, copying on this network waits out the Local Network prompt:
+// its dial is tried again while the system fails it at once. Through the
+// account it is not.
+func TestCopyWaitsForLocalNetwork(t *testing.T) {
+	setRetry(t, "darwin")
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.dialErr = connectFailed(syscall.EPERM)
+	e.failDials = 2
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.wait(stUpToDate); e.dialCount() != 3 {
+		t.Errorf("%d dials, view %+v", e.dialCount(), v)
+	}
+
+	e = newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.dialErr = noRoute
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if e.wait(stUnreachable); e.dialCount() != 1 {
+		t.Errorf("through the account: %d dials", e.dialCount())
 	}
 }
 
