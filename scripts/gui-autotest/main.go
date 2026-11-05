@@ -304,6 +304,12 @@ func runScenario(ctx context.Context, bin, dir, scenario string) (result error) 
 	if !exists(filepath.Join(dir, "relaunch", "joined")) {
 		return errors.New("fresh launch missing joined-window receipt (see relaunch/process.log)")
 	}
+	if strings.HasPrefix(scenario, "copy-") {
+		// copy-relaunch held a transfer of its own when it quit.
+		if err := guitest.CopyStopped(guitest.CopyFolder(root)); err != nil {
+			return fmt.Errorf("fresh launch: %w", err)
+		}
+	}
 	return nil
 }
 

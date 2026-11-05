@@ -24,7 +24,8 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 	if dir == "" || scenario == "" {
 		return errors.New("guitest requires its Go harness")
 	}
-	if copyScenario(scenario) {
+	// copy-relaunch reads what the launch before it left.
+	if copyScenario(scenario) && scenario != "copy-relaunch" {
 		if err := prepareCopyScenario(root); err != nil {
 			return err
 		}

@@ -38,8 +38,9 @@ import (
 //   - copy-save does as copy-close, and in Browse saves done.fit through
 //     the window's save dialog, which the fixture answers with a file in
 //     its output folder, then saves it again and cancels.
-//   - copy-relaunch is the harness's fresh launch after any of them: the
-//     copy tabs open from the saved settings, and Quit stops copying.
+//   - copy-relaunch is the harness's fresh launch after any of them, on
+//     the files they left: the copy tabs open with the saved settings,
+//     copying starts on its own, and Quit stops it.
 //
 // Each marks "trigger" once its page has passed. The harness then checks
 // that the held transfer left no temporary file and the folder's state
@@ -115,7 +116,7 @@ func (d *guiTestDriver) driveCopy() error {
 		return fmt.Errorf("the copy tabs didn't open: %w", err)
 	}
 	if d.scenario == "copy-relaunch" {
-		return d.click("quit")
+		return d.copyRelaunch()
 	}
 	d.js(`selectTab('copy');document.getElementById('tab-copy').focus();`)
 	if err := d.probe(`check(!el('panel-copy').hidden && document.activeElement===el('tab-copy') && !el('c-main').hidden,{shown:!el('panel-copy').hidden,focused:document.activeElement?.id})`); err != nil {
@@ -180,6 +181,24 @@ func (d *guiTestDriver) driveCopy() error {
 		}
 	}
 	return nil
+}
+
+// copyRelaunch checks that the settings the first launch saved are read
+// back and that copying starts without a press, then quits.
+func (d *guiTestDriver) copyRelaunch() error {
+	folder := strconv.Quote(guitest.CopyFolder(d.root))
+	if err := d.probe(`check(copySaved?.folder===` + folder + ` && copySaved.start_copying===true && !el('c-main').hidden && el('s-summary').textContent.endsWith('Starts when the app opens.'),{saved:copySaved,summary:el('s-summary').textContent})`); err != nil {
+		return fmt.Errorf("Copy didn't read the saved settings back: %w", err)
+	}
+	select {
+	case <-copyHeld:
+	case <-d.ctx.Done():
+		return errors.New("copying didn't start when the app opened")
+	}
+	if err := d.probe(`check(el('c-title').textContent.startsWith('Copying ') && el('c-flight').textContent.includes('MyWorks/held.fit'),{title:el('c-title').textContent,flight:el('c-flight').textContent})`); err != nil {
+		return fmt.Errorf("Copy didn't show copying: %w", err)
+	}
+	return d.click("quit")
 }
 
 // copyInUse checks that Copy shows the folder in use, and still does
