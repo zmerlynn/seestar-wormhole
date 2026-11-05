@@ -12,6 +12,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 )
 
 // lockedBuffer collects writes from any goroutine.
@@ -84,7 +86,7 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 			time.Sleep(10 * time.Millisecond)
 		}
 		return nil
-	}, true)
+	}, &copyapp.Native{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +148,7 @@ func TestCopyStateIsShared(t *testing.T) {
 		}
 		history = status.History
 		return nil
-	}, true)
+	}, &copyapp.Native{})
 	if err != nil {
 		t.Fatal(err)
 	}

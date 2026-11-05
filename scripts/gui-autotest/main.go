@@ -209,7 +209,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string) (result error) 
 	if record.Port < 1 || record.Port > 65535 {
 		return errors.New("invalid listener port")
 	}
-	if scenario == "activate" || scenario == "strand" || scenario == "term" || scenario == "interrupt" || scenario == "apple" || scenario == "copy-quit" || (runtime.GOOS == "windows" && (strings.HasPrefix(scenario, "close-") || scenario == "copy-close" || scenario == "copy-inuse")) {
+	if scenario == "activate" || scenario == "strand" || scenario == "term" || scenario == "interrupt" || scenario == "apple" || scenario == "copy-quit" || (runtime.GOOS == "windows" && (strings.HasPrefix(scenario, "close-") || scenario == "copy-close" || scenario == "copy-inuse" || scenario == "copy-save")) {
 		if err := waitFile(filepath.Join(dir, "trigger")); err != nil {
 			return err
 		}

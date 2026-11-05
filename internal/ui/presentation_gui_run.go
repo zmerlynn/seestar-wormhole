@@ -8,5 +8,6 @@ import (
 )
 
 func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, run runFunc) error {
-	return runUIPresented(ctx, root, out, logs, run, openBrowser, osKeychain{}, windowPresenter(root, out), true)
+	window, native := windowPresenter(root, out)
+	return runUIPresented(ctx, root, out, logs, run, openBrowser, osKeychain{}, window, native)
 }

@@ -8,7 +8,7 @@ func RequiresRelease(scenario string) bool {
 	switch scenario {
 	case "relaunch", "dark-relaunch", "saved-relaunch", "errors", "http-permission", "http-conflict", "bind-error", "discovery-error",
 		// The copy scenarios use this network's route; no proxy runs.
-		"copy-close", "copy-quit", "copy-hold", "copy-inuse", "copy-relaunch":
+		"copy-close", "copy-quit", "copy-hold", "copy-inuse", "copy-save", "copy-relaunch":
 		return false
 	default:
 		return true

@@ -557,6 +557,14 @@ dialog {
 #panel-free p,dialog p {
   overflow-wrap:anywhere
 }
+.inline {
+  display:flex;
+  gap:.5rem
+}
+.inline input:not([type=checkbox]):not([type=radio]) {
+  flex:1;
+  min-width:0
+}
 #b-frame {
   display:block;
   width:100%;

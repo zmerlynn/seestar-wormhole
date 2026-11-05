@@ -13,7 +13,7 @@ import (
 
 // CopyScenarios run the Copy and Free up space tabs against the fixture's
 // fake telescope. copy-quit needs a Quit event, so only macOS runs it.
-const CopyScenarios = "copy-close,copy-quit,copy-inuse"
+const CopyScenarios = "copy-close,copy-quit,copy-inuse,copy-save"
 
 // CopyFolder is a copy scenario's image folder: beside the state dir, so
 // two apps with sibling state dirs share it.

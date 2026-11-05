@@ -49,3 +49,9 @@ func TestActivityMergePage(t *testing.T) {
 func TestFreePreviewPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkFreePreview("+copyPageStatuses(t)+")")
 }
+
+// Choose… is the window's: it fills the folder, and a failure says to type
+// it.
+func TestCopyChoosePage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkCopyChoose("+copyPageStatuses(t)+")")
+}

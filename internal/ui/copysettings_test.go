@@ -125,7 +125,7 @@ func TestCopySettingsRefusedStopsStartup(t *testing.T) {
 			err := runUIPresented(ctx, filepath.Base(s.storage.root), io.Discard, io.Discard, nil, func(string) error {
 				t.Error("opened UI for refused copy settings")
 				return nil
-			}, &fakeKeychain{}, nil, false)
+			}, &fakeKeychain{}, nil, nil)
 			if err == nil || err.Error() != "Could not load saved settings safely.\n\n"+filepath.Join(s.storage.root, copyName)+"\n\nCheck this file, then reopen seestar-wormhole." {
 				t.Errorf("startup did not explain refusal: %v", err)
 			}

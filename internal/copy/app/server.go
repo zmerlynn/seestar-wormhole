@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -45,6 +47,7 @@ type server struct {
 	test func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	// target is where the telescope is for every dial and start.
 	target  func() (Target, error)
+	native  Native // the window's dialogs; each nil without one
 	copy    *controller
 	preview *previewer
 	free    *freer
@@ -75,6 +78,9 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	}
 	if o.Test != nil {
 		s.test = o.Test
+	}
+	if o.Native != nil {
+		s.native = *o.Native
 	}
 	dial := o.Dial
 	if dial == nil {
@@ -242,13 +248,23 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.api(w, r, strings.TrimPrefix(r.URL.Path, "/copy/api/"))
 	case strings.HasPrefix(r.URL.Path, "/browse/"):
 		s.mu.Lock()
-		h := s.browse
+		h, sessions := s.browse, s.sessions
 		s.mu.Unlock()
 		if h == nil {
 			http.Error(w, "Not found", http.StatusNotFound)
 			return
 		}
-		http.StripPrefix("/browse", h).ServeHTTP(w, r)
+		// A window's webview may not save a download itself, so the app
+		// does, with the window's save dialog.
+		var serve http.Handler = h
+		if s.native.SaveFile != nil {
+			serve = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if p, ok := h.Download(w, r); ok {
+					s.saveFile(w, r, sessions, p)
+				}
+			})
+		}
+		http.StripPrefix("/browse", serve).ServeHTTP(w, r)
 	default:
 		http.Error(w, "Not found", http.StatusNotFound)
 	}
@@ -266,6 +282,11 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 		s.status(w)
 		return
 	case "test", "settings", "copy", "delete", "clear":
+	case "folder":
+		if s.native.ChooseFolder == nil {
+			fail(http.StatusNotFound)
+			return
+		}
 	default:
 		fail(http.StatusNotFound)
 		return
@@ -287,6 +308,8 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 	switch name {
 	case "test":
 		s.runTest(w, r.Context(), in)
+	case "folder":
+		s.chooseFolder(w, in)
 	case "copy":
 		s.copyAction(w, in.Action)
 	case "delete":
@@ -336,7 +359,8 @@ func (s *server) status(w http.ResponseWriter) {
 		Free            freeView `json:"free"`
 		Activity        []entry  `json:"activity"` // newest first
 		ActivitySeq     int      `json:"activity_seq"`
-	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq})
+		Choose          bool     `json:"choose"` // the window's folder picker is there
+	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -557,6 +581,59 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 		s.log.Info("copy history cleared", "dest", folder)
 		localhttp.Respond(w, http.StatusOK, struct{}{})
 	}
+}
+
+// chooseFolder shows the folder picker, starting at the typed folder or
+// the nearest folder above it that exists, and answers the folder chosen,
+// or "" on Cancel.
+func (s *server) chooseFolder(w http.ResponseWriter, in input) {
+	dir := strings.TrimSpace(in.Folder)
+	for filepath.IsAbs(dir) {
+		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
+			break
+		}
+		up := filepath.Dir(dir)
+		if up == dir {
+			dir = ""
+		} else {
+			dir = up
+		}
+	}
+	if !filepath.IsAbs(dir) {
+		dir = ""
+	}
+	chosen, err := s.native.ChooseFolder(dir)
+	if err != nil {
+		s.log.Error("folder picker", "err", err)
+		localhttp.Respond(w, http.StatusInternalServerError, struct {
+			Error string `json:"error"`
+		}{"Couldn't open the folder picker: " + err.Error() + ". Type the folder's full path instead."})
+		return
+	}
+	localhttp.Respond(w, http.StatusOK, struct {
+		Folder string `json:"folder"`
+	}{chosen})
+}
+
+// saveFile asks where to save the device's file p and saves it there. It
+// answers 204 in every case, so the page stays where it is; a failed save
+// is shown in the window's message, unless the app is stopping.
+func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
+	name := path.Base(p)
+	dst, err := s.native.SaveFile(name)
+	if err == nil && dst != "" {
+		err = browse.Save(r.Context(), sessions, p, dst)
+		if err == nil {
+			s.log.Info("file saved", "path", p, "to", dst)
+		}
+	}
+	if err != nil && r.Context().Err() == nil {
+		s.log.Warn("save failed", "path", p, "to", dst, "err", err)
+		if s.native.Alert != nil {
+			s.native.Alert("Couldn't save " + name + ": " + reason(err) + ". Try saving it again.")
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // maxDays caps Only files older than N days: 100 years.

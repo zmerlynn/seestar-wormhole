@@ -29,6 +29,16 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 			return err
 		}
 	}
+	// The window's own dialogs, except copy-save's, which answer without
+	// one; the browser has none.
+	var dialogs windowDialogs
+	native := dialogs.native()
+	if scenario == "copy-save" {
+		copySaves.dir = dir
+		native.SaveFile, native.Alert = copySaveFile, copySaveAlert
+	} else if scenario == "browser-copy" {
+		native = nil
+	}
 	f := newGUITestRunner()
 	f.scenario = scenario
 	result := make(chan error, 1)
@@ -51,6 +61,7 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 				return a
 			}}))
 		}, func(app *application.App, w *application.WebviewWindow) {
+			dialogs.attach(app, w)
 			// AppKit may exit directly after NSTerminateNow, without returning Run.
 			// Record the joined Go lifetime while OnShutdown still owns termination.
 			app.OnShutdown(func() {
@@ -97,7 +108,7 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 				}()
 			})
 		})
-	}, scenario != "browser-copy")
+	}, native)
 	if started {
 		select {
 		case driverErr := <-result:

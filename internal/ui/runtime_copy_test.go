@@ -234,7 +234,7 @@ func (e *runtimeEnv) launch(ctx context.Context, drive func(*runtimeClient, func
 		finished <- runUIPresented(ctx, e.root, io.Discard, io.Discard, e.run, func(string) error {
 			t.Error("opened a browser")
 			return nil
-		}, &fakeKeychain{}, window, true)
+		}, &fakeKeychain{}, window, &copyapp.Native{})
 	}()
 	select {
 	case err := <-finished:
@@ -349,7 +349,7 @@ func TestRuntimeStartupFailureStartsNoCopying(t *testing.T) {
 	err = runUIPresented(t.Context(), e.root, io.Discard, io.Discard, e.run, func(string) error {
 		t.Error("opened a browser")
 		return nil
-	}, &fakeKeychain{}, nil, false)
+	}, &fakeKeychain{}, nil, nil)
 	if err == nil {
 		t.Fatal("startup didn't fail")
 	}

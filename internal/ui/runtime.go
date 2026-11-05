@@ -143,6 +143,8 @@ func newHTTPServer(handler http.Handler) *http.Server {
 
 // windowFunc runs on the caller's main thread. Its context ends only after
 // proxy cleanup and HTTP shutdown; close requests must call quit and wait.
+// The window's dialogs, passed beside it to runUIPresented, serve copy's
+// folder picker and Browse's Save; nil means a browser page.
 type windowFunc func(context.Context, string, func(), <-chan struct{}) error
 
 // copyDial is how the copier reaches the telescope; nil is remote.Dial.
@@ -155,7 +157,7 @@ var copyDial func(ctx context.Context, endpoint string) (remote.Session, error)
 // Ready.
 var runText func(*proxy.Status) string
 
-func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native bool) (result error) {
+func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native *copyapp.Native) (result error) {
 	st, err := openStorage(root)
 	if err != nil {
 		return err
@@ -221,7 +223,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	}()}}
 	version := uiVersion(ctx)
 	handler := &server{version: version, host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
-	handler.native = native
+	handler.native = native != nil
 	handler.routeSaved = routeSaved
 	c.save = handler.saveSettings
 	c.lastSaved = settings
@@ -237,7 +239,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	handler.copy = copyapp.NewMount(appCtx, copyapp.MountOptions{
 		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
 		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Target: handler.copyTarget,
-		Settings: copySaved, Save: copyFile.save, Dial: copyDial,
+		Settings: copySaved, Save: copyFile.save, Dial: copyDial, Native: native,
 	})
 	// Every return stops the copier and joins it before ui.lock is
 	// released; the cleanup below has usually done so already.

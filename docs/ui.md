@@ -120,7 +120,8 @@ If they can't reach the share, each says why and links to the fix:
 ### Copy
 
 The first time you open Copy, **Copy settings** is open: choose the folder for
-your images, by typing its full path, then **Save and continue**. Nothing is
+your images, with **Choose…** in the app's window or by typing its full path,
+then **Save and continue**. Nothing is
 copied until you start. After that, Copy shows what copying is doing, with
 **Start copying**, **Preview**, **Check now** and **Stop copying**, and below
 them a summary of the settings, such as "Copying to ~/Seestar every 5 min,
@@ -162,7 +163,8 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 Browse is `seestar-copy-cli browse`'s page for the share, with the saved
 folder's [statuses](copy/reference.md#statuses). What the settings leave out
 shows as [`left out`](copy/reference.md#left-out-in-browse). A Save that
-changes the folder or the selection reloads it at the share's top.
+changes the folder or the selection reloads it at the share's top. In the app's
+window, a file's **Save** asks where to save it; in a browser, it downloads.
 
 ### Free up space
 

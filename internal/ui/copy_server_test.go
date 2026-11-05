@@ -32,12 +32,18 @@ const pageCSP = "default-src 'none'; script-src 'self'; style-src 'self'; connec
 // share, and Test checks a fake that records what it was asked to reach.
 func copyServer(t *testing.T) (*server, *[]string) {
 	t.Helper()
+	return copyServerWith(t, nil)
+}
+
+// copyServerWith is copyServer with a window's dialogs, or none.
+func copyServerWith(t *testing.T, native *copyapp.Native) (*server, *[]string) {
+	t.Helper()
 	s := testServer(t)
 	var tested []string
 	s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
 		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Target: s.copyTarget,
+		Target: s.copyTarget, Native: native,
 		Dial: func(context.Context, string) (remote.Session, error) {
 			return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), nil
 		},
@@ -80,6 +86,49 @@ func TestOneServerHeaders(t *testing.T) {
 				t.Errorf("%s (%d): %s = %q, want %q", path, w.Code, k, got, want)
 			}
 		}
+	}
+}
+
+// The window's folder picker is one more copy action, behind the same
+// token and checks; a browser has none.
+func TestCopyChooseFolder(t *testing.T) {
+	picked := filepath.Join(t.TempDir(), "picked")
+	var shown atomic.Int32
+	s, _ := copyServerWith(t, &copyapp.Native{ChooseFolder: func(string) (string, error) {
+		shown.Add(1)
+		return picked, nil
+	}})
+	for name, mutate := range map[string]func(*http.Request){
+		"token":          func(r *http.Request) { r.Header.Del("X-Seestar-Token") },
+		"origin foreign": func(r *http.Request) { r.Header.Set("Origin", "https://example.invalid") },
+		"fetch metadata": func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") },
+		"host":           func(r *http.Request) { r.Host = "localhost:12345" },
+	} {
+		r := request(s, "POST", "/copy/api/folder", `{"folder":""}`)
+		mutate(r)
+		if w := serve(s, r); w.Code != 403 {
+			t.Errorf("%s: %d %s", name, w.Code, w.Body)
+		}
+	}
+	if shown.Load() != 0 {
+		t.Fatal("a refused request showed the picker")
+	}
+	var got struct {
+		Folder string `json:"folder"`
+	}
+	w := serve(s, request(s, "POST", "/copy/api/folder", `{"folder":""}`))
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != 200 || got.Folder != picked || shown.Load() != 1 {
+		t.Errorf("folder = %d %s (%v), shown %d", w.Code, w.Body, err, shown.Load())
+	}
+	var status struct {
+		Choose bool `json:"choose"`
+	}
+	if err := json.Unmarshal(serve(s, request(s, "GET", "/copy/api/status", "")).Body.Bytes(), &status); err != nil || !status.Choose {
+		t.Errorf("the window's status has no picker: %v", err)
+	}
+	browser, _ := copyServer(t)
+	if w := serve(browser, request(browser, "POST", "/copy/api/folder", `{"folder":""}`)); w.Code != 404 {
+		t.Errorf("browser folder = %d", w.Code)
 	}
 }
 

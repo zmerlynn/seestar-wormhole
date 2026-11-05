@@ -3,9 +3,11 @@
 package ui
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -33,6 +35,9 @@ import (
 //   - copy-inuse runs beside a copy-hold app on the same folder, checks
 //     that Copy shows the folder in use and Start copying can't take it,
 //     then closes as copy-close.
+//   - copy-save does as copy-close, and in Browse saves done.fit through
+//     the window's save dialog, which the fixture answers with a file in
+//     its output folder, then saves it again and cancels.
 //   - copy-relaunch is the harness's fresh launch after any of them: the
 //     copy tabs open from the saved settings, and Quit stops copying.
 //
@@ -43,6 +48,31 @@ var (
 	copyHeld     = make(chan struct{})
 	copyHoldOnce = sync.OnceFunc(func() { close(copyHeld) })
 )
+
+// copySaves answers copy-save's save dialogs: the first saves into its
+// output folder and the second is canceled. Its alerts are failures.
+var copySaves struct {
+	sync.Mutex
+	dir    string
+	names  []string
+	alerts []string
+}
+
+func copySaveFile(name string) (string, error) {
+	copySaves.Lock()
+	defer copySaves.Unlock()
+	copySaves.names = append(copySaves.names, name)
+	if len(copySaves.names) == 1 {
+		return filepath.Join(copySaves.dir, "saved", name), nil
+	}
+	return "", nil
+}
+
+func copySaveAlert(message string) {
+	copySaves.Lock()
+	defer copySaves.Unlock()
+	copySaves.alerts = append(copySaves.alerts, message)
+}
 
 func init() {
 	files := fstest.MapFS{
@@ -120,6 +150,11 @@ func (d *guiTestDriver) driveCopy() error {
 		if err := d.capture(d.ctx, filepath.Join(d.dir, "browse.png")); err != nil {
 			return err
 		}
+		if d.scenario == "copy-save" {
+			if err := d.copySave(); err != nil {
+				return err
+			}
+		}
 		d.js(`selectTab('copy');`)
 	}
 	d.js(`document.getElementById('tab-copy').focus();`)
@@ -139,7 +174,7 @@ func (d *guiTestDriver) driveCopy() error {
 	if err := d.mark("trigger"); err != nil {
 		return err
 	}
-	if d.scenario == "copy-close" || d.scenario == "copy-inuse" {
+	if d.scenario == "copy-close" || d.scenario == "copy-inuse" || d.scenario == "copy-save" {
 		if runtime.GOOS != "windows" {
 			d.w.Close()
 		}
@@ -164,6 +199,66 @@ func (d *guiTestDriver) copyInUse() error {
 		return fmt.Errorf("Start copying took the folder in use: %w", err)
 	}
 	return nil
+}
+
+// copySave opens MyWorks in Browse and presses Save on done.fit twice:
+// the first save must write its bytes where the dialog said, and the
+// canceled one nothing.
+func (d *guiTestDriver) copySave() error {
+	saved := filepath.Join(d.dir, "saved")
+	if err := os.MkdirAll(saved, 0o700); err != nil {
+		return err
+	}
+	if err := d.probe(copyFrameClick("MyWorks/")); err != nil {
+		return fmt.Errorf("Browse didn't open MyWorks: %w", err)
+	}
+	if err := d.probe(copyFrameClick("Save done.fit")); err != nil {
+		return fmt.Errorf("Browse didn't save done.fit: %w", err)
+	}
+	if err := guitest.Wait(d.ctx, "done.fit saved", func() bool {
+		b, err := os.ReadFile(filepath.Join(saved, "done.fit"))
+		return err == nil && bytes.Equal(b, make([]byte, 1<<10))
+	}); err != nil {
+		return err
+	}
+	if err := d.probe(copyFrameClick("Save done.fit")); err != nil {
+		return fmt.Errorf("Browse didn't save done.fit again: %w", err)
+	}
+	dialogs := func() int {
+		copySaves.Lock()
+		defer copySaves.Unlock()
+		return len(copySaves.names)
+	}
+	if err := guitest.Wait(d.ctx, "the canceled save dialog", func() bool { return dialogs() == 2 }); err != nil {
+		return err
+	}
+	// The canceled save answers once its dialog returns; Browse must still
+	// show the folder after it.
+	if err := d.probe(`check(!!el('b-frame').contentDocument?.body?.textContent.includes('done.fit'),{text:(el('b-frame').contentDocument?.body?.textContent ?? '').slice(0,200)})`); err != nil {
+		return fmt.Errorf("Browse left the folder after a save: %w", err)
+	}
+	names, err := os.ReadDir(saved)
+	if err != nil {
+		return err
+	}
+	copySaves.Lock()
+	defer copySaves.Unlock()
+	if len(names) != 1 || strings.Join(copySaves.names, ",") != "done.fit,done.fit" || len(copySaves.alerts) != 0 {
+		return fmt.Errorf("saves: dialogs %q, files %v, alerts %q", copySaves.names, names, copySaves.alerts)
+	}
+	return nil
+}
+
+// copyFrameClick clicks, once, the Browse frame's link with text or label
+// name.
+func copyFrameClick(name string) string {
+	return `(() => {
+ const name=` + strconv.Quote(name) + `,doc=el('b-frame').contentDocument;
+ const a=doc && [...doc.querySelectorAll('a')].find(a=>a.textContent===name || a.getAttribute('aria-label')===name);
+ if(!a) return check(false,{name,text:(doc?.body?.textContent ?? '').slice(0,200)});
+ if((window.__guitestFrameClick ?? 0)<probe) {window.__guitestFrameClick=probe;a.click();}
+ return true;
+})()`
 }
 
 // copyConfirm waits until done.fit is copied, previews Free up space,

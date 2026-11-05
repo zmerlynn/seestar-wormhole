@@ -614,6 +614,23 @@ async function copySave() {
     button.disabled = false;
   }
 }
+// copyChoose shows the window's folder picker; Cancel changes nothing.
+// The other fields' errors stay as they are.
+async function copyChoose() {
+  const shown = {};
+  for (const [name, id] of Object.entries(copyFields)) if (!$(id + '-err').hidden) shown[name] = $(id + '-err').textContent;
+  try {
+    const data = await api('folder', {folder: $('f-folder').value}, '/copy/api/');
+    if (data.folder) {
+      $('f-folder').value = data.folder;
+      renderHistory();
+      showErrors({...shown, folder: ''});
+    }
+  } catch (e) {
+    showErrors({...shown, folder: e?.error || "Couldn't open the folder picker. Type the folder's full path instead."});
+  }
+  $('f-folder').focus();
+}
 // renderHistory shows the saved folder's history file, or, while the
 // Folder field holds an unsaved folder, a line saying to save first.
 function renderHistory() {
@@ -951,6 +968,7 @@ function copyRender(c) {
   copyStatus = c;
   copySaved = c.set_up ? c.settings : null;
   copyHistory = c.history;
+  $('f-choose').hidden = !c.choose;
   if (!copyFilled) {
     copyFilled = true;
     put('f-builtin', c.default_excludes.join(' · '));
@@ -1345,6 +1363,7 @@ $('copy-form').addEventListener('submit', e => {
 $('s-change').addEventListener('click', openCopyForm);
 $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);
+$('f-choose').addEventListener('click', copyChoose);
 $('c-start').addEventListener('click', e => press(e, 'start'));
 $('c-check').addEventListener('click', e => press(e, 'check'));
 $('c-stop').addEventListener('click', e => press(e, 'stop'));

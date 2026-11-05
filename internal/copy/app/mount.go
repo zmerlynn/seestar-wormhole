@@ -35,6 +35,24 @@ type MountOptions struct {
 	// held, so it must not call back into the Mount.
 	Settings *Settings
 	Save     func(Settings) error
+	// Native is the host window's dialogs; nil, or a nil dialog, without
+	// a window.
+	Native *Native
+}
+
+// Native is a window's own dialogs. Each may be called from any goroutine
+// and blocks until the user answers.
+type Native struct {
+	// ChooseFolder shows a folder picker that starts in dir, if dir is
+	// not empty, and returns the folder chosen, or "" on Cancel. With it,
+	// the page offers Choose… beside the folder it has typed.
+	ChooseFolder func(dir string) (string, error)
+	// SaveFile shows a save dialog for a file named name and returns the
+	// path chosen, or "" on Cancel. With it, Browse saves a download
+	// itself, since a window's webview may not save one.
+	SaveFile func(name string) (string, error)
+	// Alert shows an error message; nil logs it only.
+	Alert func(message string)
 }
 
 // Target is where copying, a preview or a delete reaches the telescope:
