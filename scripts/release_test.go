@@ -758,7 +758,8 @@ func TestWorkflowArchiveAssembly(t *testing.T) {
 }
 
 // Each release builder checks the executables it built, before uploading them,
-// against the modules Go recorded in them.
+// against the modules Go recorded in them. A job that checks downloaded
+// executables first restores the execute permission artifact transfer drops.
 func TestWorkflowChecksShippedLicenses(t *testing.T) {
 	if _, err := os.Stat(".github/workflows/release.yml"); os.IsNotExist(err) {
 		t.Chdir("..")
@@ -773,24 +774,33 @@ func TestWorkflowChecksShippedLicenses(t *testing.T) {
 	if err := yaml.Unmarshal(data, &workflow); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct{ job, build, check string }{
-		{"portable", `./scripts/release.sh "$RELEASE_VERSION"`,
+	for _, tc := range []struct{ job, build, restore, check string }{
+		{"portable", `./scripts/release.sh "$RELEASE_VERSION"`, "",
 			`go run ./scripts/checklicenses "dist/parts/seestar-wormhole-cli_${RELEASE_VERSION}_linux_amd64" "dist/parts/seestar-copy-cli_${RELEASE_VERSION}_linux_amd64"`},
-		{"linux-ui", "./cmd/seestar-wormhole",
+		{"linux-ui", "./cmd/seestar-wormhole", "",
 			`go run ./scripts/checklicenses "dist/seestar-wormhole_${RELEASE_VERSION}_linux_${GOARCH}"`},
-		{"macos-ui", "./scripts/build-gui-mac.sh",
+		{"macos-ui", "./scripts/build-gui-mac.sh", `chmod 0755 "$RUNNER_TEMP"/mac-ui/cli/*_darwin_*`,
 			`go run ./scripts/checklicenses "$RUNNER_TEMP/mac-ui/arm64/seestar-wormhole.app/Contents/MacOS/seestar-wormhole" \` + "\n" +
 				`  "$RUNNER_TEMP/mac-ui/cli/seestar-wormhole-cli_${RELEASE_VERSION}_darwin_arm64" \` + "\n" +
 				`  "$RUNNER_TEMP/mac-ui/cli/seestar-copy-cli_${RELEASE_VERSION}_darwin_arm64"`},
 	} {
-		built, checked := false, false
+		built, downloaded, restored, checked := false, false, false, false
 		for _, step := range workflow.Jobs[tc.job].Steps {
+			if strings.HasPrefix(step.Uses, "actions/download-artifact@") {
+				downloaded, restored = true, false
+			}
+			if tc.restore != "" && downloaded && strings.Contains(step.Run, tc.restore) {
+				restored = true
+			}
 			if strings.Contains(step.Run, tc.build) {
 				built = true
 			}
 			if strings.Contains(step.Run, tc.check) {
 				if !built || step.Env["RELEASE_VERSION"] != "${{ needs.validate.outputs.version }}" {
 					t.Errorf("%s checks licenses before its build or without the release version", tc.job)
+				}
+				if downloaded && !restored {
+					t.Errorf("%s checks downloaded executables without restoring their execute permission", tc.job)
 				}
 				checked = true
 			}

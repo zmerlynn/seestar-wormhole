@@ -136,6 +136,9 @@ jobs:
         with:
           name: release-part-portable
           path: ${{ runner.temp }}/mac-ui/cli
+      - name: Restore execute permission on the downloaded Darwin CLIs
+        # Artifact transfer drops it, and the license check runs the arm64 ones.
+        run: chmod 0755 "$RUNNER_TEMP"/mac-ui/cli/*_darwin_*
       - name: Install DMG build dependencies
         run: |
           python3 -m venv "$RUNNER_TEMP/dmg-venv"
