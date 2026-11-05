@@ -15,6 +15,9 @@ type ActionError struct {
 	Service uint16                   `json:"service,omitempty"`
 	Local   uint16                   `json:"local,omitempty"`
 	Devices []cloudhttp.DeviceChoice `json:"devices,omitempty"`
+	// hint follows the code's message on the page, not in the log: copy's
+	// Local Network sentence for a Save whose Test nothing answered.
+	hint string
 }
 
 func (e *ActionError) Error() string { return "UI action failed: " + e.Code }

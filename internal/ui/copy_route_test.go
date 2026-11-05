@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"log/slog"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -14,9 +16,12 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
@@ -44,6 +49,7 @@ type routeEnv struct {
 	removing   chan struct{} // if not nil, a remover signals it on entry
 	holdTest   chan struct{} // if not nil, a Test waits for it
 	tested     chan struct{} // if not nil, a Test signals it on entry
+	testErr    error         // if not nil, a Test of any address fails with it
 }
 
 func newRouteEnv(t *testing.T) *routeEnv {
@@ -75,6 +81,12 @@ func newRouteEnv(t *testing.T) *routeEnv {
 			}
 			if strings.HasPrefix(endpoint, "192.0.2.99:") {
 				return nil, errors.New("synthetic unreachable")
+			}
+			e.mu.Lock()
+			err := e.testErr
+			e.mu.Unlock()
+			if err != nil {
+				return nil, err
 			}
 			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
 		},
@@ -517,6 +529,51 @@ func TestLANSaveTestsFirst(t *testing.T) {
 		t.Errorf("save once copying started during its Test = %s", body)
 	}
 	kept("a save refused after its Test")
+}
+
+// A Save after a successful Test tests the address again. On macOS, when
+// nothing answers that Test, the refusal adds copy's Local Network
+// sentence; an answer from the address, or a failure elsewhere, doesn't.
+func TestLANSaveRetestLocalNetworkHint(t *testing.T) {
+	const hint = " On macOS, if Local Network access is blocked, enable seestar-wormhole in System Settings > Privacy & Security > Local Network, then Test again. If a permission request is open, allow access first."
+	noRoute := fmt.Errorf("connect to 192.0.2.30:445: dial 192.0.2.30:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)})
+	signing := fmt.Errorf("connect to 192.0.2.30:445: dial 192.0.2.30:445: %w", &protocol.InvalidResponseError{Message: "guest account doesn't support signing"})
+	unreachable := errorCopy("lan_unreachable")
+	old := hostOS
+	t.Cleanup(func() { hostOS = old })
+	for _, tt := range []struct {
+		name, goos string
+		err        error
+		want       string
+	}{
+		{"nothing answered", "darwin", noRoute, unreachable + hint},
+		{"an SMB answer", "darwin", signing, unreachable},
+		{"not macOS", "linux", noRoute, unreachable},
+	} {
+		hostOS = tt.goos
+		e := newRouteEnv(t)
+		if code, body := e.post("/copy/api/test", `{"address":"192.0.2.30"}`); code != 200 || !strings.Contains(body, `"ok":true`) {
+			t.Fatalf("%s: Test = %d %s", tt.name, code, body)
+		}
+		e.mu.Lock()
+		e.testErr = tt.err
+		e.mu.Unlock()
+		code, body := e.post("/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.30"}}`)
+		var v struct {
+			Code    string `json:"code"`
+			Field   string `json:"field"`
+			Message string `json:"message"`
+		}
+		if err := json.Unmarshal([]byte(body), &v); err != nil {
+			t.Fatalf("%s: Save = %d %s: %v", tt.name, code, body, err)
+		}
+		if code != 400 || v.Code != "lan_unreachable" || v.Field != "lan_address" || v.Message != tt.want {
+			t.Errorf("%s: Save = %d %s\nwant message %q", tt.name, code, body, tt.want)
+		}
+		if e.s.settings.Route == routeLAN {
+			t.Errorf("%s: the refused Save changed the route: %+v", tt.name, e.s.settings)
+		}
+	}
 }
 
 // Free up space's check and delete hold the route as copying does: Busy,
