@@ -2,11 +2,14 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
@@ -66,4 +69,71 @@ func TestFreePanicFails(t *testing.T) {
 	if st.state != frCheckFail || st.err == nil || st.err.Error() != "internal error while freeing up space: boom" {
 		t.Errorf("after a panic: state %v, err %v", st.state, st.err)
 	}
+}
+
+// panicHandler panics on the record whose message is msg.
+type panicHandler struct {
+	slog.Handler
+	msg string
+}
+
+func (h panicHandler) Handle(ctx context.Context, r slog.Record) error {
+	if r.Message == h.msg {
+		panic("log panic")
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+// quits fails the test unless quit returns within a while.
+func quits(t *testing.T, quit func()) {
+	t.Helper()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		quit()
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("Quit waits on a loop a panic ended")
+	}
+}
+
+// A panic outside the loop's own recovery, here while it logs how it
+// ended, still ends copying: it is off, and Quit returns.
+func TestCopyFinishPanic(t *testing.T) {
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.c.log = slog.New(panicHandler{e.c.log.Handler(), "copying stopped"})
+	e.c.dial = panicDial
+	if err := e.c.start(e.set); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	if e.c.on() {
+		t.Error("copying is still on")
+	}
+	quits(t, e.c.quit)
+}
+
+// A panic while a free-space run records its outcome still ends the run:
+// it is no longer running, and Quit returns.
+func TestFreeEndPanic(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/a.jpg")
+	e.f.dial = panicDial
+	ended := make(chan struct{})
+	if err := e.f.run(freeStatus{state: frChecking, set: e.set}, engine.DeleteOptions{DryRun: true}, nil, 0, func(engine.DeleteResult, error, bool) {
+		close(ended)
+		panic("end panic")
+	}); err != nil {
+		t.Fatal(err)
+	}
+	<-ended
+	deadline := time.Now().Add(10 * time.Second)
+	for e.f.running() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if e.f.running() {
+		t.Error("Free up space is still running")
+	}
+	quits(t, e.f.quit)
 }

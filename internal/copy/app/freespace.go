@@ -86,18 +86,29 @@ func (f *freer) run(st freeStatus, o engine.DeleteOptions, stop chan struct{}, i
 	o.Stop = stop
 	go func() {
 		defer guard.Recover(f.log, "freeing up space")
-		var r engine.DeleteResult
-		err := guard.Run(f.log, "freeing up space", func() (err error) {
+		var (
+			r        engine.DeleteResult
+			err      error
+			canceled bool
+		)
+		// The run is over, and done closes, on every exit, a recovered
+		// panic in end's included, so Quit and the next run never wait.
+		defer func() {
+			cancel()
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			defer func() {
+				f.cancel, f.stop, f.done = nil, nil, nil
+				close(done)
+			}()
+			defer guard.Recover(f.log, "freeing up space")
+			end(r, err, canceled)
+		}()
+		err = guard.Run(f.log, "freeing up space", func() (err error) {
 			r, err = engine.RunDelete(ctx, o, f.log)
 			return err
 		})
-		canceled := ctx.Err() != nil
-		cancel()
-		f.mu.Lock()
-		end(r, err, canceled)
-		f.cancel, f.stop, f.done = nil, nil, nil
-		close(done)
-		f.mu.Unlock()
+		canceled = ctx.Err() != nil
 	}()
 	return nil
 }

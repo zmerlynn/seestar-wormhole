@@ -137,32 +137,49 @@ func (c *controller) start(set Settings) error {
 	}
 	c.mu.Unlock()
 	c.log.Info("copying started", "endpoint", set.Address, "dest", set.Folder)
+	// The loop is over, and done closes, on every exit, a recovered panic's
+	// included, so Quit and the next start never wait on a dead loop.
 	go func() {
-		defer guard.Recover(c.log, "copying")
-		ticks := time.NewTicker(time.Second)
-		ran := make(chan error, 1)
-		go func() {
-			ran <- guard.Run(c.log, "copying", func() error { return engine.RunSync(ctx, o, c.log) })
+		defer func() {
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			c.cancel, c.done = nil, nil
+			close(done)
 		}()
-		var err error
-	wait:
-		for {
-			select {
-			case <-ticks.C:
-				c.sample(time.Now())
-			case err = <-ran:
-				break wait
-			}
-		}
-		ticks.Stop()
+		defer guard.Recover(c.log, "copying")
+		defer cancel()
+		err := guard.Run(c.log, "copying", func() error { return c.run(ctx, cancel, o) })
 		cancel()
 		c.finish(err)
-		c.mu.Lock()
-		c.cancel, c.done = nil, nil
-		close(done)
-		c.mu.Unlock()
 	}()
 	return nil
+}
+
+// run runs the loop in its own goroutine, sampling its progress each
+// second, and returns once the loop has, even if sampling panics.
+func (c *controller) run(ctx context.Context, cancel context.CancelFunc, o engine.SyncOptions) error {
+	ran := make(chan error, 1)
+	go func() {
+		ran <- guard.Run(c.log, "copying", func() error { return engine.RunSync(ctx, o, c.log) })
+	}()
+	joined := false
+	defer func() {
+		if !joined {
+			cancel()
+			<-ran
+		}
+	}()
+	ticks := time.NewTicker(time.Second)
+	defer ticks.Stop()
+	for {
+		select {
+		case <-ticks.C:
+			c.sample(time.Now())
+		case err := <-ran:
+			joined = true
+			return err
+		}
+	}
 }
 
 // selector is the CLI's selection for set's patterns.
