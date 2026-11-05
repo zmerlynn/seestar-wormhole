@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -148,61 +149,17 @@ func connectBlocked(err error) bool {
 var localNetworkRetry = &lanRetry{goos: runtime.GOOS, every: time.Second, limit: 5 * time.Second, now: time.Now, after: time.After}
 
 // lanRetry is when [retryLAN] tries again: on goos "darwin" only, every
-// interval, until limit has passed since the first dial to an address on
-// this network since the app started. Only that dial can raise macOS's
-// prompt, so once any such dial has finished, none tries again. now and
-// after are the clock.
+// interval, until limit has passed, and only in the first dial to an
+// address on this network since the app started. Only that dial can raise
+// macOS's prompt; every later one, even while the first still waits, dials
+// once. now and after are the clock.
 type lanRetry struct {
 	goos         string
 	every, limit time.Duration
 	now          func() time.Time
 	after        func(time.Duration) <-chan time.Time
 
-	mu     sync.Mutex
-	cutoff time.Time // when the first dial's retries end, once it has begun
-	done   bool      // a dial has connected, failed otherwise or used the limit
-}
-
-// begin notes the start of a dial.
-func (r *lanRetry) begin() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.cutoff.IsZero() {
-		r.cutoff = r.now().Add(r.limit)
-	}
-}
-
-// again reports whether a dial that failed with err tries again after
-// waiting one interval: it may while it is the first and the system failed
-// its connect at once on macOS, with an interval and more to spare before
-// the cutoff. Otherwise the dial has finished, and none tries again.
-func (r *lanRetry) again(err error) bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if !r.done && r.goos == "darwin" && connectBlocked(err) && r.now().Add(r.every).Before(r.cutoff) {
-		return true
-	}
-	r.done = true
-	return false
-}
-
-// finish notes that a dial has used the limit.
-func (r *lanRetry) finish() {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.done = true
-}
-
-// left is how long a try may run before the cutoff, if any time is left.
-func (r *lanRetry) left() (time.Duration, bool) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	d := r.cutoff.Sub(r.now())
-	if r.done || d <= 0 {
-		r.done = true
-		return 0, false
-	}
-	return d, true
+	claimed atomic.Bool // the first dial has begun
 }
 
 // retryLAN runs try, a dial to an address on this network, and on macOS
@@ -215,21 +172,25 @@ func (r *lanRetry) left() (time.Duration, bool) {
 // failure, a timeout, a refusal or anything the server said, returns at
 // once.
 func retryLAN[T any](ctx context.Context, r *lanRetry, try func(context.Context) (T, error)) (T, error) {
-	r.begin()
+	// The first dial claims the retries for good, however it ends.
+	if !r.claimed.CompareAndSwap(false, true) {
+		return try(ctx)
+	}
+	cutoff := r.now().Add(r.limit)
 	v, err := try(ctx)
-	for ctx.Err() == nil && r.again(err) {
+	for ctx.Err() == nil && r.goos == "darwin" && connectBlocked(err) && r.now().Add(r.every).Before(cutoff) {
 		select {
 		case <-ctx.Done():
 			return v, err
 		case <-r.after(r.every):
 		}
-		d, ok := r.left()
-		if !ok || ctx.Err() != nil {
+		// A timer that fired late leaves less, or nothing.
+		d := cutoff.Sub(r.now())
+		if d <= 0 || ctx.Err() != nil {
 			return v, err
 		}
 		next, nextErr, cut := tryWithin(ctx, d, try)
 		if cut && ctx.Err() == nil {
-			r.finish()
 			var zero T
 			return zero, err
 		}

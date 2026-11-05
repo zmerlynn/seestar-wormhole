@@ -557,7 +557,7 @@ func TestRetryLAN(t *testing.T) {
 		}
 	}
 	// The caller's context ends it too, with the dial's error. That dial
-	// hasn't finished, so the next one still waits.
+	// was the first, so the next one doesn't wait either.
 	waited = setRetry(t, "darwin")
 	ctx, cancel := context.WithCancel(t.Context())
 	tries := 0
@@ -569,14 +569,10 @@ func TestRetryLAN(t *testing.T) {
 	}); err != noRoute || tries != 2 {
 		t.Errorf("a canceled retry: %v after %d tries", err, tries)
 	}
-	tries = 0
-	if _, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) {
-		if tries++; tries < 2 {
-			return 0, noRoute
-		}
-		return 7, nil
-	}); err != nil || tries != 2 || time.Duration(waited.Load()) != 2*time.Second {
-		t.Errorf("after a canceled retry: %v after %d tries over %v", err, tries, time.Duration(waited.Load()))
+	tries, before := 0, waited.Load()
+	if _, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute ||
+		tries != 1 || waited.Load() != before {
+		t.Errorf("after a canceled retry: %v after %d tries over %v", err, tries, time.Duration(waited.Load()-before))
 	}
 }
 
@@ -663,6 +659,74 @@ func TestRetryLANCanceledWhileWaiting(t *testing.T) {
 		default:
 			t.Error("still waiting after the caller was canceled")
 			<-done
+		}
+	})
+}
+
+// A first dial canceled while it waits has still used the retries: the
+// next dial tries once.
+func TestRetryLANCanceledFirstIsSpent(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRetry()
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			retryLAN(ctx, r, func(context.Context) (int, error) { return 0, noRoute })
+		}()
+		synctest.Wait()
+		cancel()
+		<-done
+		start, tries := time.Now(), 0
+		if _, err := retryLAN(t.Context(), r, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute || tries != 1 || time.Since(start) != 0 {
+			t.Errorf("then %v after %d tries over %v", err, tries, time.Since(start))
+		}
+	})
+}
+
+// While the first dial on this network waits, Test, Save and copying each
+// dial once and return at once, and the first dial keeps its retries.
+func TestRetryLANOnlyFirstOfOverlapping(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		old := localNetworkRetry
+		localNetworkRetry = newRetry()
+		defer func() { localNetworkRetry = old }()
+		e := newAppEnv(t, nil)
+		// Test's dials: the first fails until its third try.
+		var tests atomic.Int32
+		e.s.test = func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+			if tests.Add(1) < 3 {
+				return nil, connectFailed(syscall.EPERM)
+			}
+			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
+		}
+		var reaches atomic.Int32
+		e.s.reach = func(ctx context.Context, endpoint string) error {
+			reaches.Add(1)
+			return connectFailed(syscall.EPERM)
+		}
+		first := make(chan error, 1)
+		start := time.Now()
+		go func() {
+			_, err := e.s.testLAN(t.Context(), "192.0.2.10:445")
+			first <- err
+		}()
+		synctest.Wait() // the first dial is waiting to try again
+		if err := e.m.Reach(t.Context(), "192.0.2.10:445"); err == nil || reaches.Load() != 1 || time.Since(start) != 0 {
+			t.Errorf("Save while the first dial waits: %v after %d tries over %v", err, reaches.Load(), time.Since(start))
+		}
+		c := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+		c.dialErr = noRoute
+		if err := c.c.start(c.set, Target{Endpoint: c.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait() // copying waits for its next check
+		if v := c.c.view(time.Now()); v.State != stUnreachable || c.dialCount() != 1 || time.Since(start) != 0 {
+			t.Errorf("copying while the first dial waits: %d dials over %v, view %+v", c.dialCount(), time.Since(start), v)
+		}
+		c.c.stop()
+		if err := <-first; err != nil || tests.Load() != 3 || time.Since(start) != 2*time.Second {
+			t.Errorf("the first dial: %v after %d tries over %v", err, tests.Load(), time.Since(start))
 		}
 	})
 }
