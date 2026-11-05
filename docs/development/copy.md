@@ -157,7 +157,7 @@ These apply to every change, whoever writes it.
   through views that have no write methods, and every function that creates,
   writes, renames or removes a local file or folder, or removes one on the
   device, starts with
-  `readonly.Check`; `internal/readonly`'s test fails otherwise.
+  `readonly.Check`; `internal/copy/readonly`'s test fails otherwise.
 - **Commit to the new path.** Don't keep a fallback to old behavior unless a
   named configuration still needs it.
 - **Files on disk stay downgradable.** A state file written by a newer
