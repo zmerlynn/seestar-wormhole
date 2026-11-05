@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -97,5 +98,66 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "copying") {
 		t.Errorf("the copier wrote to the output: %s", out.String())
+	}
+}
+
+// The app's copier keeps its history in seestar-copy-cli's state folder,
+// under the user's config folder, so the two share one history and lock
+// per destination. Saving settings dials nothing.
+func TestCopyStateIsShared(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "config"))
+	t.Setenv("AppData", filepath.Join(home, "AppData"))
+	root := filepath.Join(t.TempDir(), "state")
+	var history string
+	err := runUIPresented(t.Context(), root, io.Discard, io.Discard, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(ctx context.Context, url string, closeWindow func(), _ <-chan struct{}) error {
+		defer func() {
+			closeWindow()
+			<-ctx.Done()
+		}()
+		base, token, _ := strings.Cut(url, "/#")
+		client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 2 * time.Second}
+		defer client.CloseIdleConnections()
+		send := func(method, path, body string) []byte {
+			t.Helper()
+			req, _ := http.NewRequest(method, base+path, strings.NewReader(body))
+			req.Header.Set("Origin", base)
+			req.Header.Set("X-Seestar-Token", token)
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer resp.Body.Close()
+			b, _ := io.ReadAll(resp.Body)
+			if resp.StatusCode != 200 {
+				t.Fatalf("%s: %d %s", path, resp.StatusCode, b)
+			}
+			return b
+		}
+		at, _ := json.Marshal(filepath.Join(t.TempDir(), "Seestar"))
+		send("POST", "/copy/api/settings", `{"folder":`+string(at)+`,"interval":"5","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`)
+		var status struct {
+			History string `json:"history"`
+		}
+		if err := json.Unmarshal(send("GET", "/copy/api/status", ""), &status); err != nil {
+			t.Fatal(err)
+		}
+		history = status.History
+		return nil
+	}, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base, err := os.UserConfigDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(base, "seestar-copy") + string(filepath.Separator); !strings.HasPrefix(history, want) {
+		t.Errorf("copy history %q, want it under %q", history, want)
+	}
+	if _, err := os.Stat(filepath.Join(root, "seestar-copy")); !os.IsNotExist(err) {
+		t.Errorf("a copy state folder appeared beside the app's settings: %v", err)
 	}
 }
