@@ -207,6 +207,7 @@ test('Test of the saved address in another spelling does not say to Save', async
     ['scope.local:445', 'SCOPE.Local:0445'],
     ['[2001:db8::1]:445', '[2001:DB8:0:0:0:0:0:1]:445'],
     ['[::ffff:192.0.2.7]:445', '192.0.2.7:445'],
+    ['[fe80::1%ethA]:445', '[FE80:0:0:0:0:0:0:1%ethA]:445'],
   ];
   const message = "Connected. The telescope's share has the folder MyWorks.";
   for (const [saved, answered] of cases) {
@@ -219,6 +220,16 @@ test('Test of the saved address in another spelling does not say to Save', async
     await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
     await page.unroute('**/copy/api/test');
   }
+});
+
+// An IPv6 zone names an interface, and interface names differ by case.
+test('Test of the saved address on another interface says to Save', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan('[fe80::1%ethA]:445') });
+  await page.route('**/copy/api/test', (r) => r.fulfill({ json: { ok: true, address: '[fe80::1%etha]:445', message: 'Connected.' } }));
+  await openApp(page, app.url);
+  await field(page, 'Telescope address').fill('[fe80::1%etha]:445');
+  await page.getByRole('button', { name: 'Test' }).click();
+  await expect(lanResult(page)).toHaveText('Connected. Save to use this address for Copy, Browse and Free up space.');
 });
 
 test('Test of an address kept while Telescope Network is the route says to Save', async ({ page, startApp }) => {
