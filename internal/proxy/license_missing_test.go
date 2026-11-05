@@ -17,6 +17,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 func TestCloudLicenseMissingStopsWithoutRedial(t *testing.T) {
@@ -27,7 +28,7 @@ func TestCloudLicenseMissingStopsWithoutRedial(t *testing.T) {
 		for _, lazy := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/lazy=%v", tc.name, lazy), func(t *testing.T) {
 				synctest.Test(t, func(t *testing.T) {
-					var logs logBuffer
+					var logs testlog.Buffer
 					logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug}))
 					peer := &r3Cloud{faultPath: "/v1/device-p2p/online-link", faultStatus: 200,
 						faultBody: `{"code":200,"data":{"conId":"r3-1","deviceUid":"PRIVATE_UID",` + tc.member + `"username":"PRIVATE_USER","password":"PRIVATE_PASSWORD"},"msg":"PRIVATE_MESSAGE"}`}
@@ -62,9 +63,9 @@ func TestCloudLicenseMissingStopsWithoutRedial(t *testing.T) {
 						t.Errorf("allocations=%d stops=%v violations=%v, want one allocation and stop", peer.allocations, peer.stops, peer.violations)
 					}
 					peer.mu.Unlock()
-					data := logs.take()
+					data := logs.Take()
 					var failures, reminders int
-					for _, r := range loggingRecords(t, bytes.NewBuffer(data)) {
+					for _, r := range loggingRecords(t, bytes.NewBufferString(data)) {
 						if r["msg"] == "session_unavailable" {
 							reminders++
 							if r["reason"] != "cloud_license_missing" || r["level"] != "WARN" {
@@ -90,7 +91,7 @@ func TestCloudLicenseMissingStopsWithoutRedial(t *testing.T) {
 func TestLicenseMissingOutageReason(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		_, _, raw := cloud.ParseOnline([]byte(`{"data":{"conId":"id","deviceUid":"uid","username":"user","password":"pass"}}`))
-		var logs logBuffer
+		var logs testlog.Buffer
 		f := &busyFactory{channels: make(chan *busyChannels, 8)}
 		attempts := 0
 		f.allocate = func(context.Context) (sessionedge.Lease, error) {
@@ -109,10 +110,10 @@ func TestLicenseMissingOutageReason(t *testing.T) {
 		(<-f.channels).events <- session.Event{Kind: session.Failed, Err: session.ErrTransport}
 		<-time.After(time.Second)
 		synctest.Wait()
-		logs.take()
+		logs.Take()
 		<-time.After(5 * time.Minute)
 		synctest.Wait()
-		records := loggingRecords(t, bytes.NewBuffer(logs.take()))
+		records := loggingRecords(t, bytes.NewBufferString(logs.Take()))
 		if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["reason"] != "cloud_license_missing" || attempts != 2 {
 			t.Errorf("records=%v attempts=%d, want cloud_license_missing reminder without retry", records, attempts)
 		}

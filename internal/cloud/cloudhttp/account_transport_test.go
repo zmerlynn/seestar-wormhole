@@ -10,6 +10,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 // Exercise net/http's own diagnostic boundaries, not only wrapped errors. Even
@@ -18,7 +20,7 @@ func TestAccountTransportDiagnosticsNeverExposeSecrets(t *testing.T) {
 	for _, injected := range []bool{false, true} {
 		for _, mode := range []string{"unsolicited", "status", "header", "redirect"} {
 			t.Run(fmt.Sprintf("%t/%s", injected, mode), func(t *testing.T) {
-				var sink lockedLogBuffer
+				var sink testlog.Buffer
 				old := log.Writer()
 				log.SetOutput(&sink)
 				defer log.SetOutput(old)

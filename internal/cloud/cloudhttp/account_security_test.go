@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 const accountSentinel = "secret-sentinel"
@@ -23,7 +24,7 @@ func TestAccountEveryFailureIsSecretSafe(t *testing.T) {
 	for _, stage := range []string{"login", "profile", "renewal"} {
 		for _, mode := range []string{"400", "401", "403", "404", "423", "429", "500", "redirect", "empty", "nil-body", "truncated", "oversized", "wrong-type", "read-error", "transport-error", "panic", "cancel"} {
 			t.Run(stage+"/"+mode, func(t *testing.T) {
-				var sink lockedLogBuffer
+				var sink testlog.Buffer
 				old := log.Writer()
 				log.SetOutput(&sink)
 				defer log.SetOutput(old)

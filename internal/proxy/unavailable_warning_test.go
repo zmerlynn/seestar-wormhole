@@ -14,11 +14,12 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 func TestRecoveryWarningsResetOnReadiness(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var logs logBuffer
+		var logs testlog.Buffer
 		f := &busyFactory{channels: make(chan *busyChannels, 128)}
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return f, nil }
 		s, err := startWithRNG(t.Context(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
@@ -30,23 +31,23 @@ func TestRecoveryWarningsResetOnReadiness(t *testing.T) {
 		(<-f.channels).events <- session.Event{Kind: session.Failed, Err: session.ErrTransport}
 		<-time.After(time.Second)
 		synctest.Wait()
-		data := string(logs.take())
+		data := logs.Take()
 		if strings.Count(data, `"phase":"ready"`) != 2 {
 			t.Fatalf("did not recover: %s", data)
 		}
 		<-time.After(6 * time.Minute)
 		synctest.Wait()
-		if strings.Contains(string(logs.take()), `"msg":"session_unavailable"`) {
+		if strings.Contains(logs.Take(), `"msg":"session_unavailable"`) {
 			t.Fatal("warning after recovery")
 		}
 		f.stopError = session.ErrStop
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return nil, session.ErrBusy }
 		(<-f.channels).events <- session.Event{Kind: session.Failed, Err: session.ErrTransport}
 		synctest.Wait()
-		logs.take()
+		logs.Take()
 		<-time.After(5 * time.Minute)
 		synctest.Wait()
-		records := loggingRecords(t, bytes.NewBuffer(logs.take()))
+		records := loggingRecords(t, bytes.NewBufferString(logs.Take()))
 		records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] != "session_unavailable" })
 		if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["unavailable_ms"] != float64(300000) {
 			t.Fatalf("second outage records=%v, want reset five-minute warning", records)
@@ -58,7 +59,7 @@ func TestLazyBusyWarningsRequireUnintentionalLossAfterReadiness(t *testing.T) {
 	for _, idleRelease := range []bool{false, true} {
 		t.Run(fmt.Sprint(idleRelease), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
-				var logs logBuffer
+				var logs testlog.Buffer
 				f := &busyFactory{channels: make(chan *busyChannels, 32)}
 				f.allocate = func(context.Context) (sessionedge.Lease, error) {
 					if idleRelease {
@@ -89,7 +90,7 @@ func TestLazyBusyWarningsRequireUnintentionalLossAfterReadiness(t *testing.T) {
 				}
 				<-time.After(20 * time.Minute)
 				synctest.Wait()
-				if strings.Contains(string(logs.take()), `"msg":"session_unavailable"`) {
+				if strings.Contains(logs.Take(), `"msg":"session_unavailable"`) {
 					t.Fatal("warning without an unintentional loss after readiness")
 				}
 			})
@@ -99,7 +100,7 @@ func TestLazyBusyWarningsRequireUnintentionalLossAfterReadiness(t *testing.T) {
 
 func TestBusyWarningsAfterFailedIdleCleanup(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var logs logBuffer
+		var logs testlog.Buffer
 		f := &busyFactory{channels: make(chan *busyChannels, 8), stopError: session.ErrStop}
 		f.allocate = func(context.Context) (sessionedge.Lease, error) { return f, nil }
 		s, err := startWithRNG(t.Context(), Config{Idle: time.Second, Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, func(s *Session) sessionedge.Factory { f.s = s; return f }, zeroRetryRNG{})
@@ -114,10 +115,10 @@ func TestBusyWarningsAfterFailedIdleCleanup(t *testing.T) {
 		c.Close()
 		<-time.After(time.Second)
 		synctest.Wait()
-		logs.take()
+		logs.Take()
 		<-time.After(5 * time.Minute)
 		synctest.Wait()
-		records := loggingRecords(t, bytes.NewBuffer(logs.take()))
+		records := loggingRecords(t, bytes.NewBufferString(logs.Take()))
 		records = slices.DeleteFunc(records, func(record map[string]any) bool { return record["msg"] != "session_unavailable" })
 		if len(records) != 1 || records[0]["msg"] != "session_unavailable" || records[0]["level"] != "WARN" || records[0]["unavailable_ms"] != float64(300000) {
 			t.Fatalf("failed idle cleanup records=%v, want a five-minute WARN after ownership block", records)

@@ -11,6 +11,7 @@ import (
 	"testing/synctest"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 // Literal replies and stop body are independent of the production codecs.
@@ -20,7 +21,7 @@ func TestStopReadsCurrentTokenWithoutAccountIO(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				t.Setenv("SEESTAR_EMAIL", "reader@example.invalid")
 				t.Setenv("SEESTAR_PASSWORD", "Review-Only-123")
-				var logs lockedLogBuffer
+				var logs testlog.Buffer
 				entered := make(chan struct{})
 				logins, profiles, stops := 0, 0, 0
 				c, err := NewFromEnvironment(Config{Logger: slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{Level: slog.LevelDebug})), Transport: transportFunc(func(r *http.Request) (*http.Response, error) {

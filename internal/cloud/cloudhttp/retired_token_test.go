@@ -11,6 +11,7 @@ import (
 	"testing/synctest"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 func TestRetiredTokenReplacementUsesCurrentCleanupToken(t *testing.T) {
@@ -22,7 +23,7 @@ func TestRetiredTokenReplacementUsesCurrentCleanupToken(t *testing.T) {
 					t.Setenv("SEESTAR_PASSWORD", "review-password")
 					t.Setenv("SEESTAR_TOKEN", "")
 					t.Setenv("SEESTAR_SRC_ID", "")
-					var logs lockedLogBuffer
+					var logs testlog.Buffer
 					entered := make(chan struct{})
 					remoteEntered, remoteRelease := make(chan struct{}), make(chan struct{})
 					logins, profiles, details, stops := 0, 0, 0, 0
