@@ -174,7 +174,7 @@ func TestBrowseFrame(t *testing.T) {
 	if w := list(); w.Code == 200 {
 		t.Errorf("browse listing while not connected = %d %s", w.Code, w.Body)
 	}
-	if err := s.saveRoute(routeLAN, "192.0.2.10"); err != nil {
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
 	if w := list(); w.Code != 200 || !strings.Contains(w.Body.String(), "MyWorks") {
@@ -309,7 +309,7 @@ func TestRouteSave(t *testing.T) {
 		t.Errorf("after the account route: %+v", s.settings)
 	}
 	// A save of the password keeps the route; Connect chooses the account.
-	if err := s.saveRoute(routeLAN, "192.0.2.10"); err != nil {
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
 	in, _ := json.Marshal(input{Settings: testSettings(), Password: testPassword})
@@ -352,7 +352,7 @@ func TestRouteLocked(t *testing.T) {
 
 	// Copying on this network locks it too.
 	s, _ = copyServer(t)
-	if err := s.saveRoute(routeLAN, "192.0.2.10"); err != nil {
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
 	copySettings(t, s)
@@ -401,7 +401,7 @@ func TestLANTest(t *testing.T) {
 // Quit stops the copier before the proxy.
 func TestQuitStopsCopy(t *testing.T) {
 	s, _ := copyServer(t)
-	if err := s.saveRoute(routeLAN, "192.0.2.10"); err != nil {
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.10"); err != nil {
 		t.Fatal(err)
 	}
 	copySettings(t, s)

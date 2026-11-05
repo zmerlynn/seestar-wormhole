@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"crypto/subtle"
 	"embed"
 	"encoding/json/v2"
@@ -193,19 +194,27 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.activate()
 	case "/api/start":
-		// Connect chooses the account route.
-		s.mu.Lock()
-		in.Settings.Route, in.Settings.LANAddress = routeAccount, s.settings.LANAddress
-		s.mu.Unlock()
-		err = s.controller.start(in.Settings, in.Password)
-		if err == nil {
+		// Connect chooses the account route, which moves the copier when
+		// this network was the route.
+		err = s.changeRoute(func() bool {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			return s.settings.Route == routeLAN
+		}, func() error {
+			s.mu.Lock()
+			in.Settings.Route, in.Settings.LANAddress = routeAccount, s.settings.LANAddress
+			s.mu.Unlock()
+			if err := s.controller.start(in.Settings, in.Password); err != nil {
+				return err
+			}
 			s.mu.Lock()
 			// Accepting Connect is not a successful save. Keep the authoritative
 			// pair for its account until the run reaches its save boundary.
 			s.retainSavedPair(&in.Settings)
 			s.settings = in.Settings
 			s.mu.Unlock()
-		}
+			return nil
+		})
 	case "/api/stop":
 		s.controller.stop()
 
@@ -239,7 +248,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(http.StatusBadRequest)
 			return
 		}
-		err = s.saveRoute(in.Settings.Route, in.Settings.LANAddress)
+		err = s.saveRoute(r.Context(), in.Settings.Route, in.Settings.LANAddress)
 	case "/api/retry-storage":
 		err = s.controller.retrySave()
 	case "/api/quit":
@@ -293,7 +302,7 @@ func (s *server) allowedPost(w http.ResponseWriter, r *http.Request) bool {
 // it needs an address, which is kept as host:port; the account route
 // keeps the saved address for a later switch back. It is refused while
 // the account route runs or copying or deleting does.
-func (s *server) saveRoute(route, address string) error {
+func (s *server) saveRoute(ctx context.Context, route, address string) error {
 	if route == routeLAN {
 		normalized, ok := copyapp.NormalizeAddress(address)
 		if !ok {
@@ -301,10 +310,27 @@ func (s *server) saveRoute(route, address string) error {
 		}
 		address = normalized
 	}
-	if s.copy != nil && s.copy.Busy() {
+	return s.changeRoute(func() bool { return true }, func() error { return s.controller.persistRoute(route, address) })
+}
+
+// changeRoute commits a change of how the copier reaches the telescope
+// inside copy's admission, so no copying or Free up space starts on the
+// old route meanwhile. A change that moves the copier is refused while
+// copying or Free up space runs. Without copy mounted it only commits.
+//
+// Locks are taken in this order: copy's admission, then the controller's
+// saveMu, then its mu or s.mu. copy's endpoint takes s.mu and the
+// controller's mu inside copy's own locks, so neither is held while
+// calling into copy.
+func (s *server) changeRoute(moves func() bool, commit func() error) error {
+	if s.copy == nil {
+		return commit()
+	}
+	err := s.copy.Change(moves, commit)
+	if errors.Is(err, copyapp.ErrBusy) {
 		return &ActionError{Code: "route_locked"}
 	}
-	return s.controller.persistRoute(route, address)
+	return err
 }
 
 // Copier endpoint errors, shown after "Couldn't start copying: ".
