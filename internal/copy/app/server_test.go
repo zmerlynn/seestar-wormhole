@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -183,7 +184,7 @@ var goodInput = `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"5","e
 
 func TestBodyLimit(t *testing.T) {
 	e := newAppEnv(t, nil)
-	big := `{"folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["` + strings.Repeat("a", maxJSON) + `"]}`
+	big := `{"folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["` + strings.Repeat("a", localhttp.MaxJSON) + `"]}`
 	if w := e.post("/copy/api/settings", big); w.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("a body over the limit = %d", w.Code)
 	}
@@ -553,7 +554,7 @@ func TestRespondShapes(t *testing.T) {
 		{"sorted map", fieldErrors{fields}, want},
 	} {
 		w := httptest.NewRecorder()
-		respond(w, 200, tc.v)
+		localhttp.Respond(w, 200, tc.v)
 		if got := w.Body.String(); got != tc.want {
 			t.Errorf("%s: respond wrote\n%s\nwant\n%s", tc.name, got, tc.want)
 		}
@@ -577,18 +578,5 @@ func TestAPIReadsStrictly(t *testing.T) {
 		if w := e.post("/copy/api/copy", tc.body); w.Code != tc.code {
 			t.Errorf("%q = %d, want %d", tc.body, w.Code, tc.code)
 		}
-	}
-}
-
-func TestRespondStrings(t *testing.T) {
-	w := httptest.NewRecorder()
-	respond(w, 200, struct {
-		Slice []string          `json:"slice"`
-		Map   map[string]string `json:"map"`
-		Text  string            `json:"text"`
-	}{Text: "<>&\u2028\u2029\xff"})
-	want := `{"slice":null,"map":null,"text":"\u003c\u003e\u0026\u2028\u2029` + "\ufffd" + `"}`
-	if got := w.Body.String(); got != want {
-		t.Errorf("respond wrote\n%s\nwant\n%s", got, want)
 	}
 }

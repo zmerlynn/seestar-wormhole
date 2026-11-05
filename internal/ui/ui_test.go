@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -122,7 +123,9 @@ func TestHTTPRejections(t *testing.T) {
 		{"method", "GET", "/api/stop", nil, 405},
 		{"status post", "POST", "/api/status", nil, 405},
 		{"malformed", "POST", "/api/start", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader("{")) }, 400},
-		{"oversize", "POST", "/api/retry-storage", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", maxJSON+1))) }, 413},
+		{"oversize", "POST", "/api/retry-storage", func(r *http.Request) {
+			r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", localhttp.MaxJSON+1)))
+		}, 413},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := request(s, tc.method, tc.path, "{}")

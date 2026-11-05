@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -22,10 +21,8 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 )
-
-// maxJSON caps a POST body.
-const maxJSON = 64 << 10
 
 // testTimeout bounds one Test.
 const testTimeout = 30 * time.Second
@@ -275,7 +272,7 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 		fail(http.StatusMethodNotAllowed)
 		return
 	}
-	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSON))
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, localhttp.MaxJSON))
 	if err != nil {
 		fail(http.StatusRequestEntityTooLarge)
 		return
@@ -327,7 +324,7 @@ func (s *server) status(w http.ResponseWriter) {
 		history, _ = state.Path(s.stateDir, set.Folder)
 	}
 	lines, seq := s.copy.activity.lines()
-	respond(w, http.StatusOK, struct {
+	localhttp.Respond(w, http.StatusOK, struct {
 		Version         string   `json:"version"`
 		SetUp           bool     `json:"set_up"`
 		Settings        Settings `json:"settings"`
@@ -343,7 +340,7 @@ func (s *server) status(w http.ResponseWriter) {
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 	endpoint, ok := normalizeAddress(in.Address)
 	if !ok {
-		respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"address": addressError}})
+		localhttp.Respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"address": addressError}})
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
@@ -354,7 +351,7 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 	} else {
 		s.log.Info("test passed", "endpoint", endpoint)
 	}
-	respond(w, http.StatusOK, struct {
+	localhttp.Respond(w, http.StatusOK, struct {
 		OK      bool   `json:"ok"`
 		Address string `json:"address"`
 		Message string `json:"message"`
@@ -368,7 +365,7 @@ type fieldErrors struct {
 func (s *server) save(w http.ResponseWriter, in input) {
 	set, errs := checkInput(in)
 	if len(errs) > 0 {
-		respond(w, http.StatusBadRequest, fieldErrors{errs})
+		localhttp.Respond(w, http.StatusBadRequest, fieldErrors{errs})
 		return
 	}
 	s.admit.Lock()
@@ -376,7 +373,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	s.mu.Lock()
 	if s.copy.on() {
 		s.mu.Unlock()
-		respond(w, http.StatusConflict, struct {
+		localhttp.Respond(w, http.StatusConflict, struct {
 			Error string `json:"error"`
 		}{"Stop copying to change settings."})
 		return
@@ -388,7 +385,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		s.mu.Unlock()
 		s.log.Error("save settings", "err", err)
 		// The page shows the reason without the temp file's name.
-		respond(w, http.StatusInternalServerError, struct {
+		localhttp.Respond(w, http.StatusInternalServerError, struct {
 			Error string `json:"error"`
 		}{"Couldn't save settings: " + reason(err) + ". Your changes have not been saved. Try saving again."})
 		return
@@ -409,7 +406,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	if oldSessions != nil {
 		oldSessions.Close()
 	}
-	respond(w, http.StatusOK, struct {
+	localhttp.Respond(w, http.StatusOK, struct {
 		Settings      Settings `json:"settings"`
 		BrowseChanged bool     `json:"browse_changed"`
 	}{set, changed})
@@ -436,19 +433,19 @@ func (s *server) copyAction(w http.ResponseWriter, action string) {
 		return
 	}
 	if err != nil {
-		respond(w, http.StatusConflict, struct {
+		localhttp.Respond(w, http.StatusConflict, struct {
 			Error string `json:"error"`
 		}{"Couldn't " + verb + ": " + err.Error() + "."})
 		return
 	}
-	respond(w, http.StatusOK, s.copyView())
+	localhttp.Respond(w, http.StatusOK, s.copyView())
 }
 
 // freeAction is the Free up space tab's: find, cancel, delete, stop or
 // reset. It answers the tab's new state.
 func (s *server) freeAction(w http.ResponseWriter, in input) {
 	conflict := func(msg string) {
-		respond(w, http.StatusConflict, struct {
+		localhttp.Respond(w, http.StatusConflict, struct {
 			Error string `json:"error"`
 		}{msg})
 	}
@@ -456,7 +453,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 	case "find":
 		days, err := strconv.Atoi(strings.TrimSpace(in.Days))
 		if err != nil || days < 0 || days > maxDays {
-			respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"days": "Enter a whole number of days, 0 or more."}})
+			localhttp.Respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"days": "Enter a whole number of days, 0 or more."}})
 			return
 		}
 		// Holding s.admit keeps a Save or a change of endpoint from
@@ -518,7 +515,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		http.Error(w, "Request rejected", http.StatusBadRequest)
 		return
 	}
-	respond(w, http.StatusOK, s.free.view())
+	localhttp.Respond(w, http.StatusOK, s.free.view())
 }
 
 // clearHistory deletes the saved folder's state file, as a reset of sync
@@ -529,7 +526,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 func (s *server) clearHistory(w http.ResponseWriter) {
 	readonly.Check("clear history")
 	conflict := func(msg string) {
-		respond(w, http.StatusConflict, struct {
+		localhttp.Respond(w, http.StatusConflict, struct {
 			Error string `json:"error"`
 		}{msg})
 	}
@@ -556,30 +553,12 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 		conflict("Couldn't clear the history: " + reason(err) + ".")
 	default:
 		s.log.Info("copy history cleared", "dest", folder)
-		respond(w, http.StatusOK, struct{}{})
+		localhttp.Respond(w, http.StatusOK, struct{}{})
 	}
 }
 
 // maxDays caps Only files older than N days: 100 years.
 const maxDays = 36500
-
-// respondOptions keep the page's JSON as it was before the move to
-// encoding/json/v2: nil slices and maps are null, map members are sorted,
-// HTML characters, U+2028 and U+2029 are escaped, and a byte that is not
-// UTF-8 is written as U+FFFD.
-var respondOptions = json.JoinOptions(json.Deterministic(true), json.FormatNilSliceAsNull(true), json.FormatNilMapAsNull(true),
-	jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true), jsontext.AllowInvalidUTF8(true))
-
-func respond(w http.ResponseWriter, code int, v any) {
-	b, err := json.Marshal(v, respondOptions)
-	if err != nil {
-		http.Error(w, "Response unavailable", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	w.Write(b)
-}
 
 // reason is err's text without the path a file error names.
 func reason(err error) string {

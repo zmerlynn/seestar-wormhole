@@ -7,6 +7,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"io"
 	"net/http"
 	"os"
@@ -553,7 +554,7 @@ func (d *guiTestDriver) serverState(want string, active bool) error {
 			Active  bool   `json:"active"`
 			LogPath string `json:"log_path"`
 		}
-		return resp.StatusCode == 200 && json.UnmarshalRead(io.LimitReader(resp.Body, maxJSON), &s) == nil && s.Status == want && s.Active == active && s.LogPath == filepath.Join(d.root, "gui.log")
+		return resp.StatusCode == 200 && json.UnmarshalRead(io.LimitReader(resp.Body, localhttp.MaxJSON), &s) == nil && s.Status == want && s.Active == active && s.LogPath == filepath.Join(d.root, "gui.log")
 	}); err != nil {
 		return err
 	}

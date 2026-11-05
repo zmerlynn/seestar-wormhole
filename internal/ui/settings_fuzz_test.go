@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"encoding/json/v2"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,13 +17,13 @@ func FuzzSettings(f *testing.F) {
 		`{"version":1,"ports":[{"local":1.5,"device":445}]}`,
 		`{"version":1,"ports":[{"local":65536,"device":445}]}`,
 		`{"version":2}`, `{}`, `null`, `{`, `{"version":1,"idle":"1h30m"}`,
-		`{"version":1}` + strings.Repeat(" ", maxJSON-len(`{"version":1}`)),
-		`{"version":1}` + strings.Repeat(" ", maxJSON+1-len(`{"version":1}`)),
+		`{"version":1}` + strings.Repeat(" ", localhttp.MaxJSON-len(`{"version":1}`)),
+		`{"version":1}` + strings.Repeat(" ", localhttp.MaxJSON+1-len(`{"version":1}`)),
 	} {
 		f.Add([]byte(seed))
 	}
 	f.Fuzz(func(t *testing.T, b []byte) {
-		if len(b) > maxJSON+1 {
+		if len(b) > localhttp.MaxJSON+1 {
 			return
 		}
 		st := testStorage(t)
@@ -48,7 +49,7 @@ func FuzzSettings(f *testing.F) {
 		if err != nil {
 			t.Fatal("accepted settings cannot be encoded")
 		}
-		if len(encoded) > maxJSON {
+		if len(encoded) > localhttp.MaxJSON {
 			return
 		} // Normalization can grow an input near the limit.
 		if err := st.write("config.json", s); err != nil {

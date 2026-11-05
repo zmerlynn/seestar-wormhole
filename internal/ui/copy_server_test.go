@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"io"
 	"log/slog"
 	"net/http"
@@ -22,8 +23,8 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 )
 
-// The one policy every response carries: Browse's same-origin frame is the
-// only relaxation.
+// The one policy every response carries, Browse's included: the page frames
+// Browse, and only its own origin may frame either.
 const pageCSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
 
 // copyServer is testServer with copy mounted. Its copier reaches a fake
@@ -70,21 +71,13 @@ func copySettings(t *testing.T, s *server) {
 func TestOneServerHeaders(t *testing.T) {
 	s, _ := copyServer(t)
 	copySettings(t, s)
-	for _, path := range []string{"/", "/app.js", "/api/status", "/copy/api/status", "/nope", "/browse/"} {
+	for _, path := range []string{"/", "/app.js", "/api/status", "/copy/api/status", "/nope", "/browse/", "/browse/api/list"} {
 		w := serve(s, request(s, "GET", path, ""))
-		if got := w.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
-			t.Errorf("%s X-Frame-Options %q", path, got)
-		}
-		csp := w.Header().Get("Content-Security-Policy")
-		if path == "/browse/" {
-			// Browse sets its own, stricter policy for its frame.
-			if w.Code != 200 || !strings.Contains(csp, "frame-ancestors 'self'") || !strings.Contains(csp, "default-src 'none'") {
-				t.Errorf("browse = %d, CSP %q", w.Code, csp)
+		for k, want := range map[string]string{"X-Frame-Options": "SAMEORIGIN", "Cross-Origin-Resource-Policy": "same-origin",
+			"Content-Security-Policy": pageCSP, "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"} {
+			if got := w.Header().Values(k); len(got) != 1 || got[0] != want {
+				t.Errorf("%s (%d): %s = %q, want %q", path, w.Code, k, got, want)
 			}
-			continue
-		}
-		if csp != pageCSP {
-			t.Errorf("%s CSP %q", path, csp)
 		}
 	}
 }
@@ -109,7 +102,9 @@ func TestCopyAPIRejections(t *testing.T) {
 		{"fetch metadata", "POST", "/copy/api/test", func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") }, 403},
 		{"fetch metadata none", "POST", "/copy/api/test", func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "none") }, 403},
 		{"content type", "POST", "/copy/api/test", func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") }, 415},
-		{"oversize", "POST", "/copy/api/settings", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", maxJSON+1))) }, 413},
+		{"oversize", "POST", "/copy/api/settings", func(r *http.Request) {
+			r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", localhttp.MaxJSON+1)))
+		}, 413},
 		{"method", "GET", "/copy/api/settings", nil, 405},
 		{"status post", "POST", "/copy/api/status", nil, 405},
 		{"unknown", "GET", "/copy/api/nope", nil, 404},

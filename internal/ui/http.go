@@ -9,6 +9,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"mime"
@@ -45,11 +46,7 @@ type input struct {
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Browse is a same-origin frame of /browse/, so the page may frame
 	// itself and be framed only by itself.
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
-	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	localhttp.SetHeaders(w.Header(), false)
 	fail := func(code int) { http.Error(w, "Request rejected", code) }
 	if r.Host != s.host {
 		fail(http.StatusForbidden)
@@ -134,7 +131,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if s.activate != nil {
 				w.Header().Set("X-Seestar-Window", "1")
 			}
-			s.respond(w, struct {
+			localhttp.Respond(w, http.StatusOK, struct {
 				Instance string `json:"instance"`
 			}{"seestar-wormhole-ui-v1"})
 			return
@@ -151,7 +148,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ports, _, _ := effective.validate()
 		defaults, _ := proxyrun.MergePorts(nil)
 		events, path, logFailed := s.controller.log.snapshot()
-		s.respond(w, struct {
+		localhttp.Respond(w, http.StatusOK, struct {
 			CopyBusy  bool               `json:"copy_busy"`
 			Settings  pageSettings       `json:"settings"`
 			Version   string             `json:"version"`
@@ -173,7 +170,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.allowedPost(w, r) {
 		return
 	}
-	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSON))
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, localhttp.MaxJSON))
 	if err != nil {
 		fail(http.StatusRequestEntityTooLarge)
 		return
@@ -260,7 +257,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.controller.quit()
 		// Cleanup has joined; flush the response before shutting down HTTP.
-		s.respond(w, struct {
+		localhttp.Respond(w, http.StatusOK, struct {
 			OK bool `json:"ok"`
 		}{true})
 		if f, ok := w.(http.Flusher); ok {
@@ -276,7 +273,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.rejectAction(w, err)
 		return
 	}
-	s.respond(w, struct {
+	localhttp.Respond(w, http.StatusOK, struct {
 		OK bool `json:"ok"`
 	}{true})
 }
@@ -400,22 +397,10 @@ func copyEndpointFor(settings, run Settings, connected bool) (string, error) {
 
 func (s *server) rejectAction(w http.ResponseWriter, err error) {
 	s.controller.log.addFailure(errorCopy(actionError(err).Code), err)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
-	s.respond(w, struct {
+	localhttp.Respond(w, http.StatusBadRequest, struct {
 		*ActionError
 		Message string `json:"message"`
 	}{actionError(err), errorCopy(actionError(err).Code)})
-}
-
-func (s *server) respond(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	b, err := json.Marshal(v)
-	if err != nil {
-		http.Error(w, "Response unavailable", 500)
-		return
-	}
-	w.Write(b)
 }
 
 func (s *server) saveSettings(settings Settings) error {
