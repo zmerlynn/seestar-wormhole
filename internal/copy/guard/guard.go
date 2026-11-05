@@ -36,10 +36,42 @@ func Recover(log *slog.Logger, where string) {
 	}
 }
 
+// Panic is a panic [Catch] recovered, with the stack it was raised on.
+type Panic struct {
+	Value any
+	Stack []byte
+}
+
+// Catch calls f and returns the panic it recovered from f, or nil. It logs
+// nothing, so a callback can publish that it is done before it logs the
+// panic with [Panic.Report].
+func Catch(f func()) (p *Panic) {
+	defer func() {
+		if r := recover(); r != nil {
+			p = &Panic{Value: r, Stack: debug.Stack()}
+		}
+	}()
+	f()
+	return nil
+}
+
+// Report logs p as [Run] does, and returns the same error. A nil p logs
+// nothing and returns nil.
+func (p *Panic) Report(log *slog.Logger, where string) error {
+	if p == nil {
+		return nil
+	}
+	return logPanic(log, where, p.Value, p.Stack)
+}
+
 func report(log *slog.Logger, where string, r any) error {
+	return logPanic(log, where, r, debug.Stack())
+}
+
+func logPanic(log *slog.Logger, where string, r any, stack []byte) error {
 	if log == nil {
 		log = slog.Default()
 	}
-	log.Error("internal error recovered", "where", where, "panic", fmt.Sprint(r), "stack", string(debug.Stack()))
+	log.Error("internal error recovered", "where", where, "panic", fmt.Sprint(r), "stack", string(stack))
 	return fmt.Errorf("internal error while %s: %v", where, r)
 }
