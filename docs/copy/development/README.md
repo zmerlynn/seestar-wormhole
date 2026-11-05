@@ -18,8 +18,7 @@ is stopped.
 | Path | What it does |
 | --- | --- |
 | `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the read-only guard before a dry run, `find`'s listing, and `browse`'s listener and `--open`. |
-| `cmd/seestar-copy` | The app's command: `--settings`, logging, and how the page is shown. The `gui` build shows it in a [Wails](https://wails.io) window, with native folder and save dialogs, and quits the app when the window closes. The build without the tag prints the page's URL to open in a browser and serves until Ctrl+C. |
-| `internal/copy/app` | The app: `app.json` (read at startup, written atomically on Save), and the loopback server for its page, with a per-run token and Host, Origin and Fetch Metadata checks, Settings, Test, and the Browse tab, which is `internal/copy/browse` in its in-app mode. |
+| `internal/copy/app` | The Copy, Browse and Free up space tabs' server, which seestar-wormhole's app (`internal/ui`) mounts under `/copy/api/` and `/browse/`: the copy, preview and free-space controllers, Settings validation, Test, the activity log, and the Browse tab, which is `internal/copy/browse` in its in-app mode. The app keeps the settings in its `copy.json` and tells the mount where the telescope is. |
 | `internal/copy/engine` | The work the commands share: the `--exclude` and `--include` selection and its walk of the share, the `sync` pass loop (dial, list, plan, copy, log off, sleep) and its dry run, and `delete`'s run. It never turns the read-only guard on. |
 | `internal/copy/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
 | `internal/copy/state` | The per-destination state file: JSON Lines, last record per path wins, torn-tail tolerance, append with fsync, and the exclusive lock. |
@@ -137,7 +136,7 @@ These apply to every change, whoever writes it.
   carried as unknown.
 - **Standard formats use standard libraries.** Don't hand-write a parser,
   walker or tokenizer for a format that has a well-known library: JSON, SMB,
-  Markdown. JSON goes through the standard library's `encoding/json` into
+  Markdown. JSON goes through the standard library's `encoding/json/v2` into
   typed structs holding only the members used; permissiveness comes from the
   decoder's own behavior, so never turn on rejecting unknown members. SMB
   goes through the vendored client library. If it isn't clear whether a
@@ -164,7 +163,7 @@ These apply to every change, whoever writes it.
   older release cannot read, and such a one-way change needs the
   maintainer's approval before it is written.
 - **Every public flag, format and exit code is a promise**, as
-  [versioning](../versioning.md) lists. Add one, or a log line, only for a
+  [versioning](../../versioning.md#the-seestar-copy-cli-contract) lists. Add one, or a log line, only for a
   current need, and document it in the reference in the same change.
 - **Dependencies are few, vendored and Unlicense-compatible.** The project
   is under the Unlicense. A dependency must allow distributing one static

@@ -21,8 +21,7 @@ log line. The [README](README.md) has a first run.
   and [the check-then-remove race](#the-check-then-remove-race)
 - [licenses](#licenses)
 - [Global command behavior](#global-command-behavior)
-- [The desktop app](#the-desktop-app): opening it, what it needs, and its
-  settings
+- [The app](#the-app): seestar-wormhole's Copy, Browse and Free up space tabs
 - [Verifying a release](#verifying-a-release)
 
 ## sync
@@ -522,7 +521,7 @@ that gives `msg="file copied"` and `path="MyWorks/M 31/light_002.fit"`. Read
 the lines with a logfmt parser, not by splitting on spaces.
 
 The messages and keys below are what this release logs. They are not part of
-the [versioning contract](versioning.md#not-in-the-contract); a release that
+the [versioning contract](../versioning.md#not-in-the-contract); a release that
 changes them says so in its notes.
 
 | Level | Message | Keys | When |
@@ -1252,72 +1251,17 @@ the output exits 1. See [NOTICE](../../NOTICE).
 - `sync` without `--once` or `--dry-run`, and `browse`, run until Ctrl+C or
   SIGTERM stops them. The other commands run once and exit.
 
-## The desktop app
+## The app
 
-Every download also holds the desktop app, `seestar-copy`. It copies, browses
-and frees up space in one window, with the same rules and state files as
-`sync`, `browse` and `delete`.
-
-- **macOS:** open the DMG and drag `seestar-copy.app` to Applications, then
-  open it from there.
-- **Windows:** unpack the archive and open `seestar-copy.exe`. It needs the
-  Microsoft Edge WebView2 Runtime, which Windows 10 and 11 normally include;
-  if it is missing or broken, the app says so. The app is not code-signed, so
-  Windows may say "Windows protected your PC": choose **More info**, then
-  **Run anyway**.
-- **Linux:** unpack the archive and run `./seestar-copy`. It needs GTK 4,
-  WebKitGTK 6.0 and bubblewrap (on Ubuntu 24.04: `libgtk-4-1`,
-  `libwebkitgtk-6.0-4` and `bubblewrap`), and WebKit's sandbox needs
-  unprivileged user namespaces. Without them the app says what is missing
-  and exits. `seestar-copy-cli` needs none of these.
-
-The app keeps its settings in `app.json` in the default state folder (see
-[location](#location)), or in the file `--settings FILE` names. Each settings
-file is one window; run the app again with another `--settings` file for
-another setup. `seestar-copy-cli` never reads `app.json`. While copying is on,
+seestar-wormhole's app copies, browses and frees up space in its **Copy**,
+**Browse** and **Free up space** tabs, with the same rules and the same state
+files as `sync`, `browse` and `delete`; see [copying images](../ui.md#copying-images).
+It keeps its copy settings in its own state directory, as `copy.json`, which
+`seestar-copy-cli` never reads, and its copy history in this
+[location](#location), whatever its `--state-dir` says. While copying is on,
 the app holds the folder's state lock, as `sync` does, so a `sync` for the
-same folder exits with its usual error, and the app shows "Folder in use"
+same folder exits with its usual error, and the app says the folder is in use
 while a `sync` holds it.
-
-The first time the app opens on a settings file, it opens on the Settings
-tab, and the Copy, Browse and Free up space tabs stay unavailable until the
-telescope address and the folder are saved. **Save and continue**, at the top
-of the tab, does what **Save** at the bottom does. After that first save, the
-app shows the Copy tab with copying off; **Start copying** begins. **Start
-copying when the app opens** is off for a new settings file. A settings file
-that already exists keeps its value, which is on if the file does not have the
-setting.
-
-While copying is off, **Preview** on the Copy tab shows what **Start
-copying** would do, from one [dry run](#dry-run) with the saved settings: how
-many files it would copy and their size and how many can't be copied, with a
-row per folder, then how many are already copied or in your folder, still
-being written, or left out by the selection. A replaced file counts as a
-copy. Nothing is copied, and the state file and the folder are not changed.
-**Cancel** stops a preview that is running. Start copying, a Save that
-changes the address, folder or selection, and Clear history discard the
-preview.
-
-The Browse tab is browse's page for the saved address, with the saved
-folder's [statuses](#statuses). What **Leave out**, **Only copy** and **Skip
-the telescope's logs, scratch and system files** leave out shows
-[`left out`](#left-out-in-browse). A Save that
-changes the address, the folder or the selection reloads the tab at the
-share's top.
-
-Settings shows, under the folder, **Copy history**: the path of the folder's
-state file (see [the state file](#the-state-file)), which `sync` uses too. It
-shows the folder as saved; while the Folder field holds a folder not yet
-saved, it says to save first. **Clear history…** deletes that state file
-after a confirmation, so seestar-copy forgets what it copied to the folder.
-Files still in the folder are kept and adopted on the next pass; files moved
-out of it are copied again. Clear history is unavailable while copying is on,
-and it refuses while Free up space is checking or deleting, or while a `sync`
-holds the folder's lock. It also discards a Free up space preview and a Copy preview.
-
-The bottom of Settings shows the settings file in use. To start over with a
-new setup, quit the app and delete that file, or open the app with
-`--settings` and a new file.
 
 ## Verifying a release
 
@@ -1335,7 +1279,6 @@ Linux and Windows CLI executables are byte-for-byte reproducible with
 identical source, version, revision and Go toolchain: rebuild and compare
 against `seestar-copy-cli` (with `.exe` on Windows) unpacked from the archive.
 The Mac CLI is combined
-with lipo and signed, so it is not byte-reproducible. The desktop app has no
-byte-reproducibility promise. The app executables and the DMG are verified by
-`SHA256SUMS` and attestation only. See [versioning](versioning.md) for what a
-release promises.
+with lipo and signed, so it is not byte-reproducible. The DMG is verified by
+`SHA256SUMS` and attestation only. See [versioning](../versioning.md#the-seestar-copy-cli-contract)
+for what a release promises.
