@@ -363,6 +363,25 @@ test('locked tabs look locked', async ({ page, startApp }) => {
   await expect(page.locator('#tabs-note')).toBeVisible();
 });
 
+// Forced colors drop the padlock body's background; its border, in the
+// label's color, still draws it. A browser that can't emulate forced
+// colors skips this.
+test('the padlock keeps its body under forced colors', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  await page.emulateMedia({ forcedColors: 'active' });
+  test.skip(!(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)), 'no forced colors emulation');
+  for (const name of ['Copy', 'Browse', 'Free up space']) {
+    const lock = await tab(page, name).evaluate((e) => {
+      const after = getComputedStyle(e, '::after');
+      return { label: getComputedStyle(e).color, style: after.borderTopStyle, width: parseFloat(after.borderTopWidth), color: after.borderTopColor };
+    });
+    expect(lock.style, name).toBe('solid');
+    expect(lock.width, name).toBeGreaterThan(0);
+    expect(lock.color, name).toBe(lock.label);
+  }
+});
+
 test('Copy settings save every field and keep unknown keys', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openCopy(page, app.url);

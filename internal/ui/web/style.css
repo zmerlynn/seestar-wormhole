@@ -294,7 +294,8 @@ header {
   font-weight:600
 }
 /* A locked tab is dimmed, refuses the pointer and shows a padlock: its
-   shackle and body, drawn in the label's color. */
+   shackle and body, drawn in the label's color. The body's border keeps
+   it drawn under forced colors, which drop its background. */
 [role=tab]:disabled {
   position:relative;
   padding-left:1.75rem;
@@ -321,6 +322,7 @@ header {
 [role=tab]:disabled::after {
   height:.5em;
   margin-top:-.1em;
+  border:.13em solid currentColor;
   border-radius:.1em;
   background:currentColor
 }
