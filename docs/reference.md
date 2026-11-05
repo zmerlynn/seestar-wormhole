@@ -61,7 +61,8 @@ See also [identity and logging flags](#identity-and-logging-flags).
 After a successful connection or explicit password save in the UI, run
 `seestar-wormhole-cli proxy --config` (add `--state-dir PATH` for a custom
 UI state root). It reads the same [version 1 `config.json`](ui.md#configjson-version-1)
-without rewriting it and shares the installation identity.
+without rewriting it and shares the installation identity. It ignores the
+copier's `route` and `lan_address` members.
 Explicit flags override saved choices, including discovery; each `-p` replaces the saved override for
 that telescope port. `SEESTAR_EMAIL` overrides the saved email. The password
 comes from `SEESTAR_PASSWORD` when set, otherwise the OS keychain entry for that

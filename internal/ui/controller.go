@@ -380,6 +380,40 @@ func (c *controller) view() runView {
 	return v
 }
 
+// persistRoute saves the route onto the last saved settings, as Remove
+// does, never onto a form draft. It is refused while a run is active,
+// whose save at its ready boundary would carry the old route.
+func (c *controller) persistRoute(route, address string) error {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	c.mu.Lock()
+	running := c.done != nil
+	c.mu.Unlock()
+	if running {
+		return &ActionError{Code: "route_locked"}
+	}
+	s := c.lastSaved
+	if s.Version == 0 {
+		s = defaultSettings()
+	}
+	s.Route = route
+	if route == routeLAN {
+		s.LANAddress = address
+	}
+	return c.persistLocked(s)
+}
+
+// connected returns the run's settings while it is connected to the
+// telescope, and false while it is not running, stopping or not ready.
+func (c *controller) connected() (Settings, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.done == nil || c.stopping || c.status.Text() != "Ready" {
+		return Settings{}, false
+	}
+	return c.runSettings, true
+}
+
 func (c *controller) persistPassword(s Settings, generation uint64) error {
 	c.saveMu.Lock()
 	defer c.saveMu.Unlock()

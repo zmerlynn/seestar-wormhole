@@ -223,6 +223,8 @@ To use another existing installation root, run
 | `serial`, `model`, `email` | Empty strings. |
 | `ports` | `[]`, using the standard service mappings. |
 | `remember_password` | `false` |
+| `route` | Empty, meaning the account route. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means the account route. |
+| `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
 
 These defaults differ from the UI's first-run phone setup.
 

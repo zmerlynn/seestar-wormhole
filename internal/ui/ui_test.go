@@ -159,13 +159,13 @@ func TestHTTPNoSecretsAndHeaders(t *testing.T) {
 		if w.Code != 200 {
 			t.Fatalf("%s %d", path, w.Code)
 		}
-		for k, want := range map[string]string{"X-Frame-Options": "DENY", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store"} {
+		for k, want := range map[string]string{"X-Frame-Options": "SAMEORIGIN", "Referrer-Policy": "no-referrer", "Cache-Control": "no-store"} {
 			if w.Header().Get(k) != want {
 				t.Fatalf("%s %s", path, k)
 			}
 		}
-		if !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
-			t.Fatal("CSP")
+		if w.Header().Get("Content-Security-Policy") != pageCSP {
+			t.Fatalf("%s CSP %q", path, w.Header().Get("Content-Security-Policy"))
 		}
 	}
 	in, _ := json.Marshal(input{testSettings(), testPassword})

@@ -23,8 +23,18 @@ type Settings struct {
 	Ports     []proxyrun.Port `json:"ports"`
 	Email     string          `json:"email"`
 	Remember  bool            `json:"remember_password"`
-	Unknown   jsontext.Value  `json:",embed"`
+	// Route is how the copier reaches the telescope: routeLAN, or the
+	// account route for any other value, including an older file's none.
+	Route      string         `json:"route,omitempty"`
+	LANAddress string         `json:"lan_address,omitempty"`
+	Unknown    jsontext.Value `json:",embed"`
 }
+
+// The routes to the telescope.
+const (
+	routeAccount = "account"
+	routeLAN     = "lan"
+)
 
 func defaultSettings() Settings {
 	return Settings{Version: 1, Bind: "0.0.0.0", Discovery: true, Idle: "0", Ports: []proxyrun.Port{{Local: 80, Device: 80}}}

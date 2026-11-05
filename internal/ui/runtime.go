@@ -8,14 +8,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
+	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
@@ -189,6 +192,17 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 	c.save = handler.saveSettings
 	c.lastSaved = settings
 	c.log = eventHistory
+	// The copier shares seestar-copy-cli's state folder, so the two share
+	// one history and lock per folder.
+	var copyState string
+	if base, err := os.UserConfigDir(); err == nil {
+		copyState = filepath.Join(base, "seestar-copy")
+	}
+	listening := listener.Addr().(*net.TCPAddr).AddrPort()
+	handler.copy = copyapp.NewMount(ctx, copyapp.MountOptions{
+		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
+		Log: slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelWarn})), Endpoint: handler.copyEndpoint,
+	})
 	activate := make(chan struct{}, 1)
 	if window != nil {
 		handler.activate = func() {
@@ -217,6 +231,9 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 		case <-handler.quit:
 		case <-done:
 		}
+		// Browse's sessions and the copier stop before the proxy they
+		// may be reaching the telescope through.
+		handler.copy.Quit()
 		c.quit()
 		shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
