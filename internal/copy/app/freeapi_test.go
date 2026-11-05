@@ -113,7 +113,7 @@ func TestFreeInProcess(t *testing.T) {
 	if v := wait(frNothing, frPreview, frCheckFail); v.State != frNothing || v.Kept != "Kept: 2 not copied yet" {
 		t.Errorf("before copying: %+v", v)
 	}
-	save := `{"folder":` + quote(folder) + `,"interval":"10","excludes":[],"includes":[],"skip_built_in":true}`
+	save := `{"folder":` + quote(folder) + `,"interval":"10","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true}`
 	if w := e.post("/copy/api/settings", save); w.Code != 200 {
 		t.Fatalf("save: %d %s", w.Code, w.Body)
 	}
@@ -180,7 +180,7 @@ func TestFreeSaveClears(t *testing.T) {
 	set.Excludes = []string{"Video", "/Preview"}
 	e := newAppEnv(t, set)
 	e.s.free.st = freeStatus{state: frNothing, preview: &engine.DeleteResult{}}
-	same := `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"7","excludes":["Video","/Preview"],"includes":[],"skip_built_in":true}`
+	same := `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"7","files_at_once":"4","excludes":["Video","/Preview"],"includes":[],"skip_built_in":true}`
 	for _, c := range []struct {
 		body  string
 		clear bool

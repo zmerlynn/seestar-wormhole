@@ -9,6 +9,9 @@ import (
 // and writes.
 const SettingsVersion = 1
 
+// MaxFilesAtOnce is the most files a copy may run at once, and the default.
+const MaxFilesAtOnce = 4
+
 // Settings is the copy settings, as copy.json holds them: seestar-copy's
 // app.json without the address, which is the [Target]'s.
 type Settings struct {
@@ -20,6 +23,7 @@ type Settings struct {
 	Includes        []string `json:"includes"`
 	SkipBuiltIn     bool     `json:"skip_built_in"`
 	StartCopying    bool     `json:"start_copying"`
+	FilesAtOnce     int      `json:"files_at_once"` // 1 to MaxFilesAtOnce
 	// The Free up space options.
 	OlderThanDays int  `json:"older_than_days"`
 	TrustState    bool `json:"trust_state"`
@@ -34,6 +38,7 @@ func DefaultSettings() Settings {
 		Excludes:        []string{},
 		Includes:        []string{},
 		SkipBuiltIn:     true,
+		FilesAtOnce:     MaxFilesAtOnce,
 		OlderThanDays:   7,
 	}
 	if home, err := os.UserHomeDir(); err == nil {

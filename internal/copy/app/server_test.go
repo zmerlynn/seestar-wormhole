@@ -180,11 +180,11 @@ func quote(s string) string {
 	return string(b)
 }
 
-var goodInput = `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"5","excludes":["Video","","/Preview"],"includes":[],"skip_built_in":true,"start_copying":false}`
+var goodInput = `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"5","files_at_once":" 2 ","excludes":["Video","","/Preview"],"includes":[],"skip_built_in":true,"start_copying":false}`
 
 func TestBodyLimit(t *testing.T) {
 	e := newAppEnv(t, nil)
-	big := `{"folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["` + strings.Repeat("a", localhttp.MaxJSON) + `"]}`
+	big := `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"4","excludes":["` + strings.Repeat("a", localhttp.MaxJSON) + `"]}`
 	if w := e.post("/copy/api/settings", big); w.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("a body over the limit = %d", w.Code)
 	}
@@ -236,18 +236,21 @@ func TestSaveFieldErrors(t *testing.T) {
 		input string
 		want  map[string]string
 	}{
-		{"empty", `{}`, map[string]string{"folder": folderError, "interval": intervalError}},
-		{"bad patterns", `{"folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["Video","","[Pp]review"],"includes":["  ","a/"]}`, map[string]string{
+		{"empty", `{}`, map[string]string{"files_at_once": filesError, "folder": folderError, "interval": intervalError}},
+		{"bad patterns", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"4","excludes":["Video","","[Pp]review"],"includes":["  ","a/"]}`, map[string]string{
 			"excludes": `Line 3: [ and \ are not supported; use * and ?, and / between folders. Correct this pattern and save again.`,
 			"includes": "Line 2: omit the trailing /; a pattern matches files and folders. Correct this pattern and save again.",
 		}},
-		{"interval 0", `{"folder":` + quote(abs("/x")) + `,"interval":"0"}`, map[string]string{"interval": intervalError}},
-		{"interval 1441", `{"folder":` + quote(abs("/x")) + `,"interval":"1441"}`, map[string]string{"interval": intervalError}},
-		{"interval 1.5", `{"folder":` + quote(abs("/x")) + `,"interval":"1.5"}`, map[string]string{"interval": intervalError}},
-		{"relative folder", `{"folder":"Seestar","interval":"5"}`, map[string]string{"folder": folderError}},
-		{"tilde folder", `{"folder":"~/Seestar","interval":"5"}`, map[string]string{"folder": folderError}},
+		{"interval 0", `{"folder":` + quote(abs("/x")) + `,"interval":"0","files_at_once":"4"}`, map[string]string{"interval": intervalError}},
+		{"interval 1441", `{"folder":` + quote(abs("/x")) + `,"interval":"1441","files_at_once":"4"}`, map[string]string{"interval": intervalError}},
+		{"interval 1.5", `{"folder":` + quote(abs("/x")) + `,"interval":"1.5","files_at_once":"4"}`, map[string]string{"interval": intervalError}},
+		{"files at once 0", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"0"}`, map[string]string{"files_at_once": filesError}},
+		{"files at once 5", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"5"}`, map[string]string{"files_at_once": filesError}},
+		{"files at once 2.5", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"2.5"}`, map[string]string{"files_at_once": filesError}},
+		{"relative folder", `{"folder":"Seestar","interval":"5","files_at_once":"4"}`, map[string]string{"folder": folderError}},
+		{"tilde folder", `{"folder":"~/Seestar","interval":"5","files_at_once":"4"}`, map[string]string{"folder": folderError}},
 		// The address is the connection's; the form's is ignored.
-		{"address", `{"address":"192.0.2.10:0","interval":"5"}`, map[string]string{"folder": folderError}},
+		{"address", `{"address":"192.0.2.10:0","interval":"5","files_at_once":"4"}`, map[string]string{"folder": folderError}},
 	}
 	for _, tt := range tests {
 		e := newAppEnv(t, nil)
@@ -307,7 +310,7 @@ func TestSaveCallsSave(t *testing.T) {
 		BrowseChanged bool     `json:"browse_changed"`
 	}](t, w)
 	want := Settings{Version: 1, Folder: abs("/data/Seestar"), IntervalMinutes: 5,
-		Excludes: []string{"Video", "/Preview"}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false, OlderThanDays: 7}
+		Excludes: []string{"Video", "/Preview"}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false, FilesAtOnce: 2, OlderThanDays: 7}
 	if fmt.Sprint(got.Settings) != fmt.Sprint(want) || !got.BrowseChanged {
 		t.Errorf("got %+v, want %+v and a browse change", got, want)
 	}

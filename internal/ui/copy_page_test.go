@@ -18,7 +18,7 @@ func copyPageStatuses(t *testing.T) string {
 	}
 	unlocked := serve(s, request(s, "GET", "/api/status", "")).Body.String()
 	folder, _ := json.Marshal(filepath.Join(t.TempDir(), "Seestar"))
-	body := `{"folder":` + string(folder) + `,"interval":"5","excludes":["Video"],"includes":[],"skip_built_in":true,"start_copying":false}`
+	body := `{"folder":` + string(folder) + `,"interval":"5","files_at_once":"4","excludes":["Video"],"includes":[],"skip_built_in":true,"start_copying":false}`
 	w := serve(s, request(s, "POST", "/copy/api/settings", body))
 	if w.Code != 200 {
 		t.Fatalf("copy settings = %d %s", w.Code, w.Body)

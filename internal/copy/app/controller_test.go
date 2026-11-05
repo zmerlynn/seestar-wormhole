@@ -316,6 +316,40 @@ func TestCopyUnreachable(t *testing.T) {
 	}
 }
 
+// syncWorkers records the Workers each copy or preview runs with until t
+// ends.
+func syncWorkers(t *testing.T) func() []int {
+	var mu sync.Mutex
+	var got []int
+	old := runSync
+	runSync = func(ctx context.Context, o engine.SyncOptions, log *slog.Logger) error {
+		mu.Lock()
+		got = append(got, o.Workers)
+		mu.Unlock()
+		return old(ctx, o, log)
+	}
+	t.Cleanup(func() { runSync = old })
+	return func() []int {
+		mu.Lock()
+		defer mu.Unlock()
+		return slices.Clone(got)
+	}
+}
+
+// Copying runs as many files at once as the settings say.
+func TestCopyFilesAtOnce(t *testing.T) {
+	workers := syncWorkers(t)
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.set.FilesAtOnce = 2
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.wait(stUpToDate)
+	if got := workers(); !slices.Equal(got, []int{2}) {
+		t.Errorf("copied with Workers %v, want [2]", got)
+	}
+}
+
 // On macOS, copying that can't reach an address on this network points at
 // Local Network access; through the account, or elsewhere, it doesn't.
 func TestCopyUnreachableLocalNetworkHint(t *testing.T) {
@@ -595,7 +629,7 @@ func TestCopyAPI(t *testing.T) {
 	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't start copying: save the copy settings first.") {
 		t.Errorf("start before settings are saved: %d %q", w.Code, w.Body.String())
 	}
-	input := `{"folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`
+	input := `{"folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","files_at_once":"4","skip_built_in":true}`
 	if w := e.post("/copy/api/settings", input); w.Code != 200 {
 		t.Fatalf("save: %d %q", w.Code, w.Body.String())
 	}

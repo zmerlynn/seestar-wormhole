@@ -199,7 +199,7 @@ func (e *routeEnv) lan(address string) {
 func (e *routeEnv) settings() {
 	e.t.Helper()
 	folder, _ := json.Marshal(e.folder)
-	if code, body := e.post("/copy/api/settings", `{"folder":`+string(folder)+`,"interval":"5","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`); code != 200 {
+	if code, body := e.post("/copy/api/settings", `{"folder":`+string(folder)+`,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`); code != 200 {
 		e.t.Fatalf("copy settings = %d %s", code, body)
 	}
 }

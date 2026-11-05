@@ -97,7 +97,7 @@ func (p *previewer) start(set Settings, t Target) error {
 	var result *previewStatus
 	o := engine.SyncOptions{
 		Endpoint: set.Address, Dest: set.Folder, StateDir: p.stateDir, Selector: sel, DryRun: true,
-		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: workers,
+		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: func(ctx context.Context, endpoint string) (sess remote.Session, err error) {
 			if p.at != nil {
 				err = p.at(t)
@@ -134,7 +134,7 @@ func (p *previewer) start(set Settings, t Target) error {
 		defer guard.Recover(p.log, "previewing")
 		// A dry run with failed files returns an error after Decided;
 		// the preview shows them.
-		err := guard.Run(p.log, "previewing", func() error { return engine.RunSync(ctx, o, p.log) })
+		err := guard.Run(p.log, "previewing", func() error { return runSync(ctx, o, p.log) })
 		canceled := ctx.Err() != nil
 		cancel()
 		p.mu.Lock()

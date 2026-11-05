@@ -136,6 +136,9 @@
 <p class="help" id="f-folder-help">Type the folder's full path. Images are copied here, in the same folders as on the telescope. Each folder has its own copy history: a new folder starts a new one, so everything on the telescope is copied there, and files already there are reused.</p>
 <label class="check strong">Check for new files every <input type="number" id="f-int" min="1" max="1440" aria-describedby="f-int-err"> minutes</label>
 <p class="error" id="f-int-err" role="alert" hidden></p>
+<label class="check strong">Files at once <input type="number" id="f-files" min="1" max="4" aria-describedby="f-files-help f-files-err"></label>
+<p class="error" id="f-files-err" role="alert" hidden></p>
+<p class="help" id="f-files-help">Copying runs this many files at once, 1 to 4. Through your Seestar account, copying shares the connection with the Seestar app and seestar_alp: if they are slow to respond while copying, lower this to 1 or 2.</p>
 <label for="f-ex">Leave out</label>
 <textarea id="f-ex" spellcheck="false" aria-describedby="f-ex-help f-ex-err"></textarea>
 <p class="error" id="f-ex-err" role="alert" hidden></p>

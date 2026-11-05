@@ -327,6 +327,7 @@ type input struct {
 	Address      string   `json:"address"`
 	Folder       string   `json:"folder"`
 	Interval     string   `json:"interval"`
+	FilesAtOnce  string   `json:"files_at_once"`
 	Excludes     []string `json:"excludes"` // the box's lines
 	Includes     []string `json:"includes"`
 	SkipBuiltIn  bool     `json:"skip_built_in"`

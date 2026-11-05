@@ -81,7 +81,7 @@ async function checkCopySetup(st) {
   $('f-folder').value = st.saved.settings.folder;
   $('f-ex').value = 'Video';
   await copySave();
-  copyAssert(sent && sent.folder === st.saved.settings.folder && sent.interval === '5' && sent.excludes.join() === 'Video' && sent.includes.length === 0, 'Save sent ' + JSON.stringify(sent));
+  copyAssert(sent && sent.folder === st.saved.settings.folder && sent.interval === '5' && sent.files_at_once === '4' && sent.excludes.join() === 'Video' && sent.includes.length === 0, 'Save sent ' + JSON.stringify(sent));
   copyAssert($('f-folder-err').hidden && !$('f-folder').getAttribute('aria-invalid'), 'the old error stayed');
   copyAssert(!$('c-main').hidden && $('s-first').hidden && !$('s-line').hidden && $('copy-form').hidden, 'the summary did not replace the form');
   copyAssert($('s-summary').textContent === 'Copying to ' + st.saved.settings.folder + ' every 5 min, skipping logs and system files, leaving out Video.', 'summary: ' + $('s-summary').textContent);

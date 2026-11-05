@@ -26,8 +26,10 @@ import (
 const (
 	readyAge     = 2 * time.Minute
 	firstPassAge = 10 * time.Minute
-	workers      = 4
 )
+
+// runSync runs a copy or a preview; tests replace it.
+var runSync = engine.RunSync
 
 // The Copy tab's states, as the page names them.
 const (
@@ -152,7 +154,7 @@ func (c *controller) start(set Settings, t Target) error {
 	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
 		Endpoint: set.Address, Dest: set.Folder, StateDir: c.stateDir, Selector: sel, Interval: interval,
-		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: workers,
+		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: c.dialPass, Hooks: c.hooks(ctx), CheckNow: c.checkNow, Recreate: true,
 	}
 	c.mu.Unlock()
@@ -180,7 +182,7 @@ func (c *controller) start(set Settings, t Target) error {
 func (c *controller) run(ctx context.Context, cancel context.CancelFunc, o engine.SyncOptions) error {
 	ran := make(chan error, 1)
 	go func() {
-		ran <- guard.Run(c.log, "copying", func() error { return engine.RunSync(ctx, o, c.log) })
+		ran <- guard.Run(c.log, "copying", func() error { return runSync(ctx, o, c.log) })
 	}()
 	joined := false
 	defer func() {

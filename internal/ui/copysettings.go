@@ -38,7 +38,7 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 	} else if err != nil {
 		return nil, nil, err
 	}
-	if f.Version != copyapp.SettingsVersion {
+	if f.Version != copyapp.SettingsVersion || f.FilesAtOnce < 1 || f.FilesAtOnce > copyapp.MaxFilesAtOnce {
 		return nil, nil, errStorage
 	}
 	if f.Excludes == nil {

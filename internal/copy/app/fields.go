@@ -21,6 +21,7 @@ const (
 	addressError  = "Enter the telescope address, with an optional port."
 	folderError   = "Enter the full path of a folder."
 	intervalError = "Enter a whole number of minutes from 1 to 1440."
+	filesError    = "Enter a whole number from 1 to 4."
 )
 
 // statusBadNetworkName is the NTSTATUS a server answers when it has no
@@ -61,6 +62,11 @@ func checkInput(in input) (Settings, map[string]string) {
 		errs["interval"] = intervalError
 	}
 	set.IntervalMinutes = n
+	n, err = strconv.Atoi(strings.TrimSpace(in.FilesAtOnce))
+	if err != nil || n < 1 || n > MaxFilesAtOnce {
+		errs["files_at_once"] = filesError
+	}
+	set.FilesAtOnce = n
 	for field, lines := range map[string][]string{"excludes": in.Excludes, "includes": in.Includes} {
 		patterns, msg := checkPatterns(lines)
 		if msg != "" {
