@@ -716,6 +716,45 @@ func TestAccountDeleteHoldsTheConnection(t *testing.T) {
 	}
 }
 
+// A Free up space preview belongs to the run it was found on: after a
+// reconnect to the same telescope through the same port, the target is
+// another one and the preview no longer confirms a delete.
+func TestAccountPreviewEndsWithItsRun(t *testing.T) {
+	e := newRouteEnv(t)
+	a := e.account()
+	settings := testSettings()
+	settings.Ports = []proxyrun.Port{{Local: 5445, Device: 445}}
+	if code, body := e.start(settings); code != 200 {
+		t.Fatalf("Connect = %d %s", code, body)
+	}
+	a.markReady("synthetic-device")
+	e.settings()
+	e.copied()
+	if code, body := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":false}`); code != 200 {
+		t.Fatalf("find = %d %s", code, body)
+	}
+	e.until("the preview", func() bool { state, _ := e.free(); return state == "preview" })
+	_, id := e.free()
+	first, err := e.s.copyTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a.stop()
+	if code, body := e.start(settings); code != 200 {
+		t.Fatalf("reconnect = %d %s", code, body)
+	}
+	a.markReady("synthetic-device")
+	if now, err := e.s.copyTarget(); err != nil || now == first || now.Endpoint != first.Endpoint || now.Device != first.Device {
+		t.Errorf("the reconnected target is the same run's, or another telescope's: %v", err)
+	}
+	if code, body := e.post("/copy/api/delete", `{"action":"delete","id":`+strconv.Itoa(id)+`,"folders":["MyWorks"]}`); code != 409 || !strings.Contains(body, "Preview again") {
+		t.Errorf("delete with the last run's preview = %d %s", code, body)
+	}
+	if _, err := os.Stat(e.shareFile("127.0.0.1:5445")); err != nil {
+		t.Errorf("the telescope's file: %v", err)
+	}
+}
+
 // The route and this network's address survive a save and a reload into
 // a fresh storage and server, and a load reads a saved file without
 // rewriting it.
