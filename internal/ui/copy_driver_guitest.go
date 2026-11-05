@@ -90,8 +90,9 @@ func init() {
 // copyScenario reports whether scenario is one of the copy scenarios.
 func copyScenario(scenario string) bool { return strings.HasPrefix(scenario, "copy-") }
 
-// prepareCopyScenario saves a route on this network and copy settings
-// that start copying when the app opens, through the app's own storage.
+// prepareCopyScenario saves a route on this network, established as a
+// tested one is so the copy tabs open at launch, and copy settings that
+// start copying when the app opens, through the app's own storage.
 // The folder is beside the state dir, so two apps the harness starts with
 // sibling state dirs share it.
 func prepareCopyScenario(root string) error {
@@ -101,7 +102,7 @@ func prepareCopyScenario(root string) error {
 	}
 	defer st.directory.Close()
 	settings := defaultSettings()
-	settings.Route, settings.LANAddress = routeLAN, "192.0.2.20"
+	settings.Route, settings.LANAddress, settings.RouteEstablished = routeLAN, "192.0.2.20", true
 	if err := st.write("config.json", settings); err != nil {
 		return err
 	}
