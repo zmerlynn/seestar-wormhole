@@ -457,14 +457,15 @@ func TestLocalNetworkHint(t *testing.T) {
 	}
 }
 
-// setRetry makes localNetworkRetry's on goos, every second for 30 s, with
-// a clock that moves only while it waits. It returns how long it waited.
+// setRetry makes localNetworkRetry run on goos, at its own interval and
+// limit, with a clock that moves only while it waits. It returns how long
+// it waited.
 func setRetry(t *testing.T, goos string) *atomic.Int64 {
 	var waited atomic.Int64
 	start := time.Unix(1, 0)
 	old := localNetworkRetry
 	localNetworkRetry = lanRetry{
-		goos: goos, every: time.Second, limit: 30 * time.Second,
+		goos: goos, every: old.every, limit: old.limit,
 		now: func() time.Time { return start.Add(time.Duration(waited.Load())) },
 		after: func(d time.Duration) <-chan time.Time {
 			waited.Add(int64(d))
@@ -478,7 +479,7 @@ func setRetry(t *testing.T, goos string) *atomic.Int64 {
 }
 
 // On macOS, a dial the system failed at once is tried again every second,
-// as when the Local Network prompt is open, until it goes through or 30 s
+// as when the Local Network prompt is open, until it goes through or 10 s
 // have passed. A timeout, a refusal, a DNS failure or any SMB answer
 // returns at once, as does every failure elsewhere.
 func TestRetryLAN(t *testing.T) {
@@ -523,11 +524,11 @@ func TestRetryLAN(t *testing.T) {
 		}
 	}
 
-	// It gives up after 30 s with the last try's error.
+	// It gives up after 10 s with the last try's error.
 	waited := setRetry(t, "darwin")
 	tries := 0
 	if _, err := retryLAN(t.Context(), localNetworkRetry, func() (int, error) { tries++; return 0, noRoute }); err != noRoute ||
-		tries != 31 || time.Duration(waited.Load()) != 30*time.Second {
+		tries != 11 || time.Duration(waited.Load()) != 10*time.Second {
 		t.Errorf("a blocked connect: %v after %d tries over %v", err, tries, time.Duration(waited.Load()))
 	}
 	// The caller's context ends it too, with the dial's error.
@@ -566,6 +567,20 @@ func TestTestWaitsForLocalNetwork(t *testing.T) {
 	}
 	if got := time.Duration(waited.Load()); got != 4*time.Second {
 		t.Errorf("waited %v, want 4s", got)
+	}
+	// Once the wait runs out, Test says where to allow access.
+	setHostOS(t, "darwin")
+	waited.Store(0)
+	e.s.test = func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+		return nil, fmt.Errorf("connect to %s: %w", endpoint, connectFailed(syscall.EPERM))
+	}
+	type failed struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+	}
+	if got := decode[failed](t, e.post("/copy/api/test", `{"address":"192.0.2.10"}`)); got.OK || !strings.HasSuffix(got.Message, lanHint) ||
+		time.Duration(waited.Load()) != 10*time.Second {
+		t.Errorf("test = %+v after %v", got, time.Duration(waited.Load()))
 	}
 }
 

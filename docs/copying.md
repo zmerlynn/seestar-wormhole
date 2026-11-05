@@ -79,7 +79,7 @@ history.
   it. If it is blocked, **Test**, Copy and Preview can't reach the telescope
   there, and on a Mac they say where to allow it: enable seestar-wormhole in
   System Settings → Privacy & Security → Local Network, then **Test** again.
-  While the request is open, **Test**, **Save** and copying wait up to 30
+  While the request is open, **Test**, **Save** and copying wait up to 10
   seconds for your answer. Through Telescope Network, copying doesn't need it.
 - **Through Telescope Network, a large copy is shared.** It uses the same telescope
   session as the phone app and control clients, and delays their status

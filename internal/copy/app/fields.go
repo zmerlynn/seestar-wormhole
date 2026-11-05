@@ -144,7 +144,7 @@ func connectBlocked(err error) bool {
 
 // localNetworkRetry is how a dial to an address on this network waits out
 // macOS's Local Network prompt; tests replace it.
-var localNetworkRetry = lanRetry{goos: runtime.GOOS, every: time.Second, limit: 30 * time.Second, now: time.Now, after: time.After}
+var localNetworkRetry = lanRetry{goos: runtime.GOOS, every: time.Second, limit: 10 * time.Second, now: time.Now, after: time.After}
 
 // lanRetry is when [retryLAN] tries again: on goos "darwin" only, every
 // interval, until limit has passed since the first try. now and after are

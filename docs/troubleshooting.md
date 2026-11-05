@@ -16,7 +16,7 @@ network; the app needs it for the Seestar app to find this computer and to
 reach a telescope on this network. If the request was denied, enable
 seestar-wormhole in System Settings → Privacy & Security → Local Network, then
 **Test** again. While the request is open, **Test**, **Save** and copying wait
-up to 30 seconds for your answer. A failed **Test** on this network says so on
+up to 10 seconds for your answer. A failed **Test** on this network says so on
 a Mac.
 
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
