@@ -453,17 +453,22 @@ func TestFreeUpSpaceLocksTheRoute(t *testing.T) {
 }
 
 // Through the account, the copier reaches the telescope at the run's SMB
-// mapping once the run is Ready, and not while it connects, stops or
-// reconnects. Connect while copying through the account moves nothing,
-// so it goes ahead.
+// mapping once the run's status reads Ready, and not while it connects,
+// stops or reconnects. Connect while copying through the account moves
+// nothing, so it goes ahead.
 func TestAccountEndpoint(t *testing.T) {
 	e := newRouteEnv(t)
 	var mu sync.Mutex
 	var ready *proxy.Status
-	e.s.controller.ready = func(st *proxy.Status) bool {
+	// Only the run markReady names reads Ready; the rest read their own
+	// text, which is Connecting until a proxy session moves it.
+	e.s.controller.text = func(st *proxy.Status) string {
 		mu.Lock()
 		defer mu.Unlock()
-		return st != nil && st == ready
+		if st != nil && st == ready {
+			return "Ready"
+		}
+		return st.Text()
 	}
 	markReady := func() {
 		e.s.controller.mu.Lock()
