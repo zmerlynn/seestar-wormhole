@@ -673,9 +673,10 @@ for (const [layout, { width }] of Object.entries(layouts)) {
     }
 
     // An active pass, with long paths in flight and failed, and the lists
-    // open.
-    let v = null;
-    await fakeStatus(page, () => v);
+    // open. One route serves both tabs' views: WebKit can miss requests
+    // after an unroute and a new route.
+    let v = null, f = null;
+    await fakeStatus(page, () => v, () => f);
     for (const [name, view] of Object.entries(copyViews)) {
       v = view;
       await reopen(page, 'Copy');
@@ -694,10 +695,7 @@ for (const [layout, { width }] of Object.entries(layouts)) {
 
     // Free up space's states, with a long path, its lists open and the
     // confirm dialog.
-    await page.unrouteAll({ behavior: 'wait' });
     v = null;
-    let f = null;
-    await fakeStatus(page, () => v, () => f);
     for (const [name, view] of Object.entries(freeViews)) {
       f = view;
       await reopen(page, 'Free up space');
