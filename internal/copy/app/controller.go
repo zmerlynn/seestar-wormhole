@@ -66,8 +66,16 @@ type controller struct {
 	dial func(ctx context.Context, endpoint string) (remote.Session, error)
 	// target, if set, is where the telescope is now, which each pass
 	// follows while it is the telescope copying started for: a [Mount]'s.
-	target   func() (Target, error)
-	checkNow chan struct{}
+	target func() (Target, error)
+	// admit, if set, is the server's admission, which a pass holds only
+	// while it marks itself started: it starts either before a change of
+	// target checks for a pass, which then refuses, or after that change
+	// has committed, and then follows the target the change left.
+	admit *sync.Mutex
+	// admitting, if set, runs as a pass is about to take admit; tests
+	// hold a change of target there.
+	admitting func()
+	checkNow  chan struct{}
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when no loop runs
@@ -295,11 +303,22 @@ func (c *controller) passing() bool {
 
 // dialPass opens a pass's session, which starts the pass, at the target's
 // endpoint now.
+//
+// Locks are taken in this order: admit, then c.mu, as everywhere in the
+// server. admit is released before the target is asked and the session
+// dialed, and nothing that ends a pass takes it.
 func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Session, error) {
+	if c.admit != nil {
+		if c.admitting != nil {
+			c.admitting()
+		}
+		c.admit.Lock()
+	}
 	c.mu.Lock()
 	st := &c.st
-	// From here a change of target is refused until the pass is done, so
-	// the target followed below is the one the session reaches.
+	// From here a change of target is refused until the pass is done. A
+	// change admitted before this has committed, as admit was held until
+	// it had, so the target followed below is the one the session reaches.
 	c.pass = true
 	if ctx.Err() == nil {
 		last, contact := st.last, st.contact
@@ -307,6 +326,9 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 		st.contact = "connecting"
 	}
 	c.mu.Unlock()
+	if c.admit != nil {
+		c.admit.Unlock()
+	}
 	endpoint, err := c.follow(endpoint)
 	var sess remote.Session
 	if err == nil {

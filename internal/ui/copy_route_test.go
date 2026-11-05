@@ -15,6 +15,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
@@ -716,6 +717,133 @@ func TestAccountCopyStaysWithItsTelescope(t *testing.T) {
 		t.Fatalf("start copying again = %d %s", code, body)
 	}
 	e.until("B's file", func() bool { b, _ := os.ReadFile(local); return string(b) == "BBB" })
+}
+
+// A pass that comes due while Connect is admitted, and before it has
+// committed, waits for the commit and then follows the run Connect left.
+// The old run stops meanwhile and Connect's run reuses its local port: if
+// that reaches another telescope, copying ends without dialing it; if it
+// reaches the same one, copying resumes there. The first pass fails
+// a.jpg, so the next retries it, and each telescope's a.jpg differs.
+func TestAccountPassDuringConnect(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		serial string // the telescope Connect's run selects
+		want   string // a.jpg's copy, or "" for none
+	}{
+		{"other telescope", "synthetic-device-b", ""},
+		{"same telescope", "synthetic-device-a", "AAA"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newRouteEnv(t)
+			e.s.copy.Quit()
+			a := e.account()
+			var mu sync.Mutex
+			dials, armed := 0, false
+			entered, release := make(chan struct{}, 1), make(chan struct{})
+			// The share is whichever telescope the port reaches when the
+			// dial goes through, as a reused local listener would.
+			e.s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
+				Addr: netip.MustParseAddrPort(e.s.host), StateDir: t.TempDir(), Target: e.s.copyTarget,
+				Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+				Dial: func(ctx context.Context, _ string) (remote.Session, error) {
+					mu.Lock()
+					dials++
+					first, held := dials == 1, armed
+					armed = false
+					mu.Unlock()
+					if held {
+						// The dial reaches the port once Connect has
+						// committed.
+						entered <- struct{}{}
+						select {
+						case <-release:
+						case <-ctx.Done():
+							return nil, ctx.Err()
+						}
+					}
+					_, device, _, ok := e.s.controller.connected()
+					if !ok {
+						return nil, errNotConnected
+					}
+					data := "AAA"
+					if strings.Contains(device, "synthetic-device-b") {
+						data = "BBB"
+					}
+					f := remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte(data), ModTime: time.Date(2020, 1, 2, 3, 4, 5, 0, time.UTC)}})
+					if first {
+						f.Faults = map[string]remote.Fault{"MyWorks/a.jpg": {OpenErr: errors.New("synthetic read failure")}}
+					}
+					return f, nil
+				},
+			})
+			t.Cleanup(e.s.copy.Quit)
+			settings := testSettings()
+			if code, body := e.start(settings); code != 200 {
+				t.Fatalf("Connect = %d %s", code, body)
+			}
+			a.markReady("synthetic-device-a")
+			e.settings()
+			if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
+				t.Fatalf("start copying = %d %s", code, body)
+			}
+			e.until("the first pass", func() bool { state, _ := e.copying(); return state == "failures" })
+
+			mu.Lock()
+			armed = true
+			mu.Unlock()
+			admitted, proceed := make(chan struct{}), make(chan struct{})
+			changed := make(chan error, 1)
+			go func() {
+				changed <- e.s.changeRoute(func() bool { return false }, func() error {
+					close(admitted)
+					<-proceed
+					if err := e.s.controller.start(settings, ""); err != nil {
+						return err
+					}
+					a.markReady(tc.serial)
+					return nil
+				})
+			}()
+			<-admitted
+			// The next pass comes due and the old run stops. A pass that
+			// dials during the change does so well within this window;
+			// one that waits for the change never does.
+			deadline := time.Now().Add(500 * time.Millisecond)
+		due:
+			for time.Now().Before(deadline) {
+				e.post("/copy/api/copy", `{"action":"check"}`)
+				select {
+				case <-entered:
+					t.Error("the next pass dialed during an admitted Connect")
+					break due
+				case <-time.After(5 * time.Millisecond):
+				}
+			}
+			a.stop()
+			close(proceed)
+			if err := <-changed; err != nil {
+				t.Fatal(err)
+			}
+			close(release)
+			local := filepath.Join(e.folder, "MyWorks", "a.jpg")
+			if tc.want == "" {
+				e.until("copying to end", func() bool { _, err := os.Stat(local); return !e.s.copy.Busy() || err == nil })
+				if state, title := e.copying(); state != "cantwrite" || !strings.Contains(title, "another telescope") {
+					t.Errorf("copying ended in %q: %q", state, title)
+				}
+				if b, err := os.ReadFile(local); err == nil {
+					t.Errorf("a pass copied the other telescope's a.jpg: %q", b)
+				}
+				return
+			}
+			e.until("the pass", func() bool {
+				e.post("/copy/api/copy", `{"action":"check"}`)
+				b, _ := os.ReadFile(local)
+				return string(b) == tc.want
+			})
+		})
+	}
 }
 
 // A delete through the account holds the connection: Connect is refused

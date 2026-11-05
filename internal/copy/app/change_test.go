@@ -284,3 +284,137 @@ func TestChangeWaitsForWork(t *testing.T) {
 		t.Errorf("change once all work ended = %v", err)
 	}
 }
+
+// A pass that comes due while a change of target is admitted and not yet
+// committed waits for the commit, then follows the target it left: a
+// reconnect whose reused port reaches another telescope ends copying
+// before any dial, and one that reaches the same telescope resumes there.
+// The first pass fails b.jpg, so the next retries it; B's b.jpg differs.
+func TestPassDuringChange(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		device string // the telescope the reconnect reaches
+		want   string // b.jpg's copy
+	}{
+		{"other telescope", "synthetic-b", ""},
+		{"same telescope", "synthetic-a", "XYZ"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newChangeEnv(t)
+			e.put("MyWorks/b.jpg", ancient)
+			fileB := filepath.Join(filepath.Dir(e.fileB), "b.jpg")
+			if err := os.WriteFile(fileB, []byte("XYZ"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Chtimes(fileB, ancient, ancient); err != nil {
+				t.Fatal(err)
+			}
+			e.mu.Lock()
+			e.faults = map[string]remote.Fault{"MyWorks/b.jpg": {OpenErr: errors.New("synthetic read failure")}}
+			e.mu.Unlock()
+			c := e.m.s.copy
+			c.target = func() (Target, error) {
+				e.route.Lock()
+				defer e.route.Unlock()
+				device := "synthetic-a"
+				if e.run > 0 {
+					device = tc.device
+				}
+				return Target{Endpoint: e.endpoint, Device: device, Run: e.run}, nil
+			}
+			e.m.s.target = c.target
+			// Once armed, the next pass signals as it waits for admission
+			// and as it dials.
+			var mu sync.Mutex
+			armed := false
+			reached, release := make(chan string, 2), make(chan struct{})
+			c.admitting = func() {
+				mu.Lock()
+				defer mu.Unlock()
+				if armed {
+					reached <- "admission"
+				}
+			}
+			dial := c.dial
+			c.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+				mu.Lock()
+				held := armed
+				armed = false
+				mu.Unlock()
+				if held {
+					// The dial reaches the port once the change has
+					// committed.
+					reached <- "dial"
+					select {
+					case <-release:
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
+				return dial(ctx, endpoint)
+			}
+			until := func(what string, cond func() bool) {
+				t.Helper()
+				deadline := time.Now().Add(10 * time.Second)
+				for !cond() {
+					if time.Now().After(deadline) {
+						t.Fatalf("timed out waiting for %s", what)
+					}
+					time.Sleep(5 * time.Millisecond)
+				}
+			}
+			if err := e.m.s.startCopying(); err != nil {
+				t.Fatal(err)
+			}
+			until("the first pass", func() bool { return c.view(time.Now()).State == stFailures })
+
+			mu.Lock()
+			armed = true
+			mu.Unlock()
+			admitted, proceed := make(chan struct{}), make(chan struct{})
+			changed := make(chan error, 1)
+			go func() {
+				changed <- e.m.Change(func() bool { return false }, func() error {
+					close(admitted)
+					<-proceed
+					e.reconnect() // the same local port now reaches the run's telescope
+					return nil
+				})
+			}()
+			<-admitted
+			var got string
+			until("the next pass", func() bool {
+				c.check()
+				select {
+				case got = <-reached:
+					return true
+				default:
+					return false
+				}
+			})
+			if got != "admission" {
+				t.Errorf("the next pass reached its %s during an admitted change", got)
+			}
+			close(proceed)
+			if err := <-changed; err != nil {
+				t.Fatal(err)
+			}
+			close(release)
+			local := filepath.Join(e.set.Folder, "MyWorks", "b.jpg")
+			if tc.want == "" {
+				until("copying to end", func() bool { _, err := os.Stat(local); return !c.on() || err == nil })
+				if v := c.view(time.Now()); v.State != stCantWrite || !strings.Contains(v.Title, "another telescope") {
+					t.Errorf("copying ended in %q: %q", v.State, v.Title)
+				}
+				if b, err := os.ReadFile(local); err == nil {
+					t.Errorf("a pass copied the other telescope's b.jpg: %q", b)
+				}
+				return
+			}
+			until("the pass", func() bool { return c.view(time.Now()).State == stUpToDate })
+			if b, err := os.ReadFile(local); err != nil || string(b) != tc.want {
+				t.Errorf("b.jpg = %q, %v", b, err)
+			}
+		})
+	}
+}

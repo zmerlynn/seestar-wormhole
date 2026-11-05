@@ -81,10 +81,10 @@ type server struct {
 	free    *freer
 
 	// admit is held by each change of where the telescope is or what is
-	// saved, and by each start of copying, a preview, a Free up space
-	// check or a delete, so none lands between another's checks and its
-	// start. It may be held across a save to disk but is never taken by
-	// status, views or Busy.
+	// saved, and by each start of copying, a pass of copying, a preview,
+	// a Free up space check or a delete, so none lands between another's
+	// checks and its start. It may be held across a save to disk but is
+	// never taken by status, views, Busy or the end of any of them.
 	admit sync.Mutex
 
 	mu       sync.Mutex
@@ -106,6 +106,7 @@ func newServer(ctx context.Context, addr netip.AddrPort, token, version, stateDi
 	s.copy = newController(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
 		return s.dial(ctx, endpoint)
 	})
+	s.copy.admit = &s.admit
 	s.preview = newPreviewer(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
 		return s.dial(ctx, endpoint)
 	})
