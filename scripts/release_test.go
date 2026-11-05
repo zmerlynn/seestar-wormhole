@@ -708,6 +708,53 @@ func TestWorkflowArchiveAssembly(t *testing.T) {
 	}
 }
 
+// Each release builder checks the executables it built, before uploading them,
+// against the modules Go recorded in them.
+func TestWorkflowChecksShippedLicenses(t *testing.T) {
+	if _, err := os.Stat(".github/workflows/release.yml"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	data, err := os.ReadFile(".github/workflows/release.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct{ Steps []workflowStep }
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct{ job, build, check string }{
+		{"portable", `./scripts/release.sh "$RELEASE_VERSION"`,
+			`go run ./scripts/checklicenses "dist/parts/seestar-wormhole-cli_${RELEASE_VERSION}_linux_amd64" "dist/parts/seestar-copy-cli_${RELEASE_VERSION}_linux_amd64"`},
+		{"linux-ui", "./cmd/seestar-wormhole",
+			`go run ./scripts/checklicenses "dist/seestar-wormhole_${RELEASE_VERSION}_linux_${GOARCH}"`},
+		{"macos-ui", "./scripts/build-gui-mac.sh",
+			`go run ./scripts/checklicenses "$RUNNER_TEMP/mac-ui/arm64/seestar-wormhole.app/Contents/MacOS/seestar-wormhole" \` + "\n" +
+				`  "$RUNNER_TEMP/mac-ui/cli/seestar-wormhole-cli_${RELEASE_VERSION}_darwin_arm64" \` + "\n" +
+				`  "$RUNNER_TEMP/mac-ui/cli/seestar-copy-cli_${RELEASE_VERSION}_darwin_arm64"`},
+	} {
+		built, checked := false, false
+		for _, step := range workflow.Jobs[tc.job].Steps {
+			if strings.Contains(step.Run, tc.build) {
+				built = true
+			}
+			if strings.Contains(step.Run, tc.check) {
+				if !built || step.Env["RELEASE_VERSION"] != "${{ needs.validate.outputs.version }}" {
+					t.Errorf("%s checks licenses before its build or without the release version", tc.job)
+				}
+				checked = true
+			}
+			if strings.HasPrefix(step.Uses, "actions/upload-artifact@") && !checked {
+				t.Errorf("%s uploads before checking licenses", tc.job)
+			}
+		}
+		if !checked {
+			t.Errorf("%s does not check its executables' licenses", tc.job)
+		}
+	}
+}
+
 // verifyLines are the commands CI's Linux job must run: the gofmt check, the
 // race suite over the whole module, the license notices, and the
 // repository's own checks.
@@ -716,6 +763,7 @@ var verifyLines = []string{
 	`if [ -n "$unformatted" ]; then`,
 	"exit 1",
 	"go run ./scripts/generate-licenses.go --check",
+	"go run ./scripts/checklicenses",
 	"go test -race -count=2 -timeout 20m ./...",
 	"./scripts/test-check.sh",
 	"CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/...",

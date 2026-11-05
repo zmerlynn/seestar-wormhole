@@ -33,7 +33,9 @@ and Go 1.27.3. GUI releases use `gui,production` tags.
    `seestar-copy-cli --version` and `licenses` for each (with `.exe` on Windows).
    Confirm version, commit and platform, and that the licenses include
    `Module: github.com/pion/dtls/v3` and `Module: github.com/hirochachacha/go-smb2/v2`
-   respectively.
+   respectively. CI and `check.sh` run `go run ./scripts/checklicenses`, and
+   the release workflow runs it on the executables it builds, so each
+   `licenses` lists every module its executable links.
 5. Rehearse the full workflow from a branch with **Run workflow** and a valid
    `version` input. `workflow_dispatch` builds all downloads, writes full
    `SHA256SUMS`, attests them, and uploads a `release-assets-<version>` workflow
