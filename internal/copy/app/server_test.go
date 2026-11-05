@@ -426,6 +426,7 @@ func TestLocalNetworkHint(t *testing.T) {
 		{"DNS timed out", "darwin", dnsTimeout, lanHint},
 		{"no route to host", "darwin", noRoute, lanHint},
 		{"network unreachable", "darwin", connectFailed(syscall.ENETUNREACH), lanHint},
+		{"on-link host down", "darwin", connectFailed(syscall.EHOSTDOWN), lanHint},
 		{"connect not permitted", "darwin", connectFailed(syscall.EPERM), lanHint},
 		{"Linux", "linux", deadline, ""},
 		{"Windows", "windows", noRoute, ""},

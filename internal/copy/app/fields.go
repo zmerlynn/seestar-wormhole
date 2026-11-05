@@ -117,7 +117,8 @@ func LocalNetworkHint(goos string, err error) string {
 
 // unanswered reports whether err is a TCP connect that nothing answered:
 // it timed out, the context's deadline passed while it waited, or there
-// was no route to the host or network, or the system refused to send it.
+// was no route to the host or network, the on-link host did not answer
+// (EHOSTDOWN, which macOS returns for that), or the system refused to send it.
 // Apple documents no errno for a Local Network denial, so these are the
 // failures where one could hide. A refusal, a name not found, a DNS
 // server's answer and anything the SMB server said after connecting are
@@ -131,7 +132,7 @@ func unanswered(err error) bool {
 		return true
 	}
 	sys, ok := errors.AsType[*os.SyscallError](op.Err)
-	return ok && sys.Syscall == "connect" && (errors.Is(sys.Err, syscall.EHOSTUNREACH) || errors.Is(sys.Err, syscall.ENETUNREACH) || errors.Is(sys.Err, syscall.EPERM))
+	return ok && sys.Syscall == "connect" && (errors.Is(sys.Err, syscall.EHOSTUNREACH) || errors.Is(sys.Err, syscall.ENETUNREACH) || errors.Is(sys.Err, syscall.EHOSTDOWN) || errors.Is(sys.Err, syscall.EPERM))
 }
 
 // testMessage words Test's result for the page on goos. Test checks an
