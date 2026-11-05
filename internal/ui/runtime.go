@@ -205,7 +205,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	listening := listener.Addr().(*net.TCPAddr).AddrPort()
 	handler.copy = copyapp.NewMount(ctx, copyapp.MountOptions{
 		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
-		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Endpoint: handler.copyEndpoint,
+		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Target: handler.copyTarget,
 	})
 	activate := make(chan struct{}, 1)
 	if window != nil {

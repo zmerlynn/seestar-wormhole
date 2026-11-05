@@ -32,8 +32,8 @@ type freer struct {
 	dial    func(ctx context.Context, endpoint string) (remote.Session, error)
 	remover func(ctx context.Context, endpoint string) (remote.Remover, error)
 	// at, if set, fails each dial and remover once the telescope is no
-	// longer at the endpoint the run started at: a [Mount]'s.
-	at func(endpoint string) error
+	// longer at the target the run started at: a [Mount]'s.
+	at func(t Target) error
 	// prepared, if set, runs after a confirm's preparation and before its
 	// start; tests change the preview there.
 	prepared func()
@@ -113,20 +113,20 @@ func (f *freer) run(st freeStatus, o engine.DeleteOptions, stop chan struct{}, i
 	return nil
 }
 
-// find starts a preview with set, which it keeps.
-func (f *freer) find(set Settings) error {
+// find starts a preview with set at t, which it keeps.
+func (f *freer) find(set Settings, t Target) error {
 	o, err := f.options(set)
 	if err != nil {
 		return err
 	}
 	o.DryRun, o.Hooks = true, f.hooks()
 	o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-		if err := f.still(endpoint); err != nil {
+		if err := f.still(t); err != nil {
 			return nil, err
 		}
 		return f.dial(ctx, endpoint)
 	}
-	return f.run(freeStatus{state: frChecking, set: set}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
+	return f.run(freeStatus{state: frChecking, set: set, target: t}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
 		st := &f.st
 		switch {
 		case canceled || st.stale:
@@ -144,14 +144,14 @@ func (f *freer) find(set Settings) error {
 }
 
 // confirm deletes the files of preview id in the folders named, with the
-// preview's settings, if endpoint, where the telescope is now, is where
-// the preview was checked. Each file is checked again before it is
-// removed.
-func (f *freer) confirm(id int, folders []string, endpoint string) error {
+// preview's settings, if now, where the telescope is now, is the target
+// the preview was checked at, in the same run. Each file is checked again
+// before it is removed.
+func (f *freer) confirm(id int, folders []string, now Target) error {
 	f.mu.Lock()
 	st := f.st
 	f.mu.Unlock()
-	if st.state != frPreview || st.id != id || st.set.Address != endpoint {
+	if st.state != frPreview || st.id != id || st.target != now {
 		return errStale
 	}
 	only := map[string]bool{}
@@ -169,7 +169,7 @@ func (f *freer) confirm(id int, folders []string, endpoint string) error {
 	}
 	o.Only, o.Hooks = only, f.hooks()
 	o.OpenRemover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
-		if err := f.still(endpoint); err != nil {
+		if err := f.still(st.target); err != nil {
 			return nil, err
 		}
 		return f.remover(ctx, endpoint)
@@ -179,7 +179,7 @@ func (f *freer) confirm(id int, folders []string, endpoint string) error {
 	}
 	// run checks again that the preview is still the one shown: a Save
 	// since the check above has cleared it.
-	next := freeStatus{state: frDeleting, set: st.set, total: len(only)}
+	next := freeStatus{state: frDeleting, set: st.set, target: st.target, total: len(only)}
 	return f.run(next, o, make(chan struct{}), id, func(r engine.DeleteResult, err error, _ bool) {
 		st := &f.st
 		st.result, st.err, st.current = r, err, ""
@@ -194,12 +194,12 @@ func (f *freer) confirm(id int, folders []string, endpoint string) error {
 	})
 }
 
-// still fails if the telescope is no longer at endpoint.
-func (f *freer) still(endpoint string) error {
+// still fails if the telescope is no longer at t.
+func (f *freer) still(t Target) error {
 	if f.at == nil {
 		return nil
 	}
-	return f.at(endpoint)
+	return f.at(t)
 }
 
 // hooks keep a preview's or a delete's status: its counts, and in

@@ -348,16 +348,21 @@ var (
 	errNoLANAddress = errors.New("Save the telescope's address on the Connection tab first")
 )
 
-// copyEndpoint is where the copier reaches the telescope now. On this
+// copyTarget is where the copier reaches the telescope now. On this
 // network it is the saved address. Through the account it is the proxy's
-// local port for the device's SMB port, and only while the proxy is
-// connected: the copier never starts or holds the device session itself.
-func (s *server) copyEndpoint() (string, error) {
+// local port for the device's SMB port, with the telescope the run
+// selected and the run's number, and only while the proxy is connected:
+// the copier never starts or holds the device session itself.
+func (s *server) copyTarget() (copyapp.Target, error) {
 	s.mu.Lock()
 	settings := s.settings
 	s.mu.Unlock()
-	run, ok := s.controller.connected()
-	return copyEndpointFor(settings, run, ok)
+	run, device, id, ok := s.controller.connected()
+	endpoint, err := copyEndpointFor(settings, run, ok)
+	if err != nil || settings.Route == routeLAN {
+		return copyapp.Target{Endpoint: endpoint}, err
+	}
+	return copyapp.Target{Endpoint: endpoint, Device: device, Run: id}, nil
 }
 
 // copyEndpointFor is copyEndpoint for the saved settings and the run's,

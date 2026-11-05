@@ -37,8 +37,8 @@ type previewer struct {
 	// dial opens the preview's session; tests replace it.
 	dial func(ctx context.Context, endpoint string) (remote.Session, error)
 	// at, if set, fails the dial once the telescope is no longer at the
-	// endpoint the preview started at: a [Mount]'s.
-	at func(endpoint string) error
+	// target the preview started at: a [Mount]'s.
+	at func(t Target) error
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when no preview runs
@@ -72,8 +72,8 @@ func newPreviewer(parent context.Context, stateDir string, log *slog.Logger, dia
 	return &previewer{parent: parent, stateDir: stateDir, log: log, dial: dial}
 }
 
-// start runs a preview with set, in its own goroutine.
-func (p *previewer) start(set Settings) error {
+// start runs a preview with set, at t, in its own goroutine.
+func (p *previewer) start(set Settings, t Target) error {
 	sel, err := selector(set)
 	if err != nil {
 		return err
@@ -98,7 +98,7 @@ func (p *previewer) start(set Settings) error {
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: workers,
 		Dial: func(ctx context.Context, endpoint string) (sess remote.Session, err error) {
 			if p.at != nil {
-				err = p.at(endpoint)
+				err = p.at(t)
 			}
 			if err == nil {
 				sess, err = p.dial(ctx, endpoint)
@@ -190,6 +190,13 @@ func (p *previewer) discard() {
 		p.cancel()
 	}
 	p.st = previewStatus{}
+}
+
+// running reports whether a preview runs.
+func (p *previewer) running() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.done != nil
 }
 
 // quit cancels any preview for good and waits for it to return.

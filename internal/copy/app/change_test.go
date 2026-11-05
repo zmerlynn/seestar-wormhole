@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
@@ -23,7 +24,10 @@ const (
 )
 
 // changeEnv is a Mount over two shares: freeEnv's at A, and at B one with
-// a file of the same path, size and time but other contents.
+// a file of the same path, size and time but other contents. A reconnect
+// keeps the endpoint but starts another run, which reaches B there, as a
+// local port reused for another telescope would. Its dials wait for
+// freeEnv's hold.
 type changeEnv struct {
 	*freeEnv
 	m     *Mount
@@ -31,6 +35,7 @@ type changeEnv struct {
 
 	route    sync.Mutex
 	endpoint string
+	run      uint64
 }
 
 func newChangeEnv(t *testing.T) *changeEnv {
@@ -49,19 +54,34 @@ func newChangeEnv(t *testing.T) *changeEnv {
 		t.Fatal(err)
 	}
 	share := func(endpoint string) (*remote.FakeDir, error) {
-		if endpoint == atB {
+		e.route.Lock()
+		reused := e.run > 0
+		e.route.Unlock()
+		if endpoint == atB || reused {
 			return remote.NewFakeDir(dirB)
 		}
 		return e.share()
 	}
 	e.m = NewMount(context.Background(), MountOptions{
 		Addr: testAddr, StateDir: e.stateDir, Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Endpoint: func() (string, error) {
+		Target: func() (Target, error) {
 			e.route.Lock()
 			defer e.route.Unlock()
-			return e.endpoint, nil
+			return Target{Endpoint: e.endpoint, Run: e.run}, nil
 		},
-		Dial:    func(_ context.Context, endpoint string) (remote.Session, error) { return share(endpoint) },
+		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
+			e.mu.Lock()
+			hold := e.hold
+			e.mu.Unlock()
+			if hold != nil {
+				select {
+				case <-hold:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+			}
+			return share(endpoint)
+		},
 		Remover: func(_ context.Context, endpoint string) (remote.Remover, error) { return share(endpoint) },
 	})
 	t.Cleanup(e.m.Quit)
@@ -76,6 +96,13 @@ func (e *changeEnv) move(endpoint string) {
 	e.route.Lock()
 	defer e.route.Unlock()
 	e.endpoint = endpoint
+}
+
+// reconnect starts another run at the same endpoint.
+func (e *changeEnv) reconnect() {
+	e.route.Lock()
+	defer e.route.Unlock()
+	e.run++
 }
 
 func (e *changeEnv) post(path, body string) *httptest.ResponseRecorder {
@@ -110,8 +137,9 @@ func (e *changeEnv) keptB() bool {
 }
 
 // A preview checked at A never deletes at B: not once the endpoint has
-// moved, not after a change of route, and not when the endpoint moves
-// between the confirmation and the delete's dial.
+// moved or the run has, not after a change of route, and not when the
+// endpoint or the run moves between the confirmation and the delete's
+// dial.
 func TestDeleteStaysAtItsEndpoint(t *testing.T) {
 	t.Run("moved", func(t *testing.T) {
 		e := newChangeEnv(t)
@@ -119,6 +147,17 @@ func TestDeleteStaysAtItsEndpoint(t *testing.T) {
 		e.move(atB)
 		if w := e.delete(v); w.Code != 409 || !strings.Contains(w.Body.String(), "Preview again") {
 			t.Errorf("delete after a move = %d %s", w.Code, w.Body)
+		}
+		if !e.keptB() || !e.has("MyWorks/a.jpg") {
+			t.Error("a file was deleted")
+		}
+	})
+	t.Run("reconnected", func(t *testing.T) {
+		e := newChangeEnv(t)
+		v := e.preview()
+		e.reconnect()
+		if w := e.delete(v); w.Code != 409 || !strings.Contains(w.Body.String(), "Preview again") {
+			t.Errorf("delete after a reconnect = %d %s", w.Code, w.Body)
 		}
 		if !e.keptB() || !e.has("MyWorks/a.jpg") {
 			t.Error("a file was deleted")
@@ -153,28 +192,95 @@ func TestDeleteStaysAtItsEndpoint(t *testing.T) {
 			t.Errorf("a delete followed the endpoint: %+v, B kept %v", got, e.keptB())
 		}
 	})
+	t.Run("reconnected at the dial", func(t *testing.T) {
+		e := newChangeEnv(t)
+		v := e.preview()
+		e.f.prepared = e.reconnect
+		if w := e.delete(v); w.Code != 200 {
+			t.Fatalf("delete = %d %s", w.Code, w.Body)
+		}
+		got := e.wait(frDone, frStopped, frFailed)
+		if got.State != frFailed || !e.keptB() || !e.has("MyWorks/a.jpg") {
+			t.Errorf("a delete followed the run: %+v, B kept %v", got, e.keptB())
+		}
+	})
 }
 
-// A change refuses while copying or Free up space runs, and runs nothing
-// then; one that keeps the route goes ahead.
+// A change refuses while a Free up space check, a preview or a pass of
+// copying runs, whether or not it moves the route, and commits nothing
+// then. Between passes, copying refuses only a change that moves the
+// route.
 func TestChangeWaitsForWork(t *testing.T) {
 	e := newChangeEnv(t)
-	e.mu.Lock()
-	e.hold = make(chan struct{})
-	e.mu.Unlock()
-	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":false}`); w.Code != 200 {
-		t.Fatalf("find = %d %s", w.Code, w.Body)
+	refused := func(what string) {
+		t.Helper()
+		for _, moves := range []bool{true, false} {
+			committed := false
+			if err := e.m.Change(func() bool { return moves }, func() error { committed = true; return nil }); !errors.Is(err, ErrBusy) || committed {
+				t.Errorf("change (moves %v) while %s = %v, committed %v", moves, what, err, committed)
+			}
+		}
 	}
-	committed := false
-	if err := e.m.Change(func() bool { return true }, func() error { committed = true; return nil }); !errors.Is(err, ErrBusy) || committed {
-		t.Errorf("change while checking = %v, committed %v", err, committed)
+	held := func(start func()) func() {
+		hold := make(chan struct{})
+		e.mu.Lock()
+		e.hold = hold
+		e.mu.Unlock()
+		start()
+		return func() {
+			e.mu.Lock()
+			e.hold = nil
+			e.mu.Unlock()
+			close(hold)
+		}
 	}
-	if err := e.m.Change(func() bool { return false }, func() error { committed = true; return nil }); err != nil || !committed {
-		t.Errorf("change that keeps the route = %v, committed %v", err, committed)
+	until := func(what string, cond func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(10 * time.Second)
+		for !cond() {
+			if time.Now().After(deadline) {
+				t.Fatalf("timed out waiting for %s", what)
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
 	}
-	close(e.hold)
+
+	release := held(func() {
+		if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":false}`); w.Code != 200 {
+			t.Fatalf("find = %d %s", w.Code, w.Body)
+		}
+	})
+	refused("checking")
+	release()
 	e.wait(frStart, frPreview, frNothing, frCheckFail)
+
+	release = held(func() {
+		if w := e.post("/copy/api/copy", `{"action":"preview"}`); w.Code != 200 {
+			t.Fatalf("preview = %d %s", w.Code, w.Body)
+		}
+	})
+	refused("previewing")
+	release()
+	until("the preview", func() bool { return !e.m.s.preview.running() })
+
+	release = held(func() {
+		if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
+			t.Fatalf("start copying = %d %s", w.Code, w.Body)
+		}
+	})
+	until("a pass", e.m.s.copy.passing)
+	refused("a pass runs")
+	release()
+	until("the pass", func() bool { return e.m.s.copy.view(time.Now()).State == stUpToDate })
+	if err := e.m.Change(func() bool { return true }, func() error { return nil }); !errors.Is(err, ErrBusy) {
+		t.Errorf("change that moves the route between passes = %v", err)
+	}
+	if err := e.m.Change(func() bool { return false }, func() error { return nil }); err != nil {
+		t.Errorf("change that keeps the route between passes = %v", err)
+	}
+	e.m.s.copy.stop()
+	until("copying to stop", func() bool { return !e.m.Busy() })
 	if err := e.m.Change(func() bool { return true }, func() error { return nil }); err != nil {
-		t.Errorf("change once the check ended = %v", err)
+		t.Errorf("change once all work ended = %v", err)
 	}
 }

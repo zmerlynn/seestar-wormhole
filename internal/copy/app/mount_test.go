@@ -31,10 +31,10 @@ func newMountEnv(t *testing.T) *mountEnv {
 	e.m = NewMount(context.Background(), MountOptions{
 		Addr: testAddr, StateDir: t.TempDir(), Version: "v9.9.9",
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Endpoint: func() (string, error) {
+		Target: func() (Target, error) {
 			e.mu.Lock()
 			defer e.mu.Unlock()
-			return e.endpoint, e.err
+			return Target{Endpoint: e.endpoint}, e.err
 		},
 		Dial: e.d.dial,
 		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {

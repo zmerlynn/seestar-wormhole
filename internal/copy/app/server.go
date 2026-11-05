@@ -60,7 +60,7 @@ var static = map[string]struct{ file, typ string }{
 //
 // Locks are taken in this order: admit, then mu, then a controller's own
 // mutex. A [Mount]'s host takes its own locks inside admit, in its commit,
-// and endpoint takes the host's status lock inside mu, so neither of those
+// and target takes the host's status lock inside mu, so neither of those
 // is held around admit.
 type server struct {
 	ctx      context.Context // the app's lifetime; browse's sessions live in it
@@ -73,12 +73,12 @@ type server struct {
 	dial   func(ctx context.Context, endpoint string) (remote.Session, error)
 	test   func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	native *Native // nil without a window
-	// endpoint, if set, is where the telescope is for every dial and
+	// target, if set, is where the telescope is for every dial and
 	// start, in place of the saved address: a [Mount]'s.
-	endpoint func() (string, error)
-	copy     *controller
-	preview  *previewer
-	free     *freer
+	target  func() (Target, error)
+	copy    *controller
+	preview *previewer
+	free    *freer
 
 	// admit is held by each change of where the telescope is or what is
 	// saved, and by each start of copying, a preview, a Free up space
@@ -122,23 +122,23 @@ func (f *settingsFile) setUp() bool {
 }
 
 // setUp reports whether the saved settings are enough to copy. A mounted
-// server's address comes from its endpoint, so it needs only a folder.
+// server's address comes from its target, so it needs only a folder.
 func (s *server) setUp() bool {
-	if s.endpoint != nil {
+	if s.target != nil {
 		return s.file.exists && s.file.settings.Folder != ""
 	}
 	return s.file.setUp()
 }
 
-// resolve is set with the address to use now: the saved one, or for a
-// mounted server, its endpoint's.
-func (s *server) resolve(set Settings) (Settings, error) {
-	if s.endpoint == nil {
-		return set, nil
+// resolve is set with the address to use now, and the target there: the
+// saved address, or for a mounted server, its target's.
+func (s *server) resolve(set Settings) (Settings, Target, error) {
+	if s.target == nil {
+		return set, Target{Endpoint: set.Address}, nil
 	}
-	var err error
-	set.Address, err = s.endpoint()
-	return set, err
+	t, err := s.target()
+	set.Address = t.Endpoint
+	return set, t, err
 }
 
 // startBrowse serves Browse for the saved settings, if they are set up. It
@@ -182,11 +182,11 @@ func (s *server) startCopying() error {
 	if !s.setUp() {
 		return errNotSetUp
 	}
-	set, err := s.resolve(s.file.settings)
+	set, t, err := s.resolve(s.file.settings)
 	if err != nil {
 		return err
 	}
-	if err := s.copy.start(set); err != nil {
+	if err := s.copy.start(set, t); err != nil {
 		return err
 	}
 	s.preview.discard()
@@ -207,11 +207,11 @@ func (s *server) startPreview() error {
 	case s.copy.on():
 		return errors.New("copying is on")
 	}
-	set, err := s.resolve(s.file.settings)
+	set, t, err := s.resolve(s.file.settings)
 	if err != nil {
 		return err
 	}
-	return s.preview.start(set)
+	return s.preview.start(set, t)
 }
 
 // copyView is the Copy tab with its preview.
@@ -455,8 +455,8 @@ type fieldErrors struct {
 
 func (s *server) save(w http.ResponseWriter, in input) {
 	set, errs := checkInput(in)
-	if s.endpoint != nil {
-		// A mounted server's address is its endpoint's, not the form's.
+	if s.target != nil {
+		// A mounted server's address is its target's, not the form's.
 		delete(errs, "address")
 		set.Address = ""
 	}
@@ -573,8 +573,9 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 				return
 			}
 		}
-		if set, err = s.resolve(set); err == nil {
-			err = s.free.find(set)
+		var t Target
+		if set, t, err = s.resolve(set); err == nil {
+			err = s.free.find(set, t)
 		}
 		s.mu.Unlock()
 		if err != nil {
@@ -584,16 +585,16 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 	case "cancel":
 		s.free.cancelCheck()
 	case "delete":
-		// The delete goes to the endpoint its preview was checked at, and
+		// The delete goes to the target its preview was checked at, and
 		// only while that is still where the telescope is: holding
-		// s.admit keeps a change of endpoint from landing in between.
+		// s.admit keeps a change of target from landing in between.
 		s.admit.Lock()
 		defer s.admit.Unlock()
 		s.mu.Lock()
-		now, err := s.resolve(s.file.settings)
+		_, now, err := s.resolve(s.file.settings)
 		s.mu.Unlock()
 		if err == nil {
-			err = s.free.confirm(in.ID, in.Folders, now.Address)
+			err = s.free.confirm(in.ID, in.Folders, now)
 		}
 		if errors.Is(err, errStale) {
 			conflict("Preview again before deleting.")

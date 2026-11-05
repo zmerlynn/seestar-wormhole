@@ -33,6 +33,7 @@ type freeStatus struct {
 	changed bool // Start, after a Save or a Clear history changed what a preview showed
 	stale   bool // a Save changed the inputs of the running check
 	set     Settings
+	target  Target // where the preview was checked
 	// Checking, and Deleting before each delete.
 	files          int // Checked
 	hashed, toHash int64

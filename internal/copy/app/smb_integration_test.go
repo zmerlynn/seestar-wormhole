@@ -37,7 +37,7 @@ func TestSMBCopyPass(t *testing.T) {
 	}
 	c := newController(t.Context(), t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)), dial)
 	t.Cleanup(c.quit)
-	if err := c.start(set); err != nil {
+	if err := c.start(set, Target{Endpoint: set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	var v copyView
@@ -116,7 +116,7 @@ func TestSMBFreeUpSpace(t *testing.T) {
 		t.Helper()
 		c := newController(ctx, stateDir, log, dial)
 		defer c.quit()
-		if err := c.start(set); err != nil {
+		if err := c.start(set, Target{Endpoint: set.Address}); err != nil {
 			t.Fatal(err)
 		}
 		for deadline := time.Now().Add(time.Minute); ; time.Sleep(10 * time.Millisecond) {
@@ -151,7 +151,7 @@ func TestSMBFreeUpSpace(t *testing.T) {
 			}
 		}
 	}
-	if err := f.find(set); err != nil {
+	if err := f.find(set, Target{Endpoint: set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	v := wait(frPreview, frNothing, frCheckFail)
@@ -168,7 +168,7 @@ func TestSMBFreeUpSpace(t *testing.T) {
 		t.Fatal(err)
 	}
 	pass("Copied 1 file (")
-	if err := f.confirm(v.ID, []string{"app-free/A", "app-free/B"}, set.Address); err != nil {
+	if err := f.confirm(v.ID, []string{"app-free/A", "app-free/B"}, Target{Endpoint: set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	if v := wait(frDone, frStopped, frFailed); v.State != frDone || v.Title != "Deleted 3 files and removed 1 empty folder." {

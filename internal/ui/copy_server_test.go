@@ -34,8 +34,8 @@ func copyServer(t *testing.T) (*server, *[]string) {
 	var tested []string
 	s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
 		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
-		Log:      slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Endpoint: s.copyEndpoint,
+		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Target: s.copyTarget,
 		Dial: func(context.Context, string) (remote.Session, error) {
 			return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), nil
 		},
@@ -237,7 +237,7 @@ func TestCopyWaitsForTheConnection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer func() { close(release); s.controller.quit() }()
-	if _, err := s.copyEndpoint(); !errors.Is(err, errNotConnected) {
+	if _, err := s.copyTarget(); !errors.Is(err, errNotConnected) {
 		t.Errorf("endpoint while connecting: %v", err)
 	}
 	copySettings(t, s)
@@ -298,7 +298,7 @@ func TestRouteSave(t *testing.T) {
 	if !strings.Contains(status.Body.String(), `"route":"lan"`) || !strings.Contains(status.Body.String(), `"copy_busy":false`) {
 		t.Errorf("status = %s", status.Body)
 	}
-	if got, err := s.copyEndpoint(); got != "192.0.2.10:445" || err != nil {
+	if got, err := s.copyTarget(); got.Endpoint != "192.0.2.10:445" || err != nil {
 		t.Errorf("endpoint = %q, %v", got, err)
 	}
 	// The account route keeps the address for a switch back.

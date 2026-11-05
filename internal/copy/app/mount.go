@@ -19,10 +19,10 @@ type MountOptions struct {
 	StateDir string         // the CLI's default state folder
 	Version  string
 	Log      *slog.Logger
-	// Endpoint is where the telescope is, host:port, asked again for each
-	// start and each dial. Its error says why there is no endpoint now,
-	// and the start or dial fails with it. It must not wait on [Mount.Change].
-	Endpoint func() (string, error)
+	// Target is where the telescope is now, asked again for each start and
+	// each dial. Its error says why there is no target now, and the start
+	// or dial fails with it. It must not wait on [Mount.Change].
+	Target func() (Target, error)
 	// Dial opens a session to an endpoint; nil is remote.Dial. Test is
 	// Test's check; nil is engine.Test. Remover opens a delete's remover;
 	// nil is remote.DialRemover. Tests replace them.
@@ -31,10 +31,33 @@ type MountOptions struct {
 	Remover func(ctx context.Context, endpoint string) (remote.Remover, error)
 }
 
+// Target is where copying, a preview or a delete reaches the telescope:
+// its endpoint, host:port, and through the account, the telescope the
+// connection selected and that connection's run, which a reconnect
+// changes. Device is only compared, never shown or logged.
+type Target struct {
+	Endpoint string
+	Device   string // "" on this network
+	Run      uint64 // 0 on this network
+}
+
+// String is the endpoint only.
+func (t Target) String() string { return t.Endpoint }
+
+// sameTelescope reports whether u reaches the telescope t does: through
+// the account the same device, in any run and at any endpoint; on this
+// network the same address.
+func (t Target) sameTelescope(u Target) bool {
+	if t.Device == "" && u.Device == "" {
+		return t.Endpoint == u.Endpoint
+	}
+	return t.Device == u.Device
+}
+
 // Mount is the app's API and Browse inside another app's server, which
 // owns the page, the token and the checks: it serves /copy/api/<call> and
 // /browse/. Its settings are kept in memory only, and it reaches the
-// telescope at its Endpoint rather than a saved address.
+// telescope at its Target rather than a saved address.
 type Mount struct {
 	s        *server
 	cancel   context.CancelFunc
@@ -59,24 +82,25 @@ func NewMount(ctx context.Context, o MountOptions) *Mount {
 	if o.Test != nil {
 		s.test = o.Test
 	}
-	s.endpoint = o.Endpoint
-	// Browse's dials and copying's ask for the endpoint again, so a pass
-	// reaches the telescope where it is now: through the account, a
-	// reconnect may map it elsewhere. A change of route waits for copying
-	// to stop, and replaces Browse's pool.
+	s.target = o.Target
+	// Browse's dials ask for the endpoint again, so they reach the
+	// telescope where it is now. A change of route replaces Browse's pool.
 	s.dial = func(ctx context.Context, _ string) (remote.Session, error) {
-		endpoint, err := o.Endpoint()
+		t, err := o.Target()
 		if err != nil {
 			return nil, err
 		}
-		return dial(ctx, endpoint)
+		return dial(ctx, t.Endpoint)
 	}
-	// A preview's and a delete's dials go only to the endpoint they were
-	// started at, and fail once the telescope is elsewhere: a delete must
-	// not remove files on a telescope it never checked.
-	at := func(endpoint string) error {
-		now, err := o.Endpoint()
-		if err == nil && now != endpoint {
+	// Each pass of copying follows its telescope to where it is now, and
+	// copying stops once the target is another telescope.
+	s.copy.dial, s.copy.target = dial, o.Target
+	// A preview's and a delete's dials go only to the target they were
+	// started at, and fail once that changed, even by a reconnect: a
+	// delete must not remove files on a telescope it never checked.
+	at := func(t Target) error {
+		now, err := o.Target()
+		if err == nil && now != t {
 			err = errMoved
 		}
 		return err
@@ -90,26 +114,27 @@ func NewMount(ctx context.Context, o MountOptions) *Mount {
 }
 
 // errMoved fails a preview's or a delete's dial once the telescope's
-// endpoint is no longer the one it started at.
-var errMoved = errors.New("the telescope's address changed; preview again")
+// target is no longer the one it started at.
+var errMoved = errors.New("the connection to the telescope changed; preview again")
 
-// ErrBusy refuses a change of route while copying is on or Free up space
-// checks or deletes.
+// ErrBusy refuses a change of route while copying or Free up space is
+// running.
 var ErrBusy = errors.New("copying or Free up space is running")
 
-// Change commits a change of where the telescope is: commit runs while
-// no copying, preview or Free up space can start. moves reports whether
-// the change takes the copier to another route or address; one that does
-// is refused with ErrBusy, without calling commit, while copying is on or
-// Free up space checks or deletes. Once commit has run, even if it failed
-// partway, the copy and Free up space previews go back to Start and Browse
-// gets a new session pool. moves and commit may take the caller's locks,
-// but must not call back into the Mount.
+// Change commits a change of where the telescope is, or of the connection
+// that reaches it: commit runs while no copying, preview or Free up space
+// can start. It is refused with ErrBusy, without calling commit, while a
+// pass of copying, a preview, or a Free up space check or delete runs, and
+// also while copying is on if moves reports that the change takes the
+// copier to another route or address. Once commit has run, even if it
+// failed partway, the copy and Free up space previews go back to Start and
+// Browse gets a new session pool. moves and commit may take the caller's
+// locks, but must not call back into the Mount.
 func (m *Mount) Change(moves func() bool, commit func() error) error {
 	s := m.s
 	s.admit.Lock()
 	defer s.admit.Unlock()
-	if moves() && (s.copy.on() || s.free.running()) {
+	if s.copy.passing() || s.preview.running() || s.free.running() || moves() && s.copy.on() {
 		return ErrBusy
 	}
 	defer s.endpointChanged()
@@ -146,9 +171,10 @@ func (m *Mount) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Busy reports whether copying is on or Free up space is checking or
-// deleting, which a change of where the telescope is must wait for.
-func (m *Mount) Busy() bool { return m.s.copy.on() || m.s.free.running() }
+// Busy reports whether copying is on, a preview runs or Free up space is
+// checking or deleting, which a change of where the telescope is must
+// wait for.
+func (m *Mount) Busy() bool { return m.s.copy.on() || m.s.preview.running() || m.s.free.running() }
 
 // Quit closes Browse's session, then stops copying, the preview and Free
 // up space and waits for them. Later calls do nothing.

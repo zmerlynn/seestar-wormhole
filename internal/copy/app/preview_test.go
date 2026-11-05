@@ -35,7 +35,7 @@ func newPreviewEnv(t *testing.T, files fstest.MapFS) *previewEnv {
 // run starts a preview and waits for it to end.
 func (e *previewEnv) run() *previewView {
 	e.t.Helper()
-	if err := e.p.start(e.set); err != nil {
+	if err := e.p.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		e.t.Fatal(err)
 	}
 	e.p.mu.Lock()
@@ -191,14 +191,14 @@ func TestPreviewDiscard(t *testing.T) {
 		<-ctx.Done()
 		return nil, ctx.Err()
 	}
-	if err := e.p.start(e.set); err != nil {
+	if err := e.p.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	<-dialed
 	if v := e.p.view(); v == nil || v.State != pvRunning || v.Title != "Connecting to 192.0.2.10:445…" {
 		t.Errorf("running: %+v", v)
 	}
-	if err := e.p.start(e.set); !errors.Is(err, errPreviewing) {
+	if err := e.p.start(e.set, Target{Endpoint: e.set.Address}); !errors.Is(err, errPreviewing) {
 		t.Errorf("a second start: got %v, want errPreviewing", err)
 	}
 	e.p.discard()
@@ -209,7 +209,7 @@ func TestPreviewDiscard(t *testing.T) {
 	if v := e.p.view(); v != nil {
 		t.Errorf("after the run ended: %+v, want none", v)
 	}
-	if err := e.p.start(e.set); !errors.Is(err, errBusy) {
+	if err := e.p.start(e.set, Target{Endpoint: e.set.Address}); !errors.Is(err, errBusy) {
 		t.Errorf("start after quit: got %v, want errBusy", err)
 	}
 }

@@ -51,6 +51,9 @@ const checkReach = "Check that the telescope is on and on the same network as th
 // errBusy is a start while copying is on or stopping, or the app quitting.
 var errBusy = errors.New("copying is already on")
 
+// errOtherTelescope ends copying once its target is another telescope.
+var errOtherTelescope = errors.New("the connection now reaches another telescope")
+
 // controller runs the copy loop, at most one at a time, and keeps its
 // status. Its mutex is never held while waiting on the engine, the disk,
 // the network or the log.
@@ -60,7 +63,10 @@ type controller struct {
 	log      *slog.Logger // the loop's: it also feeds activity
 	activity *activity
 	// dial opens a pass's session; tests replace it.
-	dial     func(ctx context.Context, endpoint string) (remote.Session, error)
+	dial func(ctx context.Context, endpoint string) (remote.Session, error)
+	// target, if set, is where the telescope is now, which each pass
+	// follows while it is the telescope copying started for: a [Mount]'s.
+	target   func() (Target, error)
 	checkNow chan struct{}
 
 	mu       sync.Mutex
@@ -68,6 +74,9 @@ type controller struct {
 	done     chan struct{}      // closed when the loop has returned
 	stopping bool
 	quitting bool
+	bound    Target // the loop's target, which a pass follows
+	pass     bool   // a pass has dialed, or is dialing, and is not done
+	ended    error  // why the loop ended itself, if it did
 	st       status
 }
 
@@ -114,8 +123,9 @@ func newController(parent context.Context, stateDir string, log *slog.Logger, di
 	}
 }
 
-// start turns copying on with set, which the loop keeps for its life.
-func (c *controller) start(set Settings) error {
+// start turns copying on with set at t, which the loop keeps for its
+// life; each pass follows t's telescope to where it is now.
+func (c *controller) start(set Settings, t Target) error {
 	sel, err := selector(set)
 	if err != nil {
 		return err
@@ -128,6 +138,7 @@ func (c *controller) start(set Settings) error {
 	ctx, cancel := context.WithCancel(c.parent)
 	done := make(chan struct{})
 	c.cancel, c.done, c.stopping = cancel, done, false
+	c.bound, c.pass, c.ended = t, false, nil
 	interval := time.Duration(set.IntervalMinutes) * time.Minute
 	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
@@ -208,6 +219,10 @@ func selector(set Settings) (engine.Selector, error) {
 func (c *controller) finish(err error) {
 	c.mu.Lock()
 	st := &c.st
+	c.pass = false
+	if c.ended != nil {
+		err = c.ended
+	}
 	switch {
 	case errors.Is(err, state.ErrLocked):
 		st.state = stInUse
@@ -270,17 +285,33 @@ func (c *controller) on() bool {
 	return c.done != nil
 }
 
-// dialPass opens a pass's session, which starts the pass.
+// passing reports whether a pass has dialed, or is dialing, and is not
+// done: a change of target must wait for it.
+func (c *controller) passing() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.done != nil && c.pass
+}
+
+// dialPass opens a pass's session, which starts the pass, at the target's
+// endpoint now.
 func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Session, error) {
 	c.mu.Lock()
 	st := &c.st
+	// From here a change of target is refused until the pass is done, so
+	// the target followed below is the one the session reaches.
+	c.pass = true
 	if ctx.Err() == nil {
 		last, contact := st.last, st.contact
 		*st = status{state: stConnecting, endpoint: st.endpoint, folder: st.folder, interval: st.interval, last: last, contact: contact}
 		st.contact = "connecting"
 	}
 	c.mu.Unlock()
-	sess, err := c.dial(ctx, endpoint)
+	endpoint, err := c.follow(endpoint)
+	var sess remote.Session
+	if err == nil {
+		sess, err = c.dial(ctx, endpoint)
+	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if ctx.Err() != nil {
@@ -292,6 +323,28 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 		st.state, st.contact = stListing, "ok"
 	}
 	return sess, err
+}
+
+// follow is the endpoint a pass dials: the target's now, while it reaches
+// the telescope copying started for. Once it reaches another, the loop
+// ends, and copying must be started again for that telescope.
+func (c *controller) follow(endpoint string) (string, error) {
+	if c.target == nil {
+		return endpoint, nil
+	}
+	now, err := c.target()
+	if err != nil {
+		return "", err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if !c.bound.sameTelescope(now) {
+		c.ended = errOtherTelescope
+		c.cancel()
+		return "", errOtherTelescope
+	}
+	c.bound, c.st.endpoint = now, now.Endpoint
+	return now.Endpoint, nil
 }
 
 // hooks turns the engine's calls into the status. Calls after ctx is
@@ -357,7 +410,7 @@ func (c *controller) hooks(ctx context.Context) engine.Hooks {
 			c.mu.Lock()
 			defer c.mu.Unlock()
 			st := &c.st
-			st.flight = nil
+			st.flight, c.pass = nil, false
 			if ctx.Err() != nil {
 				st.stopCopied = sum.Copied + sum.Replaced
 				return
@@ -553,10 +606,14 @@ func (c *controller) view(now time.Time) copyView {
 		v.Text = "It's in another seestar-copy window or seestar-copy-cli. Stop that copy, then start copying here."
 	case stCantWrite:
 		// Only a refused write in the folder names it as the cause.
-		if errors.Is(st.startErr, fs.ErrPermission) && inFolder(st.startErr, st.folder) {
+		switch {
+		case errors.Is(st.startErr, fs.ErrPermission) && inFolder(st.startErr, st.folder):
 			v.Title = "Can't write to " + st.folder + ": " + reason(st.startErr) + "."
 			v.Text = "Choose a writable folder in Settings, then start copying."
-		} else {
+		case errors.Is(st.startErr, errOtherTelescope):
+			v.Title = "Copying stopped: " + st.startErr.Error() + "."
+			v.Text = "Start copying again to copy from it."
+		default:
 			v.Title = "Couldn't start copying: " + st.startErr.Error() + "."
 			v.Text = "Fix the problem, then start copying."
 		}

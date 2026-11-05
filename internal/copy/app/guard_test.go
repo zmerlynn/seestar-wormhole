@@ -21,7 +21,7 @@ func panicDial(context.Context, string) (remote.Session, error) { panic("boom") 
 func TestCopyPanicEndsTheLoop(t *testing.T) {
 	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
 	e.c.dial = panicDial
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.waitOff()
@@ -29,7 +29,7 @@ func TestCopyPanicEndsTheLoop(t *testing.T) {
 	if v.On || !strings.Contains(v.Title, "internal error while copying: boom") {
 		t.Errorf("after a panic: %+v", v)
 	}
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Errorf("start after a panic: %v", err)
 	}
 }
@@ -50,7 +50,7 @@ func TestFreePanicFails(t *testing.T) {
 	if err := os.MkdirAll(e.set.Folder, 0o777); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.f.find(e.set); err != nil {
+	if err := e.f.find(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.f.mu.Lock()
@@ -105,7 +105,7 @@ func TestCopyFinishPanic(t *testing.T) {
 	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
 	e.c.log = slog.New(panicHandler{e.c.log.Handler(), "copying stopped"})
 	e.c.dial = panicDial
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.waitOff()
