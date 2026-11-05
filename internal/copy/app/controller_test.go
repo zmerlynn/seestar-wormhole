@@ -441,26 +441,27 @@ func TestCopyUnreachableLocalNetworkHint(t *testing.T) {
 
 // On macOS, copying on this network waits out the Local Network prompt:
 // its dial is tried again while the system fails it at once. Through the
-// account it is not.
+// account it is not, and a dial through the account, even the app's first,
+// leaves the wait to the first dial on this network.
 func TestCopyWaitsForLocalNetwork(t *testing.T) {
-	setRetry(t, "darwin")
+	waited := setRetry(t, "darwin")
 	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.dialErr = noRoute
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if e.wait(stUnreachable); e.dialCount() != 1 || waited.Load() != 0 {
+		t.Errorf("through the account: %d dials over %v", e.dialCount(), time.Duration(waited.Load()))
+	}
+
+	e = newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
 	e.dialErr = connectFailed(syscall.EPERM)
 	e.failDials = 2
 	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
-	if v := e.wait(stUpToDate); e.dialCount() != 3 {
-		t.Errorf("%d dials, view %+v", e.dialCount(), v)
-	}
-
-	e = newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
-	e.dialErr = noRoute
-	if err := e.c.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
-		t.Fatal(err)
-	}
-	if e.wait(stUnreachable); e.dialCount() != 1 {
-		t.Errorf("through the account: %d dials", e.dialCount())
+	if v := e.wait(stUpToDate); e.dialCount() != 3 || time.Duration(waited.Load()) != 2*time.Second {
+		t.Errorf("then on this network: %d dials over %v, view %+v", e.dialCount(), time.Duration(waited.Load()), v)
 	}
 }
 
