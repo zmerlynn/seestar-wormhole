@@ -406,9 +406,8 @@ Sync creates the `sync` folder, and any missing folders above it, with mode
 exactly 0600, whatever the umask. The lock files are created 0600, less the
 umask. Existing folders and lock files keep their permissions. An existing
 nonempty state file keeps its permissions; an empty state file is replaced
-with a new 0600 file. On Windows the mode bits do not apply: the state file
-is written with a protected DACL that grants access only to you and SYSTEM,
-and does not inherit the folder's ACLs.
+with a new 0600 file. On Windows the mode bits do not apply, and privacy
+comes from the ACLs the folder inherits.
 
 The state is keyed by destination only. With a second telescope, use a second
 destination.
