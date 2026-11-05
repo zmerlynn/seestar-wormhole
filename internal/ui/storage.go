@@ -75,7 +75,7 @@ func (s *storage) writeBytes(name string, b []byte) error {
 	} else if !os.IsNotExist(err) {
 		return errStorage
 	}
-	if err := privatefile.WriteFile(s.directory, name, b); err != nil {
+	if err := privatefile.WriteFile(s.directory, name, b, privatefile.Private); err != nil {
 		return errStorage
 	}
 	return nil

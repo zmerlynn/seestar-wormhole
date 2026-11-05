@@ -33,9 +33,23 @@ func Replace(from, to string) error {
 }
 func SyncDirectory(*os.File) error { return nil }
 
-// create makes a new private file for writing, refusing any existing entry.
-func create(path string) (*os.File, error) {
+// create makes a new file for writing, refusing any existing entry. Under
+// Inherited it is an ordinary file that takes its folder's ACL, as
+// [os.CreateTemp] makes one, so a filesystem without ACLs works too.
+func create(path string, p Policy) (*os.File, error) {
+	if p == Inherited {
+		return os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
+	}
 	return Open(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+}
+
+// publish places a file WriteFile wrote: Private with Replace, Inherited with
+// os.Rename, which keeps the ACL the file was created with.
+func publish(from, to string, p Policy) error {
+	if p == Inherited {
+		return os.Rename(from, to)
+	}
+	return Replace(from, to)
 }
 
 // OpenRead pins a validated file handle while permitting atomic replacement of

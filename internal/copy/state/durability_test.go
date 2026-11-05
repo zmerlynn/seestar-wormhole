@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
 // hookSync makes every fsync call fn first for the rest of the test; an error
@@ -27,14 +29,14 @@ func hookSync(t *testing.T, fn func(f *os.File) error) {
 
 // hookWrite makes every writeFile call fn first for the rest of the test; an
 // error from fn fails that write, which then publishes nothing.
-func hookWrite(t *testing.T, fn func(dir *os.File, name string, b []byte) error) {
+func hookWrite(t *testing.T, fn func(dir *os.File, name string, b []byte, p privatefile.Policy) error) {
 	t.Helper()
 	old := writeFile
-	writeFile = func(dir *os.File, name string, b []byte) error {
-		if err := fn(dir, name, b); err != nil {
+	writeFile = func(dir *os.File, name string, b []byte, p privatefile.Policy) error {
+		if err := fn(dir, name, b, p); err != nil {
 			return err
 		}
-		return old(dir, name, b)
+		return old(dir, name, b, p)
 	}
 	t.Cleanup(func() { writeFile = old })
 }
@@ -88,8 +90,13 @@ func TestOpenPublishesHeaderAtomically(t *testing.T) {
 		}
 		return nil
 	})
-	hookWrite(t, func(dir *os.File, name string, b []byte) error {
+	hookWrite(t, func(dir *os.File, name string, b []byte, policy privatefile.Policy) error {
 		events = append(events, "write")
+		// A protected DACL would refuse a state directory on FAT32 or exFAT
+		// and change the ACLs the reference promises.
+		if policy != privatefile.Inherited {
+			t.Errorf("writeFile policy = %v, want Inherited", policy)
+		}
 		if dir.Name() != syncDir || name != filepath.Base(p) {
 			t.Errorf("writeFile(%q, %q), want %q in %q", dir.Name(), name, filepath.Base(p), syncDir)
 		}
@@ -117,7 +124,7 @@ func TestOpenPublishesHeaderAtomically(t *testing.T) {
 func TestOpenHeaderWriteFailurePublishesNothing(t *testing.T) {
 	stateDir, dest := dirs(t)
 	p, _ := Path(stateDir, dest)
-	hookWrite(t, func(*os.File, string, []byte) error {
+	hookWrite(t, func(*os.File, string, []byte, privatefile.Policy) error {
 		return errors.New("injected header write failure")
 	})
 	s, err := Open(stateDir, dest, nil)

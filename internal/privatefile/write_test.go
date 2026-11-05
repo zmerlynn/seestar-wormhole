@@ -48,15 +48,15 @@ func TestWriteFile(t *testing.T) {
 		}
 		return oldSync(f)
 	}
-	replace = func(from, to string) error {
+	replace = func(from, to string, p Policy) error {
 		events = append(events, "replace")
 		if to != path {
 			t.Errorf("replace(%q, %q), want %q", from, to, path)
 		}
-		return oldReplace(from, to)
+		return oldReplace(from, to, p)
 	}
 	for _, content := range []string{"first", "second, longer"} {
-		if err := WriteFile(d, "state.json", []byte(content)); err != nil {
+		if err := WriteFile(d, "state.json", []byte(content), Private); err != nil {
 			t.Fatal(err)
 		}
 		f, err := OpenRead(path)
@@ -85,13 +85,13 @@ func TestWriteFile(t *testing.T) {
 // A failed fsync publishes nothing and removes the temporary file.
 func TestWriteFileSyncFailure(t *testing.T) {
 	d := privateDir(t)
-	if err := WriteFile(d, "state.json", []byte("old")); err != nil {
+	if err := WriteFile(d, "state.json", []byte("old"), Private); err != nil {
 		t.Fatal(err)
 	}
 	old := syncFile
 	t.Cleanup(func() { syncFile = old })
 	syncFile = func(*os.File) error { return errors.New("injected fsync failure") }
-	if err := WriteFile(d, "state.json", []byte("new")); err == nil || err.Error() != "injected fsync failure" {
+	if err := WriteFile(d, "state.json", []byte("new"), Private); err == nil || err.Error() != "injected fsync failure" {
 		t.Fatalf("WriteFile = %v, want the fsync error", err)
 	}
 	if b, err := os.ReadFile(filepath.Join(d.Name(), "state.json")); err != nil || string(b) != "old" {
