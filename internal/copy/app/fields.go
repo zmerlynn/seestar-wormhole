@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -144,37 +145,66 @@ func connectBlocked(err error) bool {
 
 // localNetworkRetry is how a dial to an address on this network waits out
 // macOS's Local Network prompt; tests replace it.
-var localNetworkRetry = lanRetry{goos: runtime.GOOS, every: time.Second, limit: 10 * time.Second, now: time.Now, after: time.After}
+var localNetworkRetry = &lanRetry{goos: runtime.GOOS, every: time.Second, limit: 5 * time.Second, now: time.Now, after: time.After}
 
 // lanRetry is when [retryLAN] tries again: on goos "darwin" only, every
-// interval, until limit has passed since the first try. now and after are
-// the clock.
+// interval, until limit has passed since the first dial to an address on
+// this network since the app started. Only that dial can raise macOS's
+// prompt, so once any such dial has finished, none tries again. now and
+// after are the clock.
 type lanRetry struct {
 	goos         string
 	every, limit time.Duration
 	now          func() time.Time
 	after        func(time.Duration) <-chan time.Time
+
+	mu     sync.Mutex
+	cutoff time.Time // when the first dial's retries end, once it has begun
+	done   bool      // a dial has connected, failed otherwise or used the limit
+}
+
+// begin notes the start of a dial.
+func (r *lanRetry) begin() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.cutoff.IsZero() {
+		r.cutoff = r.now().Add(r.limit)
+	}
+}
+
+// again reports whether a dial that failed with err tries again after
+// waiting one interval: it may while it is the first and the system failed
+// its connect at once on macOS, with an interval and more to spare before
+// the cutoff. Otherwise the dial has finished, and none tries again.
+func (r *lanRetry) again(err error) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if !r.done && r.goos == "darwin" && connectBlocked(err) && r.now().Add(r.every).Before(r.cutoff) {
+		return true
+	}
+	r.done = true
+	return false
 }
 
 // retryLAN runs try, a dial to an address on this network, and on macOS
 // runs it again while it fails with [connectBlocked]: the system fails
 // connects that way while its Local Network prompt is open, and the first
-// one after the user allows access goes through. It stops at r's limit or
-// once ctx is done, and returns the last try's result. Any other failure,
-// a timeout, a refusal or anything the server said, returns at once.
-func retryLAN[T any](ctx context.Context, r lanRetry, try func() (T, error)) (T, error) {
-	start := r.now()
-	for {
-		v, err := try()
-		if err == nil || r.goos != "darwin" || !connectBlocked(err) || ctx.Err() != nil || r.now().Sub(start)+r.every > r.limit {
-			return v, err
-		}
+// one after the user allows access goes through. Only the app's first such
+// dial does, until r's limit has passed or ctx is done, and it returns the
+// last try's result. Any other failure, a timeout, a refusal or anything
+// the server said, returns at once.
+func retryLAN[T any](ctx context.Context, r *lanRetry, try func() (T, error)) (T, error) {
+	r.begin()
+	v, err := try()
+	for ctx.Err() == nil && r.again(err) {
 		select {
 		case <-ctx.Done():
 			return v, err
 		case <-r.after(r.every):
 		}
+		v, err = try()
 	}
+	return v, err
 }
 
 // testMessage words Test's result for the page on goos. Test checks an
