@@ -105,7 +105,7 @@ Keep seestar-wormhole open while you use the telescope.
 **Copy**, **Browse** and **Free up space** copy your images from the
 telescope's file share to a folder on this computer, show what is on the
 share, and delete what is safely copied. They use the same rules and the same
-copy history as [`seestar-copy-cli`](copy/reference.md)'s `sync`, `browse` and
+copy history as [`seestar-copy-cli`](copy-reference.md)'s `sync`, `browse` and
 `delete`. On your account they reach the share through the proxy's SMB port
 (local port 4445 by default); on this network, at the saved address.
 
@@ -132,13 +132,13 @@ can't change while copying runs:
   on the telescope. Each folder has its own copy history.
 - **Check for new files every** N minutes, 5 by default.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
-  [`--exclude` and `--include`](copy/reference.md#selection).
+  [`--exclude` and `--include`](copy-reference.md#selection).
 - **Skip the telescope's logs, scratch and system files**, on by default.
 - **Start copying when the app opens**, off by default. On your account,
   copying then starts once the connection is ready.
 
 While copying is off, **Preview** shows what **Start copying** would do, from
-one [dry run](copy/reference.md#dry-run) with the saved settings: how many
+one [dry run](copy-reference.md#dry-run) with the saved settings: how many
 files it would copy and their size, with a row per folder, and how many are
 already copied, still being written, or left out. Nothing is copied.
 **Cancel** stops a preview that is running; starting, a Save that changes the
@@ -150,7 +150,7 @@ is already using this folder.** while a `sync`, or another copy of the app with
 another state directory, holds it.
 
 **Copy history**, collapsed under the settings, shows the path of the saved
-folder's [state file](copy/reference.md#the-state-file), which `sync` uses
+folder's [state file](copy-reference.md#the-state-file), which `sync` uses
 too. While the folder field holds a folder not yet saved, it says to save
 first. **Clear history…** deletes that state file after a confirmation, so the
 app forgets what it copied to the folder. Files still in the folder are kept
@@ -161,8 +161,8 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 ### Browse
 
 Browse is `seestar-copy-cli browse`'s page for the share, with the saved
-folder's [statuses](copy/reference.md#statuses). What the settings leave out
-shows as [`left out`](copy/reference.md#left-out-in-browse). A Save that
+folder's [statuses](copy-reference.md#statuses). What the settings leave out
+shows as [`left out`](copy-reference.md#left-out-in-browse). A Save that
 changes the folder or the selection reloads it at the share's top. Until the
 folder is saved, Browse says to choose it, with **Go to Copy**. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
@@ -170,7 +170,7 @@ window, a file's **Save** asks where to save it; in a browser, it downloads.
 ### Free up space
 
 **Preview what to delete** lists, per folder, the files that are copied and
-safe to delete, as `delete` [proves it](copy/reference.md#proof-modes), and
+safe to delete, as `delete` [proves it](copy-reference.md#proof-modes), and
 nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent
 sessions on the telescope, and **My copies have moved or the drive is
@@ -331,7 +331,7 @@ To use another existing installation root, run
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
 
 The copy history and each folder's lock are not in the state directory. They
-stay in `seestar-copy-cli`'s default [state location](copy/reference.md#location),
+stay in `seestar-copy-cli`'s default [state location](copy-reference.md#location),
 `seestar-copy` beside `seestar-wormhole` in the same system folder, whatever
 `--state-dir` says, so the app and `seestar-copy-cli sync` share them and never
 copy into one folder at once.

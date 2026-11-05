@@ -1,11 +1,11 @@
-# How to hack on it
+# The copy packages
 
-seestar-copy copies the files from a ZWO Seestar's SMB share to a local
-folder. Its command-line tool, `seestar-copy-cli`, has one main command,
-`sync`. It reads the telescope's share read-only, mirrors the files under a
-destination folder, and keeps a state file of what it has copied, so a file
-moved out of the destination is not copied again. It repeats passes until it
-is stopped.
+The copier, which came from seestar-copy, copies the files from a ZWO
+Seestar's SMB share to a local folder. Its command-line tool,
+`seestar-copy-cli`, has one main command, `sync`. It reads the telescope's
+share read-only, mirrors the files under a destination folder, and keeps a
+state file of what it has copied, so a file moved out of the destination is
+not copied again. It repeats passes until it is stopped.
 
 - [Architecture](#architecture)
 - [Build and check](#build-and-check)
@@ -47,7 +47,7 @@ revision comes from Go's VCS build stamp, or is `development`.
 
 The license catalog is seestar-wormhole's: `internal/licenses` and
 `scripts/generate-licenses.go`, described in the
-[development guide](../../development/README.md). The generator checks
+[development guide](README.md). The generator checks
 that every module `seestar-wormhole` and `seestar-copy-cli` link has a
 license in the catalog and a row in `NOTICE`. Run from the repository root:
 
@@ -64,7 +64,7 @@ Windows, macOS and Linux on amd64 and arm64. Dependencies are pinned in
 
 `./scripts/check.sh` runs the repository's checks, seestar-copy's included,
 in the `docker.io/library/golang:1.27` image with Podman, so no Go is needed
-on the host. See the [development guide](../../development/README.md) for its
+on the host. See the [development guide](README.md) for its
 `prepare` step and caches.
 
 `check.sh` and CI also cross-build and vet the copy commands and packages
@@ -73,7 +73,7 @@ for every target with `CGO_ENABLED=0`, and vet the Samba tests.
 `./scripts/test-smb.sh` runs the `internal/copy/remote` and
 `internal/copy/app` Samba tests against a fixture, a guest-only, read-only
 share like the telescope's, built from `internal/copy/remote/testdata/samba`;
-see the [development guide](../../development/README.md#optional-integration-checks).
+see the [development guide](README.md#optional-integration-checks).
 CI runs them too. They need the `smbintegration` build tag and
 `SEESTAR_COPY_SMB_ENDPOINT` (`host:port`) naming the fixture.
 
@@ -122,8 +122,8 @@ go build -mod=vendor ./cmd/seestar-copy-cli
 
 ## Releasing
 
-seestar-copy is not released from this repository yet; seestar-wormhole's
-release does not include its binaries.
+`seestar-copy-cli` ships in every seestar-wormhole archive and in the DMG; see
+[releasing](releasing.md).
 
 ## Project rules
 
@@ -167,7 +167,7 @@ These apply to every change, whoever writes it.
   older release cannot read, and such a one-way change needs the
   maintainer's approval before it is written.
 - **Every public flag, format and exit code is a promise**, as
-  [versioning](../../versioning.md#the-seestar-copy-cli-contract) lists. Add one, or a log line, only for a
+  [versioning](../versioning.md#the-seestar-copy-cli-contract) lists. Add one, or a log line, only for a
   current need, and document it in the reference in the same change.
 - **Dependencies are few, vendored and Unlicense-compatible.** The project
   is under the Unlicense. A dependency must allow distributing one static
@@ -182,7 +182,7 @@ These apply to every change, whoever writes it.
 ## Reviewing a change
 
 A copy change is reviewed with the app's
-[`.claude/skills/wormhole-review`](../../../.claude/skills/wormhole-review/SKILL.md);
+[`.claude/skills/wormhole-review`](../../.claude/skills/wormhole-review/SKILL.md);
 its lane table names the copy packages, and its lanes carry the copy rules.
-See [Reviewing a change](../../development/README.md#reviewing-a-change) in
+See [Reviewing a change](README.md#reviewing-a-change) in
 the development guide.
