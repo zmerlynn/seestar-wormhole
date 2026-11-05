@@ -534,12 +534,23 @@ test('Browse marks what Leave out leaves out, with a key', async ({ page, startA
   await openCopy(page, app.url);
   await tab(page, 'Browse').click();
   await expect(browseStatus(page)).toHaveText(rootStatus);
-  const key = frame(page).locator('#key');
-  await expect(key).toHaveText('new: not copied yet · copied: already copied · changed: differs from the copy · left out: not copied by the selection');
+  // The key is a list: each status's badge, then what it means.
+  const key = frame(page).getByRole('list', { name: 'Status key' });
   await expect(key).toBeVisible();
+  await expect(key.getByRole('listitem')).toHaveText(['new: not copied yet', 'copied: already copied', 'changed: differs from the copy', 'left out: not copied by the selection']);
+  const keyBadge = (name) => key.getByRole('listitem').filter({ hasText: name + ':' }).locator('.badge');
   const badge = (name) => frame(page).locator('#list tbody tr').filter({ has: frame(page).getByText(name, { exact: true }) }).locator('.badge');
+  // Its badges are drawn as the list's are, and each meaning follows its
+  // badge on the same line.
+  const look = (loc) => loc.evaluate((e) => { const s = getComputedStyle(e); return [s.color, s.borderTopStyle, s.borderTopWidth, s.borderRadius, s.fontSize, s.paddingLeft]; });
+  await expect(keyBadge('new')).toHaveText('new');
+  expect(await look(keyBadge('new'))).toEqual(await look(badge('empty.txt')));
+  for (const item of await key.getByRole('listitem').all()) {
+    const [b, i] = [await item.locator('.badge').boundingBox(), await item.boundingBox()];
+    expect(i.height).toBeLessThan(2 * b.height);
+  }
   await expect(badge('empty.txt')).toHaveText('new');
-  await expect(frame(page).locator('.badge.left-out')).toHaveCount(0);
+  await expect(frame(page).locator('#list .badge.left-out')).toHaveCount(0);
 
   await tab(page, 'Copy').click();
   await page.getByRole('button', { name: 'Change…' }).click();
@@ -554,6 +565,7 @@ test('Browse marks what Leave out leaves out, with a key', async ({ page, startA
   await expect(badge('00-notes.txt')).toHaveText('new');
   await expect(badge('MyWorks/')).toHaveCount(0);
   await expect(key).toBeVisible();
+  expect(await look(keyBadge('left out'))).toEqual(await look(badge('empty.txt')));
 
   // Muted against new: a dashed border, and readable in light and dark.
   for (const colorScheme of ['light', 'dark']) {

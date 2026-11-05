@@ -23,6 +23,10 @@ table:not(.statuses) .st { display: none; }
 .badge.changed { color: #8a4b00; }
 .badge.new { color: #0b57d0; }
 .badge.left-out { color: #555; border-style: dashed; }
+/* The key: each status's badge, as the list shows it, then its meaning;
+   one per line, or a grid where there is room. A styled-out list keeps
+   its role only with role=list. */
+#key { list-style: none; padding: 0; margin: 0.75rem 0 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr)); gap: 0.25rem 1rem; }
 .hide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 dialog { max-width: 95vw; max-height: 95vh; padding: 0; }
 #vbody { padding: 0.5rem; }
