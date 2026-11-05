@@ -41,6 +41,26 @@ func TestCopySettingsVersionOneFixture(t *testing.T) {
 	}
 }
 
+// Copy once loads as saved, and a save keeps it; a file without it checks
+// again every interval, as before.
+func TestCopySettingsOnce(t *testing.T) {
+	st := testStorage(t)
+	if err := st.writeBytes(copyName, []byte(`{"version":1,"once":true}`)); err != nil {
+		t.Fatal(err)
+	}
+	c, got, err := loadCopySettings(st)
+	if err != nil || got == nil || !got.Once {
+		t.Fatalf("once = %+v, %v", got, err)
+	}
+	got.Once = false
+	if err := c.save(*got); err != nil {
+		t.Fatal(err)
+	}
+	if _, again, err := loadCopySettings(st); err != nil || again == nil || again.Once {
+		t.Errorf("after saving it off = %+v, %v", again, err)
+	}
+}
+
 // Files at once loads from 1 to 4 as saved.
 func TestCopySettingsFilesAtOnce(t *testing.T) {
 	st := testStorage(t)
@@ -113,7 +133,7 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 	}
 	want := map[string]any{
 		"version": 1.0, "folder": "/synthetic/Other", "interval_minutes": 9.0, "excludes": []any{}, "includes": []any{},
-		"skip_built_in": true, "start_copying": false, "files_at_once": 1.0, "older_than_days": 7.0, "trust_state": false,
+		"skip_built_in": true, "start_copying": false, "once": false, "files_at_once": 1.0, "older_than_days": 7.0, "trust_state": false,
 		"future_object": map[string]any{"enabled": true, "limit": 17.0}, "future_array": []any{1.0, "two", map[string]any{"three": nil}}, "future_flag": false,
 	}
 	if !reflect.DeepEqual(got, want) {

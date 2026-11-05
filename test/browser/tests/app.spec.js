@@ -100,7 +100,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(frame(page).locator('.badge.new').first()).toBeVisible();
 
   expect(readJSON(app.copyFile)).toMatchObject({
-    version: 1, folder: app.folder, interval_minutes: 5, files_at_once: 4, skip_built_in: true, start_copying: false,
+    version: 1, folder: app.folder, interval_minutes: 5, files_at_once: 4, skip_built_in: true, start_copying: false, once: false,
   });
 });
 
@@ -421,7 +421,7 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
 
   expect(readJSON(app.copyFile)).toEqual({
     version: 1, folder: app.folder, interval_minutes: 30,
-    excludes: ['Video', '/Preview'], includes: ['MyWorks'], skip_built_in: false, start_copying: false,
+    excludes: ['Video', '/Preview'], includes: ['MyWorks'], skip_built_in: false, start_copying: false, once: false,
     files_at_once: 4, older_than_days: 7, trust_state: false,
     later: { kept: true },
   });

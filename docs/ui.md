@@ -142,7 +142,10 @@ can't change while copying runs:
 
 - **Folder for your images.** Images are copied there in the same folders as
   on the telescope. Each folder has its own copy history.
-- **Check for new files every** N minutes, 5 by default.
+- **Check for new files every** N minutes, 5 by default. Its checkbox, on by
+  default, turns the repeating check off to copy once: **Start copying** then
+  checks once, copies what is new and stops, and Copy says **Checked once;
+  copying is off.** The summary then says "once each time you start".
 - **Files at once**: how many files copying runs at once, 1 to 4, 4 by
   default. Through Telescope Network, copying shares the connection with
   the Seestar app and seestar_alp; if they are slow to respond while copying,
@@ -151,7 +154,8 @@ can't change while copying runs:
   [`--exclude` and `--include`](copy-reference.md#selection).
 - **Skip the telescope's logs, scratch and system files**, on by default.
 - **Start copying when the app opens**, off by default. Through Telescope
-  Network, copying then starts once the connection is ready.
+  Network, copying then starts once the connection is ready. With the check
+  for new files off, it copies once each time the app opens.
 
 While copying is off, **Preview** shows what **Start copying** would do, from
 one [dry run](copy-reference.md#dry-run) with the saved settings: how many
@@ -389,6 +393,7 @@ options, never on load.
 |---|---|
 | `folder` | `Seestar` in your home folder. |
 | `interval_minutes` | `5` |
+| `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
 | `skip_built_in` | `true` |
 | `start_copying` | `false` |

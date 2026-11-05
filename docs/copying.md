@@ -26,13 +26,15 @@ tried on each route.
    your images and **Save and continue**. Nothing is copied yet.
 3. **Start copying.** **Start copying** checks the telescope every 5 minutes
    by default and copies what is new; **Check now** checks at once, and **Stop
-   copying** stops. **Preview** shows what Start would copy without copying
-   anything. Keep the app open while it copies.
+   copying** stops. To copy once instead, turn off **Check for new files
+   every** in the settings: **Start copying** then copies what is new and
+   stops. **Preview** shows what Start would copy without copying anything.
+   Keep the app open while it copies.
 
 Images land in the folder as they are on the telescope, such as
 `~/Seestar/MyWorks/M 31/`. The telescope's logs, scratch and system files are
 skipped by default. **Change…** opens the settings: the folder, how often to
-check, how many files to copy at once, what to leave out or only copy, and
+check or whether to copy once, how many files to copy at once, what to leave out or only copy, and
 whether to start copying when the app opens. [Using the UI](ui.md#copy) has every setting and message.
 
 **Browse** shows the telescope's files one folder at a time, with its `.jpg`

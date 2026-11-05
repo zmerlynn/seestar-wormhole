@@ -197,6 +197,60 @@ func TestCopyStartCheckStop(t *testing.T) {
 	e.wait(stUpToDate)
 }
 
+// A copy once runs one check, then turns copying off by itself and frees
+// the lock; the status says so, and how the check ended. A failed file, a
+// failed listing or connection doesn't make it a failure to start.
+func TestCopyOnce(t *testing.T) {
+	const once = " Checked once; copying is off."
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/M 42/a.jpg": image("abc")})
+	e.set.Once = true
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v := e.wait(stDone)
+	if v.Title != "Up to date."+once || v.On || v.Chip != "Copying is off" || !strings.HasPrefix(v.Summary, "Copied 1 file (3 B) in ") || v.Notice != "" {
+		t.Errorf("after one check: %+v", v)
+	}
+	if e.dialCount() != 1 || e.locked() {
+		t.Errorf("%d dials, locked %v; want 1 and free", e.dialCount(), e.locked())
+	}
+
+	// A file still being written waits for a later check: copy once says
+	// to start again.
+	e.files["MyWorks/M 42/b.jpg"] = &fstest.MapFile{Data: []byte("b"), ModTime: time.Now()}
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v = e.wait(stDone)
+	if v.Settling != "1 new file is still being written. Start copying again in a few minutes to copy them." {
+		t.Errorf("settling: %+v", v)
+	}
+
+	e.faults = map[string]remote.Fault{"MyWorks/M 42/c.jpg": {ReadErr: errors.New("synthetic read failure")}}
+	e.files["MyWorks/M 42/c.jpg"] = image("c")
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v = e.wait(stDone)
+	if v.Title != "Check finished with 1 file not copied."+once || v.Chip != "1 file not copied" || v.On ||
+		v.Notice != "1 file couldn't be copied. Start copying to try it again." || len(v.Failed) != 1 || v.Failed[0].Path != "MyWorks/M 42/c.jpg" {
+		t.Errorf("failures: %+v", v)
+	}
+
+	e.dialErr = errors.New("connection refused")
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v = e.wait(stDone)
+	if v.Title != "Can't reach the telescope at 192.0.2.10:445."+once || v.Text != checkReach || v.Chip != "Copying is off" || v.On || v.Contact != "err" {
+		t.Errorf("unreachable: %+v", v)
+	}
+}
+
 // Stop during a download discards it, says so, and leaves no temp file.
 func TestCopyStopMidFile(t *testing.T) {
 	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc"), "MyWorks/big.fit": image(strings.Repeat("x", 1000))})

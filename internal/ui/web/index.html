@@ -135,7 +135,8 @@
 <div class="inline"><input id="f-folder" type="text" class="mono" spellcheck="false" autocomplete="off" aria-describedby="f-folder-help f-folder-err"><button type="button" id="f-choose" hidden>Choose…</button></div>
 <p class="error" id="f-folder-err" role="alert" hidden></p>
 <p class="help" id="f-folder-help">Type the folder's full path. Images are copied here, in the same folders as on the telescope. Each folder has its own copy history: a new folder starts a new one, so everything on the telescope is copied there, and files already there are reused.</p>
-<label class="check strong">Check for new files every <input type="number" id="f-int" min="1" max="1440" aria-describedby="f-int-err"> minutes</label>
+<div class="check strong"><input type="checkbox" id="f-repeat" aria-describedby="f-repeat-help"><label for="f-repeat">Check for new files every</label><input type="number" id="f-int" min="1" max="1440" aria-label="Minutes between checks" aria-describedby="f-int-err"><span>minutes</span></div>
+<p class="help" id="f-repeat-help">Turn this off to copy once: Start copying then copies what's new and stops.</p>
 <p class="error" id="f-int-err" role="alert" hidden></p>
 <label class="check strong">Files at once <input type="number" id="f-files" min="1" max="4" aria-describedby="f-files-help f-files-err"></label>
 <p class="error" id="f-files-err" role="alert" hidden></p>
@@ -149,7 +150,7 @@
 <p class="error" id="f-in-err" role="alert" hidden></p>
 <p class="help" id="f-in-help">Leave empty to copy everything not left out. For example: <code>/MyWorks</code>.</p>
 <label class="check"><input type="checkbox" id="f-skip"> <span><b>Skip the telescope's logs, scratch and system files</b> (recommended)<br><span class="muted mono" id="f-builtin"></span></span></label>
-<label class="check"><input type="checkbox" id="f-start"> <span><b>Start copying when the app opens</b><br><span class="muted">Through Telescope Network, copying starts once the connection is ready.</span></span></label>
+<label class="check"><input type="checkbox" id="f-start"> <span><b>Start copying when the app opens</b><br><span class="muted">Through Telescope Network, copying starts once the connection is ready. With the check for new files off, it copies once each time the app opens.</span></span></label>
 <div class="actions"><button class="primary" type="submit" id="f-save">Save</button><button type="button" id="f-cancel">Cancel</button></div>
 </fieldset>
 </form>

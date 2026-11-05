@@ -338,6 +338,7 @@ type input struct {
 	Includes     []string `json:"includes"`
 	SkipBuiltIn  bool     `json:"skip_built_in"`
 	StartCopying bool     `json:"start_copying"`
+	Once         bool     `json:"once"`
 	Action       string   `json:"action"` // the copy and delete APIs'
 	// The delete API's: Find's options, and Delete's preview and folders.
 	Days    string   `json:"days"`

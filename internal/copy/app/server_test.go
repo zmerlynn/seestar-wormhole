@@ -320,6 +320,13 @@ func TestSaveCallsSave(t *testing.T) {
 	if saves := e.saves(); len(saves) != 1 || fmt.Sprint(saves[0]) != fmt.Sprint(want) {
 		t.Errorf("saved %+v, want %+v", saves, want)
 	}
+	// Copy once is saved as posted.
+	if w := e.post("/copy/api/settings", `{"once":true,`+goodInput[1:]); w.Code != 200 {
+		t.Fatalf("code %d %q", w.Code, w.Body.String())
+	}
+	if saves := e.saves(); len(saves) != 2 || !saves[1].Once {
+		t.Errorf("saved %+v, want copy once", saves)
+	}
 }
 
 func TestSaveFailure(t *testing.T) {

@@ -128,6 +128,51 @@ test('Check now runs another pass, and Stop and Start move focus to the heading'
   await expect(passes(page)).toHaveCount(3);
 });
 
+// With the check for new files off, Start copying runs one pass, then
+// copying turns itself off and says so; starting when the app opens does
+// the same.
+const once = 'Up to date. Checked once; copying is off.';
+test('with the check for new files off, Start copying copies once and stops', async ({ page, startApp }) => {
+  const app = await startApp(copying(false));
+  await openCopy(page, app.url);
+  await button(page, 'Change…').click();
+  const repeat = page.getByRole('checkbox', { name: 'Check for new files every' });
+  await expect(repeat).toBeChecked();
+  await expect(repeat).toHaveAccessibleDescription("Turn this off to copy once: Start copying then copies what's new and stops.");
+  await expect(page.getByRole('spinbutton', { name: 'Minutes between checks' })).toHaveValue('5');
+  await repeat.uncheck();
+  await button(page, 'Save').click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await expect(page.locator('#s-summary')).toHaveText(`Copying to ${app.folder} once each time you start, skipping logs and system files.`);
+  expect(JSON.parse(fs.readFileSync(app.copyFile, 'utf8'))).toMatchObject({ once: true, interval_minutes: 5 });
+
+  await button(page, 'Start copying').click();
+  await expect(title(page)).toHaveText(once, { timeout: 30000 });
+  await expect(page.locator('#c-live')).toHaveText(once);
+  await expect(page.locator('#c-summary')).toHaveText(copiedAll);
+  await expect(chip(page)).toHaveText('Copying is off');
+  await expect(button(page, 'Start copying')).toBeVisible();
+  await expect(button(page, 'Preview')).toBeVisible();
+  await expect(button(page, 'Check now')).toBeHidden();
+  await expect(button(page, 'Stop copying')).toBeHidden();
+  await expect(page.locator('#c-help')).toBeHidden();
+  await expect(passes(page)).toHaveCount(1);
+  // Settings unlock once the check is done.
+  await button(page, 'Change…').click();
+  await expect(field(page, 'Folder for your images')).toBeEnabled();
+  await expect(repeat).not.toBeChecked();
+
+  // Starting when the app opens copies once too.
+  const opens = await startApp({
+    'config.json': lan(), 'copy.json': (folder) => ({ version: 1, folder, start_copying: true, once: true }),
+  });
+  await openCopy(page, opens.url);
+  await expect(title(page)).toHaveText(once, { timeout: 30000 });
+  await expect(page.locator('#c-summary')).toHaveText(copiedAll);
+  await expect(button(page, 'Start copying')).toBeVisible();
+  await expect(passes(page)).toHaveCount(1);
+});
+
 test('the CLI copying to the same folder shows Folder in use until it stops', async ({ page, startApp }, testInfo) => {
   const home = testInfo.outputPath('cli');
   const folder = path.join(home, 'Seestar');

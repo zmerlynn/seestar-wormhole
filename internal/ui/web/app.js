@@ -548,6 +548,7 @@ const lines = value => value === '' ? [] : value.split('\n');
 function copyFill(s) {
   $('f-folder').value = s.folder;
   $('f-int').value = String(s.interval_minutes);
+  $('f-repeat').checked = !s.once;
   $('f-files').value = String(s.files_at_once);
   $('f-ex').value = s.excludes.join('\n');
   $('f-in').value = s.includes.join('\n');
@@ -558,7 +559,7 @@ function copyInput() {
   return {
     folder: $('f-folder').value, interval: $('f-int').value, files_at_once: $('f-files').value,
     excludes: lines($('f-ex').value), includes: lines($('f-in').value),
-    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked
+    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked
   };
 }
 // showErrors puts each message under its field and returns the first
@@ -577,7 +578,7 @@ function showErrors(fields) {
   return first;
 }
 function copySummary(s) {
-  const minutes = s.interval_minutes === 1 ? 'every minute' : 'every ' + s.interval_minutes + ' min';
+  const minutes = s.once ? 'once each time you start' : s.interval_minutes === 1 ? 'every minute' : 'every ' + s.interval_minutes + ' min';
   const parts = ['Copying to ' + s.folder + ' ' + minutes];
   if (s.files_at_once !== 4) parts.push(s.files_at_once === 1 ? '1 file at once' : s.files_at_once + ' files at once');
   if (s.skip_built_in) parts.push('skipping logs and system files');
@@ -682,7 +683,7 @@ function renderHistory() {
 // The Copy tab: the server words each state; the page shows its parts.
 // Each state's buttons, and the states the help line shows in.
 const copyShows = {
-  'c-start': ['off', 'stopped', 'inuse', 'cantwrite'],
+  'c-start': ['off', 'stopped', 'inuse', 'cantwrite', 'done'],
   'c-check': ['uptodate', 'failures', 'listfail', 'unreachable'],
   'c-stop': ['connecting', 'listing', 'copying', 'uptodate', 'failures', 'listfail', 'unreachable'],
   'c-help': ['connecting', 'listing', 'copying', 'uptodate', 'failures', 'listfail', 'unreachable']
@@ -766,7 +767,7 @@ function renderCopy(v) {
   copyShown.state = st;
   renderPreview(v, st);
   const chip = $('copy-chip');
-  chip.className = 'chip ' + (st === 'failures' ? 'warn' : v.on ? 'on' : 'off');
+  chip.className = 'chip ' + (st === 'failures' || st === 'done' && v.failed ? 'warn' : v.on ? 'on' : 'off');
   put('copy-chip', v.chip);
   chip.hidden = !state?.copy_unlocked || !copySaved || !v.chip;
   // Settings can't change, nor the history clear, while copying is on.

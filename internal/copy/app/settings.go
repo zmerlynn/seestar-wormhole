@@ -24,6 +24,9 @@ type Settings struct {
 	SkipBuiltIn     bool     `json:"skip_built_in"`
 	StartCopying    bool     `json:"start_copying"`
 	FilesAtOnce     int      `json:"files_at_once"` // 1 to MaxFilesAtOnce
+	// Once copies in one check, after which copying turns itself off;
+	// otherwise copying checks again every IntervalMinutes.
+	Once bool `json:"once"`
 	// The Free up space options.
 	OlderThanDays int  `json:"older_than_days"`
 	TrustState    bool `json:"trust_state"`
