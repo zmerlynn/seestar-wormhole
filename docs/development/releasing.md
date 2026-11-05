@@ -17,7 +17,8 @@ and Go 1.27.3. GUI releases use `gui,production` tags.
    version validation before builds.
 2. Run `./scripts/release.sh v0.5.0`. Versions must be `vMAJOR.MINOR.PATCH`
    or `vMAJOR.MINOR.PATCH-rc.N`, with no leading zeros in any number.
-   Other forms exit 2 before building. This produces six static CLI executables
+   Other forms exit 2 before building. This produces twelve static CLI executables,
+   `seestar-wormhole-cli` and `seestar-copy-cli` for each of the six targets,
    and two CGO-free Windows UI executables (`-H windowsgui`) in `dist/parts/`,
    plus the two Windows ZIP archives in `dist/`. These are intermediate build
    outputs; no partial checksum file is emitted.
@@ -28,9 +29,11 @@ and Go 1.27.3. GUI releases use `gui,production` tags.
    fixed CPU baselines, and no build timestamp. Reproduction needs identical
    source, version, revision and Go toolchain. Stripping with `-s -w` retains
    Go module metadata for `licenses`.
-4. Unpack the archive for your host and run `seestar-wormhole-cli --version`
-   and `seestar-wormhole-cli licenses` (with `.exe` on Windows). Confirm version,
-   commit and platform, and that licenses include `Module: github.com/pion/dtls/v3`.
+4. Unpack the archive for your host and run `seestar-wormhole-cli --version`,
+   `seestar-copy-cli --version` and `licenses` for each (with `.exe` on Windows).
+   Confirm version, commit and platform, and that the licenses include
+   `Module: github.com/pion/dtls/v3` and `Module: github.com/hirochachacha/go-smb2/v2`
+   respectively.
 5. Rehearse the full workflow from a branch with **Run workflow** and a valid
    `version` input. `workflow_dispatch` builds all downloads, writes full
    `SHA256SUMS`, attests them, and uploads a `release-assets-<version>` workflow
@@ -44,22 +47,22 @@ and Go 1.27.3. GUI releases use `gui,production` tags.
    create pre-release drafts; stable tags create ordinary drafts. Add notes with
    the compatibility record and breaking-change recovery steps before publishing.
 
-Each download includes both the UI and CLI:
+Each download includes the UI and both CLIs:
 
 | Platform | Asset names | Root contents |
 |---|---|---|
-| Linux (amd64, arm64) | `seestar-wormhole_<version>_linux_<arch>.tar.gz` | `seestar-wormhole`, `seestar-wormhole-cli`, LICENSE, NOTICE |
-| Windows (amd64, arm64) | `seestar-wormhole_<version>_windows_<arch>.zip` | `seestar-wormhole.exe`, `seestar-wormhole-cli.exe`, LICENSE, NOTICE |
-| macOS (universal) | `seestar-wormhole_<version>_darwin_universal.dmg` | `seestar-wormhole.app`, `Applications` symlink to `/Applications`, universal `seestar-wormhole-cli`, LICENSE, NOTICE |
+| Linux (amd64, arm64) | `seestar-wormhole_<version>_linux_<arch>.tar.gz` | `seestar-wormhole`, `seestar-wormhole-cli`, `seestar-copy-cli`, LICENSE, NOTICE |
+| Windows (amd64, arm64) | `seestar-wormhole_<version>_windows_<arch>.zip` | `seestar-wormhole.exe`, `seestar-wormhole-cli.exe`, `seestar-copy-cli.exe`, LICENSE, NOTICE |
+| macOS (universal) | `seestar-wormhole_<version>_darwin_universal.dmg` | `seestar-wormhole.app`, `Applications` symlink to `/Applications`, universal `seestar-wormhole-cli` and `seestar-copy-cli`, LICENSE, NOTICE |
 
 Archives have no enclosing directory. Go's standard tar/gzip/zip libraries write
 sorted members with the commit time, executable mode 0755 and notice mode 0644;
 tar ownership is zero with empty user/group names, gzip has no name or timestamp,
 and compression levels are fixed. The Linux UI requires GTK 4 and WebKitGTK 6.0;
-the CLI in the same archive does not. Every executable includes `licenses`.
+the CLIs in the same archive do not. Every executable includes `licenses`.
 `dist/` is ignored by Git.
 
-The final job gathers the eight portable executables, two native Linux UI
+The final job gathers the fourteen portable executables, two native Linux UI
 executables and finished DMG into `dist/parts/`. Run
 `./scripts/release.sh --checksums v0.5.0` to validate those parts, assemble the four
 archives, remove the parts, enforce exactly five downloads plus `SHA256SUMS` in
@@ -67,7 +70,7 @@ archives, remove the parts, enforce exactly five downloads plus `SHA256SUMS` in
 `sha256sum --check SHA256SUMS` from `dist/`. Checksums and attestations cover only
 the five downloads, after signing and stapling.
 
-The Mac CLI is combined with lipo and signed, so it is not byte-reproducible.
+The Mac CLIs are combined with lipo and signed, so they are not byte-reproducible.
 UI executables and the DMG also have no byte-for-byte reproducibility promise:
 native SDKs, packaging, signatures and notarization can change their bytes.
 
@@ -78,11 +81,12 @@ Before building or packaging locally, activate a Python venv and run
 
 Run `./scripts/build-gui-mac.sh /absolute/output v0.5.0 <12-character-revision>`
 on a Mac to build both slices, check deployment target 13.0 and bundle metadata,
-combine them with `lipo`, build and combine both CLI slices, and package the
+combine them with `lipo`, build and combine both slices of each CLI, and package the
 universal DMG. CI depends on the portable job and downloads its Darwin CLI
 parts into the output directory's `cli/` subdirectory, so those builds are reused.
 The script keeps its Go/SDK/compiler checks and prints tool versions. To package
-an already built universal app with a universal `seestar-wormhole-cli` beside it,
+an already built universal app with universal `seestar-wormhole-cli` and
+`seestar-copy-cli` beside it,
 run `./scripts/package-gui-mac.sh /absolute/seestar-wormhole.app /absolute/output.dmg`
 as a single command.
 
@@ -110,7 +114,7 @@ fingerprint (case-insensitive, with or without colons). With a name or no identi
 the export must contain exactly one leaf certificate.
 
 With all credentials present, the packaging script imports into a temporary
-keychain, signs the app and universal CLI with the same identity, hardened
+keychain, signs the app and both universal CLIs with the same identity, hardened
 runtime, secure timestamps and the minimal
 `macos-entitlements.plist`, builds and signs the DMG, submits with
 `notarytool --wait`, and staples and validates the DMG ticket. No extra app
@@ -120,7 +124,7 @@ exit. CI also deletes the keychain in an `always()` step. `MACOS_KEYCHAIN_PATH`
 is an optional non-secret temporary path; CI sets it under the runner's temp
 directory. The script refuses to replace an existing keychain.
 
-With all seven credentials absent, the app, CLI and DMG are ad-hoc signed with
+With all seven credentials absent, the app, CLIs and DMG are ad-hoc signed with
 `codesign -s -`, and the log explicitly says they are not notarized. Partial
 credentials fail instead of silently producing an ad-hoc release. Until
 Developer ID releases are available, document Gatekeeper's right-click Open

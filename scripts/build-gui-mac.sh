@@ -75,13 +75,17 @@ lipo "$task_universal/Contents/MacOS/seestar-wormhole" -verify_arch arm64 x86_64
 if [[ ! -d "$1/cli" ]]; then
  mkdir -p "$1/cli"
  for task_arch in arm64 amd64; do
-  CGO_ENABLED=0 GOARCH="$task_arch" GOENV=off GOWORK=off GOEXPERIMENT= go build -mod=vendor -p 2 -trimpath -buildvcs=false \
-   -ldflags="-s -w -X main.version=$task_version -X main.revision=$task_revision" \
-   -o "$1/cli/seestar-wormhole-cli_${task_version}_darwin_${task_arch}" ./cmd/seestar-wormhole
+  for task_cli in seestar-wormhole-cli:seestar-wormhole seestar-copy-cli:seestar-copy-cli; do
+   CGO_ENABLED=0 GOARCH="$task_arch" GOENV=off GOWORK=off GOEXPERIMENT= go build -mod=vendor -p 2 -trimpath -buildvcs=false \
+    -ldflags="-s -w -X main.version=$task_version -X main.revision=$task_revision" \
+    -o "$1/cli/${task_cli%%:*}_${task_version}_darwin_${task_arch}" "./cmd/${task_cli#*:}"
+  done
  done
 fi
-lipo -create "$1/cli/seestar-wormhole-cli_${task_version}_darwin_arm64" \
- "$1/cli/seestar-wormhole-cli_${task_version}_darwin_amd64" \
- -output "$1/universal/seestar-wormhole-cli"
-lipo "$1/universal/seestar-wormhole-cli" -verify_arch arm64 x86_64
+for task_cli in seestar-wormhole-cli seestar-copy-cli; do
+ lipo -create "$1/cli/${task_cli}_${task_version}_darwin_arm64" \
+  "$1/cli/${task_cli}_${task_version}_darwin_amd64" \
+  -output "$1/universal/$task_cli"
+ lipo "$1/universal/$task_cli" -verify_arch arm64 x86_64
+done
 scripts/package-gui-mac.sh "$task_universal" "$1/seestar-wormhole_${task_version}_darwin_universal.dmg"

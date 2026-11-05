@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -37,6 +38,85 @@ func TestReleaseAssetNames(t *testing.T) {
 	if got := archiveName("v0.5.0-rc.1", "windows", "arm64"); got != "seestar-wormhole_v0.5.0-rc.1_windows_arm64.zip" {
 		t.Fatal(got)
 	}
+	if got := assetName("v0.5.0", "windows", "arm64", copyProgram); got != "seestar-copy-cli_v0.5.0_windows_arm64.exe" {
+		t.Fatal(got)
+	}
+}
+
+// Each program builds from its own command with the release settings; only
+// the app gets the GUI tags and the Windows GUI subsystem.
+func TestBuildBinaryCommands(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in go is a shell script")
+	}
+	bin := t.TempDir()
+	record := filepath.Join(bin, "args")
+	if err := os.WriteFile(filepath.Join(bin, "go"), []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$RECORD\"\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("RECORD", record)
+	flags := "-s -w -X main.version=v0.5.0 -X main.revision=revision"
+	for program, want := range map[string][]string{
+		appProgram:  {"build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-tags=gui,production", "-ldflags", flags + " -H windowsgui", "-o", "out", "./cmd/seestar-wormhole"},
+		cliProgram:  {"build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-ldflags", flags, "-o", "out", "./cmd/seestar-wormhole"},
+		copyProgram: {"build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-ldflags", flags, "-o", "out", "./cmd/seestar-copy-cli"},
+	} {
+		if err := buildBinary("v0.5.0", "revision", "windows", "amd64", program, "out"); err != nil {
+			t.Fatal(err)
+		}
+		data, err := os.ReadFile(record)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := strings.Split(strings.TrimSuffix(string(data), "\n"), "\n"); !slices.Equal(got, want) {
+			t.Errorf("%s: go %q, want %q", program, got, want)
+		}
+	}
+}
+
+// The DMG carries both CLIs, each built universal, signed like the app and
+// placed in the window. The Mac scripts run only on macOS, so this reads them.
+func TestMacPackageCarriesBothCLIs(t *testing.T) {
+	if _, err := os.Stat("scripts/release.sh"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	read := func(path string) string {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(data)
+	}
+	hasLine := func(text, want string) bool {
+		return slices.ContainsFunc(strings.Split(text, "\n"), func(line string) bool { return strings.TrimSpace(line) == want })
+	}
+	build, pack, settings := read("scripts/build-gui-mac.sh"), read("scripts/package-gui-mac.sh"), read("scripts/dmg-settings.py")
+	for _, want := range []string{
+		"for task_cli in seestar-wormhole-cli:seestar-wormhole seestar-copy-cli:seestar-copy-cli; do",
+		"for task_cli in seestar-wormhole-cli seestar-copy-cli; do",
+		`lipo "$1/universal/$task_cli" -verify_arch arm64 x86_64`,
+	} {
+		if !hasLine(build, want) {
+			t.Errorf("build-gui-mac.sh lacks %q", want)
+		}
+	}
+	for _, want := range []string{
+		`task_copy_cli="$(dirname "$task_app")/seestar-copy-cli"`,
+		`for task_program in "$task_app" "$task_cli" "$task_copy_cli"; do`,
+		`codesign --force --sign - "$task_copy_cli"`,
+		`codesign --verify --strict --verbose=2 "$task_copy_cli"`,
+		`cp "$task_cli" "$task_copy_cli" "$task_temp/image/"`,
+	} {
+		if !hasLine(pack, want) {
+			t.Errorf("package-gui-mac.sh lacks %q", want)
+		}
+	}
+	for _, program := range cliPrograms {
+		if strings.Count(settings, `"`+program+`"`) != 2 {
+			t.Errorf("dmg-settings.py must list and place %s", program)
+		}
+	}
 }
 
 func archiveFixtures(t *testing.T) {
@@ -48,14 +128,14 @@ func archiveFixtures(t *testing.T) {
 	}
 }
 
-func fakeBuild(version, revision, goos, arch string, gui bool, path string) error {
-	return os.WriteFile(path, []byte(fmt.Sprintf("%s %s %s %s gui=%t", version, revision, goos, arch, gui)), 0600)
+func fakeBuild(version, revision, goos, arch, program, path string) error {
+	return os.WriteFile(path, []byte(fmt.Sprintf("%s %s %s %s %s", version, revision, goos, arch, program)), 0600)
 }
 
 func nativeParts(t *testing.T) {
 	t.Helper()
 	for _, arch := range []string{"amd64", "arm64"} {
-		if err := fakeBuild("v0.5.0", "revision", "linux", arch, true, filepath.Join("dist/parts", assetName("v0.5.0", "linux", arch, true))); err != nil {
+		if err := fakeBuild("v0.5.0", "revision", "linux", arch, appProgram, filepath.Join("dist/parts", assetName("v0.5.0", "linux", arch, appProgram))); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -67,18 +147,28 @@ func nativeParts(t *testing.T) {
 func TestReleaseArchivesAndChecksums(t *testing.T) {
 	t.Chdir(t.TempDir())
 	archiveFixtures(t)
-	builds := 0
-	if err := release("v0.5.0", "revision", archiveTime, func(v, r, goos, arch string, gui bool, path string) error {
-		builds++
-		if gui && goos != "windows" {
+	var builds []string
+	if err := release("v0.5.0", "revision", archiveTime, func(v, r, goos, arch, program, path string) error {
+		builds = append(builds, program+" "+goos+"/"+arch)
+		if program == appProgram && goos != "windows" {
 			t.Fatal("container attempted native UI build")
 		}
-		return fakeBuild(v, r, goos, arch, gui, path)
+		return fakeBuild(v, r, goos, arch, program, path)
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if builds != 8 {
-		t.Fatalf("builds=%d, want eight", builds)
+	// Both CLIs on every platform, and the cgo-free Windows app.
+	var wantBuilds []string
+	for _, platform := range platforms {
+		wantBuilds = append(wantBuilds, "seestar-wormhole-cli "+platform, "seestar-copy-cli "+platform)
+		if strings.HasPrefix(platform, "windows/") {
+			wantBuilds = append(wantBuilds, "seestar-wormhole "+platform)
+		}
+	}
+	slices.Sort(builds)
+	slices.Sort(wantBuilds)
+	if !slices.Equal(builds, wantBuilds) {
+		t.Fatalf("builds=%v, want %v", builds, wantBuilds)
 	}
 	if _, err := os.Stat("dist/SHA256SUMS"); !os.IsNotExist(err) {
 		t.Fatal("portable build must not publish a partial checksum file")
@@ -142,8 +232,9 @@ func TestArchiveContentsModesAndDeterminism(t *testing.T) {
 	}
 	for _, goos := range []string{"linux", "windows"} {
 		for _, arch := range []string{"amd64", "arm64"} {
-			for _, gui := range []bool{false, true} {
-				if err := fakeBuild("v0.5.0", "revision", goos, arch, gui, filepath.Join("parts", assetName("v0.5.0", goos, arch, gui))); err != nil {
+			programs := []string{appProgram, cliProgram, copyProgram}
+			for _, program := range programs {
+				if err := fakeBuild("v0.5.0", "revision", goos, arch, program, filepath.Join("parts", assetName("v0.5.0", goos, arch, program))); err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -151,7 +242,11 @@ func TestArchiveContentsModesAndDeterminism(t *testing.T) {
 			var first []byte
 			for run := range 2 {
 				// Change source metadata: the archive must ignore it.
-				for _, input := range []string{"LICENSE", "NOTICE", filepath.Join("parts", assetName("v0.5.0", goos, arch, true)), filepath.Join("parts", assetName("v0.5.0", goos, arch, false))} {
+				inputs := []string{"LICENSE", "NOTICE"}
+				for _, program := range programs {
+					inputs = append(inputs, filepath.Join("parts", assetName("v0.5.0", goos, arch, program)))
+				}
+				for _, input := range inputs {
 					if err := os.Chtimes(input, archiveTime.Add(time.Duration(run)*time.Hour), archiveTime.Add(time.Duration(run)*time.Hour)); err != nil {
 						t.Fatal(err)
 					}
@@ -176,18 +271,18 @@ func TestArchiveContentsModesAndDeterminism(t *testing.T) {
 			if goos == "windows" {
 				ext = ".exe"
 			}
-			wantNames := []string{"LICENSE", "NOTICE", "seestar-wormhole" + ext, "seestar-wormhole-cli" + ext}
+			wantNames := []string{"LICENSE", "NOTICE", "seestar-copy-cli", "seestar-wormhole", "seestar-wormhole-cli"}
 			if goos == "windows" {
-				wantNames = []string{"LICENSE", "NOTICE", "seestar-wormhole-cli.exe", "seestar-wormhole.exe"}
+				wantNames = []string{"LICENSE", "NOTICE", "seestar-copy-cli.exe", "seestar-wormhole-cli.exe", "seestar-wormhole.exe"}
 			}
 			var names []string
 			check := func(name string, mode os.FileMode, stamp time.Time, data []byte) {
 				t.Helper()
 				names = append(names, name)
 				wantMode, wantData := os.FileMode(0644), name+" fixture"
-				if strings.HasPrefix(name, "seestar-wormhole") {
+				if strings.HasPrefix(name, "seestar-") {
 					wantMode = 0755
-					wantData = fmt.Sprintf("v0.5.0 revision %s %s gui=%t", goos, arch, !strings.Contains(name, "-cli"))
+					wantData = fmt.Sprintf("v0.5.0 revision %s %s %s", goos, arch, strings.TrimSuffix(name, ext))
 				}
 				if mode != wantMode || !stamp.Equal(archiveTime) || string(data) != wantData {
 					t.Fatalf("%s mode=%v time=%v data=%q", name, mode, stamp, data)
@@ -272,7 +367,7 @@ func TestChecksumsHashEachFileAndSortByName(t *testing.T) {
 
 func TestReleaseDoesNotPublishFailedBuilds(t *testing.T) {
 	t.Chdir(t.TempDir())
-	err := release("v0.5.0", "revision", archiveTime, func(_, _, _, _ string, _ bool, path string) error {
+	err := release("v0.5.0", "revision", archiveTime, func(_, _, _, _, _, path string) error {
 		if strings.Contains(path, "arm64") {
 			return errors.New("build failed")
 		}
@@ -312,8 +407,10 @@ func TestFinalAssemblyFailureKeepsParts(t *testing.T) {
 	if _, err := os.Stat("dist/SHA256SUMS"); !os.IsNotExist(err) {
 		t.Fatal("failed assembly published checksums")
 	}
-	if _, err := os.Stat("dist/parts/seestar-wormhole-cli_v0.5.0_linux_amd64"); err != nil {
-		t.Fatal("failed assembly lost parts")
+	for _, part := range []string{"seestar-wormhole-cli_v0.5.0_linux_amd64", "seestar-copy-cli_v0.5.0_linux_amd64"} {
+		if _, err := os.Stat(filepath.Join("dist/parts", part)); err != nil {
+			t.Fatal("failed assembly lost parts")
+		}
 	}
 	stages, err := filepath.Glob("dist/.release-*")
 	if err != nil || len(stages) != 0 {

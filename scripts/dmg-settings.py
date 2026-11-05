@@ -3,7 +3,7 @@ import os
 format = "UDZO"
 files = [
     os.path.join(defines["stage"], name)
-    for name in ("seestar-wormhole.app", "seestar-wormhole-cli", "LICENSE", "NOTICE")
+    for name in ("seestar-wormhole.app", "seestar-wormhole-cli", "seestar-copy-cli", "LICENSE", "NOTICE")
 ]
 symlinks = {"Applications": "/Applications"}
 background = "builtin-arrow"
@@ -15,7 +15,8 @@ text_size = 12
 icon_locations = {
     "seestar-wormhole.app": (144, 116),
     "Applications": (496, 116),
-    "seestar-wormhole-cli": (144, 264),
-    "LICENSE": (320, 264),
-    "NOTICE": (496, 264),
+    "seestar-wormhole-cli": (80, 264),
+    "seestar-copy-cli": (240, 264),
+    "LICENSE": (400, 264),
+    "NOTICE": (560, 264),
 }
