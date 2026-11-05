@@ -283,7 +283,7 @@ func TestCopyCantWrite(t *testing.T) {
 	}
 	e.c.finish(fmt.Errorf("create destination: %w", &fs.PathError{Op: "mkdir", Path: e.set.Folder, Err: fs.ErrPermission}))
 	v = e.c.view(time.Now())
-	if v.Title != "Can't write to "+e.set.Folder+": permission denied." || v.Text != "Choose a writable folder in Settings, then start copying." {
+	if v.Title != "Can't write to "+e.set.Folder+": permission denied." || v.Text != "Choose a writable folder with Change…, then start copying." {
 		t.Errorf("can't write: %+v", v)
 	}
 	// A refused write elsewhere, such as the state's folder, isn't the
@@ -533,13 +533,16 @@ func TestWording(t *testing.T) {
 func TestActivity(t *testing.T) {
 	a := &activity{}
 	var out strings.Builder
-	log := slog.New(newTee(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelWarn}), a))
+	log := slog.New(newTee(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelWarn}), a, "copy"))
 	log.Debug("hidden")
 	log.With("endpoint", "192.0.2.10:445").WithGroup("g").Info("pass done", "copied", 3, "dest", "/data/My Seestar")
 	log.Warn("copy failed", "path", "a.jpg", "err", "Disk full")
 	lines, seq := a.lines()
 	if seq != 2 || len(lines) != 2 {
 		t.Fatalf("got %d lines, seq %d: %+v", len(lines), seq, lines)
+	}
+	if lines[0].Source != "copy" || lines[0].At.IsZero() || lines[0].Time != lines[0].At.Local().Format(time.TimeOnly) {
+		t.Errorf("newest's source and time: %+v", lines[0])
 	}
 	if lines[0].Text != `copy failed path=a.jpg err="Disk full"` || !lines[0].Warn {
 		t.Errorf("newest: %+v", lines[0])
@@ -563,7 +566,7 @@ func TestActivity(t *testing.T) {
 // while copying is on.
 func TestCopyAPI(t *testing.T) {
 	e := newAppEnv(t, nil)
-	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't start copying: set the telescope and folder in Settings first.") {
+	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't start copying: save the copy settings first.") {
 		t.Errorf("start before settings are saved: %d %q", w.Code, w.Body.String())
 	}
 	input := `{"folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`

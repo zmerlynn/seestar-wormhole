@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -17,7 +18,7 @@ import (
 // options.
 func TestFreeAPI(t *testing.T) {
 	e := newAppEnv(t, nil)
-	if w := e.post("/copy/api/delete", `{"action":"find","days":"7"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: set the telescope and folder in Settings first.") {
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"7"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: save the copy settings first.") {
 		t.Errorf("before settings are saved: %d %s", w.Code, w.Body)
 	}
 	e = newAppEnv(t, savedAt(abs("/data/Seestar")))
@@ -148,6 +149,28 @@ func TestFreeInProcess(t *testing.T) {
 	}
 	if v := free(`{"action":"reset"}`); v.State != frStart {
 		t.Errorf("after Done: %+v", v)
+	}
+	// Activity has copy's records and Free up space's outcomes, each
+	// tagged with its source and timed, newest first.
+	lines, _ := e.s.copy.activity.lines()
+	var deletes []string
+	copies := 0
+	for i, l := range lines {
+		if l.At.IsZero() || i > 0 && l.At.After(lines[i-1].At) {
+			t.Errorf("entry %d out of order or untimed: %+v", i, l)
+		}
+		switch l.Source {
+		case "delete":
+			deletes = append(deletes, l.Text)
+		case "copy":
+			copies++
+		default:
+			t.Errorf("entry %d has source %q", i, l.Source)
+		}
+	}
+	want := []string{"free up space deleted files=2 size=\"6 B\"", "free up space can delete files=2 size=\"6 B\"", "free up space can delete files=0 size=\"0 B\""}
+	if !slices.Equal(deletes, want) || copies == 0 {
+		t.Errorf("delete activity %q, want %q; %d copy lines", deletes, want, copies)
 	}
 }
 

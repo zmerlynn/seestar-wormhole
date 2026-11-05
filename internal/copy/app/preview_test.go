@@ -312,7 +312,7 @@ func (s walkSpy) Walk(ctx context.Context, skip func(string, bool) bool, kept fu
 // a Save that changes the selection and Clear history discard it.
 func TestPreviewAPI(t *testing.T) {
 	e := newAppEnv(t, nil)
-	if w := e.post("/copy/api/copy", `{"action":"preview"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: set the telescope and folder in Settings first.") {
+	if w := e.post("/copy/api/copy", `{"action":"preview"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: save the copy settings first.") {
 		t.Errorf("preview before settings are saved: %d %q", w.Code, w.Body.String())
 	}
 	input := `{"folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`

@@ -16,7 +16,7 @@ func TestClearHistory(t *testing.T) {
 		w := e.post("/copy/api/clear", `{}`)
 		return w.Code, w.Body.String()
 	}
-	if code, body := clear(newAppEnv(t, nil)); code != 409 || !strings.Contains(body, "set the telescope and folder in Settings first") {
+	if code, body := clear(newAppEnv(t, nil)); code != 409 || !strings.Contains(body, "save the copy settings first") {
 		t.Errorf("before settings are saved: %d %s", code, body)
 	}
 

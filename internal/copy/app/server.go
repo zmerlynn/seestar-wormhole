@@ -109,6 +109,8 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	s.preview.at = at
 	s.free = newFreer(ctx, o.StateDir, log, dial)
 	s.free.at = at
+	// Free up space's outcomes join copy's in Activity, tagged "delete".
+	s.free.record = slog.New(newTee(slog.DiscardHandler, s.copy.activity, "delete"))
 	if o.Remover != nil {
 		s.free.remover = o.Remover
 	}
@@ -201,7 +203,7 @@ func (s *server) copyView() copyView {
 	return v
 }
 
-var errNotSetUp = errors.New("set the telescope and folder in Settings first")
+var errNotSetUp = errors.New("save the copy settings first")
 
 // endpointChanged follows a change of where the telescope is, which the
 // caller made holding s.admit: the previews go back to Start, as their
@@ -547,7 +549,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	s.mu.Unlock()
 	switch {
 	case errors.Is(err, state.ErrLocked):
-		conflict("Couldn't clear the history: another copy is using this folder, in another seestar-copy window or seestar-copy-cli. Stop that copy, then try again.")
+		conflict("Couldn't clear the history: another copy is using this folder, in another seestar-wormhole window or seestar-copy-cli. Stop that copy, then try again.")
 	case err != nil:
 		s.log.Warn("clear history", "dest", folder, "err", err)
 		conflict("Couldn't clear the history: " + reason(err) + ".")

@@ -37,6 +37,8 @@ type freer struct {
 	// prepared, if set, runs after a confirm's preparation and before its
 	// start; tests change the preview there.
 	prepared func()
+	// record, if set, logs each run's outcome to Activity as "delete".
+	record *slog.Logger
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when nothing runs
@@ -109,8 +111,40 @@ func (f *freer) run(st freeStatus, o engine.DeleteOptions, stop chan struct{}, i
 			return err
 		})
 		canceled = ctx.Err() != nil
+		f.outcome(o.DryRun, r, err, canceled)
 	}()
 	return nil
+}
+
+// outcome logs a run's outcome to record, without f.mu held.
+func (f *freer) outcome(dry bool, r engine.DeleteResult, err error, canceled bool) {
+	if f.record == nil {
+		return
+	}
+	var n, failed int
+	var bytes int64
+	for _, d := range r.Files {
+		switch d.Outcome {
+		case engine.FileDeleted:
+			n, bytes = n+1, bytes+d.Size
+		case engine.FileFailed:
+			failed++
+		}
+	}
+	verb := "deleted"
+	if dry {
+		verb = "can delete"
+	}
+	switch {
+	case canceled && dry:
+		f.record.Info("free up space preview canceled")
+	case err != nil && !errors.Is(err, engine.ErrFailedFiles):
+		f.record.Warn("free up space failed", "dry_run", dry, "err", err)
+	case failed > 0:
+		f.record.Warn("free up space "+verb, "files", n, "size", size(float64(bytes)), "failed", failed)
+	default:
+		f.record.Info("free up space "+verb, "files", n, "size", size(float64(bytes)))
+	}
 }
 
 // find starts a preview with set at t, which it keeps.

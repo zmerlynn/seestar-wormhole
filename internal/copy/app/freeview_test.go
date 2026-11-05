@@ -27,7 +27,7 @@ func TestFreeWording(t *testing.T) {
 		{"nothing any age", freeStatus{state: frNothing, preview: &engine.DeleteResult{}},
 			freeView{Title: "Nothing to delete yet.", Text: "Files become eligible once they're copied."}},
 		{"nothing trusted", freeStatus{state: frNothing, set: Settings{OlderThanDays: 1, TrustState: true}, preview: &engine.DeleteResult{}},
-			freeView{Title: "Nothing to delete yet.", Text: "Files become eligible once seestar-copy's records show them copied and older than 1 day."}},
+			freeView{Title: "Nothing to delete yet.", Text: "Files become eligible once the copy history shows them copied and older than 1 day."}},
 		{"trusted", freeStatus{state: frPreview, set: Settings{TrustState: true}, id: 2,
 			preview: &engine.DeleteResult{Files: []engine.DeleteFile{{Path: "a.jpg", Size: 3, Outcome: engine.FileDeleted}}}},
 			freeView{Title: "1 file (3 B) matches the saved copy records.", Sub: "Any age · Your copies were not checked.", ID: 2, Trust: true,

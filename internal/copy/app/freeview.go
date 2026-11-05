@@ -147,7 +147,7 @@ func (st *freeStatus) view() freeView {
 		v.Title = "Nothing to delete yet."
 		copied := "once they're copied"
 		if st.set.TrustState {
-			copied = "once seestar-copy's records show them copied"
+			copied = "once the copy history shows them copied"
 		}
 		if days > 0 {
 			v.Text = "Files become eligible " + copied + " and older than " + count(days, "day", "days") + "."
