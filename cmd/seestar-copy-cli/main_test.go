@@ -13,6 +13,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // scratch returns --dest and --state-dir flags naming new empty folders, and
@@ -322,7 +324,7 @@ func TestSyncFlags(t *testing.T) {
 		{[]string{"--exclude", "b", "--no-default-excludes", "--exclude", "a,c"}, []string{"b", "a,c"}, nil},
 		{[]string{"--include", "b", "--exclude", "x", "--include", "a,c"}, []string{"x"}, []string{"b", "a,c"}},
 	} {
-		cmd := newSyncCommand(newLogger(io.Discard))
+		cmd := newSyncCommand(diagnostic.Logger("text", io.Discard, slog.LevelInfo))
 		if err := cmd.ParseFlags(tc.args); err != nil {
 			t.Fatal(err)
 		}
@@ -412,10 +414,49 @@ func TestStateDir(t *testing.T) {
 func TestUTCLog(t *testing.T) {
 	var b bytes.Buffer
 	r := slog.NewRecord(time.Date(2026, 10, 10, 12, 34, 56, 123456789, time.FixedZone("offset", 3600)), slog.LevelInfo, "event", 0)
-	if err := newLogger(&b).Handler().Handle(context.Background(), r); err != nil {
+	if err := diagnostic.Logger("text", &b, slog.LevelInfo).Handler().Handle(context.Background(), r); err != nil {
 		t.Fatal(err)
 	}
 	if got, want := b.String(), "time=2026-10-10T11:34:56.123Z level=INFO msg=event\n"; got != want {
 		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+// The CLI's logs are byte for byte what its own handler wrote before it
+// shared diagnostic's: text lines, UTC millisecond times, INFO and up.
+func TestLogUnchanged(t *testing.T) {
+	old := func(w io.Writer) *slog.Logger {
+		return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{
+			ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+				if a.Key == slog.TimeKey && len(groups) == 0 {
+					return slog.String(slog.TimeKey, a.Value.Time().UTC().Format("2006-01-02T15:04:05.000Z"))
+				}
+				return a
+			},
+		}))
+	}
+	at := time.Date(2026, 10, 10, 12, 34, 56, 123456789, time.FixedZone("offset", -7*3600))
+	write := func(l *slog.Logger) {
+		for _, level := range []slog.Level{slog.LevelDebug, slog.LevelInfo, slog.LevelWarn, slog.LevelError} {
+			r := slog.NewRecord(at, level, "sync failed", 0)
+			r.AddAttrs(slog.String("path", "MyWorks/M 31/a b.fit"), slog.Any("error", errors.New(`refused: "x"`)),
+				slog.Int64("bytes", 1<<40), slog.Duration("elapsed", 1500*time.Millisecond), slog.Bool("once", true))
+			if l.Enabled(context.Background(), level) {
+				if err := l.Handler().Handle(context.Background(), r); err != nil {
+					t.Fatal(err)
+				}
+			}
+		}
+		r := slog.NewRecord(at, slog.LevelWarn, "adopted", 0)
+		r.AddAttrs(slog.String("folder", "MyWorks"))
+		if err := l.With("run", 3).Handler().Handle(context.Background(), r); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var want, got bytes.Buffer
+	write(old(&want))
+	write(diagnostic.Logger("text", &got, slog.LevelInfo))
+	if got.String() != want.String() || strings.Count(got.String(), "\n") != 4 {
+		t.Errorf("got\n%s\nwant\n%s", &got, &want)
 	}
 }

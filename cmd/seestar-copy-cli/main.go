@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"runtime/debug"
 	"syscall"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 const programName = "seestar-copy-cli"
@@ -37,9 +39,10 @@ func main() {
 }
 
 // run executes one invocation and returns its exit code. Help, version and
-// licenses go to stdout; logs and errors go to stderr.
+// licenses go to stdout; logs and errors go to stderr, as slog text lines
+// with UTC millisecond timestamps.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	logger := newLogger(stderr)
+	logger := diagnostic.Logger("text", stderr, slog.LevelInfo)
 	output := &checkedWriter{Writer: stdout}
 	root := newCommand(output, logger)
 	root.SetArgs(append([]string{}, args...))
@@ -72,18 +75,6 @@ func (w *checkedWriter) Write(p []byte) (int, error) {
 		w.err = err
 	}
 	return n, err
-}
-
-// newLogger writes slog text lines with UTC millisecond timestamps.
-func newLogger(w io.Writer) *slog.Logger {
-	return slog.New(slog.NewTextHandler(w, &slog.HandlerOptions{
-		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
-			if a.Key == slog.TimeKey && len(groups) == 0 {
-				return slog.String(slog.TimeKey, a.Value.Time().UTC().Format("2006-01-02T15:04:05.000Z"))
-			}
-			return a
-		},
-	}))
 }
 
 func versionString() string {
