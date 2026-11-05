@@ -129,7 +129,7 @@ func (d *guiTestDriver) uxRunning() error {
 			return err
 		}
 	case "details":
-		d.js(`document.getElementById('details').open=true;`)
+		d.js(`selectTab('activity');document.getElementById('details').open=true;`)
 		if err := d.probe(`check(el('events').textContent.includes('Connected to your Seestar') && el('events').textContent.includes('Account telescopes: S30 synthetic-details') && JSON.parse(el('effective-settings').textContent).ports['4700']===4700 && el('log-path').textContent==='Private log: state/gui.log',{events:el('events').textContent,logPath:el('log-path').textContent})`); err != nil {
 			return err
 		}
