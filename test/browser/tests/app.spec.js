@@ -10,7 +10,10 @@ const {
 } = require('./app');
 
 const rootStatus = '2 folders, 2 files.';
-const connected = /^Connected\. The telescope's share has the folders (Long names and MyWorks|MyWorks and Long names)\.$/;
+const shares = String.raw`Connected\. The telescope's share has the folders (Long names and MyWorks|MyWorks and Long names)\.`;
+// A passed Test of the saved address, and of any other, which says to Save.
+const connected = new RegExp(`^${shares}$`);
+const connectedUnsaved = new RegExp(`^${shares} Save to use this address for Copy, Browse and Free up space\\.$`);
 const refusedMessage = "127.0.0.1 answered but refused port 1. Is this the telescope's address?";
 const addressError = 'Enter the telescope address, with an optional port.';
 
@@ -151,11 +154,14 @@ test('a Test that passed is not run again by Save, and the header shows it', asy
   await chooseLAN(page);
   await field(page, 'Telescope address').fill(share);
   await page.getByRole('button', { name: 'Test' }).click();
-  await expect(lanResult(page)).toHaveText(connected);
+  await expect(lanResult(page)).toHaveText(connectedUnsaved);
   await expect(page.locator('#connection-text')).toHaveText('Not connected');
+  // Test saves nothing: the tabs stay locked until Save.
+  await expect(tab(page, 'Copy')).toBeDisabled();
   await page.locator('#lan-save').click();
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
   await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+  for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeEnabled();
   expect(n.tests).toBe(1);
 });
 
@@ -167,7 +173,7 @@ test('Test reports success and failure under the address, and Save keeps a refus
 
   await field(page, 'Telescope address').fill(share);
   await page.getByRole('button', { name: 'Test' }).click();
-  await expect(result).toHaveText(connected);
+  await expect(result).toHaveText(connectedUnsaved);
   await expect(result).toHaveAttribute('data-tone', 'ok');
   await expect(result).toHaveAttribute('role', 'status');
 
@@ -208,7 +214,7 @@ test('a click held across a status poll still clicks', async ({ page, startApp }
   // Copy's status is read once the page has rendered its own.
   await page.waitForResponse((r) => r.url().endsWith('/copy/api/status'));
   await page.mouse.up();
-  await expect(lanResult(page)).toHaveText(connected);
+  await expect(lanResult(page)).toHaveText(connectedUnsaved);
 });
 
 test('first-run field errors block saving and focus the first field', async ({ page, startApp }) => {

@@ -29,8 +29,10 @@ unavailable and say so. Quit and the version are below every tab.
   its file-sharing (SMB) port.
 - **On this network** is for a Seestar on the same network as this computer.
   Enter its address, with an optional port (445 by default). **Test** checks
-  that it answers file sharing; **Save** tests it first, unless it has just
-  passed, and saves it only if it answers. Otherwise the saved route stays.
+  that it answers file sharing and saves nothing: when it passes for an
+  address other than the saved one, it says to **Save**. **Save** tests it
+  first, unless it has just passed, and saves it only if it answers; Copy,
+  Browse and Free up space then use it. Otherwise the saved route stays.
   On a Mac, when nothing answers at the address, Test or Save also says to
   enable seestar-wormhole in System Settings → Privacy & Security → Local
   Network, which macOS may be blocking; see [Local Network access](copying.md#things-to-know).

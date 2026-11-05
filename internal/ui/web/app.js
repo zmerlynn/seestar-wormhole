@@ -350,7 +350,10 @@ async function lanTest() {
   try {
     r = await api('test', {address: typed}, '/copy/api/');
     lanReach = {typed, address: r.address, ok: r.ok};
-    lanResult(r.message, r.ok ? 'ok' : 'error');
+    // Test saves nothing: until Save, the copy tabs use the saved route.
+    const saved = state?.settings?.route === 'lan' ? state.settings.lan_address : '';
+    const unsaved = r.ok && r.address !== saved ? ' Save to use this address for Copy, Browse and Free up space.' : '';
+    lanResult(r.message + unsaved, r.ok ? 'ok' : 'error');
   } catch (e) {
     if (e.fields?.address) {
       lanResult('');
