@@ -1,6 +1,6 @@
 ---
 name: wormhole-review
-description: Review a seestar-wormhole change (a branch, a commit range or chosen areas) in focused lanes - correctness, concurrency, tests, simplicity, operability and security, provenance, CLI contract, licensing, build and release, public hygiene, docs editorial - scoped to what the change touches, ending in one verdict.
+description: Review a seestar-wormhole change (a branch, a commit range or chosen areas, including seestar-copy-cli and the copy tabs) in focused lanes - correctness, concurrency, tests, simplicity, operability and security, provenance, CLI contract, upgrade, licensing, build and release, public hygiene, docs editorial - scoped to what the change touches, ending in one verdict.
 ---
 
 # Reviewing a seestar-wormhole change
@@ -34,19 +34,20 @@ judgment call; the table is a starting point.
 | Lane | Run it when the change touches |
 |---|---|
 | correctness | any non-test Go |
-| concurrency | goroutines, channels, locks, atomics, contexts or timers; anything in `internal/edge/` or `internal/proxy/` |
+| concurrency | goroutines, channels, locks, atomics, contexts, timers or signals; anything in `internal/edge/`, `internal/proxy/`, `internal/copy/copier/`, `internal/copy/app/`, `internal/copy/browse/` or the pass loop in `internal/copy/engine/` |
 | tests | any Go, including tests alone |
 | simplicity | any non-test Go, or a new flag, option or file format |
-| operability-security | logging, secrets, crypto, file writes, budgets; `internal/cloud/`, `internal/edge/`, `internal/proxy/`, diagnostics, protocol packages |
+| operability-security | logging, secrets, crypto, file writes, paths from the device, budgets; `internal/cloud/`, `internal/edge/`, `internal/proxy/`, `internal/copy/remote/`, `internal/copy/copier/`, `internal/copy/state/`, diagnostics, protocol packages |
 | provenance | protocol packages (`internal/core/`, `internal/iotc/`, `internal/rdt/`, `internal/p2ptunnel/`, `internal/dtls/`, `internal/session/`), `internal/edge/`, `internal/cloud/` |
-| cli-contract | `cmd/`, `docs/reference.md`, help text, exit codes, log records |
-| upgrade | a file on disk (settings, state, identity, manifests), its version, its defaults or its reader and writer; a change of default behavior an existing user would notice |
+| cli-contract | `cmd/`, `docs/reference.md`, `docs/copy/reference.md`, help text, exit codes, log records |
+| upgrade | a file on disk (settings, `copy.json`, the copy state and its lock, identity, manifests), its version, its defaults or its reader and writer; a change of default behavior an existing user would notice |
 | licensing | `go.mod`, `go.sum`, `vendor/`, `LICENSE`, `NOTICE`, `internal/licenses/`, new imports, new data files, copied code |
 | build-release | `scripts/`, `Containerfile`, `.github/`, build tags, `GOOS`-specific code |
 | public-hygiene | always |
 | docs-editorial | Markdown, help strings, user-facing errors and messages |
 
-A docs-only change is usually docs-editorial plus public-hygiene. A
+`internal/copy/plan/` is pure decision logic: correctness, tests and simplicity
+cover it. A docs-only change is usually docs-editorial plus public-hygiene. A
 dependency upgrade is licensing, build-release and tests at least. Skip a lane
 only when nothing in it applies, and say which lanes you skipped.
 
@@ -61,9 +62,11 @@ them, instead of each lane rebuilding:
 go test -race scripts/release.go scripts/release_test.go   # when scripts/ changed, in the Go container
 ```
 
-`./scripts/check.sh prepare` must have run once with the network. Lanes that
-need more (a mutation, a stress test, a built binary to compare with the docs)
-work on a scratch copy in their own container, never on the checkout.
+`./scripts/check.sh prepare` must have run once with the network. The Samba
+and browser tests (`scripts/test-smb.sh`, `test/browser/`) run in CI. Lanes
+that need more (a mutation, a stress test, a built binary to compare with the
+docs) work on a scratch copy in their own container, never on the checkout.
+Nothing in a review connects to a telescope.
 
 ## 4. Run the lanes
 

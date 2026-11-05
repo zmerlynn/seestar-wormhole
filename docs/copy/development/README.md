@@ -177,8 +177,8 @@ These apply to every change, whoever writes it.
 
 ## Reviewing a change
 
-[`.claude/skills/seestar-copy-review`](../../../.claude/skills/seestar-copy-review/SKILL.md)
-describes how to review a change in focused lanes, such as correctness, tests,
-simplicity, licensing and docs. A coding agent can follow it as a skill, and a
-person can follow it as a checklist. A review is scoped to the change by
-default and ends in a single verdict.
+A copy change is reviewed with the app's
+[`.claude/skills/wormhole-review`](../../../.claude/skills/wormhole-review/SKILL.md);
+its lane table names the copy packages, and its lanes carry the copy rules.
+See [Reviewing a change](../../development/README.md#reviewing-a-change) in
+the development guide.

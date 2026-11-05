@@ -4,6 +4,19 @@ Each section is one lane's checklist. A lane stays in its concern; other lanes
 cover the rest. Every lane follows the scope rule and output format in
 [SKILL.md](SKILL.md).
 
+Two rules cut across every lane for a change to the copy code
+(`internal/copy/`, `cmd/seestar-copy-cli/`, the app's copy tabs):
+
+- **Never write to the device unasked.** Copying opens files on the share
+  read-only and does nothing else to it. Only `delete --force` and a
+  confirmed Free up space remove files. Any other create, delete, rename,
+  truncate, write, set-info, lock or open with write access on the share is a
+  Must fix in whichever lane finds it.
+- **The state file never lies.** A file is recorded in the copy state only
+  after it is complete on disk under its final name. A skipped or failed file
+  is always logged; a file that is only not ready yet is counted in the pass
+  summary instead.
+
 ## correctness
 
 Is the changed code right, and robust where it reads untrusted input?
@@ -27,10 +40,26 @@ Is the changed code right, and robust where it reads untrusted input?
 5. Compatibility. Existing users keep their behavior: default layouts,
    existing state files, existing flags. A change in behavior is deliberate
    and documented.
-6. Mutate the two or three most important new conditions on a scratch copy
+6. Copy ordering. Walk the crash points of one copied file: folder created,
+   temp file created, bytes written and hashed, byte count checked against
+   the listed size, fsync, close, mtime set, rename over the final path, the
+   folder fsynced (not on Windows, a documented gap), then its state line
+   appended and fsynced. A crash or error at any step leaves either no state
+   line or a complete file under its final name. An adoption only reads the
+   file, rechecks it after hashing, and records it. A short read is a
+   failure, not a smaller file.
+7. Copy state file. The last line for a path wins. A final line without a
+   newline, or one that does not parse, is dropped with a warning; any other
+   bad line is fatal. Appends after a torn tail start on a fresh line. A
+   header that names another destination is refused. Every documented rule
+   for a file in a pass maps to one branch in `internal/copy/plan/`; a failed
+   file is logged and left for the next pass, and a listing failure fails the
+   pass.
+8. Mutate the two or three most important new conditions on a scratch copy
    and run the package tests.
 
-Must fix: wrong behavior on a reachable input, data loss, a crash, a resource
+Must fix: a write to the device beyond a confirmed delete, a state line for
+a file not fully on disk, wrong behavior on a reachable input, data loss, a crash, a resource
 leaked on a common path, or a silent compatibility break. A robustness
 weakness on an unreachable input is Should fix at most.
 
@@ -58,13 +87,18 @@ Concurrency, cancellation and lifetime in the changed code.
    with completion into a double report or a lost error.
 5. Shutdown under load: an interrupt mid-transfer, a peer that stops
    reading, a device that drops the session. The session release and cleanup
-   still run.
+   still run. In the copy code: a stop or quit mid-copy cancels in-flight
+   reads, removes their temp files and logs off; files finished before it are
+   in the state and files cut off are not; the worker pool exits before the
+   session logs off, and state appends from several workers are serialized
+   so each line reaches the file whole.
 6. Evidence. Cite the race tests from the shared checks. For a suspected
    race, write a targeted stress test and run it with `-race -count=50` or
    more; report the command and the result.
 
 Must fix: a data race, a deadlock, a goroutine leaked per connection or per
-file, or a shutdown that skips release.
+file, a torn or interleaved copy state line, a canceled file left in the
+state, or a shutdown that skips release or log-off.
 
 ## tests
 
@@ -97,7 +131,12 @@ Do the tests pin the changed behavior?
    Run the touched packages with `-count=3 -shuffle=on`.
 4. New decoders of untrusted input get a fuzz target with seeds checked in.
 5. Protocol changes are exercised end to end against `internal/sim/` where the
-   simulator supports them.
+   simulator supports them. Copy paths are exercised against the fake remote
+   (`remote.Fake`): short reads, an error mid-file, cancel mid-file, a rename
+   over an existing file, names Windows cannot store, and several passes end
+   to end. Copy state fixtures include a torn final line and a bad middle
+   line, and a contract in `docs/copy/reference.md` needs a test as one in
+   `docs/reference.md` does.
 6. Any weakened assertion needs a stated reason.
 
 Must fix: a surviving mutant on a correctness-relevant line, a changed
@@ -157,7 +196,12 @@ The threat model:
 3. Files and paths. Names from the device or the network cannot escape the
    destination, through `..`, absolute paths, symlinks, or Windows reserved
    names and separators. State and diagnostic files get the right permissions
-   and are written atomically.
+   and are written atomically. A name from the share that Windows cannot store
+   fails that file with a clear error each pass and is never renamed
+   silently. Copy temp files (`.seestar-copy-<hash>.tmp`) live beside their
+   final file, leftovers are removed only as regular files with exactly that
+   name and never through a symbolic link, and the copy state is never
+   inside the destination and has one writer at a time.
 4. Budgets. Every loop over remote input, every allocation sized by remote
    input, and every retry and timeout is bounded, and the bound is
    documented.
@@ -170,7 +214,8 @@ The threat model:
      configuration change without an explicit request.
 
 Must fix: a secret or identifier leaked into output, a path escape, an
-unbounded allocation from remote input, or an unsafe default.
+unbounded allocation from remote input, an unconfirmed write to the share, or
+an unsafe default.
 
 ## provenance
 
@@ -195,8 +240,11 @@ disagrees with the code, or anything that looks copied or captured.
 
 ## cli-contract
 
-`docs/reference.md` is the contract for scripts and careful users; help text
-is the contract for people at a terminal.
+`docs/reference.md`, and `docs/copy/reference.md` for `seestar-copy-cli`, are
+the contract for scripts and careful users; help text is the contract for
+people at a terminal. For `seestar-copy-cli`, that includes the per-file lines
+and the per-pass summary line, a state file for another destination or one
+already in use, and a relative `--dest`.
 
 1. Build the head binary and compare help, `docs/reference.md` and behavior
    for everything the change adds or alters:
@@ -248,6 +296,13 @@ disk stay downgradable.
 6. Names follow the file's existing convention (JSON members in snake_case)
    and common forms: numbers as numbers, durations in one documented form,
    lists of objects rather than encoded strings.
+7. The copy state file (its location, header `v`, lock file and record
+   members) and `copy.json` are on-disk formats like the others. The copy
+   state is the one that matters most: losing it means copying a whole night
+   again, or copying files the user already moved away. A change to how the
+   state path is derived from the destination (cleaning, case, symlinks,
+   drive letters) is a change of format: an existing user's state must still
+   be found. A state file refused at load is never appended to.
 
 Must fix: data loss on upgrade or downgrade; a file that an older release can
 no longer read without the maintainer's recorded approval; a file overwritten
@@ -291,7 +346,10 @@ attribution, or a stale embedded license set.
 
 1. Build-tag and `GOOS`-specific changes compile on every release target
    (the release workflow and `scripts/release.go` list them). The macOS cross-builds in
-   `./scripts/check.sh` are a minimum.
+   `./scripts/check.sh` are a minimum. Code that behaves differently on
+   Windows (rename over an existing file, reserved names, path separators,
+   file locking) has a test that runs on every target's logic, or a stated
+   reason why it cannot.
 2. Release script and test:
    - archive names, root members/modes, universal DMG contents and checksums are right;
    - the complete download inventory matches the release asset test;
@@ -343,7 +401,8 @@ The readers:
 - `README.md` is for Seestar owners who are not developers;
 - each `docs/` guide is for the same readers doing one task;
 - `docs/reference.md` owns the mechanics: flags, defaults, exit codes and
-  formats;
+  formats; `docs/copy/reference.md` owns them for `seestar-copy-cli` and the
+  copy state file;
 - `DESIGN.md` and `docs/development/` are for contributors.
 
 1. Accuracy. Every claim in the changed text is true at HEAD. Build the
