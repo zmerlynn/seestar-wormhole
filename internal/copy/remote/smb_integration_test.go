@@ -3,7 +3,7 @@
 package remote
 
 // These tests need the Samba fixture in testdata/samba, reachable at
-// SEESTAR_COPY_SMB_ENDPOINT (host:port). scripts/copy/test-smb.sh and CI start it.
+// SEESTAR_COPY_SMB_ENDPOINT (host:port). scripts/test-smb.sh and CI start it.
 
 import (
 	"bytes"

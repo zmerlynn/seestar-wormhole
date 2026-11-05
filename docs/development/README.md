@@ -127,11 +127,15 @@ See [certificate selection and renewal](releasing.md#mac-signing-and-notarizatio
 
 ### Optional integration checks
 
-- `./scripts/test-smb.sh` runs a disposable Samba fixture and checksum-verified
-  official rclone v1.75.2, exercising guest listing/copy/download comparison
-  through the composed proxy and detecting same-size corruption. It needs
-  network access to install fixture tools; ordinary `go test ./...` leaves
-  this environment-gated test off.
+- `./scripts/test-smb.sh` runs every test that needs a real Samba server
+  against one disposable fixture, a guest-only, read-only share like the
+  telescope's (Samba 4.19.5), built from `internal/copy/remote/testdata/samba`.
+  It runs the copy packages' `smbintegration` tests, and, with
+  checksum-verified official rclone v1.75.2, guest listing/copy/download
+  comparison through the composed proxy, detecting same-size corruption.
+  Building the fixture image and fetching rclone need network access; the
+  tests run on a private Podman network. Ordinary `go test ./...` leaves
+  these environment-gated tests off.
 - `./scripts/test-lan-address-changes.sh <evidence-directory>` runs prefix,
   address replacement, and 64-interface flood regressions in privileged Linux
   containers. It prepares a digest-pinned Alpine image and public packages

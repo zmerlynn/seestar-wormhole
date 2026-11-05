@@ -68,17 +68,15 @@ in the `docker.io/library/golang:1.27` image with Podman, so no Go is needed
 on the host. See the [development guide](../../development/README.md) for its
 `prepare` step and caches.
 
-seestar-copy's own steps are in `scripts/copy/check-go.sh`, which
-`check.sh` and CI run: cross-builds and vet of the copy commands and
-packages for every target with `CGO_ENABLED=0`, the Windows app with its
-window, the license catalog check, and vet of the Samba tests.
+`check.sh` and CI also cross-build and vet the copy commands and packages
+for every target with `CGO_ENABLED=0`, and vet the Samba tests.
 
-`./scripts/copy/test-smb.sh` runs the `internal/copy/remote` and
+`./scripts/test-smb.sh` runs the `internal/copy/remote` and
 `internal/copy/app` Samba tests against a fixture, a guest-only, read-only
-share like the telescope's, built from `internal/copy/remote/testdata/samba`.
-Building the fixture image downloads Samba; the tests run on a private
-Podman network. CI runs them too. They need the `smbintegration` build tag
-and `SEESTAR_COPY_SMB_ENDPOINT` (`host:port`) naming the fixture.
+share like the telescope's, built from `internal/copy/remote/testdata/samba`;
+see the [development guide](../../development/README.md#optional-integration-checks).
+CI runs them too. They need the `smbintegration` build tag and
+`SEESTAR_COPY_SMB_ENDPOINT` (`host:port`) naming the fixture.
 
 `test/browser` holds browser tests of the `browse` page, written with
 [Playwright](https://playwright.dev/) and run in Chromium and WebKit. CI
@@ -114,12 +112,6 @@ BROWSE_URL=http://127.0.0.1:PORT/ APP_BIN=../../seestar-copy npx playwright test
 Use the URL browse printed for `BROWSE_URL`. Screenshots go to
 `test/browser/screenshots`. Stop the fixture with
 `podman stop seestar-copy-samba-browse`.
-
-With Go 1.27 installed, seestar-copy's steps run directly:
-
-```sh
-GOFLAGS=-mod=vendor sh scripts/copy/check-go.sh
-```
 
 To build the command:
 
