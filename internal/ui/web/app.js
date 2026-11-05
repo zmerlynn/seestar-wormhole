@@ -794,6 +794,9 @@ async function copyAction(action) {
   try {
     const v = await api('copy', {action}, '/copy/api/');
     result('c-err', '');
+    // Copying has started, even if a one-pass run is already done by the
+    // time the answer comes and the state shows Start copying again.
+    if (action === 'start') copyNext = false;
     renderCopy(v);
   } catch (e) {
     result('c-err', copyError(e), 'err');

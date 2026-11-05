@@ -176,6 +176,47 @@ test('with the check for new files off, Start copying copies once and stops', as
   await expect(passes(page)).toHaveCount(1);
 });
 
+// A one-pass run can be done before the page hears that it started: the
+// first state the page sees is done, which shows Start copying again, but
+// the notice that Start copying is next still goes.
+test('a one-pass Start done before its answer still clears the first-Save notice', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  await openCopy(page, app.url);
+  await field(page, 'Folder for your images').fill(app.folder);
+  await page.getByRole('checkbox', { name: 'Check for new files every' }).uncheck();
+  await button(page, 'Save').click();
+  await expect(page.locator('#c-next')).toBeVisible();
+
+  // Status answers stay in hand from the press until the pass is done,
+  // and then all say done; so does the answer to Start.
+  let pressed = false, finished;
+  const done = new Promise((resolve) => (finished = resolve));
+  await page.route('**/copy/api/status', async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    if (pressed) json.copy = await done;
+    await route.fulfill({ response, json });
+  });
+  await page.route('**/copy/api/copy', async (route) => {
+    const response = await route.fetch();
+    if (route.request().postDataJSON().action !== 'start') return route.fulfill({ response });
+    const headers = route.request().headers();
+    let view;
+    await expect.poll(async () => {
+      view = (await (await page.request.get(new URL('/copy/api/status', app.url).href, { headers })).json()).copy;
+      return view.on ? 'copying' : view.state;
+    }, { timeout: 30000 }).toBe('done');
+    finished(view);
+    await route.fulfill({ response, json: view });
+  });
+  pressed = true;
+  await button(page, 'Start copying').click();
+  await expect(title(page)).toHaveText(once, { timeout: 30000 });
+  await expect(button(page, 'Start copying')).toBeVisible();
+  await expect(page.locator('#c-next')).toBeHidden();
+  await expect(passes(page)).toHaveCount(1);
+});
+
 test('the CLI copying to the same folder shows Folder in use until it stops', async ({ page, startApp }, testInfo) => {
   const home = testInfo.outputPath('cli');
   const folder = path.join(home, 'Seestar');
