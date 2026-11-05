@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
@@ -125,7 +126,12 @@ func (p *Sessions) startDial() *dialing {
 	dctx, cancel := context.WithCancel(p.ctx)
 	timer := time.AfterFunc(dialTimeout, cancel)
 	go func() {
-		s, err := p.dial(dctx)
+		defer guard.Recover(p.log, "connecting to the device")
+		var s remote.Session
+		err := guard.Run(p.log, "connecting to the device", func() (err error) {
+			s, err = p.dial(dctx)
+			return err
+		})
 		if err != nil {
 			// remote.Dial's nil *SMB is not a nil Session.
 			s = nil

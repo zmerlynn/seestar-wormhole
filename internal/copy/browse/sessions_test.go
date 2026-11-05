@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"strings"
 	"sync"
 	"testing"
 	"testing/fstest"
@@ -446,5 +447,33 @@ func TestReleaseInGraceKeepsSession(t *testing.T) {
 		if !d.session(0).closed() {
 			t.Fatal("not closed 30 s after the release")
 		}
+	})
+}
+
+// A panicking dial fails the Get that waits on it, and the pool dials again
+// for the next.
+func TestPanickingDial(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		log, logged := newLog()
+		panics := true
+		p := NewSessions(context.Background(), func(context.Context) (remote.Session, error) {
+			if panics {
+				panic("boom")
+			}
+			return remote.NewFake(fstest.MapFS{}), nil
+		}, log)
+		defer p.Close()
+		if _, err := p.Get(context.Background()); err == nil || err.Error() != "internal error while connecting to the device: boom" {
+			t.Fatalf("Get = %v, want the recovered panic", err)
+		}
+		if !strings.Contains(logged.String(), "internal error recovered") {
+			t.Errorf("the panic was not logged: %s", logged)
+		}
+		panics = false
+		l, err := p.Get(context.Background())
+		if err != nil {
+			t.Fatalf("Get after a panic: %v", err)
+		}
+		l.Release()
 	})
 }

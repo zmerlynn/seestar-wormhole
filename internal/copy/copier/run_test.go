@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"slices"
@@ -221,4 +222,26 @@ func TestRunSameBaseName(t *testing.T) {
 		}
 		fx.checkNoTemp(t)
 	})
+}
+
+// A panic while copying a file fails that file, logged, and the worker goes
+// on to the next.
+func TestPanicFailsTheFile(t *testing.T) {
+	fx := newFixture(t, nil)
+	c := fx.copier(t)
+	c.log = slog.New(slog.DiscardHandler)
+	sess := device(map[string]string{"MyWorks/a.fit": "abc", "MyWorks/b.fit": "abc"})
+	sess.Faults = map[string]remote.Fault{"MyWorks/a.fit": {After: 1, Stall: func() { panic("boom") }}}
+	results := run(c, t.Context(), sess, 1, []plan.Decision{decision(plan.Copy, "MyWorks/a.fit", 3), decision(plan.Copy, "MyWorks/b.fit", 3)})
+	if len(results) != 2 {
+		t.Fatalf("got %d results, want 2", len(results))
+	}
+	if err := results[0].Err; err == nil || err.Error() != "internal error while copying MyWorks/a.fit: boom" {
+		t.Errorf("MyWorks/a.fit: got err %v", err)
+	}
+	if results[1].Err != nil {
+		t.Errorf("MyWorks/b.fit after the panic: %v", results[1].Err)
+	}
+	fx.checkAbsent(t, "MyWorks/a.fit")
+	fx.checkNoTemp(t)
 }

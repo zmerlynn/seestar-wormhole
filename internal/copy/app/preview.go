@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
@@ -120,9 +121,10 @@ func (p *previewer) start(set Settings) error {
 		},
 	}
 	go func() {
+		defer guard.Recover(p.log, "previewing")
 		// A dry run with failed files returns an error after Decided;
 		// the preview shows them.
-		err := engine.RunSync(ctx, o, p.log)
+		err := guard.Run(p.log, "previewing", func() error { return engine.RunSync(ctx, o, p.log) })
 		canceled := ctx.Err() != nil
 		cancel()
 		p.mu.Lock()

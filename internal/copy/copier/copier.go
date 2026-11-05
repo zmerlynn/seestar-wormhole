@@ -36,6 +36,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
@@ -53,6 +54,7 @@ type Copier struct {
 
 	root  *os.Root
 	state *state.State
+	log   *slog.Logger
 	now   func() time.Time // the time recorded in a record's at
 }
 
@@ -76,7 +78,7 @@ func New(dest string, st *state.State, log *slog.Logger) (*Copier, error) {
 		root.Close()
 		return nil, fmt.Errorf("remove leftover temporary files in %s: %w", dest, err)
 	}
-	return &Copier{root: root, state: st, now: time.Now}, nil
+	return &Copier{root: root, state: st, log: log, now: time.Now}, nil
 }
 
 // removeTemps removes each regular file under root whose name
@@ -219,15 +221,25 @@ func (c *Copier) Run(ctx context.Context, sess remote.Session, workers int, ds [
 	var wg sync.WaitGroup
 	for range min(max(workers, 1), len(jobs)) {
 		wg.Go(func() {
+			// A panic in a download fails that file, as any error does.
+			defer guard.Recover(c.log, "copying")
 			for {
 				i := int(next.Add(1) - 1)
 				if i >= len(jobs) {
 					return
 				}
-				r := c.do(ctx, sess, jobs[i])
-				mu.Lock()
-				done(r)
-				mu.Unlock()
+				var r Result
+				if err := guard.Run(c.log, "copying "+jobs[i].Path, func() error {
+					r = c.do(ctx, sess, jobs[i])
+					return nil
+				}); err != nil {
+					r = Result{Decision: jobs[i], Err: err}
+				}
+				func() {
+					mu.Lock()
+					defer mu.Unlock()
+					done(r)
+				}()
 			}
 		})
 	}

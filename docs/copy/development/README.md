@@ -26,6 +26,7 @@ is stopped.
 | `internal/copy/plan` | The pass decisions: wait, done, copy, replace, adopt or fail for each listed file, and `delete`'s decisions on files and emptied folders. Pure functions with no I/O; the current time is an input. |
 | `internal/copy/copier` | Carries out a pass's decisions over the one session with a worker pool: temporary file beside the final one, hash, size check, fsync, mtime, rename, then the state record. |
 | `internal/copy/browse` | `browse`'s web server: the HTTP handler with its Host, Fetch Metadata and path checks, the embedded page, and the pool that shares one SMB session between requests, closing it when idle, failed or stuck. |
+| `internal/copy/guard` | The panic guard: each goroutine the copier starts recovers a panic, logs it with its stack, and fails its work, so a copier bug can't end the proxy that shares its process. |
 | `internal/copy/readonly` | The dry-run guard: once enabled, every function that changes the local filesystem or the device panics. A test checks that each such function calls it first. |
 | `internal/licenses` | Shared with seestar-wormhole: the `licenses` command's output, the project's `NOTICE`, then the license texts of each module linked into the running build. |
 | `scripts/generate-licenses.go` | Writes the license catalog that `internal/licenses` embeds. |

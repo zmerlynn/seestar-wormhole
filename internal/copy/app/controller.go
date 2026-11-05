@@ -15,6 +15,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/copier"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
@@ -137,9 +138,12 @@ func (c *controller) start(set Settings) error {
 	c.mu.Unlock()
 	c.log.Info("copying started", "endpoint", set.Address, "dest", set.Folder)
 	go func() {
+		defer guard.Recover(c.log, "copying")
 		ticks := time.NewTicker(time.Second)
 		ran := make(chan error, 1)
-		go func() { ran <- engine.RunSync(ctx, o, c.log) }()
+		go func() {
+			ran <- guard.Run(c.log, "copying", func() error { return engine.RunSync(ctx, o, c.log) })
+		}()
 		var err error
 	wait:
 		for {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
@@ -81,7 +82,12 @@ func (f *freer) run(st freeStatus, o engine.DeleteOptions, stop chan struct{}, i
 	f.cancel, f.stop, f.done, f.st = cancel, stop, done, st
 	o.Stop = stop
 	go func() {
-		r, err := engine.RunDelete(ctx, o, f.log)
+		defer guard.Recover(f.log, "freeing up space")
+		var r engine.DeleteResult
+		err := guard.Run(f.log, "freeing up space", func() (err error) {
+			r, err = engine.RunDelete(ctx, o, f.log)
+			return err
+		})
 		canceled := ctx.Err() != nil
 		cancel()
 		f.mu.Lock()

@@ -1,0 +1,69 @@
+package app
+
+import (
+	"context"
+	"os"
+	"strings"
+	"testing"
+	"testing/fstest"
+	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+)
+
+func panicDial(context.Context, string) (remote.Session, error) { panic("boom") }
+
+// A panic in the copy loop ends the loop with an error instead of the
+// process, and copying can start again.
+func TestCopyPanicEndsTheLoop(t *testing.T) {
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.c.dial = panicDial
+	if err := e.c.start(e.set); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v := e.c.view(time.Now())
+	if v.On || !strings.Contains(v.Title, "internal error while copying: boom") {
+		t.Errorf("after a panic: %+v", v)
+	}
+	if err := e.c.start(e.set); err != nil {
+		t.Errorf("start after a panic: %v", err)
+	}
+}
+
+// A panic in a preview fails the preview.
+func TestPreviewPanicFails(t *testing.T) {
+	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
+	e.p.dial = panicDial
+	if v := e.run(); v.State != pvFailed || !strings.Contains(v.Title, "internal error while previewing: boom") {
+		t.Errorf("after a panic: %+v", v)
+	}
+}
+
+// A panic in a free-space check fails the check.
+func TestFreePanicFails(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/a.jpg")
+	e.f.dial = panicDial
+	if err := os.MkdirAll(e.set.Folder, 0o777); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.f.find(e.set); err != nil {
+		t.Fatal(err)
+	}
+	e.f.mu.Lock()
+	done := e.f.done
+	e.f.mu.Unlock()
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("the check did not end")
+		}
+	}
+	e.f.mu.Lock()
+	st := e.f.st
+	e.f.mu.Unlock()
+	if st.state != frCheckFail || st.err == nil || st.err.Error() != "internal error while freeing up space: boom" {
+		t.Errorf("after a panic: state %v, err %v", st.state, st.err)
+	}
+}
