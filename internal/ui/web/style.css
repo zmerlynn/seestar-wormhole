@@ -9,7 +9,9 @@
   --border:#68717c;
   --focus:#075bb5;
   --muted:#485362;
-  --error:#a51f24
+  --error:#a51f24;
+  --ok:#17692f;
+  --busy:#8a5a00
 }
 @media(prefers-color-scheme:dark) {
   :root {
@@ -20,7 +22,9 @@
     --border:#93a2b8;
     --focus:#83c7ff;
     --muted:#c0ccdc;
-    --error:#ffb0b0
+    --error:#ffb0b0;
+    --ok:#7ee09a;
+    --busy:#f0c060
   }
 }
 * {
@@ -69,7 +73,7 @@ label {
   display:block;
   margin:.8rem 0 .3rem
 }
-input:not([type=checkbox]),select,textarea {
+input:not([type=checkbox]):not([type=radio]),select,textarea {
   display:block;
   width:100%;
   max-width:100%;
@@ -235,4 +239,116 @@ select {
 }
 footer a,#port-permissions a {
   color:var(--focus)
+}
+header {
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:0 1rem
+}
+#connection-line {
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+  margin:0;
+  font-weight:600;
+  overflow-wrap:anywhere
+}
+#connection-dot {
+  flex:none;
+  width:.75rem;
+  height:.75rem;
+  border-radius:50%;
+  border:1px solid var(--border);
+  background:transparent
+}
+#connection-dot[data-tone=on] {
+  background:var(--ok);
+  border-color:var(--ok)
+}
+#connection-dot[data-tone=busy] {
+  background:var(--busy);
+  border-color:var(--busy)
+}
+#connection-dot[data-tone=error] {
+  background:var(--error);
+  border-color:var(--error)
+}
+#tabs {
+  display:flex;
+  flex-wrap:wrap;
+  gap:.2rem;
+  border-bottom:1px solid var(--border);
+  margin-top:1rem
+}
+[role=tab] {
+  border:0;
+  border-bottom:3px solid transparent;
+  border-radius:0;
+  background:none;
+  padding:.55rem .8rem
+}
+[role=tab][aria-selected=true] {
+  border-bottom-color:var(--focus);
+  font-weight:600
+}
+[role=tab]:disabled {
+  opacity:1;
+  color:var(--muted)
+}
+#tabs-note {
+  margin-bottom:1rem
+}
+#route-choice {
+  margin:0 0 1rem
+}
+.segments {
+  display:flex;
+  flex-wrap:wrap;
+  width:fit-content;
+  max-width:100%;
+  margin-top:.4rem;
+  border:1px solid var(--border);
+  border-radius:.3rem;
+  overflow:hidden
+}
+.segments label {
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+  margin:0;
+  padding:.5rem .85rem;
+  cursor:pointer
+}
+.segments label + label {
+  border-left:1px solid var(--border)
+}
+.segments label:has(input:checked) {
+  font-weight:600;
+  background:color-mix(in srgb, var(--focus) 14%, var(--surface))
+}
+.segments input {
+  margin:0;
+  accent-color:var(--focus)
+}
+.segments label:has(input:focus-visible) {
+  outline:3px solid var(--focus);
+  outline-offset:-3px
+}
+.segments input:focus-visible {
+  outline:none
+}
+#route-choice:disabled label {
+  cursor:default;
+  opacity:.6
+}
+#lan-options {
+  margin-top:0
+}
+#lan-result[data-tone=ok] {
+  color:var(--ok)
+}
+#lan-result[data-tone=error] {
+  color:var(--error)
 }

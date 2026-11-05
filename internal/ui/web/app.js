@@ -18,12 +18,16 @@ let initialized = false, ended = false, connected = false, pending = '', active 
 let lastFailure = '', state = null, statusGeneration = 0, actionError = '';
 let fieldErrors = {}, portDefaults = [], draftEmail = '';
 let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '';
+// The route shown on Connection, a LAN action in flight, the last LAN Test,
+// and the selected tab.
+let routeChoice = 'account', lanPending = '', lanReach = null, currentTab = 'connection';
+const tabNames = ['connection', 'copy', 'browse', 'free', 'activity'];
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
   email: 'Enter your Seestar account email.', password: 'Enter a password or use a saved password.',
   idle: 'Enter a wait time greater than zero.'
 };
-async function api(action, body) {
+async function api(action, body, base = '/api/') {
   const options = {
     headers: {
       'X-Seestar-Token': token
@@ -34,7 +38,7 @@ async function api(action, body) {
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(body);
   }
-  const response = await fetch('/api/' + action, options);
+  const response = await fetch(base + action, options);
   if (!response.ok) {
     let detail;
     try {
@@ -121,7 +125,9 @@ function load(s) {
   portsTable('ports', portValues(s), true);
   currentGoal = goalFor(s);
   $('goal').value = currentGoal;
-
+  // An older file has no route: the account route.
+  routeChoice = s.route === 'lan' ? 'lan' : 'account';
+  $('lan-address').value = s.lan_address || '';
 }
 // The saved association belongs to this exact account; secrets stay in Go.
 function passwordState() {
@@ -261,6 +267,7 @@ function controls() {
   const statusText = ended ? (state?.native ? 'Quit complete.' : 'Service stopped. You can close this tab.') : choosing && state?.failure?.code !== 'release' ? (needsSerial ? 'Enter a serial number.' : $('device-choice').value === '' ? 'Choose a telescope' : 'Ready to connect') : state?.status || 'Loading…';
   text('status', statusText);
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
+  routeControls(blocked);
   if (pickerFocusPending && !$('options').disabled) {
     pickerFocusPending = false;
     const picker = $('device-choice');
@@ -279,6 +286,124 @@ function controls() {
       if (dx || dy) window.scrollBy(dx, dy);
     });
   }
+}
+// The route choice is locked while the account route runs and while copying
+// or deleting runs; the LAN form is too.
+function routeControls(blocked) {
+  if (active) routeChoice = 'account';
+  const busy = !!state?.copy_busy;
+  $('route-choice').disabled = blocked || active || busy || !!pending || !!lanPending;
+  $('route-help').hidden = !(active || busy);
+  $('route-account').checked = routeChoice === 'account';
+  $('route-lan').checked = routeChoice === 'lan';
+  $('account-route').hidden = routeChoice !== 'account';
+  $('lan-route').hidden = routeChoice !== 'lan';
+  $('lan-options').disabled = blocked || active || busy || !!lanPending;
+  $('lan-test').textContent = lanPending === 'test' ? 'Testing…' : 'Test';
+  $('lan-save').textContent = lanPending === 'save' ? 'Saving…' : 'Save';
+  connectionLine();
+}
+// The header's line and dot: the proxy's status on the account route, and
+// the saved address and its last Test on this network.
+function connectionLine() {
+  let line = 'Loading…', tone = 'off';
+  const saved = state?.settings?.route === 'lan' ? state.settings.lan_address || '' : '';
+  if (state && saved && !active) {
+    const tested = lanReach?.address === saved;
+    line = !tested ? 'On this network: ' + saved : lanReach.ok ? 'On this network: reachable' : "Can't reach " + saved;
+    tone = !tested ? 'off' : lanReach.ok ? 'on' : 'error';
+  } else if (state) {
+    line = active ? state.status : 'Not connected';
+    tone = !active ? 'off' : state.cancel || state.stopping ? 'busy' : 'on';
+  }
+  text('connection-text', line);
+  if ($('connection-dot').getAttribute('data-tone') !== tone) $('connection-dot').setAttribute('data-tone', tone);
+}
+function lanError(message) {
+  text('lan-address-error', message);
+  $('lan-address-error').hidden = !message;
+  if (message) $('lan-address').setAttribute('aria-invalid', 'true');
+  else $('lan-address').removeAttribute('aria-invalid');
+}
+function lanResult(message, tone = '') {
+  text('lan-result', message);
+  if (tone) $('lan-result').setAttribute('data-tone', tone);
+  else $('lan-result').removeAttribute('data-tone');
+}
+// Test checks that the address answers SMB, as seestar-copy's Test does.
+async function lanTest() {
+  if (lanPending) return;
+  const typed = $('lan-address').value.trim();
+  lanPending = 'test';
+  lanError('');
+  lanResult('Connecting to ' + (typed.includes(':') ? typed : typed + ':445') + '…');
+  controls();
+  let focus = '';
+  try {
+    const r = await api('test', {address: typed}, '/copy/api/');
+    lanReach = {address: r.address, ok: r.ok};
+    lanResult(r.message, r.ok ? 'ok' : 'error');
+  } catch (e) {
+    if (e.fields?.address) {
+      lanResult('');
+      lanError(e.fields.address);
+      focus = 'lan-address';
+    } else lanResult(e.message || lostCopy, 'error');
+  } finally {
+    lanPending = '';
+    controls();
+    if (focus) $(focus).focus();
+  }
+}
+// Save makes this network the route; it is Tested too unless it passed.
+async function lanSave() {
+  if (lanPending) return;
+  lanPending = 'save';
+  lanError('');
+  lanResult('');
+  controls();
+  let saved = false;
+  try {
+    await api('route', {settings: {route: 'lan', lan_address: $('lan-address').value.trim()}});
+    saved = true;
+    await refresh();
+  } catch (e) {
+    if (e.field === 'lan_address') {
+      lanError(e.message || 'Check this address.');
+    } else lanResult(e.message || lostCopy, 'error');
+  } finally {
+    lanPending = '';
+    controls();
+  }
+  if (!saved) {
+    if (!$('lan-address-error').hidden) $('lan-address').focus();
+    return;
+  }
+  const address = state?.settings?.lan_address || '';
+  if (lanReach?.address === address && lanReach.ok) lanResult('Saved. ' + address + ' is reachable.', 'ok');
+  else await lanTest();
+}
+// Tabs: only the enabled ones can be selected; Arrow, Home and End move
+// among them and focus follows, as in seestar-copy.
+function selectTab(name) {
+  if (!tabNames.includes(name) || $('tab-' + name).disabled) return;
+  currentTab = name;
+  for (const tab of tabNames) {
+    const on = tab === name;
+    $('tab-' + tab).setAttribute('aria-selected', String(on));
+    $('tab-' + tab).tabIndex = on ? 0 : -1;
+    const panel = $('panel-' + tab);
+    if (panel) panel.hidden = !on;
+  }
+}
+function tabKey(event) {
+  const open = tabNames.filter(tab => !$('tab-' + tab).disabled);
+  const i = open.indexOf(currentTab), n = open.length;
+  const j = {ArrowRight: (i + 1) % n, ArrowLeft: (i + n - 1) % n, Home: 0, End: n - 1}[event.key];
+  if (j === undefined) return;
+  event.preventDefault();
+  selectTab(open[j]);
+  $('tab-' + open[j]).focus();
 }
 let pickerKey = '', receivedDevices = [], savedDevice = null;
 let pickerDevices = [], selectionStep = false, pickerFocusPending = false;
@@ -600,6 +725,18 @@ function openExternalLink(event) {
   event.preventDefault();
   window._wails.invoke('seestar:open:' + link.href);
 }
+for (const tab of tabNames) $('tab-' + tab).addEventListener('click', () => selectTab(tab));
+$('tabs').addEventListener('keydown', tabKey);
+for (const id of ['route-account', 'route-lan']) $(id).addEventListener('change', () => {
+  if ($(id).checked) routeChoice = $(id).value;
+  controls();
+});
+$('lan-form').addEventListener('submit', e => {
+  e.preventDefault();
+  if (!$('lan-options').disabled) lanSave();
+});
+$('lan-test').addEventListener('click', lanTest);
+$('lan-address').addEventListener('input', () => lanError(''));
 document.addEventListener('click', openExternalLink);
 document.addEventListener('auxclick', openExternalLink);
 portsTable('ports', {}, true);

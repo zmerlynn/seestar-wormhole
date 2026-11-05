@@ -70,3 +70,37 @@ func TestButtonsShareFontSize(t *testing.T) {
 		t.Fatal("Connect/Stop must retain bold text and blue border")
 	}
 }
+
+// The header and tab bar come first; Connection holds the route choice and
+// the account page, and Activity holds Details and logs.
+func TestTabsAndPanelsOrder(t *testing.T) {
+	b, err := assets.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	last := -1
+	for _, id := range []string{"app-header", "connection-dot", "connection-text", "tabs", "tab-connection", "tab-copy", "tab-browse", "tab-free", "tab-activity", "tabs-note",
+		"panel-connection", "route-choice", "route-account", "route-lan", "account-route", "announcements", "primary-action", "settings", "running",
+		"lan-route", "lan-address", "lan-test", "lan-save", "lan-result", "panel-activity", "details", "effective-settings", "events", "copy", "quit"} {
+		position := strings.Index(string(b), `id="`+id+`"`)
+		if position < 0 || position <= last {
+			t.Fatalf("page order misplaced %s", id)
+		}
+		last = position
+	}
+	for _, want := range []string{"> Through my Seestar account</label>", "> On this network</label>", "Copy, Browse and Free up space: Coming in this build.", `<details id="details" open><summary>Details and logs</summary>`} {
+		if strings.Count(string(b), want) != 1 {
+			t.Fatal("page copy missing or repeated:", want)
+		}
+	}
+}
+
+func TestRadiosKeepTheirNativeSize(t *testing.T) {
+	css, err := assets.ReadFile("web/style.css")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(css), "input:not([type=checkbox]):not([type=radio]),select,textarea {") {
+		t.Fatal("the route choice's radios must not take the text fields' block style")
+	}
+}
