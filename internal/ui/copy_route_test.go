@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -304,6 +305,42 @@ func TestBrowseFollowsTheRoute(t *testing.T) {
 	}
 }
 
+// free is Free up space's state and preview number in copy's status.
+func (e *routeEnv) free() (state string, id int) {
+	e.t.Helper()
+	_, body := e.get("/copy/api/status")
+	var v struct {
+		Free struct {
+			State string `json:"state"`
+			ID    int    `json:"id"`
+		} `json:"free"`
+	}
+	if err := json.Unmarshal([]byte(body), &v); err != nil {
+		e.t.Fatalf("copy status %s: %v", body, err)
+	}
+	return v.Free.State, v.Free.ID
+}
+
+// copied runs copying until the share's file is in the copy folder.
+func (e *routeEnv) copied() {
+	e.t.Helper()
+	if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
+		e.t.Fatalf("start copying = %d %s", code, body)
+	}
+	e.until("a copied file", func() bool {
+		found := false
+		filepath.WalkDir(e.folder, func(p string, d fs.DirEntry, err error) error {
+			found = found || err == nil && strings.HasSuffix(p, ".jpg")
+			return nil
+		})
+		return found
+	})
+	if code, body := e.post("/copy/api/copy", `{"action":"stop"}`); code != 200 {
+		e.t.Fatalf("stop copying = %d %s", code, body)
+	}
+	e.until("copying to stop", func() bool { return !e.s.copy.Busy() })
+}
+
 // A Save on this network tests the address first and commits only if it
 // answers; the route is checked again once the Test is done, and a
 // refused save keeps the saved route and file.
@@ -350,4 +387,112 @@ func TestLANSaveTestsFirst(t *testing.T) {
 		t.Errorf("save once copying started during its Test = %s", body)
 	}
 	kept("a save refused after its Test")
+}
+
+// Free up space's check and delete hold the route as copying does: Busy,
+// /api/status and a save of the route say so while either runs, and the
+// lock clears once it ends.
+func TestFreeUpSpaceLocksTheRoute(t *testing.T) {
+	e := newRouteEnv(t)
+	e.lan("192.0.2.10")
+	e.settings()
+	e.copied()
+	held := func(what string) {
+		t.Helper()
+		if !e.s.copy.Busy() || !e.locked() {
+			t.Errorf("%s: Busy %v, status locked %v", what, e.s.copy.Busy(), e.locked())
+		}
+		if code, body := e.post("/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.20"}}`); code != 400 || !strings.Contains(body, `"code":"route_locked"`) {
+			t.Errorf("save during %s = %d %s", what, code, body)
+		}
+		if code, body := e.post("/api/route", `{"settings":{"route":"account"}}`); code != 400 || !strings.Contains(body, `"code":"route_locked"`) {
+			t.Errorf("account save during %s = %d %s", what, code, body)
+		}
+	}
+	cleared := func(what string) {
+		t.Helper()
+		if e.s.copy.Busy() || e.locked() {
+			t.Errorf("after %s: Busy %v, status locked %v", what, e.s.copy.Busy(), e.locked())
+		}
+	}
+
+	hold := make(chan struct{})
+	e.set(&e.holdDial, hold)
+	if code, body := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":false}`); code != 200 {
+		t.Fatalf("find = %d %s", code, body)
+	}
+	held("a check")
+	close(hold)
+	e.set(&e.holdDial, nil)
+	e.until("the preview", func() bool { state, _ := e.free(); return state != "checking" })
+	state, id := e.free()
+	if state != "preview" {
+		t.Fatalf("check ended in %q", state)
+	}
+	cleared("a check")
+
+	hold = make(chan struct{})
+	e.set(&e.holdRemove, hold)
+	if code, body := e.post("/copy/api/delete", `{"action":"delete","id":`+strconv.Itoa(id)+`,"folders":["MyWorks"]}`); code != 200 {
+		t.Fatalf("delete = %d %s", code, body)
+	}
+	held("a delete")
+	close(hold)
+	e.until("the delete", func() bool { state, _ := e.free(); return state != "deleting" })
+	if state, _ := e.free(); state != "done" {
+		t.Errorf("delete ended in %q", state)
+	}
+	cleared("a delete")
+	e.lan("192.0.2.20")
+}
+
+// The route and this network's address survive a save and a reload into
+// a fresh storage and server, and a load reads a saved file without
+// rewriting it.
+func TestRouteReload(t *testing.T) {
+	reload := func(root string) *server {
+		t.Helper()
+		st, err := openStorage(root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { st.directory.Close() })
+		loaded, err := loadSettings(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+		s := testServer(t)
+		s.storage, s.settings, s.controller.lastSaved = st, loaded, loaded
+		return s
+	}
+
+	const fixture = `{"version":1,"bind":"0.0.0.0","idle":"0","discovery":true,"email":"synthetic@example.invalid","route":"lan","lan_address":"192.0.2.10:4450"}`
+	s := testServer(t)
+	path := filepath.Join(s.storage.root, "config.json")
+	if err := os.WriteFile(path, []byte(fixture), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	fresh := reload(s.storage.root)
+	if fresh.settings.Route != routeLAN || fresh.settings.LANAddress != "192.0.2.10:4450" {
+		t.Errorf("loaded %+v", fresh.settings)
+	}
+	if got, err := fresh.copyEndpoint(); got != "192.0.2.10:4450" || err != nil {
+		t.Errorf("loaded endpoint = %q, %v", got, err)
+	}
+	if b, err := os.ReadFile(path); err != nil || string(b) != fixture {
+		t.Errorf("the load rewrote the file: %s, %v", b, err)
+	}
+
+	for _, tc := range []struct{ route, address, want string }{
+		{routeLAN, "192.0.2.20", "192.0.2.20:445"},
+		{routeAccount, "", "192.0.2.20:445"},
+	} {
+		if err := fresh.saveRoute(t.Context(), tc.route, tc.address); err != nil {
+			t.Fatal(err)
+		}
+		again := reload(fresh.storage.root)
+		if again.settings.Route != tc.route || again.settings.LANAddress != tc.want {
+			t.Errorf("after saving %s and a reload: %+v", tc.route, again.settings)
+		}
+	}
 }
