@@ -632,6 +632,34 @@ func TestRetryLANLateTimer(t *testing.T) {
 	})
 }
 
+// Canceling the caller while the retry waits returns at once, without
+// another try.
+func TestRetryLANCanceledWhileWaiting(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan error, 1)
+		tries := 0
+		start := time.Now()
+		go func() {
+			_, err := retryLAN(ctx, newRetry(), func(context.Context) (int, error) { tries++; return 0, noRoute })
+			done <- err
+		}()
+		synctest.Wait()
+		cancel()
+		synctest.Wait()
+		select {
+		case err := <-done:
+			if err != noRoute || tries != 1 || time.Since(start) != 0 {
+				t.Errorf("%v after %d tries over %v", err, tries, time.Since(start))
+			}
+		default:
+			t.Error("still waiting after the caller was canceled")
+			<-done
+		}
+	})
+}
+
 // Test, from the page and from a route's Save, waits out the Local Network
 // prompt on macOS, once: a later Test fails at once.
 func TestTestWaitsForLocalNetwork(t *testing.T) {
