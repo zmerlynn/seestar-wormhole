@@ -31,6 +31,9 @@ type freer struct {
 	// replace them.
 	dial    func(ctx context.Context, endpoint string) (remote.Session, error)
 	remover func(ctx context.Context, endpoint string) (remote.Remover, error)
+	// at, if set, fails each dial and remover once the telescope is no
+	// longer at the endpoint the run started at: a [Mount]'s.
+	at func(endpoint string) error
 	// prepared, if set, runs after a confirm's preparation and before its
 	// start; tests change the preview there.
 	prepared func()
@@ -105,7 +108,13 @@ func (f *freer) find(set Settings) error {
 	if err != nil {
 		return err
 	}
-	o.DryRun, o.Dial, o.Hooks = true, f.dial, f.hooks()
+	o.DryRun, o.Hooks = true, f.hooks()
+	o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+		if err := f.still(endpoint); err != nil {
+			return nil, err
+		}
+		return f.dial(ctx, endpoint)
+	}
 	return f.run(freeStatus{state: frChecking, set: set}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
 		st := &f.st
 		switch {
@@ -124,12 +133,14 @@ func (f *freer) find(set Settings) error {
 }
 
 // confirm deletes the files of preview id in the folders named, with the
-// preview's settings. Each is checked again before it is removed.
-func (f *freer) confirm(id int, folders []string) error {
+// preview's settings, if endpoint, where the telescope is now, is where
+// the preview was checked. Each file is checked again before it is
+// removed.
+func (f *freer) confirm(id int, folders []string, endpoint string) error {
 	f.mu.Lock()
 	st := f.st
 	f.mu.Unlock()
-	if st.state != frPreview || st.id != id {
+	if st.state != frPreview || st.id != id || st.set.Address != endpoint {
 		return errStale
 	}
 	only := map[string]bool{}
@@ -145,7 +156,13 @@ func (f *freer) confirm(id int, folders []string) error {
 	if err != nil {
 		return err
 	}
-	o.OpenRemover, o.Only, o.Hooks = f.remover, only, f.hooks()
+	o.Only, o.Hooks = only, f.hooks()
+	o.OpenRemover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+		if err := f.still(endpoint); err != nil {
+			return nil, err
+		}
+		return f.remover(ctx, endpoint)
+	}
 	if f.prepared != nil {
 		f.prepared()
 	}
@@ -164,6 +181,14 @@ func (f *freer) confirm(id int, folders []string) error {
 			st.state = frDone
 		}
 	})
+}
+
+// still fails if the telescope is no longer at endpoint.
+func (f *freer) still(endpoint string) error {
+	if f.at == nil {
+		return nil
+	}
+	return f.at(endpoint)
 }
 
 // hooks keep a preview's or a delete's status: its counts, and in

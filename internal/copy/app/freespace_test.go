@@ -194,7 +194,7 @@ func TestFreePreviewAndDelete(t *testing.T) {
 		t.Errorf("after the check: current %q, want it empty", current)
 	}
 
-	if err := e.f.confirm(v.ID, []string{"MyWorks/M 42"}); err != nil {
+	if err := e.f.confirm(v.ID, []string{"MyWorks/M 42"}, e.set.Address); err != nil {
 		t.Fatal(err)
 	}
 	d := e.wait(frDone, frStopped, frFailed)
@@ -220,14 +220,14 @@ func TestFreePreviewAndDelete(t *testing.T) {
 func TestFreeConfirmRefused(t *testing.T) {
 	e := newFreeEnv(t, "MyWorks/a.jpg")
 	e.copy()
-	if err := e.f.confirm(1, []string{"MyWorks"}); !errors.Is(err, errStale) {
+	if err := e.f.confirm(1, []string{"MyWorks"}, e.set.Address); !errors.Is(err, errStale) {
 		t.Errorf("before any preview: %v", err)
 	}
 	v := e.preview()
-	if err := e.f.confirm(v.ID+1, []string{"MyWorks"}); !errors.Is(err, errStale) {
+	if err := e.f.confirm(v.ID+1, []string{"MyWorks"}, e.set.Address); !errors.Is(err, errStale) {
 		t.Errorf("another preview: %v", err)
 	}
-	if err := e.f.confirm(v.ID, nil); err == nil || err.Error() != "no folder is checked" {
+	if err := e.f.confirm(v.ID, nil, e.set.Address); err == nil || err.Error() != "no folder is checked" {
 		t.Errorf("no folder: %v", err)
 	}
 	if err := e.f.find(e.set); !errors.Is(err, errFreeBusy) && err != nil {
@@ -261,7 +261,7 @@ func TestFreeConfirmRace(t *testing.T) {
 				return e.share()
 			}
 			e.f.prepared = func() { change(e) }
-			if err := e.f.confirm(v.ID, []string{"MyWorks"}); !errors.Is(err, errStale) {
+			if err := e.f.confirm(v.ID, []string{"MyWorks"}, e.set.Address); !errors.Is(err, errStale) {
 				t.Errorf("confirm: %v, want errStale", err)
 			}
 			e.f.quit()
@@ -282,7 +282,7 @@ func TestFreeStaleClearing(t *testing.T) {
 	if c := e.f.view(); c.State != frStart || !c.Changed {
 		t.Errorf("a cleared preview: %+v", c)
 	}
-	if err := e.f.confirm(v.ID, []string{"MyWorks"}); !errors.Is(err, errStale) {
+	if err := e.f.confirm(v.ID, []string{"MyWorks"}, e.set.Address); !errors.Is(err, errStale) {
 		t.Errorf("Delete of a cleared preview: %v", err)
 	}
 
@@ -333,7 +333,7 @@ func TestFreeStopHeld(t *testing.T) {
 		}}
 	}
 	e.mu.Unlock()
-	if err := e.f.confirm(v.ID, []string{"MyWorks"}); err != nil {
+	if err := e.f.confirm(v.ID, []string{"MyWorks"}, e.set.Address); err != nil {
 		t.Fatal(err)
 	}
 	var first string
@@ -370,7 +370,7 @@ func TestFreeFailed(t *testing.T) {
 	e.copy()
 	v := e.preview()
 	e.refuse = true
-	if err := e.f.confirm(v.ID, []string{"MyWorks"}); err != nil {
+	if err := e.f.confirm(v.ID, []string{"MyWorks"}, e.set.Address); err != nil {
 		t.Fatal(err)
 	}
 	d := e.wait(frFailed, frDone, frStopped)

@@ -57,6 +57,11 @@ var static = map[string]struct{ file, typ string }{
 // server is the app's handler. /app/ is the app's page and API; every
 // other path goes to the current browse handler, which a save of a new
 // address or folder replaces.
+//
+// Locks are taken in this order: admit, then mu, then a controller's own
+// mutex. A [Mount]'s host takes its own locks inside admit, in its commit,
+// and endpoint takes the host's status lock inside mu, so neither of those
+// is held around admit.
 type server struct {
 	ctx      context.Context // the app's lifetime; browse's sessions live in it
 	addr     netip.AddrPort  // the listener's
@@ -74,6 +79,13 @@ type server struct {
 	copy     *controller
 	preview  *previewer
 	free     *freer
+
+	// admit is held by each change of where the telescope is or what is
+	// saved, and by each start of copying, a preview, a Free up space
+	// check or a delete, so none lands between another's checks and its
+	// start. It may be held across a save to disk but is never taken by
+	// status, views or Busy.
+	admit sync.Mutex
 
 	mu       sync.Mutex
 	file     *settingsFile
@@ -156,9 +168,11 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 }
 
 // startCopying turns copying on with the saved settings, which discards
-// a preview. Holding s.mu keeps a Save from landing between the check and
-// the start.
+// a preview. Holding s.admit keeps a Save or a change of endpoint from
+// landing between the check and the start.
 func (s *server) startCopying() error {
+	s.admit.Lock()
+	defer s.admit.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.setUp() {
@@ -176,9 +190,11 @@ func (s *server) startCopying() error {
 }
 
 // startPreview runs a preview with the saved settings while copying is
-// off. Holding s.mu keeps a Save or a Start from landing between the
-// checks and the start.
+// off. Holding s.admit keeps a Save, a Start or a change of endpoint from
+// landing between the checks and the start.
 func (s *server) startPreview() error {
+	s.admit.Lock()
+	defer s.admit.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
@@ -202,6 +218,24 @@ func (s *server) copyView() copyView {
 }
 
 var errNotSetUp = errors.New("set the telescope and folder in Settings first")
+
+// endpointChanged follows a change of where the telescope is, which the
+// caller made holding s.admit: the previews go back to Start, as their
+// proof was taken elsewhere, and browse gets a new pool, so no request
+// reaches the old endpoint through a session already open there.
+func (s *server) endpointChanged() {
+	s.mu.Lock()
+	s.free.clear()
+	s.preview.discard()
+	old := s.sessions
+	if s.browse != nil {
+		s.browse, s.sessions = s.newBrowse(s.file.settings)
+	}
+	s.mu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+}
 
 // close ends the current browse pool.
 func (s *server) close() {
@@ -426,6 +460,8 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		respond(w, http.StatusBadRequest, fieldErrors{errs})
 		return
 	}
+	s.admit.Lock()
+	defer s.admit.Unlock()
 	s.mu.Lock()
 	if s.copy.on() {
 		s.mu.Unlock()
@@ -512,8 +548,11 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"days": "Enter a whole number of days, 0 or more."}})
 			return
 		}
-		// Holding s.mu keeps a Save from landing between the read and
-		// the start; it is released before logging or answering.
+		// Holding s.admit keeps a Save or a change of endpoint from
+		// landing between the read and the start; s.mu is released
+		// before logging or answering.
+		s.admit.Lock()
+		defer s.admit.Unlock()
 		s.mu.Lock()
 		if !s.setUp() {
 			s.mu.Unlock()
@@ -541,7 +580,18 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 	case "cancel":
 		s.free.cancelCheck()
 	case "delete":
-		if err := s.free.confirm(in.ID, in.Folders); errors.Is(err, errStale) {
+		// The delete goes to the endpoint its preview was checked at, and
+		// only while that is still where the telescope is: holding
+		// s.admit keeps a change of endpoint from landing in between.
+		s.admit.Lock()
+		defer s.admit.Unlock()
+		s.mu.Lock()
+		now, err := s.resolve(s.file.settings)
+		s.mu.Unlock()
+		if err == nil {
+			err = s.free.confirm(in.ID, in.Folders, now.Address)
+		}
+		if errors.Is(err, errStale) {
 			conflict("Preview again before deleting.")
 			return
 		} else if err != nil {

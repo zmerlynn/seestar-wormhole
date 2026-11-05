@@ -166,7 +166,7 @@ func TestSMBFreeUpSpace(t *testing.T) {
 		t.Fatal(err)
 	}
 	pass("Copied 1 file (")
-	if err := f.confirm(v.ID, []string{"app-free/A", "app-free/B"}); err != nil {
+	if err := f.confirm(v.ID, []string{"app-free/A", "app-free/B"}, set.Address); err != nil {
 		t.Fatal(err)
 	}
 	if v := wait(frDone, frStopped, frFailed); v.State != frDone || v.Title != "Deleted 3 files and removed 1 empty folder." {

@@ -36,6 +36,9 @@ type previewer struct {
 	log      *slog.Logger
 	// dial opens the preview's session; tests replace it.
 	dial func(ctx context.Context, endpoint string) (remote.Session, error)
+	// at, if set, fails the dial once the telescope is no longer at the
+	// endpoint the preview started at: a [Mount]'s.
+	at func(endpoint string) error
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when no preview runs
@@ -93,8 +96,13 @@ func (p *previewer) start(set Settings) error {
 	o := engine.SyncOptions{
 		Endpoint: set.Address, Dest: set.Folder, StateDir: p.stateDir, Selector: sel, DryRun: true,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: workers,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
-			sess, err := p.dial(ctx, endpoint)
+		Dial: func(ctx context.Context, endpoint string) (sess remote.Session, err error) {
+			if p.at != nil {
+				err = p.at(endpoint)
+			}
+			if err == nil {
+				sess, err = p.dial(ctx, endpoint)
+			}
 			p.mu.Lock()
 			defer p.mu.Unlock()
 			if p.st.state == pvRunning {
