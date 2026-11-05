@@ -65,12 +65,15 @@ type server struct {
 	stateDir string
 	log      *slog.Logger
 	// dial opens a browse session; test runs Test. Tests replace both.
-	dial    func(ctx context.Context, endpoint string) (remote.Session, error)
-	test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
-	native  *Native // nil without a window
-	copy    *controller
-	preview *previewer
-	free    *freer
+	dial   func(ctx context.Context, endpoint string) (remote.Session, error)
+	test   func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	native *Native // nil without a window
+	// endpoint, if set, is where the telescope is for every dial and
+	// start, in place of the saved address: a [Mount]'s.
+	endpoint func() (string, error)
+	copy     *controller
+	preview  *previewer
+	free     *freer
 
 	mu       sync.Mutex
 	file     *settingsFile
@@ -102,10 +105,30 @@ func (f *settingsFile) setUp() bool {
 	return f.exists && f.settings.Address != "" && f.settings.Folder != ""
 }
 
+// setUp reports whether the saved settings are enough to copy. A mounted
+// server's address comes from its endpoint, so it needs only a folder.
+func (s *server) setUp() bool {
+	if s.endpoint != nil {
+		return s.file.exists && s.file.settings.Folder != ""
+	}
+	return s.file.setUp()
+}
+
+// resolve is set with the address to use now: the saved one, or for a
+// mounted server, its endpoint's.
+func (s *server) resolve(set Settings) (Settings, error) {
+	if s.endpoint == nil {
+		return set, nil
+	}
+	var err error
+	set.Address, err = s.endpoint()
+	return set, err
+}
+
 // startBrowse serves Browse for the saved settings, if they are set up. It
 // is called once the server's fields are set and before it serves.
 func (s *server) startBrowse() {
-	if s.file.setUp() {
+	if s.setUp() {
 		s.browse, s.sessions = s.newBrowse(s.file.settings)
 	}
 }
@@ -138,10 +161,14 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 func (s *server) startCopying() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.file.setUp() {
+	if !s.setUp() {
 		return errNotSetUp
 	}
-	if err := s.copy.start(s.file.settings); err != nil {
+	set, err := s.resolve(s.file.settings)
+	if err != nil {
+		return err
+	}
+	if err := s.copy.start(set); err != nil {
 		return err
 	}
 	s.preview.discard()
@@ -155,12 +182,16 @@ func (s *server) startPreview() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
-	case !s.file.setUp():
+	case !s.setUp():
 		return errNotSetUp
 	case s.copy.on():
 		return errors.New("copying is on")
 	}
-	return s.preview.start(s.file.settings)
+	set, err := s.resolve(s.file.settings)
+	if err != nil {
+		return err
+	}
+	return s.preview.start(set)
 }
 
 // copyView is the Copy tab with its preview.
@@ -235,16 +266,36 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusForbidden)
 		return
 	}
-	switch r.URL.Path {
-	case "/app/api/status":
+	s.api(w, r, strings.TrimPrefix(r.URL.Path, "/app/api/"), func() bool {
+		if r.Header.Get("Origin") != "http://"+s.addr.String() || r.Header.Get("Sec-Fetch-Site") == "none" {
+			fail(http.StatusForbidden)
+			return false
+		}
+		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || media != "application/json" {
+			fail(http.StatusUnsupportedMediaType)
+			return false
+		}
+		return true
+	})
+}
+
+// api serves the API call name, which is the path after the API's prefix.
+// allowed, if not nil, runs on a POST once the call is known and answers
+// whether the request passed the caller's checks, having answered it if
+// not; a [Mount]'s caller makes those checks itself.
+func (s *server) api(w http.ResponseWriter, r *http.Request, name string, allowed func() bool) {
+	fail := func(code int) { http.Error(w, "Request rejected", code) }
+	switch name {
+	case "status":
 		if r.Method != "GET" {
 			fail(http.StatusMethodNotAllowed)
 			return
 		}
 		s.status(w)
 		return
-	case "/app/api/test", "/app/api/settings", "/app/api/copy", "/app/api/delete", "/app/api/clear":
-	case "/app/api/folder":
+	case "test", "settings", "copy", "delete", "clear":
+	case "folder":
 		if s.native == nil {
 			fail(http.StatusNotFound)
 			return
@@ -257,13 +308,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Header.Get("Origin") != "http://"+s.addr.String() || r.Header.Get("Sec-Fetch-Site") == "none" {
-		fail(http.StatusForbidden)
-		return
-	}
-	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
-		fail(http.StatusUnsupportedMediaType)
+	if allowed != nil && !allowed() {
 		return
 	}
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSON))
@@ -276,16 +321,16 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest)
 		return
 	}
-	switch r.URL.Path {
-	case "/app/api/test":
+	switch name {
+	case "test":
 		s.runTest(w, r.Context(), in)
-	case "/app/api/folder":
+	case "folder":
 		s.chooseFolder(w, in)
-	case "/app/api/copy":
+	case "copy":
 		s.copyAction(w, in.Action)
-	case "/app/api/delete":
+	case "delete":
 		s.freeAction(w, in)
-	case "/app/api/clear":
+	case "clear":
 		s.clearHistory(w)
 	default:
 		s.save(w, in)
@@ -322,7 +367,7 @@ type input struct {
 
 func (s *server) status(w http.ResponseWriter) {
 	s.mu.Lock()
-	set, setUp, file := s.file.settings, s.file.setUp(), s.file.path
+	set, setUp, file := s.file.settings, s.setUp(), s.file.path
 	s.mu.Unlock()
 	// The saved folder's state file, as sync names it.
 	var history string
@@ -372,6 +417,11 @@ type fieldErrors struct {
 
 func (s *server) save(w http.ResponseWriter, in input) {
 	set, errs := checkInput(in)
+	if s.endpoint != nil {
+		// A mounted server's address is its endpoint's, not the form's.
+		delete(errs, "address")
+		set.Address = ""
+	}
 	if len(errs) > 0 {
 		respond(w, http.StatusBadRequest, fieldErrors{errs})
 		return
@@ -384,7 +434,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		}{"Stop copying to change settings."})
 		return
 	}
-	old, wasSetUp := s.file.settings, s.file.setUp()
+	old, wasSetUp := s.file.settings, s.setUp()
 	// The Free up space options are saved by Find, not by this form.
 	set.OlderThanDays, set.TrustState = old.OlderThanDays, old.TrustState
 	if err := s.file.save(set); err != nil {
@@ -465,7 +515,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		// Holding s.mu keeps a Save from landing between the read and
 		// the start; it is released before logging or answering.
 		s.mu.Lock()
-		if !s.file.setUp() {
+		if !s.setUp() {
 			s.mu.Unlock()
 			conflict("Couldn't preview: " + errNotSetUp.Error() + ".")
 			return
@@ -480,7 +530,9 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 				return
 			}
 		}
-		err = s.free.find(set)
+		if set, err = s.resolve(set); err == nil {
+			err = s.free.find(set)
+		}
 		s.mu.Unlock()
 		if err != nil {
 			conflict("Couldn't preview: " + err.Error() + ".")
@@ -523,7 +575,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	folder := s.file.settings.Folder
 	var err error
 	switch {
-	case !s.file.setUp():
+	case !s.setUp():
 		err = errNotSetUp
 	case s.copy.on():
 		err = errors.New("stop copying first")

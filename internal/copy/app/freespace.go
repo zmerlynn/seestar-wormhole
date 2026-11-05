@@ -221,6 +221,13 @@ func (f *freer) halt() {
 	}
 }
 
+// running reports whether a check or a delete runs.
+func (f *freer) running() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.done != nil
+}
+
 // reset goes back to Start from any state but a running one.
 func (f *freer) reset() {
 	f.mu.Lock()
