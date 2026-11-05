@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
@@ -18,6 +19,31 @@ const CopyScenarios = "copy-close,copy-quit,copy-inuse,copy-save"
 // CopyFolder is a copy scenario's image folder: beside the state dir, so
 // two apps with sibling state dirs share it.
 func CopyFolder(root string) string { return filepath.Join(filepath.Dir(root), "images") }
+
+// UserConfig points the per-user config folder, where the copier keeps
+// its state, at dir for this process and the apps it starts, so a copy
+// scenario never touches the user's own. Sibling apps it starts share it.
+// restore puts the old value back.
+func UserConfig(dir string) (restore func(), err error) {
+	name := map[string]string{"darwin": "HOME", "windows": "AppData"}[runtime.GOOS]
+	if name == "" {
+		name = "XDG_CONFIG_HOME"
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return nil, err
+	}
+	old, had := os.LookupEnv(name)
+	if err := os.Setenv(name, dir); err != nil {
+		return nil, err
+	}
+	return func() {
+		if had {
+			os.Setenv(name, old)
+		} else {
+			os.Unsetenv(name)
+		}
+	}, nil
+}
 
 // copyState is the copier's state folder, which seestar-copy-cli shares.
 func copyState() (string, error) {

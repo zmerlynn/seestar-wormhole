@@ -132,7 +132,8 @@ func launch(ctx context.Context, bin, dir, root, scenario string) (*exec.Cmd, <-
 	cmd := exec.CommandContext(ctx, bin, "ui", "--state-dir", root)
 	// An engine child may inherit output handles beyond the fixture lifetime.
 	cmd.WaitDelay = 2 * time.Second
-	// No user config, account, password provider, proxy ports, or network endpoint.
+	// No account, password provider, proxy ports, or network endpoint. A copy
+	// scenario's per-user config folder is its own, set by runScenario.
 	cmd.Env = append(os.Environ(), "SEESTAR_GUITEST_OUT="+dir, "SEESTAR_GUITEST_SCENARIO="+scenario)
 	// Drain through a pipe: the CLI may reopen stderr with an independent file
 	// offset. Direct regular-file descriptors let its final error overwrite earlier
@@ -169,6 +170,15 @@ func runScenario(ctx context.Context, bin, dir, scenario string) (result error) 
 	}
 	defer os.RemoveAll(state)
 	root := filepath.Join(state, "state")
+	if strings.HasPrefix(scenario, "copy-") {
+		// The copier's state goes under a config folder of the scenario's
+		// own, for every app it starts and for this harness's checks.
+		restore, err := guitest.UserConfig(filepath.Join(state, "config"))
+		if err != nil {
+			return err
+		}
+		defer restore()
+	}
 	if scenario == "copy-inuse" {
 		// A first app holds a transfer into the shared folder.
 		holdDir := filepath.Join(dir, "hold")
