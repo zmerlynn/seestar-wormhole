@@ -96,11 +96,11 @@ the proxy. Its Free up space wasn't tried on a telescope, and neither was the
 **On this network** route.
 
 Two 0.7.0 additions are tested only in CI. The Mac app's Info.plist carries
-the Local Network usage text, and a failed **Test**, copy pass or Preview on
-this network names the Local Network setting on a Mac; neither has been seen
-on a Mac whose Local Network access is blocked. **Files at once** (1 to 4,
-default 4) passes its value to the copier; no setting below 4 has been
-measured against a telescope, through the account or on this network.
+the Local Network usage text, and a **Test**, **Save**, copy pass or Preview on
+this network that nothing answered names the Local Network setting on a Mac;
+neither has been seen on a Mac whose Local Network access is blocked. **Files
+at once** (1 to 4, default 4) passes its value to the copier; no setting below
+4 has been measured against a telescope, through the account or on this network.
 
 CI covers both routes without a telescope:
 
