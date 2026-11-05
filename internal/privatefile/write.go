@@ -9,8 +9,10 @@ import (
 	"path/filepath"
 )
 
-// A Policy says how [WriteFile] protects the file it publishes. The steps that
-// make the write atomic and durable are the same under both.
+// A Policy says how [WriteFile] protects the file it publishes. Both follow
+// the same order: exclusive temporary file, complete write, fsync, close,
+// replacement, directory sync. On Windows they differ in how the file is
+// created and replaced; see [WriteFile].
 type Policy int
 
 const (
@@ -40,8 +42,9 @@ var (
 // opened, fsyncs and closes it, replaces name with it, and syncs dir. A crash
 // leaves the old file or the whole new one, and at worst a stray temporary
 // file. On Unix the new file is 0600 whatever the umask and owned by the user;
-// on Windows it is written through. The caller decides whether an existing
-// file may be replaced.
+// on Windows, Private requests write-through creation and uses [Replace],
+// while Inherited uses ordinary creation and [os.Rename]. The caller decides
+// whether an existing file may be replaced.
 func WriteFile(dir *os.File, name string, b []byte, p Policy) error {
 	path := filepath.Join(dir.Name(), name)
 	if p == Private {

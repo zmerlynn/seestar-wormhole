@@ -3,6 +3,7 @@
 package privatefile
 
 import (
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,17 @@ import (
 	"syscall"
 	"testing"
 )
+
+// readWritten reads the file WriteFile wrote at path under p through
+// [OpenRead], which accepts it as private under either policy on Unix.
+func readWritten(path string, _ Policy) ([]byte, error) {
+	f, err := OpenRead(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
 
 // umaskChildEnv makes the test binary run the body of
 // TestWriteFileRestrictiveUmask. The umask belongs to the whole process, so

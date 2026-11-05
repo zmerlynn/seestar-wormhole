@@ -69,8 +69,8 @@ func hookWrite(t *testing.T, sync func(*os.File) error, rep func(from, to string
 
 // WriteFile fsyncs the whole content in a temporary file next to the name
 // before anything is published, closes it, replaces the name with it, syncs
-// the directory last, leaves no temporary file, and writes a file OpenRead
-// accepts as private.
+// the directory last, and leaves no temporary file. The file is private as
+// readWritten checks.
 func TestWriteFile(t *testing.T) {
 	t.Run("private", func(t *testing.T) { testWriteFile(t, Private) })
 	t.Run("inherited", func(t *testing.T) { testWriteFile(t, Inherited) })
@@ -127,13 +127,7 @@ func testWriteFile(t *testing.T, p Policy) {
 			t.Fatal(err)
 		}
 		published = content
-		f, err := OpenRead(path)
-		if err != nil {
-			t.Fatalf("OpenRead of the written file: %v", err)
-		}
-		b, err := io.ReadAll(f)
-		f.Close()
-		if err != nil || string(b) != content {
+		if b, err := readWritten(path, p); err != nil || string(b) != content {
 			t.Errorf("file = %q (%v), want %q", b, err, content)
 		}
 		if runtime.GOOS != "windows" {

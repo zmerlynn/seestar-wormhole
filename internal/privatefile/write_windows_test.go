@@ -1,12 +1,28 @@
 package privatefile
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"golang.org/x/sys/windows"
 )
+
+// readWritten reads the file WriteFile wrote at path under p. A Private file
+// is read through [OpenRead]; an Inherited one keeps the unprotected DACL its
+// folder passes down, which OpenRead refuses, so it is read as any file is.
+func readWritten(path string, p Policy) ([]byte, error) {
+	if p == Inherited {
+		return os.ReadFile(path)
+	}
+	f, err := OpenRead(path)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return io.ReadAll(f)
+}
 
 // openOrdinary opens an ordinary folder, which passes inheritable ACEs down
 // as a user's folders do, unlike the protected one [Directory] makes.
