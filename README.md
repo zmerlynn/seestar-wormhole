@@ -25,14 +25,22 @@ Windows downloads are not code-signed, so Windows may show
 "Windows protected your PC". Choose **More info**, then
 **Run anyway**.
 
-Every download has both programs: `seestar-wormhole` is the UI, and
-`seestar-wormhole-cli` is for terminals, scripts and services. On Linux the
-UI needs GTK 4 and WebKitGTK 6.0; the command line needs nothing extra.
+Every download has one app and two command-line tools:
 
-Check the command line with:
+- `seestar-wormhole` is the app. It connects, and copies, browses and frees
+  up space on the telescope.
+- `seestar-wormhole-cli` runs the proxy from terminals, scripts and services.
+- `seestar-copy-cli` copies images from the telescope for terminals, scripts
+  and services.
+
+On Linux the app needs GTK 4 and WebKitGTK 6.0; the command-line tools need
+nothing extra.
+
+Check the command-line tools with:
 
 ```sh
 ./seestar-wormhole-cli --version
+./seestar-copy-cli --version
 ```
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
@@ -70,6 +78,11 @@ Settings other than the password are saved after a successful connection;
 **Save password to keychain** is optional. **Stop** releases the telescope so
 the Seestar app's Remote mode can use it; **Quit** exits. See [Using the UI](docs/ui.md).
 
+The **Copy**, **Browse** and **Free up space** tabs copy your images to a
+folder on this computer, show what is on the telescope, and delete what is
+safely copied. They work through your account or, for a telescope on the same
+network as this computer, directly. See [Copy images](docs/copying.md).
+
 ## Use the command line
 
 ### Sign in
@@ -105,9 +118,16 @@ container, and on Windows.
 
 ### Copy images while you keep observing
 
-rclone copies images through the proxy's SMB listener while control clients
-share the session. See [Copy images](docs/copying.md) for setup,
-transfer settings, and byte verification on Linux, macOS, and Windows.
+`seestar-copy-cli` copies images through the proxy's SMB listener while
+control clients share the session:
+
+```sh
+./seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar
+```
+
+It also works directly with a telescope on your network. rclone and other SMB
+apps work too. See [Copy images](docs/copying.md) and the
+[seestar-copy-cli reference](docs/copy-reference.md).
 
 ## Keep it on your own network
 
@@ -153,6 +173,7 @@ See [internal package boundary](docs/development/README.md).
 - [Copy images](docs/copying.md)
 - [seestar_alp and other clients](docs/clients.md)
 - [Command reference](docs/reference.md): every flag, exit code and log message
+- [seestar-copy-cli reference](docs/copy-reference.md): its commands, flags and formats
 - [How the proxy speaks the protocol](docs/protocol.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Known issues and accepted limits](docs/known-issues.md)
