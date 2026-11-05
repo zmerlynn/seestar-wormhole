@@ -20,6 +20,7 @@ import (
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
@@ -149,7 +150,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		return errStorage
 	}
 	defer lock.Close()
-	acquired, err := tryLock(lock)
+	acquired, err := filelock.TryLock(lock)
 	if err != nil {
 		return errStorage
 	}

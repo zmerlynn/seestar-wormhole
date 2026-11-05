@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
-	"golang.org/x/sys/windows"
 )
 
 func persistentSource(stateDir string) (string, error) {
@@ -41,28 +41,15 @@ func persistentSource(stateDir string) (string, error) {
 
 // persistentIdentity locks before reading or repairing an already validated handle.
 func persistentIdentity(f *os.File) (string, error) {
-	var lock windows.Overlapped
-	deadline := time.NewTimer(time.Second)
-	defer deadline.Stop()
-	tick := time.NewTicker(10 * time.Millisecond)
-	defer tick.Stop()
-	for {
-		// Every cooperating process locks byte zero, including an empty file. Native
-		// locks exclude reads/writes by other processes too, unlike advisory flock.
-		err := windows.LockFileEx(windows.Handle(f.Fd()), windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY, 0, 1, 0, &lock)
-		if err == nil {
-			break
-		}
-		if !errors.Is(err, windows.ERROR_LOCK_VIOLATION) {
-			return "", stateError("state_identity", diagnostic.Class(err))
-		}
-		select {
-		case <-deadline.C:
-			return "", stateError("state_identity", "lock_timeout")
-		case <-tick.C:
-		}
+	// Every cooperating process locks byte zero, including an empty file. Native
+	// locks exclude reads/writes by other processes too, unlike advisory flock.
+	switch err := filelock.Lock(f, time.Second); {
+	case errors.Is(err, filelock.ErrTimeout):
+		return "", stateError("state_identity", "lock_timeout")
+	case err != nil:
+		return "", stateError("state_identity", diagnostic.Class(err))
 	}
-	defer windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, &lock)
+	defer filelock.Unlock(f)
 	return readOrRepairIdentity(f)
 }
 

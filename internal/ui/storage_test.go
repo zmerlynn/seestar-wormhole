@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 )
 
 func testSettings() Settings { s := defaultSettings(); s.Email = "synthetic@example.invalid"; return s }
@@ -40,7 +42,7 @@ func TestHeadlessSettingsReadOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lockFile.Close()
-	if locked, err := tryLock(lockFile); err != nil || !locked {
+	if locked, err := filelock.TryLock(lockFile); err != nil || !locked {
 		t.Fatalf("lock: %v", err)
 	}
 	before, err := os.Stat(filepath.Join(st.root, "config.json"))
