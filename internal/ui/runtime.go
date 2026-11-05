@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
@@ -121,10 +122,7 @@ func StateRoot(root string) (string, error) {
 
 func uiVersion(ctx context.Context) string {
 	version, _ := ctx.Value(versionKey{}).(string)
-	if version == "" {
-		return "development"
-	}
-	return version
+	return buildinfo.Version(version)
 }
 
 type versionKey struct{}

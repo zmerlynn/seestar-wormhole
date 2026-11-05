@@ -9,20 +9,17 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
-	"runtime"
-	"runtime/debug"
 	"syscall"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 const programName = "seestar-copy-cli"
 
-// Release builds set these with -ldflags "-X main.version=... -X main.revision=...".
-var (
-	version  = "development"
-	revision = ""
-)
+// Release builds set these with -ldflags "-X main.version=... -X main.revision=...";
+// buildinfo fills in a development build's.
+var version, revision string
 
 // Exit codes, as documented in the command help.
 const (
@@ -78,23 +75,5 @@ func (w *checkedWriter) Write(p []byte) (int, error) {
 }
 
 func versionString() string {
-	info, _ := debug.ReadBuildInfo()
-	return formatVersion(version, revision, info, runtime.GOOS, runtime.GOARCH)
-}
-
-// formatVersion prints "<program> <version> (<revision>, <os>/<arch>)". A
-// revision set at link time wins; otherwise the build's VCS stamp is used,
-// shortened to 12 characters as release builds do.
-func formatVersion(version, revision string, info *debug.BuildInfo, goos, goarch string) string {
-	if revision == "" && info != nil {
-		for _, setting := range info.Settings {
-			if setting.Key == "vcs.revision" {
-				revision = setting.Value[:min(len(setting.Value), 12)]
-			}
-		}
-	}
-	if revision == "" {
-		revision = "development"
-	}
-	return programName + " " + version + " (" + revision + ", " + goos + "/" + goarch + ")"
+	return buildinfo.String(programName, version, revision)
 }

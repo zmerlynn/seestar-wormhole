@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"runtime"
 
 	"github.com/spf13/cobra"
+	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
 )
 
@@ -34,7 +34,7 @@ const (
 )
 
 func versionString() string {
-	return programName + " " + version + " (" + revision + ", " + runtime.GOOS + "/" + runtime.GOARCH + ")"
+	return buildinfo.String(programName, version, revision)
 }
 
 // newCommand keeps parsing and pure validation ahead of every runtime resource.

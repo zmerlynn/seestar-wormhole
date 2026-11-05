@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 	"slices"
 	"strings"
 	"testing"
@@ -165,29 +164,6 @@ func TestVersion(t *testing.T) {
 	code, stdout, stderr := invoke(t, "--version")
 	if code != exitOK || stderr != "" || stdout != versionString()+"\n" {
 		t.Fatalf("code=%d stdout=%q stderr=%q, want 0, %q and no stderr", code, stdout, stderr, versionString()+"\n")
-	}
-}
-
-func TestFormatVersion(t *testing.T) {
-	stamped := &debug.BuildInfo{Settings: []debug.BuildSetting{
-		{Key: "vcs", Value: "git"},
-		{Key: "vcs.revision", Value: "0123456789abcdef0123456789abcdef01234567"},
-	}}
-	short := &debug.BuildInfo{Settings: []debug.BuildSetting{{Key: "vcs.revision", Value: "abc"}}}
-	for _, tc := range []struct {
-		name, version, revision string
-		info                    *debug.BuildInfo
-		want                    string
-	}{
-		{"link time wins", "v1.2.3", "fedcba987654", stamped, "seestar-copy-cli v1.2.3 (fedcba987654, linux/arm64)"},
-		{"vcs stamp shortened", "development", "", stamped, "seestar-copy-cli development (0123456789ab, linux/arm64)"},
-		{"short vcs stamp", "development", "", short, "seestar-copy-cli development (abc, linux/arm64)"},
-		{"no stamp", "development", "", &debug.BuildInfo{}, "seestar-copy-cli development (development, linux/arm64)"},
-		{"no build info", "development", "", nil, "seestar-copy-cli development (development, linux/arm64)"},
-	} {
-		if got := formatVersion(tc.version, tc.revision, tc.info, "linux", "arm64"); got != tc.want {
-			t.Errorf("%s: got %q, want %q", tc.name, got, tc.want)
-		}
 	}
 }
 
