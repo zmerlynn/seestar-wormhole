@@ -125,7 +125,7 @@ function load(s) {
   portsTable('ports', portValues(s), true);
   currentGoal = goalFor(s);
   $('goal').value = currentGoal;
-  // An older file has no route: the account route.
+  // An older file has no route: the Telescope Network route.
   routeChoice = s.route === 'lan' ? 'lan' : 'account';
   $('lan-address').value = s.lan_address || '';
 }
@@ -294,7 +294,7 @@ function controls() {
     });
   }
 }
-// The route choice is locked while the account route runs and while copying
+// The route choice is locked while the Telescope Network route runs and while copying
 // or deleting runs; the LAN form is too.
 function routeControls(blocked) {
   if (active) routeChoice = 'account';
@@ -310,7 +310,7 @@ function routeControls(blocked) {
   text('lan-save', lanPending === 'save' ? 'Saving…' : 'Save');
   connectionLine();
 }
-// The header's line and dot: the proxy's status on the account route, and
+// The header's line and dot: the proxy's status on the Telescope Network route, and
 // the saved address and its last Test on this network.
 function connectionLine() {
   let line = 'Loading…', tone = 'off';

@@ -89,7 +89,7 @@ func TestTabsAndPanelsOrder(t *testing.T) {
 		}
 		last = position
 	}
-	for _, want := range []string{"> Through my Seestar account</label>", "> On this network</label>", "Copy, Browse and Free up space open once you connect through your account, or Save an address on this network.", `<details id="details" open><summary>Details and logs</summary>`} {
+	for _, want := range []string{"> Remotely through Telescope Network</label>", "> On this network</label>", "Copy, Browse and Free up space open once you connect remotely through Telescope Network, or Save an address on this network.", `<details id="details" open><summary>Details and logs</summary>`} {
 		if strings.Count(string(b), want) != 1 {
 			t.Fatal("page copy missing or repeated:", want)
 		}

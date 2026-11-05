@@ -100,7 +100,7 @@ the Local Network usage text, and a **Test**, **Save**, copy pass or Preview on
 this network that nothing answered names the Local Network setting on a Mac;
 neither has been seen on a Mac whose Local Network access is blocked. **Files
 at once** (1 to 4, default 4) passes its value to the copier; no setting below
-4 has been measured against a telescope, through the account or on this network.
+4 has been measured against a telescope, through Telescope Network or on this network.
 
 CI covers both routes without a telescope:
 
@@ -112,7 +112,7 @@ CI covers both routes without a telescope:
   Preview, Clear history, Browse, Free up space's preview and confirmation,
   and a folder in use by `seestar-copy-cli` or a second app. They also cover
   `seestar-copy-cli browse`'s page.
-- **Through your account:** Go tests with a fake share and a stand-in
+- **Remotely through Telescope Network:** Go tests with a fake share and a stand-in
   connection check that copying uses the proxy's SMB port, waits for the
   connection without starting it, and stays with its telescope, and that a
   delete holds the connection until it ends. No CI job copies through the

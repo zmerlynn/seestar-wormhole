@@ -16,17 +16,18 @@ how many files were not copied, **Copying is on** or **Copying is off**.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
-between them. Copy, Browse and Free up space open once you connect through
-your account, or save an address on this network; until then they are
-dimmed, show a padlock, and say so. Quit and the version are below every tab.
+between them. Copy, Browse and Free up space open once you connect remotely
+through Telescope Network, or save an address on this network; until then
+they are dimmed, show a padlock, and say so. Quit and the version are below every tab.
 
 ## Reaching the telescope
 
 **Connection** starts with **Reach the telescope**:
 
-- **Through my Seestar account** is the setup on the rest of this page: the
-  proxy connects to your Seestar through your account, and copying will use
-  its file-sharing (SMB) port.
+- **Remotely through Telescope Network** is the setup on the rest of this
+  page: the proxy signs in with your Seestar account and connects to your
+  Seestar through Telescope Network, and copying will use its file-sharing
+  (SMB) port.
 - **On this network** is for a Seestar on the same network as this computer.
   Enter its address, with an optional port (445 by default). **Test** checks
   that it answers file sharing and saves nothing: when it passes for an
@@ -39,7 +40,7 @@ dimmed, show a padlock, and say so. Quit and the version are below every tab.
   This route doesn't start the proxy or use your account.
 
 You can't change the choice while a connection is running or while copying or
-deleting is running; stop it first. **Connect** saves the account route, so
+deleting is running; stop it first. **Connect** saves the Telescope Network route, so
 it is refused too while copying or deleting runs on this network.
 
 ## Setting up
@@ -111,7 +112,7 @@ Keep seestar-wormhole open while you use the telescope.
 telescope's file share to a folder on this computer, show what is on the
 share, and delete what is safely copied. They use the same rules and the same
 copy history as [`seestar-copy-cli`](copy-reference.md)'s `sync`, `browse` and
-`delete`. On your account they reach the share through the proxy's SMB port
+`delete`. Through Telescope Network they reach the share through the proxy's SMB port
 (local port 4445 by default); on this network, at the saved address.
 
 If they can't reach the share, each says why and links to the fix:
@@ -137,14 +138,14 @@ can't change while copying runs:
   on the telescope. Each folder has its own copy history.
 - **Check for new files every** N minutes, 5 by default.
 - **Files at once**: how many files copying runs at once, 1 to 4, 4 by
-  default. Through your Seestar account, copying shares the connection with
+  default. Through Telescope Network, copying shares the connection with
   the Seestar app and seestar_alp; if they are slow to respond while copying,
   lower it to 1 or 2.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
   [`--exclude` and `--include`](copy-reference.md#selection).
 - **Skip the telescope's logs, scratch and system files**, on by default.
-- **Start copying when the app opens**, off by default. On your account,
-  copying then starts once the connection is ready.
+- **Start copying when the app opens**, off by default. Through Telescope
+  Network, copying then starts once the connection is ready.
 
 While copying is off, **Preview** shows what **Start copying** would do, from
 one [dry run](copy-reference.md#dry-run) with the saved settings: how many
@@ -357,7 +358,7 @@ copy into one folder at once.
 | `serial`, `model`, `email` | Empty strings. |
 | `ports` | `[]`, using the standard service mappings. |
 | `remember_password` | `false` |
-| `route` | Empty, meaning the account route. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means the account route. |
+| `route` | Empty, meaning **Remotely through Telescope Network**. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means Telescope Network. |
 | `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
 | `route_established` | `false`. `true` once the account has connected or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
 

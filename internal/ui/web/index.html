@@ -14,12 +14,12 @@
 <button id="tab-free" type="button" role="tab" aria-controls="panel-free" aria-selected="false" aria-describedby="tabs-note" tabindex="-1" disabled>Free up space</button>
 <button id="tab-activity" type="button" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity</button>
 </div>
-<p id="tabs-note" class="help">Copy, Browse and Free up space open once you connect through your account, or Save an address on this network.</p>
+<p id="tabs-note" class="help">Copy, Browse and Free up space open once you connect remotely through Telescope Network, or Save an address on this network.</p>
 <p id="copy-reach" class="notice" hidden><span id="copy-reach-text"></span> <button id="copy-reach-go" class="linkbtn" type="button"></button></p>
 <section id="panel-connection" role="tabpanel" aria-labelledby="tab-connection">
 <fieldset id="route-choice" disabled aria-describedby="route-help">
 <legend>Reach the telescope</legend>
-<div class="segments"><label><input id="route-account" type="radio" name="route" value="account" checked> Through my Seestar account</label><label><input id="route-lan" type="radio" name="route" value="lan"> On this network</label></div>
+<div class="segments"><label><input id="route-account" type="radio" name="route" value="account" checked> Remotely through Telescope Network</label><label><input id="route-lan" type="radio" name="route" value="lan"> On this network</label></div>
 <p id="route-help" class="help" hidden>Stop the connection and any copying or deleting to change this.</p>
 </fieldset>
 <div id="account-route">
@@ -81,7 +81,7 @@
 <p id="lan-result" role="status" aria-live="polite"></p>
 </fieldset>
 </form>
-<p class="help">On this network, the proxy doesn't start and your Seestar account isn't used. Connect on the account route saves that route instead.</p>
+<p class="help">On this network, the proxy doesn't start and your Seestar account isn't used. Connect on the Telescope Network route saves that route instead.</p>
 </div>
 </section>
 <section id="panel-copy" role="tabpanel" aria-labelledby="tab-copy" hidden>
@@ -138,7 +138,7 @@
 <p class="error" id="f-int-err" role="alert" hidden></p>
 <label class="check strong">Files at once <input type="number" id="f-files" min="1" max="4" aria-describedby="f-files-help f-files-err"></label>
 <p class="error" id="f-files-err" role="alert" hidden></p>
-<p class="help" id="f-files-help">Copying runs this many files at once, 1 to 4. Through your Seestar account, copying shares the connection with the Seestar app and seestar_alp: if they are slow to respond while copying, lower this to 1 or 2.</p>
+<p class="help" id="f-files-help">Copying runs this many files at once, 1 to 4. Through Telescope Network, copying shares the connection with the Seestar app and seestar_alp: if they are slow to respond while copying, lower this to 1 or 2.</p>
 <label for="f-ex">Leave out</label>
 <textarea id="f-ex" spellcheck="false" aria-describedby="f-ex-help f-ex-err"></textarea>
 <p class="error" id="f-ex-err" role="alert" hidden></p>
@@ -148,7 +148,7 @@
 <p class="error" id="f-in-err" role="alert" hidden></p>
 <p class="help" id="f-in-help">Leave empty to copy everything not left out. For example: <code>/MyWorks</code>.</p>
 <label class="check"><input type="checkbox" id="f-skip"> <span><b>Skip the telescope's logs, scratch and system files</b> (recommended)<br><span class="muted mono" id="f-builtin"></span></span></label>
-<label class="check"><input type="checkbox" id="f-start"> <span><b>Start copying when the app opens</b><br><span class="muted">On your account, copying starts once the connection is ready.</span></span></label>
+<label class="check"><input type="checkbox" id="f-start"> <span><b>Start copying when the app opens</b><br><span class="muted">Through Telescope Network, copying starts once the connection is ready.</span></span></label>
 <div class="actions"><button class="primary" type="submit" id="f-save">Save</button><button type="button" id="f-cancel">Cancel</button></div>
 </fieldset>
 </form>

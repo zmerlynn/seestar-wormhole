@@ -8,18 +8,18 @@ on your computer in three ways:
   scripts and services, which comes in every download;
 - [rclone or another SMB app](#with-rclone), through the proxy's SMB listener.
 
-The app and `seestar-copy-cli` reach the telescope either through your Seestar
-account, sharing the proxy's connection, or directly on the network the
-telescope is on. See [tested coverage](status.md#copying) for what has been
+The app and `seestar-copy-cli` reach the telescope either remotely through
+Telescope Network, sharing the proxy's connection, or directly on the network
+the telescope is on. See [tested coverage](status.md#copying) for what has been
 tried on each route.
 
 ## Copy in the app
 
 1. **Choose how to reach the telescope.** On the **Connection** tab, under
-   **Reach the telescope**, choose **Through my Seestar account** and
+   **Reach the telescope**, choose **Remotely through Telescope Network** and
    **Connect**, or choose **On this network**, enter the telescope's address,
    and **Save**. Until one is saved, Copy, Browse and Free up space are
-   unavailable and say so. On your account, copying uses the proxy's SMB port
+   unavailable and say so. Through Telescope Network, copying uses the proxy's SMB port
    (local port 4445 by default) and waits for the connection; it never starts
    it.
 2. **Choose a folder.** The first time you open **Copy**, choose the folder for
@@ -80,8 +80,8 @@ history.
   there, and on a Mac they say where to allow it: enable seestar-wormhole in
   System Settings → Privacy & Security → Local Network, then **Test** again.
   While the request is open, **Test**, **Save** and copying wait up to 30
-  seconds for your answer. Through your account, copying doesn't need it.
-- **Through your account, a large copy is shared.** It uses the same telescope
+  seconds for your answer. Through Telescope Network, copying doesn't need it.
+- **Through Telescope Network, a large copy is shared.** It uses the same telescope
   session as the phone app and control clients, and delays their status
   replies. **Files at once** in Copy settings sets how many files copying
   runs at once, 4 by default: if the Seestar app or seestar_alp is slow to

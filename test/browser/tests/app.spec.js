@@ -40,6 +40,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeDisabled();
   await expect(page.locator('#tabs-note')).toBeVisible();
   await expect(page.locator('#connection-text')).toHaveText('Not connected');
+  await expect(page.getByLabel('Remotely through Telescope Network')).toBeChecked();
   // The arrow keys pass over the closed tabs.
   await connection.focus();
   await page.keyboard.press('ArrowRight');
@@ -404,7 +405,7 @@ test('Files at once defaults to 4, saves 1 to 4 and refuses anything else', asyn
   await expect(count).toHaveValue('4');
   await expect(count).toHaveAttribute('min', '1');
   await expect(count).toHaveAttribute('max', '4');
-  await expect(page.locator('#f-files-help')).toHaveText(/^Copying runs this many files at once, 1 to 4\. Through your Seestar account, .* lower this to 1 or 2\.$/);
+  await expect(page.locator('#f-files-help')).toHaveText(/^Copying runs this many files at once, 1 to 4\. Through Telescope Network, .* lower this to 1 or 2\.$/);
   await expect(count).toHaveAccessibleDescription(/lower this to 1 or 2/);
 
   for (const value of ['5', '0', '2.5']) {
