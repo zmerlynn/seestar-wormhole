@@ -155,7 +155,7 @@ test('Save is a download link styled like Close', async ({ page }) => {
   });
   expect(await look(save)).toEqual(await look(close));
 
-  const res = await page.request.get(href);
+  const res = await page.request.get(new URL(href, page.url()).href);
   expect(res.status()).toBe(200);
   expect(res.headers()['content-disposition']).toMatch(/^attachment;/);
 });

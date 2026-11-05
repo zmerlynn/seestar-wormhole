@@ -322,8 +322,8 @@ func (d *guiTestDriver) drive() error {
 		return err
 	}
 	if d.scenario == "fresh" || d.scenario == "dark" {
-		d.js(`applyGoal('custom');document.getElementById('advanced').open=true;document.getElementById('details').open=true;`)
-		if err := d.state("Not connected", false, "help-and-events"); err != nil {
+		d.js(`applyGoal('custom');document.getElementById('advanced').open=true;`)
+		if err := d.state("Not connected", false, "custom-help"); err != nil {
 			return err
 		}
 		for _, shot := range []string{"advanced-top", "advanced-network"} {
@@ -331,7 +331,15 @@ func (d *guiTestDriver) drive() error {
 				return err
 			}
 		}
-		d.js(`applyGoal('phone');document.getElementById('advanced').open=false;document.getElementById('details').open=false;document.getElementById('start').focus();`)
+		// Details and logs are on the Activity tab.
+		d.js(`selectTab('activity');document.getElementById('details').open=true;`)
+		if err := d.probe(`check(!el('panel-activity').hidden && el('panel-connection').hidden && el('tab-activity').getAttribute('aria-selected')==='true',{activityHidden:el('panel-activity').hidden,connectionHidden:el('panel-connection').hidden})`); err != nil {
+			return err
+		}
+		if err := d.state("Not connected", false, "activity"); err != nil {
+			return err
+		}
+		d.js(`selectTab('connection');applyGoal('phone');document.getElementById('advanced').open=false;document.getElementById('start').focus();`)
 	}
 	if d.scenario == "fresh" {
 		if err := d.pageStateRegressions(); err != nil {

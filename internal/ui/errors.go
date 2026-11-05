@@ -102,6 +102,12 @@ func errorCopy(code string) string {
 		return "Could not read the saved password. Unlock your keychain and try again, or remove the saved password."
 	case "password_missing":
 		return "Saved password not found. Remove the saved password, then enter it again."
+	case "route_locked":
+		return "Stop the connection and any copying or deleting, then change how to reach the telescope."
+	case "lan_address":
+		return "Enter the telescope address, with an optional port."
+	case "lan_unreachable":
+		return "The telescope didn't answer at this address. Check the address, then Test and save again."
 	case "keychain_timeout":
 		return "Keychain has not responded. Its request may still finish; wait before trying again."
 	default:

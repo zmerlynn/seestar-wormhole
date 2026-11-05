@@ -49,8 +49,10 @@ func (c *Copier) download(ctx context.Context, sess remote.Session, d plan.Decis
 	if err != nil {
 		return rec, fmt.Errorf("create the temporary file: %w", err)
 	}
+	// returned stays false through a panic, which must clean up too.
+	returned := false
 	defer func() {
-		if err == nil {
+		if err == nil && returned {
 			return
 		}
 		f.Close() // an error here means it was closed already
@@ -92,7 +94,9 @@ func (c *Copier) download(ctx context.Context, sess remote.Session, d plan.Decis
 			return rec, fmt.Errorf("fsync the folder: %w", err)
 		}
 	}
-	return c.record(d, sum, how)
+	rec, err = c.record(d, sum, how)
+	returned = true
+	return rec, err
 }
 
 // fetch reads d from the device into w and returns the lowercase hex

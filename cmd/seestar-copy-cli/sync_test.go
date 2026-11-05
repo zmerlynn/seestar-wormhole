@@ -8,6 +8,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"maps"
 	"os"
 	"path/filepath"
@@ -57,7 +58,7 @@ func (d *device) counts() (dials, closes int) {
 func (d *device) use(t *testing.T) {
 	old := dial
 	t.Cleanup(func() { dial = old })
-	dial = func(context.Context, string) (remote.Session, error) {
+	dial = func(context.Context, string, *slog.Logger) (remote.Session, error) {
 		d.mu.Lock()
 		defer d.mu.Unlock()
 		d.dials++
@@ -572,7 +573,7 @@ func TestSyncStopEndsSession(t *testing.T) {
 		}
 		old := dial
 		t.Cleanup(func() { dial = old })
-		dial = func(lifetime context.Context, _ string) (remote.Session, error) {
+		dial = func(lifetime context.Context, _ string, _ *slog.Logger) (remote.Session, error) {
 			sess.lifetime = lifetime
 			return sess, nil
 		}

@@ -3,6 +3,7 @@ package engine
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"slices"
 	"testing"
 	"testing/fstest"
@@ -24,7 +25,9 @@ func (c *closeCounter) Close() error {
 func useDial(t *testing.T, d func(context.Context, string) (remote.Session, error)) {
 	old := dial
 	t.Cleanup(func() { dial = old })
-	dial = d
+	dial = func(ctx context.Context, endpoint string, _ *slog.Logger) (remote.Session, error) {
+		return d(ctx, endpoint)
+	}
 }
 
 // Test lists the share root, and closes the session.
@@ -35,7 +38,7 @@ func TestTest(t *testing.T) {
 		endpoints = append(endpoints, endpoint)
 		return sess, nil
 	})
-	entries, err := Test(t.Context(), "device:445")
+	entries, err := Test(t.Context(), "device:445", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,13 +57,13 @@ func TestTest(t *testing.T) {
 // Test fails with what failed: the connection or the listing.
 func TestTestFails(t *testing.T) {
 	useDial(t, func(context.Context, string) (remote.Session, error) { return nil, errors.New("no route") })
-	if _, err := Test(t.Context(), "device:445"); err == nil || err.Error() != "connect to device:445: no route" {
+	if _, err := Test(t.Context(), "device:445", nil); err == nil || err.Error() != "connect to device:445: no route" {
 		t.Errorf("got err %v, want the connect error", err)
 	}
 	sess := remote.NewFake(fstest.MapFS{})
 	sess.Close()
 	useDial(t, func(context.Context, string) (remote.Session, error) { return sess, nil })
-	if _, err := Test(t.Context(), "device:445"); err == nil || err.Error() != "list the share: readdir .: file already closed" {
+	if _, err := Test(t.Context(), "device:445", nil); err == nil || err.Error() != "list the share: readdir .: file already closed" {
 		t.Errorf("got err %v, want the listing error", err)
 	}
 }

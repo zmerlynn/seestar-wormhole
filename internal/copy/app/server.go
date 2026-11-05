@@ -57,6 +57,11 @@ var static = map[string]struct{ file, typ string }{
 // server is the app's handler. /app/ is the app's page and API; every
 // other path goes to the current browse handler, which a save of a new
 // address or folder replaces.
+//
+// Locks are taken in this order: admit, then mu, then a controller's own
+// mutex. A [Mount]'s host takes its own locks inside admit, in its commit,
+// and target takes the host's status lock inside mu, so neither of those
+// is held around admit.
 type server struct {
 	ctx      context.Context // the app's lifetime; browse's sessions live in it
 	addr     netip.AddrPort  // the listener's
@@ -65,12 +70,22 @@ type server struct {
 	stateDir string
 	log      *slog.Logger
 	// dial opens a browse session; test runs Test. Tests replace both.
-	dial    func(ctx context.Context, endpoint string) (remote.Session, error)
-	test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
-	native  *Native // nil without a window
+	dial   func(ctx context.Context, endpoint string) (remote.Session, error)
+	test   func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	native *Native // nil without a window
+	// target, if set, is where the telescope is for every dial and
+	// start, in place of the saved address: a [Mount]'s.
+	target  func() (Target, error)
 	copy    *controller
 	preview *previewer
 	free    *freer
+
+	// admit is held by each change of where the telescope is or what is
+	// saved, and by each start of copying, a pass of copying, a preview,
+	// a Free up space check or a delete, so none lands between another's
+	// checks and its start. It may be held across a save to disk but is
+	// never taken by status, views, Busy or the end of any of them.
+	admit sync.Mutex
 
 	mu       sync.Mutex
 	file     *settingsFile
@@ -81,12 +96,17 @@ type server struct {
 func newServer(ctx context.Context, addr netip.AddrPort, token, version, stateDir string, file *settingsFile, log *slog.Logger) *server {
 	s := &server{
 		ctx: ctx, addr: addr, token: token, version: version, stateDir: stateDir, file: file, log: log,
-		dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return remote.Dial(ctx, endpoint) },
-		test: engine.Test,
+		dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
+			return remote.Dial(ctx, endpoint, log)
+		},
+		test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+			return engine.Test(ctx, endpoint, log)
+		},
 	}
 	s.copy = newController(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
 		return s.dial(ctx, endpoint)
 	})
+	s.copy.admit = &s.admit
 	s.preview = newPreviewer(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
 		return s.dial(ctx, endpoint)
 	})
@@ -102,10 +122,30 @@ func (f *settingsFile) setUp() bool {
 	return f.exists && f.settings.Address != "" && f.settings.Folder != ""
 }
 
+// setUp reports whether the saved settings are enough to copy. A mounted
+// server's address comes from its target, so it needs only a folder.
+func (s *server) setUp() bool {
+	if s.target != nil {
+		return s.file.exists && s.file.settings.Folder != ""
+	}
+	return s.file.setUp()
+}
+
+// resolve is set with the address to use now, and the target there: the
+// saved address, or for a mounted server, its target's.
+func (s *server) resolve(set Settings) (Settings, Target, error) {
+	if s.target == nil {
+		return set, Target{Endpoint: set.Address}, nil
+	}
+	t, err := s.target()
+	set.Address = t.Endpoint
+	return set, t, err
+}
+
 // startBrowse serves Browse for the saved settings, if they are set up. It
 // is called once the server's fields are set and before it serves.
 func (s *server) startBrowse() {
-	if s.file.setUp() {
+	if s.setUp() {
 		s.browse, s.sessions = s.newBrowse(s.file.settings)
 	}
 }
@@ -133,15 +173,21 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 }
 
 // startCopying turns copying on with the saved settings, which discards
-// a preview. Holding s.mu keeps a Save from landing between the check and
-// the start.
+// a preview. Holding s.admit keeps a Save or a change of endpoint from
+// landing between the check and the start.
 func (s *server) startCopying() error {
+	s.admit.Lock()
+	defer s.admit.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.file.setUp() {
+	if !s.setUp() {
 		return errNotSetUp
 	}
-	if err := s.copy.start(s.file.settings); err != nil {
+	set, t, err := s.resolve(s.file.settings)
+	if err != nil {
+		return err
+	}
+	if err := s.copy.start(set, t); err != nil {
 		return err
 	}
 	s.preview.discard()
@@ -149,18 +195,24 @@ func (s *server) startCopying() error {
 }
 
 // startPreview runs a preview with the saved settings while copying is
-// off. Holding s.mu keeps a Save or a Start from landing between the
-// checks and the start.
+// off. Holding s.admit keeps a Save, a Start or a change of endpoint from
+// landing between the checks and the start.
 func (s *server) startPreview() error {
+	s.admit.Lock()
+	defer s.admit.Unlock()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
-	case !s.file.setUp():
+	case !s.setUp():
 		return errNotSetUp
 	case s.copy.on():
 		return errors.New("copying is on")
 	}
-	return s.preview.start(s.file.settings)
+	set, t, err := s.resolve(s.file.settings)
+	if err != nil {
+		return err
+	}
+	return s.preview.start(set, t)
 }
 
 // copyView is the Copy tab with its preview.
@@ -171,6 +223,24 @@ func (s *server) copyView() copyView {
 }
 
 var errNotSetUp = errors.New("set the telescope and folder in Settings first")
+
+// endpointChanged follows a change of where the telescope is, which the
+// caller made holding s.admit: the previews go back to Start, as their
+// proof was taken elsewhere, and browse gets a new pool, so no request
+// reaches the old endpoint through a session already open there.
+func (s *server) endpointChanged() {
+	s.mu.Lock()
+	s.free.clear()
+	s.preview.discard()
+	old := s.sessions
+	if s.browse != nil {
+		s.browse, s.sessions = s.newBrowse(s.file.settings)
+	}
+	s.mu.Unlock()
+	if old != nil {
+		old.Close()
+	}
+}
 
 // close ends the current browse pool.
 func (s *server) close() {
@@ -235,16 +305,36 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusForbidden)
 		return
 	}
-	switch r.URL.Path {
-	case "/app/api/status":
+	s.api(w, r, strings.TrimPrefix(r.URL.Path, "/app/api/"), func() bool {
+		if r.Header.Get("Origin") != "http://"+s.addr.String() || r.Header.Get("Sec-Fetch-Site") == "none" {
+			fail(http.StatusForbidden)
+			return false
+		}
+		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if err != nil || media != "application/json" {
+			fail(http.StatusUnsupportedMediaType)
+			return false
+		}
+		return true
+	})
+}
+
+// api serves the API call name, which is the path after the API's prefix.
+// allowed, if not nil, runs on a POST once the call is known and answers
+// whether the request passed the caller's checks, having answered it if
+// not; a [Mount]'s caller makes those checks itself.
+func (s *server) api(w http.ResponseWriter, r *http.Request, name string, allowed func() bool) {
+	fail := func(code int) { http.Error(w, "Request rejected", code) }
+	switch name {
+	case "status":
 		if r.Method != "GET" {
 			fail(http.StatusMethodNotAllowed)
 			return
 		}
 		s.status(w)
 		return
-	case "/app/api/test", "/app/api/settings", "/app/api/copy", "/app/api/delete", "/app/api/clear":
-	case "/app/api/folder":
+	case "test", "settings", "copy", "delete", "clear":
+	case "folder":
 		if s.native == nil {
 			fail(http.StatusNotFound)
 			return
@@ -257,13 +347,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Header.Get("Origin") != "http://"+s.addr.String() || r.Header.Get("Sec-Fetch-Site") == "none" {
-		fail(http.StatusForbidden)
-		return
-	}
-	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
-		fail(http.StatusUnsupportedMediaType)
+	if allowed != nil && !allowed() {
 		return
 	}
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSON))
@@ -276,16 +360,16 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusBadRequest)
 		return
 	}
-	switch r.URL.Path {
-	case "/app/api/test":
+	switch name {
+	case "test":
 		s.runTest(w, r.Context(), in)
-	case "/app/api/folder":
+	case "folder":
 		s.chooseFolder(w, in)
-	case "/app/api/copy":
+	case "copy":
 		s.copyAction(w, in.Action)
-	case "/app/api/delete":
+	case "delete":
 		s.freeAction(w, in)
-	case "/app/api/clear":
+	case "clear":
 		s.clearHistory(w)
 	default:
 		s.save(w, in)
@@ -322,7 +406,7 @@ type input struct {
 
 func (s *server) status(w http.ResponseWriter) {
 	s.mu.Lock()
-	set, setUp, file := s.file.settings, s.file.setUp(), s.file.path
+	set, setUp, file := s.file.settings, s.setUp(), s.file.path
 	s.mu.Unlock()
 	// The saved folder's state file, as sync names it.
 	var history string
@@ -372,10 +456,17 @@ type fieldErrors struct {
 
 func (s *server) save(w http.ResponseWriter, in input) {
 	set, errs := checkInput(in)
+	if s.target != nil {
+		// A mounted server's address is its target's, not the form's.
+		delete(errs, "address")
+		set.Address = ""
+	}
 	if len(errs) > 0 {
 		respond(w, http.StatusBadRequest, fieldErrors{errs})
 		return
 	}
+	s.admit.Lock()
+	defer s.admit.Unlock()
 	s.mu.Lock()
 	if s.copy.on() {
 		s.mu.Unlock()
@@ -384,7 +475,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		}{"Stop copying to change settings."})
 		return
 	}
-	old, wasSetUp := s.file.settings, s.file.setUp()
+	old, wasSetUp := s.file.settings, s.setUp()
 	// The Free up space options are saved by Find, not by this form.
 	set.OlderThanDays, set.TrustState = old.OlderThanDays, old.TrustState
 	if err := s.file.save(set); err != nil {
@@ -462,10 +553,13 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"days": "Enter a whole number of days, 0 or more."}})
 			return
 		}
-		// Holding s.mu keeps a Save from landing between the read and
-		// the start; it is released before logging or answering.
+		// Holding s.admit keeps a Save or a change of endpoint from
+		// landing between the read and the start; s.mu is released
+		// before logging or answering.
+		s.admit.Lock()
+		defer s.admit.Unlock()
 		s.mu.Lock()
-		if !s.file.setUp() {
+		if !s.setUp() {
 			s.mu.Unlock()
 			conflict("Couldn't preview: " + errNotSetUp.Error() + ".")
 			return
@@ -480,7 +574,10 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 				return
 			}
 		}
-		err = s.free.find(set)
+		var t Target
+		if set, t, err = s.resolve(set); err == nil {
+			err = s.free.find(set, t)
+		}
 		s.mu.Unlock()
 		if err != nil {
 			conflict("Couldn't preview: " + err.Error() + ".")
@@ -489,7 +586,18 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 	case "cancel":
 		s.free.cancelCheck()
 	case "delete":
-		if err := s.free.confirm(in.ID, in.Folders); errors.Is(err, errStale) {
+		// The delete goes to the target its preview was checked at, and
+		// only while that is still where the telescope is: holding
+		// s.admit keeps a change of target from landing in between.
+		s.admit.Lock()
+		defer s.admit.Unlock()
+		s.mu.Lock()
+		_, now, err := s.resolve(s.file.settings)
+		s.mu.Unlock()
+		if err == nil {
+			err = s.free.confirm(in.ID, in.Folders, now)
+		}
+		if errors.Is(err, errStale) {
 			conflict("Preview again before deleting.")
 			return
 		} else if err != nil {
@@ -523,7 +631,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	folder := s.file.settings.Folder
 	var err error
 	switch {
-	case !s.file.setUp():
+	case !s.setUp():
 		err = errNotSetUp
 	case s.copy.on():
 		err = errors.New("stop copying first")

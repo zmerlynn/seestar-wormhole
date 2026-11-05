@@ -30,10 +30,14 @@ type controller struct {
 	save               func(Settings) error
 	log                *eventLog
 	runSettings        Settings
+	runs               uint64 // numbers each run, for the copier's target
 	saveAttempted      bool
 	saveMu             sync.Mutex // Serializes snapshot writes, never status or Stop.
 	pendingSave        *Settings
 	lastSaved          Settings
+	// text reads a run's status text for isReady; nil is its Text. Tests
+	// replace it, since only a proxy session makes a status Ready.
+	text func(*proxy.Status) string
 }
 
 func (c *controller) start(s Settings, password string) error {
@@ -65,6 +69,7 @@ func (c *controller) start(s Settings, password string) error {
 	}
 	c.devicesEmail = s.Email
 	c.runSettings = s
+	c.runs++
 	c.saveAttempted = false
 	done, status := c.done, c.status
 	go func() {
@@ -378,6 +383,50 @@ func (c *controller) view() runView {
 		}
 	}
 	return v
+}
+
+// persistRoute saves the route onto the last saved settings, as Remove
+// does, never onto a form draft. It is refused while a run is active,
+// whose save at its ready boundary would carry the old route.
+func (c *controller) persistRoute(route, address string) error {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	c.mu.Lock()
+	running := c.done != nil
+	c.mu.Unlock()
+	if running {
+		return &ActionError{Code: "route_locked"}
+	}
+	s := c.lastSaved
+	if s.Version == 0 {
+		s = defaultSettings()
+	}
+	s.Route = route
+	if route == routeLAN {
+		s.LANAddress = address
+	}
+	return c.persistLocked(s)
+}
+
+// connected returns the run's settings, the telescope it selected and
+// the run's number while it is connected to the telescope, and false
+// while it is not running, stopping or not ready. The telescope's label
+// is for comparing only: it names the serial.
+func (c *controller) connected() (run Settings, device string, id uint64, ok bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.done == nil || c.stopping || !c.isReady(c.status) {
+		return Settings{}, "", 0, false
+	}
+	return c.runSettings, c.status.SelectedDevice(), c.runs, true
+}
+
+func (c *controller) isReady(status *proxy.Status) bool {
+	text := status.Text
+	if c.text != nil {
+		text = func() string { return c.text(status) }
+	}
+	return text() == "Ready"
 }
 
 func (c *controller) persistPassword(s Settings, generation uint64) error {

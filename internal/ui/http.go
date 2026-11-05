@@ -1,11 +1,13 @@
 package ui
 
 import (
+	"context"
 	"crypto/subtle"
 	"embed"
 	"encoding/json/v2"
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
@@ -31,6 +33,9 @@ type server struct {
 	quitOnce    sync.Once
 	activate    func()
 	native      bool
+	// copy serves copy's API under /copy/api/ and Browse under /browse/;
+	// nil serves neither.
+	copy *copyapp.Mount
 }
 type input struct {
 	Settings Settings `json:"settings"`
@@ -38,14 +43,41 @@ type input struct {
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'")
-	w.Header().Set("X-Frame-Options", "DENY")
+	// Browse is a same-origin frame of /browse/, so the page may frame
+	// itself and be framed only by itself.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	fail := func(code int) { http.Error(w, "Request rejected", code) }
 	if r.Host != s.host {
 		fail(http.StatusForbidden)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/browse/") {
+		// The frame sends no token; Browse makes its own Host, Fetch
+		// Metadata and method checks and serves only GET and HEAD.
+		if s.copy == nil {
+			fail(http.StatusNotFound)
+			return
+		}
+		s.copy.ServeHTTP(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/copy/api/") {
+		if s.copy == nil {
+			fail(http.StatusNotFound)
+			return
+		}
+		if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Seestar-Token")), []byte(s.token)) != 1 {
+			fail(http.StatusForbidden)
+			return
+		}
+		if r.Method == "POST" && !s.allowedPost(w, r) {
+			return
+		}
+		s.copy.ServeHTTP(w, r)
 		return
 	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") {
@@ -117,6 +149,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		defaults, _ := proxyrun.MergePorts(nil)
 		events, path, logFailed := s.controller.log.snapshot()
 		s.respond(w, struct {
+			CopyBusy  bool               `json:"copy_busy"`
 			Settings  pageSettings       `json:"settings"`
 			Version   string             `json:"version"`
 			Effective diagnosticSettings `json:"effective"`
@@ -127,24 +160,14 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Events       []event         `json:"events"`
 			LogPath      string          `json:"log_path"`
 			LogFailed    bool            `json:"log_failed"`
-		}{pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
+		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
 		return
 	}
 	if r.Method != "POST" {
 		fail(http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Header.Get("Origin") != "http://"+s.host {
-		fail(http.StatusForbidden)
-		return
-	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
-		fail(http.StatusForbidden)
-		return
-	}
-	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || media != "application/json" {
-		fail(http.StatusUnsupportedMediaType)
+	if !s.allowedPost(w, r) {
 		return
 	}
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSON))
@@ -171,19 +194,34 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.activate()
 	case "/api/start":
-		err = s.controller.start(in.Settings, in.Password)
-		if err == nil {
+		// Connect chooses the account route, which moves the copier when
+		// this network was the route.
+		err = s.changeRoute(func() bool {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			return s.settings.Route == routeLAN
+		}, func() error {
+			s.mu.Lock()
+			in.Settings.Route, in.Settings.LANAddress = routeAccount, s.settings.LANAddress
+			s.mu.Unlock()
+			if err := s.controller.start(in.Settings, in.Password); err != nil {
+				return err
+			}
 			s.mu.Lock()
 			// Accepting Connect is not a successful save. Keep the authoritative
 			// pair for its account until the run reaches its save boundary.
 			s.retainSavedPair(&in.Settings)
 			s.settings = in.Settings
 			s.mu.Unlock()
-		}
+			return nil
+		})
 	case "/api/stop":
 		s.controller.stop()
 
 	case "/api/password/save":
+		s.mu.Lock()
+		in.Settings.Route, in.Settings.LANAddress = s.settings.Route, s.settings.LANAddress
+		s.mu.Unlock()
 		if _, _, err = in.Settings.validate(); err == nil {
 			generation := s.controller.credentials.nextGeneration()
 			err = s.controller.credentials.rememberAt(r.Context(), in.Settings, in.Password, generation)
@@ -205,9 +243,18 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			_, notice := s.controller.credentials.info()
 			s.controller.record(notice)
 		}
+	case "/api/route":
+		if in.Settings.Route != routeAccount && in.Settings.Route != routeLAN {
+			fail(http.StatusBadRequest)
+			return
+		}
+		err = s.saveRoute(r.Context(), in.Settings.Route, in.Settings.LANAddress)
 	case "/api/retry-storage":
 		err = s.controller.retrySave()
 	case "/api/quit":
+		if s.copy != nil {
+			s.copy.Quit()
+		}
 		s.controller.quit()
 		// Cleanup has joined; flush the response before shutting down HTTP.
 		s.respond(w, struct {
@@ -230,6 +277,124 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		OK bool `json:"ok"`
 	}{true})
 }
+
+// allowedPost checks a POST's Origin, Fetch Metadata and content type, for
+// the wormhole's API and copy's alike, and answers it if they fail.
+func (s *server) allowedPost(w http.ResponseWriter, r *http.Request) bool {
+	fail := func(code int) { http.Error(w, "Request rejected", code) }
+	if r.Header.Get("Origin") != "http://"+s.host {
+		fail(http.StatusForbidden)
+		return false
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" {
+		fail(http.StatusForbidden)
+		return false
+	}
+	media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || media != "application/json" {
+		fail(http.StatusUnsupportedMediaType)
+		return false
+	}
+	return true
+}
+
+// saveRoute saves how the copier reaches the telescope. On this network
+// it needs an address, kept as host:port, that passes Test first; the
+// account route keeps the saved address for a later switch back. It is
+// refused while the account route runs or copying or deleting does, as
+// checked again after the Test; a refused or failed save keeps the route
+// that was saved.
+func (s *server) saveRoute(ctx context.Context, route, address string) error {
+	if route == routeLAN {
+		normalized, ok := copyapp.NormalizeAddress(address)
+		if !ok {
+			return &ActionError{Code: "lan_address", Field: "lan_address"}
+		}
+		address = normalized
+		// Test holds no lock: it waits on the network.
+		if s.copy != nil {
+			if err := s.copy.Test(ctx, address); err != nil {
+				return &ActionError{Code: "lan_unreachable", Field: "lan_address"}
+			}
+		}
+	}
+	return s.changeRoute(func() bool { return true }, func() error { return s.controller.persistRoute(route, address) })
+}
+
+// changeRoute commits a change of how the copier reaches the telescope
+// inside copy's admission, so no copying or Free up space starts on the
+// old route meanwhile. A change that moves the copier is refused while
+// copying or Free up space runs. Without copy mounted it only commits.
+//
+// Locks are taken in this order: copy's admission, then the controller's
+// saveMu, then its mu or s.mu. copy's endpoint takes s.mu and the
+// controller's mu inside copy's own locks, so neither is held while
+// calling into copy.
+func (s *server) changeRoute(moves func() bool, commit func() error) error {
+	if s.copy == nil {
+		return commit()
+	}
+	err := s.copy.Change(moves, commit)
+	if errors.Is(err, copyapp.ErrBusy) {
+		return &ActionError{Code: "route_locked"}
+	}
+	return err
+}
+
+// Copier endpoint errors, shown after "Couldn't start copying: ".
+var (
+	errNotConnected = errors.New("Not connected. Copying resumes when the connection is ready")
+	errSMBOff       = errors.New("SMB is off. Turn on its port in Connection > Advanced")
+	errNoLANAddress = errors.New("Save the telescope's address on the Connection tab first")
+)
+
+// copyTarget is where the copier reaches the telescope now. On this
+// network it is the saved address. Through the account it is the proxy's
+// local port for the device's SMB port, with the telescope the run
+// selected and the run's number, and only while the proxy is connected:
+// the copier never starts or holds the device session itself.
+func (s *server) copyTarget() (copyapp.Target, error) {
+	s.mu.Lock()
+	settings := s.settings
+	s.mu.Unlock()
+	run, device, id, ok := s.controller.connected()
+	endpoint, err := copyEndpointFor(settings, run, ok)
+	if err != nil || settings.Route == routeLAN {
+		return copyapp.Target{Endpoint: endpoint}, err
+	}
+	return copyapp.Target{Endpoint: endpoint, Device: device, Run: id}, nil
+}
+
+// copyEndpointFor is copyEndpoint for the saved settings and the run's,
+// which is connected or not.
+func copyEndpointFor(settings, run Settings, connected bool) (string, error) {
+	if settings.Route == routeLAN {
+		if address, ok := copyapp.NormalizeAddress(settings.LANAddress); ok {
+			return address, nil
+		}
+		return "", errNoLANAddress
+	}
+	if !connected {
+		return "", errNotConnected
+	}
+	ports, _, err := run.validate()
+	if err != nil {
+		return "", errNotConnected
+	}
+	// The proxy listens on its bind address; a wildcard or loopback bind
+	// is reached on loopback.
+	host := netip.AddrFrom4([4]byte{127, 0, 0, 1})
+	if addr, err := netip.ParseAddr(run.Bind); err == nil && !addr.IsUnspecified() {
+		host = addr.Unmap()
+	}
+	for _, p := range ports {
+		if p.Device == 445 {
+			return netip.AddrPortFrom(host, p.Local).String(), nil
+		}
+	}
+	return "", errSMBOff
+}
+
 func (s *server) rejectAction(w http.ResponseWriter, err error) {
 	s.controller.log.addFailure(errorCopy(actionError(err).Code), err)
 	w.Header().Set("Content-Type", "application/json")

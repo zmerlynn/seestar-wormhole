@@ -14,6 +14,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 	"reflect"
 	"slices"
@@ -85,6 +86,9 @@ type peer struct {
 	once sync.Once
 	done chan struct{}
 
+	// log is the log the client's session callbacks get.
+	log *slog.Logger
+
 	mu       sync.Mutex
 	requests []wire.PacketCodec
 }
@@ -110,7 +114,7 @@ func (p *peer) dial(ctx context.Context) (*SMB, error) {
 	d := newDialer()
 	d.Credentials = testCredentials{}
 	d.TransportDialer = pipeDialer{p.client}
-	return dial(ctx, wireEndpoint, d)
+	return dial(ctx, wireEndpoint, d, p.log)
 }
 
 // mustDial dials and fails the test if Dial fails, or if it has not

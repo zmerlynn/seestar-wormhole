@@ -16,8 +16,10 @@ let generation = 0;
 let loading = null;
 let viewing = null; // the AbortController of the text being read
 
-const pageURL = (p) => (p ? '/?path=' + encodeURIComponent(p) : '/');
-const fileURL = (p, save) => '/file?path=' + encodeURIComponent(p) + (save ? '&download=1' : '');
+// URLs are relative, so the page works wherever it is served: at / by
+// seestar-copy-cli, and at /browse/ in the app.
+const pageURL = (p) => (p ? '?path=' + encodeURIComponent(p) : './');
+const fileURL = (p, save) => 'file?path=' + encodeURIComponent(p) + (save ? '&download=1' : '');
 const baseName = (p) => p.slice(p.lastIndexOf('/') + 1);
 const plainClick = (ev) => ev.button === 0 && !ev.ctrlKey && !ev.metaKey && !ev.shiftKey && !ev.altKey;
 const count = (n, word) => n + ' ' + word + (n === 1 ? '' : 's');
@@ -217,7 +219,7 @@ async function load(p, focus) {
   rows.replaceChildren();
   let data;
   try {
-    const res = await fetch('/api/list?path=' + encodeURIComponent(p), { signal: loading.signal });
+    const res = await fetch('api/list?path=' + encodeURIComponent(p), { signal: loading.signal });
     data = await res.json();
     if (mine !== generation) return;
     if (!res.ok) {

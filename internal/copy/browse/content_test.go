@@ -116,7 +116,7 @@ func openFixture(t *testing.T) (remote.File, []byte) {
 func TestFileReaderSeeks(t *testing.T) {
 	f, data := openFixture(t)
 	var failed []error
-	r := newFileReader(context.Background(), f, int64(len(data)), func(err error) { failed = append(failed, err) })
+	r := newFileReader(context.Background(), f, int64(len(data)), func(err error) { failed = append(failed, err) }, nil)
 	next := func(n int) []byte {
 		t.Helper()
 		b := make([]byte, n)
@@ -164,7 +164,7 @@ func TestFileReaderStopsForDepartedClient(t *testing.T) {
 	f, data := openFixture(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	var failed []error
-	r := newFileReader(ctx, f, int64(len(data)), func(err error) { failed = append(failed, err) })
+	r := newFileReader(ctx, f, int64(len(data)), func(err error) { failed = append(failed, err) }, nil)
 	cancel()
 	if _, err := r.Read(make([]byte, 1)); !errors.Is(err, context.Canceled) {
 		t.Errorf("Read = %v, want context.Canceled", err)
@@ -186,7 +186,7 @@ func TestFileReaderReportsDeviceErrors(t *testing.T) {
 	f, data := openFixture(t)
 	broken := errors.New("broken pipe")
 	var failed []error
-	r := newFileReader(context.Background(), failingFile{f, broken}, int64(len(data)), func(err error) { failed = append(failed, err) })
+	r := newFileReader(context.Background(), failingFile{f, broken}, int64(len(data)), func(err error) { failed = append(failed, err) }, nil)
 	if _, err := r.Read(make([]byte, 1)); !errors.Is(err, broken) {
 		t.Errorf("Read = %v", err)
 	}

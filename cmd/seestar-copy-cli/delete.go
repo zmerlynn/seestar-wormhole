@@ -127,8 +127,8 @@ func (o *deleteOptions) validate() error {
 
 // dialRemover opens the session a real run deletes through. Only delete
 // dials one; tests replace it with a fake over a local folder.
-var dialRemover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
-	r, err := remote.DialRemover(ctx, endpoint)
+var dialRemover = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Remover, error) {
+	r, err := remote.DialRemover(ctx, endpoint, log)
 	if err != nil {
 		return nil, err
 	}
@@ -152,7 +152,11 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 	}
 	_, err := engine.RunDelete(ctx, engine.DeleteOptions{
 		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
-		OlderThan: o.olderThan, Selector: o.selector, DryRun: o.dryRun, Dial: dial, OpenRemover: dialRemover,
+		OlderThan: o.olderThan, Selector: o.selector, DryRun: o.dryRun,
+		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return dial(ctx, endpoint, log) },
+		OpenRemover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
+			return dialRemover(ctx, endpoint, log)
+		},
 	}, log)
 	return err
 }

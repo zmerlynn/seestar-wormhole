@@ -111,7 +111,7 @@ func TestLoadNullFieldsTakeDefaults(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := newCopyEnv(t, fstest.MapFS{})
-	if err := e.c.start(f.settings); err != nil {
+	if err := e.c.start(f.settings, Target{Endpoint: f.settings.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.c.mu.Lock()

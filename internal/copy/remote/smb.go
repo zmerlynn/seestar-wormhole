@@ -6,11 +6,14 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 
 	"github.com/hirochachacha/go-smb2/v2"
 	"github.com/hirochachacha/go-smb2/v2/auth"
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 )
 
 // statusNotADirectory is STATUS_NOT_A_DIRECTORY ([MS-ERREF] 2.3.1).
@@ -41,8 +44,11 @@ var _ Session = (*SMB)(nil)
 // ctx bounds the session, not just the dial: when it is done, the session
 // logs off and closes as if by Close, and pending calls fail. Canceling ctx
 // during Dial makes Dial return its error.
-func Dial(ctx context.Context, endpoint string) (*SMB, error) {
-	return dial(ctx, endpoint, newDialer())
+//
+// log gets the record of a panic recovered in the callbacks ctx runs; nil
+// discards it.
+func Dial(ctx context.Context, endpoint string, log *slog.Logger) (*SMB, error) {
+	return dial(ctx, endpoint, newDialer(), log)
 }
 
 // newDialer is the fixed go-smb2 configuration Dial uses.
@@ -54,12 +60,22 @@ func newDialer() *smb2.Dialer {
 	}
 }
 
-func dial(ctx context.Context, endpoint string, dialer *smb2.Dialer) (*SMB, error) {
-	return dialShare(ctx, endpoint, dialer, ShareName)
+func dial(ctx context.Context, endpoint string, dialer *smb2.Dialer, log *slog.Logger) (*SMB, error) {
+	return dialShare(ctx, endpoint, dialer, ShareName, log)
 }
 
+// closeSession and abortSession are the session calls ctx's callbacks
+// make. Tests replace them to panic.
+var (
+	closeSession = (*smb2.Session).Close
+	abortSession = (*smb2.Session).Abort
+)
+
 // dialShare is dial for the share named share; only tests name another.
-func dialShare(ctx context.Context, endpoint string, dialer *smb2.Dialer, share string) (*SMB, error) {
+func dialShare(ctx context.Context, endpoint string, dialer *smb2.Dialer, share string, log *slog.Logger) (*SMB, error) {
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	// go-smb2 would add port 445 to a bare host, and an empty host dials
 	// the local machine; both would connect somewhere the caller did not name.
 	if host, port, err := net.SplitHostPort(endpoint); err != nil || host == "" || port == "" {
@@ -70,22 +86,28 @@ func dialShare(ctx context.Context, endpoint string, dialer *smb2.Dialer, share 
 	if err != nil {
 		return nil, fmt.Errorf("dial %s: %w", endpoint, err)
 	}
-	mounted, err := mount(ctx, session, share)
+	mounted, err := mount(ctx, session, share, log)
 	if err != nil {
 		return nil, fmt.Errorf("mount %q on %s: %w", share, endpoint, err)
 	}
-	stop := context.AfterFunc(ctx, func() { _ = session.Close() })
+	stop := context.AfterFunc(ctx, func() {
+		defer guard.Recover(log, "closing the device session")
+		_ = closeSession(session)
+	})
 	return &SMB{endpoint: endpoint, session: session, share: mounted, stopWatch: stop}, nil
 }
 
 // mount mounts share. On failure it has closed the session. Canceling
 // ctx aborts the session, so a server that never answers TREE_CONNECT cannot
-// hold mount; mount returns only once that abort has finished.
-func mount(ctx context.Context, session *smb2.Session, share string) (*smb2.Share, error) {
+// hold mount; mount returns only once that abort has finished. A panic in
+// the abort is logged to log after aborted is closed, so mount never waits
+// on the log.
+func mount(ctx context.Context, session *smb2.Session, share string, log *slog.Logger) (*smb2.Share, error) {
 	aborted := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
-		defer close(aborted)
-		_ = session.Abort()
+		p := guard.Catch(func() { _ = abortSession(session) })
+		close(aborted)
+		_ = p.Report(log, "aborting the device session")
 	})
 	mounted, err := session.Mount(ctx, share)
 	if !stop() {

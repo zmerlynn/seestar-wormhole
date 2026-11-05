@@ -28,7 +28,7 @@ func endpoint(t *testing.T) string {
 
 func dialFixture(t *testing.T) Session {
 	t.Helper()
-	s, err := Dial(t.Context(), endpoint(t))
+	s, err := Dial(t.Context(), endpoint(t), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

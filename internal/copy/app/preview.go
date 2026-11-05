@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
@@ -35,6 +36,9 @@ type previewer struct {
 	log      *slog.Logger
 	// dial opens the preview's session; tests replace it.
 	dial func(ctx context.Context, endpoint string) (remote.Session, error)
+	// at, if set, fails the dial once the telescope is no longer at the
+	// target the preview started at: a [Mount]'s.
+	at func(t Target) error
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when no preview runs
@@ -68,8 +72,8 @@ func newPreviewer(parent context.Context, stateDir string, log *slog.Logger, dia
 	return &previewer{parent: parent, stateDir: stateDir, log: log, dial: dial}
 }
 
-// start runs a preview with set, in its own goroutine.
-func (p *previewer) start(set Settings) error {
+// start runs a preview with set, at t, in its own goroutine.
+func (p *previewer) start(set Settings, t Target) error {
 	sel, err := selector(set)
 	if err != nil {
 		return err
@@ -92,8 +96,13 @@ func (p *previewer) start(set Settings) error {
 	o := engine.SyncOptions{
 		Endpoint: set.Address, Dest: set.Folder, StateDir: p.stateDir, Selector: sel, DryRun: true,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: workers,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
-			sess, err := p.dial(ctx, endpoint)
+		Dial: func(ctx context.Context, endpoint string) (sess remote.Session, err error) {
+			if p.at != nil {
+				err = p.at(t)
+			}
+			if err == nil {
+				sess, err = p.dial(ctx, endpoint)
+			}
 			p.mu.Lock()
 			defer p.mu.Unlock()
 			if p.st.state == pvRunning {
@@ -120,9 +129,10 @@ func (p *previewer) start(set Settings) error {
 		},
 	}
 	go func() {
+		defer guard.Recover(p.log, "previewing")
 		// A dry run with failed files returns an error after Decided;
 		// the preview shows them.
-		err := engine.RunSync(ctx, o, p.log)
+		err := guard.Run(p.log, "previewing", func() error { return engine.RunSync(ctx, o, p.log) })
 		canceled := ctx.Err() != nil
 		cancel()
 		p.mu.Lock()
@@ -180,6 +190,13 @@ func (p *previewer) discard() {
 		p.cancel()
 	}
 	p.st = previewStatus{}
+}
+
+// running reports whether a preview runs.
+func (p *previewer) running() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.done != nil
 }
 
 // quit cancels any preview for good and waits for it to return.

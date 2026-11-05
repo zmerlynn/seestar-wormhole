@@ -8,7 +8,7 @@ description: Review a seestar-copy change (a branch, a commit range or chosen ar
 A review splits one change into lanes. Each lane looks at one concern, reads
 only the files that concern touches, and reports findings in the same shape.
 The lane checklists are in [lanes.md](lanes.md). Read
-[docs/development/README.md](../../../docs/development/README.md) first; it
+[docs/copy/development/README.md](../../../docs/copy/development/README.md) first; it
 has the checks and the project rules a reviewer applies.
 
 ## 1. Fix the scope
@@ -34,34 +34,33 @@ judgment call; the table is a starting point.
 | Lane | Run it when the change touches |
 |---|---|
 | correctness | any non-test Go |
-| concurrency | goroutines, channels, locks, atomics, contexts, timers or signals; anything in `internal/copy/` or the pass loop in `internal/engine/` |
+| concurrency | goroutines, channels, locks, atomics, contexts, timers or signals; anything in `internal/copy/copier/`, `internal/copy/app/`, `internal/copy/browse/` or the pass loop in `internal/copy/engine/` |
 | tests | any Go, including tests alone |
 | simplicity | any non-test Go, or a new flag, option or file format |
-| operability-security | logging, file writes, paths from the device, budgets; `internal/remote/`, `internal/copy/`, `internal/state/` |
-| cli-contract | `cmd/`, `docs/reference.md`, help text, exit codes, log lines |
+| operability-security | logging, file writes, paths from the device, budgets; `internal/copy/remote/`, `internal/copy/copier/`, `internal/copy/state/` |
+| cli-contract | `cmd/seestar-copy/`, `cmd/seestar-copy-cli/`, `docs/copy/reference.md`, help text, exit codes, log lines |
 | upgrade | the state file or the lock file, their format, version or location, or their reader and writer; a change of default behavior an existing user would notice |
 | licensing | `go.mod`, `go.sum`, `vendor/`, `LICENSE`, `NOTICE`, the `licenses` command, new imports, new data files, copied code |
-| build-release | `scripts/`, `.github/`, build tags, `GOOS`-specific code |
+| build-release | `scripts/copy/`, `scripts/`, `.github/`, build tags, `GOOS`-specific code |
 | public-hygiene | always |
 | docs-editorial | Markdown, help strings, user-facing errors and messages |
 
-`internal/plan/` is pure decision logic: correctness, tests and simplicity
+`internal/copy/plan/` is pure decision logic: correctness, tests and simplicity
 cover it. A docs-only change is usually docs-editorial plus public-hygiene. A
 dependency upgrade is licensing, build-release and tests at least. Skip a lane
 only when nothing in it applies, and say which lanes you skipped.
 
 ## 3. Run the checks once
 
-When `./scripts/check.sh` exists, run it once for the whole review and let
-every lane cite the results:
+Run the repository's check once for the whole review and let every lane
+cite the results:
 
 ```sh
 ./scripts/check.sh            # gofmt, build, cross-builds, vet, race tests
 ```
 
-Until then, record that the script is unavailable and run any applicable
-checks that exist. The current tree contains only documentation, so no Go
-build or test applies.
+It also runs `scripts/copy/check-go.sh`. The Samba and browser tests
+(`scripts/copy/test-smb.sh`, `test/browser/`) run in CI.
 
 Lanes that need more (a mutation, a stress test, a built binary to compare
 with the docs) work on a scratch copy in their own container, never on the

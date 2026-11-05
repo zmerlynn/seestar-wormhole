@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
@@ -50,8 +51,8 @@ var _ Remover = (*SMBRemover)(nil)
 
 // DialRemover is Dial for a session that can remove. Only the delete
 // command calls it.
-func DialRemover(ctx context.Context, endpoint string) (*SMBRemover, error) {
-	s, err := Dial(ctx, endpoint)
+func DialRemover(ctx context.Context, endpoint string, log *slog.Logger) (*SMBRemover, error) {
+	s, err := Dial(ctx, endpoint, log)
 	if err != nil {
 		return nil, err
 	}

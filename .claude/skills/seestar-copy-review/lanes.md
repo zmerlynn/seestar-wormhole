@@ -26,7 +26,7 @@ Is the changed code right, and robust where it reads untrusted input?
    state file on disk. Sizes and counts are checked before use. The project
    is strict in what it writes and permissive in what it accepts, through the
    decoder's own options
-   ([project rules](../../../docs/development/README.md#project-rules)).
+   ([project rules](../../../docs/copy/development/README.md#project-rules)).
    Write a focused test for any input you suspect, and report what it did.
 3. Copy ordering. Walk the crash points of one file: folder created, temp
    file created, bytes written and hashed, byte count checked against the
@@ -43,7 +43,7 @@ Is the changed code right, and robust where it reads untrusted input?
    onto the torn bytes. A header that names another destination is refused.
 5. Pass decisions. Every documented rule for a file in a pass (not ready
    yet, already copied, changed on the device, adopted, new) maps to one
-   branch in `internal/plan/`, and the destination is consulted only for
+   branch in `internal/copy/plan/`, and the destination is consulted only for
    adoption.
 6. Error paths. Every error is handled, wrapped with context or returned;
    none is swallowed. A failed file is logged and left for the next pass;
@@ -104,7 +104,7 @@ Do the tests pin the changed behavior?
 
 1. Map each added or altered behavior to the test that would fail without
    it, and list behaviors that have no test. A contract in
-   `docs/reference.md` that the change touches needs a test.
+   `docs/copy/reference.md` that the change touches needs a test.
 2. Mutation. Apply at least five mutations to the changed non-test lines on
    a scratch copy, then run only the affected packages. Useful mutations:
    - flip a condition;
@@ -222,10 +222,10 @@ default.
 
 ## cli-contract
 
-`docs/reference.md` is the contract for scripts and careful users; help text
+`docs/copy/reference.md` is the contract for scripts and careful users; help text
 is the contract for people at a terminal.
 
-1. Build the head binary and compare help, `docs/reference.md` and behavior
+1. Build the head binary and compare help, `docs/copy/reference.md` and behavior
    for everything the change adds or alters:
    - flags, arguments and defaults;
    - exit codes;
@@ -255,7 +255,7 @@ compatibility break; or a wrong exit code.
 
 Can a user move between releases in both directions without losing data or
 behavior? The rule is in
-[project rules](../../../docs/development/README.md#project-rules): files on
+[project rules](../../../docs/copy/development/README.md#project-rules): files on
 disk stay downgradable. The file that matters is the per-destination state
 file; losing it means copying a whole night again, or copying files the user
 already moved away.
@@ -335,7 +335,7 @@ attribution, or a stale embedded license set.
    declare. Builds use `-mod=vendor`.
 6. `go.mod`'s `go` and `toolchain` lines match the documented toolchain and
    the CI image.
-7. Someone following `docs/development/README.md` from scratch can build and
+7. Someone following `docs/copy/development/README.md` from scratch can build and
    test.
 
 Must fix: a broken build on a release target, a release that isn't
@@ -369,9 +369,9 @@ messages a user reads.
 
 The readers:
 - `README.md` is for Seestar owners who are not developers;
-- `docs/reference.md` owns the mechanics: flags, defaults, exit codes, the
+- `docs/copy/reference.md` owns the mechanics: flags, defaults, exit codes, the
   state file and the log lines;
-- `docs/development/` is for contributors.
+- `docs/copy/development/` is for contributors.
 
 1. Accuracy. Every claim in the changed text is true at HEAD. Build the
    binary and run each example shown that needs no telescope, then compare

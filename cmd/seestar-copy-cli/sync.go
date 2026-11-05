@@ -162,9 +162,10 @@ func resolveStateDir(stateDir string, set bool) (string, error) {
 }
 
 // dial opens a read-only session, for each sync pass, find, browse and a
-// delete preview. Tests replace it with the io/fs fake.
-var dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-	return remote.Dial(ctx, endpoint)
+// delete preview, whose callbacks log to log. Tests replace it with the
+// io/fs fake.
+var dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Session, error) {
+	return remote.Dial(ctx, endpoint, log)
 }
 
 // runSync resolves the state folder and runs the sync. A dry run turns
@@ -182,6 +183,7 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 	return engine.RunSync(ctx, engine.SyncOptions{
 		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, Selector: o.selector,
 		Interval: o.interval, Once: o.once, DryRun: o.dryRun,
-		ReadyAge: o.readyAge, FirstPassAge: o.firstPassAge, Workers: o.workers, Dial: dial,
+		ReadyAge: o.readyAge, FirstPassAge: o.firstPassAge, Workers: o.workers,
+		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return dial(ctx, endpoint, log) },
 	}, log)
 }

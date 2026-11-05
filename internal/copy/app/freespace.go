@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
@@ -30,6 +31,9 @@ type freer struct {
 	// replace them.
 	dial    func(ctx context.Context, endpoint string) (remote.Session, error)
 	remover func(ctx context.Context, endpoint string) (remote.Remover, error)
+	// at, if set, fails each dial and remover once the telescope is no
+	// longer at the target the run started at: a [Mount]'s.
+	at func(t Target) error
 	// prepared, if set, runs after a confirm's preparation and before its
 	// start; tests change the preview there.
 	prepared func()
@@ -47,7 +51,7 @@ func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial fu
 	return &freer{
 		parent: parent, stateDir: stateDir, log: log, dial: dial,
 		remover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
-			return remote.DialRemover(ctx, endpoint)
+			return remote.DialRemover(ctx, endpoint, log)
 		},
 		st: freeStatus{state: frStart},
 	}
@@ -81,26 +85,48 @@ func (f *freer) run(st freeStatus, o engine.DeleteOptions, stop chan struct{}, i
 	f.cancel, f.stop, f.done, f.st = cancel, stop, done, st
 	o.Stop = stop
 	go func() {
-		r, err := engine.RunDelete(ctx, o, f.log)
-		canceled := ctx.Err() != nil
-		cancel()
-		f.mu.Lock()
-		end(r, err, canceled)
-		f.cancel, f.stop, f.done = nil, nil, nil
-		close(done)
-		f.mu.Unlock()
+		defer guard.Recover(f.log, "freeing up space")
+		var (
+			r        engine.DeleteResult
+			err      error
+			canceled bool
+		)
+		// The run is over, and done closes, on every exit, a recovered
+		// panic in end's included, so Quit and the next run never wait.
+		defer func() {
+			cancel()
+			f.mu.Lock()
+			defer f.mu.Unlock()
+			defer func() {
+				f.cancel, f.stop, f.done = nil, nil, nil
+				close(done)
+			}()
+			defer guard.Recover(f.log, "freeing up space")
+			end(r, err, canceled)
+		}()
+		err = guard.Run(f.log, "freeing up space", func() (err error) {
+			r, err = engine.RunDelete(ctx, o, f.log)
+			return err
+		})
+		canceled = ctx.Err() != nil
 	}()
 	return nil
 }
 
-// find starts a preview with set, which it keeps.
-func (f *freer) find(set Settings) error {
+// find starts a preview with set at t, which it keeps.
+func (f *freer) find(set Settings, t Target) error {
 	o, err := f.options(set)
 	if err != nil {
 		return err
 	}
-	o.DryRun, o.Dial, o.Hooks = true, f.dial, f.hooks()
-	return f.run(freeStatus{state: frChecking, set: set}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
+	o.DryRun, o.Hooks = true, f.hooks()
+	o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+		if err := f.still(t); err != nil {
+			return nil, err
+		}
+		return f.dial(ctx, endpoint)
+	}
+	return f.run(freeStatus{state: frChecking, set: set, target: t}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
 		st := &f.st
 		switch {
 		case canceled || st.stale:
@@ -118,12 +144,14 @@ func (f *freer) find(set Settings) error {
 }
 
 // confirm deletes the files of preview id in the folders named, with the
-// preview's settings. Each is checked again before it is removed.
-func (f *freer) confirm(id int, folders []string) error {
+// preview's settings, if now, where the telescope is now, is the target
+// the preview was checked at, in the same run. Each file is checked again
+// before it is removed.
+func (f *freer) confirm(id int, folders []string, now Target) error {
 	f.mu.Lock()
 	st := f.st
 	f.mu.Unlock()
-	if st.state != frPreview || st.id != id {
+	if st.state != frPreview || st.id != id || st.target != now {
 		return errStale
 	}
 	only := map[string]bool{}
@@ -139,13 +167,19 @@ func (f *freer) confirm(id int, folders []string) error {
 	if err != nil {
 		return err
 	}
-	o.OpenRemover, o.Only, o.Hooks = f.remover, only, f.hooks()
+	o.Only, o.Hooks = only, f.hooks()
+	o.OpenRemover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+		if err := f.still(st.target); err != nil {
+			return nil, err
+		}
+		return f.remover(ctx, endpoint)
+	}
 	if f.prepared != nil {
 		f.prepared()
 	}
 	// run checks again that the preview is still the one shown: a Save
 	// since the check above has cleared it.
-	next := freeStatus{state: frDeleting, set: st.set, total: len(only)}
+	next := freeStatus{state: frDeleting, set: st.set, target: st.target, total: len(only)}
 	return f.run(next, o, make(chan struct{}), id, func(r engine.DeleteResult, err error, _ bool) {
 		st := &f.st
 		st.result, st.err, st.current = r, err, ""
@@ -158,6 +192,14 @@ func (f *freer) confirm(id int, folders []string) error {
 			st.state = frDone
 		}
 	})
+}
+
+// still fails if the telescope is no longer at t.
+func (f *freer) still(t Target) error {
+	if f.at == nil {
+		return nil
+	}
+	return f.at(t)
 }
 
 // hooks keep a preview's or a delete's status: its counts, and in
@@ -213,6 +255,13 @@ func (f *freer) halt() {
 		f.st.stopping = true
 		close(f.stop)
 	}
+}
+
+// running reports whether a check or a delete runs.
+func (f *freer) running() bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.done != nil
 }
 
 // reset goes back to Start from any state but a running one.

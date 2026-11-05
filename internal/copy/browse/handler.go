@@ -283,7 +283,7 @@ func (h *Handler) file(w http.ResponseWriter, r *http.Request, p string, downloa
 		h.fileError(w, http.StatusBadRequest, "not_a_file", "The path is a folder.")
 		return
 	}
-	rs := newFileReader(r.Context(), f, info.Size(), lease.Fail)
+	rs := newFileReader(r.Context(), f, info.Size(), lease.Fail, h.cfg.Log)
 	name := path.Base(p)
 	w.Header().Set("Content-Type", contentType(name))
 	w.Header().Set("Content-Disposition", disposition(name, download))

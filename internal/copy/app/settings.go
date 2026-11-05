@@ -178,8 +178,14 @@ func loadSettings(path string) (*settingsFile, error) {
 
 // save writes s to the file, keeping the keys it does not know. On success
 // it becomes the file's settings; on failure the file and f are unchanged.
+//
+// A settingsFile with no path is kept in memory only, as a [Mount]'s is.
 func (f *settingsFile) save(s Settings) error {
 	s.Version = settingsVersion
+	if f.path == "" {
+		f.settings, f.exists = s, true
+		return nil
+	}
 	known, err := json.Marshal(s, settingsWrite)
 	if err != nil {
 		return err

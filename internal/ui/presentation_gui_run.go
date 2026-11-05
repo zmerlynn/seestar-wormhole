@@ -7,6 +7,6 @@ import (
 	"io"
 )
 
-func runPlatformUI(ctx context.Context, root string, out io.Writer, run runFunc) error {
-	return runUIPresented(ctx, root, out, run, openBrowser, osKeychain{}, windowPresenter(root, out), true)
+func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, run runFunc) error {
+	return runUIPresented(ctx, root, out, logs, run, openBrowser, osKeychain{}, windowPresenter(root, out), true)
 }

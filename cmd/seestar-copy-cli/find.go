@@ -163,7 +163,7 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		}
 		log.Info("listing done", args...)
 	}()
-	sess, err := dial(ctx, o.endpoint)
+	sess, err := dial(ctx, o.endpoint, log)
 	if err != nil {
 		return fmt.Errorf("connect to %s: %w", o.endpoint, err)
 	}

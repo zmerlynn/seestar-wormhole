@@ -140,10 +140,10 @@ func (e *copyEnv) locked() bool {
 // pass, and Stop while waiting turns copying off and frees the lock.
 func TestCopyStartCheckStop(t *testing.T) {
 	e := newCopyEnv(t, fstest.MapFS{"MyWorks/M 42/a.jpg": image("abc")})
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
-	if err := e.c.start(e.set); !errors.Is(err, errBusy) {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); !errors.Is(err, errBusy) {
 		t.Errorf("a second start: got %v, want errBusy", err)
 	}
 	v := e.wait(stUpToDate)
@@ -182,7 +182,7 @@ func TestCopyStartCheckStop(t *testing.T) {
 	if e.locked() {
 		t.Error("the lock is held after Stop")
 	}
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Errorf("start after Stop: %v", err)
 	}
 	e.wait(stUpToDate)
@@ -193,7 +193,7 @@ func TestCopyStopMidFile(t *testing.T) {
 	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc"), "MyWorks/big.fit": image(strings.Repeat("x", 1000))})
 	held := make(chan struct{})
 	e.faults = map[string]remote.Fault{"MyWorks/big.fit": {After: 10, Stall: sync.OnceFunc(func() { close(held) })}}
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -247,7 +247,7 @@ func TestCopyFolderInUse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.waitOff()
@@ -259,7 +259,7 @@ func TestCopyFolderInUse(t *testing.T) {
 		t.Errorf("dialed %d times while in use", e.dials)
 	}
 	other.Close()
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.wait(stUpToDate)
@@ -272,7 +272,7 @@ func TestCopyCantWrite(t *testing.T) {
 	parent := filepath.Join(t.TempDir(), "file")
 	writeFile(t, parent, "x")
 	e.set.Folder = filepath.Join(parent, "Seestar")
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.waitOff()
@@ -300,7 +300,7 @@ func TestCopyCantWrite(t *testing.T) {
 func TestCopyUnreachable(t *testing.T) {
 	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
 	e.dialErr = errors.New("connection refused")
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	v := e.wait(stUnreachable)
@@ -323,7 +323,7 @@ func TestCopyRecreatesFolder(t *testing.T) {
 		t.Skip("Windows refuses to remove a folder the copier has open, so it can't go missing while copying is on")
 	}
 	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
-	if err := e.c.start(e.set); err != nil {
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.wait(stUpToDate)

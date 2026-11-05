@@ -147,7 +147,7 @@ func TestSettingsRefusedFileCannotBeSaved(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
 			cancel()
 			t.Chdir(filepath.Dir(s.storage.root))
-			err := runUIPresented(ctx, filepath.Base(s.storage.root), io.Discard, nil, func(string) error {
+			err := runUIPresented(ctx, filepath.Base(s.storage.root), io.Discard, io.Discard, nil, func(string) error {
 				t.Error("opened UI for refused settings")
 				return nil
 			}, &fakeKeychain{}, nil, false)

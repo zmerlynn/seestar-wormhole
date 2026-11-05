@@ -84,7 +84,7 @@ func TestGUITestConnectingCancellation(t *testing.T) {
 func TestGUITestFailsClosed(t *testing.T) {
 	t.Setenv("SEESTAR_GUITEST_OUT", "")
 	t.Setenv("SEESTAR_GUITEST_SCENARIO", "")
-	if err := runPlatformUI(t.Context(), t.TempDir(), nil, nil); err == nil {
+	if err := runPlatformUI(t.Context(), t.TempDir(), nil, nil, nil); err == nil {
 		t.Fatal("fixture ran without harness configuration")
 	}
 }

@@ -19,7 +19,7 @@ import (
 )
 
 // Ignore the real runner entirely. Missing fixture configuration fails closed.
-func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) error {
+func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runFunc) error {
 	dir, scenario := os.Getenv("SEESTAR_GUITEST_OUT"), os.Getenv("SEESTAR_GUITEST_SCENARIO")
 	if dir == "" || scenario == "" {
 		return errors.New("guitest requires its Go harness")
@@ -28,7 +28,7 @@ func runPlatformUI(ctx context.Context, root string, out io.Writer, _ runFunc) e
 	f.scenario = scenario
 	result := make(chan error, 1)
 	started := false
-	err := runUIPresented(ctx, root, out, f.run, func(string) error { panic("guitest: browser opener") }, &guiTestKeychain{root: root, scenario: scenario}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
+	err := runUIPresented(ctx, root, out, logs, f.run, func(string) error { panic("guitest: browser opener") }, &guiTestKeychain{root: root, scenario: scenario}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
 		started = true
 		return showWindowConfigured(windowCtx, root, url, out, quit, activate, guiTestWindowOptions(scenario), func(options *application.Options) {
 			options.RawMessageHandler = func(_ application.Window, message string, _ *application.OriginInfo) {

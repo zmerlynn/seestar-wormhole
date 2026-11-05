@@ -3,19 +3,21 @@ package engine
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
 // dial opens [Test]'s session. Tests replace it with the io/fs fake.
-var dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-	return remote.Dial(ctx, endpoint)
+var dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Session, error) {
+	return remote.Dial(ctx, endpoint, log)
 }
 
 // Test checks that the share at endpoint can be read: it dials, mounts
-// the share and lists its root, whose entries it returns.
-func Test(ctx context.Context, endpoint string) ([]remote.Entry, error) {
-	sess, err := dial(ctx, endpoint)
+// the share and lists its root, whose entries it returns. log is the
+// session's, as for remote.Dial.
+func Test(ctx context.Context, endpoint string, log *slog.Logger) ([]remote.Entry, error) {
+	sess, err := dial(ctx, endpoint, log)
 	if err != nil {
 		return nil, fmt.Errorf("connect to %s: %w", endpoint, err)
 	}
