@@ -1,10 +1,15 @@
 package ui
 
 import (
+	"context"
 	"encoding/json/v2"
+	"os"
 	"path/filepath"
 	"testing"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 )
 
@@ -80,15 +85,121 @@ func TestRouteSavedIn(t *testing.T) {
 		want bool
 	}{
 		{Settings{}, false},
-		{Settings{Email: "synthetic@example.invalid"}, true},
-		{Settings{Route: routeAccount, Email: "synthetic@example.invalid"}, true},
-		{Settings{Route: routeLAN}, false},
-		{Settings{Route: routeLAN, LANAddress: "192.0.2.10:445"}, true},
+		{Settings{Email: "synthetic@example.invalid"}, false},
+		{Settings{Route: routeLAN, LANAddress: "192.0.2.10:445"}, false},
+		{Settings{Email: "synthetic@example.invalid", RouteEstablished: true}, true},
+		{Settings{Route: routeLAN, LANAddress: "192.0.2.10:445", RouteEstablished: true}, true},
 	} {
 		if got := routeSavedIn(tc.s); got != tc.want {
 			t.Errorf("%+v = %v", tc.s, got)
 		}
 	}
+}
+
+// Only a Connect that reaches its save, or a LAN address that passed
+// Test, records a route in config.json, which opens the copy tabs at the
+// next launch. A password save, a retry or a failed write never does.
+func TestRouteEstablishedSurvivesRelaunch(t *testing.T) {
+	// relaunched reports whether the tabs open at the next launch.
+	relaunched := func(e *routeEnv) bool {
+		e.t.Helper()
+		loaded, err := loadSettings(e.s.storage)
+		return err == nil && routeSavedIn(loaded)
+	}
+	// savePassword saves a password with a draft that claims a route.
+	savePassword := func(e *routeEnv) {
+		e.t.Helper()
+		s := testSettings()
+		s.Remember, s.RouteEstablished = true, true
+		body, _ := json.Marshal(input{Settings: s, Password: testPassword})
+		if code, reply := e.post("/api/password/save", string(body)); code != 200 {
+			e.t.Fatalf("password save = %d %s", code, reply)
+		}
+	}
+	// connect starts a run that waits for clients, which saves its
+	// settings once it is armed, and waits for the save.
+	connect := func(e *routeEnv) {
+		e.t.Helper()
+		e.account()
+		e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+			status.MarkArmed()
+			<-ctx.Done()
+			return nil
+		}
+		s := testSettings()
+		s.Idle = "2m"
+		if code, body := e.start(s); code != 200 {
+			e.t.Fatalf("Connect = %d %s", code, body)
+		}
+		e.until("the save at the boundary", func() bool {
+			e.s.controller.mu.Lock()
+			defer e.s.controller.mu.Unlock()
+			return e.s.controller.saveAttempted && (e.s.controller.pendingSave != nil || e.s.controller.lastSaved.Idle == "2m")
+		})
+	}
+	fresh := func(t *testing.T) *routeEnv {
+		e := newRouteEnv(t)
+		e.s.settings, e.s.controller.lastSaved = defaultSettings(), defaultSettings()
+		return e
+	}
+	t.Run("password only", func(t *testing.T) {
+		e := fresh(t)
+		savePassword(e)
+		if e.copyStatus().Unlocked || relaunched(e) {
+			t.Error("a password save opened the copy tabs")
+		}
+	})
+	t.Run("connect", func(t *testing.T) {
+		e := fresh(t)
+		connect(e)
+		if !e.copyStatus().Unlocked || !relaunched(e) {
+			t.Error("a Connect didn't open the copy tabs")
+		}
+		// A later password save keeps it.
+		e.account().stop()
+		savePassword(e)
+		if !relaunched(e) {
+			t.Error("a password save dropped the route")
+		}
+	})
+	t.Run("LAN save", func(t *testing.T) {
+		e := fresh(t)
+		e.lan("192.0.2.10")
+		if !relaunched(e) {
+			t.Error("a LAN save didn't open the copy tabs at relaunch")
+		}
+	})
+	t.Run("failed persistence", func(t *testing.T) {
+		e := fresh(t)
+		// config.json can't replace a directory.
+		config := filepath.Join(e.s.storage.root, "config.json")
+		d, err := privatefile.Directory(config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		d.Close()
+		if code, _ := e.post("/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.10"}}`); code == 200 {
+			t.Error("a failed LAN save succeeded")
+		}
+		connect(e)
+		if e.copyStatus().Unlocked {
+			t.Error("a failed save opened the copy tabs")
+		}
+		e.account().stop()
+		if err := os.Remove(config); err != nil {
+			t.Fatal(err)
+		}
+		// The retried save stores the settings, but not a route.
+		if code, body := e.post("/api/retry-storage", `{}`); code != 200 {
+			t.Fatalf("retry = %d %s", code, body)
+		}
+		if _, err := loadSettings(e.s.storage); err != nil {
+			t.Fatalf("the retry saved nothing: %v", err)
+		}
+		if e.copyStatus().Unlocked || relaunched(e) {
+			t.Error("a retry opened the copy tabs")
+		}
+	})
 }
 
 // Activity's Files names both settings files in the state dir.

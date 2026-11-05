@@ -25,9 +25,14 @@ type Settings struct {
 	Remember  bool            `json:"remember_password"`
 	// Route is how the copier reaches the telescope: routeLAN, or the
 	// account route for any other value, including an older file's none.
-	Route      string         `json:"route,omitempty"`
-	LANAddress string         `json:"lan_address,omitempty"`
-	Unknown    jsontext.Value `json:",embed"`
+	Route      string `json:"route,omitempty"`
+	LANAddress string `json:"lan_address,omitempty"`
+	// RouteEstablished opens Copy, Browse and Free up space at launch: the
+	// account route has connected, or an address on this network passed
+	// Test and was saved. Only those two saves set it; every other save
+	// carries the last saved value, and nothing clears it.
+	RouteEstablished bool           `json:"route_established,omitempty"`
+	Unknown          jsontext.Value `json:",embed"`
 }
 
 // The routes to the telescope.

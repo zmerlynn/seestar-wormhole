@@ -383,15 +383,9 @@ func (s *server) copyState() (unlocked bool, reach string) {
 	return s.routeSaved, reach
 }
 
-// routeSavedIn reports whether settings loaded from config.json hold a
-// saved route: an address on this network, which a save Tests first, or
-// an account, which the wormhole saves when the connection becomes ready.
-func routeSavedIn(settings Settings) bool {
-	if settings.Route == routeLAN {
-		return settings.LANAddress != ""
-	}
-	return settings.Email != ""
-}
+// routeSavedIn reports whether settings loaded from config.json record an
+// established route. A saved email or address alone is not one.
+func routeSavedIn(settings Settings) bool { return settings.RouteEstablished }
 
 // settingsFiles are the paths Activity's Files shows.
 type settingsFiles struct {
@@ -483,7 +477,7 @@ func (s *server) saveSettings(settings Settings) error {
 		s.retainSavedPair(&settings)
 	}
 	s.settings = settings
-	if err == nil && settings.Route == routeLAN && settings.LANAddress != "" {
+	if err == nil && settings.RouteEstablished {
 		s.routeSaved = true
 	}
 	s.mu.Unlock()

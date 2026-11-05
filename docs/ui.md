@@ -347,6 +347,7 @@ copy into one folder at once.
 | `remember_password` | `false` |
 | `route` | Empty, meaning the account route. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means the account route. |
 | `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
+| `route_established` | `false`. `true` once the account has connected or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
 
 These defaults differ from the UI's first-run phone setup.
 
