@@ -9,6 +9,7 @@ import (
 	"cmp"
 	"compress/gzip"
 	"crypto/sha256"
+	"encoding/xml"
 	"errors"
 	"fmt"
 	"io"
@@ -116,6 +117,54 @@ func TestMacPackageCarriesBothCLIs(t *testing.T) {
 		if strings.Count(settings, `"`+program+`"`) != 2 {
 			t.Errorf("dmg-settings.py must list and place %s", program)
 		}
+	}
+}
+
+// The app's Info.plist explains Local Network access, which macOS 15 and
+// later asks for before the app reaches the telescope on the LAN. The Mac
+// script writes it, so this reads the plist it writes.
+func TestMacInfoPlistExplainsLocalNetwork(t *testing.T) {
+	if _, err := os.Stat("scripts/release.sh"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	data, err := os.ReadFile("scripts/build-gui-mac.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, plist, ok := strings.Cut(string(data), "<<PLIST\n")
+	if plist, _, ok = strings.Cut(plist, "\nPLIST\n"); !ok {
+		t.Fatal("build-gui-mac.sh writes no Info.plist")
+	}
+	// The top-level dict's string values, by key.
+	values := map[string]string{}
+	d := xml.NewDecoder(strings.NewReader(plist))
+	var key, last string
+	depth := 0
+	for {
+		tok, err := d.Token()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("Info.plist: %v", err)
+		}
+		switch tok := tok.(type) {
+		case xml.StartElement:
+			depth, last = depth+1, ""
+		case xml.CharData:
+			last = string(tok)
+		case xml.EndElement:
+			depth--
+			if depth == 2 && tok.Name.Local == "key" {
+				key = last
+			} else if depth == 2 && tok.Name.Local == "string" {
+				values[key] = last
+			}
+		}
+	}
+	const want = "seestar-wormhole uses your local network to let the Seestar app find this computer and to copy, browse, and delete files on your telescope."
+	if got := values["NSLocalNetworkUsageDescription"]; got != want {
+		t.Errorf("NSLocalNetworkUsageDescription = %q, want %q", got, want)
 	}
 }
 

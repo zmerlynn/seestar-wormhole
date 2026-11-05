@@ -52,6 +52,7 @@ for task_arch in arm64 amd64; do
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
+<key>NSLocalNetworkUsageDescription</key><string>seestar-wormhole uses your local network to let the Seestar app find this computer and to copy, browse, and delete files on your telescope.</string>
 </dict></plist>
 PLIST
  task_build=$(xcrun vtool -show-build "$task_app/MacOS/seestar-wormhole")
