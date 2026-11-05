@@ -64,7 +64,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   // Copy's first visit has its settings open, with the default folder and
   // no example values.
   await tab(page, 'Copy').click();
-  await expect(page.locator('#s-first')).toHaveText('Choose the folder for your images, then press Save and continue. Copying starts later, when you press Start copying.');
+  await expect(page.locator('#s-first')).toHaveText('Choose the folder for your images, then press Save. Copying starts later, when you press Start copying.');
   await expect(page.locator('#c-main')).toBeHidden();
   await expect(field(page, 'Folder for your images')).toHaveValue(path.join(app.home, 'Seestar'));
   await expect(field(page, 'Leave out')).toBeVisible();
@@ -83,7 +83,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(field(page, 'Folder for your images')).toBeFocused();
 
   await field(page, 'Folder for your images').fill(app.folder);
-  await expect(copySave(page)).toHaveText('Save and continue');
+  await expect(copySave(page)).toHaveText('Save');
   await copySave(page).click();
 
   // Copying is off, and the notice that says Start copying is next has

@@ -23,7 +23,7 @@ tried on each route.
    (local port 4445 by default) and waits for the connection; it never starts
    it.
 2. **Choose a folder.** The first time you open **Copy**, choose the folder for
-   your images and **Save and continue**. Nothing is copied yet: copying
+   your images and **Save**. Nothing is copied yet: copying
    starts when you press **Start copying**.
 3. **Start copying.** **Start copying** checks the telescope every 5 minutes
    by default and copies what is new; **Check now** checks at once, and **Stop

@@ -133,7 +133,7 @@ If they can't reach the share, each says why and links to the fix:
 
 The first time you open Copy, **Copy settings** is open: choose the folder for
 your images, with **Choose…** in the app's window or by typing its full path,
-then **Save and continue**. Saving doesn't start copying: a notice above the
+then **Save**. Saving doesn't start copying: a notice above the
 buttons says copying starts when you press **Start copying**, and that
 **Preview** shows what it would copy first. After that, Copy shows what
 copying is doing, with

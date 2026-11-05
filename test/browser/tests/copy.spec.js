@@ -31,7 +31,7 @@ test('Start copying after the first Save runs a pass, and the settings are locke
   const app = await startApp({ 'config.json': lan() });
   await openCopy(page, app.url);
   await field(page, 'Folder for your images').fill(app.folder);
-  await button(page, 'Save and continue').click();
+  await button(page, 'Save').click();
 
   await expect(title(page)).toHaveText(off);
   // Saving didn't start copying; the notice says Start copying is next.

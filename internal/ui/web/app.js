@@ -542,7 +542,7 @@ function copyError(e) {
 }
 
 // The copy settings: a summary line, and the form Change… opens. The
-// first visit has the form open, with Save and continue.
+// first visit has the form open, without Cancel.
 const copyFields = {folder: 'f-folder', interval: 'f-int', files_at_once: 'f-files', excludes: 'f-ex', includes: 'f-in'};
 const lines = value => value === '' ? [] : value.split('\n');
 function copyFill(s) {
@@ -596,7 +596,6 @@ function renderSetup() {
   $('copy-form').hidden = !copyFormOpen;
   $('s-change').setAttribute('aria-expanded', String(copyFormOpen));
   $('f-cancel').hidden = first;
-  put('f-save', first ? 'Save and continue' : 'Save');
   $('s-locked').hidden = !(copyOn && copyFormOpen);
   renderHistory();
 }

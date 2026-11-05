@@ -56,7 +56,7 @@ async function checkCopySetup(st) {
   copyAssert(!st.before.set_up && st.after.set_up && st.saved.browse_changed, 'server statuses changed shape');
   copyRender(st.before);
   copyAssert($('c-main').hidden && !$('s-first').hidden && $('s-line').hidden, 'the first visit shows the copy controls');
-  copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save and continue', 'the first visit lacks Save and continue');
+  copyAssert(!$('copy-form').hidden && $('f-cancel').hidden, 'the first visit lacks the form, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
   copyAssert($('b-frame').src === undefined || $('b-frame').src === '', 'Browse loaded before settings');
   // A field error goes under its field and takes focus.
@@ -69,7 +69,7 @@ async function checkCopySetup(st) {
   copyAssert(!$('f-folder-err').hidden && $('f-folder-err').textContent === 'Choose a folder.' && $('f-folder').getAttribute('aria-invalid') === 'true', 'the folder error is not shown');
   copyAssert(document.activeElement === $('f-folder') && !$('f-save').disabled, 'the folder error did not take focus');
   copyAssert(calls.length === 1 && calls[0][0] === 'settings' && calls[0][1] === '/copy/api/', 'Save posted elsewhere');
-  // Save and continue: the summary replaces the form, and Browse loads.
+  // The first Save: the summary replaces the form, and Browse loads.
   let sent = null;
   api = async (action, body) => {
     if (action === 'settings') {
@@ -90,7 +90,7 @@ async function checkCopySetup(st) {
   copyAssert(!$('h-details').hidden && $('h-path').textContent === st.after.history, 'Copy history');
   // Change… opens the form; Cancel puts the saved values back.
   openCopyForm();
-  copyAssert(!$('copy-form').hidden && $('s-change').getAttribute('aria-expanded') === 'true' && !$('f-cancel').hidden && $('f-save').textContent === 'Save', 'Change… did not open the form');
+  copyAssert(!$('copy-form').hidden && $('s-change').getAttribute('aria-expanded') === 'true' && !$('f-cancel').hidden, 'Change… did not open the form');
   $('f-folder').value = '/elsewhere';
   renderHistory();
   copyAssert($('h-saved').hidden && !$('h-unsaved').hidden, 'an unsaved folder showed the old history');
