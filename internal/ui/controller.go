@@ -34,6 +34,9 @@ type controller struct {
 	saveMu             sync.Mutex // Serializes snapshot writes, never status or Stop.
 	pendingSave        *Settings
 	lastSaved          Settings
+	// ready reports whether a run's status is Ready; nil reads its text.
+	// Tests replace it, since only a proxy session makes a status Ready.
+	ready func(*proxy.Status) bool
 }
 
 func (c *controller) start(s Settings, password string) error {
@@ -408,10 +411,17 @@ func (c *controller) persistRoute(route, address string) error {
 func (c *controller) connected() (Settings, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.done == nil || c.stopping || c.status.Text() != "Ready" {
+	if c.done == nil || c.stopping || !c.isReady(c.status) {
 		return Settings{}, false
 	}
 	return c.runSettings, true
+}
+
+func (c *controller) isReady(status *proxy.Status) bool {
+	if c.ready != nil {
+		return c.ready(status)
+	}
+	return status.Text() == "Ready"
 }
 
 func (c *controller) persistPassword(s Settings, generation uint64) error {

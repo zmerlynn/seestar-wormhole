@@ -20,6 +20,7 @@ import (
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 )
 
 // routeEnv is a server with copy mounted over a share at each endpoint:
@@ -444,6 +445,92 @@ func TestFreeUpSpaceLocksTheRoute(t *testing.T) {
 	}
 	cleared("a delete")
 	e.lan("192.0.2.20")
+}
+
+// Through the account, the copier reaches the telescope at the run's SMB
+// mapping once the run is Ready, and not while it connects, stops or
+// reconnects. Connect while copying through the account moves nothing,
+// so it goes ahead.
+func TestAccountEndpoint(t *testing.T) {
+	e := newRouteEnv(t)
+	var mu sync.Mutex
+	var ready *proxy.Status
+	e.s.controller.ready = func(st *proxy.Status) bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return st != nil && st == ready
+	}
+	markReady := func() {
+		e.s.controller.mu.Lock()
+		st := e.s.controller.status
+		e.s.controller.mu.Unlock()
+		mu.Lock()
+		ready = st
+		mu.Unlock()
+	}
+	release := make(chan struct{})
+	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+		<-ctx.Done()
+		<-release
+		return nil
+	}
+	settings := testSettings()
+	settings.Ports = []proxyrun.Port{{Local: 5445, Device: 445}}
+	const want = "127.0.0.1:5445"
+	endpoint := func(what string, wantErr error) {
+		t.Helper()
+		got, err := e.s.copyEndpoint()
+		if wantErr != nil && (got != "" || !errors.Is(err, wantErr)) || wantErr == nil && (got != want || err != nil) {
+			t.Errorf("endpoint %s = %q, %v", what, got, err)
+		}
+	}
+	listed := func(what string) {
+		t.Helper()
+		if code, body := e.get("/browse/api/list?path=MyWorks"); code != 200 || !strings.Contains(body, "at_127.0.0.1.jpg") {
+			t.Errorf("Browse %s = %d %s", what, code, body)
+		}
+	}
+
+	if code, body := e.start(settings); code != 200 {
+		t.Fatalf("Connect = %d %s", code, body)
+	}
+	endpoint("while connecting", errNotConnected)
+	markReady()
+	endpoint("once Ready", nil)
+	e.settings()
+	if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
+		t.Fatalf("start copying = %d %s", code, body)
+	}
+	e.until("a copy dial", func() bool {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		return len(e.dialed) > 0
+	})
+	e.mu.Lock()
+	if e.dialed[0] != want {
+		t.Errorf("copying reached %s", e.dialed[0])
+	}
+	e.mu.Unlock()
+	listed("once Ready")
+
+	e.s.controller.stop()
+	endpoint("while stopping", errNotConnected)
+	close(release)
+	e.until("the run to end", func() bool { _, active := e.s.controller.snapshot(); return !active })
+	endpoint("once stopped", errNotConnected)
+	if !e.s.copy.Busy() {
+		t.Fatal("copying stopped with the run")
+	}
+
+	release = make(chan struct{})
+	close(release)
+	if code, body := e.start(settings); code != 200 {
+		t.Fatalf("Connect while copying through the account = %d %s", code, body)
+	}
+	endpoint("while reconnecting", errNotConnected)
+	markReady()
+	endpoint("once Ready again", nil)
+	listed("once Ready again")
 }
 
 // The route and this network's address survive a save and a reload into
