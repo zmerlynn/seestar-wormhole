@@ -139,6 +139,21 @@ test('a failed first Save is off while it runs and says so, and Enter saves', as
   expect(readJSON(app.copyFile)).toMatchObject({ folder: app.folder, start_copying: false });
 });
 
+// Connection says what each way of reaching the telescope gives, and
+// what the address on this network is for.
+test('Connection says what each route and the address are for', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  const purpose = "Through Telescope Network, one connection serves both the Seestar app and the telescope's files. On this network, it serves only the telescope's files, for Copy, Browse and Free up space.";
+  await expect(page.locator('#route-purpose')).toHaveText(purpose);
+  await expect(page.getByRole('group', { name: 'Reach the telescope' })).toHaveAccessibleDescription(new RegExp('^' + purpose.replace(/\./g, '\\$&')));
+  await expect(page.locator('#route-purpose')).toBeVisible();
+  await chooseLAN(page);
+  await expect(page.locator('#route-purpose')).toBeVisible();
+  await expect(field(page, 'Telescope address')).toHaveAccessibleDescription(
+    "Your Seestar's address on this network, with an optional port. Port 445 is the default. Copy, Browse and Free up space read the telescope's files at this address.");
+});
+
 // countTests counts the page's Test requests.
 function countTests(page) {
   const n = { tests: 0 };

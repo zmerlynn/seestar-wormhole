@@ -17,9 +17,10 @@
 <p id="tabs-note" class="help">Copy, Browse and Free up space open once you connect remotely through Telescope Network, or Save an address on this network.</p>
 <p id="copy-reach" class="notice" hidden><span id="copy-reach-text"></span> <button id="copy-reach-go" class="linkbtn" type="button"></button></p>
 <section id="panel-connection" role="tabpanel" aria-labelledby="tab-connection">
-<fieldset id="route-choice" disabled aria-describedby="route-help">
+<fieldset id="route-choice" disabled aria-describedby="route-purpose route-help">
 <legend>Reach the telescope</legend>
 <div class="segments"><label><input id="route-account" type="radio" name="route" value="account" checked> Remotely through Telescope Network</label><label><input id="route-lan" type="radio" name="route" value="lan"> On this network</label></div>
+<p id="route-purpose" class="help">Through Telescope Network, one connection serves both the Seestar app and the telescope's files. On this network, it serves only the telescope's files, for Copy, Browse and Free up space.</p>
 <p id="route-help" class="help" hidden>Stop the connection and any copying or deleting to change this.</p>
 </fieldset>
 <div id="account-route">
@@ -76,7 +77,7 @@
 <form id="lan-form" novalidate>
 <fieldset id="lan-options" disabled>
 <label for="lan-address">Telescope address</label><input id="lan-address" type="text" spellcheck="false" autocomplete="off" maxlength="4096" aria-describedby="lan-address-help lan-address-error">
-<p id="lan-address-help" class="help">Your Seestar's address on this network, with an optional port. Port 445 is the default.</p><p id="lan-address-error" class="error" role="alert" hidden></p>
+<p id="lan-address-help" class="help">Your Seestar's address on this network, with an optional port. Port 445 is the default. Copy, Browse and Free up space read the telescope's files at this address.</p><p id="lan-address-error" class="error" role="alert" hidden></p>
 <div class="actions"><button id="lan-test" type="button">Test</button><button id="lan-save" type="submit">Save</button></div>
 <p id="lan-result" role="status" aria-live="polite"></p>
 </fieldset>

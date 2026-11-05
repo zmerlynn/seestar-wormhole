@@ -22,20 +22,24 @@ they are dimmed, show a padlock, and say so. Quit and the version are below ever
 
 ## Reaching the telescope
 
-**Connection** starts with **Reach the telescope**:
+**Connection** starts with **Reach the telescope**, and a line under it says
+what each choice gives: through Telescope Network, one connection serves
+both the Seestar app and the telescope's files; on this network, it serves
+only the telescope's files, for Copy, Browse and Free up space.
 
 - **Remotely through Telescope Network** is the setup on the rest of this
   page: the proxy signs in with your Seestar account and connects to your
   Seestar through Telescope Network, and copying will use its file-sharing
   (SMB) port.
 - **On this network** is for a Seestar on the same network as this computer.
-  Enter its address, with an optional port (445 by default). **Test** checks
-  that it answers file sharing and saves nothing: when it passes for an
-  address other than the saved one, it says to **Save**. **Save** tests it
-  first, unless it has just passed, then checks that it still answers
-  (the line under the address says **Checking…**) and saves it only if it
-  does; Copy, Browse and Free up space then use it. Otherwise the saved
-  route stays.
+  Enter its address, with an optional port (445 by default); its help says
+  that Copy, Browse and Free up space read the telescope's files there.
+  **Test** checks that it answers file sharing and saves nothing: when it
+  passes for an address other than the saved one, it says to **Save**.
+  **Save** tests it first, unless it has just passed, then checks that it
+  still answers (the line under the address says **Checking…**) and saves
+  it only if it does; Copy, Browse and Free up space then use it. Otherwise
+  the saved route stays.
   On a Mac, when nothing answers at the address, Test or Save also says to
   enable seestar-wormhole in System Settings → Privacy & Security → Local
   Network, which macOS may be blocking; see [Local Network access](copying.md#things-to-know).
