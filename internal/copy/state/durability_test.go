@@ -2,7 +2,6 @@ package state
 
 import (
 	"errors"
-	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -26,15 +25,18 @@ func hookSync(t *testing.T, fn func(f *os.File) error) {
 	t.Cleanup(func() { syncFile = old })
 }
 
-// hookRename makes every rename call fn first for the rest of the test.
-func hookRename(t *testing.T, fn func(from, to string)) {
+// hookWrite makes every writeFile call fn first for the rest of the test; an
+// error from fn fails that write, which then publishes nothing.
+func hookWrite(t *testing.T, fn func(dir *os.File, name string, b []byte) error) {
 	t.Helper()
-	old := rename
-	rename = func(from, to string) error {
-		fn(from, to)
-		return old(from, to)
+	old := writeFile
+	writeFile = func(dir *os.File, name string, b []byte) error {
+		if err := fn(dir, name, b); err != nil {
+			return err
+		}
+		return old(dir, name, b)
 	}
-	t.Cleanup(func() { rename = old })
+	t.Cleanup(func() { writeFile = old })
 }
 
 // isDir reports whether f is a directory.
@@ -75,48 +77,34 @@ func syncDirEntries(t *testing.T, stateDir string) []string {
 	return names
 }
 
-func TestOpenPublishesHeaderAfterSync(t *testing.T) {
+func TestOpenPublishesHeaderAtomically(t *testing.T) {
 	stateDir, dest := dirs(t)
 	p, _ := Path(stateDir, dest)
 	syncDir := filepath.Dir(p)
 	var events []string
-	var tmp *os.File
 	hookSync(t, func(f *os.File) error {
 		if isDir(t, f) {
 			events = append(events, "sync dir "+f.Name())
-			return nil
-		}
-		tmp = f
-		events = append(events, "sync file")
-		if filepath.Dir(f.Name()) != syncDir || f.Name() == p {
-			t.Errorf("fsync of %s, want a temporary file next to %s", f.Name(), p)
-		}
-		// The whole header is written before the fsync, and nothing is
-		// published yet.
-		if got := readFile(t, f.Name()); got != headerLine(dest) {
-			t.Errorf("temporary file at fsync = %q, want the header", got)
-		}
-		if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("state file exists before the header fsync: %v", err)
 		}
 		return nil
 	})
-	hookRename(t, func(from, to string) {
-		events = append(events, "rename")
-		if tmp == nil || from != tmp.Name() || to != p {
-			t.Errorf("rename(%q, %q), want the fsynced temporary file renamed to %q", from, to, p)
+	hookWrite(t, func(dir *os.File, name string, b []byte) error {
+		events = append(events, "write")
+		if dir.Name() != syncDir || name != filepath.Base(p) {
+			t.Errorf("writeFile(%q, %q), want %q in %q", dir.Name(), name, filepath.Base(p), syncDir)
 		}
-		if tmp != nil {
-			// Seek, unlike Stat, reports a closed file on Windows too.
-			if _, err := tmp.Seek(0, io.SeekCurrent); !errors.Is(err, os.ErrClosed) {
-				t.Errorf("temporary file still open at rename: %v", err)
-			}
+		if string(b) != headerLine(dest) {
+			t.Errorf("writeFile content = %q, want the header", b)
 		}
+		if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
+			t.Errorf("state file exists before the header write: %v", err)
+		}
+		return nil
 	})
 	mustOpen(t, stateDir, dest, nil)
-	want := []string{"sync file", "rename", "sync dir " + syncDir, "sync dir " + stateDir}
+	want := []string{"write", "sync dir " + stateDir}
 	if runtime.GOOS == "windows" {
-		want = want[:2]
+		want = want[:1]
 	}
 	if !slices.Equal(events, want) {
 		t.Errorf("events = %q, want %q", events, want)
@@ -126,28 +114,24 @@ func TestOpenPublishesHeaderAfterSync(t *testing.T) {
 	}
 }
 
-func TestOpenHeaderSyncFailurePublishesNothing(t *testing.T) {
+func TestOpenHeaderWriteFailurePublishesNothing(t *testing.T) {
 	stateDir, dest := dirs(t)
 	p, _ := Path(stateDir, dest)
-	hookSync(t, func(f *os.File) error {
-		if !isDir(t, f) {
-			return errors.New("injected header fsync failure")
-		}
-		return nil
+	hookWrite(t, func(*os.File, string, []byte) error {
+		return errors.New("injected header write failure")
 	})
-	hookRename(t, func(from, to string) { t.Errorf("rename(%q, %q) after a failed fsync", from, to) })
 	s, err := Open(stateDir, dest, nil)
 	if err == nil {
 		s.Close()
-		t.Fatal("Open succeeded, want the fsync error")
+		t.Fatal("Open succeeded, want the write error")
 	}
-	if !strings.Contains(err.Error(), "injected header fsync failure") || !strings.Contains(err.Error(), p) {
-		t.Errorf("Open error = %q, want the fsync error and the state file", err)
+	if !strings.Contains(err.Error(), "injected header write failure") || !strings.Contains(err.Error(), p) {
+		t.Errorf("Open error = %q, want the write error and the state file", err)
 	}
 	if _, err := os.Lstat(p); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("state file published after a failed header fsync: %v", err)
+		t.Errorf("state file published after a failed header write: %v", err)
 	}
-	// The temporary file is gone; only the locks are left.
+	// Only the locks are left.
 	for _, name := range syncDirEntries(t, stateDir) {
 		if !strings.HasSuffix(name, ".lock") {
 			t.Errorf("%s left in the sync directory", name)
@@ -156,34 +140,28 @@ func TestOpenHeaderSyncFailurePublishesNothing(t *testing.T) {
 	checkUnlocked(t, stateDir, dest)
 }
 
+// The fsync of the sync directory belongs to privatefile.WriteFile; Open
+// fsyncs the state directory above it, which may be new too.
 func TestOpenDirSyncFailure(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("directories are not fsynced on Windows")
 	}
-	for _, which := range []string{"sync", "state"} {
-		t.Run(which, func(t *testing.T) {
-			stateDir, dest := dirs(t)
-			failDir := stateDir
-			if which == "sync" {
-				failDir = filepath.Join(stateDir, "sync")
-			}
-			hookSync(t, func(f *os.File) error {
-				if f.Name() == failDir {
-					return errors.New("injected directory fsync failure")
-				}
-				return nil
-			})
-			s, err := Open(stateDir, dest, nil)
-			if err == nil {
-				s.Close()
-				t.Fatalf("Open succeeded, want the fsync error of %s", failDir)
-			}
-			if !strings.Contains(err.Error(), "injected directory fsync failure") {
-				t.Errorf("Open error = %q, want the directory fsync error", err)
-			}
-			checkUnlocked(t, stateDir, dest)
-		})
+	stateDir, dest := dirs(t)
+	hookSync(t, func(f *os.File) error {
+		if f.Name() == stateDir {
+			return errors.New("injected directory fsync failure")
+		}
+		return nil
+	})
+	s, err := Open(stateDir, dest, nil)
+	if err == nil {
+		s.Close()
+		t.Fatalf("Open succeeded, want the fsync error of %s", stateDir)
 	}
+	if !strings.Contains(err.Error(), "injected directory fsync failure") {
+		t.Errorf("Open error = %q, want the directory fsync error", err)
+	}
+	checkUnlocked(t, stateDir, dest)
 }
 
 func TestOpenSyncsRecoveryTruncate(t *testing.T) {

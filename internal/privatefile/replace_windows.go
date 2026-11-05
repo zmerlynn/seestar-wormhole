@@ -33,6 +33,11 @@ func Replace(from, to string) error {
 }
 func SyncDirectory(*os.File) error { return nil }
 
+// create makes a new private file for writing, refusing any existing entry.
+func create(path string) (*os.File, error) {
+	return Open(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+}
+
 // OpenRead pins a validated file handle while permitting atomic replacement of
 // its directory entry. The caller pins the private parent directory separately.
 // Identity/lock writers continue to use Open without delete sharing.

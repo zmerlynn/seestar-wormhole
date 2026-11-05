@@ -31,13 +31,15 @@
 // user. Anyone who can write there can change or redirect the state, or
 // replace a lock file and so defeat the lock. Open creates the sync directory
 // 0700 and new files 0600, but keeps the permissions of anything that already
-// exists; on Windows, privacy comes from the ACLs the directory inherits. The
+// exists. On Windows a new state file gets a protected DACL for the user and
+// SYSTEM; the sync directory and lock files keep the ACLs they inherit. The
 // state must be on a local filesystem with reliable OS locks and fsync.
 // Shared and network state directories are not supported.
 //
 // Crash semantics:
 //   - A new state file is written whole to a new temporary file, fsynced,
-//     closed and renamed into place, and the directory is fsynced, so a state
+//     closed and renamed into place, and the directory is fsynced (Windows
+//     writes it through and replaces it with ReplaceFile instead), so a state
 //     file either does not exist or starts with a complete header.
 //   - [State.Append] writes one line and fsyncs it before the record counts.
 //     A failed line is cut off again and the cut fsynced. A crash leaves at

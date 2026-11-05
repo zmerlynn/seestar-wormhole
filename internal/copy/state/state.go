@@ -18,6 +18,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
 const (
@@ -55,12 +56,12 @@ type header struct {
 }
 
 // Fault-injection seams for tests. syncFile makes a file's or directory's
-// contents durable; rename publishes a new state file; registerHook, if set,
+// contents durable; writeFile publishes a new state file; registerHook, if set,
 // runs under the registration lock between the alias check and creating the
 // state file.
 var (
 	syncFile     = (*os.File).Sync
-	rename       = os.Rename
+	writeFile    = privatefile.WriteFile
 	registerHook func()
 )
 
@@ -95,8 +96,9 @@ type State struct {
 // stateDir and its ancestors must be trusted, its sync directory must be
 // private to the user, and it must be on a local filesystem with reliable OS
 // locks and fsync; shared and network state directories are not supported.
-// Open keeps the permissions of a directory or file that already exists; on
-// Windows, privacy comes from inherited ACLs.
+// Open keeps the permissions of a directory or file that already exists. A
+// new state file is private as [privatefile.WriteFile] makes it; on Windows,
+// the directories and lock files get their privacy from inherited ACLs.
 func Open(stateDir, dest string, log *slog.Logger) (*State, error) {
 	readonly.Check("state.Open")
 	if log == nil {
@@ -266,45 +268,26 @@ func readHeader(p string) (header, error) {
 	return h, nil
 }
 
-// create writes a state file holding only the header for absDest, through a
-// temporary file so that a crash cannot leave a partial header. The
-// temporary file is new, created exclusively under a random name, so an
+// create writes a state file holding only the header for absDest with
+// [privatefile.WriteFile], so a crash cannot leave a partial header and an
 // existing file or link in the sync directory is never opened, truncated or
 // published.
-func create(path, absDest string) (err error) {
+func create(path, absDest string) error {
 	readonly.Check("state.create")
 	line, err := encodeLine(header{V: version, Dest: absDest})
 	if err != nil {
 		return err
 	}
 	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, filepath.Base(path)+".*.tmp")
+	d, err := os.Open(dir)
 	if err != nil {
 		return err
 	}
-	tmp := f.Name()
-	defer func() {
-		if err != nil {
-			os.Remove(tmp)
-		}
-	}()
-	err = f.Chmod(0o600)
-	if err == nil {
-		_, err = f.Write(line)
-	}
-	if err == nil {
-		err = syncFile(f)
-	}
-	if cerr := f.Close(); err == nil {
+	err = writeFile(d, filepath.Base(path), line)
+	if cerr := d.Close(); err == nil {
 		err = cerr
 	}
 	if err != nil {
-		return err
-	}
-	if err := rename(tmp, path); err != nil {
-		return err
-	}
-	if err := syncDir(dir); err != nil {
 		return err
 	}
 	// The sync directory may be new too.

@@ -36,6 +36,25 @@ func Open(path string, flags int) (*os.File, error) {
 	}
 	return f, nil
 }
+
+// create makes a new private file for writing, refusing any existing entry.
+// It sets 0600 itself, so a restrictive umask cannot fail the check.
+func create(path string) (*os.File, error) {
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
+	if err != nil {
+		return nil, err
+	}
+	err = f.Chmod(0600)
+	if err == nil {
+		err = checkUnix(f, false)
+	}
+	if err != nil {
+		f.Close()
+		os.Remove(path)
+		return nil, err
+	}
+	return f, nil
+}
 func Directory(path string) (*os.File, error) {
 	if err := os.Mkdir(path, 0700); err != nil && !os.IsExist(err) {
 		return nil, err

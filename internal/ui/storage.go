@@ -1,8 +1,6 @@
 package ui
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -77,28 +75,7 @@ func (s *storage) writeBytes(name string, b []byte) error {
 	} else if !os.IsNotExist(err) {
 		return errStorage
 	}
-	var nonce [16]byte
-	if _, err := rand.Read(nonce[:]); err != nil {
-		return errStorage
-	}
-	tmp := filepath.Join(s.root, ".ui-"+hex.EncodeToString(nonce[:]))
-	f, err := privatefile.Open(tmp, os.O_CREATE|os.O_EXCL|os.O_WRONLY)
-	if err != nil {
-		return errStorage
-	}
-	defer os.Remove(tmp)
-	_, err = f.Write(b)
-	if err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err != nil || closeErr != nil {
-		return errStorage
-	}
-	if err := privatefile.Replace(tmp, path); err != nil {
-		return errStorage
-	}
-	if err := privatefile.SyncDirectory(s.directory); err != nil {
+	if err := privatefile.WriteFile(s.directory, name, b); err != nil {
 		return errStorage
 	}
 	return nil
