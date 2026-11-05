@@ -10,6 +10,14 @@ example, the CLI copied somewhere unusual), allow it under System Settings →
 Privacy & Security, or run `xattr -d com.apple.quarantine seestar-wormhole-cli`
 on that copy.
 
+**On a Mac, it can't reach anything on the local network.** macOS asks once
+whether seestar-wormhole may find and connect to devices on your local
+network; the app needs it for the Seestar app to find this computer and to
+reach a telescope on this network. If the request was denied, enable
+seestar-wormhole in System Settings → Privacy & Security → Local Network, then
+**Test** again. If a permission request is open, allow access first. A failed
+**Test** on this network says so on a Mac.
+
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
 `device_offline` means the cloud or connection service reports the telescope offline or asleep.
 `connection_timeout` means a connection deadline expired without establishing the session; it does not

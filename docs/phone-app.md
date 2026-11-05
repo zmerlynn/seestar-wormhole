@@ -61,7 +61,9 @@ Stop the proxy and wait for it to exit before switching the phone app to remote 
 ## If the telescope doesn't show up
 
 - **Firewall.** On a Mac, allow incoming connections when macOS asks, or add
-  the binary under System Settings → Network → Firewall → Options. On Linux,
+  the binary under System Settings → Network → Firewall → Options. Allow
+  Local Network access when macOS asks too, or enable seestar-wormhole under
+  System Settings → Privacy & Security → Local Network. On Linux,
   open UDP 4720 and the TCP ports you've mapped.
 - **Guest or "isolated" Wi-Fi.** Many routers stop devices on the same network
   from talking to each other. The phone has to be able to reach the computer.

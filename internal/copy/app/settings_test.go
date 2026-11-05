@@ -20,7 +20,7 @@ func TestDefaultSettings(t *testing.T) {
 	t.Setenv("USERPROFILE", `C:\Users\someone`)
 	home, _ := os.UserHomeDir()
 	want := Settings{Version: 1, Folder: filepath.Join(home, "Seestar"), IntervalMinutes: 5,
-		Excludes: []string{}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false, OlderThanDays: 7}
+		Excludes: []string{}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false, FilesAtOnce: 4, OlderThanDays: 7}
 	if got := DefaultSettings(); !reflect.DeepEqual(got, want) {
 		t.Errorf("DefaultSettings = %+v, want %+v", got, want)
 	}

@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/netip"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,9 @@ import (
 
 //go:embed web/*
 var assets embed.FS
+
+// hostOS is the GOOS whose wording Save's failures get; tests replace it.
+var hostOS = runtime.GOOS
 
 type server struct {
 	host, token string
@@ -324,7 +328,7 @@ func (s *server) saveRoute(ctx context.Context, route, address string) error {
 		// Test holds no lock: it waits on the network.
 		if s.copy != nil {
 			if err := s.copy.Test(ctx, address); err != nil {
-				return &ActionError{Code: "lan_unreachable", Field: "lan_address"}
+				return &ActionError{Code: "lan_unreachable", Field: "lan_address", hint: copyapp.LocalNetworkHint(hostOS, err)}
 			}
 		}
 	}
@@ -449,11 +453,12 @@ func copyEndpointFor(settings, run Settings, connected bool) (string, error) {
 }
 
 func (s *server) rejectAction(w http.ResponseWriter, err error) {
-	s.controller.log.addFailure(errorCopy(actionError(err).Code), err)
+	e := actionError(err)
+	s.controller.log.addFailure(errorCopy(e.Code), err)
 	localhttp.Respond(w, http.StatusBadRequest, struct {
 		*ActionError
 		Message string `json:"message"`
-	}{actionError(err), errorCopy(actionError(err).Code)})
+	}{e, errorCopy(e.Code) + e.hint})
 }
 
 func (s *server) saveSettings(settings Settings) error {

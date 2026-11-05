@@ -2,7 +2,7 @@
 
 ## Reporting a bug
 
-Open an issue with the seestar-wormhole version (`seestar-wormhole-cli --version`, or `seestar-copy-cli --version` for a copy problem), your OS, device model and firmware version, the command line with secrets removed, and relevant log records reduced to only the fields that matter. See [Troubleshooting](docs/troubleshooting.md) and the [command and log reference](docs/reference.md) for existing guidance; the [copy reference](docs/copy/reference.md) covers `seestar-copy-cli`.
+Open an issue with the seestar-wormhole version (`seestar-wormhole-cli --version`, or `seestar-copy-cli --version` for a copy problem), your OS, device model and firmware version, the command line with secrets removed, and relevant log records reduced to only the fields that matter. See [Troubleshooting](docs/troubleshooting.md) and the [command and log reference](docs/reference.md) for existing guidance; the [copy reference](docs/copy-reference.md) covers `seestar-copy-cli`.
 
 ## What never goes in
 

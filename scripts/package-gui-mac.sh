@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Sign and package a built universal app and its sibling universal CLI. Usable locally and in release.yml.
+# Sign and package a built universal app and its sibling universal CLIs. Usable locally and in release.yml.
 # Install scripts/dmg-requirements.txt in an active Python venv before packaging.
 # Never trace credentials, even when invoked by a shell with xtrace enabled.
 set +x
@@ -16,8 +16,11 @@ command -v dmgbuild >/dev/null 2>&1 || {
 task_app=$1
 task_dmg=$2
 task_cli="$(dirname "$task_app")/seestar-wormhole-cli"
-[[ -f "$task_cli" ]] || { echo 'Universal CLI is missing beside the app' >&2; exit 1; }
-chmod 0755 "$task_cli"
+task_copy_cli="$(dirname "$task_app")/seestar-copy-cli"
+for task_program in "$task_cli" "$task_copy_cli"; do
+ [[ -f "$task_program" ]] || { echo "Universal ${task_program##*/} is missing beside the app" >&2; exit 1; }
+ chmod 0755 "$task_program"
+done
 task_scripts=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 [[ -d "$task_app/Contents/MacOS" ]] || { echo 'App bundle is missing' >&2; exit 1; }
 # All credentials absent means an explicit ad-hoc release. Partial setup fails.
@@ -58,7 +61,7 @@ if [[ $task_present != 0 ]]; then
   < <(security list-keychains -d user)
  security list-keychains -d user -s "$task_keychain" ${task_old_keychains[@]+"${task_old_keychains[@]}"}
  security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$task_password" "$task_keychain" >/dev/null
- for task_program in "$task_app" "$task_cli"; do
+ for task_program in "$task_app" "$task_cli" "$task_copy_cli"; do
   codesign --force --sign "$MACOS_SIGN_IDENTITY" --keychain "$task_keychain" \
    --options runtime --timestamp --entitlements "$task_scripts/macos-entitlements.plist" "$task_program"
   task_team=$(codesign -dv --verbose=4 "$task_program" 2>&1 | awk -F= '$1 == "TeamIdentifier" {print $2}')
@@ -68,15 +71,17 @@ else
  echo 'No Developer ID credentials: ad-hoc signing; this DMG is not notarized.'
  codesign --force --sign - "$task_app"
  codesign --force --sign - "$task_cli"
+ codesign --force --sign - "$task_copy_cli"
 fi
 codesign --verify --strict --verbose=2 "$task_app"
 codesign --verify --strict --verbose=2 "$task_cli"
+codesign --verify --strict --verbose=2 "$task_copy_cli"
 mkdir -p "$task_temp/image" "$(dirname "$task_dmg")"
 # Credentials stay private; the mounted payload must be readable by every user.
 chmod 0755 "$task_temp/image"
 ditto "$task_app" "$task_temp/image/seestar-wormhole.app"
-cp "$task_cli" "$task_temp/image/seestar-wormhole-cli"
-chmod 0755 "$task_temp/image/seestar-wormhole-cli"
+cp "$task_cli" "$task_copy_cli" "$task_temp/image/"
+chmod 0755 "$task_temp/image/seestar-wormhole-cli" "$task_temp/image/seestar-copy-cli"
 cp "$task_scripts/../LICENSE" "$task_scripts/../NOTICE" "$task_temp/image/"
 chmod 0644 "$task_temp/image/LICENSE" "$task_temp/image/NOTICE"
 (

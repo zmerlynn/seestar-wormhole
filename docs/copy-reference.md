@@ -1,7 +1,7 @@
-# Command reference
+# seestar-copy-cli reference
 
 Use this page when you script `seestar-copy-cli` or need an exact flag, rule or
-log line. The [README](README.md) has a first run.
+log line. [Copy images](copying.md#from-the-command-line) has a first run.
 
 - [sync](#sync): flags, endpoint, [performance](#performance), destination
   layout, [selection](#selection) and [dry run](#dry-run)
@@ -70,9 +70,8 @@ The endpoint is either:
 
 - the telescope on your local network, at its IP address and port 445, such
   as `--endpoint 192.0.2.10:445` (use your telescope's address); or
-- the SMB listener of
-  [seestar-wormhole](https://github.com/zmerlynn/seestar-wormhole), which is
-  `127.0.0.1:4445` by default.
+- the SMB listener of seestar-wormhole's [proxy](reference.md#proxy), which
+  is `127.0.0.1:4445` by default.
 
 Both are handled the same way. Sync logs in as guest with an empty password
 and mounts the share `EMMC Images`; neither is configurable. An IPv6 address
@@ -95,6 +94,11 @@ In one setup, copying through a seestar-wormhole listener:
 These are one setup's measurements, not guarantees. One worker was slower
 than four in these measurements. More workers may not help once the link is
 near its ceiling. All workers share one SMB session.
+
+Through your Seestar account, that session is the proxy's, shared with the
+Seestar app and control clients such as seestar_alp. If they are slow to
+respond while a copy runs, lower `--workers` to 1 or 2. The app's **Files at
+once** setting is the same choice.
 
 ### Destination layout
 
@@ -521,7 +525,7 @@ that gives `msg="file copied"` and `path="MyWorks/M 31/light_002.fit"`. Read
 the lines with a logfmt parser, not by splitting on spaces.
 
 The messages and keys below are what this release logs. They are not part of
-the [versioning contract](../versioning.md#not-in-the-contract); a release that
+the [versioning contract](versioning.md#not-in-the-contract); a release that
 changes them says so in its notes.
 
 | Level | Message | Keys | When |
@@ -1232,7 +1236,7 @@ linked into this binary, a `Module:` line with its path, an `SPDX:` line with
 its license identifier, and the full texts of its license and notice files.
 It needs no network and no source checkout. It takes no flags except
 `--help`/`-h` and no arguments; anything else exits 2, and a failure to write
-the output exits 1. See [NOTICE](../../NOTICE).
+the output exits 1. See [NOTICE](../NOTICE).
 
 ## Global command behavior
 
@@ -1255,7 +1259,7 @@ the output exits 1. See [NOTICE](../../NOTICE).
 
 seestar-wormhole's app copies, browses and frees up space in its **Copy**,
 **Browse** and **Free up space** tabs, with the same rules and the same state
-files as `sync`, `browse` and `delete`; see [copying images](../ui.md#copying-images).
+files as `sync`, `browse` and `delete`; see [copying images](ui.md#copying-images).
 It keeps its copy settings in its own state directory, as `copy.json`, which
 `seestar-copy-cli` never reads, and its copy history in this
 [location](#location), whatever its `--state-dir` says. While copying is on,
@@ -1265,20 +1269,8 @@ while a `sync` holds it.
 
 ## Verifying a release
 
-Each release lists a SHA-256 checksum for its four archives and universal Mac
-DMG in the single `SHA256SUMS`, and carries a GitHub build provenance
-attestation for each of those five downloads. With the downloaded assets and
-`SHA256SUMS` in one folder:
-
-```sh
-sha256sum --check --ignore-missing SHA256SUMS
-gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-copy
-```
-
-Linux and Windows CLI executables are byte-for-byte reproducible with
-identical source, version, revision and Go toolchain: rebuild and compare
-against `seestar-copy-cli` (with `.exe` on Windows) unpacked from the archive.
-The Mac CLI is combined
-with lipo and signed, so it is not byte-reproducible. The DMG is verified by
-`SHA256SUMS` and attestation only. See [versioning](../versioning.md#the-seestar-copy-cli-contract)
-for what a release promises.
+`seestar-copy-cli` ships in seestar-wormhole's downloads; see
+[verifying a release](reference.md#verifying-a-release). Its Linux and Windows
+executables are byte-for-byte reproducible like `seestar-wormhole-cli`'s. See
+[versioning](versioning.md#the-seestar-copy-cli-contract) for what a release
+promises.

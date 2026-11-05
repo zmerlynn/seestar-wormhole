@@ -161,8 +161,9 @@ func (f failDir) Walk(context.Context, func(string, bool) bool, func(remote.Entr
 // A failed preview words its cause as Copy does: the connection, a
 // listing, or anything else.
 func TestPreviewFails(t *testing.T) {
+	setHostOS(t, "linux")
 	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/M 42/a.jpg": image("a")})
-	e.dialErr = errors.New("no route")
+	e.dialErr = noRoute
 	v := e.run()
 	if v.State != pvFailed || v.Title != "Can't reach the telescope at 192.0.2.10:445." || v.Text != checkReach+" Preview again to retry." {
 		t.Errorf("unreachable: %+v", v)
@@ -178,6 +179,40 @@ func TestPreviewFails(t *testing.T) {
 	writeFile(t, e.set.Folder, "not a folder")
 	if v := e.run(); v.State != pvFailed || !strings.HasPrefix(v.Title, "Couldn't preview: open destination: ") || v.Text != "Preview again to retry." {
 		t.Errorf("folder is a file: %+v", v)
+	}
+}
+
+// A preview runs as many files at once as the settings say.
+func TestPreviewFilesAtOnce(t *testing.T) {
+	workers := syncWorkers(t)
+	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
+	e.set.FilesAtOnce = 3
+	if v := e.run(); v.State != pvDone {
+		t.Fatalf("preview: %+v", v)
+	}
+	if got := workers(); !slices.Equal(got, []int{3}) {
+		t.Errorf("previewed with Workers %v, want [3]", got)
+	}
+}
+
+// On macOS, a preview that can't reach an address on this network points
+// at Local Network access; one through the account doesn't.
+func TestPreviewLocalNetworkHint(t *testing.T) {
+	setHostOS(t, "darwin")
+	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
+	e.dialErr = noRoute
+	if v := e.run(); v.State != pvFailed || v.Text != checkReach+" Preview again to retry."+lanHint {
+		t.Errorf("on this network: %+v", v)
+	}
+	if err := e.p.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
+		t.Fatal(err)
+	}
+	e.p.mu.Lock()
+	done := e.p.done
+	e.p.mu.Unlock()
+	<-done
+	if v := e.p.view(); v.State != pvFailed || v.Text != checkReach+" Preview again to retry." {
+		t.Errorf("through the account: %+v", v)
 	}
 }
 
@@ -315,7 +350,7 @@ func TestPreviewAPI(t *testing.T) {
 	if w := e.post("/copy/api/copy", `{"action":"preview"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: save the copy settings first.") {
 		t.Errorf("preview before settings are saved: %d %q", w.Code, w.Body.String())
 	}
-	input := `{"folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`
+	input := `{"folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","files_at_once":"4","skip_built_in":true}`
 	if w := e.post("/copy/api/settings", input); w.Code != 200 {
 		t.Fatalf("save: %d %q", w.Code, w.Body.String())
 	}

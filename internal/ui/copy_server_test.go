@@ -69,7 +69,7 @@ func serve(s *server, r *http.Request) *httptest.ResponseRecorder {
 func copySettings(t *testing.T, s *server) {
 	t.Helper()
 	folder, _ := json.Marshal(filepath.Join(t.TempDir(), "Seestar"))
-	body := `{"folder":` + string(folder) + `,"interval":"5","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`
+	body := `{"folder":` + string(folder) + `,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`
 	if w := serve(s, request(s, "POST", "/copy/api/settings", body)); w.Code != 200 {
 		t.Fatalf("copy settings = %d %s", w.Code, w.Body)
 	}

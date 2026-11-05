@@ -68,6 +68,9 @@ type Target struct {
 // String is the endpoint only.
 func (t Target) String() string { return t.Endpoint }
 
+// onLAN reports whether t is an address on this network.
+func (t Target) onLAN() bool { return t.Device == "" && t.Run == 0 }
+
 // sameTelescope reports whether u reaches the telescope t does: through
 // the account the same device, in any run and at any endpoint; with no
 // device on either, the same address in the same run, which on this

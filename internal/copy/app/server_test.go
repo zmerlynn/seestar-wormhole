@@ -22,6 +22,7 @@ import (
 	"syscall"
 	"testing"
 	"testing/fstest"
+	"time"
 
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 
@@ -180,11 +181,11 @@ func quote(s string) string {
 	return string(b)
 }
 
-var goodInput = `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"5","excludes":["Video","","/Preview"],"includes":[],"skip_built_in":true,"start_copying":false}`
+var goodInput = `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"5","files_at_once":" 2 ","excludes":["Video","","/Preview"],"includes":[],"skip_built_in":true,"start_copying":false}`
 
 func TestBodyLimit(t *testing.T) {
 	e := newAppEnv(t, nil)
-	big := `{"folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["` + strings.Repeat("a", localhttp.MaxJSON) + `"]}`
+	big := `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"4","excludes":["` + strings.Repeat("a", localhttp.MaxJSON) + `"]}`
 	if w := e.post("/copy/api/settings", big); w.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("a body over the limit = %d", w.Code)
 	}
@@ -236,18 +237,21 @@ func TestSaveFieldErrors(t *testing.T) {
 		input string
 		want  map[string]string
 	}{
-		{"empty", `{}`, map[string]string{"folder": folderError, "interval": intervalError}},
-		{"bad patterns", `{"folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["Video","","[Pp]review"],"includes":["  ","a/"]}`, map[string]string{
+		{"empty", `{}`, map[string]string{"files_at_once": filesError, "folder": folderError, "interval": intervalError}},
+		{"bad patterns", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"4","excludes":["Video","","[Pp]review"],"includes":["  ","a/"]}`, map[string]string{
 			"excludes": `Line 3: [ and \ are not supported; use * and ?, and / between folders. Correct this pattern and save again.`,
 			"includes": "Line 2: omit the trailing /; a pattern matches files and folders. Correct this pattern and save again.",
 		}},
-		{"interval 0", `{"folder":` + quote(abs("/x")) + `,"interval":"0"}`, map[string]string{"interval": intervalError}},
-		{"interval 1441", `{"folder":` + quote(abs("/x")) + `,"interval":"1441"}`, map[string]string{"interval": intervalError}},
-		{"interval 1.5", `{"folder":` + quote(abs("/x")) + `,"interval":"1.5"}`, map[string]string{"interval": intervalError}},
-		{"relative folder", `{"folder":"Seestar","interval":"5"}`, map[string]string{"folder": folderError}},
-		{"tilde folder", `{"folder":"~/Seestar","interval":"5"}`, map[string]string{"folder": folderError}},
+		{"interval 0", `{"folder":` + quote(abs("/x")) + `,"interval":"0","files_at_once":"4"}`, map[string]string{"interval": intervalError}},
+		{"interval 1441", `{"folder":` + quote(abs("/x")) + `,"interval":"1441","files_at_once":"4"}`, map[string]string{"interval": intervalError}},
+		{"interval 1.5", `{"folder":` + quote(abs("/x")) + `,"interval":"1.5","files_at_once":"4"}`, map[string]string{"interval": intervalError}},
+		{"files at once 0", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"0"}`, map[string]string{"files_at_once": filesError}},
+		{"files at once 5", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"5"}`, map[string]string{"files_at_once": filesError}},
+		{"files at once 2.5", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"2.5"}`, map[string]string{"files_at_once": filesError}},
+		{"relative folder", `{"folder":"Seestar","interval":"5","files_at_once":"4"}`, map[string]string{"folder": folderError}},
+		{"tilde folder", `{"folder":"~/Seestar","interval":"5","files_at_once":"4"}`, map[string]string{"folder": folderError}},
 		// The address is the connection's; the form's is ignored.
-		{"address", `{"address":"192.0.2.10:0","interval":"5"}`, map[string]string{"folder": folderError}},
+		{"address", `{"address":"192.0.2.10:0","interval":"5","files_at_once":"4"}`, map[string]string{"folder": folderError}},
 	}
 	for _, tt := range tests {
 		e := newAppEnv(t, nil)
@@ -307,7 +311,7 @@ func TestSaveCallsSave(t *testing.T) {
 		BrowseChanged bool     `json:"browse_changed"`
 	}](t, w)
 	want := Settings{Version: 1, Folder: abs("/data/Seestar"), IntervalMinutes: 5,
-		Excludes: []string{"Video", "/Preview"}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false, OlderThanDays: 7}
+		Excludes: []string{"Video", "/Preview"}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false, FilesAtOnce: 2, OlderThanDays: 7}
 	if fmt.Sprint(got.Settings) != fmt.Sprint(want) || !got.BrowseChanged {
 		t.Errorf("got %+v, want %+v and a browse change", got, want)
 	}
@@ -369,9 +373,86 @@ func TestTestMessages(t *testing.T) {
 		{nil, fmt.Errorf("connect to x: mount \"EMMC Images\" on x: %w", &fs.PathError{Op: "mount", Path: `\\x\EMMC Images`, Err: smbStatus(0xC0000022)}), "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."},
 	}
 	for _, tt := range tests {
-		if got := testMessage("seestar.local:4445", tt.entries, tt.err); got != tt.want {
+		if got := testMessage("linux", "seestar.local:4445", tt.entries, tt.err); got != tt.want {
 			t.Errorf("testMessage(%v, %v) = %q\nwant %q", tt.entries, tt.err, got, tt.want)
 		}
+	}
+}
+
+// setHostOS has the page worded for goos until t ends.
+func setHostOS(t *testing.T, goos string) {
+	old := hostOS
+	hostOS = goos
+	t.Cleanup(func() { hostOS = old })
+}
+
+const lanHint = " On macOS, if Local Network access is blocked, enable seestar-wormhole in System Settings > Privacy & Security > Local Network, then Test again. If a permission request is open, allow access first."
+
+// connectFailed is a TCP connect that failed with errno, as net's dial
+// returns it, wrapped as Dial wraps it.
+func connectFailed(errno syscall.Errno) error {
+	return fmt.Errorf("dial 192.0.2.10:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", errno)})
+}
+
+// noRoute is a connect with no route to the host.
+var noRoute = connectFailed(syscall.EHOSTUNREACH)
+
+// On macOS, a TCP connect that nothing answered points at Local Network
+// access: a timeout, a deadline that passed while connecting, no route to
+// the host or network, or a connect the system refused to send. A
+// refusal, a name not found, a DNS server's answer and any SMB answer
+// don't, and nor does any failure elsewhere.
+func TestLocalNetworkHint(t *testing.T) {
+	expired, cancel := context.WithDeadline(context.Background(), time.Unix(1, 0))
+	defer cancel()
+	// The context ends before net dials, so nothing is sent.
+	_, deadline := (&net.Dialer{}).DialContext(expired, "tcp", "192.0.2.10:445")
+	if !errors.Is(deadline, context.DeadlineExceeded) {
+		t.Fatalf("dial with an expired context = %v", deadline)
+	}
+	deadline = fmt.Errorf("dial 192.0.2.10:445: %w", deadline)
+	dnsTimeout := fmt.Errorf("dial seestar.local:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "i/o timeout", Name: "seestar.local", IsTimeout: true}})
+	signing := &protocol.InvalidResponseError{Message: "session setup response failed signature verification"}
+	// Something answered the connect, then went quiet.
+	readTimeout := fmt.Errorf("dial 192.0.2.10:445: %w", &protocol.TransportError{Err: &net.OpError{Op: "read", Net: "tcp", Err: os.NewSyscallError("read", syscall.ETIMEDOUT)}})
+	tests := []struct {
+		name string
+		goos string
+		err  error
+		want string
+	}{
+		{"deadline while connecting", "darwin", deadline, lanHint},
+		{"connect timed out", "darwin", connectFailed(syscall.ETIMEDOUT), lanHint},
+		{"DNS timed out", "darwin", dnsTimeout, lanHint},
+		{"no route to host", "darwin", noRoute, lanHint},
+		{"network unreachable", "darwin", connectFailed(syscall.ENETUNREACH), lanHint},
+		{"on-link host down", "darwin", connectFailed(syscall.EHOSTDOWN), lanHint},
+		{"connect not permitted", "darwin", connectFailed(syscall.EPERM), lanHint},
+		{"Linux", "linux", deadline, ""},
+		{"Windows", "windows", noRoute, ""},
+		{"refused", "darwin", connectFailed(syscall.ECONNREFUSED), ""},
+		{"name not found", "darwin", fmt.Errorf("dial seestar.local:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "seestar.local", IsNotFound: true}}), ""},
+		{"DNS server's answer", "darwin", fmt.Errorf("dial seestar.local:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "server misbehaving", Name: "seestar.local", IsTemporary: true}}), ""},
+		{"deadline after connecting", "darwin", fmt.Errorf("mount \"EMMC Images\" on 192.0.2.10:445: %w", context.DeadlineExceeded), ""},
+		{"read timed out after connecting", "darwin", readTimeout, ""},
+		{"logon failure", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", smbStatus(0xC000006D)), ""},
+		{"no share", "darwin", fmt.Errorf("mount \"EMMC Images\" on 192.0.2.10:445: %w", &fs.PathError{Op: "mount", Path: `\\192.0.2.10\EMMC Images`, Err: smbStatus(0xC00000CC)}), ""},
+		{"signature", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", signing), ""},
+		{"guest signing", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", &protocol.InvalidResponseError{Message: "guest account doesn't support signing"}), ""},
+		{"authentication", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", errors.New("auth: invalid credential")), ""},
+	}
+	for _, tt := range tests {
+		if got := LocalNetworkHint(tt.goos, tt.err); got != tt.want {
+			t.Errorf("%s: LocalNetworkHint(%s, %v) = %q, want %q", tt.name, tt.goos, tt.err, got, tt.want)
+		}
+	}
+	want := "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + lanHint
+	if got := testMessage("darwin", "seestar.local:4445", nil, deadline); got != want {
+		t.Errorf("Test on macOS = %q\nwant %q", got, want)
+	}
+	want = "seestar.local answered but refused port 4445. Is this the telescope's address?"
+	if got := testMessage("darwin", "seestar.local:4445", nil, fmt.Errorf("dial: %w", syscall.ECONNREFUSED)); got != want {
+		t.Errorf("a refusal on macOS = %q, want %q", got, want)
 	}
 }
 

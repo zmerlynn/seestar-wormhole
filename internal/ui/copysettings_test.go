@@ -8,11 +8,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"testing"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 )
 
+// A copy.json from before Files at once loads as 4.
 func TestCopySettingsVersionOneFixture(t *testing.T) {
 	st := testStorage(t)
 	body := []byte(`{
@@ -29,13 +31,26 @@ func TestCopySettingsVersionOneFixture(t *testing.T) {
 		t.Fatalf("load = %v, %v", got, err)
 	}
 	want := copyapp.Settings{Version: 1, Folder: "/synthetic/Seestar", IntervalMinutes: 15, Excludes: []string{"Video", "/Preview"},
-		Includes: []string{"MyWorks"}, StartCopying: true, OlderThanDays: 30, TrustState: true}
+		Includes: []string{"MyWorks"}, StartCopying: true, FilesAtOnce: 4, OlderThanDays: 30, TrustState: true}
 	if !reflect.DeepEqual(*got, want) {
 		t.Fatalf("settings = %+v; want %+v", *got, want)
 	}
 	after, err := os.ReadFile(filepath.Join(st.root, copyName))
 	if err != nil || !bytes.Equal(after, body) {
 		t.Fatalf("load rewrote copy.json: %s, %v", after, err)
+	}
+}
+
+// Files at once loads from 1 to 4 as saved.
+func TestCopySettingsFilesAtOnce(t *testing.T) {
+	st := testStorage(t)
+	for n := 1; n <= 4; n++ {
+		if err := st.writeBytes(copyName, []byte(`{"version":1,"files_at_once":`+strconv.Itoa(n)+`}`)); err != nil {
+			t.Fatal(err)
+		}
+		if _, got, err := loadCopySettings(st); err != nil || got == nil || got.FilesAtOnce != n {
+			t.Errorf("files_at_once %d = %+v, %v", n, got, err)
+		}
 	}
 }
 
@@ -84,7 +99,7 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	set.Folder, set.IntervalMinutes, set.Address = "/synthetic/Other", 9, "192.0.2.10:445"
+	set.Folder, set.IntervalMinutes, set.FilesAtOnce, set.Address = "/synthetic/Other", 9, 1, "192.0.2.10:445"
 	if err := c.save(*set); err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +113,7 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 	}
 	want := map[string]any{
 		"version": 1.0, "folder": "/synthetic/Other", "interval_minutes": 9.0, "excludes": []any{}, "includes": []any{},
-		"skip_built_in": true, "start_copying": false, "older_than_days": 7.0, "trust_state": false,
+		"skip_built_in": true, "start_copying": false, "files_at_once": 1.0, "older_than_days": 7.0, "trust_state": false,
 		"future_object": map[string]any{"enabled": true, "limit": 17.0}, "future_array": []any{1.0, "two", map[string]any{"three": nil}}, "future_flag": false,
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -110,7 +125,8 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 // left as it was.
 func TestCopySettingsRefusedStopsStartup(t *testing.T) {
 	for _, body := range []string{`{"version":2,"future":{"keep":[1,2]}}`, `{"version":1,"interval_minutes":"5"}`, `[1]`, `{"version":1`,
-		`{}`, `{"folder":"/synthetic/Seestar"}`, `null`} {
+		`{}`, `{"folder":"/synthetic/Seestar"}`, `null`,
+		`{"version":1,"files_at_once":0}`, `{"version":1,"files_at_once":5}`, `{"version":1,"files_at_once":-1}`, `{"version":1,"files_at_once":2.5}`} {
 		t.Run(body, func(t *testing.T) {
 			s := testServer(t)
 			if err := s.storage.writeBytes(copyName, []byte(body)); err != nil {

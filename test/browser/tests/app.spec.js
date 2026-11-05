@@ -96,7 +96,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(frame(page).locator('.badge.new').first()).toBeVisible();
 
   expect(readJSON(app.copyFile)).toMatchObject({
-    version: 1, folder: app.folder, interval_minutes: 5, skip_built_in: true, start_copying: false,
+    version: 1, folder: app.folder, interval_minutes: 5, files_at_once: 4, skip_built_in: true, start_copying: false,
   });
 });
 
@@ -285,7 +285,7 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
   expect(readJSON(app.copyFile)).toEqual({
     version: 1, folder: app.folder, interval_minutes: 30,
     excludes: ['Video', '/Preview'], includes: ['MyWorks'], skip_built_in: false, start_copying: false,
-    older_than_days: 7, trust_state: false,
+    files_at_once: 4, older_than_days: 7, trust_state: false,
     later: { kept: true },
   });
   // Activity shows both files, and the copy settings saved.
@@ -334,6 +334,44 @@ test('Copy settings field errors show under each field and nothing is saved', as
   await expect(page.locator('#f-int-err')).toBeHidden();
   await expect(page.locator('#f-ex-err')).toBeHidden();
   await expect(page.locator('#f-int')).not.toHaveAttribute('aria-invalid', 'true');
+});
+
+test('Files at once defaults to 4, saves 1 to 4 and refuses anything else', async ({ page, startApp }) => {
+  const files = setUp('/nowhere');
+  const app = await startApp(files);
+  await openCopy(page, app.url);
+  await page.getByRole('button', { name: 'Change…' }).click();
+  // A copy.json without it shows 4, with the advice for the account beside it.
+  const count = page.getByLabel('Files at once');
+  await expect(count).toHaveValue('4');
+  await expect(count).toHaveAttribute('min', '1');
+  await expect(count).toHaveAttribute('max', '4');
+  await expect(page.locator('#f-files-help')).toHaveText(/^Copying runs this many files at once, 1 to 4\. Through your Seestar account, .* lower this to 1 or 2\.$/);
+  await expect(count).toHaveAccessibleDescription(/lower this to 1 or 2/);
+
+  for (const value of ['5', '0', '2.5']) {
+    await count.fill(value);
+    await copySave(page).click();
+    await expect(page.locator('#f-files-err')).toHaveText('Enter a whole number from 1 to 4.');
+    await expect(count).toHaveAttribute('aria-invalid', 'true');
+    await expect(count).toBeFocused();
+    await expect(page.locator('#f-saved')).toHaveText('');
+    expect(readJSON(app.copyFile)).toEqual(files['copy.json']);
+  }
+
+  await count.fill('2');
+  await copySave(page).click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await expect(page.locator('#s-summary')).toHaveText('Copying to /nowhere every 5 min, 2 files at once, skipping logs and system files.');
+  expect(readJSON(app.copyFile)).toMatchObject({ files_at_once: 2, later: { kept: true } });
+  // A reload shows what was saved, without the error.
+  await page.reload();
+  await expect(page.locator('#quit')).toBeEnabled();
+  await tab(page, 'Copy').click();
+  await page.getByRole('button', { name: 'Change…' }).click();
+  await expect(count).toHaveValue('2');
+  await expect(page.locator('#f-files-err')).toBeHidden();
+  await expect(count).not.toHaveAttribute('aria-invalid', 'true');
 });
 
 // contrast is the WCAG contrast ratio of two computed rgb() colors.

@@ -14,5 +14,5 @@ Two things it doesn't say, because a person wouldn't need telling:
   remote session. The copy tests use a fake share; don't point
   seestar-copy-cli or the copy tabs at a device, directly or through the
   proxy, unless asked. The copy packages' guide is
-  [docs/copy/development/README.md](docs/copy/development/README.md).
+  [docs/development/copy.md](docs/development/copy.md).
 - **Reviewing a change:** follow [.claude/skills/wormhole-review](.claude/skills/wormhole-review/SKILL.md).

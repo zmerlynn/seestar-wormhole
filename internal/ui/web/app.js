@@ -515,11 +515,12 @@ function copyError(e) {
 
 // The copy settings: a summary line, and the form Change… opens. The
 // first visit has the form open, with Save and continue.
-const copyFields = {folder: 'f-folder', interval: 'f-int', excludes: 'f-ex', includes: 'f-in'};
+const copyFields = {folder: 'f-folder', interval: 'f-int', files_at_once: 'f-files', excludes: 'f-ex', includes: 'f-in'};
 const lines = value => value === '' ? [] : value.split('\n');
 function copyFill(s) {
   $('f-folder').value = s.folder;
   $('f-int').value = String(s.interval_minutes);
+  $('f-files').value = String(s.files_at_once);
   $('f-ex').value = s.excludes.join('\n');
   $('f-in').value = s.includes.join('\n');
   $('f-skip').checked = s.skip_built_in;
@@ -527,7 +528,8 @@ function copyFill(s) {
 }
 function copyInput() {
   return {
-    folder: $('f-folder').value, interval: $('f-int').value, excludes: lines($('f-ex').value), includes: lines($('f-in').value),
+    folder: $('f-folder').value, interval: $('f-int').value, files_at_once: $('f-files').value,
+    excludes: lines($('f-ex').value), includes: lines($('f-in').value),
     skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked
   };
 }
@@ -549,6 +551,7 @@ function showErrors(fields) {
 function copySummary(s) {
   const minutes = s.interval_minutes === 1 ? 'every minute' : 'every ' + s.interval_minutes + ' min';
   const parts = ['Copying to ' + s.folder + ' ' + minutes];
+  if (s.files_at_once !== 4) parts.push(s.files_at_once === 1 ? '1 file at once' : s.files_at_once + ' files at once');
   if (s.skip_built_in) parts.push('skipping logs and system files');
   if (s.excludes.length) parts.push('leaving out ' + s.excludes.join(', '));
   if (s.includes.length) parts.push('only ' + s.includes.join(', '));

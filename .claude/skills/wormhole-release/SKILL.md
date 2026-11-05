@@ -24,7 +24,7 @@ Run these in a clean worktree at that SHA, in `golang:1.27.3` with
 `--network none`. Follow steps 1-4 of [releasing.md](../../../docs/development/releasing.md):
 
 - [ ] build, vet and test pass, along with the release test and `./scripts/test-check.sh`;
-- [ ] `./scripts/release.sh vX.Y.Z` produces six CLI and two Windows UI parts, plus two Windows ZIP archives;
+- [ ] `./scripts/release.sh vX.Y.Z` produces twelve CLI and two Windows UI parts, plus two Windows ZIP archives;
 - [ ] a second run produces byte-identical portable outputs; compare rebuilt Linux/Windows CLIs with those unpacked from the archives;
 - [ ] an artifact-only workflow dispatch produces all five downloads and the single
   `SHA256SUMS`; checksums and attestation cover the four archives and DMG;
@@ -52,7 +52,8 @@ developers:
    names and log record names.
 3. **Breaking changes**, or "No breaking changes."
 4. **Install:** unpack the platform archive or install from the Mac DMG; each
-   download includes both programs. Check `seestar-wormhole-cli --version`, the account variables, and
+   download includes the app and both CLIs. Check `seestar-wormhole-cli --version`,
+   `seestar-copy-cli --version`, the account variables, and
    the no-authentication warning. Point to
    [verifying a release](../../../SECURITY.md#verifying-a-release) without
    repeating its commands.

@@ -52,8 +52,10 @@ type previewStatus struct {
 	state    string
 	endpoint string
 	// Running, and why it failed.
-	listing     bool // the session is open
-	unreachable bool // the session failed to open
+	listing     bool  // the session is open
+	unreachable bool  // the session failed to open
+	reachErr    error // and why
+	lan         bool  // it reaches an address on this network
 	folders     int
 	listed      string // the folder being listed
 	err         error
@@ -89,13 +91,13 @@ func (p *previewer) start(set Settings, t Target) error {
 	ctx, cancel := context.WithCancel(p.parent)
 	done := make(chan struct{})
 	p.cancel, p.done = cancel, done
-	p.st = previewStatus{state: pvRunning, endpoint: set.Address}
+	p.st = previewStatus{state: pvRunning, endpoint: set.Address, lan: t.onLAN()}
 	// The hook runs on the goroutine that calls RunSync, before it
 	// returns, so result needs no lock.
 	var result *previewStatus
 	o := engine.SyncOptions{
 		Endpoint: set.Address, Dest: set.Folder, StateDir: p.stateDir, Selector: sel, DryRun: true,
-		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: workers,
+		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: func(ctx context.Context, endpoint string) (sess remote.Session, err error) {
 			if p.at != nil {
 				err = p.at(t)
@@ -106,7 +108,7 @@ func (p *previewer) start(set Settings, t Target) error {
 			p.mu.Lock()
 			defer p.mu.Unlock()
 			if p.st.state == pvRunning {
-				p.st.listing, p.st.unreachable = err == nil, err != nil
+				p.st.listing, p.st.unreachable, p.st.reachErr = err == nil, err != nil, err
 			}
 			return sess, err
 		},
@@ -132,7 +134,7 @@ func (p *previewer) start(set Settings, t Target) error {
 		defer guard.Recover(p.log, "previewing")
 		// A dry run with failed files returns an error after Decided;
 		// the preview shows them.
-		err := guard.Run(p.log, "previewing", func() error { return engine.RunSync(ctx, o, p.log) })
+		err := guard.Run(p.log, "previewing", func() error { return runSync(ctx, o, p.log) })
 		canceled := ctx.Err() != nil
 		cancel()
 		p.mu.Lock()
@@ -250,6 +252,9 @@ func (p *previewer) view() *previewView {
 		case st.unreachable:
 			v.Title = "Can't reach the telescope at " + st.endpoint + "."
 			v.Text = checkReach + " " + v.Text
+			if st.lan {
+				v.Text += LocalNetworkHint(hostOS, st.reachErr)
+			}
 		case st.listing:
 			v.Title = "Couldn't read " + unread(st.err) + "."
 		default:

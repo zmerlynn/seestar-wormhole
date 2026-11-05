@@ -1,14 +1,133 @@
 # Copy images
 
+seestar-wormhole copies the images from your Seestar's file share to a folder
+on your computer in three ways:
+
+- the app's [**Copy**, **Browse** and **Free up space**](#copy-in-the-app) tabs;
+- [`seestar-copy-cli`](#from-the-command-line), the same copier for terminals,
+  scripts and services, which comes in every download;
+- [rclone or another SMB app](#with-rclone), through the proxy's SMB listener.
+
+The app and `seestar-copy-cli` reach the telescope either through your Seestar
+account, sharing the proxy's connection, or directly on the network the
+telescope is on. See [tested coverage](status.md#copying) for what has been
+tried on each route.
+
+## Copy in the app
+
+1. **Choose how to reach the telescope.** On the **Connection** tab, under
+   **Reach the telescope**, choose **Through my Seestar account** and
+   **Connect**, or choose **On this network**, enter the telescope's address,
+   and **Save**. Until one is saved, Copy, Browse and Free up space are
+   unavailable and say so. On your account, copying uses the proxy's SMB port
+   (local port 4445 by default) and waits for the connection; it never starts
+   it.
+2. **Choose a folder.** The first time you open **Copy**, choose the folder for
+   your images and **Save and continue**. Nothing is copied yet.
+3. **Start copying.** **Start copying** checks the telescope every 5 minutes
+   by default and copies what is new; **Check now** checks at once, and **Stop
+   copying** stops. **Preview** shows what Start would copy without copying
+   anything. Keep the app open while it copies.
+
+Images land in the folder as they are on the telescope, such as
+`~/Seestar/MyWorks/M 31/`. The telescope's logs, scratch and system files are
+skipped by default. **Change…** opens the settings: the folder, how often to
+check, how many files to copy at once, what to leave out or only copy, and
+whether to start copying when the app opens. [Using the UI](ui.md#copy) has every setting and message.
+
+**Browse** shows the telescope's files one folder at a time, with its `.jpg`
+images, `.txt` logs and FITS headers, and marks which are copied, changed, new
+or left out. It changes nothing on the telescope; **Save** saves a file you
+pick. See [Browse](ui.md#browse).
+
+**Free up space** deletes images from the telescope once they are safely
+copied. Copy first, make your own backup or export of the folder, then
+**Preview what to delete**. It lists, per folder, the files whose copy in your
+folder still matches and that haven't changed on the telescope, 7 days old or
+more by default. Uncheck a folder to keep it. Nothing is deleted until you
+choose **Delete N files…** and confirm. Avoid it while the telescope is busy.
+See [Free up space](ui.md#free-up-space) and the
+[proof modes](copy-reference.md#proof-modes).
+
+Settings saved by seestar-copy 0.4.0's own app aren't imported. Choose the
+folder and settings again in Copy.
+
+## Things to know
+
+These hold for the app and for `seestar-copy-cli`, which use the same copy
+history.
+
+- **Moving files out is fine.** The copy history is kept outside your folder,
+  so a file you move or delete is not copied again, unless it changes on the
+  telescope. See [the state file](copy-reference.md#the-state-file).
+- **An existing copy is reused.** A file already in your folder with the same
+  size and modification time, to within 2 seconds, is recorded without
+  downloading it again. A different file at the same path is overwritten with
+  the telescope's copy.
+- **One copy per folder.** While the app or a `sync` copies to a folder, the
+  other can't, and says the folder is in use. For a second telescope, use a
+  second folder.
+- **Partial files are hidden.** A file being copied is written under a hidden
+  temporary name next to where it will go, so nothing that watches for `.fit`
+  files sees half a file. A file partly copied when copying stops is copied
+  again next time.
+- **Some names fail.** A name Windows can't store fails on Windows, and two
+  names that differ only in upper and lower case fail everywhere. They are
+  never renamed. See [names that fail](copy-reference.md#names-that-fail).
+- **On a Mac, allow Local Network access.** The app asks macOS for Local
+  Network access the first time it reaches an address on this network; allow
+  it. If it is blocked, **Test**, Copy and Preview can't reach the telescope
+  there, and on a Mac they say where to allow it: enable seestar-wormhole in
+  System Settings → Privacy & Security → Local Network, then **Test** again.
+  If a permission request is open, allow access first. Through your account,
+  copying doesn't need it.
+- **Through your account, a large copy is shared.** It uses the same telescope
+  session as the phone app and control clients, and delays their status
+  replies. **Files at once** in Copy settings sets how many files copying
+  runs at once, 4 by default: if the Seestar app or seestar_alp is slow to
+  respond while copying, lower it to 1 or 2.
+
+## From the command line
+
+`seestar-copy-cli` comes in every download, next to `seestar-wormhole-cli`.
+
+1. Find the address to connect to. On the telescope's network, that is its IP
+   address and port 445, such as `192.0.2.10:445`. Through seestar-wormhole,
+   it is the proxy's SMB listener, `127.0.0.1:4445` by default.
+2. Run one pass to check the connection:
+
+   ```sh
+   seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar --once
+   ```
+
+3. Run it without `--once` to keep copying. Press Ctrl+C to stop it.
+
+To look through the telescope's files in your web browser:
+
+```sh
+seestar-copy-cli browse --endpoint 127.0.0.1:4445 --open
+```
+
+To free space on the telescope, run sync, make your own backup of the folder,
+then preview with
+`seestar-copy-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar`, which
+only reports what it would delete. When the preview looks right, add
+`--force`.
+
+The [seestar-copy-cli reference](copy-reference.md) has every command, flag,
+log line and exit code; `find` lists the share for scripts.
+
+## With rclone
+
 Recipe verified 2026-10-18 through the v0.1.0 proxy; the device did
 not report its firmware version during the run (last observed: 9.75).
 
-[rclone](https://rclone.org/) is the supported copying route on Linux, macOS,
-and Windows. It connects to the proxy's SMB listener and shares the proxy's
-existing telescope session. The [proxy setup](reference.md#proxy) provides the
-listener; the default mapping is local port 4445 to device port 445.
+[rclone](https://rclone.org/) connects to the proxy's SMB listener and shares
+the proxy's existing telescope session. The [proxy setup](reference.md#proxy)
+provides the listener; the default mapping is local port 4445 to device port
+445.
 
-## Configure the SMB connection
+### Configure the SMB connection
 
 The remote uses `smb host <bind> port 4445 user guest`, with an empty password.
 `<bind>` is the proxy address reachable from the copying computer. With the
@@ -24,7 +143,7 @@ this recipe. Another share-relative directory can replace `MyWorks` in the
 source path. The rclone remote is a local client configuration, separate from
 the proxy's account credentials and installation identity.
 
-## Copy
+### Copy with rclone
 
 This example copies files modified within the last day. `--min-age 2m` skips
 recent files that may still be written by the telescope.
@@ -68,8 +187,9 @@ rclone hashsum sha256 ./MyWorks --checkfile MyWorks.sha256
 
 ## Copy with a graphical app
 
-Keep seestar-wormhole connected. To copy images on the same computer, use the settings below.
-We use rclone (above); any SMB app should work with these settings.
+To use another file-sharing app instead of the Copy tab, keep
+seestar-wormhole connected and use the settings below. We use rclone (above);
+any SMB app should work with these settings.
 
 | Setting | Value |
 | --- | --- |
@@ -116,7 +236,8 @@ smbclient '//127.0.0.1/EMMC Images' -p 4445 -U guest%
 
 ## Windows
 
-rclone is the supported route on Windows. The built-in SMB client reaches an
+On Windows, copy with the app's Copy tab, `seestar-copy-cli` or rclone. The
+built-in SMB client reaches an
 alternate TCP port only on Windows 11 24H2 or later and Windows Server 2025.
 Its alternate-port mapping requires an administrator, for example:
 

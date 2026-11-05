@@ -26,8 +26,10 @@ import (
 const (
 	readyAge     = 2 * time.Minute
 	firstPassAge = 10 * time.Minute
-	workers      = 4
 )
+
+// runSync runs a copy or a preview; tests replace it.
+var runSync = engine.RunSync
 
 // The Copy tab's states, as the page names them.
 const (
@@ -97,7 +99,8 @@ type status struct {
 	contact  string // the last contact: "", "connecting", "ok" or "err"
 
 	// The current pass.
-	unreachable   bool // its connection failed
+	unreachable   bool  // its connection failed
+	reachErr      error // and why
 	folders       int
 	listed        string // the folder being listed
 	files         int    // planned downloads, or while listing those so far
@@ -151,7 +154,7 @@ func (c *controller) start(set Settings, t Target) error {
 	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
 		Endpoint: set.Address, Dest: set.Folder, StateDir: c.stateDir, Selector: sel, Interval: interval,
-		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: workers,
+		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: c.dialPass, Hooks: c.hooks(ctx), CheckNow: c.checkNow, Recreate: true,
 	}
 	c.mu.Unlock()
@@ -179,7 +182,7 @@ func (c *controller) start(set Settings, t Target) error {
 func (c *controller) run(ctx context.Context, cancel context.CancelFunc, o engine.SyncOptions) error {
 	ran := make(chan error, 1)
 	go func() {
-		ran <- guard.Run(c.log, "copying", func() error { return engine.RunSync(ctx, o, c.log) })
+		ran <- guard.Run(c.log, "copying", func() error { return runSync(ctx, o, c.log) })
 	}()
 	joined := false
 	defer func() {
@@ -340,7 +343,7 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 		return sess, err
 	}
 	if err != nil {
-		st.unreachable, st.contact = true, "err"
+		st.unreachable, st.reachErr, st.contact = true, err, "err"
 	} else {
 		st.state, st.contact = stListing, "ok"
 	}
@@ -609,6 +612,9 @@ func (c *controller) view(now time.Time) copyView {
 	case stUnreachable:
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."
 		v.Text = "Trying again at " + at(st.next) + ". " + checkReach + " Copying stays on and keeps trying."
+		if c.bound.onLAN() {
+			v.Text += LocalNetworkHint(hostOS, st.reachErr)
+		}
 	case stStopping:
 		v.Title = "Stopping…"
 	case stStopped:

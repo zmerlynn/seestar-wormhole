@@ -755,9 +755,9 @@ gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-wormhole
 
 Linux and Windows CLI executables are byte-for-byte reproducible with identical
 source, version, revision, and Go toolchain: rebuild and compare against
-`seestar-wormhole-cli` (with `.exe` on Windows) unpacked from the archive. See
-[release build mechanics](development/releasing.md). The Mac CLI is combined
-with lipo and signed, so it is not byte-reproducible. UI executables and the DMG
+`seestar-wormhole-cli` and `seestar-copy-cli` (with `.exe` on Windows) unpacked
+from the archive. See [release build mechanics](development/releasing.md). The
+Mac CLIs are combined with lipo and signed, so they are not byte-reproducible. UI executables and the DMG
 are verified by SHA256SUMS and attestation only; native toolchains, packaging,
 and signing affect their bytes.
 
@@ -790,8 +790,8 @@ TCP pair at `127.0.0.1`, independently of `--bind`, and refuses startup with exi
 and a final ERROR if the query fails, returns a short result, or loopback setup is
 unavailable.
 
-Image copying uses
-[rclone through the SMB listener](copying.md#windows).
+Copy images with the app's Copy tab, `seestar-copy-cli` or rclone; see
+[copying on Windows](copying.md#windows).
 
 Installation identity files must be owned by the current user and have a
 protected DACL containing exactly explicit full-access allow ACEs for that user

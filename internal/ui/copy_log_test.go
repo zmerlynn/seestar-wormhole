@@ -61,7 +61,7 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 			}
 		}
 		at, _ := json.Marshal(folder)
-		post("/copy/api/settings", `{"folder":`+string(at)+`,"interval":"5","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`)
+		post("/copy/api/settings", `{"folder":`+string(at)+`,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`)
 		post("/copy/api/copy", `{"action":"start"}`)
 		for deadline := time.Now().Add(10 * time.Second); !strings.Contains(logs.String(), "copying stopped") && time.Now().Before(deadline); {
 			time.Sleep(10 * time.Millisecond)
@@ -120,7 +120,7 @@ func TestCopyStateIsShared(t *testing.T) {
 			return b
 		}
 		at, _ := json.Marshal(filepath.Join(t.TempDir(), "Seestar"))
-		send("POST", "/copy/api/settings", `{"folder":`+string(at)+`,"interval":"5","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`)
+		send("POST", "/copy/api/settings", `{"folder":`+string(at)+`,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`)
 		var status struct {
 			History string `json:"history"`
 		}

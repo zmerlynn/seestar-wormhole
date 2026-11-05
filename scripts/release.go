@@ -1,6 +1,7 @@
 //go:build release
 
-// Release builds executable parts and deterministic dual-program archives.
+// Release builds executable parts and deterministic archives of the app and
+// both CLIs.
 // Invoke through release.sh from any directory.
 package main
 
@@ -53,11 +54,18 @@ func releaseCode(args []string, stderr io.Writer) int {
 	return 0
 }
 
-func assetName(version, goos, arch string, gui bool) string {
-	program, ext := "seestar-wormhole-cli", ""
-	if gui {
-		program = "seestar-wormhole"
-	}
+// The app is seestar-wormhole; the two CLIs are command-line programs.
+const (
+	appProgram  = "seestar-wormhole"
+	cliProgram  = "seestar-wormhole-cli"
+	copyProgram = "seestar-copy-cli"
+)
+
+// cliPrograms are built for every platform; the app only where it is cgo-free.
+var cliPrograms = []string{cliProgram, copyProgram}
+
+func assetName(version, goos, arch, program string) string {
+	ext := ""
 	if goos == "windows" {
 		ext = ".exe"
 	}
@@ -88,23 +96,27 @@ func expectedAssets(version string) []string {
 	return names
 }
 
-func buildBinary(version, revision, goos, arch string, gui bool, path string) error {
-	fmt.Printf("Building %s/%s gui=%t (%s, %s)\n", goos, arch, gui, version, revision)
+func buildBinary(version, revision, goos, arch, program, path string) error {
+	fmt.Printf("Building %s %s/%s (%s, %s)\n", program, goos, arch, version, revision)
 	// Keep module build info: licenses relies on debug.ReadBuildInfo even with -s -w.
 	flags := "-s -w -X main.version=" + version + " -X main.revision=" + revision
 	args := []string{"build", "-mod=vendor", "-trimpath", "-buildvcs=false"}
-	if gui {
+	if program == appProgram {
 		args = append(args, "-tags=gui,production")
 		flags += " -H windowsgui"
 	}
-	args = append(args, "-ldflags", flags, "-o", path, "./cmd/seestar-wormhole")
+	source := "./cmd/seestar-wormhole"
+	if program == copyProgram {
+		source = "./cmd/seestar-copy-cli"
+	}
+	args = append(args, "-ldflags", flags, "-o", path, source)
 	cmd := exec.Command("go", args...)
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+arch, "CGO_ENABLED=0")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	return cmd.Run()
 }
 
-func release(version, revision string, mtime time.Time, build func(string, string, string, string, bool, string) error) error {
+func release(version, revision string, mtime time.Time, build func(string, string, string, string, string, string) error) error {
 	if err := os.MkdirAll("dist", 0755); err != nil {
 		return err
 	}
@@ -119,13 +131,13 @@ func release(version, revision string, mtime time.Time, build func(string, strin
 	var names []string
 	for _, platform := range platforms {
 		parts := strings.Split(platform, "/")
-		variants := []bool{false}
+		programs := cliPrograms
 		if parts[0] == "windows" {
-			variants = append(variants, true)
+			programs = append(slices.Clip(programs), appProgram)
 		}
-		for _, gui := range variants {
-			name := assetName(version, parts[0], parts[1], gui)
-			if err := build(version, revision, parts[0], parts[1], gui, filepath.Join(stage, "parts", name)); err != nil {
+		for _, program := range programs {
+			name := assetName(version, parts[0], parts[1], program)
+			if err := build(version, revision, parts[0], parts[1], program, filepath.Join(stage, "parts", name)); err != nil {
 				return fmt.Errorf("build %s: %w", name, err)
 			}
 			names = append(names, name)
@@ -162,7 +174,7 @@ func writeArchive(dir, parts, version, goos, arch string, mtime time.Time) (err 
 	if goos == "windows" {
 		ext = ".exe"
 	}
-	members := []string{"LICENSE", "NOTICE", "seestar-wormhole" + ext, "seestar-wormhole-cli" + ext}
+	members := []string{"LICENSE", "NOTICE", appProgram + ext, cliProgram + ext, copyProgram + ext}
 	slices.Sort(members)
 	f, err := os.Create(filepath.Join(dir, archiveName(version, goos, arch)))
 	if err != nil {
@@ -186,8 +198,8 @@ func writeArchive(dir, parts, version, goos, arch string, mtime time.Time) (err 
 	}
 	for _, name := range members {
 		path, mode := name, int64(0644)
-		if strings.HasPrefix(name, "seestar-wormhole") {
-			path = filepath.Join(parts, assetName(version, goos, arch, !strings.Contains(name, "-cli")))
+		if strings.HasPrefix(name, "seestar-") {
+			path = filepath.Join(parts, assetName(version, goos, arch, strings.TrimSuffix(name, ext)))
 			mode = 0755
 		}
 		data, e := os.ReadFile(path)
@@ -242,9 +254,11 @@ func finalChecksums(version string, mtime time.Time) error {
 	var wantParts []string
 	for _, platform := range platforms {
 		p := strings.Split(platform, "/")
-		wantParts = append(wantParts, assetName(version, p[0], p[1], false))
+		for _, program := range cliPrograms {
+			wantParts = append(wantParts, assetName(version, p[0], p[1], program))
+		}
 		if p[0] != "darwin" {
-			wantParts = append(wantParts, assetName(version, p[0], p[1], true))
+			wantParts = append(wantParts, assetName(version, p[0], p[1], appProgram))
 		}
 	}
 	dmg := archiveName(version, "darwin", "universal")

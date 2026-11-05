@@ -327,6 +327,7 @@ type input struct {
 	Address      string   `json:"address"`
 	Folder       string   `json:"folder"`
 	Interval     string   `json:"interval"`
+	FilesAtOnce  string   `json:"files_at_once"`
 	Excludes     []string `json:"excludes"` // the box's lines
 	Includes     []string `json:"includes"`
 	SkipBuiltIn  bool     `json:"skip_built_in"`
@@ -381,7 +382,7 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		OK      bool   `json:"ok"`
 		Address string `json:"address"`
 		Message string `json:"message"`
-	}{err == nil, endpoint, testMessage(endpoint, entries, err)})
+	}{err == nil, endpoint, testMessage(hostOS, endpoint, entries, err)})
 }
 
 type fieldErrors struct {

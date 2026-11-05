@@ -20,6 +20,12 @@ includes them verbatim with that module's vendored notices. This preserves the
 Apache-2.0 terms in go-keyring's macOS source without editing generated vendor
 files; its root license covers the remaining code under MIT.
 
+`go run ./scripts/checklicenses` builds both CLIs for the current platform, runs
+their `licenses` commands and requires each module in the executable's build
+information (`debug/buildinfo`) to be listed exactly once, and no other module.
+Given executable paths instead, it checks those; the release workflow runs it
+on the Linux CLIs, both Linux UIs and the arm64 Mac programs it builds.
+
 The Linux native GUI supplement and LGPL-2.1 text in NOTICE are generated as
 `embed/native-linux/NOTICE`. The notice writer selects that supplement only
 for Linux builds with `gui` and cgo enabled, using the target build settings.

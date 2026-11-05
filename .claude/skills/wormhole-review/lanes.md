@@ -135,7 +135,7 @@ Do the tests pin the changed behavior?
    (`remote.Fake`): short reads, an error mid-file, cancel mid-file, a rename
    over an existing file, names Windows cannot store, and several passes end
    to end. Copy state fixtures include a torn final line and a bad middle
-   line, and a contract in `docs/copy/reference.md` needs a test as one in
+   line, and a contract in `docs/copy-reference.md` needs a test as one in
    `docs/reference.md` does.
 6. Any weakened assertion needs a stated reason.
 
@@ -240,7 +240,7 @@ disagrees with the code, or anything that looks copied or captured.
 
 ## cli-contract
 
-`docs/reference.md`, and `docs/copy/reference.md` for `seestar-copy-cli`, are
+`docs/reference.md`, and `docs/copy-reference.md` for `seestar-copy-cli`, are
 the contract for scripts and careful users; help text is the contract for
 people at a terminal. For `seestar-copy-cli`, that includes the per-file lines
 and the per-pass summary line, a state file for another destination or one
@@ -401,7 +401,7 @@ The readers:
 - `README.md` is for Seestar owners who are not developers;
 - each `docs/` guide is for the same readers doing one task;
 - `docs/reference.md` owns the mechanics: flags, defaults, exit codes and
-  formats; `docs/copy/reference.md` owns them for `seestar-copy-cli` and the
+  formats; `docs/copy-reference.md` owns them for `seestar-copy-cli` and the
   copy state file;
 - `DESIGN.md` and `docs/development/` are for contributors.
 

@@ -85,7 +85,47 @@ test the command's version and help output.
 - **Containers** are checked for the image's user and startup. The phone setup
   hasn't been run in one.
 
-## SMB copying
+## Copying
 
-See [Copy images](copying.md) for the recipe and its verification status.
+### The Copy, Browse and Free up space tabs and seestar-copy-cli
+
+The app's Copy, Browse and Free up space tabs, new in 0.7.0, haven't been run
+against a telescope yet, on either route. Their copier came from seestar-copy
+0.4.0, which before the merge was tried on a telescope only on macOS, through
+the proxy. Its Free up space wasn't tried on a telescope, and neither was the
+**On this network** route.
+
+Two 0.7.0 additions are tested only in CI. The Mac app's Info.plist carries
+the Local Network usage text, and a **Test**, **Save**, copy pass or Preview on
+this network that nothing answered names the Local Network setting on a Mac;
+neither has been seen on a Mac whose Local Network access is blocked. **Files
+at once** (1 to 4, default 4) passes its value to the copier; no setting below
+4 has been measured against a telescope, through the account or on this network.
+
+CI covers both routes without a telescope:
+
+- **On this network:** a Samba share set up like the telescope's (guest,
+  read-only `EMMC Images`) stands in for it. Go tests copy from it, list it
+  and delete from a writable scratch share, through the app's copier and through
+  Free up space. Browser tests in Chromium and WebKit drive the app's page
+  against it: saving and testing an address, copying with real passes,
+  Preview, Clear history, Browse, Free up space's preview and confirmation,
+  and a folder in use by `seestar-copy-cli` or a second app. They also cover
+  `seestar-copy-cli browse`'s page.
+- **Through your account:** Go tests with a fake share and a stand-in
+  connection check that copying uses the proxy's SMB port, waits for the
+  connection without starting it, and stays with its telescope, and that a
+  delete holds the connection until it ends. No CI job copies through the
+  proxy itself.
+- **The window:** native scenarios on macOS, Windows and Linux run the real
+  tabs against a fake share: they close the window, or quit on macOS, while a
+  file is mid-copy, save a file from Browse, preview Free up space and cancel
+  its confirmation, and show a folder in use by another app.
+- **seestar-copy-cli** is built and vetted for every release target, and
+  smoke tested natively on macOS and Windows.
+
+### rclone and other SMB apps
+
+See [Copy images](copying.md#with-rclone) for the recipe and its verification
+status.
 With public SMB clients through this proxy, the device selects SMB 3.1.1 when offered; it also accepts SMB 3.0.2 and 2.1 when each is the highest dialect offered. Observed October 16, 2026 with smbclient through this proxy, capped in turn at 3.1.1, 3.0.2 and 2.1; each was negotiated. This doesn't establish the device's configured minimum or maximum.
