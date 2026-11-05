@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -122,7 +123,9 @@ func TestHTTPRejections(t *testing.T) {
 		{"method", "GET", "/api/stop", nil, 405},
 		{"status post", "POST", "/api/status", nil, 405},
 		{"malformed", "POST", "/api/start", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader("{")) }, 400},
-		{"oversize", "POST", "/api/retry-storage", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", maxJSON+1))) }, 413},
+		{"oversize", "POST", "/api/retry-storage", func(r *http.Request) {
+			r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", localhttp.MaxJSON+1)))
+		}, 413},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := request(s, tc.method, tc.path, "{}")
@@ -229,7 +232,7 @@ func TestDoubleLaunchAndStaleRecord(t *testing.T) {
 	run := func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { runs++; return nil }
 	done := make(chan error, 1)
 	go func() {
-		done <- runUIPresented(ctx, root, io.Discard, io.Discard, run, opener, &fakeKeychain{}, nil, false)
+		done <- runUIPresented(ctx, root, io.Discard, io.Discard, run, opener, &fakeKeychain{}, nil, nil)
 	}()
 	var first string
 	select {
@@ -240,7 +243,7 @@ func TestDoubleLaunchAndStaleRecord(t *testing.T) {
 	if strings.Contains(first, strings.Repeat("b", 64)) {
 		t.Fatal("stale record reused")
 	}
-	if err := runUIPresented(t.Context(), root, io.Discard, io.Discard, run, opener, &fakeKeychain{}, nil, false); err != nil {
+	if err := runUIPresented(t.Context(), root, io.Discard, io.Discard, run, opener, &fakeKeychain{}, nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if second := <-urls; second != first {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 
@@ -22,20 +24,26 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 )
 
-// The one policy every response carries: Browse's same-origin frame is the
-// only relaxation.
+// The one policy every response carries, Browse's included: the page frames
+// Browse, and only its own origin may frame either.
 const pageCSP = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'"
 
 // copyServer is testServer with copy mounted. Its copier reaches a fake
 // share, and Test checks a fake that records what it was asked to reach.
 func copyServer(t *testing.T) (*server, *[]string) {
 	t.Helper()
+	return copyServerWith(t, nil)
+}
+
+// copyServerWith is copyServer with a window's dialogs, or none.
+func copyServerWith(t *testing.T, native *copyapp.Native) (*server, *[]string) {
+	t.Helper()
 	s := testServer(t)
 	var tested []string
 	s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
 		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
-		Target: s.copyTarget,
+		Target: s.copyTarget, Native: native,
 		Dial: func(context.Context, string) (remote.Session, error) {
 			return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), nil
 		},
@@ -70,22 +78,57 @@ func copySettings(t *testing.T, s *server) {
 func TestOneServerHeaders(t *testing.T) {
 	s, _ := copyServer(t)
 	copySettings(t, s)
-	for _, path := range []string{"/", "/app.js", "/api/status", "/copy/api/status", "/nope", "/browse/"} {
+	for _, path := range []string{"/", "/app.js", "/api/status", "/copy/api/status", "/nope", "/browse/", "/browse/api/list"} {
 		w := serve(s, request(s, "GET", path, ""))
-		if got := w.Header().Get("X-Frame-Options"); got != "SAMEORIGIN" {
-			t.Errorf("%s X-Frame-Options %q", path, got)
-		}
-		csp := w.Header().Get("Content-Security-Policy")
-		if path == "/browse/" {
-			// Browse sets its own, stricter policy for its frame.
-			if w.Code != 200 || !strings.Contains(csp, "frame-ancestors 'self'") || !strings.Contains(csp, "default-src 'none'") {
-				t.Errorf("browse = %d, CSP %q", w.Code, csp)
+		for k, want := range map[string]string{"X-Frame-Options": "SAMEORIGIN", "Cross-Origin-Resource-Policy": "same-origin",
+			"Content-Security-Policy": pageCSP, "Referrer-Policy": "no-referrer", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store"} {
+			if got := w.Header().Values(k); len(got) != 1 || got[0] != want {
+				t.Errorf("%s (%d): %s = %q, want %q", path, w.Code, k, got, want)
 			}
-			continue
 		}
-		if csp != pageCSP {
-			t.Errorf("%s CSP %q", path, csp)
+	}
+}
+
+// The window's folder picker is one more copy action, behind the same
+// token and checks; a browser has none.
+func TestCopyChooseFolder(t *testing.T) {
+	picked := filepath.Join(t.TempDir(), "picked")
+	var shown atomic.Int32
+	s, _ := copyServerWith(t, &copyapp.Native{ChooseFolder: func(string) (string, error) {
+		shown.Add(1)
+		return picked, nil
+	}})
+	for name, mutate := range map[string]func(*http.Request){
+		"token":          func(r *http.Request) { r.Header.Del("X-Seestar-Token") },
+		"origin foreign": func(r *http.Request) { r.Header.Set("Origin", "https://example.invalid") },
+		"fetch metadata": func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") },
+		"host":           func(r *http.Request) { r.Host = "localhost:12345" },
+	} {
+		r := request(s, "POST", "/copy/api/folder", `{"folder":""}`)
+		mutate(r)
+		if w := serve(s, r); w.Code != 403 {
+			t.Errorf("%s: %d %s", name, w.Code, w.Body)
 		}
+	}
+	if shown.Load() != 0 {
+		t.Fatal("a refused request showed the picker")
+	}
+	var got struct {
+		Folder string `json:"folder"`
+	}
+	w := serve(s, request(s, "POST", "/copy/api/folder", `{"folder":""}`))
+	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != 200 || got.Folder != picked || shown.Load() != 1 {
+		t.Errorf("folder = %d %s (%v), shown %d", w.Code, w.Body, err, shown.Load())
+	}
+	var status struct {
+		Choose bool `json:"choose"`
+	}
+	if err := json.Unmarshal(serve(s, request(s, "GET", "/copy/api/status", "")).Body.Bytes(), &status); err != nil || !status.Choose {
+		t.Errorf("the window's status has no picker: %v", err)
+	}
+	browser, _ := copyServer(t)
+	if w := serve(browser, request(browser, "POST", "/copy/api/folder", `{"folder":""}`)); w.Code != 404 {
+		t.Errorf("browser folder = %d", w.Code)
 	}
 }
 
@@ -109,7 +152,9 @@ func TestCopyAPIRejections(t *testing.T) {
 		{"fetch metadata", "POST", "/copy/api/test", func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "cross-site") }, 403},
 		{"fetch metadata none", "POST", "/copy/api/test", func(r *http.Request) { r.Header.Set("Sec-Fetch-Site", "none") }, 403},
 		{"content type", "POST", "/copy/api/test", func(r *http.Request) { r.Header.Set("Content-Type", "text/plain") }, 415},
-		{"oversize", "POST", "/copy/api/settings", func(r *http.Request) { r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", maxJSON+1))) }, 413},
+		{"oversize", "POST", "/copy/api/settings", func(r *http.Request) {
+			r.Body = io.NopCloser(strings.NewReader(strings.Repeat("x", localhttp.MaxJSON+1)))
+		}, 413},
 		{"method", "GET", "/copy/api/settings", nil, 405},
 		{"status post", "POST", "/copy/api/status", nil, 405},
 		{"unknown", "GET", "/copy/api/nope", nil, 404},
@@ -395,6 +440,86 @@ func TestLANTest(t *testing.T) {
 	// Test saves nothing.
 	if s.settings.Route != "" && s.settings.Route != routeAccount {
 		t.Errorf("Test changed the route: %+v", s.settings)
+	}
+}
+
+// closeSession counts its Close in the open sessions.
+type closeSession struct {
+	remote.Session
+	open *atomic.Int64
+}
+
+func (c closeSession) Close() error {
+	c.open.Add(-1)
+	return c.Session.Close()
+}
+
+// Quit closes Browse's session, then stops the copy controllers, then the
+// proxy, and only then the HTTP server: when the proxy's run ends, no
+// device session is open and copying is off, and the server has not
+// begun to shut down.
+func TestQuitOrder(t *testing.T) {
+	s := testServer(t)
+	var open atomic.Int64
+	s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
+		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
+		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Target: s.copyTarget,
+		Dial: func(context.Context, string) (remote.Session, error) {
+			open.Add(1)
+			return closeSession{remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), &open}, nil
+		},
+		Test: func(context.Context, string) ([]remote.Entry, error) {
+			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
+		},
+	})
+	t.Cleanup(s.copy.Quit)
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.10"); err != nil {
+		t.Fatal(err)
+	}
+	copySettings(t, s)
+	type atStop struct {
+		open      int64
+		copying   bool
+		httpEnded bool
+	}
+	stopped := make(chan atStop, 1)
+	running := make(chan struct{})
+	s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+		close(running)
+		<-ctx.Done()
+		ended := false
+		select {
+		case <-s.quit:
+			ended = true
+		default:
+		}
+		stopped <- atStop{open.Load(), s.copy.Busy(), ended}
+		return nil
+	}
+	if err := s.controller.start(testSettings(), testPassword); err != nil {
+		t.Fatal(err)
+	}
+	<-running
+	if w := serve(s, request(s, "GET", "/browse/api/list?path=MyWorks", "")); w.Code != 200 {
+		t.Fatalf("browse = %d %s", w.Code, w.Body)
+	}
+	if w := serve(s, request(s, "POST", "/copy/api/copy", `{"action":"start"}`)); w.Code != 200 {
+		t.Fatalf("start copying = %d %s", w.Code, w.Body)
+	}
+	if n := open.Load(); n < 1 || !s.copy.Busy() {
+		t.Fatalf("before Quit: %d sessions open, copying %v", n, s.copy.Busy())
+	}
+	if w := serve(s, request(s, "POST", "/api/quit", "{}")); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	if got := <-stopped; got.open != 0 || got.copying || got.httpEnded {
+		t.Errorf("when the proxy stopped: %+v, want no session, copying off and the server up", got)
+	}
+	select {
+	case <-s.quit:
+	default:
+		t.Error("Quit did not go on to shut the server down")
 	}
 }
 

@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,7 +22,7 @@ func testStorage(t *testing.T) *storage {
 }
 func TestSettingsStorage(t *testing.T) {
 	st := testStorage(t)
-	for _, body := range []string{`{`, `{"version":99}`, `{}`, `null`, `{"version":1,"idle":"-1s"}`, `{"version":1,"idle":120}`, `{"version":1,"ports":[{"local":"80","device":80}]}`, `{"version":1,"ports":["4445:80"]}`, `{"version":1,"serial":"\n"}`, `{"version":1,"email":"invalid"}`, `{"version":1,"version":1}`, strings.Repeat(" ", maxJSON+1)} {
+	for _, body := range []string{`{`, `{"version":99}`, `{}`, `null`, `{"version":1,"idle":"-1s"}`, `{"version":1,"idle":120}`, `{"version":1,"ports":[{"local":"80","device":80}]}`, `{"version":1,"ports":["4445:80"]}`, `{"version":1,"serial":"\n"}`, `{"version":1,"email":"invalid"}`, `{"version":1,"version":1}`, strings.Repeat(" ", localhttp.MaxJSON+1)} {
 		path := filepath.Join(st.root, "config.json")
 		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 			t.Fatal(err)
@@ -67,7 +68,7 @@ func TestHeadlessSettingsReadOnly(t *testing.T) {
 	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
 		t.Fatal("read created state root")
 	}
-	for _, body := range []string{`{"version":99}`, `{}`, strings.Repeat(" ", maxJSON+1)} {
+	for _, body := range []string{`{"version":99}`, `{}`, strings.Repeat(" ", localhttp.MaxJSON+1)} {
 		if err := os.WriteFile(filepath.Join(st.root, "config.json"), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}

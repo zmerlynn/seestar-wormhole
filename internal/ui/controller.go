@@ -244,6 +244,8 @@ func (c *controller) saveAtBoundary(status *proxy.Status, s Settings) {
 	}
 	c.saveAttempted = true
 	c.mu.Unlock()
+	// The run is ready: the account route has connected.
+	s.RouteEstablished = true
 	c.persistLocked(s)
 }
 
@@ -277,7 +279,12 @@ func (c *controller) retrySave() error {
 	if c.pendingSave == nil {
 		return nil
 	}
-	return c.persistLocked(*c.pendingSave)
+	// A retry establishes no route; the next Connect or LAN save does.
+	s := *c.pendingSave
+	c.mu.Lock()
+	s.RouteEstablished = c.lastSaved.RouteEstablished
+	c.mu.Unlock()
+	return c.persistLocked(s)
 }
 func (c *controller) persistRemoval(generation uint64) error {
 	c.saveMu.Lock()
@@ -403,7 +410,8 @@ func (c *controller) persistRoute(route, address string) error {
 	}
 	s.Route = route
 	if route == routeLAN {
-		s.LANAddress = address
+		// The caller has tested the address.
+		s.LANAddress, s.RouteEstablished = address, true
 	}
 	return c.persistLocked(s)
 }
@@ -435,6 +443,10 @@ func (c *controller) persistPassword(s Settings, generation uint64) error {
 	if c.credentials.generationID() != generation {
 		return &ActionError{Code: "password", Field: "password"}
 	}
+	// A password establishes no route; the page's draft can't either.
+	c.mu.Lock()
+	s.RouteEstablished = c.lastSaved.RouteEstablished
+	c.mu.Unlock()
 	err := c.persistLocked(s)
 	if err == nil {
 		c.mu.Lock()

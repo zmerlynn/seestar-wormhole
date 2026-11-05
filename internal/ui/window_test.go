@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
@@ -54,7 +55,7 @@ func TestWindowLifetime(t *testing.T) {
 					}
 				}
 				// A second launch must activate the owner and return without opening a page.
-				if err := runUIPresented(process, root, io.Discard, io.Discard, nil, func(string) error { t.Error("second launch opened browser"); return nil }, &fakeKeychain{}, func(context.Context, string, func(), <-chan struct{}) error { t.Error("second window"); return nil }, true); err != nil {
+				if err := runUIPresented(process, root, io.Discard, io.Discard, nil, func(string) error { t.Error("second launch opened browser"); return nil }, &fakeKeychain{}, func(context.Context, string, func(), <-chan struct{}) error { t.Error("second window"); return nil }, &copyapp.Native{}); err != nil {
 					t.Fatal(err)
 				}
 				select {
@@ -91,7 +92,7 @@ func TestWindowLifetime(t *testing.T) {
 					<-quitDone
 				}
 				return nil
-			}, true)
+			}, &copyapp.Native{})
 			if trigger == "startup failure" {
 				if err != errStorage {
 					t.Fatal(err)
@@ -163,7 +164,7 @@ func TestWindowReceivesLaunchVersion(t *testing.T) {
 			quit()
 			<-windowCtx.Done()
 			return nil
-		}, true)
+		}, &copyapp.Native{})
 		if err != nil {
 			t.Fatal(err)
 		}

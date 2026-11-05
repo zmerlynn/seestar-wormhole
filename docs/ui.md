@@ -10,12 +10,15 @@ They share one connection to the telescope.
 The header shows a dot and a line with the connection's state: **Not
 connected**, the status while connecting, or **Connected to** your Seestar. On
 this network it shows the saved address, then **On this network: reachable**
-or **Can't reach** the address once **Test** has run.
+or **Can't reach** the address once **Test** has run. Once copying is set up,
+a chip after the line says how copying stands: **Copying**, **Up to date**,
+how many files were not copied, **Copying is on** or **Copying is off**.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
-between them. Copy, Browse and Free up space are not available yet; they say
-**Coming in this build**. Quit and the version are below every tab.
+between them. Copy, Browse and Free up space open once you connect through
+your account, or save an address on this network; until then they are
+unavailable and say so. Quit and the version are below every tab.
 
 ## Reaching the telescope
 
@@ -97,11 +100,91 @@ the local SMB port; see [copying images](copying.md).
 
 Keep seestar-wormhole open while you use the telescope.
 
+## Copying images
+
+**Copy**, **Browse** and **Free up space** copy your images from the
+telescope's file share to a folder on this computer, show what is on the
+share, and delete what is safely copied. They use the same rules and the same
+copy history as [`seestar-copy-cli`](copy/reference.md)'s `sync`, `browse` and
+`delete`. On your account they reach the share through the proxy's SMB port
+(local port 4445 by default); on this network, at the saved address.
+
+If they can't reach the share, each says why and links to the fix:
+
+| Notice | Fix |
+|---|---|
+| **Not connected. Copying resumes when the connection is ready.** | **Go to Connection** and connect. Scheduled checks wait for the connection; they don't start it. |
+| **SMB is off. Turn on its port in Connection > Advanced.** | **Open Advanced** and forward a local port to Seestar port 445. |
+| **Save the telescope's address on the Connection tab first.** | **Go to Connection**, choose **On this network**, and save the address. |
+
+### Copy
+
+The first time you open Copy, **Copy settings** is open: choose the folder for
+your images, with **Choose…** in the app's window or by typing its full path,
+then **Save and continue**. Nothing is
+copied until you start. After that, Copy shows what copying is doing, with
+**Start copying**, **Preview**, **Check now** and **Stop copying**, and below
+them a summary of the settings, such as "Copying to ~/Seestar every 5 min,
+skipping logs and system files." **Change…** opens the settings, which you
+can't change while copying runs:
+
+- **Folder for your images.** Images are copied there in the same folders as
+  on the telescope. Each folder has its own copy history.
+- **Check for new files every** N minutes, 5 by default.
+- **Leave out** and **Only copy**: one pattern per line, as `sync`'s
+  [`--exclude` and `--include`](copy/reference.md#selection).
+- **Skip the telescope's logs, scratch and system files**, on by default.
+- **Start copying when the app opens**, off by default. On your account,
+  copying then starts once the connection is ready.
+
+While copying is off, **Preview** shows what **Start copying** would do, from
+one [dry run](copy/reference.md#dry-run) with the saved settings: how many
+files it would copy and their size, with a row per folder, and how many are
+already copied, still being written, or left out. Nothing is copied.
+**Cancel** stops a preview that is running; starting, a Save that changes the
+folder or the selection, and Clear history discard it.
+
+While copying is on, the app holds the folder's lock, as `sync` does: a `sync`
+for the same folder exits with its usual error, and Copy says **Another copy
+is already using this folder.** while a `sync`, or another copy of the app with
+another state directory, holds it.
+
+**Copy history**, collapsed under the settings, shows the path of the saved
+folder's [state file](copy/reference.md#the-state-file), which `sync` uses
+too. While the folder field holds a folder not yet saved, it says to save
+first. **Clear history…** deletes that state file after a confirmation, so the
+app forgets what it copied to the folder. Files still in the folder are kept
+and adopted on the next pass; files moved out of it are copied again. Clear
+history is unavailable while copying is on, and refuses while Free up space
+is checking or deleting, or while a `sync` holds the folder's lock.
+
+### Browse
+
+Browse is `seestar-copy-cli browse`'s page for the share, with the saved
+folder's [statuses](copy/reference.md#statuses). What the settings leave out
+shows as [`left out`](copy/reference.md#left-out-in-browse). A Save that
+changes the folder or the selection reloads it at the share's top. Until the
+folder is saved, Browse says to choose it, with **Go to Copy**. In the app's
+window, a file's **Save** asks where to save it; in a browser, it downloads.
+
+### Free up space
+
+**Preview what to delete** lists, per folder, the files that are copied and
+safe to delete, as `delete` [proves it](copy/reference.md#proof-modes), and
+nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
+files older than** N days (7 by default; 0 means any age) keeps recent
+sessions on the telescope, and **My copies have moved or the drive is
+offline** checks only the app's record of each copy, as `--trust-state`
+does. **Delete N files…** asks once more; **Stop** ends a delete that is
+running.
+
 ## Stopping and quitting
 
 **Stop** releases the telescope and leaves the window ready to connect again.
-**Quit** stops the connection and exits. Closing the window does the same
-and waits for the release. Logging out or shutting down also stops the
+**Quit** stops copying and the connection and exits: browsing ends first,
+then copying, a preview or a delete stops and is waited for, then the
+connection, then the control page. A file partly copied is copied again next
+time. Closing the window does the same and waits for the release. Logging out or shutting down also stops the
 connection first, as far as your system allows.
 
 Opening seestar-wormhole again with the same state directory brings the
@@ -185,12 +268,18 @@ setup uses local port 8080 instead. SMB uses local port 4445 for Seestar port
 
 ## Activity
 
-The **Activity** tab holds **Details and logs**: your connection settings as
-JSON, recent events in local time, error codes, and the private log's location.
+The **Activity** tab lists the connection's recent events and copying's and
+deleting's activity in one list, newest first, each tagged **Connection**,
+**Copy** or **Delete**. **Details and logs** holds your connection and copy
+settings as JSON, error codes, and the paths of the private log and the
+settings files, `config.json` and `copy.json`.
 
 **Copy diagnostic summary** copies one JSON object with the program name,
-version, connection settings, and this launch's events in UTC. It leaves out
-addresses, paths, credentials, tokens, account identifiers, and payloads.
+version, error code, connection and copy settings, the listed events, and the
+log's path. The connection settings and events leave out addresses, paths,
+credentials, tokens, account identifiers, and payloads. The copy settings
+include your folder and patterns, and copy and delete activity names the
+files it is about; check the summary before you share it.
 Lifecycle events include the selected telescope model and full serial with the
 same representation and model display cap as status. Each Connect that reads the account
 catalog also records its telescope list, even for a single telescope:
@@ -233,12 +322,19 @@ To use another existing installation root, run
 | File | Purpose |
 |---|---|
 | `config.json` | Settings except the password; see [the format](#configjson-version-1). |
+| `copy.json` | Copy settings; see [the format](#copyjson-version-1). |
 | `InterProcessKV/device_uuid` | Your [installation identity](reference.md#installation-identity), shared with `proxy --state-dir PATH`. |
 | `gui.log`, `gui.log.1` | UI events as JSON lines, up to 64 KiB each, with one rotation. |
 | `ui.lock` | Keeps one UI running per state directory. |
 | `ui-runtime.json` | Private control port and token; removed on normal exit. |
 | `webview-<random>/` | Windows only: a fresh private engine profile for each launch; see [engine data](#engine-data). |
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
+
+The copy history and each folder's lock are not in the state directory. They
+stay in `seestar-copy-cli`'s default [state location](copy/reference.md#location),
+`seestar-copy` beside `seestar-wormhole` in the same system folder, whatever
+`--state-dir` says, so the app and `seestar-copy-cli sync` share them and never
+copy into one folder at once.
 
 ### config.json version 1
 
@@ -254,6 +350,7 @@ To use another existing installation root, run
 | `remember_password` | `false` |
 | `route` | Empty, meaning the account route. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means the account route. |
 | `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
+| `route_established` | `false`. `true` once the account has connected or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
 
 These defaults differ from the UI's first-run phone setup.
 
@@ -264,6 +361,25 @@ service.
 Unknown members survive a save. Reads are limited to 64 KiB and never rewrite
 the file. A missing or unsupported version, including a newer one, is refused
 and left untouched. A failed load never overwrites existing state.
+
+### copy.json version 1
+
+`version` is required and must be `1`. Missing members take these defaults,
+and members this version doesn't know are kept when it saves. The file is
+written when you save Copy settings or preview Free up space with changed
+options, never on load.
+
+| Member | Default and meaning |
+|---|---|
+| `folder` | `Seestar` in your home folder. |
+| `interval_minutes` | `5` |
+| `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
+| `skip_built_in` | `true` |
+| `start_copying` | `false` |
+| `older_than_days` | `7` |
+| `trust_state` | `false` |
+
+The telescope's address is not in it; it comes from the route in `config.json`.
 
 ### File permissions
 

@@ -1,16 +1,12 @@
 package app
 
 import (
-	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // fakeNative records the dialogs shown and answers them as set.
@@ -22,8 +18,8 @@ type fakeNative struct {
 	err     error
 }
 
-func (f *fakeNative) native() *Native {
-	return &Native{
+func (f *fakeNative) native() Native {
+	return Native{
 		ChooseFolder: func(dir string) (string, error) {
 			f.folders = append(f.folders, dir)
 			return f.answer, f.err
@@ -38,23 +34,35 @@ func (f *fakeNative) native() *Native {
 	}
 }
 
+// newNativeEnv is an app env with saved settings, so Browse is there, and
+// a window's dialogs.
 func newNativeEnv(t *testing.T) (*appEnv, *fakeNative) {
-	e := newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":`+quote(t.TempDir())+`}`)
+	e := newAppEnv(t, savedAt(t.TempDir()))
 	f := &fakeNative{}
 	e.s.native = f.native()
 	return e, f
 }
 
-func TestStatusNative(t *testing.T) {
+// The status says whether the page may offer Choose…: only with the
+// window's folder picker.
+func TestStatusChoose(t *testing.T) {
 	type status struct {
-		Native bool `json:"native"`
+		Choose bool `json:"choose"`
 	}
 	e, _ := newNativeEnv(t)
-	if !decode[status](t, e.serve("GET", "/app/api/status", "", tokenHeader, testToken)).Native {
-		t.Error("a window's status says it has no dialogs")
+	if !decode[status](t, e.serve("GET", "/copy/api/status", "")).Choose {
+		t.Error("a window's status has no folder picker")
 	}
-	if decode[status](t, newAppEnv(t, "").serve("GET", "/app/api/status", "", tokenHeader, testToken)).Native {
-		t.Error("the browser-only status says it has dialogs")
+	if decode[status](t, newAppEnv(t, nil).serve("GET", "/copy/api/status", "")).Choose {
+		t.Error("the browser's status has a folder picker")
+	}
+}
+
+// Without a window there is no folder picker to ask for.
+func TestChooseFolderBrowser(t *testing.T) {
+	e := newAppEnv(t, nil)
+	if w := e.post("/copy/api/folder", `{"folder":""}`); w.Code != http.StatusNotFound {
+		t.Errorf("folder without a window = %d", w.Code)
 	}
 }
 
@@ -69,7 +77,7 @@ func TestChooseFolder(t *testing.T) {
 		{"", ""},
 	} {
 		f.folders = nil
-		w := e.post("/app/api/folder", `{"folder":`+quote(tt.typed)+`}`)
+		w := e.post("/copy/api/folder", `{"folder":`+quote(tt.typed)+`}`)
 		got := decode[struct {
 			Folder string `json:"folder"`
 		}](t, w)
@@ -80,27 +88,22 @@ func TestChooseFolder(t *testing.T) {
 	f.answer = "" // Cancel
 	if got := decode[struct {
 		Folder string `json:"folder"`
-	}](t, e.post("/app/api/folder", `{"folder":""}`)); got.Folder != "" {
+	}](t, e.post("/copy/api/folder", `{"folder":""}`)); got.Folder != "" {
 		t.Errorf("Cancel = %q", got.Folder)
 	}
-	// The picker takes the same checks as every POST.
-	if w := e.serve("POST", "/app/api/folder", `{}`, tokenHeader, testToken, "Origin", "http://evil.example", "Content-Type", "application/json"); w.Code != 403 {
-		t.Errorf("a cross-origin picker = %d", w.Code)
+	if w := e.serve("GET", "/copy/api/folder", ""); w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("GET folder = %d", w.Code)
 	}
-	if w := e.serve("POST", "/app/api/folder", `{}`, "Origin", "http://"+testAddr.String(), "Content-Type", "application/json"); w.Code != 403 {
-		t.Errorf("a picker without the token = %d", w.Code)
-	}
-	if len(f.folders) != 2 {
-		t.Errorf("%d pickers shown since the last start folder, want 2: Cancel's and none for the refused", len(f.folders))
+	if len(e.saves()) != 0 {
+		t.Errorf("the picker saved settings: %+v", e.saves())
 	}
 }
 
-// TestChooseFolderFails checks that a picker that can't open says so, and
-// how to go on.
+// A picker that can't open says so, and how to go on.
 func TestChooseFolderFails(t *testing.T) {
 	e, f := newNativeEnv(t)
 	f.err = errors.New("no display")
-	w := e.post("/app/api/folder", `{"folder":""}`)
+	w := e.post("/copy/api/folder", `{"folder":""}`)
 	got := decode[struct {
 		Error string `json:"error"`
 	}](t, w)
@@ -109,10 +112,10 @@ func TestChooseFolderFails(t *testing.T) {
 	}
 }
 
-const xURL = "/file?path=at%20192.0.2.10_445%2Fx.txt&download=1"
+const xURL = "/browse/file?path=at%20192.0.2.10_445%2Fx.txt&download=1"
 
-// TestSaveFile checks that a download is saved where the save dialog says,
-// and that Cancel writes nothing.
+// A download in a window is saved where the save dialog says, and Cancel
+// writes nothing.
 func TestSaveFile(t *testing.T) {
 	e, f := newNativeEnv(t)
 	dir := t.TempDir()
@@ -131,14 +134,22 @@ func TestSaveFile(t *testing.T) {
 	if names, _ := os.ReadDir(dir); len(names) != 1 {
 		t.Errorf("Cancel wrote %v", names)
 	}
-	// A file viewed, not downloaded, is browse's to serve.
+	// A file viewed, not downloaded, is Browse's to serve.
 	if w := e.serve("GET", strings.TrimSuffix(xURL, "&download=1"), ""); w.Code != 200 || w.Body.String() != "x" || len(f.saves) != 2 {
 		t.Errorf("view = %d %q, %d dialogs", w.Code, w.Body, len(f.saves))
 	}
 }
 
-// TestSaveFileFails checks that a failed save shows its reason without the
-// temporary file's name.
+// Without a window, a download is the browser's: Browse sends the file.
+func TestSaveFileBrowser(t *testing.T) {
+	e := newAppEnv(t, savedAt(t.TempDir()))
+	w := e.serve("GET", xURL, "")
+	if w.Code != 200 || w.Body.String() != "x" || !strings.HasPrefix(w.Header().Get("Content-Disposition"), "attachment") {
+		t.Errorf("download = %d %q %q", w.Code, w.Body, w.Header().Get("Content-Disposition"))
+	}
+}
+
+// A failed save shows its reason without the temporary file's name.
 func TestSaveFileFails(t *testing.T) {
 	e, f := newNativeEnv(t)
 	f.answer = filepath.Join(t.TempDir(), "missing", "saved.txt")
@@ -157,8 +168,7 @@ func TestSaveFileFails(t *testing.T) {
 	}
 }
 
-// TestSaveFileRefused checks that a download browse refuses never reaches
-// the save dialog.
+// A download Browse refuses never reaches the save dialog.
 func TestSaveFileRefused(t *testing.T) {
 	e, f := newNativeEnv(t)
 	f.answer = filepath.Join(t.TempDir(), "saved.txt")
@@ -173,7 +183,7 @@ func TestSaveFileRefused(t *testing.T) {
 		{"POST", xURL, nil, 405},
 		{"HEAD", xURL, nil, 200},
 		{"GET", xURL + "&path=x", nil, 400},
-		{"GET", "/file?path=..%2Fx.txt&download=1", nil, 400},
+		{"GET", "/browse/file?path=..%2Fx.txt&download=1", nil, 400},
 	} {
 		if w := e.serve(tt.method, tt.target, "", tt.headers...); w.Code != tt.code {
 			t.Errorf("%s %s %q = %d, want %d", tt.method, tt.target, tt.headers, w.Code, tt.code)
@@ -184,44 +194,5 @@ func TestSaveFileRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(f.answer); err == nil {
 		t.Error("a refused request saved a file")
-	}
-}
-
-// TestRunQuit checks the window's side of Run: quit stops the server, and
-// the window's context ends only after it has; ctx ending does the same.
-func TestRunQuit(t *testing.T) {
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	for _, by := range []string{"quit", "ctx"} {
-		t.Run(by, func(t *testing.T) {
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			var base string
-			err := Run(ctx, Options{SettingsPath: filepath.Join(t.TempDir(), "app.json"), StateDir: t.TempDir(), Version: "v", Log: log},
-				func(window context.Context, u string, quit func()) error {
-					base, _, _ = strings.Cut(u, "/app/#")
-					if resp, err := http.Get(base + "/app/"); err != nil {
-						return err
-					} else {
-						resp.Body.Close()
-					}
-					if by == "quit" {
-						quit()
-					} else {
-						cancel()
-					}
-					select {
-					case <-window.Done():
-					case <-time.After(5 * time.Second):
-						t.Fatal("the window's context did not end")
-					}
-					if _, err := http.Get(base + "/app/"); err == nil {
-						t.Error("the window's context ended while the app still serves")
-					}
-					return nil
-				})
-			if err != nil {
-				t.Fatal(err)
-			}
-		})
 	}
 }

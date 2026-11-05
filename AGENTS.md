@@ -11,5 +11,8 @@ Two things it doesn't say, because a person wouldn't need telling:
 - **Nothing here needs a real telescope or account.** The tests are offline. Don't
   run the proxy against a device, or sign in to the cloud, unless the
   person you're working for asks. It forwards commands to a real telescope and holds its only
-  remote session.
+  remote session. The copy tests use a fake share; don't point
+  seestar-copy-cli or the copy tabs at a device, directly or through the
+  proxy, unless asked. The copy packages' guide is
+  [docs/copy/development/README.md](docs/copy/development/README.md).
 - **Reviewing a change:** follow [.claude/skills/wormhole-review](.claude/skills/wormhole-review/SKILL.md).

@@ -43,16 +43,13 @@ your `PATH`, such as `/usr/local/bin` on Linux or macOS. Then check it with:
 seestar-copy-cli --version
 ```
 
-Every download also has the desktop app, `seestar-copy`, which copies,
-browses and frees up space in a window. On macOS, drag `seestar-copy.app`
-from the DMG to Applications and open it. On Windows, open
-`seestar-copy.exe`. On Linux, run `./seestar-copy`; it needs GTK 4 and
-WebKitGTK 6.0. See [the desktop app](reference.md#the-desktop-app).
+To copy, browse and free up space in a window, use seestar-wormhole's app:
+its Copy, Browse and Free up space tabs; see [copying images](../ui.md#copying-images).
 
 Every download also has the LICENSE and NOTICE files. To check a download's
 checksum and build provenance, see
 [verifying a release](reference.md#verifying-a-release). The
-[versioning policy](versioning.md) says what a release promises.
+[versioning policy](../versioning.md#the-seestar-copy-cli-contract) says what a release promises.
 
 ### Build from source
 
@@ -147,7 +144,7 @@ See [delete](reference.md#delete).
 ## Status
 
 Early development. Releases are 0.x, so a minor release may change a flag or
-a file format; its notes say how. See [versioning](versioning.md).
+a file format; its notes say how. See [versioning](../versioning.md#the-seestar-copy-cli-contract).
 
 ## Affiliation and warranty
 
@@ -161,8 +158,8 @@ Using it is at your own risk.
 ## More
 
 - [Command reference](reference.md): every flag, log line and exit code
-- [Versioning](versioning.md): what a release promises
-- [Security policy](SECURITY.md) and [contributing](CONTRIBUTING.md)
+- [Versioning](../versioning.md#the-seestar-copy-cli-contract): what a release promises
+- [Security policy](../../SECURITY.md) and [contributing](../../CONTRIBUTING.md)
 - [How it works and how to hack on it](development/README.md)
 - [License](../../LICENSE) and [third-party notices](../../NOTICE);
   `seestar-copy-cli licenses` prints the notices of the libraries in your

@@ -2,7 +2,7 @@
 // which is read-only: a preview, the confirm dialog and Cancel, and a
 // settings save and a history clear that clear the preview. The confirmed delete is tested
 // in the Samba job. What a check is looking at uses synthetic states.
-const { test, expect, share, tab, field, openApp, fakeStatus } = require('./app');
+const { test, expect, lan, tab, field, openCopy, fakeStatus } = require('./app');
 
 const upToDate = /^Up to date\. Next check at \d\d:\d\d\.$/;
 const safe = /^7 files \(\d.*\) are copied and safe to delete\.$/;
@@ -13,11 +13,17 @@ const deleteButton = (page) => page.locator('#x-go');
 const days = (page) => page.locator('#x-days');
 const trust = (page) => page.getByLabel(/My copies have moved or the drive is offline/);
 
+// copying is a saved route to the fixture and copy settings that copy to
+// the app's folder.
+const copying = (start) => ({
+  'config.json': lan(), 'copy.json': (folder) => ({ version: 1, folder, start_copying: start }),
+});
+
 // copied starts an app that copies the browse tree, and waits for the
 // pass, then opens Free up space.
 async function copied(page, startApp) {
-  const app = await startApp((folder) => ({ version: 1, address: share, folder, start_copying: true }));
-  await openApp(page, app.url);
+  const app = await startApp(copying(true));
+  await openCopy(page, app.url);
   await expect(page.locator('#c-title')).toHaveText(upToDate, { timeout: 30000 });
   await tab(page, 'Free up space').click();
   await expect(page.getByRole('tabpanel', { name: 'Free up space' })).toBeVisible();
@@ -85,7 +91,7 @@ test('a different preview closes an open confirm dialog', async ({ page, startAp
   // Another view's Find replaces the preview between two polls: the
   // status answers the same files under the next id.
   let replaced = false;
-  await page.route('**/app/api/status', async (route) => {
+  await page.route('**/copy/api/status', async (route) => {
     const response = await route.fetch();
     const data = await response.json();
     if (replaced && data.free.state === 'preview') data.free.id += 1;
@@ -93,7 +99,7 @@ test('a different preview closes an open confirm dialog', async ({ page, startAp
   });
   const deletes = [];
   page.on('request', (r) => {
-    if (r.url().endsWith('/app/api/delete') && r.postDataJSON().action === 'delete') deletes.push(r.postDataJSON());
+    if (r.url().endsWith('/copy/api/delete') && r.postDataJSON().action === 'delete') deletes.push(r.postDataJSON());
   });
   await copied(page, startApp);
   await find(page);
@@ -114,12 +120,14 @@ test('a different preview closes an open confirm dialog', async ({ page, startAp
 test('a settings save that changes a pattern clears the preview', async ({ page, startApp }) => {
   await copied(page, startApp);
   await trust(page).check();
-  await expect(page.locator('#x-intro')).toHaveText(/^Free up space uses seestar-copy's saved copy records\./);
+  await expect(page.locator('#x-intro')).toHaveText("Free up space uses this app's saved copy records. Your copies will not be checked.");
   await find(page, /^7 files \(\d.*\) match the saved copy records\.$/);
   await expect(page.locator('#x-sub')).toHaveText('Any age · Your copies were not checked.');
 
-  await tab(page, 'Settings').click();
+  await tab(page, 'Copy').click();
+  await button(page, 'Change…').click();
   await page.locator('#s-stop').click();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
   await field(page, 'Leave out').fill('Notes');
   await button(page, 'Save').click();
   await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
@@ -133,8 +141,10 @@ test('a settings save that changes a pattern clears the preview', async ({ page,
 test('Clear history clears the preview', async ({ page, startApp }) => {
   await copied(page, startApp);
   await find(page);
-  await tab(page, 'Settings').click();
-  await page.locator('#s-stop').click();
+  await tab(page, 'Copy').click();
+  await button(page, 'Stop copying').click();
+  await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+  await page.getByText('Copy history', { exact: true }).click();
   await button(page, 'Clear history…').click();
   await button(page, 'Clear history').click();
   await expect(page.locator('#h-result')).toHaveText('Copy history cleared.');
@@ -156,16 +166,16 @@ test('a bad number of days is refused at its field', async ({ page, startApp }) 
 });
 
 test('a check names the folder or file it is looking at, and announces only its stages', async ({ page, startApp }) => {
-  const app = await startApp((folder) => ({ version: 1, address: share, folder, start_copying: false }));
+  const app = await startApp(copying(false));
   let f = null;
   await fakeStatus(page, () => null, () => f);
-  await openApp(page, app.url);
+  await openCopy(page, app.url);
   await tab(page, 'Free up space').click();
   const file = page.locator('#x-file');
   const live = page.locator('#x-live');
   await expect(file).toBeHidden();
   // The line is outside the tab's one status region.
-  await expect(page.locator('#p-free [role=status]')).toHaveCount(1);
+  await expect(page.locator('#panel-free [role=status]')).toHaveCount(1);
 
   f = { state: 'checking', title: 'Checking files…', file: 'Listing MyWorks… (1 folder)' };
   await expect(file).toHaveText('Listing MyWorks… (1 folder)');

@@ -46,7 +46,7 @@ type copyEnv struct {
 func newCopyEnv(t *testing.T, files fstest.MapFS) *copyEnv {
 	t.Helper()
 	e := &copyEnv{t: t, files: files, stateDir: t.TempDir()}
-	e.set = defaultSettings()
+	e.set = DefaultSettings()
 	e.set.Address, e.set.Folder = "192.0.2.10:445", filepath.Join(t.TempDir(), "Seestar")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	e.c = newController(t.Context(), e.stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
@@ -283,7 +283,7 @@ func TestCopyCantWrite(t *testing.T) {
 	}
 	e.c.finish(fmt.Errorf("create destination: %w", &fs.PathError{Op: "mkdir", Path: e.set.Folder, Err: fs.ErrPermission}))
 	v = e.c.view(time.Now())
-	if v.Title != "Can't write to "+e.set.Folder+": permission denied." || v.Text != "Choose a writable folder in Settings, then start copying." {
+	if v.Title != "Can't write to "+e.set.Folder+": permission denied." || v.Text != "Choose a writable folder with Change…, then start copying." {
 		t.Errorf("can't write: %+v", v)
 	}
 	// A refused write elsewhere, such as the state's folder, isn't the
@@ -533,13 +533,16 @@ func TestWording(t *testing.T) {
 func TestActivity(t *testing.T) {
 	a := &activity{}
 	var out strings.Builder
-	log := slog.New(newTee(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelWarn}), a))
+	log := slog.New(newTee(slog.NewTextHandler(&out, &slog.HandlerOptions{Level: slog.LevelWarn}), a, "copy"))
 	log.Debug("hidden")
 	log.With("endpoint", "192.0.2.10:445").WithGroup("g").Info("pass done", "copied", 3, "dest", "/data/My Seestar")
 	log.Warn("copy failed", "path", "a.jpg", "err", "Disk full")
 	lines, seq := a.lines()
 	if seq != 2 || len(lines) != 2 {
 		t.Fatalf("got %d lines, seq %d: %+v", len(lines), seq, lines)
+	}
+	if lines[0].Source != "copy" || lines[0].At.IsZero() || lines[0].Time != lines[0].At.Local().Format(time.TimeOnly) {
+		t.Errorf("newest's source and time: %+v", lines[0])
 	}
 	if lines[0].Text != `copy failed path=a.jpg err="Disk full"` || !lines[0].Warn {
 		t.Errorf("newest: %+v", lines[0])
@@ -562,31 +565,31 @@ func TestActivity(t *testing.T) {
 // The copy API starts, checks and stops copying; Settings can't be saved
 // while copying is on.
 func TestCopyAPI(t *testing.T) {
-	e := newAppEnv(t, "")
-	if w := e.post("/app/api/copy", `{"action":"start"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't start copying: set the telescope and folder in Settings first.") {
+	e := newAppEnv(t, nil)
+	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't start copying: save the copy settings first.") {
 		t.Errorf("start before settings are saved: %d %q", w.Code, w.Body.String())
 	}
-	input := `{"address":"192.0.2.10","folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`
-	if w := e.post("/app/api/settings", input); w.Code != 200 {
+	input := `{"folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`
+	if w := e.post("/copy/api/settings", input); w.Code != 200 {
 		t.Fatalf("save: %d %q", w.Code, w.Body.String())
 	}
-	if w := e.post("/app/api/copy", `{"action":"jump"}`); w.Code != 400 {
+	if w := e.post("/copy/api/copy", `{"action":"jump"}`); w.Code != 400 {
 		t.Errorf("unknown action: %d", w.Code)
 	}
-	w := e.post("/app/api/copy", `{"action":"start"}`)
+	w := e.post("/copy/api/copy", `{"action":"start"}`)
 	if v := decode[copyView](t, w); w.Code != 200 || !v.On {
 		t.Errorf("start: %d %+v", w.Code, v)
 	}
-	if w := e.post("/app/api/copy", `{"action":"start"}`); w.Code != 409 {
+	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 409 {
 		t.Errorf("a second start: %d", w.Code)
 	}
-	if w := e.post("/app/api/settings", input); w.Code != 409 || !strings.Contains(w.Body.String(), "Stop copying to change settings.") {
+	if w := e.post("/copy/api/settings", input); w.Code != 409 || !strings.Contains(w.Body.String(), "Stop copying to change settings.") {
 		t.Errorf("save while on: %d %q", w.Code, w.Body.String())
 	}
 	status := func() copyView {
 		return decode[struct {
 			Copy copyView `json:"copy"`
-		}](t, e.serve("GET", "/app/api/status", "", tokenHeader, testToken)).Copy
+		}](t, e.serve("GET", "/copy/api/status", "")).Copy
 	}
 	deadline := time.Now().Add(10 * time.Second)
 	// The fake's file has no mtime, so it fails.
@@ -596,10 +599,10 @@ func TestCopyAPI(t *testing.T) {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
-	if w := e.post("/app/api/copy", `{"action":"check"}`); w.Code != 200 {
+	if w := e.post("/copy/api/copy", `{"action":"check"}`); w.Code != 200 {
 		t.Errorf("check: %d", w.Code)
 	}
-	if w := e.post("/app/api/copy", `{"action":"stop"}`); w.Code != 200 {
+	if w := e.post("/copy/api/copy", `{"action":"stop"}`); w.Code != 200 {
 		t.Errorf("stop: %d", w.Code)
 	}
 	e.s.copy.quit()
@@ -609,42 +612,8 @@ func TestCopyAPI(t *testing.T) {
 	got := decode[struct {
 		Activity []entry `json:"activity"`
 		Seq      int     `json:"activity_seq"`
-	}](t, e.serve("GET", "/app/api/status", "", tokenHeader, testToken))
+	}](t, e.serve("GET", "/copy/api/status", ""))
 	if len(got.Activity) == 0 || got.Activity[0].Text != "copying stopped" || got.Seq != len(got.Activity) {
 		t.Errorf("activity %+v", got)
 	}
-}
-
-// Run starts copying when Settings say so, and stops it, freeing the lock,
-// before it returns.
-func TestRunStartsCopying(t *testing.T) {
-	dir := t.TempDir()
-	path, stateDir, dest := filepath.Join(dir, "app.json"), filepath.Join(dir, "state"), filepath.Join(dir, "Seestar")
-	writeFile(t, path, `{"version":1,"address":"192.0.2.10:445","folder":`+quote(dest)+`}`)
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	dial := func(context.Context, string) (remote.Session, error) {
-		return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": image("abc")}), nil
-	}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	err := Run(ctx, Options{SettingsPath: path, StateDir: stateDir, Version: "v", Log: log, Dial: dial}, func(ctx context.Context, _ string, _ func()) error {
-		for {
-			if _, err := os.Stat(filepath.Join(dest, "MyWorks", "a.jpg")); err == nil {
-				return nil
-			}
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-time.After(5 * time.Millisecond):
-			}
-		}
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	st, err := state.Open(stateDir, dest, log)
-	if err != nil {
-		t.Fatalf("the lock after Run: %v", err)
-	}
-	st.Close()
 }

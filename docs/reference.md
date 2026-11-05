@@ -62,7 +62,7 @@ After a successful connection or explicit password save in the UI, run
 `seestar-wormhole-cli proxy --config` (add `--state-dir PATH` for a custom
 UI state root). It reads the same [version 1 `config.json`](ui.md#configjson-version-1)
 without rewriting it and shares the installation identity. It ignores the
-copier's `route` and `lan_address` members.
+copier's `route`, `lan_address` and `route_established` members.
 Explicit flags override saved choices, including discovery; each `-p` replaces the saved override for
 that telescope port. `SEESTAR_EMAIL` overrides the saved email. The password
 comes from `SEESTAR_PASSWORD` when set, otherwise the OS keychain entry for that
@@ -563,6 +563,7 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
 | `console control failed` | ERROR, JSON | Windows console event wait failed or returned an unexpected result; `phase=console_control`, `reason=operation_failed`. Cancels the command so release and cleanup proceed. |
 | `ui failed` | ERROR, JSON | UI command argument refusal; fixed `option`, `rule`, help hint, `phase=arguments`, `reason=invalid_option`. UI startup/storage failures use fixed stderr messages; browser actions report sanitized errors in the page. |
+| `internal error recovered` | ERROR | The copier recovered a panic and failed only that work, leaving the proxy running; `where` names the recovery site, with no panic value or stack |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
 | `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions; direct/relay and UDP/TCP path |
 | `cloud_catalog_pagination_oddities`, `cloud_receive_oddity`, `cloud_response_rejected` | DEBUG | Bounded cloud parsing/catalog diagnostics |

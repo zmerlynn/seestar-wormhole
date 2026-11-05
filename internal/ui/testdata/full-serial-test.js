@@ -4,7 +4,8 @@ async function checkFullSerial(response, want, catalog) {
  load(response.settings);
  render(response);
  assert($('status').textContent===want,'status lost full serial');
- const messages=[want,catalog];
+ // Activity lists the newest first.
+ const messages=[catalog,want];
  assert($('events').children.length===2,'Recent events missing');
  messages.forEach((message,i)=>assert($('events').children[i].textContent.endsWith('  '+message),'Recent events lost full serial/order'));
  const copied=JSON.parse(diagnostic);

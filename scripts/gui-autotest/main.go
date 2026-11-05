@@ -26,7 +26,7 @@ import (
 func main() {
 	binary := flag.String("binary", "", "gui,guitest binary (or executable inside a Mac bundle)")
 	out := flag.String("out", "", "artifact directory")
-	scenarios := flag.String("scenarios", "fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,strand,errors,term,interrupt,"+guitest.UXScenarios, "comma-separated scenarios")
+	scenarios := flag.String("scenarios", "fresh,quit-connecting,quit-ready,close-connecting,close-ready,activate,strand,errors,term,interrupt,"+guitest.UXScenarios+","+guitest.CopyScenarios, "comma-separated scenarios")
 	verify := flag.String("verify", "", "fixture,production,plain-gui binaries: inspect only")
 	timeout := flag.Duration("timeout", 100*time.Second, "bound per scenario including relaunch")
 	flag.Parse()
@@ -55,7 +55,7 @@ func main() {
 			fmt.Printf("SCENARIO %s SKIP: GUI subsystem has no attached console; CTRL_BREAK/console-close not exercised\n", s)
 			continue
 		}
-		if s == "apple" && runtime.GOOS != "darwin" {
+		if (s == "apple" || s == "copy-quit") && runtime.GOOS != "darwin" {
 			continue
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -67,6 +67,8 @@ func main() {
 		} else {
 			if s == "relaunch" {
 				fmt.Printf("SCENARIO %s PASS: setup DOM, screenshot, Quit exit 0, listener closed, fresh lock acquisition (no runner)\n", s)
+			} else if strings.HasPrefix(s, "copy-") {
+				fmt.Printf("SCENARIO %s PASS: copy DOM, screenshots, exit 0, no temporary file, copy lock free, listener closed, fresh launch\n", s)
 			} else {
 				fmt.Printf("SCENARIO %s PASS: DOM, screenshots, release join, exit 0, listener closed, fresh lock acquisition\n", s)
 			}
@@ -113,6 +115,9 @@ func relaunchScenario(scenario string) string {
 	if strings.HasPrefix(scenario, "dark") {
 		return "dark-relaunch"
 	}
+	if strings.HasPrefix(scenario, "copy-") {
+		return "copy-relaunch"
+	}
 	return "relaunch"
 }
 
@@ -127,7 +132,8 @@ func launch(ctx context.Context, bin, dir, root, scenario string) (*exec.Cmd, <-
 	cmd := exec.CommandContext(ctx, bin, "ui", "--state-dir", root)
 	// An engine child may inherit output handles beyond the fixture lifetime.
 	cmd.WaitDelay = 2 * time.Second
-	// No user config, account, password provider, proxy ports, or network endpoint.
+	// No account, password provider, proxy ports, or network endpoint. A copy
+	// scenario's per-user config folder is its own, set by runScenario.
 	cmd.Env = append(os.Environ(), "SEESTAR_GUITEST_OUT="+dir, "SEESTAR_GUITEST_SCENARIO="+scenario)
 	// Drain through a pipe: the CLI may reopen stderr with an independent file
 	// offset. Direct regular-file descriptors let its final error overwrite earlier
@@ -164,24 +170,35 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 	}
 	defer os.RemoveAll(state)
 	root := filepath.Join(state, "state")
+	if strings.HasPrefix(scenario, "copy-") {
+		// The copier's state goes under a config folder of the scenario's
+		// own, for every app it starts and for this harness's checks.
+		restore, err := guitest.UserConfig(filepath.Join(state, "config"))
+		if err != nil {
+			return err
+		}
+		defer restore()
+	}
+	var hold *exec.Cmd
+	var holdDone <-chan error
+	holdDir := filepath.Join(dir, "hold")
+	if scenario == "copy-inuse" {
+		// A first app holds a transfer into the shared folder.
+		hold, holdDone, err = launch(ctx, bin, holdDir, filepath.Join(state, "hold"), "copy-hold")
+		if err != nil {
+			return err
+		}
+		defer func() { hold.Process.Kill(); <-holdDone }()
+		if err := waitExit(ctx, holdDone, filepath.Join(holdDir, "trigger")); err != nil {
+			return fmt.Errorf("copy-hold: %w", err)
+		}
+	}
 	cmd, done, err := launch(ctx, bin, dir, root, scenario)
 	if err != nil {
 		return err
 	}
 	defer func() { cmd.Process.Kill(); <-done }()
-	waitFile := func(name string) error {
-		var early error
-		err := guitest.Wait(ctx, name, func() bool {
-			select {
-			case exitErr := <-done:
-				early = fmt.Errorf("process exited before %s: %v (see process.log)", name, exitErr)
-				return true
-			default:
-			}
-			return exists(name)
-		})
-		return errors.Join(err, early)
-	}
+	waitFile := func(name string) error { return waitExit(ctx, done, name) }
 	// Read only the ephemeral listener address; never log its capability token.
 	if err := waitFile(filepath.Join(root, "ui-runtime.json")); err != nil {
 		return err
@@ -199,7 +216,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 	if record.Port < 1 || record.Port > 65535 {
 		return errors.New("invalid listener port")
 	}
-	if scenario == "activate" || scenario == "strand" || scenario == "term" || scenario == "interrupt" || scenario == "apple" || (runtime.GOOS == "windows" && strings.HasPrefix(scenario, "close-")) {
+	if scenario == "activate" || scenario == "strand" || scenario == "term" || scenario == "interrupt" || scenario == "apple" || scenario == "copy-quit" || (runtime.GOOS == "windows" && (strings.HasPrefix(scenario, "close-") || scenario == "copy-close" || scenario == "copy-inuse" || scenario == "copy-save")) {
 		if err := waitFile(filepath.Join(dir, "trigger")); err != nil {
 			return err
 		}
@@ -229,7 +246,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 			err = terminate(cmd.Process, false)
 		case "interrupt":
 			err = terminate(cmd.Process, true)
-		case "apple":
+		case "apple", "copy-quit":
 			receipt, quitErr := exec.CommandContext(ctx, "osascript", "-e", `tell application id "net.zml.seestar-wormhole" to quit`).CombinedOutput()
 			if e := os.WriteFile(filepath.Join(dir, "apple-event.log"), receipt, 0600); e != nil {
 				return e
@@ -238,13 +255,7 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 				return fmt.Errorf("Apple quit must be accepted, got %v: %s", quitErr, receipt)
 			}
 		default:
-			// CloseMainWindow sends WM_CLOSE to the fixture window.
-			script := `$p=Get-Process -Id ` + strconv.Itoa(cmd.Process.Pid) + `; if (-not $p.CloseMainWindow()) { throw 'WM_CLOSE failed' }`
-			b, e := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
-			if e != nil {
-				return fmt.Errorf("WM_CLOSE: %w: %s", e, b)
-			}
-			fmt.Println("native close path: Windows WM_CLOSE via CloseMainWindow")
+			err = closeMainWindow(ctx, cmd.Process.Pid)
 		}
 		if err != nil {
 			return err
@@ -270,6 +281,12 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 	if guitest.RequiresRelease(scenario) && !exists(filepath.Join(dir, "release-wait-observed")) {
 		return errors.New("missing slow-release window assertion")
 	}
+	if strings.HasPrefix(scenario, "copy-") && scenario != "copy-inuse" {
+		// copy-inuse checks once its copy-hold app has stopped too.
+		if err := guitest.CopyStopped(guitest.CopyFolder(root)); err != nil {
+			return err
+		}
+	}
 	conn, e := net.DialTimeout("tcp4", net.JoinHostPort("127.0.0.1", strconv.Itoa(record.Port)), 300*time.Millisecond)
 	if e == nil {
 		conn.Close()
@@ -277,6 +294,13 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 	}
 	if exists(filepath.Join(root, "ui-runtime.json")) {
 		return errors.New("runtime record survived exit")
+	}
+	if hold != nil {
+		// The fresh launch starts copying into the shared folder, so the
+		// copy-hold app lets it go first.
+		if err := stopHold(ctx, hold, holdDone, holdDir, guitest.CopyFolder(root)); err != nil {
+			return err
+		}
 	}
 	child, childDone, e := launch(ctx, bin, filepath.Join(dir, "relaunch"), root, relaunchScenario(scenario))
 	if e != nil {
@@ -294,5 +318,63 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 	if !exists(filepath.Join(dir, "relaunch", "joined")) {
 		return errors.New("fresh launch missing joined-window receipt (see relaunch/process.log)")
 	}
+	if strings.HasPrefix(scenario, "copy-") {
+		// copy-relaunch held a transfer of its own when it quit.
+		if err := guitest.CopyStopped(guitest.CopyFolder(root)); err != nil {
+			return fmt.Errorf("fresh launch: %w", err)
+		}
+	}
 	return nil
+}
+
+// closeMainWindow sends WM_CLOSE to the fixture window.
+func closeMainWindow(ctx context.Context, pid int) error {
+	script := `$p=Get-Process -Id ` + strconv.Itoa(pid) + `; if (-not $p.CloseMainWindow()) { throw 'WM_CLOSE failed' }`
+	b, err := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script).CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("WM_CLOSE: %w: %s", err, b)
+	}
+	fmt.Println("native close path: Windows WM_CLOSE via CloseMainWindow")
+	return nil
+}
+
+// waitExit waits for name to exist, failing if the process exits first.
+func waitExit(ctx context.Context, done <-chan error, name string) error {
+	var early error
+	err := guitest.Wait(ctx, name, func() bool {
+		select {
+		case exitErr := <-done:
+			early = fmt.Errorf("process exited before %s: %v (see process.log)", name, exitErr)
+			return true
+		default:
+		}
+		return exists(name)
+	})
+	return errors.Join(err, early)
+}
+
+// stopHold stops copy-inuse's copy-hold app mid-transfer, as SIGTERM or
+// WM_CLOSE, and checks that it stopped cleanly and released the folder.
+func stopHold(ctx context.Context, hold *exec.Cmd, done <-chan error, dir, folder string) error {
+	var err error
+	if runtime.GOOS == "windows" {
+		err = closeMainWindow(ctx, hold.Process.Pid)
+	} else {
+		err = terminate(hold.Process, false)
+	}
+	if err != nil {
+		return fmt.Errorf("copy-hold: %w", err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			return fmt.Errorf("copy-hold: process: %w (see hold/process.log)", err)
+		}
+	case <-ctx.Done():
+		return errors.New("copy-hold did not exit within bound")
+	}
+	if !exists(filepath.Join(dir, "joined")) {
+		return errors.New("copy-hold: missing joined-window receipt (see hold/process.log)")
+	}
+	return guitest.CopyStopped(folder)
 }

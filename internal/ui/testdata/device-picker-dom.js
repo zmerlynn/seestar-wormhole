@@ -5,7 +5,7 @@ class TestElement {
   set innerHTML(_) {throw new Error('HTML insertion is forbidden');}
   set outerHTML(_) {throw new Error('HTML insertion is forbidden');}
   insertAdjacentHTML() {throw new Error('HTML insertion is forbidden');}
-  append(...children) {for (const child of children) {if (child.parentElement) child.parentElement.children = child.parentElement.children.filter(e => e !== child); child.parentElement = this; this.children.push(child);}}
+  append(...children) {for (let child of children) {if (typeof child === 'string') {const node = new TestElement(); node.textContent = child; child = node;} if (child.parentElement) child.parentElement.children = child.parentElement.children.filter(e => e !== child); child.parentElement = this; this.children.push(child);}}
   replaceChildren(...children) {this.children = children; this.value = '';}
   addEventListener(name, callback) {this.listeners ||= {}; (this.listeners[name] ||= []).push(callback);}
   dispatchEvent(event) {for (const callback of this.listeners?.[event.type] || []) callback(event); if (event.type === 'change' && this.onchange) this.onchange(event);}

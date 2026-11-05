@@ -23,13 +23,17 @@ Only the latest release receives fixes.
 ## Scope
 
 In scope: the `seestar-wormhole` and `seestar-wormhole-cli` binaries and Containerfile, its handling of credentials, cloud and device traffic,
-and its local listeners; the release workflow and its artifacts.
+and its local listeners; `seestar-copy-cli` and the app's Copy, Browse and Free up space tabs, which only read the
+telescope's share except for `delete --force` and a confirmed Free up space; their handling of names and data from the
+device, and what they write in the destination folder and the copy state; the release workflow and its artifacts.
 
 Out of scope:
 
 - problems in the telescope, its firmware, the phone app or the vendor's cloud services; report those to the vendor;
 - the documented lack of authentication on the proxy's local listeners. Anyone who can reach them can control the
-  telescope, so bind them only to a network you trust; see [local network trust](docs/reference.md#proxy).
+  telescope, so bind them only to a network you trust; see [local network trust](docs/reference.md#proxy);
+- the telescope share's guest login. The share takes guest logins with no password, so anyone who can reach it can
+  read it; that is the device's design, and copying uses the same login.
 
 ## Verifying a release
 

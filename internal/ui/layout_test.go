@@ -79,16 +79,17 @@ func TestTabsAndPanelsOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := -1
-	for _, id := range []string{"app-header", "connection-dot", "connection-text", "tabs", "tab-connection", "tab-copy", "tab-browse", "tab-free", "tab-activity", "tabs-note",
+	for _, id := range []string{"app-header", "connection-dot", "connection-text", "tabs", "tab-connection", "tab-copy", "tab-browse", "tab-free", "tab-activity", "tabs-note", "copy-reach",
 		"panel-connection", "route-choice", "route-account", "route-lan", "account-route", "announcements", "primary-action", "settings", "running",
-		"lan-route", "lan-address", "lan-test", "lan-save", "lan-result", "panel-activity", "details", "effective-settings", "events", "copy", "quit"} {
+		"lan-route", "lan-address", "lan-test", "lan-save", "lan-result", "panel-copy", "c-main", "s-box", "copy-form", "h-details", "panel-browse", "b-frame", "panel-free",
+		"panel-activity", "details", "events", "error-code", "copy", "effective-settings", "copy-settings", "log-path", "config-file", "copy-file", "quit"} {
 		position := strings.Index(string(b), `id="`+id+`"`)
 		if position < 0 || position <= last {
 			t.Fatalf("page order misplaced %s", id)
 		}
 		last = position
 	}
-	for _, want := range []string{"> Through my Seestar account</label>", "> On this network</label>", "Copy, Browse and Free up space: Coming in this build.", `<details id="details" open><summary>Details and logs</summary>`} {
+	for _, want := range []string{"> Through my Seestar account</label>", "> On this network</label>", "Copy, Browse and Free up space open once you connect through your account, or save an address on this network.", `<details id="details" open><summary>Details and logs</summary>`} {
 		if strings.Count(string(b), want) != 1 {
 			t.Fatal("page copy missing or repeated:", want)
 		}

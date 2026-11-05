@@ -256,6 +256,10 @@ function controls() {
   $('port-permissions').hidden = code !== 'http_permission';
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
+  if (shownErrorCode !== code) {
+    shownErrorCode = code;
+    copyDiagnostic();
+  }
   text('selection-help', selectionStep ? 'Your account has several telescopes. Choose one, then Connect.' : savedDevice && !receivedDevices.length ? 'Choose “Find on my account”, then Connect to load other telescopes.' : 'Connect uses your only telescope, or asks which one if there are several.');
   if ($('device-choice').children.length) textOptionLabel();
   const manual = $('device-choice').value === 'custom';
@@ -400,9 +404,10 @@ function selectTab(name) {
     const on = tab === name;
     $('tab-' + tab).setAttribute('aria-selected', String(on));
     $('tab-' + tab).tabIndex = on ? 0 : -1;
-    const panel = $('panel-' + tab);
-    if (panel) panel.hidden = !on;
+    $('panel-' + tab).hidden = !on;
   }
+  copyNotice();
+  if (name === 'browse') browseFrame();
 }
 function tabKey(event) {
   const open = tabNames.filter(tab => !$('tab-' + tab).disabled);
@@ -412,6 +417,622 @@ function tabKey(event) {
   event.preventDefault();
   selectTab(open[j]);
   $('tab-' + open[j]).focus();
+}
+// Copy, Browse and Free up space: copy's API under /copy/api/. The tabs
+// open once a route is saved; until then, and while the copier has no
+// target, a notice says why and links to Connection.
+const copyTabNames = ['copy', 'browse', 'free'];
+const reachCopy = {
+  not_connected: ['Not connected. Copying resumes when the connection is ready.', 'Go to Connection'],
+  smb_off: ['SMB is off. Turn on its port in Connection > Advanced.', 'Open Advanced'],
+  no_lan_address: ["Save the telescope's address on the Connection tab first.", 'Go to Connection']
+};
+// The last copy status, the saved copy settings (null until saved), the
+// saved folder's history file, and whether Change… has the form open.
+let copyStatus = null, copySaved = null, copyHistory = '', copyFormOpen = false, copyFilled = false;
+function copyTabs(s) {
+  const open = !!s.copy_unlocked;
+  for (const tab of copyTabNames) {
+    const button = $('tab-' + tab);
+    if (button.disabled !== open) continue;
+    button.disabled = !open;
+    if (open) button.removeAttribute('aria-describedby');
+    else button.setAttribute('aria-describedby', 'tabs-note');
+  }
+  $('tabs-note').hidden = open;
+  if (!open && copyTabNames.includes(currentTab)) selectTab('connection');
+  copyNotice();
+}
+function copyNotice() {
+  const reach = reachCopy[state?.copy_reach];
+  $('copy-reach').hidden = !reach || !copyTabNames.includes(currentTab);
+  if (!reach) return;
+  text('copy-reach-text', reach[0]);
+  text('copy-reach-go', reach[1]);
+}
+// The notice's link opens what it names: Advanced's ports for SMB, the
+// address on this network, or the account's Connect.
+function goReach() {
+  const reach = state?.copy_reach;
+  if (reach === 'no_lan_address') routeChoice = 'lan';
+  else if (reach === 'smb_off') routeChoice = 'account';
+  selectTab('connection');
+  if (reach === 'smb_off') $('advanced').open = true;
+  controls();
+  const target = $(reach === 'smb_off' ? 'ports' : reach === 'no_lan_address' ? 'lan-address' : 'start');
+  (target.disabled ? $('tab-connection') : target).focus();
+}
+// Browse loads once there are settings, and again when they change what
+// it shows.
+// Until then its notice says where to set the folder.
+function browseFrame(reload = false) {
+  $('b-setup').hidden = !!copySaved;
+  $('b-frame').hidden = !copySaved;
+  if (!copySaved || !state?.copy_unlocked) return;
+  if (reload || !$('b-frame').src) $('b-frame').src = '/browse/';
+}
+function goSetup() {
+  selectTab('copy');
+  if (!$('f-folder').disabled) $('f-folder').focus();
+}
+function put(id, value) {
+  text(id, value || '');
+}
+// crawl shows what a run is looking at on one line, whole in its title.
+function crawl(id, value) {
+  put(id, value);
+  $(id).title = value || '';
+}
+function listItems(id, items, item) {
+  $(id).replaceChildren(...items.map(item));
+}
+function pathItem(f) {
+  const li = document.createElement('li');
+  li.textContent = f.path + ' — ' + f.reason;
+  return li;
+}
+// groupRow is a table row for a folder: its cells end with the folder, a
+// count and a size.
+function groupRow(...cells) {
+  const tr = document.createElement('tr');
+  const n = cells.length;
+  tr.append(...cells.map((c, i) => {
+    const td = document.createElement('td');
+    td.append(c);
+    if (i >= n - 2) td.className = 'num';
+    else if (i === n - 3) td.className = 'name';
+    return td;
+  }));
+  return tr;
+}
+function result(id, value, tone = '') {
+  $(id).className = 'result' + (tone ? ' ' + tone : '');
+  put(id, value);
+}
+function copyError(e) {
+  return e?.error || e?.message || lostCopy;
+}
+
+// The copy settings: a summary line, and the form Change… opens. The
+// first visit has the form open, with Save and continue.
+const copyFields = {folder: 'f-folder', interval: 'f-int', excludes: 'f-ex', includes: 'f-in'};
+const lines = value => value === '' ? [] : value.split('\n');
+function copyFill(s) {
+  $('f-folder').value = s.folder;
+  $('f-int').value = String(s.interval_minutes);
+  $('f-ex').value = s.excludes.join('\n');
+  $('f-in').value = s.includes.join('\n');
+  $('f-skip').checked = s.skip_built_in;
+  $('f-start').checked = s.start_copying;
+}
+function copyInput() {
+  return {
+    folder: $('f-folder').value, interval: $('f-int').value, excludes: lines($('f-ex').value), includes: lines($('f-in').value),
+    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked
+  };
+}
+// showErrors puts each message under its field and returns the first
+// field in error, in page order.
+function showErrors(fields) {
+  let first = null;
+  for (const [name, id] of Object.entries(copyFields)) {
+    const message = fields[name] || '';
+    put(id + '-err', message);
+    $(id + '-err').hidden = !message;
+    if (message) {
+      $(id).setAttribute('aria-invalid', 'true');
+      first ||= $(id);
+    } else $(id).removeAttribute('aria-invalid');
+  }
+  return first;
+}
+function copySummary(s) {
+  const minutes = s.interval_minutes === 1 ? 'every minute' : 'every ' + s.interval_minutes + ' min';
+  const parts = ['Copying to ' + s.folder + ' ' + minutes];
+  if (s.skip_built_in) parts.push('skipping logs and system files');
+  if (s.excludes.length) parts.push('leaving out ' + s.excludes.join(', '));
+  if (s.includes.length) parts.push('only ' + s.includes.join(', '));
+  return parts.join(', ') + '.' + (s.start_copying ? ' Starts when the app opens.' : '');
+}
+function renderSetup() {
+  const first = !copySaved;
+  if (first) copyFormOpen = true;
+  $('c-main').hidden = first;
+  $('s-first').hidden = !first;
+  $('s-line').hidden = first;
+  put('s-summary', copySaved && copySummary(copySaved));
+  $('copy-form').hidden = !copyFormOpen;
+  $('s-change').setAttribute('aria-expanded', String(copyFormOpen));
+  $('f-cancel').hidden = first;
+  put('f-save', first ? 'Save and continue' : 'Save');
+  $('s-locked').hidden = !(copyOn && copyFormOpen);
+  renderHistory();
+}
+function openCopyForm() {
+  copyFormOpen = true;
+  result('f-saved', '');
+  renderSetup();
+  $('f-folder').focus();
+}
+function closeCopyForm() {
+  copyFormOpen = false;
+  if (copySaved) copyFill(copySaved);
+  showErrors({});
+  renderSetup();
+  $('s-change').focus();
+}
+// copySave sends the form; Save is disabled until the answer is in, so two
+// saves' answers can't arrive out of order.
+async function copySave() {
+  const button = $('f-save');
+  if (button.disabled) return;
+  button.disabled = true;
+  const first = !copySaved;
+  result('f-saved', '');
+  result('h-result', '');
+  try {
+    let data;
+    try {
+      data = await api('settings', copyInput(), '/copy/api/');
+    } catch (e) {
+      if (e?.fields) {
+        showErrors(e.fields).focus();
+        return;
+      }
+      showErrors({});
+      result('f-saved', e?.error || "Couldn't save settings. Your changes have not been saved. Try saving again.", 'err');
+      // Focus brings the answer into view, below the form.
+      $('f-saved').focus();
+      return;
+    }
+    showErrors({});
+    copySaved = data.settings;
+    copyFill(copySaved);
+    copyFormOpen = false;
+    renderSetup();
+    browseFrame(data.browse_changed);
+    await copyRefresh();
+    if (first) $('c-title').focus();
+    else {
+      result('f-saved', 'Settings saved.', 'ok');
+      $('s-change').focus();
+    }
+  } finally {
+    button.disabled = false;
+  }
+}
+// copyChoose shows the window's folder picker; Cancel changes nothing.
+// The other fields' errors stay as they are.
+async function copyChoose() {
+  const shown = {};
+  for (const [name, id] of Object.entries(copyFields)) if (!$(id + '-err').hidden) shown[name] = $(id + '-err').textContent;
+  try {
+    const data = await api('folder', {folder: $('f-folder').value}, '/copy/api/');
+    if (data.folder) {
+      $('f-folder').value = data.folder;
+      renderHistory();
+      showErrors({...shown, folder: ''});
+    }
+  } catch (e) {
+    showErrors({...shown, folder: e?.error || "Couldn't open the folder picker. Type the folder's full path instead."});
+  }
+  $('f-folder').focus();
+}
+// renderHistory shows the saved folder's history file, or, while the
+// Folder field holds an unsaved folder, a line saying to save first.
+function renderHistory() {
+  const edited = !!copySaved && $('f-folder').value !== copySaved.folder;
+  $('h-details').hidden = !copyHistory;
+  $('h-saved').hidden = edited;
+  $('h-unsaved').hidden = !edited;
+  put('h-path', copyHistory);
+}
+
+// The Copy tab: the server words each state; the page shows its parts.
+// Each state's buttons, and the states the help line shows in.
+const copyShows = {
+  'c-start': ['off', 'stopped', 'inuse', 'cantwrite'],
+  'c-check': ['uptodate', 'failures', 'listfail', 'unreachable'],
+  'c-stop': ['connecting', 'listing', 'copying', 'uptodate', 'failures', 'listfail', 'unreachable'],
+  'c-help': ['connecting', 'listing', 'copying', 'uptodate', 'failures', 'listfail', 'unreachable']
+};
+const copyBusy = {connecting: 'Connecting', listing: 'Looking for new files'};
+let copyOn = false, copyShown = {state: '', files: '', preview: '', pgroups: ''};
+let pressed = null; // a button the user pressed, until the state after it is shown
+// renderPreview shows the Copy tab's preview, if any, and its buttons in
+// the states Start shows in. A preview's state change is announced, and so
+// is its going away: a Cancel, or Copy's title when it is discarded.
+function renderPreview(v, st) {
+  const p = v.preview;
+  const ps = p ? p.state : '';
+  $('c-preview').hidden = !p;
+  $('c-preview').className = ps === 'failed' ? 'notice err' : '';
+  put('c-ptitle', p?.title);
+  put('c-ptext', p?.text);
+  put('c-psub', p?.sub);
+  crawl('c-ppath', p?.path);
+  put('c-ptocopy', p?.tocopy);
+  $('c-pbusy').hidden = ps !== 'running';
+  const groups = p?.groups || [];
+  $('c-ptable').hidden = !groups.length;
+  const key = JSON.stringify(groups);
+  if (key !== copyShown.pgroups) {
+    copyShown.pgroups = key;
+    listItems('c-pgroups', groups, g => groupRow(g.name, String(g.count), g.size));
+  }
+  const off = copyShows['c-start'].includes(st);
+  $('c-pbtn').hidden = $('c-pnote').hidden = !off || ps === 'running';
+  // A preview that ends hides Cancel; focus on it moves to the result.
+  const cancel = $('c-pcancel');
+  const lost = document.activeElement === cancel;
+  cancel.hidden = ps !== 'running';
+  if (lost && p && ps !== 'running') $('c-ptitle').focus();
+  if (ps !== copyShown.preview && p) put('c-live', p.title);
+  else if (ps !== copyShown.preview && copyShown.preview) put('c-live', pressed === cancel ? 'Preview canceled. Nothing was copied.' : v.title);
+  copyShown.preview = ps;
+}
+function renderCopy(v) {
+  const st = v.state;
+  put('c-title', v.title);
+  put('c-text', v.text);
+  // The path and the count change each second; they are not announced.
+  crawl('c-path', v.path);
+  put('c-tocopy', v.tocopy);
+  $('c-box').className = ['listfail', 'inuse', 'cantwrite'].includes(st) ? 'notice err' : '';
+  $('c-busy').hidden = !copyBusy[st];
+  if (copyBusy[st]) $('c-busy').setAttribute('aria-label', copyBusy[st]);
+  const p = v.progress;
+  $('c-copying').hidden = !p;
+  if (p) {
+    $('c-bar').max = p.total;
+    $('c-bar').value = p.done;
+    put('c-bytes', p.bytes);
+    put('c-speed', p.speed);
+    put('c-left', p.left);
+    put('c-found', p.found);
+    listItems('c-flight', p.flight, f => {
+      const li = document.createElement('li');
+      const name = document.createElement('span');
+      name.textContent = f.path;
+      const percent = document.createElement('span');
+      percent.textContent = f.percent + '%';
+      li.append(name, percent);
+      return li;
+    });
+  }
+  put('c-summary', v.summary);
+  put('c-settling', v.settling);
+  $('c-failed').hidden = !v.failed;
+  put('c-notice', v.notice);
+  const files = JSON.stringify(v.failed || []);
+  if (files !== copyShown.files) {
+    copyShown.files = files;
+    listItems('c-files', v.failed || [], pathItem);
+  }
+  for (const [id, states] of Object.entries(copyShows)) $(id).hidden = !states.includes(st);
+  // A stage change is announced; ticks within a stage are not.
+  if (st !== copyShown.state) put('c-live', v.title);
+  copyShown.state = st;
+  renderPreview(v, st);
+  const chip = $('copy-chip');
+  chip.className = 'chip ' + (st === 'failures' ? 'warn' : v.on ? 'on' : 'off');
+  put('copy-chip', v.chip);
+  chip.hidden = !state?.copy_unlocked || !copySaved || !v.chip;
+  // Settings can't change, nor the history clear, while copying is on.
+  $('f-set').disabled = v.on;
+  copyOn = v.on;
+  $('s-locked').hidden = !(copyOn && copyFormOpen);
+  clearable();
+  // When the button pressed went away, focus moves to the new state's
+  // heading; background updates never move focus.
+  if (pressed && pressed.offsetParent === null) {
+    const lost = document.activeElement === pressed || document.activeElement === document.body;
+    if (lost) $(pressed.id === 's-stop' ? 'f-folder' : pressed.id === 'c-pbtn' && v.preview ? 'c-ptitle' : 'c-title').focus();
+    pressed = null;
+  }
+}
+async function copyAction(action) {
+  try {
+    const v = await api('copy', {action}, '/copy/api/');
+    result('c-err', '');
+    renderCopy(v);
+  } catch (e) {
+    result('c-err', copyError(e), 'err');
+    pressed = null;
+  }
+}
+async function press(event, action) {
+  pressed = event.currentTarget;
+  await copyAction(action);
+}
+
+// The Free up space tab: the server words each state, as for Copy. The
+// options show in these states, and each button in its own.
+const freeShows = {
+  'x-options': ['start', 'nothing', 'checkfail'],
+  'x-find': ['start', 'nothing', 'checkfail'],
+  'x-find-note': ['start', 'nothing', 'checkfail'],
+  'x-cancel': ['checking'],
+  'x-preview': ['preview'],
+  'x-go': ['preview'],
+  'x-change': ['preview'],
+  'x-deleting': ['deleting'],
+  'x-file': ['checking', 'deleting'],
+  'x-stop': ['deleting'],
+  'x-done': ['done', 'stopped', 'failed']
+};
+const freeBox = {checkfail: 'notice err', failed: 'notice err', nothing: 'notice', stopped: 'notice', done: 'notice ok'};
+// The shown state, the preview's id, options and groups with their boxes.
+let freeShown = {state: '', id: 0, kept: '', groups: [], boxes: [], trust: false};
+let freePressed = null; // as pressed, for this tab
+// byteSize words a byte count as the server does: decimal units, with one
+// decimal below 100.
+function byteSize(n) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let i = 0;
+  while (n >= 1000 && i < units.length - 1) {
+    n /= 1000;
+    i++;
+  }
+  if (i === 0) return n + ' B';
+  return (n < 100 ? n.toFixed(1) : n.toFixed(0)) + ' ' + units[i];
+}
+const fileCount = n => n === 1 ? '1 file' : n.toLocaleString('en-US') + ' files';
+function freeFill(s) {
+  $('x-days').value = String(s.older_than_days);
+  $('x-trust').checked = s.trust_state;
+  freeIntro();
+}
+// freeIntro words the Start text for the options as set.
+function freeIntro() {
+  put('x-intro', $('x-trust').checked ? "Free up space uses this app's saved copy records. Your copies will not be checked."
+    : 'Free up space deletes files from the telescope only after they have been copied here, and checks that your copy still matches.');
+  $('x-restack').hidden = !(Number($('x-days').value) > 0);
+}
+function daysError(message) {
+  put('x-days-err', message);
+  $('x-days-err').hidden = !message;
+  if (message) $('x-days').setAttribute('aria-invalid', 'true');
+  else $('x-days').removeAttribute('aria-invalid');
+}
+function renderFree(v) {
+  const st = v.state;
+  put('x-title', v.title);
+  put('x-text', v.text);
+  put('x-sub', v.sub);
+  $('x-box').className = freeBox[st] || '';
+  $('x-changed').hidden = !v.changed;
+  const p = v.progress;
+  $('x-busy').hidden = st !== 'checking' || !!p;
+  $('x-hash').hidden = st !== 'checking' || !p;
+  if (p && st === 'checking') {
+    $('x-hbar').max = p.total;
+    $('x-hbar').value = p.done;
+    put('x-htext', p.text);
+  }
+  if (p && st === 'deleting') {
+    $('x-dbar').max = p.total;
+    $('x-dbar').value = p.done;
+  }
+  crawl('x-file', v.file);
+  for (const [id, states] of Object.entries(freeShows)) $(id).hidden = !states.includes(st);
+  if (v.stopping) $('x-stop').hidden = true;
+  // An open confirm belongs to the preview it words: it closes before
+  // another preview, or none, replaces that one's id and folders.
+  if ((st !== 'preview' || v.id !== freeShown.id) && $('x-confirm').open) $('x-confirm').close();
+  if (st === 'preview' && v.id !== freeShown.id) {
+    freeShown.id = v.id;
+    freeShown.trust = v.trust;
+    freeShown.groups = v.groups;
+    freeShown.boxes = v.groups.map(g => {
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = true;
+      box.setAttribute('aria-label', 'Include ' + g.name);
+      return box;
+    });
+    listItems('x-groups', v.groups, (g, i) => {
+      const details = document.createElement('details');
+      const summary = document.createElement('summary');
+      summary.textContent = g.name;
+      const ul = document.createElement('ul');
+      ul.append(...g.files.map(f => {
+        const li = document.createElement('li');
+        const name = document.createElement('span');
+        name.textContent = f.path;
+        const size = document.createElement('span');
+        size.textContent = f.size;
+        li.append(name, size);
+        return li;
+      }));
+      details.append(summary, ul);
+      return groupRow(freeShown.boxes[i], details, String(g.count), g.size);
+    });
+    freeCount();
+  }
+  const kept = JSON.stringify([v.kept, v.kept_list]);
+  if (kept !== freeShown.kept) {
+    freeShown.kept = kept;
+    put('x-ksum', v.kept);
+    listItems('x-klist', v.kept_list || [], pathItem);
+  }
+  $('x-kept').hidden = !v.kept || !v.kept_list || !['preview', 'nothing', 'done'].includes(st);
+  if (st !== freeShown.state) put('x-live', v.title);
+  freeShown.state = st;
+  clearable();
+  // As for Copy: focus moves to the new state's heading only when the
+  // button pressed went away.
+  if (freePressed && freePressed.offsetParent === null) {
+    const lost = document.activeElement === freePressed || document.activeElement === document.body;
+    if (lost) $(v.title ? 'x-title' : 'x-intro').focus();
+    freePressed = null;
+  }
+}
+// freeChecked is the preview's groups whose box is checked.
+function freeChecked() {
+  return freeShown.groups.filter((_, i) => freeShown.boxes[i].checked);
+}
+// freeCount labels Delete with the checked folders' files.
+function freeCount() {
+  const n = freeChecked().reduce((a, g) => a + g.files.length, 0);
+  put('x-go', 'Delete ' + fileCount(n) + '…');
+  $('x-go').disabled = n === 0;
+}
+async function freeAction(body) {
+  let v;
+  try {
+    v = await api('delete', body, '/copy/api/');
+  } catch (e) {
+    freePressed = null;
+    if (e?.fields) {
+      daysError(e.fields.days || '');
+      $('x-days').focus();
+      return;
+    }
+    daysError('');
+    result('x-err', copyError(e), 'err');
+    return;
+  }
+  daysError('');
+  result('x-err', '');
+  renderFree(v);
+}
+async function freePress(event, body) {
+  freePressed = event.currentTarget;
+  await freeAction(body);
+}
+function freeFind(event) {
+  return freePress(event, {action: 'find', days: $('x-days').value, trust: $('x-trust').checked});
+}
+// freeAsk shows the confirm dialog for the checked folders.
+function freeAsk() {
+  const groups = freeChecked();
+  const n = groups.reduce((a, g) => a + g.files.length, 0);
+  const bytes = groups.reduce((a, g) => a + g.bytes, 0);
+  put('x-ctitle', 'Delete ' + fileCount(n) + ' from the telescope?');
+  put('x-cbody', 'This frees ' + byteSize(bytes) + ". It can't be undone: the telescope keeps no trash. Each file is checked again just before it's deleted." +
+    (freeShown.trust ? ' Your copies were not checked.' : ''));
+  put('x-cgo', 'Delete ' + fileCount(n));
+  $('x-confirm').showModal();
+}
+async function confirmDelete() {
+  const folders = freeChecked().map(g => g.folder);
+  freePressed = $('x-go');
+  $('x-confirm').close();
+  await freeAction({action: 'delete', id: freeShown.id, folders});
+}
+// clearable disables Clear history while copying is on or Free up space
+// is checking or deleting; the server refuses those too.
+function clearable() {
+  $('h-clear').disabled = copyOn || ['checking', 'deleting'].includes(freeShown.state);
+}
+async function clearHistory() {
+  $('h-confirm').close();
+  try {
+    await api('clear', {}, '/copy/api/');
+    result('h-result', 'Copy history cleared.', 'ok');
+  } catch (e) {
+    result('h-result', copyError(e), 'err');
+  }
+  await copyRefresh();
+}
+// clip copies a path to the clipboard and says so on the button for a
+// moment, and in the status line a screen reader announces.
+async function clip(button, value, live, copied) {
+  const label = button.getAttribute('data-label') || button.textContent;
+  button.setAttribute('data-label', label);
+  try {
+    await navigator.clipboard.writeText(value);
+    button.textContent = 'Copied';
+    result(live, copied, 'ok');
+  } catch (_) {
+    button.textContent = "Couldn't copy";
+    result(live, "Couldn't copy the path. Select it and copy it manually.", 'err');
+  }
+  setTimeout(() => button.textContent = label, 2000);
+}
+function copyRender(c) {
+  copyStatus = c;
+  copySaved = c.set_up ? c.settings : null;
+  copyHistory = c.history;
+  $('f-choose').hidden = !c.choose;
+  if (!copyFilled) {
+    copyFilled = true;
+    put('f-builtin', c.default_excludes.join(' · '));
+    copyFill(c.settings);
+    freeFill(c.settings);
+  }
+  renderSetup();
+  renderCopy(c.copy);
+  renderFree(c.free);
+  browseFrame();
+  text('copy-settings', JSON.stringify(c.settings, null, 2));
+  renderEvents();
+}
+// copyRefresh reads copy's status; a failure leaves the last one shown,
+// since the wormhole's own poll reports a lost server.
+async function copyRefresh() {
+  try {
+    copyRender(await api('status', undefined, '/copy/api/'));
+  } catch (_) {
+  }
+}
+// Activity: one list, newest first, of the connection's events and copy's
+// and Free up space's activity, each row tagged with its source.
+const sourceNames = {connection: 'Connection', copy: 'Copy', delete: 'Delete'};
+function activityRows() {
+  const rows = (state?.events || []).map(event => ({...event, source: 'connection'})).reverse();
+  for (const e of copyStatus?.activity || []) rows.push({time: e.at, source: e.source, message: e.text, ...(e.warn ? {warn: true} : {})});
+  // A stable sort keeps each source's own order within a timestamp.
+  return rows.sort((a, b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0));
+}
+function eventLine(row) {
+  return new Date(row.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + (sourceNames[row.source] || row.source) + '  ' + row.message;
+}
+let activityShown = [];
+function renderEvents() {
+  activityShown = activityRows();
+  const eventLines = activityShown.map(eventLine);
+  const eventNodes = Array.from($('events').children);
+  if (eventLines.length !== eventNodes.length || eventLines.some((line, i) => line !== eventNodes[i].textContent)) {
+    $('events').replaceChildren(...eventLines.map((line, i) => {
+      const item = document.createElement('li');
+      item.textContent = line;
+      item.setAttribute('data-source', activityShown[i].source);
+      if (activityShown[i].warn) item.setAttribute('data-warn', 'true');
+      return item;
+    }));
+  }
+  copyDiagnostic();
+}
+// The diagnostic summary is one paste: the version, the error code, both
+// settings documents, the merged events and the log path.
+let shownErrorCode = '';
+function copyDiagnostic() {
+  diagnostic = JSON.stringify({
+    app: 'seestar-wormhole', version: state?.version || '', error_code: shownErrorCode, settings: state?.effective || null,
+    copy_settings: copyStatus?.settings || null, events: activityShown, log_path: state?.log_path || ''
+  }, null, 2);
 }
 let pickerKey = '', receivedDevices = [], savedDevice = null;
 let pickerDevices = [], selectionStep = false, pickerFocusPending = false;
@@ -514,18 +1135,12 @@ function render(s) {
   $('copy-port').textContent = smb || '';
   portsTable('running-ports', run.ports);
   text('effective-settings', JSON.stringify(s.effective, null, 2));
-  const eventLines = s.events.map(event => new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + event.message);
-  const eventNodes = Array.from($('events').children);
-  if (eventLines.length !== eventNodes.length || eventLines.some((line, i) => line !== eventNodes[i].textContent)) {
-    $('events').replaceChildren(...eventLines.map(line => {
-      const item = document.createElement('li');
-      item.textContent = line;
-      return item;
-    }));
-  }
   text('log-path', s.log_path ? 'Private log: ' + s.log_path : '');
   $('log-error').hidden = !s.log_failed;
-  diagnostic = JSON.stringify({app: 'seestar-wormhole', version: s.version, settings: s.effective, events: s.events}, null, 2);
+  text('config-file', s.files?.config ? 'Connection settings: ' + s.files.config : '');
+  text('copy-file', s.files?.copy ? 'Copy settings: ' + s.files.copy : '');
+  renderEvents();
+  copyTabs(s);
   controls();
 }
 async function refresh() {
@@ -562,7 +1177,10 @@ async function refresh() {
 async function poll() {
   if (ended) return;
   try {
-    if (!pending || ['stop','quit'].includes(pending)) await refresh();
+    if (!pending || ['stop','quit'].includes(pending)) {
+      await refresh();
+      if (!ended) await copyRefresh();
+    }
   } catch (_) {
     if (ended) return;
     connected = false;
@@ -744,6 +1362,47 @@ $('lan-form').addEventListener('submit', e => {
   if (!$('lan-options').disabled) lanSave();
 });
 $('lan-test').addEventListener('click', lanTest);
+$('copy-reach-go').addEventListener('click', goReach);
+$('copy-form').addEventListener('submit', e => {
+  e.preventDefault();
+  copySave();
+});
+$('s-change').addEventListener('click', openCopyForm);
+$('f-cancel').addEventListener('click', closeCopyForm);
+$('f-folder').addEventListener('input', renderHistory);
+$('f-choose').addEventListener('click', copyChoose);
+$('b-setup-go').addEventListener('click', goSetup);
+$('c-start').addEventListener('click', e => press(e, 'start'));
+$('c-check').addEventListener('click', e => press(e, 'check'));
+$('c-stop').addEventListener('click', e => press(e, 'stop'));
+$('c-pbtn').addEventListener('click', e => press(e, 'preview'));
+$('c-pcancel').addEventListener('click', e => press(e, 'cancel'));
+$('s-stop').addEventListener('click', e => press(e, 'stop'));
+$('h-clip').addEventListener('click', e => clip(e.currentTarget, copyHistory, 'h-result', 'Copy history path copied.'));
+$('h-clear').addEventListener('click', () => {
+  result('h-result', '');
+  $('h-confirm').showModal();
+});
+$('h-ccancel').addEventListener('click', () => $('h-confirm').close());
+$('h-cgo').addEventListener('click', clearHistory);
+// Escape and Cancel close the dialog; focus goes back to Clear history.
+$('h-confirm').addEventListener('close', () => $('h-clear').focus());
+$('x-find').addEventListener('click', freeFind);
+$('x-days').addEventListener('keydown', e => e.key === 'Enter' && freeFind(e));
+$('x-days').addEventListener('input', freeIntro);
+$('x-trust').addEventListener('change', freeIntro);
+$('x-cancel').addEventListener('click', e => freePress(e, {action: 'cancel'}));
+$('x-stop').addEventListener('click', e => freePress(e, {action: 'stop'}));
+$('x-change').addEventListener('click', e => freePress(e, {action: 'reset'}));
+$('x-done').addEventListener('click', e => freePress(e, {action: 'reset'}));
+$('x-go').addEventListener('click', freeAsk);
+$('x-groups').addEventListener('change', freeCount);
+$('x-ccancel').addEventListener('click', () => $('x-confirm').close());
+$('x-cgo').addEventListener('click', confirmDelete);
+// Escape and Cancel close the dialog; focus goes back to Delete.
+$('x-confirm').addEventListener('close', () => {
+  if (!$('x-go').hidden) $('x-go').focus();
+});
 $('lan-address').addEventListener('input', () => lanError(''));
 document.addEventListener('click', openExternalLink);
 document.addEventListener('auxclick', openExternalLink);

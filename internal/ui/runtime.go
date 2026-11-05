@@ -20,9 +20,11 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
 type runtimeRecord struct {
@@ -133,11 +135,29 @@ func Run(ctx context.Context, root string, out, logs io.Writer, run runFunc, ver
 	return runPlatformUI(context.WithValue(ctx, versionKey{}, version), root, out, logs, run)
 }
 
+// newHTTPServer is the local controls' server. Its write timeout bounds
+// every response but Browse's, which clears it for a download.
+func newHTTPServer(handler http.Handler) *http.Server {
+	return &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
+}
+
 // windowFunc runs on the caller's main thread. Its context ends only after
 // proxy cleanup and HTTP shutdown; close requests must call quit and wait.
+// The window's dialogs, passed beside it to runUIPresented, serve copy's
+// folder picker and Browse's Save; nil means a browser page.
 type windowFunc func(context.Context, string, func(), <-chan struct{}) error
 
-func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native bool) (result error) {
+// copyDial is how the copier reaches the telescope; nil is remote.Dial.
+// Only the native check's guitest build and tests set it, to a fake
+// telescope.
+var copyDial func(ctx context.Context, endpoint string) (remote.Session, error)
+
+// runText reads a run's status text for the copier's target; nil is its
+// Text. Only tests set it, since only a proxy session makes a status
+// Ready.
+var runText func(*proxy.Status) string
+
+func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native *copyapp.Native) (result error) {
 	st, err := openStorage(root)
 	if err != nil {
 		return err
@@ -162,15 +182,23 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 			eventHistory.add("App could not start.")
 		}
 	}()
-	settings, err := loadSettings(st)
-	if os.IsNotExist(err) {
-		settings = defaultSettings()
-	} else if err != nil {
-		settingsPath := filepath.Join(root, "config.json")
+	unsafeSettings := func(name string) error {
+		settingsPath := filepath.Join(root, name)
 		if absolute, err := filepath.Abs(settingsPath); err == nil {
 			settingsPath = absolute
 		}
 		return errors.New("Could not load saved settings safely.\n\n" + settingsPath + "\n\nCheck this file, then reopen seestar-wormhole.")
+	}
+	settings, err := loadSettings(st)
+	routeSaved := err == nil && routeSavedIn(settings)
+	if os.IsNotExist(err) {
+		settings = defaultSettings()
+	} else if err != nil {
+		return unsafeSettings("config.json")
+	}
+	copyFile, copySaved, err := loadCopySettings(st)
+	if err != nil {
+		return unsafeSettings(copyName)
 	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -182,7 +210,12 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		return errors.New("Could not secure the local controls.")
 	}
 	record := runtimeRecord{Port: listener.Addr().(*net.TCPAddr).Port, Token: hex.EncodeToString(token[:])}
-	c := &controller{parent: ctx, run: run, credentials: &credentialStore{chain: chain, savedEmail: func() string {
+	// The proxy and the copier stop only by the cleanup below, in its
+	// order, so the end of ctx can't reach the proxy before Browse and
+	// the copier have stopped.
+	appCtx, appDone := context.WithCancel(context.WithoutCancel(ctx))
+	defer appDone()
+	c := &controller{parent: appCtx, run: run, text: runText, credentials: &credentialStore{chain: chain, savedEmail: func() string {
 		if settings.Remember {
 			return settings.Email
 		}
@@ -190,7 +223,8 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	}()}}
 	version := uiVersion(ctx)
 	handler := &server{version: version, host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
-	handler.native = native
+	handler.native = native != nil
+	handler.routeSaved = routeSaved
 	c.save = handler.saveSettings
 	c.lastSaved = settings
 	c.log = eventHistory
@@ -202,10 +236,14 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		copyState = filepath.Join(base, "seestar-copy")
 	}
 	listening := listener.Addr().(*net.TCPAddr).AddrPort()
-	handler.copy = copyapp.NewMount(ctx, copyapp.MountOptions{
+	handler.copy = copyapp.NewMount(appCtx, copyapp.MountOptions{
 		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
 		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Target: handler.copyTarget,
+		Settings: copySaved, Save: copyFile.save, Dial: copyDial, Native: native,
 	})
+	// Every return stops the copier and joins it before ui.lock is
+	// released; the cleanup below has usually done so already.
+	defer handler.copy.Quit()
 	activate := make(chan struct{}, 1)
 	if window != nil {
 		handler.activate = func() {
@@ -216,12 +254,14 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		}
 	}
 	requestQuit := func() { handler.quitOnce.Do(func() { close(handler.quit) }) }
-	httpServer := &http.Server{Handler: handler, ReadHeaderTimeout: 3 * time.Second, ReadTimeout: 5 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 8 << 10}
+	httpServer := newHTTPServer(handler)
 	if err = st.write("ui-runtime.json", record); err != nil {
 		return err
 	}
 	defer os.Remove(filepath.Join(root, "ui-runtime.json"))
 	defer os.Remove(filepath.Join(root, bootstrapName))
+	// Copying may start as the app opens only once it is published.
+	handler.copy.Start()
 	done := make(chan error, 1)
 	go func() { done <- httpServer.Serve(listener) }()
 	windowCtx, windowDone := context.WithCancel(context.WithValue(context.Background(), versionKey{}, version))

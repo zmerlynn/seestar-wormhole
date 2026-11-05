@@ -3,6 +3,8 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"maps"
 	"net"
 	"os"
 	"os/exec"
@@ -18,7 +20,8 @@ import (
 )
 
 // TestComposedSMB uses an external standard client; ordinary go test stays offline.
-// scripts/test-smb.sh supplies Samba and the official rclone release binary.
+// scripts/test-smb.sh supplies the Samba fixture (internal/copy/remote/testdata/samba)
+// and the official rclone release binary.
 func TestComposedSMB(t *testing.T) {
 	addr := os.Getenv("SEESTAR_TEST_SAMBA_ADDR")
 	if addr == "" {
@@ -76,29 +79,33 @@ func TestComposedSMB(t *testing.T) {
 		return out
 	}
 	run("config", "create", "seestar", "smb", "host", "127.0.0.1", "port", "4445", "user", "guest")
-	listing := strings.Fields(string(run("lsf", "seestar:EMMC Images/MyWorks", "--recursive", "--files-only")))
+	// One folder of the fixture's tree.txt, which names each file's size.
+	const folder = "seestar:EMMC Images/MyWorks/M 31"
+	files := map[string]int{"Light_M 31_10.0s_IRCUT_20261029-033119.fit": 16384, "Light_M 31_10.0s_IRCUT_20261029-033129.fit": 16385, "sub dir/deeper/x.fit": 77}
+	listing := strings.Split(strings.TrimSpace(string(run("lsf", folder, "--recursive", "--files-only"))), "\n")
 	slices.Sort(listing)
-	if !slices.Equal(listing, []string{"nested/small.fit", "zeros.fit"}) {
-		t.Fatalf("listing %q, want the two fixture files", listing)
+	if want := slices.Sorted(maps.Keys(files)); !slices.Equal(listing, want) {
+		t.Fatalf("listing %q, want %q", listing, want)
 	}
-	run("copy", "seestar:EMMC Images/MyWorks", "./MyWorks")
-	run("check", "--download", "seestar:EMMC Images/MyWorks", "./MyWorks")
-	for name, want := range map[string][]byte{"nested/small.fit": []byte("independent literal fixture\n"), "zeros.fit": make([]byte, 128<<10)} {
-		got, err := os.ReadFile(filepath.Join(dst, "MyWorks", name))
+	run("copy", folder, "./M31")
+	run("check", "--download", folder, "./M31")
+	for name, size := range files {
+		want := fixtureBytes(size)
+		got, err := os.ReadFile(filepath.Join(dst, "M31", name))
 		if err != nil || !bytes.Equal(got, want) {
 			t.Fatalf("content %s: %v (got %d bytes, want %d)", name, err, len(got), len(want))
 		}
 	}
 	// Prove --download detects same-size damage, rather than only matching sizes.
-	damaged := bytes.Repeat([]byte{'x'}, len("independent literal fixture\n"))
-	if err := os.WriteFile(filepath.Join(dst, "MyWorks/nested/small.fit"), damaged, 0600); err != nil {
+	damaged := bytes.Repeat([]byte{'x'}, 77)
+	if err := os.WriteFile(filepath.Join(dst, "M31/sub dir/deeper/x.fit"), damaged, 0600); err != nil {
 		t.Fatal(err)
 	}
-	cmd := exec.CommandContext(ctx, rclone, "--config", "seestar-rclone.conf", "check", "--download", "seestar:EMMC Images/MyWorks", "./MyWorks")
+	cmd := exec.CommandContext(ctx, rclone, "--config", "seestar-rclone.conf", "check", "--download", folder, "./M31")
 	cmd.Dir = dst
 	out, err := cmd.CombinedOutput()
 	t.Logf("same-size corruption check: %v\n%s", err, out)
-	if ctx.Err() != nil || err == nil || !bytes.Contains(out, []byte("nested/small.fit: contents differ")) {
+	if ctx.Err() != nil || err == nil || !bytes.Contains(out, []byte("sub dir/deeper/x.fit: contents differ")) {
 		t.Fatalf("corruption was not detected: %v", err)
 	}
 	cancel()
@@ -108,4 +115,14 @@ func TestComposedSMB(t *testing.T) {
 	if cloud.logins.Load() != 1 || cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
 		t.Fatalf("login/allocation/stop=%d/%d/%d, want 1/1/1", cloud.logins.Load(), cloud.allocs.Load(), cloud.stops.Load())
 	}
+}
+
+// fixtureBytes is a fixture file of size n: the first n bytes of
+// `seq -w 0 9999999`, as the fixture's make-tree.sh writes it.
+func fixtureBytes(n int) []byte {
+	var b bytes.Buffer
+	for i := 0; b.Len() < n; i++ {
+		fmt.Fprintf(&b, "%07d\n", i)
+	}
+	return b.Bytes()[:n]
 }

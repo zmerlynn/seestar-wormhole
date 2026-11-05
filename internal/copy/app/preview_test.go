@@ -311,17 +311,17 @@ func (s walkSpy) Walk(ctx context.Context, skip func(string, bool) bool, kept fu
 // The copy API runs and cancels a preview while copying is off. Start,
 // a Save that changes the selection and Clear history discard it.
 func TestPreviewAPI(t *testing.T) {
-	e := newAppEnv(t, "")
-	if w := e.post("/app/api/copy", `{"action":"preview"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: set the telescope and folder in Settings first.") {
+	e := newAppEnv(t, nil)
+	if w := e.post("/copy/api/copy", `{"action":"preview"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: save the copy settings first.") {
 		t.Errorf("preview before settings are saved: %d %q", w.Code, w.Body.String())
 	}
-	input := `{"address":"192.0.2.10","folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`
-	if w := e.post("/app/api/settings", input); w.Code != 200 {
+	input := `{"folder":` + quote(filepath.Join(t.TempDir(), "Seestar")) + `,"interval":"5","skip_built_in":true}`
+	if w := e.post("/copy/api/settings", input); w.Code != 200 {
 		t.Fatalf("save: %d %q", w.Code, w.Body.String())
 	}
 	preview := func() *previewView {
 		t.Helper()
-		w := e.post("/app/api/copy", `{"action":"preview"}`)
+		w := e.post("/copy/api/copy", `{"action":"preview"}`)
 		if w.Code != 200 {
 			t.Fatalf("preview: %d %q", w.Code, w.Body.String())
 		}
@@ -333,7 +333,7 @@ func TestPreviewAPI(t *testing.T) {
 		}
 		v := decode[struct {
 			Copy copyView `json:"copy"`
-		}](t, e.serve("GET", "/app/api/status", "", tokenHeader, testToken)).Copy
+		}](t, e.serve("GET", "/copy/api/status", "")).Copy
 		if v.State != stOff || v.Preview == nil {
 			t.Fatalf("status after a preview: %+v", v)
 		}
@@ -343,26 +343,26 @@ func TestPreviewAPI(t *testing.T) {
 	if v := preview(); v.State != pvDone || v.Title != "Preview finished: 1 file can't be copied." || v.Sub != "" {
 		t.Errorf("preview: %+v", v)
 	}
-	if w := e.post("/app/api/copy", `{"action":"cancel"}`); w.Code != 200 || decode[copyView](t, w).Preview != nil {
+	if w := e.post("/copy/api/copy", `{"action":"cancel"}`); w.Code != 200 || decode[copyView](t, w).Preview != nil {
 		t.Errorf("cancel: %d %q", w.Code, w.Body.String())
 	}
 	preview()
-	if w := e.post("/app/api/settings", strings.Replace(input, `"interval":"5"`, `"interval":"7"`, 1)); w.Code != 200 || e.s.preview.view() == nil {
+	if w := e.post("/copy/api/settings", strings.Replace(input, `"interval":"5"`, `"interval":"7"`, 1)); w.Code != 200 || e.s.preview.view() == nil {
 		t.Errorf("a save of the interval alone: %d, preview %+v; want it kept", w.Code, e.s.preview.view())
 	}
-	if w := e.post("/app/api/settings", strings.Replace(input, `"skip_built_in":true`, `"skip_built_in":false`, 1)); w.Code != 200 || e.s.preview.view() != nil {
+	if w := e.post("/copy/api/settings", strings.Replace(input, `"skip_built_in":true`, `"skip_built_in":false`, 1)); w.Code != 200 || e.s.preview.view() != nil {
 		t.Errorf("a save of the selection: %d, preview %+v; want none", w.Code, e.s.preview.view())
 	}
 	preview()
-	if w := e.post("/app/api/clear", `{}`); w.Code != 200 || e.s.preview.view() != nil {
+	if w := e.post("/copy/api/clear", `{}`); w.Code != 200 || e.s.preview.view() != nil {
 		t.Errorf("clear history: %d, preview %+v; want none", w.Code, e.s.preview.view())
 	}
 	preview()
-	w := e.post("/app/api/copy", `{"action":"start"}`)
+	w := e.post("/copy/api/copy", `{"action":"start"}`)
 	if v := decode[copyView](t, w); w.Code != 200 || !v.On || v.Preview != nil {
 		t.Errorf("start: %d %+v, want on and no preview", w.Code, v)
 	}
-	if w := e.post("/app/api/copy", `{"action":"preview"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: copying is on.") {
+	if w := e.post("/copy/api/copy", `{"action":"preview"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: copying is on.") {
 		t.Errorf("preview while copying: %d %q", w.Code, w.Body.String())
 	}
 }

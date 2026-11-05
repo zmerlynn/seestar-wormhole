@@ -146,3 +146,25 @@ func TestRootHelpExitCode(t *testing.T) {
 		}
 	}
 }
+
+// The standalone copy app's --settings is gone: no command defines it, and
+// each refuses it as an unknown option. Copy's settings live in copy.json
+// beside the app's own.
+func TestNoSettingsFlag(t *testing.T) {
+	var o options
+	root := newCommand(&o, io.Discard)
+	for _, c := range append(root.Commands(), root) {
+		if c.Flags().Lookup("settings") != nil || c.PersistentFlags().Lookup("settings") != nil {
+			t.Errorf("%s defines --settings", c.Name())
+		}
+	}
+	commands := [][]string{{"proxy"}}
+	if guiEnabled {
+		commands = append(commands, []string{"ui"}, nil)
+	}
+	for _, args := range commands {
+		if o, err := parse(append(args, "--settings", "private-settings.json"), io.Discard); err == nil && o.outcome == commandRun {
+			t.Errorf("%q accepted --settings", args)
+		}
+	}
+}

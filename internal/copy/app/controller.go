@@ -124,7 +124,7 @@ func newController(parent context.Context, stateDir string, log *slog.Logger, di
 	act := &activity{}
 	return &controller{
 		parent: parent, stateDir: stateDir, activity: act,
-		log:      slog.New(newTee(log.Handler(), act)),
+		log:      slog.New(newTee(log.Handler(), act, "copy")),
 		dial:     dial,
 		checkNow: make(chan struct{}),
 		st:       status{state: stOff},
@@ -625,13 +625,13 @@ func (c *controller) view(now time.Time) copyView {
 		v.Text = strings.Join(parts, " ")
 	case stInUse:
 		v.Title = "Another copy is already using this folder."
-		v.Text = "It's in another seestar-copy window or seestar-copy-cli. Stop that copy, then start copying here."
+		v.Text = "It's in another seestar-wormhole window or seestar-copy-cli. Stop that copy, then start copying here."
 	case stCantWrite:
 		// Only a refused write in the folder names it as the cause.
 		switch {
 		case errors.Is(st.startErr, fs.ErrPermission) && inFolder(st.startErr, st.folder):
 			v.Title = "Can't write to " + st.folder + ": " + reason(st.startErr) + "."
-			v.Text = "Choose a writable folder in Settings, then start copying."
+			v.Text = "Choose a writable folder with Change…, then start copying."
 		case errors.Is(st.startErr, errOtherTelescope):
 			v.Title = "Copying stopped: " + st.startErr.Error() + "."
 			v.Text = "Start copying again to copy from it."

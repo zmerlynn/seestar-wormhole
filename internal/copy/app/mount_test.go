@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
@@ -73,8 +74,7 @@ func TestMountAPI(t *testing.T) {
 	if w := e.serve("GET", "/copy/api/status", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"set_up":false`) {
 		t.Errorf("status before a save = %d %s", w.Code, w.Body.String())
 	}
-	noAddress := strings.Replace(goodInput, `"address":"192.0.2.10",`, ``, 1)
-	if w := e.serve("POST", "/copy/api/settings", noAddress); w.Code != 200 {
+	if w := e.serve("POST", "/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatalf("save without an address = %d %s", w.Code, w.Body.String())
 	}
 	if w := e.serve("GET", "/copy/api/status", ""); !strings.Contains(w.Body.String(), `"set_up":true`) {
@@ -100,8 +100,7 @@ func TestMountAPI(t *testing.T) {
 // fails with the endpoint's reason when there is none.
 func TestMountEndpoint(t *testing.T) {
 	e := newMountEnv(t)
-	noAddress := strings.Replace(goodInput, `"address":"192.0.2.10",`, ``, 1)
-	if w := e.serve("POST", "/copy/api/settings", noAddress); w.Code != 200 {
+	if w := e.serve("POST", "/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	e.set("", errors.New("SMB is off"))
@@ -154,8 +153,7 @@ func TestMountBrowse(t *testing.T) {
 	if w := e.serve("GET", "/browse/", ""); w.Code != 404 {
 		t.Errorf("browse before a save = %d", w.Code)
 	}
-	noAddress := strings.Replace(goodInput, `"address":"192.0.2.10",`, ``, 1)
-	if w := e.serve("POST", "/copy/api/settings", noAddress); w.Code != 200 {
+	if w := e.serve("POST", "/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	w := e.serve("GET", "/browse/", "")
@@ -183,8 +181,7 @@ func TestMountQuit(t *testing.T) {
 	e := newMountEnv(t)
 	e.m.Quit()
 	e.m.Quit()
-	noAddress := strings.Replace(goodInput, `"address":"192.0.2.10",`, ``, 1)
-	e.serve("POST", "/copy/api/settings", noAddress)
+	e.serve("POST", "/copy/api/settings", goodInput)
 	if w := e.serve("POST", "/copy/api/copy", `{"action":"start"}`); w.Code == 200 {
 		t.Errorf("start after Quit = %d %s", w.Code, w.Body.String())
 	}
@@ -196,5 +193,60 @@ func TestNormalizeAddressExported(t *testing.T) {
 	}
 	if _, ok := NormalizeAddress("not an address!"); ok {
 		t.Error("a bad address passed")
+	}
+}
+
+// Copying that starts when the app opens waits for a target, through the
+// account the connection, and starts once there is one; without the
+// setting, or before a folder is saved, it doesn't start.
+func TestMountStartsCopyingWhenReady(t *testing.T) {
+	defer func(every time.Duration) { startEvery = every }(startEvery)
+	startEvery = 5 * time.Millisecond
+	open := func(set *Settings) (*Mount, func()) {
+		var mu sync.Mutex
+		ready := false
+		m := NewMount(context.Background(), MountOptions{
+			Addr: testAddr, StateDir: t.TempDir(), Version: "v9.9.9",
+			Log: slog.New(slog.DiscardHandler),
+			Target: func() (Target, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				if !ready {
+					return Target{}, errors.New("Not connected")
+				}
+				return Target{Endpoint: testEndpoint}, nil
+			},
+			Dial:     (&dials{}).dial,
+			Settings: set,
+		})
+		t.Cleanup(m.Quit)
+		m.Start()
+		return m, func() { mu.Lock(); ready = true; mu.Unlock() }
+	}
+	on := savedAt(t.TempDir())
+	on.StartCopying = true
+	m, connect := open(on)
+	time.Sleep(50 * time.Millisecond)
+	if m.s.copy.on() {
+		t.Fatal("copying started before the connection")
+	}
+	connect()
+	deadline := time.Now().Add(5 * time.Second)
+	for !m.s.copy.on() {
+		if time.Now().After(deadline) {
+			t.Fatal("copying didn't start once connected")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	off := savedAt(t.TempDir())
+	unset := DefaultSettings()
+	unset.Folder, unset.StartCopying = "", true
+	for _, set := range []*Settings{off, &unset, nil} {
+		m, connect := open(set)
+		connect()
+		time.Sleep(50 * time.Millisecond)
+		if m.s.copy.on() {
+			t.Errorf("%+v: copying started", set)
+		}
 	}
 }

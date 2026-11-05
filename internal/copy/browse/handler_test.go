@@ -1,8 +1,11 @@
 package browse
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"github.com/zmerlynn/seestar-wormhole/internal/icon"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"io/fs"
 	"maps"
 	"net/http"
@@ -341,6 +344,13 @@ func TestHeaders(t *testing.T) {
 	}
 }
 
+// The policies the app's server sets: framed by its own origin in the app,
+// by none outside it.
+var (
+	cspInApp = localhttp.Policy
+	csp      = strings.Replace(localhttp.Policy, "frame-ancestors 'self'", "frame-ancestors 'none'", 1)
+)
+
 func TestInApp(t *testing.T) {
 	app := newEnv(t, envOptions{inApp: true})
 	cli := newEnv(t, envOptions{})
@@ -407,7 +417,10 @@ func TestStatic(t *testing.T) {
 		t.Error("index.html must link icon.svg as its icon")
 	}
 	size := 0
-	for _, f := range []string{"web/index.html", "web/app.js", "web/style.css", "web/icon.svg"} {
+	if !bytes.Equal(e.serve("GET", "/icon.svg").Body.Bytes(), icon.SVG) {
+		t.Error("icon.svg is not the app's icon")
+	}
+	for _, f := range []string{"web/index.html", "web/app.js", "web/style.css"} {
 		b, err := assets.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)

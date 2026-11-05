@@ -3,7 +3,7 @@
 package app
 
 // This test needs the Samba fixture in internal/copy/remote/testdata/samba,
-// reachable at SEESTAR_COPY_SMB_ENDPOINT (host:port). scripts/copy/test-smb.sh
+// reachable at SEESTAR_COPY_SMB_ENDPOINT (host:port). scripts/test-smb.sh
 // and CI start it.
 
 import (
@@ -28,7 +28,7 @@ func TestSMBCopyPass(t *testing.T) {
 	if endpoint == "" {
 		t.Fatal("SEESTAR_COPY_SMB_ENDPOINT must name the Samba fixture (host:port)")
 	}
-	set := defaultSettings()
+	set := DefaultSettings()
 	set.Address = endpoint
 	set.Folder = filepath.Join(t.TempDir(), "Seestar")
 	set.Includes = []string{"/MyWorks/M 31"}
@@ -102,7 +102,7 @@ func TestSMBFreeUpSpace(t *testing.T) {
 	if err := remote.FillScratch(ctx, r, "app-free", files); err != nil {
 		t.Fatal(err)
 	}
-	set := defaultSettings()
+	set := DefaultSettings()
 	set.Address, set.Folder, set.OlderThanDays = endpoint, filepath.Join(t.TempDir(), "Seestar"), 0
 	set.Includes = []string{"/app-free"}
 	stateDir := t.TempDir()

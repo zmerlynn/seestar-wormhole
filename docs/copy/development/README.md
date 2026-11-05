@@ -18,15 +18,14 @@ is stopped.
 | Path | What it does |
 | --- | --- |
 | `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the read-only guard before a dry run, `find`'s listing, and `browse`'s listener and `--open`. |
-| `cmd/seestar-copy` | The app's command: `--settings`, logging, and how the page is shown. The `gui` build shows it in a [Wails](https://wails.io) window, with native folder and save dialogs, and quits the app when the window closes. The build without the tag prints the page's URL to open in a browser and serves until Ctrl+C. |
-| `internal/copy/app` | The app: `app.json` (read at startup, written atomically on Save), and the loopback server for its page, with a per-run token and Host, Origin and Fetch Metadata checks, Settings, Test, and the Browse tab, which is `internal/copy/browse` in its in-app mode. |
+| `internal/copy/app` | The Copy, Browse and Free up space tabs' server, which seestar-wormhole's app (`internal/ui`) mounts under `/copy/api/` and `/browse/`: the copy, preview and free-space controllers, Settings validation, Test, the activity log, and the Browse tab, which is `internal/copy/browse` in its in-app mode. The app keeps the settings in its `copy.json` and tells the mount where the telescope is. |
 | `internal/copy/engine` | The work the commands share: the `--exclude` and `--include` selection and its walk of the share, the `sync` pass loop (dial, list, plan, copy, log off, sleep) and its dry run, and `delete`'s run. It never turns the read-only guard on. |
 | `internal/copy/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
 | `internal/copy/state` | The per-destination state file: JSON Lines, last record per path wins, torn-tail tolerance, append with fsync, and the exclusive lock. |
 | `internal/copy/plan` | The pass decisions: wait, done, copy, replace, adopt or fail for each listed file, and `delete`'s decisions on files and emptied folders. Pure functions with no I/O; the current time is an input. |
 | `internal/copy/copier` | Carries out a pass's decisions over the one session with a worker pool: temporary file beside the final one, hash, size check, fsync, mtime, rename, then the state record. |
 | `internal/copy/browse` | `browse`'s web server: the HTTP handler with its Host, Fetch Metadata and path checks, the embedded page, and the pool that shares one SMB session between requests, closing it when idle, failed or stuck. |
-| `internal/copy/guard` | The panic guard: the copier's goroutines, including Browse's idle and cancellation timers and the reads of a multipart Browse response, recover panics, log the stack, and finish or retire their work before returning, so a copier bug can't end the proxy that shares its process. |
+| `internal/copy/guard` | The panic guard: the copier's goroutines, including Browse's idle and cancellation timers and the reads of a multipart Browse response, recover panics, log only where they were recovered (no panic value or stack), and finish or retire their work before returning, so a copier bug can't end the proxy that shares its process. |
 | `internal/copy/readonly` | The dry-run guard: once enabled, every function that changes the local filesystem or the device panics. A test checks that each such function calls it first. |
 | `internal/licenses` | Shared with seestar-wormhole: the `licenses` command's output, the project's `NOTICE`, then the license texts of each module linked into the running build. |
 | `scripts/generate-licenses.go` | Writes the license catalog that `internal/licenses` embeds. |
@@ -68,38 +67,38 @@ in the `docker.io/library/golang:1.27` image with Podman, so no Go is needed
 on the host. See the [development guide](../../development/README.md) for its
 `prepare` step and caches.
 
-seestar-copy's own steps are in `scripts/copy/check-go.sh`, which
-`check.sh` and CI run: cross-builds and vet of the copy commands and
-packages for every target with `CGO_ENABLED=0`, the Windows app with its
-window, the license catalog check, and vet of the Samba tests.
+`check.sh` and CI also cross-build and vet the copy commands and packages
+for every target with `CGO_ENABLED=0`, and vet the Samba tests.
 
-`./scripts/copy/test-smb.sh` runs the `internal/copy/remote` and
+`./scripts/test-smb.sh` runs the `internal/copy/remote` and
 `internal/copy/app` Samba tests against a fixture, a guest-only, read-only
-share like the telescope's, built from `internal/copy/remote/testdata/samba`.
-Building the fixture image downloads Samba; the tests run on a private
-Podman network. CI runs them too. They need the `smbintegration` build tag
-and `SEESTAR_COPY_SMB_ENDPOINT` (`host:port`) naming the fixture.
+share like the telescope's, built from `internal/copy/remote/testdata/samba`;
+see the [development guide](../../development/README.md#optional-integration-checks).
+CI runs them too. They need the `smbintegration` build tag and
+`SEESTAR_COPY_SMB_ENDPOINT` (`host:port`) naming the fixture.
 
-`test/browser` holds browser tests of the `browse` page, written with
-[Playwright](https://playwright.dev/) and run in Chromium and WebKit. CI
-runs them in the `browser` job. They cover the listing and its count,
-folder navigation with Back, Forward and breadcrumb focus, thumbnails, the
-image, text and FITS viewers, Save, closing the viewer, a missing folder, a
-long name in a narrow window, and the favicon. They also save screenshots
-of the page in light and dark, which CI uploads. The app's tests start the
-browser-only `seestar-copy` themselves, each with its own settings file, and
-cover the first run, Settings and their field errors, the history and
-settings paths, Clear history, the Copy tab's Preview, Test's messages, the tabs, and the Browse
-tab, including a new address replacing it, and the layout at 200% text,
-wider text spacing and 480 px wide. The tests need the Samba
-fixture's `browse` target, a tree of real files from `make-browse.sh`
-instead of `tree.txt`'s. To run them locally, with Node.js and Podman:
+`test/browser` holds browser tests of the `browse` page and the app's
+page, written with [Playwright](https://playwright.dev/) and run in Chromium
+and WebKit. CI runs them in the `copy-browser` job. For `browse` they cover
+the listing and its count, folder navigation with Back, Forward and
+breadcrumb focus, thumbnails, the image, text and FITS viewers, Save,
+closing the viewer, a missing folder, a long name in a narrow window, and
+the favicon. `app.spec.js`, `copy.spec.js` and `free.spec.js` cover the
+app's Connection on this network, Copy with real passes, Browse, Free up
+space, the tabs, the token, and a folder in use by `seestar-copy-cli` or a
+second app. They start the page without a window from `internal/ui`'s test
+binary: its `TestBrowserServer` serves the real page and runtime from the
+state folder `SEESTAR_WORMHOLE_BROWSER_STATE` names, with no account and no
+proxy, and prints the page's URL. The tests also save screenshots in light
+and dark, which CI uploads. They need the Samba fixture's `browse` target,
+a tree of real files from `make-browse.sh` instead of `tree.txt`'s. To run
+them locally, with Node.js and Podman:
 
 ```sh
 podman build --target browse -t seestar-copy-samba-browse internal/copy/remote/testdata/samba
 podman run -d --rm --name seestar-copy-samba-browse -p 127.0.0.1:14450:14450 seestar-copy-samba-browse
 go build -mod=vendor ./cmd/seestar-copy-cli
-go build -mod=vendor ./cmd/seestar-copy
+go test -mod=vendor -c -o bin/ui.test ./internal/ui
 ./seestar-copy-cli browse --endpoint 127.0.0.1:14450
 ```
 
@@ -108,18 +107,12 @@ browse prints its URL. In another terminal:
 ```sh
 cd test/browser
 npm ci && npx playwright install chromium webkit
-BROWSE_URL=http://127.0.0.1:PORT/ APP_BIN=../../seestar-copy npx playwright test
+BROWSE_URL=http://127.0.0.1:PORT/ UI_TEST_BIN=$PWD/../../bin/ui.test CLI_BIN=$PWD/../../seestar-copy-cli npx playwright test
 ```
 
 Use the URL browse printed for `BROWSE_URL`. Screenshots go to
 `test/browser/screenshots`. Stop the fixture with
 `podman stop seestar-copy-samba-browse`.
-
-With Go 1.27 installed, seestar-copy's steps run directly:
-
-```sh
-GOFLAGS=-mod=vendor sh scripts/copy/check-go.sh
-```
 
 To build the command:
 
@@ -147,7 +140,7 @@ These apply to every change, whoever writes it.
   carried as unknown.
 - **Standard formats use standard libraries.** Don't hand-write a parser,
   walker or tokenizer for a format that has a well-known library: JSON, SMB,
-  Markdown. JSON goes through the standard library's `encoding/json` into
+  Markdown. JSON goes through the standard library's `encoding/json/v2` into
   typed structs holding only the members used; permissiveness comes from the
   decoder's own behavior, so never turn on rejecting unknown members. SMB
   goes through the vendored client library. If it isn't clear whether a
@@ -174,7 +167,7 @@ These apply to every change, whoever writes it.
   older release cannot read, and such a one-way change needs the
   maintainer's approval before it is written.
 - **Every public flag, format and exit code is a promise**, as
-  [versioning](../versioning.md) lists. Add one, or a log line, only for a
+  [versioning](../../versioning.md#the-seestar-copy-cli-contract) lists. Add one, or a log line, only for a
   current need, and document it in the reference in the same change.
 - **Dependencies are few, vendored and Unlicense-compatible.** The project
   is under the Unlicense. A dependency must allow distributing one static
@@ -188,8 +181,8 @@ These apply to every change, whoever writes it.
 
 ## Reviewing a change
 
-[`.claude/skills/seestar-copy-review`](../../../.claude/skills/seestar-copy-review/SKILL.md)
-describes how to review a change in focused lanes, such as correctness, tests,
-simplicity, licensing and docs. A coding agent can follow it as a skill, and a
-person can follow it as a checklist. A review is scoped to the change by
-default and ends in a single verdict.
+A copy change is reviewed with the app's
+[`.claude/skills/wormhole-review`](../../../.claude/skills/wormhole-review/SKILL.md);
+its lane table names the copy packages, and its lanes carry the copy rules.
+See [Reviewing a change](../../development/README.md#reviewing-a-change) in
+the development guide.

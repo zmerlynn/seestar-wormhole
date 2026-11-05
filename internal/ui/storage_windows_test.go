@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"encoding/json/v2"
+	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"golang.org/x/sys/windows"
 	"io"
@@ -45,6 +46,28 @@ func TestPrivateStorageWindows(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := privatefile.Check(windows.Handle(st.directory.Fd()), true); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// copy.json goes through the same private storage as config.json.
+func TestCopySettingsPrivateWindows(t *testing.T) {
+	st := testStorage(t)
+	c, _, err := loadCopySettings(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := copyapp.DefaultSettings()
+	set.Folder = `C:\synthetic\Seestar`
+	if err := c.save(set); err != nil {
+		t.Fatal(err)
+	}
+	f, err := privatefile.Open(filepath.Join(st.root, copyName), os.O_RDONLY)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if err := privatefile.Check(windows.Handle(f.Fd()), false); err != nil {
 		t.Fatal(err)
 	}
 }

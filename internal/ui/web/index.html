@@ -4,17 +4,18 @@
 <body><main>
 <header id="app-header">
 <h1><img src="/icon.svg" width="40" height="40" alt="">seestar‑wormhole</h1>
-<p id="connection-line"><span id="connection-dot" data-tone="off" aria-hidden="true"></span><span id="connection-text">Loading…</span></p>
+<p id="connection-line"><span id="connection-dot" data-tone="off" aria-hidden="true"></span><span id="connection-text">Loading…</span><span id="copy-chip" class="chip" hidden></span></p>
 </header>
 <p>Your remote Seestar, as if it were on your network.</p>
 <div id="tabs" role="tablist" aria-label="seestar-wormhole">
-<button id="tab-connection" type="button" role="tab" aria-controls="panel-connection" aria-selected="true">Connection</button>
-<button id="tab-copy" type="button" role="tab" aria-selected="false" aria-describedby="tabs-note" tabindex="-1" disabled>Copy</button>
-<button id="tab-browse" type="button" role="tab" aria-selected="false" aria-describedby="tabs-note" tabindex="-1" disabled>Browse</button>
-<button id="tab-free" type="button" role="tab" aria-selected="false" aria-describedby="tabs-note" tabindex="-1" disabled>Free up space</button>
+<button id="tab-connection" type="button" role="tab" aria-controls="panel-connection" aria-selected="true" tabindex="0">Connection</button>
+<button id="tab-copy" type="button" role="tab" aria-controls="panel-copy" aria-selected="false" aria-describedby="tabs-note" tabindex="-1" disabled>Copy</button>
+<button id="tab-browse" type="button" role="tab" aria-controls="panel-browse" aria-selected="false" aria-describedby="tabs-note" tabindex="-1" disabled>Browse</button>
+<button id="tab-free" type="button" role="tab" aria-controls="panel-free" aria-selected="false" aria-describedby="tabs-note" tabindex="-1" disabled>Free up space</button>
 <button id="tab-activity" type="button" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity</button>
 </div>
-<p id="tabs-note" class="help">Copy, Browse and Free up space: Coming in this build.</p>
+<p id="tabs-note" class="help">Copy, Browse and Free up space open once you connect through your account, or save an address on this network.</p>
+<p id="copy-reach" class="notice" hidden><span id="copy-reach-text"></span> <button id="copy-reach-go" class="linkbtn" type="button"></button></p>
 <section id="panel-connection" role="tabpanel" aria-labelledby="tab-connection">
 <fieldset id="route-choice" disabled aria-describedby="route-help">
 <legend>Reach the telescope</legend>
@@ -83,9 +84,130 @@
 <p class="help">On this network, the proxy doesn't start and your Seestar account isn't used. Connect on the account route saves that route instead.</p>
 </div>
 </section>
+<section id="panel-copy" role="tabpanel" aria-labelledby="tab-copy" hidden>
+<p class="hide" role="status" id="c-live"></p>
+<div id="c-main" hidden>
+<div id="c-box">
+<p class="big" id="c-title" tabindex="-1"></p>
+<p class="muted" id="c-tocopy"></p>
+<p id="c-text"></p>
+<progress id="c-busy" hidden></progress>
+<p class="muted crawl mono" id="c-path"></p>
+<div id="c-copying" hidden>
+<progress id="c-bar" aria-label="Copied so far"></progress>
+<div class="stats"><span id="c-bytes"></span><span id="c-speed"></span><span id="c-left"></span><span class="muted" id="c-found"></span></div>
+<ul class="flight" id="c-flight" aria-label="Files being copied"></ul>
+</div>
+<p class="muted" id="c-summary"></p>
+<p id="c-settling"></p>
+</div>
+<div id="c-failed" class="notice err" hidden><p id="c-notice"></p>
+<details><summary>Show files</summary><ul class="log" id="c-files"></ul></details></div>
+<p class="result err" id="c-err"></p>
+<div class="actions">
+<button class="primary" type="button" id="c-start" hidden>Start copying</button>
+<button type="button" id="c-pbtn" aria-describedby="c-pnote" hidden>Preview</button>
+<span class="muted" id="c-pnote" hidden>Nothing is copied until you start.</span>
+<button type="button" id="c-pcancel" hidden>Cancel</button>
+<button type="button" id="c-check" hidden>Check now</button>
+<button type="button" id="c-stop" hidden>Stop copying</button>
+</div>
+<div id="c-preview" hidden>
+<p class="big" id="c-ptitle" tabindex="-1"></p>
+<p class="muted" id="c-ptocopy"></p>
+<p id="c-ptext"></p>
+<p class="muted" id="c-psub"></p>
+<progress id="c-pbusy" aria-label="Previewing" hidden></progress>
+<p class="muted crawl mono" id="c-ppath"></p>
+<div id="c-ptable" class="scroll" hidden><table class="groups"><thead><tr><th>Folder</th><th class="num">Copy</th><th class="num">Size</th></tr></thead><tbody id="c-pgroups"></tbody></table></div>
+</div>
+<p class="help" id="c-help" hidden>Copying continues while this app is open, even minimized. Quitting stops it: a file partly copied then is copied again next time. New images arrive a few minutes after the telescope saves them.</p>
+</div>
+<section id="s-box" aria-labelledby="s-title">
+<h2 id="s-title">Copy settings</h2>
+<p id="s-first" class="notice" hidden>Choose the folder for your images, then Save and continue. Nothing is copied until you start.</p>
+<p id="s-line"><span id="s-summary"></span> <button class="linkbtn" type="button" id="s-change" aria-expanded="false" aria-controls="copy-form">Change…</button></p>
+<p id="s-locked" class="notice" hidden>Stop copying to change settings. <button class="linkbtn" type="button" id="s-stop">Stop copying</button></p>
+<form id="copy-form" novalidate hidden>
+<fieldset id="f-set">
+<label for="f-folder">Folder for your images</label>
+<div class="inline"><input id="f-folder" type="text" class="mono" spellcheck="false" autocomplete="off" aria-describedby="f-folder-help f-folder-err"><button type="button" id="f-choose" hidden>Choose…</button></div>
+<p class="error" id="f-folder-err" role="alert" hidden></p>
+<p class="help" id="f-folder-help">Type the folder's full path. Images are copied here, in the same folders as on the telescope. Each folder has its own copy history: a new folder starts a new one, so everything on the telescope is copied there, and files already there are reused.</p>
+<label class="check strong">Check for new files every <input type="number" id="f-int" min="1" max="1440" aria-describedby="f-int-err"> minutes</label>
+<p class="error" id="f-int-err" role="alert" hidden></p>
+<label for="f-ex">Leave out</label>
+<textarea id="f-ex" spellcheck="false" aria-describedby="f-ex-help f-ex-err"></textarea>
+<p class="error" id="f-ex-err" role="alert" hidden></p>
+<p class="help" id="f-ex-help">One pattern per line. A name like <code>Video</code> matches at any depth; one starting with <code>/</code> is a path from the top of the share. For example: <code>Video</code>, <code>/Preview</code>.</p>
+<label for="f-in">Only copy</label>
+<textarea id="f-in" spellcheck="false" aria-describedby="f-in-help f-in-err"></textarea>
+<p class="error" id="f-in-err" role="alert" hidden></p>
+<p class="help" id="f-in-help">Leave empty to copy everything not left out. For example: <code>/MyWorks</code>.</p>
+<label class="check"><input type="checkbox" id="f-skip"> <span><b>Skip the telescope's logs, scratch and system files</b> (recommended)<br><span class="muted mono" id="f-builtin"></span></span></label>
+<label class="check"><input type="checkbox" id="f-start"> <span><b>Start copying when the app opens</b><br><span class="muted">On your account, copying starts once the connection is ready.</span></span></label>
+<div class="actions"><button class="primary" type="submit" id="f-save">Save</button><button type="button" id="f-cancel">Cancel</button></div>
+</fieldset>
+</form>
+<p class="result" id="f-saved" role="status" tabindex="-1"></p>
+</section>
+<details id="h-details" hidden><summary>Copy history</summary>
+<p class="muted path" id="h-saved">History file: <span class="mono" id="h-path"></span> <button class="small" type="button" id="h-clip" aria-label="Copy the copy history path">Copy</button> <button class="small" type="button" id="h-clear">Clear history…</button></p>
+<p class="muted" id="h-unsaved" hidden>Save to see this folder's copy history.</p>
+<p class="result" id="h-result" role="status"></p>
+</details>
+</section>
+<section id="panel-browse" role="tabpanel" aria-labelledby="tab-browse" hidden>
+<p id="b-setup" class="notice">Choose the folder for your images on the Copy tab to browse the telescope's files. <button class="linkbtn" type="button" id="b-setup-go">Go to Copy</button></p>
+<iframe id="b-frame" title="The telescope's files" hidden></iframe>
+</section>
+<section id="panel-free" role="tabpanel" aria-labelledby="tab-free" hidden>
+<p class="hide" role="status" id="x-live"></p>
+<p id="x-changed" class="notice" hidden>Settings or copy history changed. Preview again before deleting.</p>
+<div id="x-box">
+<p class="big" id="x-title" tabindex="-1"></p>
+<p id="x-text"></p>
+<p class="muted" id="x-sub"></p>
+<progress id="x-busy" aria-label="Checking files" hidden></progress>
+<div id="x-hash" hidden><p id="x-htext"></p><progress id="x-hbar" aria-label="Copies checked"></progress></div>
+<div id="x-deleting" hidden><progress id="x-dbar" aria-label="Files deleted"></progress></div>
+<p class="muted crawl mono" id="x-file"></p>
+</div>
+<div id="x-preview" class="scroll" hidden><table class="groups"><thead><tr><th><span class="hide">Include</span></th><th>Folder</th><th class="num">Files</th><th class="num">Size</th></tr></thead><tbody id="x-groups"></tbody></table></div>
+<details id="x-kept" hidden><summary id="x-ksum"></summary><ul class="log" id="x-klist"></ul></details>
+<div id="x-options">
+<p id="x-intro" tabindex="-1"></p>
+<label class="check strong">Only files older than <input type="number" id="x-days" min="0" aria-describedby="x-days-help x-days-err"> days</label>
+<p class="help" id="x-days-help">0 means any age.<span id="x-restack"> Recent sessions stay on the telescope so you can restack them.</span></p>
+<p class="error" id="x-days-err" role="alert" hidden></p>
+<label class="check"><input type="checkbox" id="x-trust"> <span><b>My copies have moved or the drive is offline</b><br><span class="muted">Checks only this app's record of each copy, not the copy itself. Leave this off if your images are still in your folder.</span></span></label>
+</div>
+<p class="result err" id="x-err"></p>
+<div class="actions">
+<button class="primary" type="button" id="x-find" aria-describedby="x-find-note">Preview what to delete</button>
+<span class="muted" id="x-find-note">Nothing is deleted until you confirm.</span>
+<button type="button" id="x-cancel">Cancel</button>
+<button class="danger" type="button" id="x-go"></button>
+<button class="linkbtn" type="button" id="x-change">Change options</button>
+<button type="button" id="x-stop">Stop</button>
+<button type="button" id="x-done">Done</button>
+</div>
+</section>
 <section id="panel-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
-<details id="details" open><summary>Details and logs</summary><h2>Connection settings</h2><pre id="effective-settings"></pre><h2>Recent events</h2><ul id="events"></ul><p id="error-code" hidden></p><p id="log-path"></p><p id="log-error" hidden>Could not write the private log.</p><button id="copy" type="button">Copy diagnostic summary</button> <span id="copy-feedback" role="status" aria-live="polite"></span><textarea id="diagnostic-copy" aria-label="Diagnostic summary" readonly hidden></textarea></details>
+<details id="details" open><summary>Details and logs</summary><h2>Recent events</h2><ul id="events"></ul><p id="error-code" hidden></p><button id="copy" type="button">Copy diagnostic summary</button> <span id="copy-feedback" role="status" aria-live="polite"></span><textarea id="diagnostic-copy" aria-label="Diagnostic summary" readonly hidden></textarea>
+<h2>Connection settings</h2><pre id="effective-settings"></pre><h2>Copy settings</h2><pre id="copy-settings"></pre>
+<h2>Files</h2><p id="log-path"></p><p id="log-error" hidden>Could not write the private log.</p><p id="config-file"></p><p id="copy-file"></p></details>
 </section>
 <footer><button id="quit" type="button" disabled>Quit</button><p id="quit-help"></p>
 <p>seestar-wormhole <span id="version"></span> · <a href="https://unlicense.org/" target="_blank" rel="noreferrer">The Unlicense</a> · <a id="releases-link" href="https://github.com/zmerlynn/seestar-wormhole/releases" target="_blank" rel="noreferrer">Releases</a></p></footer>
+<dialog id="x-confirm" aria-labelledby="x-ctitle" aria-describedby="x-cbody">
+<h2 id="x-ctitle"></h2>
+<p id="x-cbody"></p>
+<div class="actions"><button class="danger" type="button" id="x-cgo"></button><button type="button" id="x-ccancel" autofocus>Cancel</button></div>
+</dialog>
+<dialog id="h-confirm" aria-labelledby="h-ctitle" aria-describedby="h-cbody">
+<h2 id="h-ctitle">Clear the copy history?</h2>
+<p id="h-cbody">No images will be deleted. The next time you start copying, files still in this folder will be checked and recorded again. Missing files, including files you moved away, will be copied again from the telescope.</p>
+<div class="actions"><button class="danger" type="button" id="h-cgo">Clear history</button><button type="button" id="h-ccancel" autofocus>Cancel</button></div>
+</dialog>
 </main></body></html>

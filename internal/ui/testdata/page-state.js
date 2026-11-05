@@ -13,6 +13,9 @@
     };
   });
   const live = state;
+  // A synthetic poll also reads copy's status through the stubbed API, which
+  // answers with the connection's; each check starts from copy's live one.
+  const liveCopy = copyStatus;
   window.setTimeout = () => {};
   const results = [];
   const setup = {...live.settings, email: 'synthetic@example.invalid', remember_password: false};
@@ -36,6 +39,7 @@
     load(setup);
     $('password').value = '';
     state = status();
+    copyStatus = liveCopy;
     clearErrors();
     controls();
   };
@@ -80,7 +84,7 @@
         const described = id === 'serial' ? 'serial-help serial-error' : id+'-error';
         assert($(id).placeholder === placeholder && !$(id).hasAttribute('value') && (id === 'serial' ? $('serial-help').hidden : !$(id+'-help')) && $(id).getAttribute('aria-describedby') === described, id+' example is not placeholder-only');
       }
-      assert(Array.from($('details').querySelectorAll('h2')).map(e => e.textContent).join('|') === 'Connection settings|Recent events', 'Details headings missing');
+      assert(Array.from($('details').querySelectorAll('h2')).map(e => e.textContent).join('|') === 'Recent events|Connection settings|Copy settings|Files', 'Details headings missing');
       assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous port headings');
       assert($('ports-help').textContent === 'Local ports are on this computer. Leave a port empty to turn off that service.', 'local port definition missing');
     });
@@ -350,7 +354,7 @@
       render({...status(), effective, events: [event], log_path: 'synthetic-private-path'});
       assert($('effective-settings').textContent === JSON.stringify(effective, null, 2), 'Settings is not pretty JSON');
       const localTime = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
-      assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  Account telescopes: S30 synthetic-details', 'event category or UTC leaked into local list');
+      assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  Connection  Account telescopes: S30 synthetic-details', 'event category or UTC leaked into local list, or the source tag is missing');
       const detailsNodes = ['effective-settings','events','log-path','running-ports','ports'].map(id => $(id));
       const detailsObserver = new MutationObserver(() => {});
       for (const node of detailsNodes) detailsObserver.observe(node, {subtree: true, childList: true, characterData: true, attributes: true});
@@ -358,7 +362,7 @@
       assert(detailsObserver.takeRecords().length === 0, 'unchanged poll mutated Details or ports');
       detailsObserver.disconnect();
       const copied = JSON.parse(diagnostic);
-      assert(Object.keys(copied).join() === 'app,version,settings,events' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && copied.events[0].message === event.message && !diagnostic.includes('synthetic-private-path') && !$('mappings'), 'copied object schema/privacy');
+      assert(Object.keys(copied).join() === 'app,version,error_code,settings,copy_settings,events,log_path' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && copied.events[0].message === event.message && copied.events[0].source === 'connection' && copied.log_path === 'synthetic-private-path' && JSON.stringify(copied.copy_settings) === JSON.stringify(liveCopy?.settings ?? null) && !diagnostic.includes('synthetic@example.invalid') && !$('mappings'), 'copied object schema/privacy');
       const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
       let clipboard = '';
       Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async value => {clipboard = value;}}});
@@ -397,6 +401,7 @@
     lastFailure = '';
     if (typeof actionError !== 'undefined') actionError = '';
     load(live.settings);
+    copyStatus = liveCopy;
     clearErrors();
     say('');
     alertText('');

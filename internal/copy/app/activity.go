@@ -14,9 +14,11 @@ const activitySize = 200
 
 // entry is one line of Recent activity.
 type entry struct {
-	Time string `json:"time"` // local, HH:MM:SS
-	Warn bool   `json:"warn"` // a warning or an error
-	Text string `json:"text"` // the message, then key=value for each attribute
+	Time   string    `json:"time"`   // local, HH:MM:SS
+	At     time.Time `json:"at"`     // the record's time, which orders the app's merged Activity
+	Source string    `json:"source"` // "copy", or "delete" for Free up space
+	Warn   bool      `json:"warn"`   // a warning or an error
+	Text   string    `json:"text"`   // the message, then key=value for each attribute
 }
 
 // activity keeps the last activitySize records logged through its handler.
@@ -48,15 +50,19 @@ func (a *activity) add(e entry) {
 }
 
 // tee is a slog.Handler that passes each record to next, if next takes
-// it, and keeps each Info or higher one in its activity.
+// it, and keeps each Info or higher one in its activity, tagged with its
+// source.
 type tee struct {
-	next  slog.Handler
-	keep  *activity
-	attrs []slog.Attr // from WithAttrs, with their groups' prefixes
-	group string      // the open groups, as a key prefix
+	next   slog.Handler
+	keep   *activity
+	source string
+	attrs  []slog.Attr // from WithAttrs, with their groups' prefixes
+	group  string      // the open groups, as a key prefix
 }
 
-func newTee(next slog.Handler, keep *activity) *tee { return &tee{next: next, keep: keep} }
+func newTee(next slog.Handler, keep *activity, source string) *tee {
+	return &tee{next: next, keep: keep, source: source}
+}
 
 func (t *tee) Enabled(ctx context.Context, l slog.Level) bool {
 	return l >= slog.LevelInfo || t.next.Enabled(ctx, l)
@@ -73,7 +79,7 @@ func (t *tee) Handle(ctx context.Context, r slog.Record) error {
 			writeAttr(&b, t.group, a)
 			return true
 		})
-		t.keep.add(entry{Time: r.Time.Local().Format(time.TimeOnly), Warn: r.Level >= slog.LevelWarn, Text: b.String()})
+		t.keep.add(entry{Time: r.Time.Local().Format(time.TimeOnly), At: r.Time, Source: t.source, Warn: r.Level >= slog.LevelWarn, Text: b.String()})
 	}
 	if t.next.Enabled(ctx, r.Level) {
 		return t.next.Handle(ctx, r)

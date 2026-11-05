@@ -51,11 +51,7 @@ func normalizeAddress(s string) (string, bool) {
 // or a message for each field in error, keyed by field.
 func checkInput(in input) (Settings, map[string]string) {
 	errs := map[string]string{}
-	set := Settings{Version: settingsVersion, Folder: strings.TrimSpace(in.Folder), SkipBuiltIn: in.SkipBuiltIn, StartCopying: in.StartCopying}
-	var ok bool
-	if set.Address, ok = normalizeAddress(in.Address); !ok {
-		errs["address"] = addressError
-	}
+	set := Settings{Version: SettingsVersion, Folder: strings.TrimSpace(in.Folder), SkipBuiltIn: in.SkipBuiltIn, StartCopying: in.StartCopying}
 	if !filepath.IsAbs(set.Folder) {
 		errs["folder"] = folderError
 	}

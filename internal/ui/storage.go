@@ -7,10 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
-
-const maxJSON = 64 << 10
 
 var errStorage = errors.New("Settings storage unavailable. Use a private state directory.")
 
@@ -44,8 +43,8 @@ func (s *storage) read(name string, v any) error {
 		return errStorage
 	}
 	defer f.Close()
-	b, err := io.ReadAll(io.LimitReader(f, maxJSON+1))
-	if err != nil || len(b) > maxJSON {
+	b, err := io.ReadAll(io.LimitReader(f, localhttp.MaxJSON+1))
+	if err != nil || len(b) > localhttp.MaxJSON {
 		return errStorage
 	}
 	if err = json.Unmarshal(b, v); err != nil {
@@ -55,7 +54,7 @@ func (s *storage) read(name string, v any) error {
 }
 func (s *storage) write(name string, v any) error {
 	b, err := json.Marshal(v)
-	if err != nil || len(b) > maxJSON {
+	if err != nil || len(b) > localhttp.MaxJSON {
 		return errStorage
 	}
 	return s.writeBytes(name, b)

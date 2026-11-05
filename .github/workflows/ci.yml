@@ -44,12 +44,18 @@ jobs:
       - name: Build, vet and test vendored source
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          go run ./scripts/generate-licenses.go --check
           go build ./...
           go vet ./...
           go test -race -count=2 -timeout 20m ./...
           go test scripts/release.go scripts/release_test.go
           ./scripts/test-check.sh
-          sh scripts/copy/check-go.sh
+          # The copy packages on every release target; the Samba tests only build here.
+          for target in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go build -p 2 ./cmd/seestar-copy-cli ./internal/copy/...
+            CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/...
+          done
+          go vet -p 2 -tags smbintegration ./internal/copy/remote ./internal/copy/app
 
   native:
     strategy:
@@ -79,6 +85,23 @@ jobs:
           else
             go test -v ./...
           fi
+      - name: Page tests in JavaScriptCore
+        # The page regressions skip without jsc, which only macOS ships.
+        if: runner.os == 'macOS'
+        run: |
+          jsc=/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc
+          if [[ ! -x "$jsc" ]]; then
+            echo "::error::JavaScriptCore shell missing at $jsc"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/jsc"
+          ln -sf "$jsc" "$RUNNER_TEMP/jsc/jsc"
+          PATH="$RUNNER_TEMP/jsc:$PATH" go test -count=1 -v ./internal/ui | tee "$RUNNER_TEMP/page-tests.log"
+          if grep -q 'JavaScriptCore shell is not installed' "$RUNNER_TEMP/page-tests.log"; then
+            echo "::error::a page test skipped"
+            exit 1
+          fi
+          grep -q 'PASS: TestCopySetupPage' "$RUNNER_TEMP/page-tests.log"
       - name: Test release tooling
         run: go test scripts/release.go scripts/release_test.go
       - name: Build and smoke test native binary
@@ -131,7 +154,8 @@ jobs:
 
 
   copy-browser:
-    # Playwright tests of seestar-copy's browse page and app page.
+    # Playwright tests of seestar-copy-cli browse's page and the app's page,
+    # which internal/ui's TestBrowserServer serves without a window.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -158,6 +182,8 @@ jobs:
         run: |
           go build -o "$RUNNER_TEMP/seestar-copy-cli" ./cmd/seestar-copy-cli
           echo "CLI_BIN=$RUNNER_TEMP/seestar-copy-cli" >> "$GITHUB_ENV"
+          go test -c -o "$RUNNER_TEMP/ui.test" ./internal/ui
+          echo "UI_TEST_BIN=$RUNNER_TEMP/ui.test" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/seestar-copy-cli" browse --endpoint 127.0.0.1:14450 --listen 127.0.0.1:0 \
             > "$RUNNER_TEMP/browse.url" 2> "$RUNNER_TEMP/browse.log" &
           for try in $(seq 50); do
@@ -169,10 +195,6 @@ jobs:
           done
           cat "$RUNNER_TEMP/browse.log"
           exit 1
-      - name: Build the app
-        run: |
-          go build -o "$RUNNER_TEMP/seestar-copy" ./cmd/seestar-copy
-          echo "APP_BIN=$RUNNER_TEMP/seestar-copy" >> "$GITHUB_ENV"
       - name: Install Playwright and its browsers
         working-directory: test/browser
         run: |

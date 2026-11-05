@@ -4,9 +4,10 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"io"
 	"io/fs"
 	"log/slog"
@@ -21,7 +22,6 @@ import (
 	"syscall"
 	"testing"
 	"testing/fstest"
-	"time"
 
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 
@@ -32,9 +32,10 @@ const testToken = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abc
 
 var testAddr = netip.MustParseAddrPort("127.0.0.1:53818")
 
-// dials records the browse sessions opened, by endpoint.
+// dials records the sessions opened, by endpoint.
 type dials struct {
 	mu        sync.Mutex
+	dir       string // if set, every session is this folder's
 	endpoints []string
 	sessions  []*remote.Fake
 }
@@ -42,6 +43,9 @@ type dials struct {
 func (d *dials) dial(ctx context.Context, endpoint string) (remote.Session, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.dir != "" {
+		return remote.NewFakeDir(d.dir)
+	}
 	// Each address has its own share: one folder named for it.
 	f := remote.NewFake(fstest.MapFS{"at " + strings.ReplaceAll(endpoint, ":", "_") + "/x.txt": {Data: []byte("x")}})
 	d.endpoints = append(d.endpoints, endpoint)
@@ -49,40 +53,84 @@ func (d *dials) dial(ctx context.Context, endpoint string) (remote.Session, erro
 	return f, nil
 }
 
+// testEndpoint is where the app env's target is.
+const testEndpoint = "192.0.2.10:445"
+
 type appEnv struct {
-	t    *testing.T
-	s    *server
-	d    *dials
-	path string
+	t *testing.T
+	m *Mount
+	s *server
+	d *dials
+
+	mu       sync.Mutex
+	endpoint string     // the target's
+	saved    []Settings // each Save, in order
+	saveErr  error      // what Save fails with
 }
 
-func newAppEnv(t *testing.T, fileData string) *appEnv {
+// newAppEnv is a Mount's server with saved settings, or nil for none,
+// whose target is testEndpoint and whose Save records what it is given.
+func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "app.json")
-	if fileData != "" {
-		writeFile(t, path, fileData)
-	}
-	file, err := loadSettings(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	e := &appEnv{t: t, d: &dials{}, path: path}
-	e.s = newServer(context.Background(), testAddr, testToken, "v9.9.9", t.TempDir(), file, log)
-	e.s.dial = e.d.dial
-	e.s.test = func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
-		return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
-	}
-	e.s.startBrowse()
-	t.Cleanup(e.s.close)
-	t.Cleanup(e.s.copy.quit)
-	t.Cleanup(e.s.preview.quit)
-	t.Cleanup(e.s.free.quit)
+	e := &appEnv{t: t, d: &dials{}, endpoint: testEndpoint}
+	m := NewMount(context.Background(), MountOptions{
+		Addr: testAddr, StateDir: t.TempDir(), Version: "v9.9.9",
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Target: func() (Target, error) {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			return Target{Endpoint: e.endpoint}, nil
+		},
+		Dial: e.d.dial,
+		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
+		},
+		Settings: saved,
+		Save: func(set Settings) error {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.saveErr != nil {
+				return e.saveErr
+			}
+			e.saved = append(e.saved, set)
+			return nil
+		},
+	})
+	e.m, e.s = m, m.s
+	t.Cleanup(m.Quit)
 	return e
 }
 
-// serve sends one request. headers are name and value pairs; "Host" sets
-// the Host, which is otherwise the listener's address.
+// move changes where the telescope is, as a reconnect does.
+func (e *appEnv) move(endpoint string) {
+	e.t.Helper()
+	if err := e.m.Change(func() bool { return true }, func() error {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		e.endpoint = endpoint
+		return nil
+	}); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+// savedAt is the default settings with folder, as saved before.
+func savedAt(folder string) *Settings {
+	set := DefaultSettings()
+	set.Folder = folder
+	return &set
+}
+
+// saves is what Save was given, in order.
+func (e *appEnv) saves() []Settings {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]Settings(nil), e.saved...)
+}
+
+// serve sends one request; the mounting server has made its checks.
+// headers are name and value pairs; "Host" sets the Host, which is
+// otherwise the listener's address.
 func (e *appEnv) serve(method, target, body string, headers ...string) *httptest.ResponseRecorder {
 	var r *http.Request
 	if body == "" {
@@ -105,8 +153,7 @@ func (e *appEnv) serve(method, target, body string, headers ...string) *httptest
 
 // post sends a POST as the page does.
 func (e *appEnv) post(path, body string) *httptest.ResponseRecorder {
-	return e.serve("POST", path, body, tokenHeader, testToken, "Origin", "http://"+testAddr.String(),
-		"Sec-Fetch-Site", "same-origin", "Content-Type", "application/json")
+	return e.serve("POST", path, body, "Content-Type", "application/json")
 }
 
 func decode[T any](t *testing.T, w *httptest.ResponseRecorder) T {
@@ -133,194 +180,52 @@ func quote(s string) string {
 	return string(b)
 }
 
-var goodInput = `{"address":"192.0.2.10","folder":` + quote(abs("/data/Seestar")) + `,"interval":"5","excludes":["Video","","/Preview"],"includes":[],"skip_built_in":true,"start_copying":false}`
-
-func TestAPIChecks(t *testing.T) {
-	e := newAppEnv(t, "")
-	origin := "http://" + testAddr.String()
-	ok := []string{tokenHeader, testToken, "Origin", origin, "Sec-Fetch-Site", "same-origin", "Content-Type", "application/json"}
-	with := func(name, value string) []string {
-		h := append([]string(nil), ok...)
-		for i := 0; i < len(h); i += 2 {
-			if h[i] == name {
-				h[i+1] = value
-				return h
-			}
-		}
-		return append(h, name, value)
-	}
-	without := func(name string) []string {
-		var h []string
-		for i := 0; i < len(ok); i += 2 {
-			if ok[i] != name {
-				h = append(h, ok[i], ok[i+1])
-			}
-		}
-		return h
-	}
-	tests := []struct {
-		name   string
-		method string
-		path   string
-		header []string
-		code   int
-	}{
-		{"status", "GET", "/app/api/status", ok, 200},
-		{"status without token", "GET", "/app/api/status", nil, 403},
-		{"status wrong token", "GET", "/app/api/status", with(tokenHeader, testToken[1:]+"0"), 403},
-		{"status short token", "GET", "/app/api/status", with(tokenHeader, testToken[:10]), 403},
-		{"status cross-site", "GET", "/app/api/status", with("Sec-Fetch-Site", "cross-site"), 403},
-		{"status same-site", "GET", "/app/api/status", with("Sec-Fetch-Site", "same-site"), 403},
-		{"status other host", "GET", "/app/api/status", with("Host", "evil.example:53818"), 403},
-		{"status localhost", "GET", "/app/api/status", with("Host", "localhost:53818"), 403},
-		{"status other port", "GET", "/app/api/status", with("Host", "127.0.0.1:1"), 403},
-		{"status POST", "POST", "/app/api/status", ok, 405},
-		{"settings", "POST", "/app/api/settings", ok, 200},
-		{"settings GET", "GET", "/app/api/settings", ok, 405},
-		{"settings without token", "POST", "/app/api/settings", without(tokenHeader), 403},
-		{"settings without Origin", "POST", "/app/api/settings", without("Origin"), 403},
-		{"settings other Origin", "POST", "/app/api/settings", with("Origin", "http://evil.example"), 403},
-		{"settings null Origin", "POST", "/app/api/settings", with("Origin", "null"), 403},
-		{"settings https Origin", "POST", "/app/api/settings", with("Origin", "https://"+testAddr.String()), 403},
-		{"settings cross-site", "POST", "/app/api/settings", with("Sec-Fetch-Site", "cross-site"), 403},
-		{"settings user typed", "POST", "/app/api/settings", with("Sec-Fetch-Site", "none"), 403},
-		{"settings no Sec-Fetch-Site", "POST", "/app/api/settings", without("Sec-Fetch-Site"), 200},
-		{"settings form", "POST", "/app/api/settings", with("Content-Type", "application/x-www-form-urlencoded"), 415},
-		{"settings text", "POST", "/app/api/settings", with("Content-Type", "text/plain"), 415},
-		{"settings no type", "POST", "/app/api/settings", without("Content-Type"), 415},
-		{"settings json charset", "POST", "/app/api/settings", with("Content-Type", "application/json; charset=utf-8"), 200},
-		{"settings other host", "POST", "/app/api/settings", with("Host", "evil.example:53818"), 403},
-		{"test", "POST", "/app/api/test", ok, 200},
-		{"test without token", "POST", "/app/api/test", without(tokenHeader), 403},
-		{"test other Origin", "POST", "/app/api/test", with("Origin", "http://evil.example"), 403},
-		{"folder without a window", "POST", "/app/api/folder", ok, 404},
-		{"unknown api", "GET", "/app/api/nothing", ok, 404},
-		{"unknown api without token", "GET", "/app/api/nothing", nil, 403},
-		{"page", "GET", "/app/", nil, 200},
-		{"page HEAD", "HEAD", "/app/", nil, 200},
-		{"page user typed", "GET", "/app/", []string{"Sec-Fetch-Site", "none"}, 200},
-		{"page other host", "GET", "/app/", []string{"Host", "evil.example:53818"}, 403},
-		{"page cross-site", "GET", "/app/", []string{"Sec-Fetch-Site", "cross-site"}, 403},
-		{"page POST", "POST", "/app/", nil, 405},
-		{"script", "GET", "/app/app.js", nil, 200},
-		{"no index.html", "GET", "/app/index.html", nil, 404},
-		{"no web", "GET", "/app/web/app.js", nil, 404},
-	}
-	for _, tt := range tests {
-		w := e.serve(tt.method, tt.path, goodInput, tt.header...)
-		if w.Code != tt.code {
-			t.Errorf("%s: %s %s = %d %q, want %d", tt.name, tt.method, tt.path, w.Code, w.Body.String(), tt.code)
-		}
-		for k, v := range map[string]string{
-			"Content-Security-Policy":      csp,
-			"X-Frame-Options":              "DENY",
-			"Cross-Origin-Resource-Policy": "same-origin",
-			"Referrer-Policy":              "no-referrer",
-			"X-Content-Type-Options":       "nosniff",
-			"Cache-Control":                "no-store",
-		} {
-			if got := w.Header().Values(k); len(got) != 1 || got[0] != v {
-				t.Errorf("%s: %s = %q, want %q", tt.name, k, got, v)
-			}
-		}
-		for k := range w.Header() {
-			if strings.HasPrefix(k, "Access-Control-") {
-				t.Errorf("%s: has %s", tt.name, k)
-			}
-		}
-	}
-}
-
-func TestRefusedPostChangesNothing(t *testing.T) {
-	e := newAppEnv(t, "")
-	w := e.serve("POST", "/app/api/settings", goodInput, tokenHeader, testToken, "Origin", "http://evil.example", "Content-Type", "application/json")
-	if w.Code != 403 {
-		t.Fatalf("code %d", w.Code)
-	}
-	if _, err := os.Stat(e.path); !errors.Is(err, fs.ErrNotExist) {
-		t.Errorf("a refused save wrote the file: %v", err)
-	}
-}
+var goodInput = `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"5","excludes":["Video","","/Preview"],"includes":[],"skip_built_in":true,"start_copying":false}`
 
 func TestBodyLimit(t *testing.T) {
-	e := newAppEnv(t, "")
-	big := `{"address":"192.0.2.10","folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["` + strings.Repeat("a", maxJSON) + `"]}`
-	if w := e.post("/app/api/settings", big); w.Code != http.StatusRequestEntityTooLarge {
+	e := newAppEnv(t, nil)
+	big := `{"folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["` + strings.Repeat("a", localhttp.MaxJSON) + `"]}`
+	if w := e.post("/copy/api/settings", big); w.Code != http.StatusRequestEntityTooLarge {
 		t.Errorf("a body over the limit = %d", w.Code)
 	}
-	if w := e.post("/app/api/settings", `{"address":`); w.Code != http.StatusBadRequest {
+	if w := e.post("/copy/api/settings", `{"folder":`); w.Code != http.StatusBadRequest {
 		t.Errorf("a bad body = %d", w.Code)
 	}
-	if w := e.post("/app/api/settings", `{"interval":5}`); w.Code != http.StatusBadRequest {
+	if w := e.post("/copy/api/settings", `{"interval":5}`); w.Code != http.StatusBadRequest {
 		t.Errorf("a number for the interval = %d", w.Code)
 	}
 }
 
-func TestStatic(t *testing.T) {
-	e := newAppEnv(t, "")
-	for path, typ := range map[string]string{
-		"/app/":          "text/html; charset=utf-8",
-		"/app/app.js":    "text/javascript; charset=utf-8",
-		"/app/style.css": "text/css; charset=utf-8",
-		"/app/icon.svg":  "image/svg+xml",
-	} {
-		w := e.serve("GET", path, "")
-		if w.Code != 200 || w.Header().Get("Content-Type") != typ || w.Body.Len() == 0 {
-			t.Errorf("%s = %d, %q, %d bytes", path, w.Code, w.Header().Get("Content-Type"), w.Body.Len())
-		}
-	}
-	page := e.serve("GET", "/app/", "").Body.String()
-	for _, bad := range []string{"<script>", "style=", "<style", "http://", "https://", "javascript:", "onclick", "onload", "onsubmit"} {
-		if strings.Contains(page, bad) {
-			t.Errorf("index.html holds %q", bad)
-		}
-	}
-	if strings.Count(page, "<script") != 1 || !strings.Contains(page, `<script type="module" src="/app/app.js"></script>`) {
-		t.Error("index.html must load app.js as its only script")
-	}
-	for _, f := range []string{"web/index.html", "web/app.js", "web/style.css"} {
-		b, _ := assets.ReadFile(f)
-		if strings.Contains(string(b), "innerHTML") {
-			t.Errorf("%s uses innerHTML", f)
-		}
-	}
-	mine, _ := assets.ReadFile("web/icon.svg")
-	browse, err := os.ReadFile(filepath.Join("..", "browse", "web", "icon.svg"))
-	if err != nil || string(mine) != string(browse) {
-		t.Errorf("the app's icon differs from browse's (%v)", err)
-	}
-}
-
 func TestStatus(t *testing.T) {
-	e := newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":"/data/Seestar"}`)
-	w := e.serve("GET", "/app/api/status", "", tokenHeader, testToken)
+	e := newAppEnv(t, savedAt("/data/Seestar"))
+	w := e.serve("GET", "/copy/api/status", "")
 	got := decode[struct {
-		Version         string   `json:"version"`
-		SetUp           bool     `json:"set_up"`
-		Settings        Settings `json:"settings"`
-		SettingsFile    string   `json:"settings_file"`
-		History         string   `json:"history"`
-		DefaultExcludes []string `json:"default_excludes"`
+		Version         string         `json:"version"`
+		SetUp           bool           `json:"set_up"`
+		Settings        map[string]any `json:"settings"`
+		History         string         `json:"history"`
+		DefaultExcludes []string       `json:"default_excludes"`
 	}](t, w)
-	if got.Version != "v9.9.9" || !got.SetUp || got.Settings.Address != "192.0.2.10:445" || got.Settings.IntervalMinutes != 5 || len(got.DefaultExcludes) != 9 {
+	if got.Version != "v9.9.9" || !got.SetUp || got.Settings["interval_minutes"] != 5.0 || len(got.DefaultExcludes) != 9 {
 		t.Errorf("status = %+v", got)
+	}
+	// The address is the connection's, not a setting.
+	if _, ok := got.Settings["address"]; ok {
+		t.Errorf("status settings hold an address: %v", got.Settings)
 	}
 	// The history is the saved folder's state file, where sync keeps it.
 	sum := sha256.Sum256([]byte(abs("/data/Seestar")))
 	if want := filepath.Join(e.s.stateDir, "sync", hex.EncodeToString(sum[:])+".jsonl"); got.History != want {
 		t.Errorf("history = %q, want %q", got.History, want)
 	}
-	if got.SettingsFile != e.path {
-		t.Errorf("settings file = %q, want %q", got.SettingsFile, e.path)
-	}
-	for _, data := range []string{"", `{"version":1,"folder":"/data/Seestar"}`, `{"address":"a:445","folder":""}`} {
-		e := newAppEnv(t, data)
+	for name, set := range map[string]*Settings{"none saved": nil, "no folder": savedAt("")} {
+		e := newAppEnv(t, set)
 		got := decode[struct {
 			SetUp   bool   `json:"set_up"`
 			History string `json:"history"`
-		}](t, e.serve("GET", "/app/api/status", "", tokenHeader, testToken))
+		}](t, e.serve("GET", "/copy/api/status", ""))
 		if got.SetUp || got.History != "" {
-			t.Errorf("%q: set up %v, history %q", data, got.SetUp, got.History)
+			t.Errorf("%s: set up %v, history %q", name, got.SetUp, got.History)
 		}
 	}
 }
@@ -331,21 +236,22 @@ func TestSaveFieldErrors(t *testing.T) {
 		input string
 		want  map[string]string
 	}{
-		{"empty", `{}`, map[string]string{"address": addressError, "folder": folderError, "interval": intervalError}},
-		{"bad patterns", `{"address":"192.0.2.10","folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["Video","","[Pp]review"],"includes":["  ","a/"]}`, map[string]string{
+		{"empty", `{}`, map[string]string{"folder": folderError, "interval": intervalError}},
+		{"bad patterns", `{"folder":` + quote(abs("/x")) + `,"interval":"5","excludes":["Video","","[Pp]review"],"includes":["  ","a/"]}`, map[string]string{
 			"excludes": `Line 3: [ and \ are not supported; use * and ?, and / between folders. Correct this pattern and save again.`,
 			"includes": "Line 2: omit the trailing /; a pattern matches files and folders. Correct this pattern and save again.",
 		}},
-		{"interval 0", `{"address":"192.0.2.10","folder":` + quote(abs("/x")) + `,"interval":"0"}`, map[string]string{"interval": intervalError}},
-		{"interval 1441", `{"address":"192.0.2.10","folder":` + quote(abs("/x")) + `,"interval":"1441"}`, map[string]string{"interval": intervalError}},
-		{"interval 1.5", `{"address":"192.0.2.10","folder":` + quote(abs("/x")) + `,"interval":"1.5"}`, map[string]string{"interval": intervalError}},
-		{"relative folder", `{"address":"192.0.2.10","folder":"Seestar","interval":"5"}`, map[string]string{"folder": folderError}},
-		{"tilde folder", `{"address":"192.0.2.10","folder":"~/Seestar","interval":"5"}`, map[string]string{"folder": folderError}},
-		{"port 0", `{"address":"192.0.2.10:0","folder":` + quote(abs("/x")) + `,"interval":"5"}`, map[string]string{"address": addressError}},
+		{"interval 0", `{"folder":` + quote(abs("/x")) + `,"interval":"0"}`, map[string]string{"interval": intervalError}},
+		{"interval 1441", `{"folder":` + quote(abs("/x")) + `,"interval":"1441"}`, map[string]string{"interval": intervalError}},
+		{"interval 1.5", `{"folder":` + quote(abs("/x")) + `,"interval":"1.5"}`, map[string]string{"interval": intervalError}},
+		{"relative folder", `{"folder":"Seestar","interval":"5"}`, map[string]string{"folder": folderError}},
+		{"tilde folder", `{"folder":"~/Seestar","interval":"5"}`, map[string]string{"folder": folderError}},
+		// The address is the connection's; the form's is ignored.
+		{"address", `{"address":"192.0.2.10:0","interval":"5"}`, map[string]string{"folder": folderError}},
 	}
 	for _, tt := range tests {
-		e := newAppEnv(t, "")
-		w := e.post("/app/api/settings", tt.input)
+		e := newAppEnv(t, nil)
+		w := e.post("/copy/api/settings", tt.input)
 		if w.Code != 400 {
 			t.Errorf("%s: code %d %q", tt.name, w.Code, w.Body.String())
 			continue
@@ -354,8 +260,8 @@ func TestSaveFieldErrors(t *testing.T) {
 		if fmt.Sprint(got.Fields) != fmt.Sprint(tt.want) {
 			t.Errorf("%s: fields\n%v\nwant\n%v", tt.name, got.Fields, tt.want)
 		}
-		if _, err := os.Stat(e.path); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("%s: a field error wrote the file", tt.name)
+		if len(e.saves()) != 0 {
+			t.Errorf("%s: a field error saved", tt.name)
 		}
 	}
 }
@@ -390,9 +296,9 @@ func TestNormalizeAddress(t *testing.T) {
 	}
 }
 
-func TestSaveWritesAndKeepsUnknown(t *testing.T) {
-	e := newAppEnv(t, `{"version":1,"future":true}`)
-	w := e.post("/app/api/settings", goodInput)
+func TestSaveCallsSave(t *testing.T) {
+	e := newAppEnv(t, nil)
+	w := e.post("/copy/api/settings", `{"address":"192.0.2.99",`+goodInput[1:])
 	if w.Code != 200 {
 		t.Fatalf("code %d %q", w.Code, w.Body.String())
 	}
@@ -400,41 +306,32 @@ func TestSaveWritesAndKeepsUnknown(t *testing.T) {
 		Settings      Settings `json:"settings"`
 		BrowseChanged bool     `json:"browse_changed"`
 	}](t, w)
-	want := Settings{Version: 1, Address: "192.0.2.10:445", Folder: abs("/data/Seestar"), IntervalMinutes: 5,
+	want := Settings{Version: 1, Folder: abs("/data/Seestar"), IntervalMinutes: 5,
 		Excludes: []string{"Video", "/Preview"}, Includes: []string{}, SkipBuiltIn: true, StartCopying: false, OlderThanDays: 7}
 	if fmt.Sprint(got.Settings) != fmt.Sprint(want) || !got.BrowseChanged {
 		t.Errorf("got %+v, want %+v and a browse change", got, want)
 	}
-	f, err := loadSettings(e.path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fmt.Sprint(f.settings) != fmt.Sprint(want) || string(f.raw["future"]) != "true" {
-		t.Errorf("file holds %+v %s", f.settings, f.raw)
+	if saves := e.saves(); len(saves) != 1 || fmt.Sprint(saves[0]) != fmt.Sprint(want) {
+		t.Errorf("saved %+v, want %+v", saves, want)
 	}
 }
 
 func TestSaveFailure(t *testing.T) {
-	e := newAppEnv(t, "")
-	// A folder where the file should be: the rename fails.
-	if err := os.MkdirAll(filepath.Join(e.path, "x"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	w := e.post("/app/api/settings", goodInput)
+	e := newAppEnv(t, nil)
+	e.saveErr = &fs.PathError{Op: "open", Path: abs("/private/copy.json"), Err: fs.ErrPermission}
+	w := e.post("/copy/api/settings", goodInput)
 	got := decode[struct {
 		Error string `json:"error"`
 	}](t, w)
-	if w.Code != 500 || !strings.HasPrefix(got.Error, "Couldn't save settings: ") ||
-		!strings.HasSuffix(got.Error, ". Your changes have not been saved. Try saving again.") ||
-		strings.Contains(got.Error, e.path) {
-		t.Errorf("save over a folder = %d %q", w.Code, got.Error)
+	if w.Code != 500 || got.Error != "Couldn't save settings: permission denied. Your changes have not been saved. Try saving again." {
+		t.Errorf("a failed save = %d %q", w.Code, got.Error)
 	}
 	if st := decode[struct {
 		SetUp bool `json:"set_up"`
-	}](t, e.serve("GET", "/app/api/status", "", tokenHeader, testToken)); st.SetUp {
+	}](t, e.serve("GET", "/copy/api/status", "")); st.SetUp {
 		t.Error("a failed save finished Setup")
 	}
-	if w := e.serve("GET", "/", ""); w.Code != 404 {
+	if w := e.serve("GET", "/browse/", ""); w.Code != 404 {
 		t.Errorf("a failed save started Browse: %d", w.Code)
 	}
 }
@@ -479,7 +376,7 @@ func TestTestMessages(t *testing.T) {
 }
 
 func TestTestAPI(t *testing.T) {
-	e := newAppEnv(t, "")
+	e := newAppEnv(t, nil)
 	var tested []string
 	e.s.test = func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 		if _, ok := ctx.Deadline(); !ok {
@@ -496,34 +393,34 @@ func TestTestAPI(t *testing.T) {
 		Address string `json:"address"`
 		Message string `json:"message"`
 	}
-	if got := decode[answer](t, e.post("/app/api/test", `{"address":" 192.0.2.10 "}`)); !got.OK || got.Address != "192.0.2.10:445" ||
+	if got := decode[answer](t, e.post("/copy/api/test", `{"address":" 192.0.2.10 "}`)); !got.OK || got.Address != "192.0.2.10:445" ||
 		got.Message != "Connected. The telescope's share has the folder MyWorks." {
 		t.Errorf("test = %+v", got)
 	}
-	if got := decode[answer](t, e.post("/app/api/test", `{"address":"192.0.2.99"}`)); got.OK ||
+	if got := decode[answer](t, e.post("/copy/api/test", `{"address":"192.0.2.99"}`)); got.OK ||
 		!strings.HasPrefix(got.Message, "Can't reach 192.0.2.99:445. ") {
 		t.Errorf("test = %+v", got)
 	}
-	w := e.post("/app/api/test", `{"address":"http://x"}`)
+	w := e.post("/copy/api/test", `{"address":"http://x"}`)
 	if got := decode[fieldErrors](t, w); w.Code != 400 || fmt.Sprint(got.Fields) != fmt.Sprint(map[string]string{"address": addressError}) {
 		t.Errorf("a bad address = %d %v", w.Code, got)
 	}
 	// Test checks only the address: other fields in error don't stop it.
-	if w := e.post("/app/api/test", `{"address":"192.0.2.10","interval":"0","folder":"x"}`); w.Code != 200 {
+	if w := e.post("/copy/api/test", `{"address":"192.0.2.10","interval":"0","folder":"x"}`); w.Code != 200 {
 		t.Errorf("test with other fields in error = %d", w.Code)
 	}
 	if fmt.Sprint(tested) != "[192.0.2.10:445 192.0.2.99:445 192.0.2.10:445]" {
 		t.Errorf("tested %v", tested)
 	}
-	if _, err := os.Stat(e.path); !errors.Is(err, fs.ErrNotExist) {
-		t.Error("Test wrote the settings file")
+	if len(e.saves()) != 0 {
+		t.Error("Test saved the settings")
 	}
 }
 
 // listing is one browse /api/list answer's entries' names.
 func listing(t *testing.T, e *appEnv) []string {
 	t.Helper()
-	w := e.serve("GET", "/api/list", "")
+	w := e.serve("GET", "/browse/api/list", "")
 	if w.Code != 200 {
 		t.Fatalf("browse list = %d %q", w.Code, w.Body.String())
 	}
@@ -540,14 +437,14 @@ func listing(t *testing.T, e *appEnv) []string {
 }
 
 func TestBrowseSwap(t *testing.T) {
-	e := newAppEnv(t, "")
-	if w := e.serve("GET", "/", ""); w.Code != 404 || w.Header().Get("Content-Security-Policy") != csp {
+	e := newAppEnv(t, nil)
+	if w := e.serve("GET", "/browse/", ""); w.Code != 404 {
 		t.Errorf("browse before Setup = %d", w.Code)
 	}
-	if w := e.post("/app/api/settings", goodInput); w.Code != 200 {
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
-	page := e.serve("GET", "/", "")
+	page := e.serve("GET", "/browse/", "")
 	if page.Code != 200 || !strings.Contains(page.Body.String(), `class="in-app"`) || page.Header().Get("X-Frame-Options") != "SAMEORIGIN" {
 		t.Errorf("browse after Setup = %d, %q", page.Code, page.Header())
 	}
@@ -558,7 +455,7 @@ func TestBrowseSwap(t *testing.T) {
 	same := strings.Replace(goodInput, `"interval":"5"`, `"interval":"9"`, 1)
 	if got := decode[struct {
 		BrowseChanged bool `json:"browse_changed"`
-	}](t, e.post("/app/api/settings", same)); got.BrowseChanged {
+	}](t, e.post("/copy/api/settings", same)); got.BrowseChanged {
 		t.Error("an interval change replaced browse")
 	}
 	listing(t, e)
@@ -569,12 +466,7 @@ func TestBrowseSwap(t *testing.T) {
 		t.Errorf("%d dials before the address changed, want 1", n)
 	}
 	// A new address: a new pool, and the old one's session is closed.
-	moved := strings.Replace(goodInput, `"192.0.2.10"`, `"192.0.2.20:4445"`, 1)
-	if got := decode[struct {
-		BrowseChanged bool `json:"browse_changed"`
-	}](t, e.post("/app/api/settings", moved)); !got.BrowseChanged {
-		t.Error("an address change kept browse")
-	}
+	e.move("192.0.2.20:4445")
 	if got := fmt.Sprint(listing(t, e)); got != "[at 192.0.2.20_4445]" {
 		t.Errorf("second share lists %s", got)
 	}
@@ -582,10 +474,10 @@ func TestBrowseSwap(t *testing.T) {
 		t.Error("the old pool's session is still open")
 	}
 	// A new folder also replaces it.
-	refolder := strings.Replace(moved, quote(abs("/data/Seestar")), quote(abs("/data/Other")), 1)
+	refolder := strings.Replace(goodInput, quote(abs("/data/Seestar")), quote(abs("/data/Other")), 1)
 	if got := decode[struct {
 		BrowseChanged bool `json:"browse_changed"`
-	}](t, e.post("/app/api/settings", refolder)); !got.BrowseChanged {
+	}](t, e.post("/copy/api/settings", refolder)); !got.BrowseChanged {
 		t.Error("a folder change kept browse")
 	}
 }
@@ -593,8 +485,8 @@ func TestBrowseSwap(t *testing.T) {
 func TestBrowseStatuses(t *testing.T) {
 	// Browse's statuses come from the saved folder's state in the state
 	// folder: with no state, every file is new.
-	e := newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":"`+filepath.ToSlash(t.TempDir())+`"}`)
-	w := e.serve("GET", "/api/list?path=at%20192.0.2.10_445", "")
+	e := newAppEnv(t, savedAt(t.TempDir()))
+	w := e.serve("GET", "/browse/api/list?path=at%20192.0.2.10_445", "")
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"status":"new"`) {
 		t.Errorf("list = %d %s", w.Code, w.Body.String())
 	}
@@ -603,15 +495,15 @@ func TestBrowseStatuses(t *testing.T) {
 func TestBrowseLeftOut(t *testing.T) {
 	// Browse marks what the saved selection leaves out, and a save that
 	// changes the selection replaces browse.
-	e := newAppEnv(t, "")
+	e := newAppEnv(t, nil)
 	list := func() string {
-		w := e.serve("GET", "/api/list?path=at%20192.0.2.10_445", "")
+		w := e.serve("GET", "/browse/api/list?path=at%20192.0.2.10_445", "")
 		if w.Code != 200 {
 			t.Fatalf("list = %d %s", w.Code, w.Body)
 		}
 		return w.Body.String()
 	}
-	if w := e.post("/app/api/settings", goodInput); w.Code != 200 {
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	if got := list(); !strings.Contains(got, `"status":"new"`) {
@@ -619,7 +511,7 @@ func TestBrowseLeftOut(t *testing.T) {
 	}
 	// Each save changes one setting from goodInput.
 	save := func(input, what string) {
-		w := e.post("/app/api/settings", input)
+		w := e.post("/copy/api/settings", input)
 		if got := decode[struct {
 			BrowseChanged bool `json:"browse_changed"`
 		}](t, w); w.Code != 200 || !got.BrowseChanged {
@@ -630,59 +522,13 @@ func TestBrowseLeftOut(t *testing.T) {
 		}
 	}
 	save(strings.Replace(goodInput, `"excludes":["Video","","/Preview"]`, `"excludes":["X.TXT"]`, 1), "Leave out")
-	if w := e.post("/app/api/settings", goodInput); w.Code != 200 {
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	if got := list(); !strings.Contains(got, `"status":"new"`) {
 		t.Errorf("before Only copy: %s", got)
 	}
 	save(strings.Replace(goodInput, `"includes":[]`, `"includes":["*.fit"]`, 1), "Only copy")
-}
-
-func TestRunStartupError(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "app.json")
-	writeFile(t, path, "{")
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	opened := false
-	err := Run(context.Background(), Options{SettingsPath: path, StateDir: t.TempDir(), Version: "v", Log: log},
-		func(context.Context, string, func()) error { opened = true; return nil })
-	want := "Couldn't read settings from " + path + ": jsontext: unexpected EOF after offset 1. Fix or remove the file, then reopen seestar-copy."
-	if err == nil || err.Error() != want || opened {
-		t.Errorf("Run = %v (opened %v), want %q", err, opened, want)
-	}
-}
-
-func TestRunServes(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "app.json")
-	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var url string
-	err := Run(ctx, Options{SettingsPath: path, StateDir: t.TempDir(), Version: "v", Log: log}, func(ctx context.Context, u string, _ func()) error {
-		url = u
-		base, tok, ok := strings.Cut(u, "/app/#")
-		if !ok || !strings.HasPrefix(base, "http://127.0.0.1:") || len(tok) != 64 {
-			return fmt.Errorf("url %q", u)
-		}
-		req, _ := http.NewRequestWithContext(ctx, "GET", base+"/app/api/status", nil)
-		req.Header.Set(tokenHeader, tok)
-		resp, err := http.DefaultClient.Do(req)
-		if err != nil {
-			return err
-		}
-		resp.Body.Close()
-		if resp.StatusCode != 200 {
-			return fmt.Errorf("status = %d", resp.StatusCode)
-		}
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	base, _, _ := strings.Cut(url, "/app/#")
-	if _, err := http.Get(base + "/app/"); err == nil {
-		t.Error("the app still serves after Run returned")
-	}
 }
 
 // The page reads these bytes; they must stay as they were: zero and false
@@ -708,7 +554,7 @@ func TestRespondShapes(t *testing.T) {
 		{"sorted map", fieldErrors{fields}, want},
 	} {
 		w := httptest.NewRecorder()
-		respond(w, 200, tc.v)
+		localhttp.Respond(w, 200, tc.v)
 		if got := w.Body.String(); got != tc.want {
 			t.Errorf("%s: respond wrote\n%s\nwant\n%s", tc.name, got, tc.want)
 		}
@@ -719,7 +565,7 @@ func TestRespondShapes(t *testing.T) {
 // UTF-8 or a name in the wrong case is not the page's, and is refused or
 // ignored, where encoding/json took the last value, the bytes and any case.
 func TestAPIReadsStrictly(t *testing.T) {
-	e := newAppEnv(t, "")
+	e := newAppEnv(t, nil)
 	for _, tc := range []struct {
 		body string
 		code int
@@ -729,21 +575,8 @@ func TestAPIReadsStrictly(t *testing.T) {
 		{`{"action":"start","folder":"` + "\xff" + `"}`, http.StatusBadRequest},
 		{`{"Action":"start"}`, http.StatusBadRequest}, // no action
 	} {
-		if w := e.post("/app/api/copy", tc.body); w.Code != tc.code {
+		if w := e.post("/copy/api/copy", tc.body); w.Code != tc.code {
 			t.Errorf("%q = %d, want %d", tc.body, w.Code, tc.code)
 		}
-	}
-}
-
-func TestRespondStrings(t *testing.T) {
-	w := httptest.NewRecorder()
-	respond(w, 200, struct {
-		Slice []string          `json:"slice"`
-		Map   map[string]string `json:"map"`
-		Text  string            `json:"text"`
-	}{Text: "<>&\u2028\u2029\xff"})
-	want := `{"slice":null,"map":null,"text":"\u003c\u003e\u0026\u2028\u2029` + "\ufffd" + `"}`
-	if got := w.Body.String(); got != want {
-		t.Errorf("respond wrote\n%s\nwant\n%s", got, want)
 	}
 }

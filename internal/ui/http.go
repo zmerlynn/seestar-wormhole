@@ -9,11 +9,13 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"mime"
 	"net/http"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +38,10 @@ type server struct {
 	// copy serves copy's API under /copy/api/ and Browse under /browse/;
 	// nil serves neither.
 	copy *copyapp.Mount
+	// routeSaved opens Copy, Browse and Free up space: the account route
+	// has connected, or an address on this network passed Test and was
+	// saved. It is guarded by mu and never goes back.
+	routeSaved bool
 }
 type input struct {
 	Settings Settings `json:"settings"`
@@ -45,11 +51,7 @@ type input struct {
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Browse is a same-origin frame of /browse/, so the page may frame
 	// itself and be framed only by itself.
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'")
-	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
-	w.Header().Set("Referrer-Policy", "no-referrer")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
+	localhttp.SetHeaders(w.Header(), false)
 	fail := func(code int) { http.Error(w, "Request rejected", code) }
 	if r.Host != s.host {
 		fail(http.StatusForbidden)
@@ -62,6 +64,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(http.StatusNotFound)
 			return
 		}
+		// A download from the telescope may take longer than the
+		// server's write timeout, which bounds every other response.
+		http.NewResponseController(w).SetWriteDeadline(time.Time{})
 		s.copy.ServeHTTP(w, r)
 		return
 	}
@@ -131,7 +136,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if s.activate != nil {
 				w.Header().Set("X-Seestar-Window", "1")
 			}
-			s.respond(w, struct {
+			localhttp.Respond(w, http.StatusOK, struct {
 				Instance string `json:"instance"`
 			}{"seestar-wormhole-ui-v1"})
 			return
@@ -148,7 +153,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ports, _, _ := effective.validate()
 		defaults, _ := proxyrun.MergePorts(nil)
 		events, path, logFailed := s.controller.log.snapshot()
-		s.respond(w, struct {
+		unlocked, reach := s.copyState()
+		localhttp.Respond(w, http.StatusOK, struct {
 			CopyBusy  bool               `json:"copy_busy"`
 			Settings  pageSettings       `json:"settings"`
 			Version   string             `json:"version"`
@@ -160,7 +166,11 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Events       []event         `json:"events"`
 			LogPath      string          `json:"log_path"`
 			LogFailed    bool            `json:"log_failed"`
-		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
+			CopyUnlocked bool            `json:"copy_unlocked"`
+			CopyReach    string          `json:"copy_reach"`
+			Files        settingsFiles   `json:"files"`
+		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed,
+			unlocked, reach, s.settingsFiles()})
 		return
 	}
 	if r.Method != "POST" {
@@ -170,7 +180,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if !s.allowedPost(w, r) {
 		return
 	}
-	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSON))
+	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, localhttp.MaxJSON))
 	if err != nil {
 		fail(http.StatusRequestEntityTooLarge)
 		return
@@ -257,7 +267,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		s.controller.quit()
 		// Cleanup has joined; flush the response before shutting down HTTP.
-		s.respond(w, struct {
+		localhttp.Respond(w, http.StatusOK, struct {
 			OK bool `json:"ok"`
 		}{true})
 		if f, ok := w.(http.Flusher); ok {
@@ -273,7 +283,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.rejectAction(w, err)
 		return
 	}
-	s.respond(w, struct {
+	localhttp.Respond(w, http.StatusOK, struct {
 		OK bool `json:"ok"`
 	}{true})
 }
@@ -348,6 +358,49 @@ var (
 	errNoLANAddress = errors.New("Save the telescope's address on the Connection tab first")
 )
 
+// copyState reports whether Copy, Browse and Free up space are open, and
+// why the copier has no target now: "not_connected", "smb_off" or
+// "no_lan_address", or "" when it has one.
+func (s *server) copyState() (unlocked bool, reach string) {
+	if s.copy == nil {
+		return false, ""
+	}
+	_, err := s.copyTarget()
+	switch {
+	case errors.Is(err, errNotConnected):
+		reach = "not_connected"
+	case errors.Is(err, errSMBOff):
+		reach = "smb_off"
+	case errors.Is(err, errNoLANAddress):
+		reach = "no_lan_address"
+	}
+	_, _, _, connected := s.controller.connected()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if connected && s.settings.Route != routeLAN {
+		s.routeSaved = true
+	}
+	return s.routeSaved, reach
+}
+
+// routeSavedIn reports whether settings loaded from config.json record an
+// established route. A saved email or address alone is not one.
+func routeSavedIn(settings Settings) bool { return settings.RouteEstablished }
+
+// settingsFiles are the paths Activity's Files shows.
+type settingsFiles struct {
+	Config string `json:"config"`
+	Copy   string `json:"copy"`
+}
+
+func (s *server) settingsFiles() settingsFiles {
+	root := s.storage.root
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	return settingsFiles{filepath.Join(root, "config.json"), filepath.Join(root, copyName)}
+}
+
 // copyTarget is where the copier reaches the telescope now. On this
 // network it is the saved address. Through the account it is the proxy's
 // local port for the device's SMB port, with the telescope the run
@@ -397,22 +450,10 @@ func copyEndpointFor(settings, run Settings, connected bool) (string, error) {
 
 func (s *server) rejectAction(w http.ResponseWriter, err error) {
 	s.controller.log.addFailure(errorCopy(actionError(err).Code), err)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
-	s.respond(w, struct {
+	localhttp.Respond(w, http.StatusBadRequest, struct {
 		*ActionError
 		Message string `json:"message"`
 	}{actionError(err), errorCopy(actionError(err).Code)})
-}
-
-func (s *server) respond(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	b, err := json.Marshal(v)
-	if err != nil {
-		http.Error(w, "Response unavailable", 500)
-		return
-	}
-	w.Write(b)
 }
 
 func (s *server) saveSettings(settings Settings) error {
@@ -436,6 +477,9 @@ func (s *server) saveSettings(settings Settings) error {
 		s.retainSavedPair(&settings)
 	}
 	s.settings = settings
+	if err == nil && settings.RouteEstablished {
+		s.routeSaved = true
+	}
 	s.mu.Unlock()
 	return err
 }

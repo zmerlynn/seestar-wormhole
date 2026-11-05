@@ -40,7 +40,7 @@ func (s *sink) logged() []string {
 }
 
 // checkOneRecovery checks that s holds one record, of a panic recovered
-// where, with its stack.
+// where, without the panic value or its stack.
 func checkOneRecovery(t *testing.T, s *sink, where string) {
 	t.Helper()
 	got := s.logged()
@@ -49,8 +49,8 @@ func checkOneRecovery(t *testing.T, s *sink, where string) {
 	}
 	r := got[0]
 	if !strings.Contains(r, "internal error recovered") || !strings.Contains(r, `where="`+where+`"`) ||
-		!strings.Contains(r, "panic=boom") || !strings.Contains(r, "smb_callback_test.go") {
-		t.Errorf("record %q, want where %q, the panic and its stack", r, where)
+		strings.Contains(r, "boom") || strings.Contains(r, "smb_callback_test.go") {
+		t.Errorf("record %q, want where %q and no panic value or stack", r, where)
 	}
 }
 
@@ -66,7 +66,7 @@ func useDefaultLog(t *testing.T) *bytes.Buffer {
 
 // TestCloseCallbackPanic panics in the Close that a done Dial context
 // runs. The process survives, the callback finishes, and the recovery is
-// logged once, with its stack, to the log Dial was given and not to the
+// logged once, by its site alone, to the log Dial was given and not to the
 // default log.
 func TestCloseCallbackPanic(t *testing.T) {
 	def := useDefaultLog(t)
@@ -102,7 +102,7 @@ func TestCloseCallbackPanic(t *testing.T) {
 // TestAbortCallbackPanic panics in the Abort that a Dial canceled during
 // Mount runs, while the log's writer is held. Dial still returns, so the
 // abort's completion does not wait on the log; the recovery is then
-// logged once, with its stack, to the log Dial was given and not to the
+// logged once, by its site alone, to the log Dial was given and not to the
 // default log.
 func TestAbortCallbackPanic(t *testing.T) {
 	def := useDefaultLog(t)

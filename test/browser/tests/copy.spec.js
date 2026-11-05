@@ -1,40 +1,45 @@
 // The app's Copy tab: real passes from the Samba fixture's browse tree,
-// Stop and Check now, Folder in use from the CLI and from a second app, and
-// the status, progress and focus rules with synthetic states.
+// on the route on this network, Stop and Check now, Folder in use from the
+// CLI and from a second app, and the status, progress and focus rules with
+// synthetic states.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { test, expect, share, refused, env, tab, field, openApp, fakeStatus, longPath, copyViews } = require('./app');
+const { test, expect, share, refused, env, lan, tab, field, openCopy, fakeStatus, longPath, copyViews } = require('./app');
 
 // The browse tree has 7 files, all older than the first pass's age.
 const copiedAll = /^Copied 7 files \(\d.* in .*\.$/;
 const upToDate = /^Up to date\. Next check at \d\d:\d\d\.$/;
 const off = 'Copying is off.';
 const inUse = 'Another copy is already using this folder.';
+const inUseText = "It's in another seestar-wormhole window or seestar-copy-cli. Stop that copy, then start copying here.";
 
-// copying is saved settings for the fixture that copies to the app's folder.
-const copying = (start) => (folder) => ({ version: 1, address: share, folder, start_copying: start });
+// copying is a saved route to the fixture, at address, and copy settings
+// that copy to the app's folder.
+const copying = (start, address = share) => ({
+  'config.json': lan(address), 'copy.json': (folder) => ({ version: 1, folder, start_copying: start }),
+});
 
 const title = (page) => page.locator('#c-title');
 const button = (page, name) => page.getByRole('button', { name, exact: true });
-const passes = (page) => page.locator('#c-log li', { hasText: /^\S+ pass done( |$)/ });
+const chip = (page) => page.locator('#copy-chip');
+// Copy's lines on Activity: the time, the source, then the message.
+const copyEvents = (page, hasText) => page.locator('#events li[data-source="copy"]', { hasText });
+const passes = (page) => copyEvents(page, /  pass done( |$)/);
 
-test('Start copying after the first Save runs a pass, and Settings are locked while copying is on', async ({ page, startApp }) => {
-  const app = await startApp();
-  await openApp(page, app.url);
-  await field(page, 'Telescope address').fill(share);
+test('Start copying after the first Save runs a pass, and the settings are locked while copying is on', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  await openCopy(page, app.url);
   await field(page, 'Folder for your images').fill(app.folder);
-  await button(page, 'Save').click();
+  await button(page, 'Save and continue').click();
 
-  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
   await expect(title(page)).toHaveText(off);
   await button(page, 'Start copying').click();
   await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
   await expect(title(page)).toBeFocused();
   await expect(page.locator('#c-live')).toHaveText(upToDate);
   await expect(page.locator('#c-summary')).toHaveText(copiedAll);
-  await expect(page.locator('#hchip')).toHaveText('Up to date');
-  await expect(page.locator('#hdot')).toHaveText('Reachable');
+  await expect(chip(page)).toHaveText('Up to date');
   await expect(button(page, 'Check now')).toBeVisible();
   await expect(button(page, 'Stop copying')).toBeVisible();
   await expect(button(page, 'Start copying')).toBeHidden();
@@ -43,23 +48,26 @@ test('Start copying after the first Save runs a pass, and Settings are locked wh
     expect(fs.existsSync(path.join(app.folder, f)), f).toBe(true);
   }
   expect(fs.readFileSync(path.join(app.folder, 'MyWorks/M 31/Stacked_M 31.fit')).length).toBe(5760);
-  await page.getByText('Recent activity').click();
   await expect(passes(page)).toHaveCount(1);
-  await expect(page.locator('#c-log li', { hasText: 'copying started' })).toHaveCount(1);
+  await expect(copyEvents(page, '  copying started')).toHaveCount(1);
+  await tab(page, 'Activity').click();
+  await expect(passes(page).first()).toBeVisible();
+  await tab(page, 'Copy').click();
 
-  // Settings can't change, nor the history clear, while copying is on;
-  // its Stop copying unlocks them.
-  await tab(page, 'Settings').click();
+  // The settings can't change, nor the history clear, while copying is
+  // on; its Stop copying unlocks them.
+  await button(page, 'Change…').click();
   await expect(page.locator('#s-locked')).toBeVisible();
-  await expect(field(page, 'Telescope address')).toBeDisabled();
+  await expect(field(page, 'Folder for your images')).toBeDisabled();
+  await page.getByText('Copy history', { exact: true }).click();
   await expect(button(page, 'Clear history…')).toBeDisabled();
   await expect(page.locator('#h-clip')).toBeEnabled();
   await page.locator('#s-stop').click();
   await expect(page.locator('#s-locked')).toBeHidden();
-  await expect(field(page, 'Telescope address')).toBeEnabled();
-  await expect(field(page, 'Telescope address')).toBeFocused();
-  await expect(page.locator('#hchip')).toHaveText('Copying is off');
-  await tab(page, 'Copy').click();
+  await expect(field(page, 'Folder for your images')).toBeEnabled();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await expect(button(page, 'Clear history…')).toBeEnabled();
+  await expect(chip(page)).toHaveText('Copying is off');
   await expect(title(page)).toHaveText(off);
   // The last pass's summary stays.
   await expect(page.locator('#c-summary')).toHaveText(copiedAll);
@@ -67,13 +75,13 @@ test('Start copying after the first Save runs a pass, and Settings are locked wh
 
 test('Clear history forgets the folder, and the next pass copies nothing again', async ({ page, startApp }) => {
   const app = await startApp(copying(true));
-  await openApp(page, app.url);
+  await openCopy(page, app.url);
   await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
   await expect(page.locator('#c-summary')).toHaveText(copiedAll);
   await button(page, 'Stop copying').click();
   await expect(title(page)).toHaveText(off);
 
-  await tab(page, 'Settings').click();
+  await page.getByText('Copy history', { exact: true }).click();
   const history = await page.locator('#h-path').textContent();
   expect(fs.existsSync(history)).toBe(true);
   // Cancel keeps it; focus goes back to the button.
@@ -89,7 +97,6 @@ test('Clear history forgets the folder, and the next pass copies nothing again',
   expect(fs.existsSync(history)).toBe(false);
 
   // The files still in the folder are adopted, not copied again.
-  await tab(page, 'Copy').click();
   await button(page, 'Start copying').click();
   await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
   await expect(page.locator('#c-summary')).toHaveText('No files were copied. 7 were already in your folder.');
@@ -98,9 +105,8 @@ test('Clear history forgets the folder, and the next pass copies nothing again',
 
 test('Check now runs another pass, and Stop and Start move focus to the heading', async ({ page, startApp }) => {
   const app = await startApp(copying(true));
-  await openApp(page, app.url);
+  await openCopy(page, app.url);
   await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
-  await page.getByText('Recent activity').click();
   await expect(passes(page)).toHaveCount(1);
 
   await button(page, 'Check now').click();
@@ -114,7 +120,7 @@ test('Check now runs another pass, and Stop and Start move focus to the heading'
   await expect(page.locator('#c-live')).toHaveText(off);
   await expect(button(page, 'Start copying')).toBeVisible();
   await expect(button(page, 'Check now')).toBeHidden();
-  await expect(page.locator('#hchip')).toHaveText('Copying is off');
+  await expect(chip(page)).toHaveText('Copying is off');
 
   await button(page, 'Start copying').click();
   await expect(title(page)).toHaveText(upToDate);
@@ -141,18 +147,19 @@ test('the CLI copying to the same folder shows Folder in use until it stops', as
     await Promise.race([passed, exited.then((code) => { throw new Error('the CLI exited ' + code + ': ' + log); })]);
 
     const app = await startApp(copying(true), home);
-    await openApp(page, app.url);
+    await openCopy(page, app.url);
     await expect(title(page)).toHaveText(inUse);
-    await expect(page.locator('#c-text')).toHaveText("It's in another seestar-copy window or seestar-copy-cli. Stop that copy, then start copying here.");
+    await expect(page.locator('#c-text')).toHaveText(inUseText);
     await expect(page.locator('#c-box')).toHaveClass('notice err');
     await expect(page.locator('#c-live')).toHaveText(inUse);
-    await expect(page.locator('#hchip')).toHaveText('Copying is off');
+    await expect(chip(page)).toHaveText('Copying is off');
     await expect(button(page, 'Start copying')).toBeVisible();
     await expect(button(page, 'Stop copying')).toBeHidden();
-    // Settings stay open: nothing is copying here.
-    await tab(page, 'Settings').click();
+    // The settings stay open: nothing is copying here.
+    await button(page, 'Change…').click();
     await expect(page.locator('#s-locked')).toBeHidden();
-    await tab(page, 'Copy').click();
+    await expect(field(page, 'Folder for your images')).toBeEnabled();
+    await button(page, 'Cancel').click();
 
     cli.kill('SIGINT');
     await exited;
@@ -169,15 +176,15 @@ test('the CLI copying to the same folder shows Folder in use until it stops', as
 
 test('a second app on the same folder shows Folder in use until the first stops', async ({ page, context, startApp }) => {
   const first = await startApp(copying(true));
-  await openApp(page, first.url);
+  await openCopy(page, first.url);
   await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
 
   const second = await startApp(copying(true), first.home);
   const other = await context.newPage();
-  await openApp(other, second.url);
+  await openCopy(other, second.url);
   await expect(title(other)).toHaveText(inUse);
   await expect(button(other, 'Start copying')).toBeVisible();
-  await expect(other.locator('#hchip')).toHaveText('Copying is off');
+  await expect(chip(other)).toHaveText('Copying is off');
 
   await button(page, 'Stop copying').click();
   await expect(title(page)).toHaveText(off);
@@ -191,13 +198,14 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   const app = await startApp(copying(false));
   let v = null;
   await fakeStatus(page, () => v);
-  await openApp(page, app.url);
+  await openCopy(page, app.url);
   await expect(title(page)).toHaveText(off);
   const live = page.locator('#c-live');
   const busy = page.locator('#c-busy');
   const bar = page.locator('#c-bar');
-  // The Copy tab has one status region.
-  await expect(page.locator('#p-copy [role=status]')).toHaveCount(1);
+  // The Copy tab's status regions: its state, and the answers to Save and
+  // to the history's buttons.
+  expect(await page.locator('#panel-copy [role=status]').evaluateAll((els) => els.map((e) => e.id))).toEqual(['c-live', 'f-saved', 'h-result']);
   await expect(live).toHaveAttribute('role', 'status');
 
   // Connecting and listing have an indeterminate bar with a label.
@@ -207,7 +215,6 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   await expect(busy).toHaveAttribute('aria-label', 'Connecting');
   expect(await busy.evaluate((el) => el.hasAttribute('value') || el.hasAttribute('max'))).toBe(false);
   await expect(page.locator('#c-copying')).toBeHidden();
-  await expect(page.locator('#hdot')).toHaveText('Connecting…');
 
   v = { state: 'listing', title: 'Looking for new files…' };
   await expect(live).toHaveText('Looking for new files…');
@@ -260,7 +267,7 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   await expect(page.locator('#c-left')).toHaveText('Less than a minute left');
   await expect(page.locator('#c-found')).toHaveText('Found already in your folder: 1');
   await expect(page.locator('#c-flight li')).toHaveText(['MyWorks/M 31/Stacked_M 31.fit25%']);
-  await expect(page.locator('#hchip')).toHaveText('Copying');
+  await expect(chip(page)).toHaveText('Copying');
 
   // Ticks within copying change the heading and bar, not the status region.
   v = progress(3000, 3);
@@ -278,8 +285,8 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   await expect(live).toHaveText('Check finished with 1 file not copied. Next check at 21:40.');
   await expect(bar).toBeHidden();
   await expect(page.locator('#c-failed')).toBeVisible();
-  await expect(page.locator('#hchip')).toHaveText('1 file not copied');
-  await expect(page.locator('#hchip')).toHaveClass('chip warn');
+  await expect(chip(page)).toHaveText('1 file not copied');
+  await expect(chip(page)).toHaveClass('chip warn');
   await page.getByText('Show files').click();
   await expect(page.locator('#c-files li')).toHaveText(['MyWorks/M 31/Stacked_M 31.fit — the connection was reset']);
 
@@ -288,13 +295,12 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   v = { state: 'unreachable', title: `Can't reach the telescope at ${share}.`, contact: 'err' };
   await expect(live).toHaveText(`Can't reach the telescope at ${share}.`);
   await expect(page.locator('#c-failed')).toBeHidden();
-  await expect(page.locator('#hdot')).toHaveText("Can't reach");
   await expect(tab(page, 'Copy')).toBeFocused();
 });
 
 test('Preview shows what Start would copy by folder and copies nothing; Start discards it', async ({ page, startApp }) => {
   const app = await startApp(copying(false));
-  await openApp(page, app.url);
+  await openCopy(page, app.url);
   await expect(title(page)).toHaveText(off);
   const ptitle = page.locator('#c-ptitle');
   await expect(page.locator('#c-preview')).toBeHidden();
@@ -311,9 +317,8 @@ test('Preview shows what Start would copy by folder and copies nothing; Start di
   const start = await button(page, 'Start copying').boundingBox();
   expect(start.y).toBeLessThan((await page.locator('#c-ptable').boundingBox()).y);
   await expect(title(page)).toHaveText(off);
-  await expect(page.locator('#hchip')).toHaveText('Copying is off');
+  await expect(chip(page)).toHaveText('Copying is off');
   expect(fs.existsSync(app.folder) ? fs.readdirSync(app.folder) : []).toEqual([]);
-  await page.getByText('Recent activity').click();
   await expect(passes(page)).toHaveCount(0);
 
   // Start copies and drops the preview; after it, nothing is left to copy.
@@ -329,20 +334,24 @@ test('Preview shows what Start would copy by folder and copies nothing; Start di
   await expect(page.locator('#c-ptable')).toBeHidden();
 });
 
-test('Saving a new selection discards the preview, and an unreachable telescope is worded as Copy words it', async ({ page, startApp }) => {
+test('Saving a new selection discards the preview', async ({ page, startApp }) => {
   const app = await startApp(copying(false));
-  await openApp(page, app.url);
+  await openCopy(page, app.url);
   await button(page, 'Preview').click();
   await expect(page.locator('#c-ptitle')).toHaveText(/^Would copy 7 files /, { timeout: 30000 });
 
-  await tab(page, 'Settings').click();
-  await field(page, 'Telescope address').fill(refused);
+  await button(page, 'Change…').click();
+  await field(page, 'Leave out').fill('Video');
   await button(page, 'Save').click();
   await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
-  await tab(page, 'Copy').click();
   await expect(page.locator('#c-preview')).toBeHidden();
   await expect(page.locator('#c-live')).toHaveText(off);
+});
 
+test('an unreachable telescope is worded as Copy words it', async ({ page, startApp }) => {
+  const app = await startApp(copying(false, refused));
+  await openCopy(page, app.url);
+  await expect(title(page)).toHaveText(off);
   await button(page, 'Preview').click();
   await expect(page.locator('#c-ptitle')).toHaveText(`Can't reach the telescope at ${refused}.`, { timeout: 30000 });
   await expect(page.locator('#c-ptext')).toHaveText(/ Preview again to retry\.$/);
@@ -354,7 +363,7 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   const app = await startApp(copying(false));
   let v = null;
   await fakeStatus(page, () => v);
-  await openApp(page, app.url);
+  await openCopy(page, app.url);
   await expect(title(page)).toHaveText(off);
   const base = { state: 'off', on: false, chip: 'Copying is off', title: off };
   v = { ...base, preview: { state: 'running', title: 'Looking for new files… 3 folders checked.' } };
@@ -406,7 +415,7 @@ for (const colorScheme of ['light', 'dark']) {
     const app = await startApp(copying(false));
     let v = null;
     await fakeStatus(page, () => v);
-    await openApp(page, app.url);
+    await openCopy(page, app.url);
     await expect(title(page)).toHaveText(off);
     await shot('off');
     v = copyViews.copying;
@@ -416,7 +425,7 @@ for (const colorScheme of ['light', 'dark']) {
     await expect(page.locator('#c-failed')).toBeVisible();
     await page.getByText('Show files').click();
     await shot('failures');
-    v = { state: 'inuse', on: false, chip: 'Copying is off', title: inUse, text: "It's in another seestar-copy window or seestar-copy-cli. Stop that copy, then start copying here." };
+    v = { state: 'inuse', on: false, chip: 'Copying is off', title: inUse, text: inUseText };
     await expect(title(page)).toHaveText(inUse);
     await shot('inuse');
   });

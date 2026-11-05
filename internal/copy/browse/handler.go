@@ -3,8 +3,6 @@ package browse
 import (
 	"bytes"
 	"embed"
-	"encoding/json/jsontext"
-	"encoding/json/v2"
 	"errors"
 	"io/fs"
 	"log/slog"
@@ -19,6 +17,8 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/icon"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 )
 
 //go:embed web/*
@@ -32,26 +32,19 @@ type Config struct {
 	Records  func() (map[string]state.Record, error) // a destination's state; nil for no statuses
 	Selector engine.Selector                         // with statuses, what shows as left out
 	Log      *slog.Logger
-	// InApp serves the page for the seestar-copy app, which shows it in a
-	// frame of its own origin and has its own header: the page may be
+	// InApp serves the page for the app, which shows it in a frame of its
+	// own origin and has its own header: the page may be
 	// framed by that origin only, hides its header, and its error hint
 	// does not say to reload a page the user cannot see.
 	InApp bool
 }
-
-const (
-	cspStart = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; "
-	cspEnd   = "; base-uri 'none'; form-action 'none'"
-	csp      = cspStart + "frame-ancestors 'none'" + cspEnd
-	cspInApp = cspStart + "frame-ancestors 'self'" + cspEnd
-)
 
 // static are the page's files, by route.
 var static = map[string]struct{ file, typ string }{
 	"/":          {"web/index.html", "text/html; charset=utf-8"},
 	"/app.js":    {"web/app.js", "text/javascript; charset=utf-8"},
 	"/style.css": {"web/style.css", "text/css; charset=utf-8"},
-	"/icon.svg":  {"web/icon.svg", "image/svg+xml"},
+	"/icon.svg":  {"", "image/svg+xml"}, // the app's icon
 }
 
 // Handler is the browse page and its API.
@@ -75,19 +68,10 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) (string, bool
 
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) (string, bool) {
 	hd := w.Header()
-	policy, frames := csp, "DENY"
-	if h.cfg.InApp {
-		policy, frames = cspInApp, "SAMEORIGIN"
-	}
+	localhttp.SetHeaders(hd, !h.cfg.InApp)
 	if r.URL.Path == "/file" {
-		policy += "; sandbox"
+		hd.Set("Content-Security-Policy", hd.Get("Content-Security-Policy")+"; sandbox")
 	}
-	hd.Set("Content-Security-Policy", policy)
-	hd.Set("Cross-Origin-Resource-Policy", "same-origin")
-	hd.Set("X-Frame-Options", frames)
-	hd.Set("Referrer-Policy", "no-referrer")
-	hd.Set("X-Content-Type-Options", "nosniff")
-	hd.Set("Cache-Control", "no-store")
 	reject := func(code int) { http.Error(w, "Request rejected", code) }
 	if !h.hostAllowed(r.Host) {
 		reject(http.StatusForbidden)
@@ -108,7 +92,10 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) 
 		return "", false
 	}
 	if isStatic {
-		b, err := assets.ReadFile(asset.file)
+		b, err := icon.SVG, error(nil)
+		if asset.file != "" {
+			b, err = assets.ReadFile(asset.file)
+		}
 		if err != nil {
 			http.Error(w, "Not found", http.StatusNotFound)
 			return "", false
@@ -250,13 +237,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, shown, dir string
 		}
 		out.Entries = append(out.Entries, it)
 	}
-	b, err := json.Marshal(out, listOptions)
-	if err != nil {
-		h.listError(w, http.StatusInternalServerError, "encode", err.Error())
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Write(b)
+	localhttp.Respond(w, http.StatusOK, out)
 }
 
 func (h *Handler) file(w http.ResponseWriter, r *http.Request, p string, download bool) {
@@ -313,21 +294,12 @@ func (h *Handler) deviceError(w http.ResponseWriter, r *http.Request, p string, 
 	}
 }
 
-// listOptions write /api/list's JSON as it was before the move to
-// encoding/json/v2: HTML characters, U+2028 and U+2029 are escaped, and a
-// byte that is not UTF-8 is written as U+FFFD. Entries is never nil, so an
-// empty folder lists [] as it always did.
-var listOptions = json.JoinOptions(jsontext.EscapeForHTML(true), jsontext.EscapeForJS(true), jsontext.AllowInvalidUTF8(true))
-
 // listError answers an /api/list request with a JSON error.
 func (h *Handler) listError(w http.ResponseWriter, status int, code, message string) {
-	b, _ := json.Marshal(struct {
+	localhttp.Respond(w, status, struct {
 		Error   string `json:"error"`
 		Message string `json:"message"`
-	}{code, message}, listOptions)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	w.Write(b)
+	}{code, message})
 }
 
 // fileError answers a /file request with plain text.

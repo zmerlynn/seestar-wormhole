@@ -26,7 +26,7 @@ func TestCopyPanicEndsTheLoop(t *testing.T) {
 	}
 	e.waitOff()
 	v := e.c.view(time.Now())
-	if v.On || !strings.Contains(v.Title, "internal error while copying: boom") {
+	if v.On || !strings.Contains(v.Title, "internal error while copying") || strings.Contains(v.Title, "boom") {
 		t.Errorf("after a panic: %+v", v)
 	}
 	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
@@ -38,7 +38,7 @@ func TestCopyPanicEndsTheLoop(t *testing.T) {
 func TestPreviewPanicFails(t *testing.T) {
 	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
 	e.p.dial = panicDial
-	if v := e.run(); v.State != pvFailed || !strings.Contains(v.Title, "internal error while previewing: boom") {
+	if v := e.run(); v.State != pvFailed || !strings.Contains(v.Title, "internal error while previewing") || strings.Contains(v.Title, "boom") {
 		t.Errorf("after a panic: %+v", v)
 	}
 }
@@ -66,7 +66,7 @@ func TestFreePanicFails(t *testing.T) {
 	e.f.mu.Lock()
 	st := e.f.st
 	e.f.mu.Unlock()
-	if st.state != frCheckFail || st.err == nil || st.err.Error() != "internal error while freeing up space: boom" {
+	if st.state != frCheckFail || st.err == nil || st.err.Error() != "internal error while freeing up space" {
 		t.Errorf("after a panic: state %v, err %v", st.state, st.err)
 	}
 }

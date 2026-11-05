@@ -12,15 +12,19 @@ async function checkDetailsPoll(s, scenario) {
   const replace=node.replaceChildren;
   node.replaceChildren=function(...args){writes.push(node);return replace.apply(this,args);};
  }
+ // Activity lists the newest first, each row tagged with its source.
+ const newest=events=>events.map(event=>({...event,source:'connection'})).sort((a,b)=>Date.parse(b.time)-Date.parse(a.time));
  const checkContent=current=>{
   assert($('effective-settings').textContent===JSON.stringify(current.effective,null,2),'effective content stale');
   assert($('log-path').textContent===(current.log_path ? 'Private log: '+current.log_path : ''),'path stale');
-  const lines=current.events.map(event=>new Date(event.time).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'  '+event.message);
+  const rows=newest(current.events);
+  const lines=rows.map(event=>new Date(event.time).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})+'  Connection  '+event.message);
   assert($('events').children.length===lines.length,'event count stale');
   lines.forEach((line,i)=>assert($('events').children[i].textContent===line,scenario+' event content/order stale at '+i));
   const copied=JSON.parse(diagnostic);
-  assert(JSON.stringify(copied.events)===JSON.stringify(current.events),'copied events stale');
+  assert(JSON.stringify(copied.events)===JSON.stringify(rows),'copied events stale');
   assert(JSON.stringify(copied.settings)===JSON.stringify(current.effective),'copied effective settings stale');
+  assert(copied.log_path===(current.log_path||''),'copied log path stale');
  };
  const checkRepeated=current=>{
   const children=nodes.map(node=>Array.from(node.children));
@@ -46,7 +50,8 @@ async function checkDetailsPoll(s, scenario) {
    break;
   case 'replacement': changed.events[23].message='replacement with a different length';break;
   case 'same length': changed.events[23].message='other-23';break;
-  case 'reorder': changed.events.reverse();break;
+  // The list is in time order, so a buffer in another order shows as before.
+  case 'reorder': changed.events.reverse();changedIDs=[];break;
   case 'effective': changed.effective.ports['445']=5678;changedIDs=['effective-settings','running-ports'];break;
   case 'path': changed.log_path='alternate-path';changedIDs=['log-path'];break;
   default: throw new Error('unknown Details scenario');
