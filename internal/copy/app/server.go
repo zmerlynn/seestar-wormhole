@@ -381,7 +381,7 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		OK      bool   `json:"ok"`
 		Address string `json:"address"`
 		Message string `json:"message"`
-	}{err == nil, endpoint, testMessage(endpoint, entries, err)})
+	}{err == nil, endpoint, testMessage(hostOS, endpoint, entries, err)})
 }
 
 type fieldErrors struct {

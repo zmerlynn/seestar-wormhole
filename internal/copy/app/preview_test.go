@@ -161,6 +161,7 @@ func (f failDir) Walk(context.Context, func(string, bool) bool, func(remote.Entr
 // A failed preview words its cause as Copy does: the connection, a
 // listing, or anything else.
 func TestPreviewFails(t *testing.T) {
+	setHostOS(t, "linux")
 	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/M 42/a.jpg": image("a")})
 	e.dialErr = errors.New("no route")
 	v := e.run()
@@ -178,6 +179,27 @@ func TestPreviewFails(t *testing.T) {
 	writeFile(t, e.set.Folder, "not a folder")
 	if v := e.run(); v.State != pvFailed || !strings.HasPrefix(v.Title, "Couldn't preview: open destination: ") || v.Text != "Preview again to retry." {
 		t.Errorf("folder is a file: %+v", v)
+	}
+}
+
+// On macOS, a preview that can't reach an address on this network points
+// at Local Network access; one through the account doesn't.
+func TestPreviewLocalNetworkHint(t *testing.T) {
+	setHostOS(t, "darwin")
+	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
+	e.dialErr = errors.New("no route")
+	if v := e.run(); v.State != pvFailed || v.Text != checkReach+" Preview again to retry."+lanHint {
+		t.Errorf("on this network: %+v", v)
+	}
+	if err := e.p.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
+		t.Fatal(err)
+	}
+	e.p.mu.Lock()
+	done := e.p.done
+	e.p.mu.Unlock()
+	<-done
+	if v := e.p.view(); v.State != pvFailed || v.Text != checkReach+" Preview again to retry." {
+		t.Errorf("through the account: %+v", v)
 	}
 }
 

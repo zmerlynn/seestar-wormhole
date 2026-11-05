@@ -97,7 +97,8 @@ type status struct {
 	contact  string // the last contact: "", "connecting", "ok" or "err"
 
 	// The current pass.
-	unreachable   bool // its connection failed
+	unreachable   bool  // its connection failed
+	reachErr      error // and why
 	folders       int
 	listed        string // the folder being listed
 	files         int    // planned downloads, or while listing those so far
@@ -340,7 +341,7 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 		return sess, err
 	}
 	if err != nil {
-		st.unreachable, st.contact = true, "err"
+		st.unreachable, st.reachErr, st.contact = true, err, "err"
 	} else {
 		st.state, st.contact = stListing, "ok"
 	}
@@ -609,6 +610,9 @@ func (c *controller) view(now time.Time) copyView {
 	case stUnreachable:
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."
 		v.Text = "Trying again at " + at(st.next) + ". " + checkReach + " Copying stays on and keeps trying."
+		if c.bound.onLAN() {
+			v.Text += localNetworkHint(hostOS, st.reachErr)
+		}
 	case stStopping:
 		v.Title = "Stopping…"
 	case stStopped:

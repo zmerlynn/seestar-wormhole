@@ -6,6 +6,7 @@ import (
 	"net"
 	"path"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
@@ -93,8 +94,26 @@ func checkPatterns(lines []string) ([]string, string) {
 	return patterns, ""
 }
 
-// testMessage words Test's result for the page.
-func testMessage(endpoint string, entries []remote.Entry, err error) string {
+// hostOS is the GOOS whose wording the page gets; tests replace it.
+var hostOS = runtime.GOOS
+
+// localNetworkHint is added on goos to err, a failure to reach the
+// telescope at an address on this network, when nothing answered: macOS may
+// be blocking Local Network access, which the failure itself can't tell.
+// It is "" elsewhere, and for a refusal, a name not found or an SMB server's
+// answer.
+func localNetworkHint(goos string, err error) string {
+	var dnsErr *net.DNSError
+	_, answered := errors.AsType[*protocol.ResponseError](err)
+	if goos != "darwin" || answered || errors.Is(err, syscall.ECONNREFUSED) || errors.As(err, &dnsErr) && dnsErr.IsNotFound {
+		return ""
+	}
+	return " On macOS, if Local Network access is blocked, enable seestar-wormhole in System Settings > Privacy & Security > Local Network, then Test again. If a permission request is open, allow access first."
+}
+
+// testMessage words Test's result for the page on goos. Test checks an
+// address on this network.
+func testMessage(goos, endpoint string, entries []remote.Entry, err error) string {
 	host, port, _ := net.SplitHostPort(endpoint)
 	var dnsErr *net.DNSError
 	switch {
@@ -125,7 +144,7 @@ func testMessage(endpoint string, entries []remote.Entry, err error) string {
 	case isNoShare(err):
 		return `Connected, but this isn't a Seestar: it has no "EMMC Images" share.`
 	default:
-		return "Can't reach " + endpoint + ". Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."
+		return "Can't reach " + endpoint + ". Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + localNetworkHint(goos, err)
 	}
 }
 

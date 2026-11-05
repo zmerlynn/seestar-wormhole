@@ -369,9 +369,54 @@ func TestTestMessages(t *testing.T) {
 		{nil, fmt.Errorf("connect to x: mount \"EMMC Images\" on x: %w", &fs.PathError{Op: "mount", Path: `\\x\EMMC Images`, Err: smbStatus(0xC0000022)}), "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."},
 	}
 	for _, tt := range tests {
-		if got := testMessage("seestar.local:4445", tt.entries, tt.err); got != tt.want {
+		if got := testMessage("linux", "seestar.local:4445", tt.entries, tt.err); got != tt.want {
 			t.Errorf("testMessage(%v, %v) = %q\nwant %q", tt.entries, tt.err, got, tt.want)
 		}
+	}
+}
+
+// setHostOS has the page worded for goos until t ends.
+func setHostOS(t *testing.T, goos string) {
+	old := hostOS
+	hostOS = goos
+	t.Cleanup(func() { hostOS = old })
+}
+
+const lanHint = " On macOS, if Local Network access is blocked, enable seestar-wormhole in System Settings > Privacy & Security > Local Network, then Test again. If a permission request is open, allow access first."
+
+// On macOS, a failure where nothing answered points at Local Network
+// access; a refusal, a name not found or the SMB server's own answer
+// doesn't, and nor does any failure elsewhere.
+func TestLocalNetworkHint(t *testing.T) {
+	timeout := fmt.Errorf("connect to x: %w", context.DeadlineExceeded)
+	noRoute := fmt.Errorf("connect to x: dial: %w", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.EHOSTUNREACH)})
+	tests := []struct {
+		goos string
+		err  error
+		want string
+	}{
+		{"darwin", timeout, lanHint},
+		{"darwin", noRoute, lanHint},
+		{"darwin", &net.DNSError{Err: "server misbehaving", Name: "seestar.local", IsTemporary: true}, lanHint},
+		{"linux", timeout, ""},
+		{"windows", noRoute, ""},
+		{"darwin", fmt.Errorf("connect to x: dial: %w", &net.DNSError{Err: "no such host", Name: "seestar.local", IsNotFound: true}), ""},
+		{"darwin", fmt.Errorf("connect to x: dial: %w", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}), ""},
+		{"darwin", fmt.Errorf("connect to x: dial x: %w", smbStatus(0xC000006D)), ""},
+		{"darwin", fmt.Errorf("connect to x: mount \"EMMC Images\" on x: %w", &fs.PathError{Op: "mount", Path: `\\x\EMMC Images`, Err: smbStatus(0xC00000CC)}), ""},
+	}
+	for _, tt := range tests {
+		if got := localNetworkHint(tt.goos, tt.err); got != tt.want {
+			t.Errorf("localNetworkHint(%s, %v) = %q, want %q", tt.goos, tt.err, got, tt.want)
+		}
+	}
+	want := "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + lanHint
+	if got := testMessage("darwin", "seestar.local:4445", nil, timeout); got != want {
+		t.Errorf("Test on macOS = %q\nwant %q", got, want)
+	}
+	want = "seestar.local answered but refused port 4445. Is this the telescope's address?"
+	if got := testMessage("darwin", "seestar.local:4445", nil, fmt.Errorf("dial: %w", syscall.ECONNREFUSED)); got != want {
+		t.Errorf("a refusal on macOS = %q, want %q", got, want)
 	}
 }
 

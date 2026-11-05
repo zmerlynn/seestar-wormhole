@@ -316,6 +316,32 @@ func TestCopyUnreachable(t *testing.T) {
 	}
 }
 
+// On macOS, copying that can't reach an address on this network points at
+// Local Network access; through the account, or elsewhere, it doesn't.
+func TestCopyUnreachableLocalNetworkHint(t *testing.T) {
+	tests := []struct {
+		goos   string
+		target func(endpoint string) Target
+		hint   string
+	}{
+		{"darwin", func(ep string) Target { return Target{Endpoint: ep} }, lanHint},
+		{"darwin", func(ep string) Target { return Target{Endpoint: ep, Device: "synthetic", Run: 1} }, ""},
+		{"linux", func(ep string) Target { return Target{Endpoint: ep} }, ""},
+	}
+	for _, tt := range tests {
+		setHostOS(t, tt.goos)
+		e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+		e.dialErr = errors.New("no route")
+		if err := e.c.start(e.set, tt.target(e.set.Address)); err != nil {
+			t.Fatal(err)
+		}
+		v := e.wait(stUnreachable)
+		if !strings.HasSuffix(v.Text, " Copying stays on and keeps trying."+tt.hint) {
+			t.Errorf("%s, %+v: text %q", tt.goos, tt.target(e.set.Address), v.Text)
+		}
+	}
+}
+
 // The folder removed between passes is created again while the lock stays
 // held.
 func TestCopyRecreatesFolder(t *testing.T) {
