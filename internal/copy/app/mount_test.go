@@ -9,7 +9,10 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/fstest"
+	"testing/synctest"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
@@ -249,4 +252,45 @@ func TestMountStartsCopyingWhenReady(t *testing.T) {
 			t.Errorf("%+v: copying started", set)
 		}
 	}
+}
+
+// A start from the page while copying waits to start as the app opens
+// takes its place: once that start's single pass has ended, copying stays
+// off, though the target is there by the next look.
+func TestMountStartGivesWayToPage(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var ready atomic.Bool
+		var dialed atomic.Int32
+		set := savedAt(t.TempDir())
+		set.Once, set.StartCopying = true, true
+		m := NewMount(t.Context(), MountOptions{
+			Addr: testAddr, StateDir: t.TempDir(), Settings: set, Log: slog.New(slog.DiscardHandler),
+			Target: func() (Target, error) {
+				if !ready.Load() {
+					return Target{}, errors.New("Not connected")
+				}
+				return Target{Endpoint: testEndpoint, Device: "synthetic", Run: 1}, nil
+			},
+			Dial: func(context.Context, string) (remote.Session, error) {
+				dialed.Add(1)
+				return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": image("abc")}), nil
+			},
+		})
+		defer m.Quit()
+		m.Start()
+		synctest.Wait() // no target yet; it looks again in a second
+		ready.Store(true)
+		if err := m.s.startCopying(false); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if m.s.copy.on() || dialed.Load() != 1 {
+			t.Fatalf("the page's pass: on %v after %d dials", m.s.copy.on(), dialed.Load())
+		}
+		time.Sleep(3 * startEvery)
+		synctest.Wait()
+		if m.s.copy.on() || dialed.Load() != 1 {
+			t.Errorf("after the next looks: on %v after %d dials, want the page's one", m.s.copy.on(), dialed.Load())
+		}
+	})
 }

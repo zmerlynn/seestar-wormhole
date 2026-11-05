@@ -363,7 +363,7 @@ func TestPassDuringChange(t *testing.T) {
 					time.Sleep(5 * time.Millisecond)
 				}
 			}
-			if err := e.m.s.startCopying(); err != nil {
+			if err := e.m.s.startCopying(false); err != nil {
 				t.Fatal(err)
 			}
 			until("the first pass", func() bool { return c.view(time.Now()).State == stFailures })

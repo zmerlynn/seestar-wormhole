@@ -60,6 +60,9 @@ type server struct {
 	// checks and its start. It may be held across a save to disk but is
 	// never taken by status, views, Busy or the end of any of them.
 	admit sync.Mutex
+	// started is set, under admit, once copying has started since the app
+	// did, from the page or as the app opened.
+	started bool
 
 	mu       sync.Mutex
 	file     *settingsFile
@@ -165,12 +168,20 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	return h, sessions
 }
 
+// errStarted refuses the start as the app opens once copying has started.
+var errStarted = errors.New("copying has started since the app opened")
+
 // startCopying turns copying on with the saved settings, which discards
 // a preview. Holding s.admit keeps a Save or a change of endpoint from
-// landing between the check and the start.
-func (s *server) startCopying() error {
+// landing between the check and the start. The start as the app opens,
+// opening, is refused once copying has started, even if it has since
+// stopped, as a pass of copying once does by itself.
+func (s *server) startCopying(opening bool) error {
 	s.admit.Lock()
 	defer s.admit.Unlock()
+	if opening && s.started {
+		return errStarted
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.setUp() {
@@ -183,6 +194,7 @@ func (s *server) startCopying() error {
 	if err := s.copy.start(set, t); err != nil {
 		return err
 	}
+	s.started = true
 	s.preview.discard()
 	return nil
 }
@@ -469,7 +481,7 @@ func (s *server) copyAction(w http.ResponseWriter, action string) {
 	verb := "start copying"
 	switch action {
 	case "start":
-		err = s.startCopying()
+		err = s.startCopying(false)
 	case "stop":
 		s.copy.stop()
 	case "check":

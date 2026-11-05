@@ -130,8 +130,9 @@ var startEvery = time.Second
 
 // startWhenReady turns copying on as the app opens, once there is a
 // target: through the account it waits for the connection and never starts
-// it. It gives up once copying is on, the setting is off, the app quits, or
-// a start fails with a target there.
+// it. It gives up once copying has started since the app opened, even from
+// the page, the setting is off, the app quits, or a start fails with a
+// target there.
 func (s *server) startWhenReady(ctx context.Context, every time.Duration) {
 	defer guard.Recover(s.log, "starting copying")
 	tick := time.NewTicker(every)
@@ -140,11 +141,11 @@ func (s *server) startWhenReady(ctx context.Context, every time.Duration) {
 		s.mu.Lock()
 		want := s.setUp() && s.file.settings.StartCopying
 		s.mu.Unlock()
-		if !want || s.copy.on() {
+		if !want {
 			return
 		}
-		err := s.startCopying()
-		if err == nil {
+		err := s.startCopying(true)
+		if err == nil || errors.Is(err, errStarted) {
 			return
 		}
 		if _, waiting := s.target(); waiting == nil {

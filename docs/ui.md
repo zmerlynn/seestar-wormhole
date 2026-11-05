@@ -156,8 +156,9 @@ can't change while copying runs:
   [`--exclude` and `--include`](copy-reference.md#selection).
 - **Skip the telescope's logs, scratch and system files**, on by default.
 - **Start copying when the app opens**, off by default. Through Telescope
-  Network, copying then starts once the connection is ready. With the check
-  for new files off, it copies once each time the app opens.
+  Network, copying then starts once the connection is ready; pressing
+  **Start copying** before then takes its place. With the check for new
+  files off, it copies once each time the app opens.
 
 While copying is off, **Preview** shows what **Start copying** would do, from
 one [dry run](copy-reference.md#dry-run) with the saved settings: how many
