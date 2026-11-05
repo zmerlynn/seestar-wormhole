@@ -332,16 +332,17 @@ function lanResult(message, tone = '') {
 }
 // Test checks that the address answers SMB, as seestar-copy's Test does.
 async function lanTest() {
-  if (lanPending) return;
+  if (lanPending) return null;
   const typed = $('lan-address').value.trim();
   lanPending = 'test';
+  lanReach = null;
   lanError('');
   lanResult('Connecting to ' + (typed.includes(':') ? typed : typed + ':445') + '…');
   controls();
-  let focus = '';
+  let focus = '', r = null;
   try {
-    const r = await api('test', {address: typed}, '/copy/api/');
-    lanReach = {address: r.address, ok: r.ok};
+    r = await api('test', {address: typed}, '/copy/api/');
+    lanReach = {typed, address: r.address, ok: r.ok};
     lanResult(r.message, r.ok ? 'ok' : 'error');
   } catch (e) {
     if (e.fields?.address) {
@@ -354,17 +355,26 @@ async function lanTest() {
     controls();
     if (focus) $(focus).focus();
   }
+  return r;
 }
-// Save makes this network the route; it is Tested too unless it passed.
+// Save Tests the address first, unless it just passed, and makes this
+// network the route only if it answers; the server Tests it again.
 async function lanSave() {
   if (lanPending) return;
+  const typed = $('lan-address').value.trim();
+  let address = lanReach?.ok && lanReach.typed === typed ? lanReach.address : '';
+  if (!address) {
+    const r = await lanTest();
+    if (!r?.ok) return;
+    address = r.address;
+  }
   lanPending = 'save';
   lanError('');
   lanResult('');
   controls();
   let saved = false;
   try {
-    await api('route', {settings: {route: 'lan', lan_address: $('lan-address').value.trim()}});
+    await api('route', {settings: {route: 'lan', lan_address: address}});
     saved = true;
     await refresh();
   } catch (e) {
@@ -379,9 +389,7 @@ async function lanSave() {
     if (!$('lan-address-error').hidden) $('lan-address').focus();
     return;
   }
-  const address = state?.settings?.lan_address || '';
-  if (lanReach?.address === address && lanReach.ok) lanResult('Saved. ' + address + ' is reachable.', 'ok');
-  else await lanTest();
+  lanResult('Saved. ' + address + ' is reachable.', 'ok');
 }
 // Tabs: only the enabled ones can be selected; Arrow, Home and End move
 // among them and focus follows, as in seestar-copy.

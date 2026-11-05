@@ -168,9 +168,10 @@ async function checkLANForm(statuses, replies, scenario) {
     $('lan-form').dispatchEvent({type: 'submit', preventDefault() {prevented = true;}});
     for (let i = 0; i < 200 && (lanPending || calls.length < 3); i++) await null;
     tabAssert(prevented, 'Save submitted the form');
-    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/route', '/api/status', '/copy/api/test']), 'Save requests ' + JSON.stringify(calls));
-    tabAssert(JSON.stringify(calls[0][1]) === JSON.stringify({settings: {route: 'lan', lan_address: '192.0.2.20'}}), 'Save body ' + JSON.stringify(calls[0][1]));
-    tabAssert(state.settings.route === 'lan' && $('connection-text').textContent === 'On this network: reachable' && $('connection-dot').getAttribute('data-tone') === 'on', 'header after Save and Test: ' + $('connection-text').textContent);
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/copy/api/test', '/api/route', '/api/status']), 'Save requests ' + JSON.stringify(calls));
+    tabAssert(JSON.stringify(calls[1][1]) === JSON.stringify({settings: {route: 'lan', lan_address: replies['192.0.2.20'].body.address}}), 'Save body ' + JSON.stringify(calls[1][1]));
+    tabAssert(state.settings.route === 'lan' && $('connection-text').textContent === 'On this network: reachable' && $('connection-dot').getAttribute('data-tone') === 'on', 'header after Test and Save: ' + $('connection-text').textContent);
+    tabAssert($('lan-result').textContent === 'Saved. ' + lan + ' is reachable.' && $('lan-result').getAttribute('data-tone') === 'ok', 'Save result');
     tabAssert(lan === replies['192.0.2.20'].body.address, 'fixture: the saved address is the tested one');
     break;
   }
@@ -181,16 +182,34 @@ async function checkLANForm(statuses, replies, scenario) {
     await lanSave();
     tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/route', '/api/status']), 'a passed Test ran again ' + JSON.stringify(calls));
     tabAssert($('lan-result').textContent === 'Saved. ' + lan + ' is reachable.' && $('lan-result').getAttribute('data-tone') === 'ok', 'Save result');
+    // An edited address is Tested again before it is saved.
+    $('lan-address').value = '192.0.2.99';
+    calls.length = 0;
+    await lanSave();
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/copy/api/test']), 'an edited address was saved untested ' + JSON.stringify(calls));
+    break;
+  }
+  case 'save unreachable': {
+    $('lan-address').value = '192.0.2.99';
+    await lanSave();
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/copy/api/test']) && state.settings.route !== 'lan', 'an unreachable address was saved ' + JSON.stringify(calls));
+    tabAssert($('lan-result').textContent === replies['192.0.2.99'].body.message && $('lan-result').getAttribute('data-tone') === 'error', 'unreachable Save result');
     break;
   }
   case 'save rejected': {
-    replies.save = replies.badSave;
     $('lan-address').value = 'not an address!';
     await lanSave();
-    tabAssert(!$('lan-address-error').hidden && $('lan-address-error').textContent === replies.badSave.message && document.activeElement === $('lan-address'), 'rejected Save message');
-    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/route']) && state.settings.route !== 'lan', 'a rejected Save went on');
-    replies.save = replies.locked;
+    tabAssert(!$('lan-address-error').hidden && $('lan-address-error').textContent === replies['not an address!'].body.fields.address && document.activeElement === $('lan-address'), 'rejected Save message');
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/copy/api/test']) && state.settings.route !== 'lan', 'a rejected Save went on');
+    // The server's own Test and its route lock refuse a Save the page's
+    // Test passed.
+    replies.save = replies.unreachable;
     $('lan-address').value = '192.0.2.20';
+    $('lan-address').dispatchEvent({type: 'input'});
+    await lanSave();
+    tabAssert(!$('lan-address-error').hidden && $('lan-address-error').textContent === replies.unreachable.message && document.activeElement === $('lan-address') && state.settings.route !== 'lan', 'server-refused Save message');
+    replies.save = replies.locked;
+    $('lan-address').dispatchEvent({type: 'input'});
     await lanSave();
     tabAssert($('lan-result').textContent === replies.locked.message && $('lan-result').getAttribute('data-tone') === 'error' && $('lan-address-error').hidden, 'locked Save message');
     break;

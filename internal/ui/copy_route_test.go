@@ -303,3 +303,51 @@ func TestBrowseFollowsTheRoute(t *testing.T) {
 		})
 	}
 }
+
+// A Save on this network tests the address first and commits only if it
+// answers; the route is checked again once the Test is done, and a
+// refused save keeps the saved route and file.
+func TestLANSaveTestsFirst(t *testing.T) {
+	e := newRouteEnv(t)
+	e.lan("192.0.2.10")
+	path := filepath.Join(e.s.storage.root, "config.json")
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := func(what string) {
+		t.Helper()
+		if e.s.settings.Route != routeLAN || e.s.settings.LANAddress != "192.0.2.10:445" {
+			t.Errorf("%s changed the route: %+v", what, e.s.settings)
+		}
+		if after, err := os.ReadFile(path); err != nil || string(after) != string(before) {
+			t.Errorf("%s rewrote the file: %s, %v", what, after, err)
+		}
+	}
+	code, body := e.post("/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.99"}}`)
+	if code != 400 || !strings.Contains(body, `"code":"lan_unreachable"`) || !strings.Contains(body, `"field":"lan_address"`) {
+		t.Errorf("save of an unreachable address = %d %s", code, body)
+	}
+	kept("an unreachable address")
+
+	// Copying that starts during the Test refuses the save after it.
+	e.settings()
+	tested, hold := make(chan struct{}), make(chan struct{})
+	e.set(&e.tested, tested)
+	e.set(&e.holdTest, hold)
+	saved := make(chan string, 1)
+	go func() {
+		_, body := e.post("/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.20"}}`)
+		saved <- body
+	}()
+	<-tested
+	e.set(&e.tested, nil)
+	if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
+		t.Fatalf("start copying = %d %s", code, body)
+	}
+	close(hold)
+	if body := <-saved; !strings.Contains(body, `"code":"route_locked"`) {
+		t.Errorf("save once copying started during its Test = %s", body)
+	}
+	kept("a save refused after its Test")
+}

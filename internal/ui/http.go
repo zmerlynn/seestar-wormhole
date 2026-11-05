@@ -299,9 +299,11 @@ func (s *server) allowedPost(w http.ResponseWriter, r *http.Request) bool {
 }
 
 // saveRoute saves how the copier reaches the telescope. On this network
-// it needs an address, which is kept as host:port; the account route
-// keeps the saved address for a later switch back. It is refused while
-// the account route runs or copying or deleting does.
+// it needs an address, kept as host:port, that passes Test first; the
+// account route keeps the saved address for a later switch back. It is
+// refused while the account route runs or copying or deleting does, as
+// checked again after the Test; a refused or failed save keeps the route
+// that was saved.
 func (s *server) saveRoute(ctx context.Context, route, address string) error {
 	if route == routeLAN {
 		normalized, ok := copyapp.NormalizeAddress(address)
@@ -309,6 +311,12 @@ func (s *server) saveRoute(ctx context.Context, route, address string) error {
 			return &ActionError{Code: "lan_address", Field: "lan_address"}
 		}
 		address = normalized
+		// Test holds no lock: it waits on the network.
+		if s.copy != nil {
+			if err := s.copy.Test(ctx, address); err != nil {
+				return &ActionError{Code: "lan_unreachable", Field: "lan_address"}
+			}
+		}
 	}
 	return s.changeRoute(func() bool { return true }, func() error { return s.controller.persistRoute(route, address) })
 }

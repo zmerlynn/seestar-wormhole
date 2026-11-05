@@ -26,12 +26,13 @@ between them. Copy, Browse and Free up space are not available yet; they say
   its file-sharing (SMB) port.
 - **On this network** is for a Seestar on the same network as this computer.
   Enter its address, with an optional port (445 by default). **Test** checks
-  that it answers file sharing; **Save** saves the address and tests it
-  unless it has just passed. This route doesn't start the proxy or use your
-  account.
+  that it answers file sharing; **Save** tests it first, unless it has just
+  passed, and saves it only if it answers. Otherwise the saved route stays.
+  This route doesn't start the proxy or use your account.
 
 You can't change the choice while a connection is running or while copying or
-deleting is running; stop it first. **Connect** saves the account route.
+deleting is running; stop it first. **Connect** saves the account route, so
+it is refused too while copying or deleting runs on this network.
 
 ## Setting up
 

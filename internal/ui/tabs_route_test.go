@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -45,18 +46,19 @@ func TestLANFormPage(t *testing.T) {
 		w := serve(s, request(s, "POST", "/copy/api/test", string(body)))
 		replies[address] = jsontext.Value(`{"status":` + strconv.Itoa(w.Code) + `,"body":` + w.Body.String() + `}`)
 	}
-	w := serve(s, request(s, "POST", "/api/route", `{"settings":{"route":"lan","lan_address":"not an address!"}}`))
-	if w.Code != 400 {
-		t.Fatalf("bad save = %d", w.Code)
+	// The server Tests a Save itself, and refuses one that does not answer.
+	w := serve(s, request(s, "POST", "/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.99"}}`))
+	if w.Code != 400 || !strings.Contains(w.Body.String(), `"code":"lan_unreachable"`) {
+		t.Fatalf("unreachable save = %d %s", w.Code, w.Body)
 	}
-	replies["badSave"] = jsontext.Value(w.Body.String())
+	replies["unreachable"] = jsontext.Value(w.Body.String())
 	locked, _ := json.Marshal(map[string]string{"code": "route_locked", "message": errorCopy("route_locked")})
 	replies["locked"] = locked
 	encoded, err := json.Marshal(replies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"test passes", "test fails", "test bad address", "save", "save after test", "save rejected"} {
+	for _, scenario := range []string{"test passes", "test fails", "test bad address", "save", "save after test", "save unreachable", "save rejected"} {
 		t.Run(scenario, func(t *testing.T) {
 			runPageRegression(t, "tabs-route-test.js", "checkLANForm("+statuses+","+string(encoded)+","+strconv.Quote(scenario)+")")
 		})
