@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 
@@ -390,6 +391,86 @@ func TestLANTest(t *testing.T) {
 	// Test saves nothing.
 	if s.settings.Route != "" && s.settings.Route != routeAccount {
 		t.Errorf("Test changed the route: %+v", s.settings)
+	}
+}
+
+// closeSession counts its Close in the open sessions.
+type closeSession struct {
+	remote.Session
+	open *atomic.Int64
+}
+
+func (c closeSession) Close() error {
+	c.open.Add(-1)
+	return c.Session.Close()
+}
+
+// Quit closes Browse's session, then stops the copy controllers, then the
+// proxy, and only then the HTTP server: when the proxy's run ends, no
+// device session is open and copying is off, and the server has not
+// begun to shut down.
+func TestQuitOrder(t *testing.T) {
+	s := testServer(t)
+	var open atomic.Int64
+	s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
+		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
+		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Target: s.copyTarget,
+		Dial: func(context.Context, string) (remote.Session, error) {
+			open.Add(1)
+			return closeSession{remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), &open}, nil
+		},
+		Test: func(context.Context, string) ([]remote.Entry, error) {
+			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
+		},
+	})
+	t.Cleanup(s.copy.Quit)
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.10"); err != nil {
+		t.Fatal(err)
+	}
+	copySettings(t, s)
+	type atStop struct {
+		open      int64
+		copying   bool
+		httpEnded bool
+	}
+	stopped := make(chan atStop, 1)
+	running := make(chan struct{})
+	s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+		close(running)
+		<-ctx.Done()
+		ended := false
+		select {
+		case <-s.quit:
+			ended = true
+		default:
+		}
+		stopped <- atStop{open.Load(), s.copy.Busy(), ended}
+		return nil
+	}
+	if err := s.controller.start(testSettings(), testPassword); err != nil {
+		t.Fatal(err)
+	}
+	<-running
+	if w := serve(s, request(s, "GET", "/browse/api/list?path=MyWorks", "")); w.Code != 200 {
+		t.Fatalf("browse = %d %s", w.Code, w.Body)
+	}
+	if w := serve(s, request(s, "POST", "/copy/api/copy", `{"action":"start"}`)); w.Code != 200 {
+		t.Fatalf("start copying = %d %s", w.Code, w.Body)
+	}
+	if n := open.Load(); n < 1 || !s.copy.Busy() {
+		t.Fatalf("before Quit: %d sessions open, copying %v", n, s.copy.Busy())
+	}
+	if w := serve(s, request(s, "POST", "/api/quit", "{}")); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	if got := <-stopped; got.open != 0 || got.copying || got.httpEnded {
+		t.Errorf("when the proxy stopped: %+v, want no session, copying off and the server up", got)
+	}
+	select {
+	case <-s.quit:
+	default:
+		t.Error("Quit did not go on to shut the server down")
 	}
 }
 
