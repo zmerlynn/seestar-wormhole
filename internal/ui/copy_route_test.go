@@ -378,7 +378,12 @@ func TestLANSaveTestsFirst(t *testing.T) {
 		_, body := e.post("/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.20"}}`)
 		saved <- body
 	}()
-	<-tested
+	select {
+	case <-tested:
+	case <-time.After(10 * time.Second):
+		close(hold)
+		t.Fatal("the save didn't test the address")
+	}
 	e.set(&e.tested, nil)
 	if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
 		t.Fatalf("start copying = %d %s", code, body)
@@ -468,10 +473,14 @@ func TestAccountEndpoint(t *testing.T) {
 		ready = st
 		mu.Unlock()
 	}
+	// A run ends once stopped and released, or once the test has.
 	release := make(chan struct{})
 	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
 		<-ctx.Done()
-		<-release
+		select {
+		case <-release:
+		case <-t.Context().Done():
+		}
 		return nil
 	}
 	settings := testSettings()
