@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -26,7 +27,8 @@ import (
 
 // routeEnv is a server with copy mounted over a share at each endpoint:
 // a folder holding MyWorks/at_<host>.jpg. Its fakes record each endpoint
-// reached and can hold a dial, a delete's remover or a Test.
+// reached and each session dialed, and can hold a dial, a delete's
+// remover or a Test.
 type routeEnv struct {
 	t      *testing.T
 	s      *server
@@ -35,6 +37,7 @@ type routeEnv struct {
 
 	mu         sync.Mutex
 	dialed     []string
+	sessions   []*routeSession
 	holdDial   chan struct{} // if not nil, a dial waits for it
 	holdRemove chan struct{} // if not nil, a remover waits for it
 	removing   chan struct{} // if not nil, a remover signals it on entry
@@ -54,10 +57,16 @@ func newRouteEnv(t *testing.T) *routeEnv {
 			if err := e.wait(ctx, &e.holdDial, nil); err != nil {
 				return nil, err
 			}
+			d, err := e.share(endpoint)
+			if err != nil {
+				return nil, err
+			}
+			s := &routeSession{Session: d, ctx: ctx}
 			e.mu.Lock()
 			e.dialed = append(e.dialed, endpoint)
+			e.sessions = append(e.sessions, s)
 			e.mu.Unlock()
-			return e.share(endpoint)
+			return s, nil
 		},
 		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 			if err := e.wait(ctx, &e.holdTest, &e.tested); err != nil {
@@ -77,6 +86,31 @@ func newRouteEnv(t *testing.T) *routeEnv {
 	})
 	t.Cleanup(e.s.copy.Quit)
 	return e
+}
+
+// routeSession is a dialed session that counts its Closes and keeps the
+// context it was dialed with.
+type routeSession struct {
+	remote.Session
+	ctx    context.Context
+	closes atomic.Int32
+}
+
+func (s *routeSession) Close() error {
+	s.closes.Add(1)
+	return s.Session.Close()
+}
+
+// retired reports whether s was closed once and its context ended.
+func (s *routeSession) retired() bool {
+	return s.closes.Load() == 1 && s.ctx.Err() != nil
+}
+
+// dialedSessions is the sessions dialed so far.
+func (e *routeEnv) dialedSessions() []*routeSession {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]*routeSession(nil), e.sessions...)
 }
 
 // wait signals entered, if set, and waits for hold, if set.
@@ -347,7 +381,9 @@ func TestConnectWhileCopying(t *testing.T) {
 }
 
 // Browse follows each change of route with a new session pool: a save of
-// another address, a save of the account route, and Connect.
+// another address, a save of the account route, and Connect. The old
+// pool's session is closed and its context ended before the change
+// returns.
 func TestBrowseFollowsTheRoute(t *testing.T) {
 	list := func(e *routeEnv) (int, string) { return e.get("/browse/api/list?path=MyWorks") }
 	for _, tc := range []struct {
@@ -374,7 +410,14 @@ func TestBrowseFollowsTheRoute(t *testing.T) {
 			if code, body := list(e); code != 200 || !strings.Contains(body, "at_192.0.2.10.jpg") {
 				t.Fatalf("first listing = %d %s", code, body)
 			}
+			old := e.dialedSessions()
+			if len(old) != 1 || old[0].retired() {
+				t.Fatalf("%d sessions before the change", len(old))
+			}
 			tc.change(e)
+			if !old[0].retired() {
+				t.Errorf("the old session had %d Closes and context error %v when the change returned", old[0].closes.Load(), old[0].ctx.Err())
+			}
 			code, body := list(e)
 			if strings.Contains(body, "at_192.0.2.10.jpg") {
 				t.Fatalf("Browse kept the old route's session: %d %s", code, body)
