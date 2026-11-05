@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/netip"
 	"sync"
+	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
@@ -76,7 +78,46 @@ func NewMount(ctx context.Context, o MountOptions) *Mount {
 	if o.Settings != nil {
 		file.settings, file.exists = *o.Settings, true
 	}
-	return &Mount{s: newServer(ctx, o, file), cancel: cancel}
+	m := &Mount{s: newServer(ctx, o, file), cancel: cancel}
+	if m.s.setUp() && file.settings.StartCopying {
+		go m.s.startWhenReady(ctx, startEvery)
+	}
+	return m
+}
+
+// startEvery is how often copying that starts when the app opens looks for
+// its target.
+var startEvery = time.Second
+
+// startWhenReady turns copying on as the app opens, once there is a
+// target: through the account it waits for the connection and never starts
+// it. It gives up once copying is on, the setting is off, the app quits, or
+// a start fails with a target there.
+func (s *server) startWhenReady(ctx context.Context, every time.Duration) {
+	defer guard.Recover(s.log, "starting copying")
+	tick := time.NewTicker(every)
+	defer tick.Stop()
+	for {
+		s.mu.Lock()
+		want := s.setUp() && s.file.settings.StartCopying
+		s.mu.Unlock()
+		if !want || s.copy.on() {
+			return
+		}
+		err := s.startCopying()
+		if err == nil {
+			return
+		}
+		if _, waiting := s.target(); waiting == nil {
+			s.log.Error("start copying", "err", err)
+			return
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+		}
+	}
 }
 
 // errMoved fails a preview's or a delete's dial once the telescope's

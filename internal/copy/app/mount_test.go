@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
@@ -192,5 +193,59 @@ func TestNormalizeAddressExported(t *testing.T) {
 	}
 	if _, ok := NormalizeAddress("not an address!"); ok {
 		t.Error("a bad address passed")
+	}
+}
+
+// Copying that starts when the app opens waits for a target, through the
+// account the connection, and starts once there is one; without the
+// setting, or before a folder is saved, it doesn't start.
+func TestMountStartsCopyingWhenReady(t *testing.T) {
+	defer func(every time.Duration) { startEvery = every }(startEvery)
+	startEvery = 5 * time.Millisecond
+	open := func(set *Settings) (*Mount, func()) {
+		var mu sync.Mutex
+		ready := false
+		m := NewMount(context.Background(), MountOptions{
+			Addr: testAddr, StateDir: t.TempDir(), Version: "v9.9.9",
+			Log: slog.New(slog.DiscardHandler),
+			Target: func() (Target, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				if !ready {
+					return Target{}, errors.New("Not connected")
+				}
+				return Target{Endpoint: testEndpoint}, nil
+			},
+			Dial:     (&dials{}).dial,
+			Settings: set,
+		})
+		t.Cleanup(m.Quit)
+		return m, func() { mu.Lock(); ready = true; mu.Unlock() }
+	}
+	on := savedAt(t.TempDir())
+	on.StartCopying = true
+	m, connect := open(on)
+	time.Sleep(50 * time.Millisecond)
+	if m.s.copy.on() {
+		t.Fatal("copying started before the connection")
+	}
+	connect()
+	deadline := time.Now().Add(5 * time.Second)
+	for !m.s.copy.on() {
+		if time.Now().After(deadline) {
+			t.Fatal("copying didn't start once connected")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	off := savedAt(t.TempDir())
+	unset := DefaultSettings()
+	unset.Folder, unset.StartCopying = "", true
+	for _, set := range []*Settings{off, &unset, nil} {
+		m, connect := open(set)
+		connect()
+		time.Sleep(50 * time.Millisecond)
+		if m.s.copy.on() {
+			t.Errorf("%+v: copying started", set)
+		}
 	}
 }
