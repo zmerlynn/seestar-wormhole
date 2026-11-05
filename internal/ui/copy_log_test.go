@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"bytes"
 	"context"
 	"encoding/json/v2"
 	"io"
@@ -9,30 +8,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
-
-// lockedBuffer collects writes from any goroutine.
-type lockedBuffer struct {
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (l *lockedBuffer) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.Write(p)
-}
-
-func (l *lockedBuffer) String() string {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.b.String()
-}
 
 // The copier's warnings go to the command's log sink as JSON records,
 // never to its output. Copying here fails at its folder, before any dial.
@@ -55,7 +36,7 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 	if err := os.WriteFile(folder, []byte("not a folder"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	var out, logs lockedBuffer
+	var out, logs testlog.Buffer
 	err = runUIPresented(t.Context(), root, &out, &logs, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(ctx context.Context, url string, closeWindow func(), _ <-chan struct{}) error {
 		defer func() {
 			closeWindow()
