@@ -362,7 +362,8 @@ and left untouched. A failed load never overwrites existing state.
 
 `version` is required and must be `1`. Missing members take these defaults,
 and members this version doesn't know are kept when it saves. The file is
-written only by a Save, never on load.
+written when you save Copy settings or preview Free up space with changed
+options, never on load.
 
 | Member | Default and meaning |
 |---|---|
