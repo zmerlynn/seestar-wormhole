@@ -27,7 +27,7 @@ var reportUIError = func(error) {}
 func runUICommand(ctx context.Context, o options, out, logs io.Writer) error {
 	root, err := ui.StateRoot(o.stateDir)
 	if err == nil {
-		err = ui.Run(ctx, root, out, newUIRunner(root, logs, func(ctx context.Context, cfg proxy.Config, credentials cloud.Credentials) (commandSession, error) {
+		err = ui.Run(ctx, root, out, logs, newUIRunner(root, logs, func(ctx context.Context, cfg proxy.Config, credentials cloud.Credentials) (commandSession, error) {
 			return proxy.NewWithCredentials(ctx, cfg, credentials)
 		}, net.Listen, proxy.CheckTCPStateSupport), version)
 	}

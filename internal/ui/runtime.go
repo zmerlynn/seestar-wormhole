@@ -19,6 +19,7 @@ import (
 	"time"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
@@ -127,15 +128,17 @@ func uiVersion(ctx context.Context) string {
 
 type versionKey struct{}
 
-func Run(ctx context.Context, root string, out io.Writer, run runFunc, version string) error {
-	return runPlatformUI(context.WithValue(ctx, versionKey{}, version), root, out, run)
+// Run runs the UI. out gets its messages for the person who started it,
+// and logs, the command's bounded stderr sink, its diagnostics.
+func Run(ctx context.Context, root string, out, logs io.Writer, run runFunc, version string) error {
+	return runPlatformUI(context.WithValue(ctx, versionKey{}, version), root, out, logs, run)
 }
 
 // windowFunc runs on the caller's main thread. Its context ends only after
 // proxy cleanup and HTTP shutdown; close requests must call quit and wait.
 type windowFunc func(context.Context, string, func(), <-chan struct{}) error
 
-func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native bool) (result error) {
+func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native bool) (result error) {
 	st, err := openStorage(root)
 	if err != nil {
 		return err
@@ -193,7 +196,8 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 	c.lastSaved = settings
 	c.log = eventHistory
 	// The copier shares seestar-copy-cli's state folder, so the two share
-	// one history and lock per folder.
+	// one history and lock per folder. Its warnings and errors go to the
+	// command's bounded log sink, as the proxy's do.
 	var copyState string
 	if base, err := os.UserConfigDir(); err == nil {
 		copyState = filepath.Join(base, "seestar-copy")
@@ -201,7 +205,7 @@ func runUIPresented(ctx context.Context, root string, out io.Writer, run runFunc
 	listening := listener.Addr().(*net.TCPAddr).AddrPort()
 	handler.copy = copyapp.NewMount(ctx, copyapp.MountOptions{
 		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
-		Log: slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{Level: slog.LevelWarn})), Endpoint: handler.copyEndpoint,
+		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Endpoint: handler.copyEndpoint,
 	})
 	activate := make(chan struct{}, 1)
 	if window != nil {

@@ -8,6 +8,6 @@ import (
 	"io"
 )
 
-func runPlatformUI(ctx context.Context, root string, out io.Writer, run runFunc) error {
+func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, run runFunc) error {
 	return errors.New("UI requires the seestar-wormhole GUI build")
 }

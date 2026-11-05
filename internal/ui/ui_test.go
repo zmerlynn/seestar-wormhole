@@ -228,7 +228,9 @@ func TestDoubleLaunchAndStaleRecord(t *testing.T) {
 	var runs int
 	run := func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { runs++; return nil }
 	done := make(chan error, 1)
-	go func() { done <- runUIPresented(ctx, root, io.Discard, run, opener, &fakeKeychain{}, nil, false) }()
+	go func() {
+		done <- runUIPresented(ctx, root, io.Discard, io.Discard, run, opener, &fakeKeychain{}, nil, false)
+	}()
 	var first string
 	select {
 	case first = <-urls:
@@ -238,7 +240,7 @@ func TestDoubleLaunchAndStaleRecord(t *testing.T) {
 	if strings.Contains(first, strings.Repeat("b", 64)) {
 		t.Fatal("stale record reused")
 	}
-	if err := runUIPresented(t.Context(), root, io.Discard, run, opener, &fakeKeychain{}, nil, false); err != nil {
+	if err := runUIPresented(t.Context(), root, io.Discard, io.Discard, run, opener, &fakeKeychain{}, nil, false); err != nil {
 		t.Fatal(err)
 	}
 	if second := <-urls; second != first {
