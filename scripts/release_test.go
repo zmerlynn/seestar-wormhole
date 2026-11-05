@@ -612,11 +612,13 @@ func TestWorkflowArchiveAssembly(t *testing.T) {
 }
 
 // verifyLines are the commands CI's Linux job must run: the gofmt check, the
-// race suite over the whole module, and the repository's own checks.
+// race suite over the whole module, the license notices, and the
+// repository's own checks.
 var verifyLines = []string{
 	`unformatted=$(find . \( -type d -name '.*' ! -name . -o -path ./vendor \) -prune -o -type f -name '*.go' -print | xargs gofmt -l)`,
 	`if [ -n "$unformatted" ]; then`,
 	"exit 1",
+	"go run ./scripts/generate-licenses.go --check",
 	"go test -race -count=2 -timeout 20m ./...",
 	"./scripts/test-check.sh",
 	"CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/...",

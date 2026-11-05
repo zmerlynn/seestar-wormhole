@@ -29,6 +29,9 @@ fi
 if ! grep -Fq "go run ./scripts/checkjson" "$CHECK_ARGS"; then
  echo "missing JSON import check" >&2; exit 1
 fi
+if [ "$(grep -Fo "go run ./scripts/generate-licenses.go --check" "$CHECK_ARGS" | wc -l)" -ne 1 ]; then
+ echo "missing license notice check" >&2; exit 1
+fi
 if ! grep -Fq "GOOS=\${target%/*} GOARCH=\${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/..." "$CHECK_ARGS" || ! grep -Fq "windows/arm64" "$CHECK_ARGS"; then
  echo "missing copy cross-build check" >&2; exit 1
 fi
