@@ -29,8 +29,9 @@ const (
 
 // Fault-injection seams for tests.
 var (
-	syncFile = (*os.File).Sync
-	replace  = publish
+	syncFile      = (*os.File).Sync
+	replace       = publish
+	syncDirectory = SyncDirectory
 )
 
 // WriteFile atomically replaces name in dir, an open directory, with a file
@@ -71,7 +72,7 @@ func WriteFile(dir *os.File, name string, b []byte, p Policy) error {
 	if err := replace(tmp, path, p); err != nil {
 		return err
 	}
-	return SyncDirectory(dir)
+	return syncDirectory(dir)
 }
 
 // checkExisting refuses a file at path that OpenRead does not accept as
