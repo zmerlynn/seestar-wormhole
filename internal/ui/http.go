@@ -15,6 +15,7 @@ import (
 	"mime"
 	"net/http"
 	"net/netip"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -37,6 +38,10 @@ type server struct {
 	// copy serves copy's API under /copy/api/ and Browse under /browse/;
 	// nil serves neither.
 	copy *copyapp.Mount
+	// routeSaved opens Copy, Browse and Free up space: the account route
+	// has connected, or an address on this network passed Test and was
+	// saved. It is guarded by mu and never goes back.
+	routeSaved bool
 }
 type input struct {
 	Settings Settings `json:"settings"`
@@ -148,6 +153,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ports, _, _ := effective.validate()
 		defaults, _ := proxyrun.MergePorts(nil)
 		events, path, logFailed := s.controller.log.snapshot()
+		unlocked, reach := s.copyState()
 		localhttp.Respond(w, http.StatusOK, struct {
 			CopyBusy  bool               `json:"copy_busy"`
 			Settings  pageSettings       `json:"settings"`
@@ -160,7 +166,11 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Events       []event         `json:"events"`
 			LogPath      string          `json:"log_path"`
 			LogFailed    bool            `json:"log_failed"`
-		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed})
+			CopyUnlocked bool            `json:"copy_unlocked"`
+			CopyReach    string          `json:"copy_reach"`
+			Files        settingsFiles   `json:"files"`
+		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed,
+			unlocked, reach, s.settingsFiles()})
 		return
 	}
 	if r.Method != "POST" {
@@ -348,6 +358,55 @@ var (
 	errNoLANAddress = errors.New("Save the telescope's address on the Connection tab first")
 )
 
+// copyState reports whether Copy, Browse and Free up space are open, and
+// why the copier has no target now: "not_connected", "smb_off" or
+// "no_lan_address", or "" when it has one.
+func (s *server) copyState() (unlocked bool, reach string) {
+	if s.copy == nil {
+		return false, ""
+	}
+	_, err := s.copyTarget()
+	switch {
+	case errors.Is(err, errNotConnected):
+		reach = "not_connected"
+	case errors.Is(err, errSMBOff):
+		reach = "smb_off"
+	case errors.Is(err, errNoLANAddress):
+		reach = "no_lan_address"
+	}
+	_, _, _, connected := s.controller.connected()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if connected && s.settings.Route != routeLAN {
+		s.routeSaved = true
+	}
+	return s.routeSaved, reach
+}
+
+// routeSavedIn reports whether settings loaded from config.json hold a
+// saved route: an address on this network, which a save Tests first, or
+// an account, which the wormhole saves when the connection becomes ready.
+func routeSavedIn(settings Settings) bool {
+	if settings.Route == routeLAN {
+		return settings.LANAddress != ""
+	}
+	return settings.Email != ""
+}
+
+// settingsFiles are the paths Activity's Files shows.
+type settingsFiles struct {
+	Config string `json:"config"`
+	Copy   string `json:"copy"`
+}
+
+func (s *server) settingsFiles() settingsFiles {
+	root := s.storage.root
+	if abs, err := filepath.Abs(root); err == nil {
+		root = abs
+	}
+	return settingsFiles{filepath.Join(root, "config.json"), filepath.Join(root, copyName)}
+}
+
 // copyTarget is where the copier reaches the telescope now. On this
 // network it is the saved address. Through the account it is the proxy's
 // local port for the device's SMB port, with the telescope the run
@@ -424,6 +483,9 @@ func (s *server) saveSettings(settings Settings) error {
 		s.retainSavedPair(&settings)
 	}
 	s.settings = settings
+	if err == nil && settings.Route == routeLAN && settings.LANAddress != "" {
+		s.routeSaved = true
+	}
 	s.mu.Unlock()
 	return err
 }

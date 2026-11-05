@@ -176,6 +176,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		return errors.New("Could not load saved settings safely.\n\n" + settingsPath + "\n\nCheck this file, then reopen seestar-wormhole.")
 	}
 	settings, err := loadSettings(st)
+	routeSaved := err == nil && routeSavedIn(settings)
 	if os.IsNotExist(err) {
 		settings = defaultSettings()
 	} else if err != nil {
@@ -204,6 +205,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	version := uiVersion(ctx)
 	handler := &server{version: version, host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
 	handler.native = native
+	handler.routeSaved = routeSaved
 	c.save = handler.saveSettings
 	c.lastSaved = settings
 	c.log = eventHistory
