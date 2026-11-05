@@ -87,8 +87,8 @@ func (s *writableShare) use(t *testing.T) {
 		s.last = f
 		return f, nil
 	}
-	dial = func(context.Context, string) (remote.Session, error) { return open() }
-	dialRemover = func(context.Context, string) (remote.Remover, error) { return open() }
+	dial = func(context.Context, string, *slog.Logger) (remote.Session, error) { return open() }
+	dialRemover = func(context.Context, string, *slog.Logger) (remote.Remover, error) { return open() }
 }
 
 // deleteRun runs delete against the fake share, leaving the read-only

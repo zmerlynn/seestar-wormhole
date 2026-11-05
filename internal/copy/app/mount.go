@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
@@ -53,12 +52,12 @@ func NewMount(ctx context.Context, o MountOptions) *Mount {
 	s := newServer(ctx, o.Addr, "", o.Version, o.StateDir, file, log)
 	dial := o.Dial
 	if dial == nil {
-		dial = func(ctx context.Context, endpoint string) (remote.Session, error) { return remote.Dial(ctx, endpoint) }
+		dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+			return remote.Dial(ctx, endpoint, log)
+		}
 	}
 	if o.Test != nil {
 		s.test = o.Test
-	} else {
-		s.test = engine.Test
 	}
 	s.endpoint = o.Endpoint
 	// Browse's dials and copying's ask for the endpoint again, so a pass

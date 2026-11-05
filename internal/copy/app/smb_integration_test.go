@@ -32,7 +32,9 @@ func TestSMBCopyPass(t *testing.T) {
 	set.Address = endpoint
 	set.Folder = filepath.Join(t.TempDir(), "Seestar")
 	set.Includes = []string{"/MyWorks/M 31"}
-	dial := func(ctx context.Context, endpoint string) (remote.Session, error) { return remote.Dial(ctx, endpoint) }
+	dial := func(ctx context.Context, endpoint string) (remote.Session, error) {
+		return remote.Dial(ctx, endpoint, nil)
+	}
 	c := newController(t.Context(), t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)), dial)
 	t.Cleanup(c.quit)
 	if err := c.start(set); err != nil {

@@ -14,7 +14,7 @@ import (
 // scratch share, which other packages' integration tests delete from.
 // Only the smbintegration build has it.
 func DialScratch(ctx context.Context, endpoint string) (*SMBRemover, error) {
-	s, err := dialShare(ctx, endpoint, newDialer(), "scratch")
+	s, err := dialShare(ctx, endpoint, newDialer(), "scratch", nil)
 	if err != nil {
 		return nil, err
 	}

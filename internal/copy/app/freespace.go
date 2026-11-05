@@ -51,7 +51,7 @@ func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial fu
 	return &freer{
 		parent: parent, stateDir: stateDir, log: log, dial: dial,
 		remover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
-			return remote.DialRemover(ctx, endpoint)
+			return remote.DialRemover(ctx, endpoint, log)
 		},
 		st: freeStatus{state: frStart},
 	}

@@ -96,8 +96,12 @@ type server struct {
 func newServer(ctx context.Context, addr netip.AddrPort, token, version, stateDir string, file *settingsFile, log *slog.Logger) *server {
 	s := &server{
 		ctx: ctx, addr: addr, token: token, version: version, stateDir: stateDir, file: file, log: log,
-		dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return remote.Dial(ctx, endpoint) },
-		test: engine.Test,
+		dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
+			return remote.Dial(ctx, endpoint, log)
+		},
+		test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+			return engine.Test(ctx, endpoint, log)
+		},
 	}
 	s.copy = newController(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
 		return s.dial(ctx, endpoint)

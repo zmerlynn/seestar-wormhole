@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,8 +35,8 @@ func TestMain(m *testing.M) {
 var errNoDevice = errors.New("no device in tests")
 
 func buildAndRun(m *testing.M) int {
-	dial = func(context.Context, string) (remote.Session, error) { return nil, errNoDevice }
-	dialRemover = func(context.Context, string) (remote.Remover, error) { return nil, errNoDevice }
+	dial = func(context.Context, string, *slog.Logger) (remote.Session, error) { return nil, errNoDevice }
+	dialRemover = func(context.Context, string, *slog.Logger) (remote.Remover, error) { return nil, errNoDevice }
 	dir, err := os.MkdirTemp("", "seestar-copy-cli-test")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

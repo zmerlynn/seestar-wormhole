@@ -19,7 +19,7 @@ import (
 func scratch(t *testing.T, dir string) (*SMBRemover, *smb2.Share) {
 	t.Helper()
 	ctx := t.Context()
-	s, err := dialShare(ctx, endpoint(t), newDialer(), "scratch")
+	s, err := dialShare(ctx, endpoint(t), newDialer(), "scratch", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -180,7 +180,7 @@ func TestSMBRemoveReadOnlyDirLeavesAttributeCleared(t *testing.T) {
 // refuses a remove with a permission error and keeps the file.
 func TestSMBRemoveOnReadOnlyShare(t *testing.T) {
 	ctx := t.Context()
-	r, err := DialRemover(ctx, endpoint(t))
+	r, err := DialRemover(ctx, endpoint(t), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
