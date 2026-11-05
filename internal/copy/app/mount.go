@@ -2,12 +2,10 @@ package app
 
 import (
 	"context"
-	"encoding/json/jsontext"
 	"errors"
 	"log/slog"
 	"net/http"
 	"net/netip"
-	"strings"
 	"sync"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
@@ -29,6 +27,12 @@ type MountOptions struct {
 	Dial    func(ctx context.Context, endpoint string) (remote.Session, error)
 	Test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	Remover func(ctx context.Context, endpoint string) (remote.Remover, error)
+	// Settings are the copy settings saved before, or nil for none yet.
+	// Save keeps new ones, and they take effect only if it succeeds; nil
+	// keeps them in memory only. It is called with the Mount's locks
+	// held, so it must not call back into the Mount.
+	Settings *Settings
+	Save     func(Settings) error
 }
 
 // Target is where copying, a preview or a delete reaches the telescope:
@@ -57,8 +61,8 @@ func (t Target) sameTelescope(u Target) bool {
 
 // Mount is the app's API and Browse inside another app's server, which
 // owns the page, the token and the checks: it serves /copy/api/<call> and
-// /browse/. Its settings are kept in memory only, and it reaches the
-// telescope at its Target rather than a saved address.
+// /browse/. Its host keeps its settings, and it reaches the telescope at
+// its Target rather than a saved address.
 type Mount struct {
 	s        *server
 	cancel   context.CancelFunc
@@ -68,50 +72,11 @@ type Mount struct {
 // NewMount returns a Mount whose controllers live in ctx until Quit.
 func NewMount(ctx context.Context, o MountOptions) *Mount {
 	ctx, cancel := context.WithCancel(ctx)
-	log := o.Log
-	if log == nil {
-		log = slog.Default()
+	file := &settingsFile{settings: DefaultSettings(), write: o.Save}
+	if o.Settings != nil {
+		file.settings, file.exists = *o.Settings, true
 	}
-	file := &settingsFile{settings: defaultSettings(), raw: map[string]jsontext.Value{}}
-	s := newServer(ctx, o.Addr, "", o.Version, o.StateDir, file, log)
-	dial := o.Dial
-	if dial == nil {
-		dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return remote.Dial(ctx, endpoint, log)
-		}
-	}
-	if o.Test != nil {
-		s.test = o.Test
-	}
-	s.target = o.Target
-	// Browse's dials ask for the endpoint again, so they reach the
-	// telescope where it is now. A change of route replaces Browse's pool.
-	s.dial = func(ctx context.Context, _ string) (remote.Session, error) {
-		t, err := o.Target()
-		if err != nil {
-			return nil, err
-		}
-		return dial(ctx, t.Endpoint)
-	}
-	// Each pass of copying follows its telescope to where it is now, and
-	// copying stops once the target is another telescope.
-	s.copy.dial, s.copy.target = dial, o.Target
-	// A preview's and a delete's dials go only to the target they were
-	// started at, and fail once that changed, even by a reconnect: a
-	// delete must not remove files on a telescope it never checked.
-	at := func(t Target) error {
-		now, err := o.Target()
-		if err == nil && now != t {
-			err = errMoved
-		}
-		return err
-	}
-	s.preview.dial, s.preview.at = dial, at
-	s.free.dial, s.free.at = dial, at
-	if o.Remover != nil {
-		s.free.remover = o.Remover
-	}
-	return &Mount{s: s, cancel: cancel}
+	return &Mount{s: newServer(ctx, o, file), cancel: cancel}
 }
 
 // errMoved fails a preview's or a delete's dial once the telescope's
@@ -150,27 +115,11 @@ func (m *Mount) Test(ctx context.Context, endpoint string) error {
 	return err
 }
 
-// ServeHTTP serves /copy/api/<call>, as the app serves /app/api/<call>, and
-// Browse at /browse/. The caller has checked the Host, the token on an API
-// call, and a POST's Origin, Fetch Metadata and content type; Browse makes
-// its own checks, since its frame sends no token.
-func (m *Mount) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch {
-	case strings.HasPrefix(r.URL.Path, "/copy/api/"):
-		m.s.api(w, r, strings.TrimPrefix(r.URL.Path, "/copy/api/"), nil)
-	case strings.HasPrefix(r.URL.Path, "/browse/"):
-		m.s.mu.Lock()
-		h := m.s.browse
-		m.s.mu.Unlock()
-		if h == nil {
-			http.Error(w, "Not found", http.StatusNotFound)
-			return
-		}
-		http.StripPrefix("/browse", h).ServeHTTP(w, r)
-	default:
-		http.Error(w, "Not found", http.StatusNotFound)
-	}
-}
+// ServeHTTP serves /copy/api/<call> and Browse at /browse/. The caller has
+// checked the Host, the token on an API call, and a POST's Origin, Fetch
+// Metadata and content type; Browse makes its own checks, since its frame
+// sends no token.
+func (m *Mount) ServeHTTP(w http.ResponseWriter, r *http.Request) { m.s.ServeHTTP(w, r) }
 
 // Busy reports whether copying is on, a preview runs or Free up space is
 // checking or deleting, which a change of where the telescope is must

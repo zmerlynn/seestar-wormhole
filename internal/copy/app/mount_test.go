@@ -73,8 +73,7 @@ func TestMountAPI(t *testing.T) {
 	if w := e.serve("GET", "/copy/api/status", ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"set_up":false`) {
 		t.Errorf("status before a save = %d %s", w.Code, w.Body.String())
 	}
-	noAddress := strings.Replace(goodInput, `"address":"192.0.2.10",`, ``, 1)
-	if w := e.serve("POST", "/copy/api/settings", noAddress); w.Code != 200 {
+	if w := e.serve("POST", "/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatalf("save without an address = %d %s", w.Code, w.Body.String())
 	}
 	if w := e.serve("GET", "/copy/api/status", ""); !strings.Contains(w.Body.String(), `"set_up":true`) {
@@ -100,8 +99,7 @@ func TestMountAPI(t *testing.T) {
 // fails with the endpoint's reason when there is none.
 func TestMountEndpoint(t *testing.T) {
 	e := newMountEnv(t)
-	noAddress := strings.Replace(goodInput, `"address":"192.0.2.10",`, ``, 1)
-	if w := e.serve("POST", "/copy/api/settings", noAddress); w.Code != 200 {
+	if w := e.serve("POST", "/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	e.set("", errors.New("SMB is off"))
@@ -154,8 +152,7 @@ func TestMountBrowse(t *testing.T) {
 	if w := e.serve("GET", "/browse/", ""); w.Code != 404 {
 		t.Errorf("browse before a save = %d", w.Code)
 	}
-	noAddress := strings.Replace(goodInput, `"address":"192.0.2.10",`, ``, 1)
-	if w := e.serve("POST", "/copy/api/settings", noAddress); w.Code != 200 {
+	if w := e.serve("POST", "/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
 	w := e.serve("GET", "/browse/", "")
@@ -183,8 +180,7 @@ func TestMountQuit(t *testing.T) {
 	e := newMountEnv(t)
 	e.m.Quit()
 	e.m.Quit()
-	noAddress := strings.Replace(goodInput, `"address":"192.0.2.10",`, ``, 1)
-	e.serve("POST", "/copy/api/settings", noAddress)
+	e.serve("POST", "/copy/api/settings", goodInput)
 	if w := e.serve("POST", "/copy/api/copy", `{"action":"start"}`); w.Code == 200 {
 		t.Errorf("start after Quit = %d %s", w.Code, w.Body.String())
 	}

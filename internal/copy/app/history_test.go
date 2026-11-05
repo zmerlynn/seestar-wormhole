@@ -13,15 +13,15 @@ import (
 // sends a Free up space preview back to Start.
 func TestClearHistory(t *testing.T) {
 	clear := func(e *appEnv) (int, string) {
-		w := e.post("/app/api/clear", `{}`)
+		w := e.post("/copy/api/clear", `{}`)
 		return w.Code, w.Body.String()
 	}
-	if code, body := clear(newAppEnv(t, "")); code != 409 || !strings.Contains(body, "set the telescope and folder in Settings first") {
+	if code, body := clear(newAppEnv(t, nil)); code != 409 || !strings.Contains(body, "set the telescope and folder in Settings first") {
 		t.Errorf("before settings are saved: %d %s", code, body)
 	}
 
 	folder := t.TempDir()
-	e := newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":`+quote(folder)+`}`)
+	e := newAppEnv(t, savedAt(folder))
 	// A sync of the folder holds its lock.
 	st, err := state.Open(e.s.stateDir, folder, nil)
 	if err != nil {
@@ -65,11 +65,11 @@ func TestClearHistory(t *testing.T) {
 
 // Clear history is refused while copying is on.
 func TestClearHistoryWhileCopying(t *testing.T) {
-	e := newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":`+quote(t.TempDir())+`}`)
-	if w := e.post("/app/api/copy", `{"action":"start"}`); w.Code != 200 {
+	e := newAppEnv(t, savedAt(t.TempDir()))
+	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
 		t.Fatalf("start: %d %s", w.Code, w.Body)
 	}
-	if w := e.post("/app/api/clear", `{}`); w.Code != 409 || !strings.Contains(w.Body.String(), "stop copying first") {
+	if w := e.post("/copy/api/clear", `{}`); w.Code != 409 || !strings.Contains(w.Body.String(), "stop copying first") {
 		t.Errorf("while copying: %d %s", w.Code, w.Body)
 	}
 }

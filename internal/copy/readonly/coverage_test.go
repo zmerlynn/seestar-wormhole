@@ -31,13 +31,11 @@ var writeNames = map[string]bool{
 // the repository root, that the scan matches but that do not change the
 // local filesystem without calling Check, each with the reason. scripts/ is
 // outside the scan, and so are _test.go files and vendor/.
-var allowed = map[string]string{
-	"cmd/seestar-copy.present": "Wails' Dialog.OpenFile shows the folder picker; it opens no file",
-}
+var allowed = map[string]string{}
 
 // TestWritesAreGuarded checks, without type information, the rule this
-// package rests on: every function in seestar-copy's code (internal/copy/,
-// cmd/seestar-copy/ and cmd/seestar-copy-cli/) whose body
+// package rests on: every function in seestar-copy's code (internal/copy/
+// and cmd/seestar-copy-cli/) whose body
 // (including function literals in it) refers to a name in writeNames, or
 // calls a package-level variable initialized with one (a test seam such as
 // syncFile = (*os.File).Sync), starts with a call to readonly.Check. It also
@@ -46,7 +44,7 @@ var allowed = map[string]string{
 // turns the guard on for them.
 func TestWritesAreGuarded(t *testing.T) {
 	var guarded []string
-	for _, top := range []string{"internal/copy", "cmd/seestar-copy", "cmd/seestar-copy-cli"} {
+	for _, top := range []string{"internal/copy", "cmd/seestar-copy-cli"} {
 		dirs := map[string][]*ast.File{}
 		fset := token.NewFileSet()
 		err := filepath.WalkDir(filepath.Join("..", "..", "..", filepath.FromSlash(top)), func(p string, de fs.DirEntry, err error) error {
@@ -135,7 +133,7 @@ func TestWritesAreGuarded(t *testing.T) {
 		"internal/copy/state.Open", "internal/copy/state.create", "internal/copy/state.lockFile", "internal/copy/state.Append",
 		"internal/copy/state.syncDir", "internal/copy/copier.removeTemps", "internal/copy/copier.download", "internal/copy/copier.syncFolder",
 		"internal/copy/remote.RemoveFile", "internal/copy/remote.RemoveDir",
-		"internal/copy/engine.deleteFile", "internal/copy/engine.removeFolder", "internal/copy/app.writeFileAtomic", "internal/copy/browse.Save",
+		"internal/copy/engine.deleteFile", "internal/copy/engine.removeFolder",
 	} {
 		if !slices.Contains(guarded, want) {
 			t.Errorf("the scan did not find the writes in %s; found %q", want, guarded)

@@ -40,7 +40,7 @@ func newFreeEnv(t *testing.T, files ...string) *freeEnv {
 	for _, p := range files {
 		e.put(p, ancient)
 	}
-	e.set = defaultSettings()
+	e.set = DefaultSettings()
 	e.set.Address, e.set.Folder, e.set.OlderThanDays = "192.0.2.10:445", filepath.Join(base, "Seestar"), 0
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	e.f = newFreer(t.Context(), e.stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {

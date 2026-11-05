@@ -63,17 +63,7 @@ type Handler struct{ cfg Config }
 // request has passed every check.
 func NewHandler(cfg Config) *Handler { return &Handler{cfg: cfg} }
 
-func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) { h.serve(w, r, false) }
-
-// Download serves r as ServeHTTP does, except a /file request with
-// download=1 that passes every check: that GET it leaves unanswered and
-// returns the file's share path and true, so the caller can save the file
-// itself. A refused request gets ServeHTTP's answer.
-func (h *Handler) Download(w http.ResponseWriter, r *http.Request) (string, bool) {
-	return h.serve(w, r, true)
-}
-
-func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) (string, bool) {
+func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	hd := w.Header()
 	policy, frames := csp, "DENY"
 	if h.cfg.InApp {
@@ -91,34 +81,34 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) 
 	reject := func(code int) { http.Error(w, "Request rejected", code) }
 	if !h.hostAllowed(r.Host) {
 		reject(http.StatusForbidden)
-		return "", false
+		return
 	}
 	if r.Method != http.MethodGet && r.Method != http.MethodHead {
 		hd.Set("Allow", "GET, HEAD")
 		reject(http.StatusMethodNotAllowed)
-		return "", false
+		return
 	}
 	asset, isStatic := static[r.URL.Path]
 	if !isStatic && r.URL.Path != "/api/list" && r.URL.Path != "/file" {
 		http.Error(w, "Not found", http.StatusNotFound)
-		return "", false
+		return
 	}
 	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
 		reject(http.StatusForbidden)
-		return "", false
+		return
 	}
 	if isStatic {
 		b, err := assets.ReadFile(asset.file)
 		if err != nil {
 			http.Error(w, "Not found", http.StatusNotFound)
-			return "", false
+			return
 		}
 		if h.cfg.InApp && asset.file == "web/index.html" {
 			b = bytes.Replace(b, []byte(`<html lang="en">`), []byte(`<html lang="en" class="in-app">`), 1)
 		}
 		hd.Set("Content-Type", asset.typ)
 		w.Write(b)
-		return "", false
+		return
 	}
 	list := r.URL.Path == "/api/list"
 	fail := h.fileError
@@ -135,13 +125,13 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) 
 	}
 	if err != nil {
 		fail(w, http.StatusBadRequest, "bad_query", "The request's query is malformed.")
-		return "", false
+		return
 	}
 	p := q.Get("path")
 	root := list && p == "" // the share root, which only a listing names
 	if !utf8.ValidString(p) || !(root || remote.ValidPath(p)) {
 		fail(w, http.StatusBadRequest, "bad_path", "The path is not a valid share path.")
-		return "", false
+		return
 	}
 	if list {
 		dir := p
@@ -149,12 +139,9 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) 
 			dir = "."
 		}
 		h.list(w, r, p, dir)
-	} else if download := q.Get("download") == "1"; intercept && download && r.Method == http.MethodGet {
-		return p, true
 	} else {
-		h.file(w, r, p, download)
+		h.file(w, r, p, q.Get("download") == "1")
 	}
-	return "", false
 }
 
 // hostAllowed is the Host check. A Host without a port means port 80. For a

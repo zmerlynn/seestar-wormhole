@@ -2,20 +2,15 @@ package app
 
 import (
 	"context"
-	"crypto/subtle"
-	"embed"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
 	"io/fs"
 	"log/slog"
-	"mime"
 	"net/http"
 	"net/netip"
 	"os"
-	"path"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -29,34 +24,14 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
-//go:embed web
-var assets embed.FS
-
-// The app page's policy is browse's, plus framing the Browse tab, which is
-// browse served from this same origin.
-const csp = "default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; " +
-	"frame-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
-
-// tokenHeader carries the token from the page's URL fragment on every API
-// call.
-const tokenHeader = "X-Seestar-Copy-Token"
-
 // maxJSON caps a POST body.
 const maxJSON = 64 << 10
 
 // testTimeout bounds one Test.
 const testTimeout = 30 * time.Second
 
-var static = map[string]struct{ file, typ string }{
-	"/app/":          {"web/index.html", "text/html; charset=utf-8"},
-	"/app/app.js":    {"web/app.js", "text/javascript; charset=utf-8"},
-	"/app/style.css": {"web/style.css", "text/css; charset=utf-8"},
-	"/app/icon.svg":  {"web/icon.svg", "image/svg+xml"},
-}
-
-// server is the app's handler. /app/ is the app's page and API; every
-// other path goes to the current browse handler, which a save of a new
-// address or folder replaces.
+// server is a [Mount]'s handler: copy's API under /copy/api/, and Browse
+// under /browse/, which a save of a new folder or selection replaces.
 //
 // Locks are taken in this order: admit, then mu, then a controller's own
 // mutex. A [Mount]'s host takes its own locks inside admit, in its commit,
@@ -65,16 +40,13 @@ var static = map[string]struct{ file, typ string }{
 type server struct {
 	ctx      context.Context // the app's lifetime; browse's sessions live in it
 	addr     netip.AddrPort  // the listener's
-	token    string
 	version  string
 	stateDir string
 	log      *slog.Logger
-	// dial opens a browse session; test runs Test. Tests replace both.
-	dial   func(ctx context.Context, endpoint string) (remote.Session, error)
-	test   func(ctx context.Context, endpoint string) ([]remote.Entry, error)
-	native *Native // nil without a window
-	// target, if set, is where the telescope is for every dial and
-	// start, in place of the saved address: a [Mount]'s.
+	// dial opens a browse session at the target; test runs Test.
+	dial func(ctx context.Context) (remote.Session, error)
+	test func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	// target is where the telescope is for every dial and start.
 	target  func() (Target, error)
 	copy    *controller
 	preview *previewer
@@ -89,85 +61,95 @@ type server struct {
 
 	mu       sync.Mutex
 	file     *settingsFile
-	browse   *browse.Handler // nil until an address and a folder are saved
+	browse   *browse.Handler // nil until a folder is saved
 	sessions *browse.Sessions
 }
 
-func newServer(ctx context.Context, addr netip.AddrPort, token, version, stateDir string, file *settingsFile, log *slog.Logger) *server {
+func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server {
+	log := o.Log
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	s := &server{
-		ctx: ctx, addr: addr, token: token, version: version, stateDir: stateDir, file: file, log: log,
-		dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return remote.Dial(ctx, endpoint, log)
-		},
+		ctx: ctx, addr: o.Addr, version: o.Version, stateDir: o.StateDir, target: o.Target, file: file, log: log,
 		test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 			return engine.Test(ctx, endpoint, log)
 		},
 	}
-	s.copy = newController(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
-		return s.dial(ctx, endpoint)
-	})
-	s.copy.admit = &s.admit
-	s.preview = newPreviewer(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
-		return s.dial(ctx, endpoint)
-	})
-	s.free = newFreer(ctx, stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
-		return s.dial(ctx, endpoint)
-	})
+	if o.Test != nil {
+		s.test = o.Test
+	}
+	dial := o.Dial
+	if dial == nil {
+		dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+			return remote.Dial(ctx, endpoint, log)
+		}
+	}
+	// Browse's dials ask for the endpoint again, so they reach the
+	// telescope where it is now. A change of route replaces Browse's pool.
+	s.dial = func(ctx context.Context) (remote.Session, error) {
+		t, err := s.target()
+		if err != nil {
+			return nil, err
+		}
+		return dial(ctx, t.Endpoint)
+	}
+	// Each pass of copying follows its telescope to where it is now, and
+	// copying stops once the target is another telescope.
+	s.copy = newController(ctx, o.StateDir, log, dial)
+	s.copy.admit, s.copy.target = &s.admit, s.target
+	// A preview's and a delete's dials go only to the target they were
+	// started at, and fail once that changed, even by a reconnect: a
+	// delete must not remove files on a telescope it never checked.
+	at := func(t Target) error {
+		now, err := s.target()
+		if err == nil && now != t {
+			err = errMoved
+		}
+		return err
+	}
+	s.preview = newPreviewer(ctx, o.StateDir, log, dial)
+	s.preview.at = at
+	s.free = newFreer(ctx, o.StateDir, log, dial)
+	s.free.at = at
+	if o.Remover != nil {
+		s.free.remover = o.Remover
+	}
+	if s.setUp() {
+		s.browse, s.sessions = s.newBrowse(file.settings)
+	}
 	return s
 }
 
-// setUp reports whether an address and a folder are saved. Until they
-// are, only Settings is open.
-func (f *settingsFile) setUp() bool {
-	return f.exists && f.settings.Address != "" && f.settings.Folder != ""
-}
-
-// setUp reports whether the saved settings are enough to copy. A mounted
-// server's address comes from its target, so it needs only a folder.
+// setUp reports whether the saved settings are enough to copy: a folder,
+// since the address is the target's.
 func (s *server) setUp() bool {
-	if s.target != nil {
-		return s.file.exists && s.file.settings.Folder != ""
-	}
-	return s.file.setUp()
+	return s.file.exists && s.file.settings.Folder != ""
 }
 
-// resolve is set with the address to use now, and the target there: the
-// saved address, or for a mounted server, its target's.
+// resolve is set with the target's address now, and the target.
 func (s *server) resolve(set Settings) (Settings, Target, error) {
-	if s.target == nil {
-		return set, Target{Endpoint: set.Address}, nil
-	}
 	t, err := s.target()
 	set.Address = t.Endpoint
 	return set, t, err
 }
 
-// startBrowse serves Browse for the saved settings, if they are set up. It
-// is called once the server's fields are set and before it serves.
-func (s *server) startBrowse() {
-	if s.setUp() {
-		s.browse, s.sessions = s.newBrowse(s.file.settings)
-	}
-}
-
-// newBrowse builds a browse handler with its own session pool for the
-// address, records for the folder, and what the selection leaves out.
+// newBrowse builds a browse handler with its own session pool, which
+// reaches the target, records for the folder, and what the selection
+// leaves out.
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
-	endpoint, folder := set.Address, set.Folder
-	log := s.log.With("endpoint", endpoint)
+	folder, log := set.Folder, s.log
 	sel, err := selector(set)
 	if err != nil {
 		log.Warn("browse shows nothing as left out", "err", err)
 	}
-	sessions := browse.NewSessions(s.ctx, func(ctx context.Context) (remote.Session, error) {
-		return s.dial(ctx, endpoint)
-	}, log)
+	sessions := browse.NewSessions(s.ctx, s.dial, log)
 	records := func() (map[string]state.Record, error) { return state.Load(s.stateDir, folder, log) }
 	if file, err := state.Path(s.stateDir, folder); err == nil {
 		records = browse.CacheRecords(file, records)
 	}
 	h := browse.NewHandler(browse.Config{
-		Addr: s.addr, Endpoint: endpoint, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true,
+		Addr: s.addr, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true,
 	})
 	return h, sessions
 }
@@ -251,79 +233,30 @@ func (s *server) close() {
 	}
 }
 
+// ServeHTTP serves copy's API under /copy/api/ and Browse under /browse/.
+// The caller has checked the Host, the token on an API call, and a POST's
+// Origin, Fetch Metadata and content type; Browse makes its own checks,
+// since its frame sends no token.
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if !strings.HasPrefix(r.URL.Path, "/app/") {
+	switch {
+	case strings.HasPrefix(r.URL.Path, "/copy/api/"):
+		s.api(w, r, strings.TrimPrefix(r.URL.Path, "/copy/api/"))
+	case strings.HasPrefix(r.URL.Path, "/browse/"):
 		s.mu.Lock()
-		h, sessions := s.browse, s.sessions
+		h := s.browse
 		s.mu.Unlock()
 		if h == nil {
-			setHeaders(w)
 			http.Error(w, "Not found", http.StatusNotFound)
 			return
 		}
-		// A window's webview may not save a download itself, so the app
-		// does, with a native save dialog.
-		if s.native == nil {
-			h.ServeHTTP(w, r)
-		} else if p, ok := h.Download(w, r); ok {
-			s.saveFile(w, r, sessions, p)
-		}
-		return
+		http.StripPrefix("/browse", h).ServeHTTP(w, r)
+	default:
+		http.Error(w, "Not found", http.StatusNotFound)
 	}
-	setHeaders(w)
-	fail := func(code int) { http.Error(w, "Request rejected", code) }
-	if r.Host != s.addr.String() {
-		fail(http.StatusForbidden)
-		return
-	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-		fail(http.StatusForbidden)
-		return
-	}
-	if !strings.HasPrefix(r.URL.Path, "/app/api/") {
-		asset, ok := static[r.URL.Path]
-		if !ok {
-			fail(http.StatusNotFound)
-			return
-		}
-		if r.Method != "GET" && r.Method != "HEAD" {
-			fail(http.StatusMethodNotAllowed)
-			return
-		}
-		b, err := assets.ReadFile(asset.file)
-		if err != nil {
-			fail(http.StatusNotFound)
-			return
-		}
-		w.Header().Set("Content-Type", asset.typ)
-		if r.Method == "GET" {
-			w.Write(b)
-		}
-		return
-	}
-	if subtle.ConstantTimeCompare([]byte(r.Header.Get(tokenHeader)), []byte(s.token)) != 1 {
-		fail(http.StatusForbidden)
-		return
-	}
-	s.api(w, r, strings.TrimPrefix(r.URL.Path, "/app/api/"), func() bool {
-		if r.Header.Get("Origin") != "http://"+s.addr.String() || r.Header.Get("Sec-Fetch-Site") == "none" {
-			fail(http.StatusForbidden)
-			return false
-		}
-		media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-		if err != nil || media != "application/json" {
-			fail(http.StatusUnsupportedMediaType)
-			return false
-		}
-		return true
-	})
 }
 
 // api serves the API call name, which is the path after the API's prefix.
-// allowed, if not nil, runs on a POST once the call is known and answers
-// whether the request passed the caller's checks, having answered it if
-// not; a [Mount]'s caller makes those checks itself.
-func (s *server) api(w http.ResponseWriter, r *http.Request, name string, allowed func() bool) {
+func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 	fail := func(code int) { http.Error(w, "Request rejected", code) }
 	switch name {
 	case "status":
@@ -334,20 +267,12 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string, allowe
 		s.status(w)
 		return
 	case "test", "settings", "copy", "delete", "clear":
-	case "folder":
-		if s.native == nil {
-			fail(http.StatusNotFound)
-			return
-		}
 	default:
 		fail(http.StatusNotFound)
 		return
 	}
 	if r.Method != "POST" {
 		fail(http.StatusMethodNotAllowed)
-		return
-	}
-	if allowed != nil && !allowed() {
 		return
 	}
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxJSON))
@@ -363,8 +288,6 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string, allowe
 	switch name {
 	case "test":
 		s.runTest(w, r.Context(), in)
-	case "folder":
-		s.chooseFolder(w, in)
 	case "copy":
 		s.copyAction(w, in.Action)
 	case "delete":
@@ -374,16 +297,6 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string, allowe
 	default:
 		s.save(w, in)
 	}
-}
-
-func setHeaders(w http.ResponseWriter) {
-	hd := w.Header()
-	hd.Set("Content-Security-Policy", csp)
-	hd.Set("X-Frame-Options", "DENY")
-	hd.Set("Cross-Origin-Resource-Policy", "same-origin")
-	hd.Set("Referrer-Policy", "no-referrer")
-	hd.Set("X-Content-Type-Options", "nosniff")
-	hd.Set("Cache-Control", "no-store")
 }
 
 // input is what the page posts: the form's fields as typed. Test reads
@@ -406,7 +319,7 @@ type input struct {
 
 func (s *server) status(w http.ResponseWriter) {
 	s.mu.Lock()
-	set, setUp, file := s.file.settings, s.setUp(), s.file.path
+	set, setUp := s.file.settings, s.setUp()
 	s.mu.Unlock()
 	// The saved folder's state file, as sync names it.
 	var history string
@@ -418,15 +331,13 @@ func (s *server) status(w http.ResponseWriter) {
 		Version         string   `json:"version"`
 		SetUp           bool     `json:"set_up"`
 		Settings        Settings `json:"settings"`
-		SettingsFile    string   `json:"settings_file"`
 		History         string   `json:"history"` // "" until set up
 		DefaultExcludes []string `json:"default_excludes"`
-		Native          bool     `json:"native"` // the window's dialogs are there
 		Copy            copyView `json:"copy"`
 		Free            freeView `json:"free"`
 		Activity        []entry  `json:"activity"` // newest first
 		ActivitySeq     int      `json:"activity_seq"`
-	}{s.version, setUp, set, file, history, engine.DefaultExcludes, s.native != nil, s.copyView(), s.free.view(), lines, seq})
+	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -456,11 +367,6 @@ type fieldErrors struct {
 
 func (s *server) save(w http.ResponseWriter, in input) {
 	set, errs := checkInput(in)
-	if s.target != nil {
-		// A mounted server's address is its target's, not the form's.
-		delete(errs, "address")
-		set.Address = ""
-	}
 	if len(errs) > 0 {
 		respond(w, http.StatusBadRequest, fieldErrors{errs})
 		return
@@ -480,7 +386,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	set.OlderThanDays, set.TrustState = old.OlderThanDays, old.TrustState
 	if err := s.file.save(set); err != nil {
 		s.mu.Unlock()
-		s.log.Error("save settings", "path", s.file.path, "err", err)
+		s.log.Error("save settings", "err", err)
 		// The page shows the reason without the temp file's name.
 		respond(w, http.StatusInternalServerError, struct {
 			Error string `json:"error"`
@@ -488,7 +394,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		return
 	}
 	// A new selection replaces browse too, which shows what it leaves out.
-	changed := !wasSetUp || old.Address != set.Address || old.Folder != set.Folder ||
+	changed := !wasSetUp || old.Folder != set.Folder ||
 		!slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn
 	var oldSessions *browse.Sessions
 	if changed {
@@ -498,7 +404,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		s.browse, s.sessions = s.newBrowse(set)
 	}
 	s.mu.Unlock()
-	s.log.Info("settings saved", "path", s.file.path)
+	s.log.Info("settings saved")
 	// A request still on the old pool fails; the page reloads the frame.
 	if oldSessions != nil {
 		oldSessions.Close()
@@ -569,7 +475,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState {
 			if err := s.file.save(set); err != nil {
 				s.mu.Unlock()
-				s.log.Error("save settings", "path", s.file.path, "err", err)
+				s.log.Error("save settings", "err", err)
 				conflict("Couldn't save the options: " + reason(err) + ". Try again.")
 				return
 			}
@@ -685,55 +591,4 @@ func reason(err error) string {
 		err = le.Err
 	}
 	return err.Error()
-}
-
-// chooseFolder shows the folder picker, starting at the typed folder or
-// the nearest folder above it that exists, and answers the folder chosen,
-// or "" on Cancel.
-func (s *server) chooseFolder(w http.ResponseWriter, in input) {
-	dir := strings.TrimSpace(in.Folder)
-	for filepath.IsAbs(dir) {
-		if fi, err := os.Stat(dir); err == nil && fi.IsDir() {
-			break
-		}
-		up := filepath.Dir(dir)
-		if up == dir {
-			dir = ""
-		} else {
-			dir = up
-		}
-	}
-	if !filepath.IsAbs(dir) {
-		dir = ""
-	}
-	chosen, err := s.native.ChooseFolder(dir)
-	if err != nil {
-		s.log.Error("folder picker", "err", err)
-		respond(w, http.StatusInternalServerError, struct {
-			Error string `json:"error"`
-		}{"Couldn't open the folder picker: " + err.Error() + ". Type the folder's full path instead."})
-		return
-	}
-	respond(w, http.StatusOK, struct {
-		Folder string `json:"folder"`
-	}{chosen})
-}
-
-// saveFile asks where to save the device's file p and saves it there. It
-// answers 204 in every case, so the page stays where it is; a failed save
-// is shown in a native message, unless the app is stopping.
-func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
-	name := path.Base(p)
-	dst, err := s.native.SaveFile(name)
-	if err == nil && dst != "" {
-		err = browse.Save(r.Context(), sessions, p, dst)
-		if err == nil {
-			s.log.Info("file saved", "path", p, "to", dst)
-		}
-	}
-	if err != nil && r.Context().Err() == nil {
-		s.log.Warn("save failed", "path", p, "to", dst, "err", err)
-		s.native.Alert("Couldn't save " + name + ": " + reason(err) + ". Try saving it again.")
-	}
-	w.WriteHeader(http.StatusNoContent)
 }

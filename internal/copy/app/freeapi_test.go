@@ -16,43 +16,46 @@ import (
 // The delete API checks its input and its preview, and Find saves the
 // options.
 func TestFreeAPI(t *testing.T) {
-	e := newAppEnv(t, "")
-	if w := e.post("/app/api/delete", `{"action":"find","days":"7"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: set the telescope and folder in Settings first.") {
+	e := newAppEnv(t, nil)
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"7"}`); w.Code != 409 || !strings.Contains(w.Body.String(), "Couldn't preview: set the telescope and folder in Settings first.") {
 		t.Errorf("before settings are saved: %d %s", w.Code, w.Body)
 	}
-	e = newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":`+quote(abs("/data/Seestar"))+`}`)
+	e = newAppEnv(t, savedAt(abs("/data/Seestar")))
 	for _, days := range []string{"", "x", "-1", "1.5", "36501"} {
-		w := e.post("/app/api/delete", `{"action":"find","days":`+quote(days)+`}`)
+		w := e.post("/copy/api/delete", `{"action":"find","days":`+quote(days)+`}`)
 		got := decode[fieldErrors](t, w)
 		if w.Code != 400 || got.Fields["days"] != "Enter a whole number of days, 0 or more." {
 			t.Errorf("days %q: %d %+v", days, w.Code, got)
 		}
 	}
-	if w := e.post("/app/api/delete", `{"action":"what"}`); w.Code != 400 {
+	if w := e.post("/copy/api/delete", `{"action":"what"}`); w.Code != 400 {
 		t.Errorf("unknown action: %d", w.Code)
 	}
-	w := e.post("/app/api/delete", `{"action":"delete","id":1,"folders":["MyWorks"]}`)
+	w := e.post("/copy/api/delete", `{"action":"delete","id":1,"folders":["MyWorks"]}`)
 	if w.Code != 409 || !strings.Contains(w.Body.String(), `"Preview again before deleting."`) {
 		t.Errorf("delete without a preview: %d %s", w.Code, w.Body)
 	}
 
 	// Find starts, however the check then ends, and saves the options.
-	w = e.post("/app/api/delete", `{"action":"find","days":" 0 ","trust":true}`)
+	w = e.post("/copy/api/delete", `{"action":"find","days":" 0 ","trust":true}`)
 	if v := decode[freeView](t, w); w.Code != 200 {
 		t.Errorf("find: %d %+v", w.Code, v)
 	}
-	f, err := loadSettings(e.path)
-	if err != nil {
-		t.Fatal(err)
+	last := func() Settings {
+		saves := e.saves()
+		if len(saves) == 0 {
+			t.Fatal("nothing saved")
+		}
+		return saves[len(saves)-1]
 	}
-	if f.settings.OlderThanDays != 0 || !f.settings.TrustState {
-		t.Errorf("saved options: %+v", f.settings)
+	if set := last(); set.OlderThanDays != 0 || !set.TrustState {
+		t.Errorf("saved options: %+v", set)
 	}
-	if w := e.post("/app/api/settings", goodInput); w.Code != 200 {
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
 		t.Fatalf("save: %d %s", w.Code, w.Body)
 	}
-	if f, _ := loadSettings(e.path); f.settings.OlderThanDays != 0 || !f.settings.TrustState {
-		t.Errorf("a settings save changed the options: %+v", f.settings)
+	if set := last(); set.OlderThanDays != 0 || !set.TrustState {
+		t.Errorf("a settings save changed the options: %+v", set)
 	}
 }
 
@@ -61,7 +64,7 @@ func TestFreeAPI(t *testing.T) {
 func TestFreeInProcess(t *testing.T) {
 	share := t.TempDir()
 	folder := filepath.Join(t.TempDir(), "Seestar")
-	e := newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":`+quote(folder)+`,"start_copying":false}`)
+	e := newAppEnv(t, savedAt(folder))
 	for _, p := range []string{"MyWorks/M 42/a.jpg", "MyWorks/M 31/b.jpg"} {
 		name := filepath.Join(share, filepath.FromSlash(p))
 		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
@@ -74,11 +77,11 @@ func TestFreeInProcess(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	e.s.dial = func(ctx context.Context, endpoint string) (remote.Session, error) { return remote.NewFakeDir(share) }
+	e.d.dir = share
 	e.s.free.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) { return remote.NewFakeDir(share) }
 	free := func(body string) freeView {
 		t.Helper()
-		w := e.post("/app/api/delete", body)
+		w := e.post("/copy/api/delete", body)
 		if w.Code != 200 {
 			t.Fatalf("%s: %d %s", body, w.Code, w.Body)
 		}
@@ -90,7 +93,7 @@ func TestFreeInProcess(t *testing.T) {
 		for {
 			v := decode[struct {
 				Free freeView `json:"free"`
-			}](t, e.serve("GET", "/app/api/status", "", tokenHeader, testToken)).Free
+			}](t, e.serve("GET", "/copy/api/status", "")).Free
 			for _, s := range states {
 				if v.State == s {
 					return v
@@ -109,14 +112,14 @@ func TestFreeInProcess(t *testing.T) {
 	if v := wait(frNothing, frPreview, frCheckFail); v.State != frNothing || v.Kept != "Kept: 2 not copied yet" {
 		t.Errorf("before copying: %+v", v)
 	}
-	save := `{"address":"192.0.2.10:445","folder":` + quote(folder) + `,"interval":"10","excludes":[],"includes":[],"skip_built_in":true}`
-	if w := e.post("/app/api/settings", save); w.Code != 200 {
+	save := `{"folder":` + quote(folder) + `,"interval":"10","excludes":[],"includes":[],"skip_built_in":true}`
+	if w := e.post("/copy/api/settings", save); w.Code != 200 {
 		t.Fatalf("save: %d %s", w.Code, w.Body)
 	}
 	if v := wait(frNothing, frStart); v.State != frNothing {
 		t.Errorf("a save that changed only the interval cleared the preview: %+v", v)
 	}
-	if w := e.post("/app/api/copy", `{"action":"start"}`); w.Code != 200 {
+	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
 		t.Fatalf("start copying: %d %s", w.Code, w.Body)
 	}
 	for deadline := time.Now().Add(10 * time.Second); e.s.copy.view(time.Now()).State != stUpToDate; time.Sleep(5 * time.Millisecond) {
@@ -150,9 +153,11 @@ func TestFreeInProcess(t *testing.T) {
 
 // A save that changes what a preview depends on clears it.
 func TestFreeSaveClears(t *testing.T) {
-	e := newAppEnv(t, `{"version":1,"address":"192.0.2.10:445","folder":`+quote(abs("/data/Seestar"))+`,"interval_minutes":5,"excludes":["Video","/Preview"]}`)
+	set := savedAt(abs("/data/Seestar"))
+	set.Excludes = []string{"Video", "/Preview"}
+	e := newAppEnv(t, set)
 	e.s.free.st = freeStatus{state: frNothing, preview: &engine.DeleteResult{}}
-	same := `{"address":"192.0.2.10:445","folder":` + quote(abs("/data/Seestar")) + `,"interval":"7","excludes":["Video","/Preview"],"includes":[],"skip_built_in":true}`
+	same := `{"folder":` + quote(abs("/data/Seestar")) + `,"interval":"7","excludes":["Video","/Preview"],"includes":[],"skip_built_in":true}`
 	for _, c := range []struct {
 		body  string
 		clear bool
@@ -161,9 +166,8 @@ func TestFreeSaveClears(t *testing.T) {
 		{strings.Replace(same, `"includes":[]`, `"includes":["MyWorks"]`, 1), true},
 		{strings.Replace(same, `"Video",`, ``, 1), true},
 		{strings.Replace(same, `"skip_built_in":true`, `"skip_built_in":false`, 1), true},
-		{strings.Replace(same, `192.0.2.10:445`, `192.0.2.11:445`, 1), true},
 	} {
-		if w := e.post("/app/api/settings", c.body); w.Code != 200 {
+		if w := e.post("/copy/api/settings", c.body); w.Code != 200 {
 			t.Fatalf("save: %d %s", w.Code, w.Body)
 		}
 		v := e.s.free.view()
@@ -171,7 +175,7 @@ func TestFreeSaveClears(t *testing.T) {
 			t.Errorf("%s: %+v", c.body, v)
 		}
 		e.s.free.st = freeStatus{state: frNothing, preview: &engine.DeleteResult{}}
-		if w := e.post("/app/api/settings", same); w.Code != 200 {
+		if w := e.post("/copy/api/settings", same); w.Code != 200 {
 			t.Fatal(w.Body)
 		}
 		e.s.free.st = freeStatus{state: frNothing, preview: &engine.DeleteResult{}}
