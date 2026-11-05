@@ -7,6 +7,8 @@ async function checkTabs() {
   tabAssert(selectedTab().join() === 'connection' && !$('panel-connection').hidden && $('panel-activity').hidden, 'Connection is not the first selected tab');
   tabAssert(['connection', 'copy', 'browse', 'free', 'activity'].every(tab => $('tab-' + tab).getAttribute('role') === 'tab' && $('tab-' + tab).parentElement === $('tabs')), 'tab order or roles');
   tabAssert($('tabs').getAttribute('role') === 'tablist', 'tab bar is not a tablist');
+  // The markup starts the roving tabindex: only the selected tab is in the Tab order.
+  tabAssert($('tab-connection').getAttribute('tabindex') === '0' && tabNames.filter(tab => tab !== 'connection').every(tab => $('tab-' + tab).getAttribute('tabindex') === '-1'), 'the markup does not start the roving tabindex');
   for (const tab of ['copy', 'browse', 'free']) {
     tabAssert($('tab-' + tab).disabled && $('tab-' + tab).getAttribute('aria-describedby') === 'tabs-note', tab + ' is not a disabled tab with its note');
     selectTab(tab);
