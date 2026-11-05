@@ -154,7 +154,8 @@ jobs:
 
 
   copy-browser:
-    # Playwright tests of seestar-copy-cli browse's page.
+    # Playwright tests of seestar-copy-cli browse's page and the app's page,
+    # which internal/ui's TestBrowserServer serves without a window.
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -180,6 +181,9 @@ jobs:
       - name: Start browse
         run: |
           go build -o "$RUNNER_TEMP/seestar-copy-cli" ./cmd/seestar-copy-cli
+          echo "CLI_BIN=$RUNNER_TEMP/seestar-copy-cli" >> "$GITHUB_ENV"
+          go test -c -o "$RUNNER_TEMP/ui.test" ./internal/ui
+          echo "UI_TEST_BIN=$RUNNER_TEMP/ui.test" >> "$GITHUB_ENV"
           "$RUNNER_TEMP/seestar-copy-cli" browse --endpoint 127.0.0.1:14450 --listen 127.0.0.1:0 \
             > "$RUNNER_TEMP/browse.url" 2> "$RUNNER_TEMP/browse.log" &
           for try in $(seq 50); do

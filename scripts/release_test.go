@@ -932,3 +932,89 @@ func TestWorkflowPageTests(t *testing.T) {
 	}
 	t.Fatal("no native step runs the page tests in JavaScriptCore")
 }
+
+// browserTestLines are the commands copy-browser must run so the app's
+// Playwright tests have the page's server and the CLI.
+var browserTestLines = []string{
+	`echo "CLI_BIN=$RUNNER_TEMP/seestar-copy-cli" >> "$GITHUB_ENV"`,
+	`go test -c -o "$RUNNER_TEMP/ui.test" ./internal/ui`,
+	`echo "UI_TEST_BIN=$RUNNER_TEMP/ui.test" >> "$GITHUB_ENV"`,
+}
+
+// CI runs every Playwright spec, the app's with them, in Chromium and
+// WebKit, against the page internal/ui's TestBrowserServer serves.
+func TestWorkflowBrowserTests(t *testing.T) {
+	if _, err := os.Stat(".github/workflows/ci.yml"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	data, err := os.ReadFile(".github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			If              string
+			ContinueOnError string `yaml:"continue-on-error"`
+			Steps           []struct {
+				Name, Run, If    string
+				WorkingDirectory string `yaml:"working-directory"`
+				ContinueOnError  string `yaml:"continue-on-error"`
+			}
+		}
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	job, ok := workflow.Jobs["copy-browser"]
+	if !ok || job.If != "" || job.ContinueOnError != "" {
+		t.Fatalf("the copy-browser job must run unconditionally: if %q, continue-on-error %q", job.If, job.ContinueOnError)
+	}
+	var built, installed, ran bool
+	for _, step := range job.Steps {
+		if step.If != "" || step.ContinueOnError != "" {
+			continue
+		}
+		lines := map[string]bool{}
+		for line := range strings.SplitSeq(step.Run, "\n") {
+			lines[strings.TrimSpace(line)] = true
+		}
+		built = built || !slices.ContainsFunc(browserTestLines, func(want string) bool { return !lines[want] })
+		if step.WorkingDirectory == "test/browser" {
+			installed = installed || lines["npx playwright install --with-deps chromium webkit"]
+			ran = ran || (installed && lines["npx playwright test"])
+		}
+	}
+	if !built || !installed || !ran {
+		t.Fatalf("copy-browser must build the page's server and the CLI (%t), install Chromium and WebKit (%t), then run Playwright (%t)", built, installed, ran)
+	}
+
+	config, err := os.ReadFile("test/browser/playwright.config.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"process.env.UI_TEST_BIN", "process.env.CLI_BIN", "name: 'chromium'", "name: 'webkit'"} {
+		if !bytes.Contains(config, []byte(want)) {
+			t.Fatalf("playwright.config.js lacks %q", want)
+		}
+	}
+	// A testMatch would leave a spec out.
+	if bytes.Contains(config, []byte("testMatch")) || bytes.Contains(config, []byte("testIgnore")) {
+		t.Fatal("playwright.config.js must run every spec")
+	}
+	for _, spec := range []string{"app.spec.js", "copy.spec.js", "free.spec.js", "browse.spec.js"} {
+		if _, err := os.Stat(filepath.Join("test/browser/tests", spec)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	launcher, err := os.ReadFile("test/browser/tests/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := os.ReadFile("internal/ui/browser_server_test.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(launcher, []byte("'-test.run=^TestBrowserServer$'")) || !bytes.Contains(server, []byte("func TestBrowserServer(t *testing.T)")) {
+		t.Fatal("test/browser/tests/app.js must start internal/ui's TestBrowserServer")
+	}
+}
