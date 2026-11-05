@@ -869,3 +869,66 @@ func TestDormancyAlarm(t *testing.T) {
 		}
 	}
 }
+
+// pageTestLines are the commands macOS's native job must run so the page
+// regressions execute in JavaScriptCore, and fail rather than skip.
+var pageTestLines = []string{
+	"jsc=/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc",
+	`if [[ ! -x "$jsc" ]]; then`,
+	`PATH="$RUNNER_TEMP/jsc:$PATH" go test -count=1 -v ./internal/ui | tee "$RUNNER_TEMP/page-tests.log"`,
+	`if grep -q 'JavaScriptCore shell is not installed' "$RUNNER_TEMP/page-tests.log"; then`,
+	`grep -q 'PASS: TestCopySetupPage' "$RUNNER_TEMP/page-tests.log"`,
+}
+
+// CI runs the page regressions on macOS, where jsc is, and a missing jsc
+// or a skipped page test fails the job.
+func TestWorkflowPageTests(t *testing.T) {
+	if _, err := os.Stat(".github/workflows/ci.yml"); os.IsNotExist(err) {
+		t.Chdir("..")
+	}
+	data, err := os.ReadFile(".github/workflows/ci.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var workflow struct {
+		Jobs map[string]struct {
+			If              string
+			ContinueOnError string `yaml:"continue-on-error"`
+			Strategy        struct{ Matrix struct{ OS []string } }
+			Defaults        struct{ Run struct{ Shell string } }
+			Steps           []struct {
+				Name, Run, If, Shell string
+				ContinueOnError      string `yaml:"continue-on-error"`
+			}
+		}
+	}
+	if err := yaml.Unmarshal(data, &workflow); err != nil {
+		t.Fatal(err)
+	}
+	native := workflow.Jobs["native"]
+	if native.If != "" || native.ContinueOnError != "" || native.Defaults.Run.Shell != "bash" ||
+		!slices.ContainsFunc(native.Strategy.Matrix.OS, func(os string) bool { return strings.HasPrefix(os, "macos-") }) {
+		t.Fatalf("the native job must run on macOS, in bash, unconditionally: %+v", native.Strategy)
+	}
+	for _, step := range native.Steps {
+		missing := slices.DeleteFunc(slices.Clone(pageTestLines), func(want string) bool {
+			for line := range strings.SplitSeq(step.Run, "\n") {
+				if strings.TrimSpace(line) == want {
+					return true
+				}
+			}
+			return false
+		})
+		if len(missing) == len(pageTestLines) {
+			continue
+		}
+		if len(missing) != 0 {
+			t.Fatalf("step %q lacks %q", step.Name, missing)
+		}
+		if step.If != "runner.os == 'macOS'" || step.ContinueOnError != "" || step.Shell != "" {
+			t.Fatalf("step %q has if %q, continue-on-error %q, shell %q", step.Name, step.If, step.ContinueOnError, step.Shell)
+		}
+		return
+	}
+	t.Fatal("no native step runs the page tests in JavaScriptCore")
+}

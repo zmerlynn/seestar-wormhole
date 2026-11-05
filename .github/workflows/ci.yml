@@ -85,6 +85,23 @@ jobs:
           else
             go test -v ./...
           fi
+      - name: Page tests in JavaScriptCore
+        # The page regressions skip without jsc, which only macOS ships.
+        if: runner.os == 'macOS'
+        run: |
+          jsc=/System/Library/Frameworks/JavaScriptCore.framework/Versions/Current/Helpers/jsc
+          if [[ ! -x "$jsc" ]]; then
+            echo "::error::JavaScriptCore shell missing at $jsc"
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/jsc"
+          ln -sf "$jsc" "$RUNNER_TEMP/jsc/jsc"
+          PATH="$RUNNER_TEMP/jsc:$PATH" go test -count=1 -v ./internal/ui | tee "$RUNNER_TEMP/page-tests.log"
+          if grep -q 'JavaScriptCore shell is not installed' "$RUNNER_TEMP/page-tests.log"; then
+            echo "::error::a page test skipped"
+            exit 1
+          fi
+          grep -q 'PASS: TestCopySetupPage' "$RUNNER_TEMP/page-tests.log"
       - name: Test release tooling
         run: go test scripts/release.go scripts/release_test.go
       - name: Build and smoke test native binary
