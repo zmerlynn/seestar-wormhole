@@ -1,6 +1,10 @@
-// Starting the browser-only seestar-copy app for a test. APP_BIN is the
-// built cmd/seestar-copy. Each app gets its own home and config folder in
-// the test's output folder, so the state folder is fresh.
+// Starting the app's page for a test, without a window. UI_TEST_BIN is
+// internal/ui's test binary (go test -c ./internal/ui); its
+// TestBrowserServer serves the real page and runtime from the state
+// folder SEESTAR_WORMHOLE_BROWSER_STATE names, with no account and no
+// proxy, and prints the page's private URL. Each app gets its own home and
+// config folder in the test's output folder, so copy's state folder,
+// home/config/seestar-copy, is fresh unless two apps share a home.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
@@ -12,44 +16,66 @@ const share = '127.0.0.1:14450';
 const refused = '127.0.0.1:1';
 
 // env is the environment of a program run with home as its home folder,
-// so that its state folder is home/config/seestar-copy.
+// so that copy's state folder is home/config/seestar-copy.
 const env = (home) => ({ ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, 'config') });
 
-// launch writes settings (an object, a function of the app's folder that
-// returns one, or a string as is; no file if undefined) to app.json in dir
-// and starts the app on it, with home as its home folder (dir if not given).
-async function launch(dir, settings, home = dir) {
-  const file = path.join(dir, 'config', 'app.json');
-  const folder = path.join(home, 'Seestar');
-  if (typeof settings === 'function') settings = settings(folder);
+// lan is config.json for a saved route on this network: Test passed and
+// Save made it the route, which opens Copy, Browse and Free up space.
+const lan = (address = share) => ({
+  version: 1, bind: '127.0.0.1', idle: '0', route: 'lan', lan_address: address, route_established: true,
+});
+
+// The URL TestBrowserServer prints, as a browser run without a browser
+// prints it.
+const urlPattern = /http:\/\/127\.0\.0\.1:\d+\/#[0-9a-f]{64}/;
+
+// writePrivate writes a file the app's private storage accepts: its
+// folder 0700 and the file 0600, whatever the umask.
+function writePrivate(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  if (settings !== undefined) {
-    fs.writeFileSync(file, typeof settings === 'string' ? settings : JSON.stringify(settings));
+  fs.chmodSync(path.dirname(file), 0o700);
+  fs.writeFileSync(file, typeof value === 'string' ? value : JSON.stringify(value), { mode: 0o600 });
+  fs.chmodSync(file, 0o600);
+}
+
+// launch starts the page's server with its state folder in dir and home
+// as its home folder (dir if not given). files maps the state folder's
+// file names to their content (an object, a function of the app's folder
+// for images that returns one, or a string as is); none means a first run.
+async function launch(dir, files = {}, home = dir) {
+  const state = path.join(dir, 'state');
+  const folder = path.join(home, 'Seestar');
+  fs.mkdirSync(path.join(home, 'config'), { recursive: true });
+  for (let [name, value] of Object.entries(files)) {
+    if (typeof value === 'function') value = value(folder);
+    if (value !== undefined) writePrivate(path.join(state, name), value);
   }
-  const child = spawn(process.env.APP_BIN, ['--settings', file], { env: env(home), stdio: ['ignore', 'pipe', 'pipe'] });
-  const app = { file, folder, home, child, log: '' };
+  const child = spawn(process.env.UI_TEST_BIN, ['-test.run=^TestBrowserServer$', '-test.timeout=0'], {
+    env: { ...env(home), SEESTAR_WORMHOLE_BROWSER_STATE: state }, stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const app = { state, config: path.join(state, 'config.json'), copyFile: path.join(state, 'copy.json'), folder, home, child, log: '' };
   child.stderr.on('data', (b) => (app.log += b));
   app.exited = new Promise((resolve) => child.on('exit', resolve));
   app.url = await new Promise((resolve, reject) => {
-    let out = '';
     child.stdout.on('data', (b) => {
-      out += b;
-      if (out.includes('\n')) resolve(out.split('\n')[0]);
+      app.log += b;
+      const m = app.log.match(urlPattern);
+      if (m) resolve(m[0]);
     });
     app.exited.then((code) => reject(new Error('the app exited ' + code + ': ' + app.log)));
   });
   return app;
 }
 
-// test gives each test startApp, which returns the app's URL, settings
-// file and folder for images; every app is stopped after the test and its
-// log attached. startApp(settings, home) shares another app's home, and so
-// its state folder.
+// test gives each test startApp, which returns the app's URL, its state
+// folder's files and its folder for images; every app is stopped after
+// the test and its log attached. startApp(files, home) shares another
+// app's home, and so copy's state folder, with a state folder of its own.
 const test = base.test.extend({
   startApp: async ({ context }, use, testInfo) => {
     const apps = [];
-    await use(async (settings, home) => {
-      const app = await launch(testInfo.outputPath('app-' + apps.length), settings, home);
+    await use(async (files, home) => {
+      const app = await launch(testInfo.outputPath('app-' + apps.length), files, home);
       apps.push(app);
       return app;
     });
@@ -62,7 +88,7 @@ const test = base.test.extend({
       }
     } finally {
       for (const app of apps) {
-        app.child.kill('SIGINT');
+        if (app.child.exitCode === null) app.child.kill('SIGINT');
         await app.exited;
         await testInfo.attach('app log', { body: app.log, contentType: 'text/plain' });
       }
@@ -70,7 +96,7 @@ const test = base.test.extend({
   },
 });
 
-const readSettings = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+const readJSON = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
 // The app page's parts.
 const frame = (page) => page.frameLocator('#b-frame');
@@ -78,18 +104,27 @@ const browseStatus = (page) => frame(page).locator('#status');
 const tab = (page, name) => page.getByRole('tab', { name, exact: true });
 const field = (page, label) => page.getByLabel(label, { exact: true });
 
-// openApp loads the page and waits for it to show the tabs.
+// openApp loads the page and waits for its first status. The page opens
+// on Connection.
 async function openApp(page, url) {
   await page.goto(url);
-  await expect(page.locator('#loading')).toBeHidden();
+  await expect(page.locator('#quit')).toBeEnabled();
+  await expect(page.locator('#version')).not.toHaveText('');
 }
 
-// fakeStatus answers the page's status polls with the real status, its
-// copy view replaced by view() when that returns one, and its Free up
-// space view by free(). A view's activity, if any, replaces Recent
+// openCopy loads the page and opens the Copy tab once copy's status is in.
+async function openCopy(page, url) {
+  await openApp(page, url);
+  await tab(page, 'Copy').click();
+  await expect(page.locator('#f-builtin')).not.toHaveText('');
+}
+
+// fakeStatus answers the page's copy status polls with the real status,
+// its copy view replaced by view() when that returns one, and its Free up
+// space view by free(). A view's activity, if any, replaces copy's
 // activity.
 async function fakeStatus(page, view, free = () => null) {
-  await page.route('**/app/api/status', async (route) => {
+  await page.route('**/copy/api/status', async (route) => {
     const response = await route.fetch();
     const data = await response.json();
     const f = free();
@@ -122,7 +157,10 @@ const copyViews = {
     summary: 'Copied 11 files (3.9 GB) in 7 min. 1 failed.',
     notice: '1 file couldn\'t be copied. It will be tried again at the next check.',
     failed: [{ path: longPath, reason: "The telescope's file changed size while copying" }],
-    activity: [{ time: '21:35:02', warn: true, text: `copy failed path="${longPath}" err="the connection was reset"` }],
+    activity: [{
+      time: '21:35:02', at: '2026-10-29T21:35:02Z', source: 'copy', warn: true,
+      text: `copy failed path="${longPath}" err="the connection was reset"`,
+    }],
   },
 };
 
@@ -136,8 +174,8 @@ const freeViews = {
     state: 'preview', id: 1, title: '2 files (33.2 MB) are copied and safe to delete.',
     sub: 'Only files older than 7 days · your copies checked',
     groups: [
-      { folder: longDir, name: longDir, bytes: 33200000, size: '33.2 MB', files: [{ path: longPath, size: '33.2 MB' }] },
-      { folder: 'MyWorks/M 31', name: 'MyWorks/M 31', bytes: 1000, size: '1.0 KB', files: [{ path: 'MyWorks/M 31/Stacked_M 31.jpg', size: '1.0 KB' }] },
+      { folder: longDir, name: longDir, count: 1, bytes: 33200000, size: '33.2 MB', files: [{ path: longPath, size: '33.2 MB' }] },
+      { folder: 'MyWorks/M 31', name: 'MyWorks/M 31', count: 1, bytes: 1000, size: '1.0 KB', files: [{ path: 'MyWorks/M 31/Stacked_M 31.jpg', size: '1.0 KB' }] },
     ],
     kept: 'Kept: 1 changed on the telescope',
     kept_list: [{ path: longPath, reason: 'changed on the telescope since it was copied' }],
@@ -151,5 +189,5 @@ const freeViews = {
 };
 
 module.exports = {
-  test, expect, share, refused, env, readSettings, frame, browseStatus, tab, field, openApp, fakeStatus, longPath, copyViews, freeViews,
+  test, expect, share, refused, env, lan, readJSON, frame, browseStatus, tab, field, openApp, openCopy, fakeStatus, longPath, copyViews, freeViews,
 };
