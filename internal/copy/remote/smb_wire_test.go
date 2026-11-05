@@ -485,6 +485,33 @@ func TestSMBErrorsNameEndpointAndPath(t *testing.T) {
 	})
 }
 
+// Reach sets up the session and stops there: no share, no LOGOFF.
+func TestReachStopsAtTheSession(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		p := startPeer(t, &peer{})
+		defer p.stop()
+		d := newDialer()
+		d.Credentials = testCredentials{}
+		d.TransportDialer = pipeDialer{p.client}
+		if err := reach(t.Context(), wireEndpoint, d); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		var cmds []wire.Command
+		for _, req := range p.seen() {
+			cmds = append(cmds, req.Command())
+		}
+		if !slices.Equal(cmds, []wire.Command{wire.SMB2_NEGOTIATE, wire.SMB2_SESSION_SETUP}) {
+			t.Errorf("requests %v, want NEGOTIATE and SESSION_SETUP only", cmds)
+		}
+	})
+	for _, endpoint := range []string{"", "fixture.invalid", ":445"} {
+		if err := Reach(t.Context(), endpoint); err == nil || !strings.Contains(err.Error(), "is not host:port") {
+			t.Errorf("Reach(%q) = %v, want a refusal before dialing", endpoint, err)
+		}
+	}
+}
+
 // TestDialCanceledDuringMount cancels Dial while the server sits on
 // TREE_CONNECT.
 func TestDialCanceledDuringMount(t *testing.T) {

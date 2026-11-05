@@ -672,22 +672,26 @@ func TestTestWaitsForLocalNetwork(t *testing.T) {
 		}
 		return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
 	}
+	e.s.reach = func(ctx context.Context, endpoint string) error {
+		_, err := e.s.test(ctx, endpoint)
+		return err
+	}
 	type answer struct {
 		OK bool `json:"ok"`
 	}
 	if got := decode[answer](t, e.post("/copy/api/test", `{"address":"192.0.2.10"}`)); !got.OK || tries != 3 {
 		t.Errorf("test = %+v after %d tries", got, tries)
 	}
-	if err := e.m.Test(t.Context(), "192.0.2.10:445"); err == nil || tries != 4 {
-		t.Errorf("Mount.Test = %v after %d tries", err, tries)
+	if err := e.m.Reach(t.Context(), "192.0.2.10:445"); err == nil || tries != 4 {
+		t.Errorf("Mount.Reach = %v after %d tries", err, tries)
 	}
 	if got := time.Duration(waited.Load()); got != 2*time.Second {
 		t.Errorf("waited %v, want 2s", got)
 	}
 	setRetry(t, "darwin")
 	tries = 0
-	if err := e.m.Test(t.Context(), "192.0.2.10:445"); err != nil || tries != 3 {
-		t.Errorf("Mount.Test first = %v after %d tries", err, tries)
+	if err := e.m.Reach(t.Context(), "192.0.2.10:445"); err != nil || tries != 3 {
+		t.Errorf("Mount.Reach first = %v after %d tries", err, tries)
 	}
 	// Once the wait runs out, Test says where to allow access.
 	setHostOS(t, "darwin")

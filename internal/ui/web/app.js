@@ -368,7 +368,8 @@ async function lanTest() {
   return r;
 }
 // Save Tests the address first, unless it just passed, and makes this
-// network the route only if it answers; the server Tests it again.
+// network the route only if it answers; the server checks again that it
+// answers, and the result line says so meanwhile.
 async function lanSave() {
   if (lanPending) return;
   const typed = $('lan-address').value.trim();
@@ -380,7 +381,7 @@ async function lanSave() {
   }
   lanPending = 'save';
   lanError('');
-  lanResult('');
+  lanResult('Checking ' + address + '…');
   controls();
   let saved = false;
   try {

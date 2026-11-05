@@ -56,6 +56,21 @@ func newRouteEnv(t *testing.T) *routeEnv {
 	t.Helper()
 	base := t.TempDir()
 	e := &routeEnv{t: t, s: testServer(t), shares: filepath.Join(base, "shares"), folder: filepath.Join(base, "Seestar")}
+	test := func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+		if err := e.wait(ctx, &e.holdTest, &e.tested); err != nil {
+			return nil, err
+		}
+		if strings.HasPrefix(endpoint, "192.0.2.99:") {
+			return nil, errors.New("synthetic unreachable")
+		}
+		e.mu.Lock()
+		err := e.testErr
+		e.mu.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
+	}
 	e.s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
 		Addr: netip.MustParseAddrPort(e.s.host), StateDir: filepath.Join(base, "state"), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -75,21 +90,8 @@ func newRouteEnv(t *testing.T) *routeEnv {
 			e.mu.Unlock()
 			return s, nil
 		},
-		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
-			if err := e.wait(ctx, &e.holdTest, &e.tested); err != nil {
-				return nil, err
-			}
-			if strings.HasPrefix(endpoint, "192.0.2.99:") {
-				return nil, errors.New("synthetic unreachable")
-			}
-			e.mu.Lock()
-			err := e.testErr
-			e.mu.Unlock()
-			if err != nil {
-				return nil, err
-			}
-			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
-		},
+		Test:  test,
+		Reach: reachBy(test),
 		Remover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
 			if err := e.wait(ctx, &e.holdRemove, &e.removing); err != nil {
 				return nil, err
@@ -478,8 +480,8 @@ func (e *routeEnv) copied() {
 	e.until("copying to stop", func() bool { return !e.s.copy.Busy() })
 }
 
-// A Save on this network tests the address first and commits only if it
-// answers; the route is checked again once the Test is done, and a
+// A Save on this network checks the address first and commits only if it
+// answers; the route is checked again once that check is done, and a
 // refused save keeps the saved route and file.
 func TestLANSaveTestsFirst(t *testing.T) {
 	e := newRouteEnv(t)
@@ -531,8 +533,8 @@ func TestLANSaveTestsFirst(t *testing.T) {
 	kept("a save refused after its Test")
 }
 
-// A Save after a successful Test tests the address again. On macOS, when
-// nothing answers that Test, the refusal adds copy's Local Network
+// A Save after a successful Test checks the address again. On macOS, when
+// nothing answers that check, the refusal adds copy's Local Network
 // sentence; an answer from the address, or a failure elsewhere, doesn't.
 func TestLANSaveRetestLocalNetworkHint(t *testing.T) {
 	const hint = " On macOS, if Local Network access is blocked, enable seestar-wormhole in System Settings > Privacy & Security > Local Network, then Test again. If a permission request is open, allow access first."

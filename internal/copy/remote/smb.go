@@ -64,6 +64,26 @@ func dial(ctx context.Context, endpoint string, dialer *smb2.Dialer, log *slog.L
 	return dialShare(ctx, endpoint, dialer, ShareName, log)
 }
 
+// Reach checks that an SMB server lets a guest in at endpoint, host:port:
+// it connects, negotiates and sets up the guest session Dial would, then
+// drops the connection without logging off. It mounts no share, so it
+// takes about half of Test's round trips.
+func Reach(ctx context.Context, endpoint string) error {
+	return reach(ctx, endpoint, newDialer())
+}
+
+func reach(ctx context.Context, endpoint string, dialer *smb2.Dialer) error {
+	if host, port, err := net.SplitHostPort(endpoint); err != nil || host == "" || port == "" {
+		return fmt.Errorf("endpoint %q is not host:port", endpoint)
+	}
+	session, err := dialer.Dial(ctx, endpoint)
+	if err != nil {
+		return fmt.Errorf("dial %s: %w", endpoint, err)
+	}
+	_ = session.Abort()
+	return nil
+}
+
 // closeSession and abortSession are the session calls ctx's callbacks
 // make. Tests replace them to panic.
 var (

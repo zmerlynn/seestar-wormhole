@@ -24,10 +24,12 @@ type MountOptions struct {
 	// or dial fails with it. It must not wait on [Mount.Change].
 	Target func() (Target, error)
 	// Dial opens a session to an endpoint; nil is remote.Dial. Test is
-	// Test's check; nil is engine.Test. Remover opens a delete's remover;
-	// nil is remote.DialRemover. Tests replace them.
+	// Test's check; nil is engine.Test. Reach is [Mount.Reach]'s; nil is
+	// remote.Reach. Remover opens a delete's remover; nil is
+	// remote.DialRemover. Tests replace them.
 	Dial    func(ctx context.Context, endpoint string) (remote.Session, error)
 	Test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	Reach   func(ctx context.Context, endpoint string) error
 	Remover func(ctx context.Context, endpoint string) (remote.Remover, error)
 	// Settings are the copy settings saved before, or nil for none yet.
 	// Save keeps new ones, and they take effect only if it succeeds; nil
@@ -185,10 +187,12 @@ func (m *Mount) Change(moves func() bool, commit func() error) error {
 	return commit()
 }
 
-// Test runs Test's check of endpoint, host:port, as the API's Test does.
-func (m *Mount) Test(ctx context.Context, endpoint string) error {
-	_, err := m.s.testLAN(ctx, endpoint)
-	return err
+// Reach checks that the telescope answers at endpoint, host:port, an
+// address on this network, as a route's Save does after the page's Test:
+// it connects and sets up a session, and lists nothing. Like Test, it
+// waits out macOS's Local Network prompt.
+func (m *Mount) Reach(ctx context.Context, endpoint string) error {
+	return m.s.reachLAN(ctx, endpoint)
 }
 
 // ServeHTTP serves /copy/api/<call> and Browse at /browse/. The caller has

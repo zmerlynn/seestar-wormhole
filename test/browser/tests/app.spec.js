@@ -159,7 +159,20 @@ test('a Test that passed is not run again by Save, and the header shows it', asy
   await expect(page.locator('#connection-text')).toHaveText('Not connected');
   // Test saves nothing: the tabs stay locked until Save.
   await expect(tab(page, 'Copy')).toBeDisabled();
-  await page.locator('#lan-save').click();
+  // While Save checks the address, the result line says so.
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route('**/api/route', async (route) => {
+    await held;
+    await route.continue();
+  });
+  try {
+    await page.locator('#lan-save').click();
+    await expect(lanResult(page)).toHaveText(`Checking ${share}…`);
+    await expect(page.locator('#lan-save')).toHaveText('Saving…');
+  } finally {
+    release();
+  }
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
   await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeEnabled();

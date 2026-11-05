@@ -42,9 +42,11 @@ type server struct {
 	version  string
 	stateDir string
 	log      *slog.Logger
-	// dial opens a browse session at the target; test runs Test.
-	dial func(ctx context.Context) (remote.Session, error)
-	test func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	// dial opens a browse session at the target; test runs Test, and
+	// reach a route's Save's check.
+	dial  func(ctx context.Context) (remote.Session, error)
+	test  func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	reach func(ctx context.Context, endpoint string) error
 	// target is where the telescope is for every dial and start.
 	target  func() (Target, error)
 	native  Native // the window's dialogs; each nil without one
@@ -78,6 +80,10 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	}
 	if o.Test != nil {
 		s.test = o.Test
+	}
+	s.reach = o.Reach
+	if s.reach == nil {
+		s.reach = remote.Reach
 	}
 	if o.Native != nil {
 		s.native = *o.Native
@@ -389,6 +395,16 @@ func (s *server) testLAN(ctx context.Context, endpoint string) ([]remote.Entry, 
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
 	return retryLAN(ctx, localNetworkRetry, func(ctx context.Context) ([]remote.Entry, error) { return s.test(ctx, endpoint) })
+}
+
+// reachLAN is testLAN for a route's Save: it checks only that the
+// telescope answers at endpoint, since the page's Test has checked its
+// share.
+func (s *server) reachLAN(ctx context.Context, endpoint string) error {
+	ctx, cancel := context.WithTimeout(ctx, testTimeout)
+	defer cancel()
+	_, err := retryLAN(ctx, localNetworkRetry, func(ctx context.Context) (struct{}, error) { return struct{}{}, s.reach(ctx, endpoint) })
+	return err
 }
 
 type fieldErrors struct {

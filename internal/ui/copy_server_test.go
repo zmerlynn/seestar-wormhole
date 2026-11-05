@@ -54,9 +54,23 @@ func copyServerWith(t *testing.T, native *copyapp.Native) (*server, *[]string) {
 			}
 			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
 		},
+		Reach: func(_ context.Context, endpoint string) error {
+			if strings.HasPrefix(endpoint, "192.0.2.99:") {
+				return errors.New("synthetic unreachable")
+			}
+			return nil
+		},
 	})
 	t.Cleanup(s.copy.Quit)
 	return s, &tested
+}
+
+// reachBy is a Reach that answers as test does.
+func reachBy(test func(context.Context, string) ([]remote.Entry, error)) func(context.Context, string) error {
+	return func(ctx context.Context, endpoint string) error {
+		_, err := test(ctx, endpoint)
+		return err
+	}
 }
 
 func serve(s *server, r *http.Request) *httptest.ResponseRecorder {
@@ -293,7 +307,7 @@ func TestCopyWaitsForTheConnection(t *testing.T) {
 }
 
 func TestRouteSave(t *testing.T) {
-	s, _ := copyServer(t)
+	s, tested := copyServer(t)
 	path := filepath.Join(s.storage.root, "config.json")
 	// A future member survives the save.
 	if err := s.storage.writeBytes("config.json", []byte(`{"version":1,"bind":"0.0.0.0","idle":"0","discovery":true,"email":"synthetic@example.invalid","future":{"kept":true}}`)); err != nil {
@@ -329,6 +343,11 @@ func TestRouteSave(t *testing.T) {
 	}
 	if w := post(`{"settings":{"route":"lan","lan_address":" 192.0.2.10 "}}`); w.Code != 200 {
 		t.Fatalf("save lan = %d %s", w.Code, w.Body)
+	}
+	// Save checks only that the telescope answers; it doesn't run Test,
+	// which lists the share, again.
+	if len(*tested) != 0 {
+		t.Errorf("Save ran Test of %v", *tested)
 	}
 	b, err := os.ReadFile(path)
 	if err != nil {
@@ -469,9 +488,7 @@ func TestQuitOrder(t *testing.T) {
 			open.Add(1)
 			return closeSession{remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), &open}, nil
 		},
-		Test: func(context.Context, string) ([]remote.Entry, error) {
-			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
-		},
+		Reach: func(context.Context, string) error { return nil },
 	})
 	t.Cleanup(s.copy.Quit)
 	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.10"); err != nil {
