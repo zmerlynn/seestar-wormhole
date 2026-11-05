@@ -168,15 +168,22 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 			eventHistory.add("App could not start.")
 		}
 	}()
-	settings, err := loadSettings(st)
-	if os.IsNotExist(err) {
-		settings = defaultSettings()
-	} else if err != nil {
-		settingsPath := filepath.Join(root, "config.json")
+	unsafeSettings := func(name string) error {
+		settingsPath := filepath.Join(root, name)
 		if absolute, err := filepath.Abs(settingsPath); err == nil {
 			settingsPath = absolute
 		}
 		return errors.New("Could not load saved settings safely.\n\n" + settingsPath + "\n\nCheck this file, then reopen seestar-wormhole.")
+	}
+	settings, err := loadSettings(st)
+	if os.IsNotExist(err) {
+		settings = defaultSettings()
+	} else if err != nil {
+		return unsafeSettings("config.json")
+	}
+	copyFile, copySaved, err := loadCopySettings(st)
+	if err != nil {
+		return unsafeSettings(copyName)
 	}
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
@@ -211,6 +218,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	handler.copy = copyapp.NewMount(ctx, copyapp.MountOptions{
 		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
 		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Target: handler.copyTarget,
+		Settings: copySaved, Save: copyFile.save,
 	})
 	activate := make(chan struct{}, 1)
 	if window != nil {
