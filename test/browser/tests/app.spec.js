@@ -64,7 +64,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   // Copy's first visit has its settings open, with the default folder and
   // no example values.
   await tab(page, 'Copy').click();
-  await expect(page.locator('#s-first')).toHaveText(/^Choose the folder for your images, then Save and continue\./);
+  await expect(page.locator('#s-first')).toHaveText('Choose the folder for your images, then press Save and continue. Copying starts later, when you press Start copying.');
   await expect(page.locator('#c-main')).toBeHidden();
   await expect(field(page, 'Folder for your images')).toHaveValue(path.join(app.home, 'Seestar'));
   await expect(field(page, 'Leave out')).toBeVisible();
@@ -86,9 +86,13 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(copySave(page)).toHaveText('Save and continue');
   await copySave(page).click();
 
-  // Focus is on the Copy heading, and copying is off.
-  await expect(page.locator('#c-title')).toBeFocused();
+  // Copying is off, and the notice that says Start copying is next has
+  // focus, just above it.
+  const next = page.locator('#c-next');
+  await expect(next).toBeFocused();
+  await expect(next).toHaveText('Settings saved. Copying starts when you press Start copying. Preview shows what it would copy first.');
   await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+  await expect(page.getByRole('button', { name: 'Start copying' })).toBeVisible();
   await expect(page.locator('#s-first')).toBeHidden();
   await expect(page.locator('#copy-chip')).toHaveText('Copying is off');
 
@@ -132,9 +136,10 @@ test('a failed first Save is off while it runs and says so, and Enter saves', as
   expect(fs.existsSync(app.copyFile)).toBe(false);
   await page.unroute('**/copy/api/settings');
 
-  // Enter in a field saves, and opens Copy with copying off.
+  // Enter in a field saves, and opens Copy with copying off; focus is on
+  // the notice that says Start copying is next, not on Start copying.
   await field(page, 'Folder for your images').press('Enter');
-  await expect(page.locator('#c-title')).toBeFocused();
+  await expect(page.locator('#c-next')).toBeFocused();
   await expect(page.locator('#c-title')).toHaveText('Copying is off.');
   expect(readJSON(app.copyFile)).toMatchObject({ folder: app.folder, start_copying: false });
 });

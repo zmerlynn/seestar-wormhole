@@ -643,8 +643,11 @@ async function copySave() {
     copyFormOpen = false;
     renderSetup();
     browseFrame(data.browse_changed);
+    // The first Save doesn't start copying; the notice above Start copying
+    // says it is the next step, and takes focus so it is read.
+    copyNext = first;
     await copyRefresh();
-    if (first) $('c-title').focus();
+    if (first) $('c-next').focus();
     else {
       result('f-saved', 'Settings saved.', 'ok');
       $('s-change').focus();
@@ -691,6 +694,9 @@ const copyShows = {
 const copyBusy = {connecting: 'Connecting', listing: 'Looking for new files'};
 let copyOn = false, copyShown = {state: '', files: '', preview: '', pgroups: ''};
 let pressed = null; // a button the user pressed, until the state after it is shown
+// copyNext shows, after the first Save, that Start copying is the next
+// step, until copying starts.
+let copyNext = false;
 // renderPreview shows the Copy tab's preview, if any, and its buttons in
 // the states Start shows in. A preview's state change is announced, and so
 // is its going away: a Cancel, or Copy's title when it is discarded.
@@ -762,6 +768,8 @@ function renderCopy(v) {
     listItems('c-files', v.failed || [], pathItem);
   }
   for (const [id, states] of Object.entries(copyShows)) $(id).hidden = !states.includes(st);
+  if (!copyShows['c-start'].includes(st)) copyNext = false;
+  $('c-next').hidden = !copyNext;
   // A stage change is announced; ticks within a stage are not.
   if (st !== copyShown.state) put('c-live', v.title);
   copyShown.state = st;

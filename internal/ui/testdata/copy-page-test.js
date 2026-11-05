@@ -86,7 +86,7 @@ async function checkCopySetup(st) {
   copyAssert(!$('c-main').hidden && $('s-first').hidden && !$('s-line').hidden && $('copy-form').hidden, 'the summary did not replace the form');
   copyAssert($('s-summary').textContent === 'Copying to ' + st.saved.settings.folder + ' every 5 min, skipping logs and system files, leaving out Video.', 'summary: ' + $('s-summary').textContent);
   copyAssert($('b-frame').src === '/browse/', 'Browse did not load after the first save');
-  copyAssert(document.activeElement === $('c-title'), 'the first save did not move to Copy');
+  copyAssert(document.activeElement === $('c-next') && !$('c-next').hidden, 'the first save did not say Start copying is next');
   copyAssert(!$('h-details').hidden && $('h-path').textContent === st.after.history, 'Copy history');
   // Change… opens the form; Cancel puts the saved values back.
   openCopyForm();

@@ -34,8 +34,11 @@ test('Start copying after the first Save runs a pass, and the settings are locke
   await button(page, 'Save and continue').click();
 
   await expect(title(page)).toHaveText(off);
+  // Saving didn't start copying; the notice says Start copying is next.
+  await expect(page.locator('#c-next')).toBeVisible();
   await button(page, 'Start copying').click();
   await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
+  await expect(page.locator('#c-next')).toBeHidden();
   await expect(title(page)).toBeFocused();
   await expect(page.locator('#c-live')).toHaveText(upToDate);
   await expect(page.locator('#c-summary')).toHaveText(copiedAll);
