@@ -45,11 +45,12 @@ type Target struct {
 func (t Target) String() string { return t.Endpoint }
 
 // sameTelescope reports whether u reaches the telescope t does: through
-// the account the same device, in any run and at any endpoint; on this
-// network the same address.
+// the account the same device, in any run and at any endpoint; with no
+// device on either, the same address in the same run, which on this
+// network is always 0.
 func (t Target) sameTelescope(u Target) bool {
 	if t.Device == "" && u.Device == "" {
-		return t.Endpoint == u.Endpoint
+		return t.Endpoint == u.Endpoint && t.Run == u.Run
 	}
 	return t.Device == u.Device
 }
