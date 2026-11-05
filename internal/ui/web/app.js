@@ -143,6 +143,9 @@ function clearField(field) {
   $(field + '-error').hidden = true;
   delete fieldErrors[field];
 }
+// text sets an element's text only when it changed: WebKit drops a click
+// whose press and release straddle a rewrite of the button's text, and the
+// status poll renders every second.
 function text(id,value) {
   if ($(id).textContent !== value) $(id).textContent = value;
 }
@@ -228,7 +231,7 @@ function controls() {
   $('settings').hidden = active;
   $('running').hidden = !active;
   $('start').type = active ? 'button' : 'submit';
-  $('start').textContent = state?.stopping || pending === 'stop' ? 'Stopping…' : active ? (state?.cancel ? 'Cancel' : 'Stop') : 'Connect';
+  text('start', state?.stopping || pending === 'stop' ? 'Stopping…' : active ? (state?.cancel ? 'Cancel' : 'Stop') : 'Connect');
   $('start').disabled = blocked || state?.stopping || pending === 'stop' || pending === 'quit' || (!active && !!pending);
   $('quit').disabled = !initialized || ended || pending === 'quit';
   $('idle-options').hidden = $('mode').value !== 'idle';
@@ -245,7 +248,7 @@ function controls() {
   text('password-note', selectedSaved ? 'Saved in your keychain.' : 'Kept until you quit. Save to your keychain to use it next time.');
   $('forget').hidden = !password.saved;
   $('forget').disabled = blocked || !!pending || password.busy;
-  $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
+  text('forget', pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password');
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
@@ -303,8 +306,8 @@ function routeControls(blocked) {
   $('account-route').hidden = routeChoice !== 'account';
   $('lan-route').hidden = routeChoice !== 'lan';
   $('lan-options').disabled = blocked || active || busy || !!lanPending;
-  $('lan-test').textContent = lanPending === 'test' ? 'Testing…' : 'Test';
-  $('lan-save').textContent = lanPending === 'save' ? 'Saving…' : 'Save';
+  text('lan-test', lanPending === 'test' ? 'Testing…' : 'Test');
+  text('lan-save', lanPending === 'save' ? 'Saving…' : 'Save');
   connectionLine();
 }
 // The header's line and dot: the proxy's status on the account route, and
@@ -1111,7 +1114,7 @@ function render(s) {
   text('version',s.version);
   active = s.active;
   $('last-known').hidden = true;
-  $('quit').textContent = s.native ? 'Quit' : 'Quit service';
+  text('quit', s.native ? 'Quit' : 'Quit service');
   $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';
   $('retry-storage').hidden = !s.save_failed;
   if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Settings could not be saved; they may reset next time.');

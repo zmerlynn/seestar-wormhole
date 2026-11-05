@@ -194,6 +194,23 @@ test('Test reports success and failure under the address, and Save keeps a refus
   await expect(page.locator('#lan-address-error')).toBeHidden();
 });
 
+// The status poll renders every second. A press held across a render
+// still clicks: WebKit drops a click whose press and release straddle a
+// rewrite of the button's text.
+test('a click held across a status poll still clicks', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  await chooseLAN(page);
+  await field(page, 'Telescope address').fill(share);
+  const box = await page.locator('#lan-test').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  // Copy's status is read once the page has rendered its own.
+  await page.waitForResponse((r) => r.url().endsWith('/copy/api/status'));
+  await page.mouse.up();
+  await expect(lanResult(page)).toHaveText(connected);
+});
+
 test('first-run field errors block saving and focus the first field', async ({ page, startApp }) => {
   const app = await startApp({ 'config.json': lan() });
   await openCopy(page, app.url);
