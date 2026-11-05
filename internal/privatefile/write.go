@@ -3,6 +3,8 @@ package privatefile
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 )
@@ -14,7 +16,10 @@ type Policy int
 const (
 	// Private makes the file private as [Check] requires: 0600 on Unix and, on
 	// Windows, a protected DACL for the user and SYSTEM, which needs a
-	// filesystem with ACLs, placed with [Replace].
+	// filesystem with ACLs, placed with [Replace]. Replace keeps the DACL of
+	// the file it replaces, so an existing name must already be private:
+	// WriteFile refuses one that [OpenRead] does not accept. The directory
+	// must be private too, so that nobody else can swap the name in between.
 	Private Policy = iota
 	// Inherited is Private on Unix. On Windows the file keeps the ACL its
 	// folder passes down and is renamed into place, as [os.Rename] does, so
@@ -37,6 +42,12 @@ var (
 // on Windows it is written through. The caller decides whether an existing
 // file may be replaced.
 func WriteFile(dir *os.File, name string, b []byte, p Policy) error {
+	path := filepath.Join(dir.Name(), name)
+	if p == Private {
+		if err := checkExisting(path); err != nil {
+			return err
+		}
+	}
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
 		return err
@@ -57,8 +68,21 @@ func WriteFile(dir *os.File, name string, b []byte, p Policy) error {
 	if err != nil {
 		return err
 	}
-	if err := replace(tmp, filepath.Join(dir.Name(), name), p); err != nil {
+	if err := replace(tmp, path, p); err != nil {
 		return err
 	}
 	return SyncDirectory(dir)
+}
+
+// checkExisting refuses a file at path that OpenRead does not accept as
+// private. A missing file is fine.
+func checkExisting(path string) error {
+	f, err := OpenRead(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }

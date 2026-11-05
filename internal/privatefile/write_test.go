@@ -101,3 +101,35 @@ func TestWriteFileSyncFailure(t *testing.T) {
 		t.Errorf("directory holds %q, want only the file", got)
 	}
 }
+
+// Private refuses to replace a file that is not private, whose DACL Replace
+// would keep on Windows, and leaves it as it was; Inherited replaces it.
+func TestWriteFilePrivateRefusesUnsafeFile(t *testing.T) {
+	d, err := os.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { d.Close() })
+	path := filepath.Join(d.Name(), "state.json")
+	if err := os.WriteFile(path, []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFile(d, "state.json", []byte("new"), Private); err == nil {
+		t.Fatal("WriteFile replaced a file that is not private")
+	}
+	if b, err := os.ReadFile(path); err != nil || string(b) != "old" {
+		t.Errorf("file = %q (%v), want the old content", b, err)
+	}
+	if got := entries(t, d); !slices.Equal(got, []string{"state.json"}) {
+		t.Errorf("directory holds %q, want only the file", got)
+	}
+	if err := WriteFile(d, "state.json", []byte("new"), Inherited); err != nil {
+		t.Fatal(err)
+	}
+	if b, err := os.ReadFile(path); err != nil || string(b) != "new" {
+		t.Errorf("file = %q (%v), want the new content", b, err)
+	}
+}

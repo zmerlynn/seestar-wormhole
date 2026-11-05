@@ -69,3 +69,36 @@ func TestWindowsWriteFileInherited(t *testing.T) {
 		t.Error("no ACE inherited from the folder")
 	}
 }
+
+// A Private write replacing an earlier Private file leaves the native private
+// descriptor, which Replace carries over from the file it replaces.
+func TestWindowsWriteFilePrivateReplace(t *testing.T) {
+	d := privateDir(t)
+	path := filepath.Join(d.Name(), "config.json")
+	for _, content := range []string{"first", "second"} {
+		if err := WriteFile(d, "config.json", []byte(content), Private); err != nil {
+			t.Fatal(err)
+		}
+	}
+	assertPrivateDescriptor(t, descriptor(t, path))
+}
+
+// A Private write refuses to replace an empty file with an inherited DACL,
+// which Replace would keep, and leaves it as it was.
+func TestWindowsWriteFilePrivateRefusesInheritedDACL(t *testing.T) {
+	d := openOrdinary(t)
+	path := filepath.Join(d.Name(), "config.json")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteFile(d, "config.json", []byte("new"), Private); err == nil {
+		t.Fatal("WriteFile replaced a file with an inherited DACL")
+	}
+	if b, err := os.ReadFile(path); err != nil || len(b) != 0 {
+		t.Errorf("file = %q (%v), want it empty", b, err)
+	}
+	control, _, err := descriptor(t, path).Control()
+	if err != nil || control&windows.SE_DACL_PROTECTED != 0 {
+		t.Errorf("control = %x (%v), want the inherited DACL kept", control, err)
+	}
+}
