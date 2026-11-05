@@ -6,7 +6,9 @@ const UXScenarios = "computer,incompatible,http-permission,http-conflict,bind-er
 
 func RequiresRelease(scenario string) bool {
 	switch scenario {
-	case "relaunch", "dark-relaunch", "saved-relaunch", "errors", "http-permission", "http-conflict", "bind-error", "discovery-error":
+	case "relaunch", "dark-relaunch", "saved-relaunch", "errors", "http-permission", "http-conflict", "bind-error", "discovery-error",
+		// The copy scenarios use this network's route; no proxy runs.
+		"copy-close", "copy-quit", "copy-hold", "copy-inuse", "copy-relaunch":
 		return false
 	default:
 		return true

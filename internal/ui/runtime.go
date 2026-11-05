@@ -20,6 +20,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
@@ -143,6 +144,10 @@ func newHTTPServer(handler http.Handler) *http.Server {
 // proxy cleanup and HTTP shutdown; close requests must call quit and wait.
 type windowFunc func(context.Context, string, func(), <-chan struct{}) error
 
+// copyDial is how the copier reaches the telescope; nil is remote.Dial.
+// Only the native check's guitest build sets it, to a fake telescope.
+var copyDial func(ctx context.Context, endpoint string) (remote.Session, error)
+
 func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native bool) (result error) {
 	st, err := openStorage(root)
 	if err != nil {
@@ -220,7 +225,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	handler.copy = copyapp.NewMount(ctx, copyapp.MountOptions{
 		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
 		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Target: handler.copyTarget,
-		Settings: copySaved, Save: copyFile.save,
+		Settings: copySaved, Save: copyFile.save, Dial: copyDial,
 	})
 	activate := make(chan struct{}, 1)
 	if window != nil {

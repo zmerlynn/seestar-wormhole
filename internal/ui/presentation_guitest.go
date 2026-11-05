@@ -24,6 +24,11 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 	if dir == "" || scenario == "" {
 		return errors.New("guitest requires its Go harness")
 	}
+	if copyScenario(scenario) {
+		if err := prepareCopyScenario(root); err != nil {
+			return err
+		}
+	}
 	f := newGUITestRunner()
 	f.scenario = scenario
 	result := make(chan error, 1)

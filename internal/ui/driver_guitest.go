@@ -319,6 +319,9 @@ func (d *guiTestDriver) release() error {
 }
 
 func (d *guiTestDriver) drive() error {
+	if copyScenario(d.scenario) {
+		return d.driveCopy()
+	}
 	if err := d.state("Not connected", false, "setup"); err != nil {
 		return err
 	}
