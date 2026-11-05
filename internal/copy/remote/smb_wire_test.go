@@ -27,6 +27,7 @@ import (
 
 	"github.com/hirochachacha/go-smb2/v2"
 	"github.com/hirochachacha/go-smb2/v2/auth"
+	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 	"github.com/hirochachacha/go-smb2/v2/x/wire"
 )
 
@@ -76,8 +77,10 @@ type peer struct {
 	deny   string
 	// notDir is a name CREATE refuses as not a directory.
 	notDir string
-	// tree, if not zero, is the status TREE_CONNECT fails with.
-	tree uint32
+	// setup and tree, if not zero, are the statuses SESSION_SETUP and
+	// TREE_CONNECT fail with.
+	setup uint32
+	tree  uint32
 	// hold lists commands the peer reads but never answers, from the
 	// first request on. holdNow adds to it later, once Dial has set up the
 	// session. mu guards it after startPeer.
@@ -266,6 +269,9 @@ func (p *peer) respond(req wire.PacketCodec) (wire.Packet, uint32) {
 		return &wire.NegotiateResponse{DialectRevision: wire.SMB210, SecurityMode: wire.SMB2_NEGOTIATE_SIGNING_ENABLED,
 			MaxTransactSize: 65536, MaxReadSize: 65536, MaxWriteSize: 65536}, 0
 	case wire.SMB2_SESSION_SETUP:
+		if p.setup != 0 {
+			return nil, p.setup
+		}
 		// SPNEGO accept-completed for the test mechanism ([RFC 4178] 4.2.2).
 		token, err := asn1.Marshal(struct {
 			State asn1.Enumerated       `asn1:"explicit,tag:0"`
@@ -504,11 +510,87 @@ func TestReachStopsAtTheSession(t *testing.T) {
 		if !slices.Equal(cmds, []wire.Command{wire.SMB2_NEGOTIATE, wire.SMB2_SESSION_SETUP}) {
 			t.Errorf("requests %v, want NEGOTIATE and SESSION_SETUP only", cmds)
 		}
+		// Reach drops its own connection; the peer sees it close before
+		// the test's stop would close it from this side.
+		select {
+		case <-p.done:
+		default:
+			t.Error("Reach left its connection open")
+		}
 	})
 	for _, endpoint := range []string{"", "fixture.invalid", ":445"} {
 		if err := Reach(t.Context(), endpoint); err == nil || !strings.Contains(err.Error(), "is not host:port") {
 			t.Errorf("Reach(%q) = %v, want a refusal before dialing", endpoint, err)
 		}
+	}
+}
+
+// TestReachRefused has the server refuse the session: Reach reports the
+// server's status, names the endpoint, and drops the connection without
+// a LOGOFF.
+func TestReachRefused(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		const logonFailure = 0xc000006d // STATUS_LOGON_FAILURE
+		p := startPeer(t, &peer{setup: logonFailure})
+		defer p.stop()
+		d := newDialer()
+		d.Credentials = testCredentials{}
+		d.TransportDialer = pipeDialer{p.client}
+		err := reach(t.Context(), wireEndpoint, d)
+		var res *protocol.ResponseError
+		if !errors.As(err, &res) || res.Code != logonFailure || !strings.Contains(err.Error(), wireEndpoint) {
+			t.Fatalf("reach = %v, want STATUS_LOGON_FAILURE from %s", err, wireEndpoint)
+		}
+		synctest.Wait()
+		select {
+		case <-p.done:
+		default:
+			t.Error("Reach left the refused connection open")
+		}
+		for _, req := range p.seen() {
+			if c := req.Command(); c != wire.SMB2_NEGOTIATE && c != wire.SMB2_SESSION_SETUP {
+				t.Errorf("Reach sent %v after the refusal", c)
+			}
+		}
+	})
+}
+
+// TestReachCanceled cancels Reach while the server sits on each step of
+// the handshake.
+func TestReachCanceled(t *testing.T) {
+	for _, cmd := range []wire.Command{wire.SMB2_NEGOTIATE, wire.SMB2_SESSION_SETUP} {
+		t.Run(cmd.String(), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				p := startPeer(t, &peer{hold: []wire.Command{cmd}})
+				defer p.stop()
+				d := newDialer()
+				d.Credentials = testCredentials{}
+				d.TransportDialer = pipeDialer{p.client}
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				done := make(chan error, 1)
+				go func() { done <- reach(ctx, wireEndpoint, d) }()
+				p.awaitHeld(t)
+				cancel()
+				select {
+				case err := <-done:
+					if !errors.Is(err, context.Canceled) {
+						t.Errorf("reach = %v, want context.Canceled", err)
+					}
+				case <-time.After(time.Second):
+					t.Fatal("Reach still blocked 1s after cancellation")
+				}
+				synctest.Wait()
+				select {
+				case <-p.done:
+				default:
+					t.Error("Reach left the canceled connection open")
+				}
+				if n := p.logoffs(); n != 0 {
+					t.Errorf("Reach sent %d LOGOFF", n)
+				}
+			})
+		})
 	}
 }
 
