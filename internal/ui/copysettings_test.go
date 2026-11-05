@@ -41,7 +41,7 @@ func TestCopySettingsVersionOneFixture(t *testing.T) {
 
 func TestCopySettingsAbsentMembersDefault(t *testing.T) {
 	st := testStorage(t)
-	for _, body := range []string{`{"version":1}`, `{}`, `{"version":1,"excludes":null,"includes":null}`} {
+	for _, body := range []string{`{"version":1}`, `{"version":1,"excludes":null,"includes":null}`} {
 		if err := st.writeBytes(copyName, []byte(body)); err != nil {
 			t.Fatal(err)
 		}
@@ -109,7 +109,8 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 // A copy.json this version can't read stops the app at startup, and is
 // left as it was.
 func TestCopySettingsRefusedStopsStartup(t *testing.T) {
-	for _, body := range []string{`{"version":2,"future":{"keep":[1,2]}}`, `{"version":1,"interval_minutes":"5"}`, `[1]`, `{"version":1`} {
+	for _, body := range []string{`{"version":2,"future":{"keep":[1,2]}}`, `{"version":1,"interval_minutes":"5"}`, `[1]`, `{"version":1`,
+		`{}`, `{"folder":"/synthetic/Seestar"}`, `null`} {
 		t.Run(body, func(t *testing.T) {
 			s := testServer(t)
 			if err := s.storage.writeBytes(copyName, []byte(body)); err != nil {
