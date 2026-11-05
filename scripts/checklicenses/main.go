@@ -42,6 +42,15 @@ func build(dir string) ([]string, error) {
 }
 
 func checkExecutable(path string) error {
+	if runtime.GOOS != "windows" {
+		stat, err := os.Stat(path)
+		if err != nil {
+			return err
+		}
+		if stat.Mode().Perm()&0o111 == 0 {
+			return fmt.Errorf("%s is not executable (mode %v); restore its execute permission, which artifact transfer drops", path, stat.Mode().Perm())
+		}
+	}
 	info, err := buildinfo.ReadFile(path)
 	if err != nil {
 		return err

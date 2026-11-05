@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"testing"
@@ -38,5 +41,28 @@ func TestShippedPrograms(t *testing.T) {
 	}
 	if err := run(paths); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// A Go executable without its execute permission, as artifact transfer
+// leaves one, is refused by name rather than failing to start.
+func TestNotExecutable(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no execute permission bits")
+	}
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(self)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "downloaded")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run([]string{path}); err == nil || !strings.Contains(err.Error(), path+" is not executable (mode -rw-r--r--)") {
+		t.Fatalf("run(0644 executable) = %v, want it refused as not executable", err)
 	}
 }
