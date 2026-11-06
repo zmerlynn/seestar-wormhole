@@ -540,6 +540,19 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// The frame is named for assistive technology without a title, which
+// would show as a tooltip over the list.
+test("Browse's frame is named The telescope's files, with no title", async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const browse = page.locator('#b-frame');
+  await expect(browse).not.toHaveAttribute('title');
+  await expect(browse).toHaveAccessibleName("The telescope's files");
+  await expect(page.getByRole('tabpanel', { name: 'Browse' }).locator('iframe[title]')).toHaveCount(0);
+});
+
 test('Browse marks what Leave out leaves out, with a key', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openCopy(page, app.url);
