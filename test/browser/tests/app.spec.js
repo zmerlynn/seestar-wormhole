@@ -833,18 +833,27 @@ async function restyle(target, layout) {
 }
 
 // fits checks that the page does not scroll sideways and that every
-// visible control is inside the window once scrolled to.
+// visible control is inside the window once scrolled to. It measures in
+// one pass in the page: a round trip per control made the layouts slow.
 async function fits(page) {
   const width = page.viewportSize().width;
-  const [scrollWidth, clientWidth] = await page.evaluate(
-    () => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+  const [scrollWidth, clientWidth, boxes] = await page.evaluate(() => {
+    const boxes = [];
+    for (const el of document.querySelectorAll('button, input, select, textarea, iframe')) {
+      // Visible as Playwright has it: a box, and not visibility: hidden.
+      const shown = el.getBoundingClientRect();
+      if (!shown.width || !shown.height || getComputedStyle(el).visibility === 'hidden') continue;
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      const box = el.getBoundingClientRect();
+      boxes.push({ name: el.id || el.textContent, x: box.x, right: box.right });
+    }
+    return [document.documentElement.scrollWidth, document.documentElement.clientWidth, boxes];
+  });
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-  for (const control of await page.locator('button, input, select, textarea, iframe').filter({ visible: true }).all()) {
-    await control.scrollIntoViewIfNeeded();
-    const box = await control.boundingBox();
-    const name = await control.evaluate((el) => el.id || el.textContent);
-    expect(box.x, name).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width, name).toBeLessThanOrEqual(width + 0.5);
+  expect(boxes.length).toBeGreaterThan(0);
+  for (const { name, x, right } of boxes) {
+    expect(x, name).toBeGreaterThanOrEqual(0);
+    expect(right, name).toBeLessThanOrEqual(width + 0.5);
   }
 }
 
