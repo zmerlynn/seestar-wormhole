@@ -107,7 +107,7 @@ async function checkCopySetup(st) {
   copyRender(running);
   copyAssert(!$('copy-chip').hidden && $('copy-chip').textContent === 'Copying' && $('copy-chip').className === 'chip on', 'the copy chip is hidden while copying');
   selectTab('connection');
-  $('copy-chip').dispatchEvent(new Event('click'));
+  $('copy-chip').dispatchEvent({type: 'click'});
   copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'the copy chip did not open Copy');
   render(st.locked);
   copyRender(running);
