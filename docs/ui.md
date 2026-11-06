@@ -198,7 +198,14 @@ nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent
 sessions on the telescope, and **My copies have moved or the drive is
 offline** checks only the app's record of each copy, as `--trust-state`
-does. **Delete N files…** asks once more. The delete then lists the checked
+does. **Keep on the telescope** and **Only free up** take one pattern per
+line, as `delete`'s [`--exclude` and `--include`](copy-reference.md#selection):
+a file that matches Keep on the telescope is never deleted, and when Only free
+up is not empty, only files that match it are. They are separate from Copy's
+**Leave out** and **Only copy**, which don't change what is deleted. The
+telescope's logs, scratch and system files are never deleted, as `delete`
+leaves them out by default. A Copy Save that changes the folder discards a
+preview. **Delete N files…** asks once more. The delete then lists the checked
 folders again, and only those, saying **Checking N files again before
 deleting…**, and proves each file again just before it removes it: a file
 that changed or went away since the preview is kept. **Stop** ends a delete
@@ -401,11 +408,12 @@ options, never on load.
 | `interval_minutes` | `5` |
 | `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
-| `skip_built_in` | `true` |
+| `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
 | `start_copying` | `false` |
 | `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range stops the app at startup. |
 | `older_than_days` | `7` |
 | `trust_state` | `false` |
+| `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
 
 The telescope's address is not in it; it comes from the route in `config.json`.
 

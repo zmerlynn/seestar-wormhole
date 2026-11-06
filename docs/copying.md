@@ -47,7 +47,9 @@ pick. See [Browse](ui.md#browse).
 copied. Copy first, make your own backup or export of the folder, then
 **Preview what to delete**. It lists, per folder, the files whose copy in your
 folder still matches and that haven't changed on the telescope, 7 days old or
-more by default. Uncheck a folder to keep it. Nothing is deleted until you
+more by default. **Keep on the telescope** and **Only free up** choose what
+it may delete, with the same patterns as Copy's; they are separate from Copy's
+**Leave out** and **Only copy**. Uncheck a folder to keep it. Nothing is deleted until you
 choose **Delete N files…** and confirm. Avoid it while the telescope is busy.
 See [Free up space](ui.md#free-up-space) and the
 [proof modes](copy-reference.md#proof-modes).
