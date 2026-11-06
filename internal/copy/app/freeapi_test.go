@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
@@ -248,5 +249,102 @@ func TestFreeSaveClears(t *testing.T) {
 			t.Fatal(w.Body)
 		}
 		e.s.free.st = freeStatus{state: frNothing, preview: &engine.DeleteResult{}}
+	}
+}
+
+// A preview never deletes a file that the Find options saved since protect:
+// a Find refused while a check runs saves nothing, and a Find that saves
+// new patterns takes the old preview away, even when its check can't
+// start.
+func TestFreeFindPatternsGuard(t *testing.T) {
+	for _, field := range []string{"free_excludes", "free_includes"} {
+		t.Run(field, func(t *testing.T) {
+			files := newFreeEnv(t, "MyWorks/a.jpg", "Other/b.jpg")
+			files.copy()
+			e := newAppEnv(t, &files.set)
+			e.s.free.stateDir = files.stateDir
+			e.s.free.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) { return files.share() }
+			release := make(chan struct{})
+			e.s.free.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+				return files.share()
+			}
+			wait := func() {
+				t.Helper()
+				e.s.free.mu.Lock()
+				done := e.s.free.done
+				e.s.free.mu.Unlock()
+				if done != nil {
+					<-done
+				}
+			}
+			protect := `{"action":"find","days":"0","trust":true,"` + field + `":["/Other"]}`
+			kept := map[string]string{"free_excludes": "Other/b.jpg", "free_includes": "MyWorks/a.jpg"}[field]
+
+			// Refused while a check runs: nothing is saved.
+			if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true}`); w.Code != 200 {
+				t.Fatalf("first find: %d %s", w.Code, w.Body)
+			}
+			saves := len(e.saves())
+			if w := e.post("/copy/api/delete", protect); w.Code != 409 || !strings.Contains(w.Body.String(), "a check or a delete is already running") {
+				t.Fatalf("busy find: %d %s", w.Code, w.Body)
+			}
+			if got := e.saves(); len(got) != saves {
+				t.Fatalf("a refused find saved %+v", got[len(got)-1])
+			}
+			e.s.mu.Lock()
+			set := e.s.file.settings
+			e.s.mu.Unlock()
+			if len(set.FreeExcludes)+len(set.FreeIncludes) != 0 {
+				t.Fatalf("a refused find changed the options: %+v", set)
+			}
+			close(release)
+			wait()
+			v := e.s.free.view()
+			if v.State != frPreview {
+				t.Fatalf("first preview: %+v", v)
+			}
+
+			// Saved, but the new check can't start: the old preview is gone.
+			e.mu.Lock()
+			e.lost = errors.New("the telescope is not connected")
+			e.mu.Unlock()
+			if w := e.post("/copy/api/delete", protect); w.Code != 409 {
+				t.Fatalf("find without a target: %d %s", w.Code, w.Body)
+			}
+			if got := e.saves(); len(got) == saves {
+				t.Fatal("the new patterns were not saved")
+			}
+			e.mu.Lock()
+			e.lost = nil
+			e.mu.Unlock()
+			w := e.post("/copy/api/delete", fmt.Sprintf(`{"action":"delete","id":%d,"folders":["MyWorks","Other"]}`, v.ID))
+			if w.Code != 409 || !strings.Contains(w.Body.String(), "Preview again before deleting.") {
+				t.Fatalf("delete with the old preview: %d %s", w.Code, w.Body)
+			}
+			wait()
+			if !files.has("MyWorks/a.jpg") || !files.has("Other/b.jpg") {
+				t.Fatal("the old preview deleted a file")
+			}
+
+			// A preview with the saved patterns spares the protected file.
+			if w := e.post("/copy/api/delete", protect); w.Code != 200 {
+				t.Fatalf("find: %d %s", w.Code, w.Body)
+			}
+			wait()
+			v = e.s.free.view()
+			w = e.post("/copy/api/delete", fmt.Sprintf(`{"action":"delete","id":%d,"folders":["MyWorks","Other"]}`, v.ID))
+			if w.Code != 200 {
+				t.Fatalf("delete: %d %s", w.Code, w.Body)
+			}
+			wait()
+			if !files.has(kept) {
+				t.Fatalf("deleted %s, which the saved %s protect", kept, field)
+			}
+		})
 	}
 }

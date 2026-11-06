@@ -548,6 +548,13 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			conflict("Couldn't preview: " + errNotSetUp.Error() + ".")
 			return
 		}
+		// A Find refused as busy saves nothing: the running check keeps
+		// the options it started with.
+		if s.free.running() {
+			s.mu.Unlock()
+			conflict("Couldn't preview: " + errFreeBusy.Error() + ".")
+			return
+		}
 		set, old := s.file.settings, s.file.settings
 		set.OlderThanDays, set.TrustState = days, in.Trust
 		set.FreeExcludes, set.FreeIncludes = excludes, includes
@@ -559,6 +566,9 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 				conflict("Couldn't save the options: " + reason(err) + ". Try again.")
 				return
 			}
+			// The preview shown was checked with the old options, so it
+			// goes before the new check starts, even if that fails.
+			s.free.clear()
 		}
 		var t Target
 		if set, t, err = s.resolve(set); err == nil {

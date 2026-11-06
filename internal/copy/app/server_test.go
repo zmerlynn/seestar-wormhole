@@ -67,6 +67,7 @@ type appEnv struct {
 
 	mu       sync.Mutex
 	endpoint string     // the target's
+	lost     error      // what finding the target fails with
 	saved    []Settings // each Save, in order
 	saveErr  error      // what Save fails with
 }
@@ -82,7 +83,7 @@ func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 		Target: func() (Target, error) {
 			e.mu.Lock()
 			defer e.mu.Unlock()
-			return Target{Endpoint: e.endpoint}, nil
+			return Target{Endpoint: e.endpoint}, e.lost
 		},
 		Dial: e.d.dial,
 		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
