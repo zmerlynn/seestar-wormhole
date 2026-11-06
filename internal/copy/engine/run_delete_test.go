@@ -478,6 +478,9 @@ func TestDeleteOnlyClashOutside(t *testing.T) {
 	for _, only := range []map[string]bool{nil, {"MyWorks/M 31/a.jpg": true}} {
 		s := newShare(t)
 		put(t, s.dir, "MyWorks/M 31/a.jpg", "a")
+		if _, err := os.Stat(filepath.Join(s.dir, "MyWorks", "m 31")); err == nil {
+			t.Skip("the temporary folder ignores case, so MyWorks/m 31 is MyWorks/M 31 and nothing clashes")
+		}
 		put(t, s.dir, "MyWorks/m 31/b.jpg", "b")
 		o := s.options()
 		o.IgnoreState, o.Only = true, only
