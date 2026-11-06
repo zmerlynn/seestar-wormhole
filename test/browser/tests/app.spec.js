@@ -548,6 +548,11 @@ test('Browse marks what Leave out leaves out, with a key', async ({ page, startA
   // The key is a list: each status's badge, then what it means.
   const key = frame(page).getByRole('list', { name: 'Status key' });
   await expect(key).toBeVisible();
+  // It sits in a box of its own, headed Key, apart from the table.
+  const box = frame(page).locator('#key');
+  await expect(box.getByRole('heading', { name: 'Key', exact: true })).toBeVisible();
+  const table = await frame(page).locator('#list').boundingBox();
+  expect((await box.boundingBox()).y - (table.y + table.height)).toBeGreaterThanOrEqual(16);
   await expect(key.getByRole('listitem')).toHaveText(['new: not copied yet', 'copied: already copied', 'changed: differs from the copy', 'left out: not copied by the selection']);
   const keyBadge = (name) => key.getByRole('listitem').filter({ hasText: name + ':' }).locator('.badge');
   const badge = (name) => frame(page).locator('#list tbody tr').filter({ has: frame(page).getByText(name, { exact: true }) }).locator('.badge');
@@ -588,6 +593,14 @@ test('Browse marks what Leave out leaves out, with a key', async ({ page, startA
     expect(await style(badge('00-notes.txt'), 'borderTopStyle')).toBe('solid');
     expect(muted).not.toBe(await style(badge('00-notes.txt'), 'color'));
     expect(contrast(muted, bg), colorScheme).toBeGreaterThanOrEqual(4.5);
+    // The key's box is bordered and tinted, and its muted text stays
+    // readable on the tint.
+    const tint = await style(box, 'backgroundColor');
+    expect(tint, colorScheme).not.toBe(bg);
+    expect(await style(box, 'borderTopStyle')).toBe('solid');
+    expect(contrast(await style(box, 'borderTopColor'), tint), colorScheme).toBeGreaterThan(1.3);
+    expect(contrast(await style(keyBadge('left out'), 'color'), tint), colorScheme).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(await style(key, 'color'), tint), colorScheme).toBeGreaterThanOrEqual(4.5);
   }
 });
 
