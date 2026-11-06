@@ -826,8 +826,9 @@ const freeShows = {
   'x-done': ['done', 'stopped', 'failed']
 };
 const freeBox = {checkfail: 'notice err', failed: 'notice err', nothing: 'notice', stopped: 'notice', done: 'notice ok'};
-// The shown state, the preview's id, options and groups with their boxes.
-let freeShown = {state: '', id: 0, kept: '', groups: [], boxes: [], trust: false};
+// The shown state and stage, the preview's id, options and groups with
+// their boxes.
+let freeShown = {state: '', stage: '', id: 0, kept: '', groups: [], boxes: [], trust: false};
 let freePressed = null; // as pressed, for this tab
 // byteSize words a byte count as the server does: decimal units, with one
 // decimal below 100.
@@ -921,8 +922,11 @@ function renderFree(v) {
     listItems('x-klist', v.kept_list || [], pathItem);
   }
   $('x-kept').hidden = !v.kept || !v.kept_list || !['preview', 'nothing', 'done'].includes(st);
-  if (st !== freeShown.state) put('x-live', v.title);
+  // Checking the files again is a stage of its own before Deleting.
+  const stage = st + (v.recheck ? '-recheck' : '');
+  if (stage !== freeShown.stage) put('x-live', v.title);
   freeShown.state = st;
+  freeShown.stage = stage;
   clearable();
   // As for Copy: focus moves to the new state's heading only when the
   // button pressed went away.

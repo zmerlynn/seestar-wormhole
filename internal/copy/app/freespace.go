@@ -153,7 +153,7 @@ func (f *freer) find(set Settings, t Target) error {
 	if err != nil {
 		return err
 	}
-	o.DryRun, o.Hooks = true, f.hooks()
+	o.DryRun, o.Hooks = true, f.hooks(nil)
 	o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
 		if err := f.still(t); err != nil {
 			return nil, err
@@ -188,10 +188,10 @@ func (f *freer) confirm(id int, folders []string, now Target) error {
 	if st.state != frPreview || st.id != id || st.target != now {
 		return errStale
 	}
-	only := map[string]bool{}
+	only, checked := map[string]bool{}, map[string]bool{}
 	for _, d := range st.preview.Files {
-		if d.Outcome == engine.FileDeleted && slices.Contains(folders, path.Dir(d.Path)) {
-			only[d.Path] = true
+		if dir := path.Dir(d.Path); d.Outcome == engine.FileDeleted && slices.Contains(folders, dir) {
+			only[d.Path], checked[dir] = true, true
 		}
 	}
 	if len(only) == 0 {
@@ -201,7 +201,7 @@ func (f *freer) confirm(id int, folders []string, now Target) error {
 	if err != nil {
 		return err
 	}
-	o.Only, o.Hooks = only, f.hooks()
+	o.Only, o.Hooks = only, f.hooks(checked)
 	o.OpenRemover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
 		if err := f.still(st.target); err != nil {
 			return nil, err
@@ -213,7 +213,7 @@ func (f *freer) confirm(id int, folders []string, now Target) error {
 	}
 	// run checks again that the preview is still the one shown: a Save
 	// since the check above has cleared it.
-	next := freeStatus{state: frDeleting, set: st.set, target: st.target, total: len(only)}
+	next := freeStatus{state: frDeleting, set: st.set, target: st.target, total: len(only), rechecking: true}
 	return f.run(next, o, make(chan struct{}), id, func(r engine.DeleteResult, err error, _ bool) {
 		st := &f.st
 		st.result, st.err, st.current = r, err, ""
@@ -238,18 +238,24 @@ func (f *freer) still(t Target) error {
 
 // hooks keep a preview's or a delete's status: its counts, and in
 // current the one line saying what it is looking at, cleared once that is
-// done. The title alone is announced.
-func (f *freer) hooks() engine.Hooks {
+// done. The title alone is announced. A delete passes the folders checked:
+// its listing then names only those, without a count.
+func (f *freer) hooks(checked map[string]bool) engine.Hooks {
 	return engine.Hooks{
 		Listed: func(p string, n int) {
 			f.mu.Lock()
 			defer f.mu.Unlock()
-			f.st.current = listingLine(p) + " (" + many(n, "folder", "folders") + ")"
+			switch {
+			case checked == nil:
+				f.st.current = listingLine(p) + " (" + many(n, "folder", "folders") + ")"
+			case checked[p]:
+				f.st.current = listingLine(p)
+			}
 		},
 		Checked: func(n int) {
 			f.mu.Lock()
 			defer f.mu.Unlock()
-			f.st.files, f.st.current = n, ""
+			f.st.files, f.st.current, f.st.rechecking = n, "", false
 		},
 		Hashing: func(p string) {
 			f.mu.Lock()

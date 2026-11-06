@@ -196,6 +196,11 @@ test('a check names the folder or file it is looking at, and announces only its 
   await expect(page.locator('#x-busy')).toBeHidden();
   await expect(live).toHaveText('Checking files…');
 
+  // A delete first checks the checked files again, a stage of its own.
+  f = { state: 'deleting', recheck: true, title: 'Checking 2 files again before deleting…', progress: { done: 0, total: 2 }, file: 'Listing MyWorks/M 31…' };
+  await expect(title(page)).toHaveText('Checking 2 files again before deleting…');
+  await expect(live).toHaveText('Checking 2 files again before deleting…');
+  await expect(file).toHaveText('Listing MyWorks/M 31…');
   f = { state: 'deleting', title: 'Deleting 1 of 2…', progress: { done: 0, total: 2 }, file: 'Checking MyWorks/M 31/a.fit…' };
   await expect(live).toHaveText('Deleting 1 of 2…');
   await expect(file).toHaveText('Checking MyWorks/M 31/a.fit…');

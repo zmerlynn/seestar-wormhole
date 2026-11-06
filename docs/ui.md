@@ -198,8 +198,11 @@ nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent
 sessions on the telescope, and **My copies have moved or the drive is
 offline** checks only the app's record of each copy, as `--trust-state`
-does. **Delete N files…** asks once more; **Stop** ends a delete that is
-running.
+does. **Delete N files…** asks once more. The delete then lists the checked
+folders again, and only those, saying **Checking N files again before
+deleting…**, and proves each file again just before it removes it: a file
+that changed or went away since the preview is kept. **Stop** ends a delete
+that is running.
 
 ## Stopping and quitting
 

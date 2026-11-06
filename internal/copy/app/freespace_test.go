@@ -215,6 +215,54 @@ func TestFreePreviewAndDelete(t *testing.T) {
 	}
 }
 
+// watcher is a share that calls seen after each folder its walk decides on.
+type watcher struct {
+	*remote.FakeDir
+	seen func()
+}
+
+func (w watcher) Walk(ctx context.Context, skip func(string, bool) bool, kept func(remote.Entry)) ([]remote.Entry, error) {
+	return w.FakeDir.Walk(ctx, func(p string, dir bool) bool {
+		s := skip(p, dir)
+		if dir {
+			w.seen()
+		}
+		return s
+	}, kept)
+}
+
+// A delete first says it is checking the checked files again, and while it
+// does, its status names no folder outside the ones checked.
+func TestFreeRecheckChecked(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/M 42/a.jpg", "MyWorks/M 42/b.jpg", "MyWorks/M 31/c.jpg", "Other/d.jpg", "Other/deep/e.jpg")
+	e.copy()
+	v := e.preview()
+	var seen []string
+	e.f.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+		d, err := e.share()
+		return watcher{d, func() {
+			v := e.f.view()
+			seen = append(seen, v.Title+" | "+v.File)
+		}}, err
+	}
+	if err := e.f.confirm(v.ID, []string{"MyWorks/M 42"}, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.wait(frDone, frStopped, frFailed); d.Title != "Deleted 2 files and removed 1 empty folder." {
+		t.Errorf("done: %+v", d)
+	}
+	// The walk reaches MyWorks, MyWorks/M 31, MyWorks/M 42 and Other, in
+	// the share's order.
+	if len(seen) != 4 || !slices.Contains(seen, "Checking 2 files again before deleting… | Listing MyWorks/M 42…") {
+		t.Errorf("while checking again: %q", seen)
+	}
+	for _, s := range seen {
+		if s != "Checking 2 files again before deleting… | " && s != "Checking 2 files again before deleting… | Listing MyWorks/M 42…" {
+			t.Errorf("while checking again: %q", s)
+		}
+	}
+}
+
 // Delete is refused for a preview that is not the current one, and for
 // no folder checked.
 func TestFreeConfirmRefused(t *testing.T) {

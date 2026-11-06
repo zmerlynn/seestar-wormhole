@@ -41,7 +41,8 @@ type freeStatus struct {
 	preview *engine.DeleteResult
 	id      int
 	// Deleting, and how it ended.
-	total    int // the files Only holds
+	total      int  // the files Only holds
+	rechecking bool // the checked files are listed again, before any is deleted
 	deleted  int
 	bytes    int64
 	current  string // Checking and Deleting: what the run is looking at, or the last file deleted
@@ -60,6 +61,7 @@ type freeView struct {
 	Progress *freeBar      `json:"progress,omitempty"`
 	File     string        `json:"file,omitempty"`
 	Stopping bool          `json:"stopping,omitzero"`
+	Recheck  bool          `json:"recheck,omitzero"` // Deleting: the checked files are listed again first
 	ID       int           `json:"id,omitzero"` // the preview's
 	Groups   []folderGroup `json:"groups,omitempty"`
 	Trust    bool          `json:"trust,omitzero"` // the preview's proof is the records alone
@@ -157,6 +159,10 @@ func (st *freeStatus) view() freeView {
 		v.Kept, v.KeptList = keptSummary(st.preview.Files, days)
 	case frDeleting:
 		v.Title = fmt.Sprintf("Deleting %s of %s…", num(min(st.deleted+1, st.total)), num(st.total))
+		if st.rechecking {
+			v.Title = "Checking " + many(st.total, "file", "files") + " again before deleting…"
+			v.Recheck = true
+		}
 		v.Progress = &freeBar{Done: int64(st.deleted), Total: int64(st.total)}
 		v.File = st.current
 		v.Stopping = st.stopping

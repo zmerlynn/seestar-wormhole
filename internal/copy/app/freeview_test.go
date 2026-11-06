@@ -40,6 +40,10 @@ func TestFreeWording(t *testing.T) {
 					{"d", "kept: newer than 7 days"}}}},
 		{"deleting", freeStatus{state: frDeleting, deleted: 2, total: 5, current: "Last deleted: MyWorks/b.jpg"},
 			freeView{Title: "Deleting 3 of 5…", Progress: &freeBar{Done: 2, Total: 5}, File: "Last deleted: MyWorks/b.jpg"}},
+		{"checking again", freeStatus{state: frDeleting, total: 1204, rechecking: true, current: "Listing MyWorks/M 31…"},
+			freeView{Title: "Checking 1,204 files again before deleting…", Progress: &freeBar{Done: 0, Total: 1204}, File: "Listing MyWorks/M 31…", Recheck: true}},
+		{"checking one again", freeStatus{state: frDeleting, total: 1, rechecking: true},
+			freeView{Title: "Checking 1 file again before deleting…", Progress: &freeBar{Done: 0, Total: 1}, Recheck: true}},
 		{"deleting the first", freeStatus{state: frDeleting, total: 5},
 			freeView{Title: "Deleting 1 of 5…", Progress: &freeBar{Done: 0, Total: 5}}},
 		{"failed after some", freeStatus{state: frFailed, deleted: 2, err: refused, result: engine.DeleteResult{Files: []engine.DeleteFile{
@@ -63,7 +67,7 @@ func TestFreeWording(t *testing.T) {
 func TestFreeHooks(t *testing.T) {
 	for _, state := range []string{frChecking, frDeleting} {
 		f := &freer{st: freeStatus{state: state}}
-		h := f.hooks()
+		h := f.hooks(nil)
 		for _, c := range []struct {
 			call func()
 			want string
@@ -81,6 +85,28 @@ func TestFreeHooks(t *testing.T) {
 			if got := f.view().File; got != c.want {
 				t.Errorf("%s: got %q, want %q", state, got, c.want)
 			}
+		}
+	}
+}
+
+// A delete's listing names only the folders checked, without a count, and
+// its title says it is checking them again until the listing is done.
+func TestFreeHooksChecked(t *testing.T) {
+	f := &freer{st: freeStatus{state: frDeleting, total: 2, rechecking: true}}
+	h := f.hooks(map[string]bool{"MyWorks/M 31": true})
+	for _, c := range []struct {
+		call        func()
+		title, file string
+	}{
+		{func() { h.Listed("MyWorks", 1) }, "Checking 2 files again before deleting…", ""},
+		{func() { h.Listed("MyWorks/M 31", 2) }, "Checking 2 files again before deleting…", "Listing MyWorks/M 31…"},
+		{func() { h.Listed("Other", 3) }, "Checking 2 files again before deleting…", "Listing MyWorks/M 31…"},
+		{func() { h.Checked(2) }, "Deleting 1 of 2…", ""},
+		{func() { h.Deleted("MyWorks/M 31/a.fit", 3) }, "Deleting 2 of 2…", "Last deleted: MyWorks/M 31/a.fit"},
+	} {
+		c.call()
+		if v := f.view(); v.Title != c.title || v.File != c.file {
+			t.Errorf("got %q / %q, want %q / %q", v.Title, v.File, c.title, c.file)
 		}
 	}
 }
