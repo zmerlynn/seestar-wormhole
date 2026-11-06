@@ -353,10 +353,12 @@ type input struct {
 	Once         bool     `json:"once"`
 	Action       string   `json:"action"` // the copy and delete APIs'
 	// The delete API's: Find's options, and Delete's preview and folders.
-	Days    string   `json:"days"`
-	Trust   bool     `json:"trust"`
-	ID      int      `json:"id"`
-	Folders []string `json:"folders"`
+	Days         string   `json:"days"`
+	Trust        bool     `json:"trust"`
+	FreeExcludes []string `json:"free_excludes"` // the box's lines
+	FreeIncludes []string `json:"free_includes"`
+	ID           int      `json:"id"`
+	Folders      []string `json:"folders"`
 }
 
 func (s *server) status(w http.ResponseWriter) {
@@ -443,6 +445,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	old, wasSetUp := s.file.settings, s.setUp()
 	// The Free up space options are saved by Find, not by this form.
 	set.OlderThanDays, set.TrustState = old.OlderThanDays, old.TrustState
+	set.FreeExcludes, set.FreeIncludes = old.FreeExcludes, old.FreeIncludes
 	if err := s.file.save(set); err != nil {
 		s.mu.Unlock()
 		s.log.Error("save settings", "err", err)
@@ -453,11 +456,15 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		return
 	}
 	// A new selection replaces browse too, which shows what it leaves out.
+	// Free up space's preview depends on the folder alone: it has its own
+	// patterns.
 	changed := !wasSetUp || old.Folder != set.Folder ||
 		!slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn
+	if !wasSetUp || old.Folder != set.Folder {
+		s.free.clear()
+	}
 	var oldSessions *browse.Sessions
 	if changed {
-		s.free.clear()
 		s.preview.discard()
 		oldSessions = s.sessions
 		s.browse, s.sessions = s.newBrowse(set)
@@ -513,9 +520,21 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 	}
 	switch in.Action {
 	case "find":
+		errs := map[string]string{}
 		days, err := strconv.Atoi(strings.TrimSpace(in.Days))
 		if err != nil || days < 0 || days > maxDays {
-			localhttp.Respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"days": "Enter a whole number of days, 0 or more."}})
+			errs["days"] = "Enter a whole number of days, 0 or more."
+		}
+		excludes, msg := checkPatterns(in.FreeExcludes, "preview")
+		if msg != "" {
+			errs["free_excludes"] = msg
+		}
+		includes, msg := checkPatterns(in.FreeIncludes, "preview")
+		if msg != "" {
+			errs["free_includes"] = msg
+		}
+		if len(errs) > 0 {
+			localhttp.Respond(w, http.StatusBadRequest, fieldErrors{errs})
 			return
 		}
 		// Holding s.admit keeps a Save or a change of endpoint from
@@ -531,7 +550,9 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		}
 		set, old := s.file.settings, s.file.settings
 		set.OlderThanDays, set.TrustState = days, in.Trust
-		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState {
+		set.FreeExcludes, set.FreeIncludes = excludes, includes
+		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState ||
+			!slices.Equal(set.FreeExcludes, old.FreeExcludes) || !slices.Equal(set.FreeIncludes, old.FreeIncludes) {
 			if err := s.file.save(set); err != nil {
 				s.mu.Unlock()
 				s.log.Error("save settings", "err", err)

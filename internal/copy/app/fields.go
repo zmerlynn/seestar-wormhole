@@ -73,7 +73,7 @@ func checkInput(in input) (Settings, map[string]string) {
 	}
 	set.FilesAtOnce = n
 	for field, lines := range map[string][]string{"excludes": in.Excludes, "includes": in.Includes} {
-		patterns, msg := checkPatterns(lines)
+		patterns, msg := checkPatterns(lines, "save")
 		if msg != "" {
 			errs[field] = msg
 		}
@@ -89,8 +89,9 @@ func checkInput(in input) (Settings, map[string]string) {
 // checkPatterns checks a pattern box's lines with the CLI's parser. Blank
 // lines are skipped but counted, so the line number in a message is the
 // one the user sees. It returns the patterns, or a message for the first
-// line in error.
-func checkPatterns(lines []string) ([]string, string) {
+// line in error, which says to correct it and then press the button verb
+// names.
+func checkPatterns(lines []string, verb string) ([]string, string) {
 	patterns := []string{}
 	for i, line := range lines {
 		line = strings.TrimSuffix(line, "\r")
@@ -98,7 +99,7 @@ func checkPatterns(lines []string) ([]string, string) {
 			continue
 		}
 		if _, err := engine.ParsePattern(line); err != nil {
-			return nil, fmt.Sprintf("Line %d: %s. Correct this pattern and save again.", i+1, err)
+			return nil, fmt.Sprintf("Line %d: %s. Correct this pattern and %s again.", i+1, err, verb)
 		}
 		patterns = append(patterns, line)
 	}

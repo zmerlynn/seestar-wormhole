@@ -31,7 +31,8 @@ func TestCopySettingsVersionOneFixture(t *testing.T) {
 		t.Fatalf("load = %v, %v", got, err)
 	}
 	want := copyapp.Settings{Version: 1, Folder: "/synthetic/Seestar", IntervalMinutes: 15, Excludes: []string{"Video", "/Preview"},
-		Includes: []string{"MyWorks"}, StartCopying: true, FilesAtOnce: 4, OlderThanDays: 30, TrustState: true}
+		Includes: []string{"MyWorks"}, StartCopying: true, FilesAtOnce: 4, OlderThanDays: 30, TrustState: true,
+		FreeExcludes: []string{}, FreeIncludes: []string{}}
 	if !reflect.DeepEqual(*got, want) {
 		t.Fatalf("settings = %+v; want %+v", *got, want)
 	}
@@ -87,6 +88,44 @@ func TestCopySettingsAbsentMembersDefault(t *testing.T) {
 	}
 }
 
+// Free up space's patterns load as saved and survive a save; a file
+// without them, or with them null, has both empty.
+func TestCopySettingsFreePatterns(t *testing.T) {
+	st := testStorage(t)
+	for _, body := range []string{`{"version":1,"excludes":["Video"]}`, `{"version":1,"excludes":["Video"],"free_excludes":null,"free_includes":null}`} {
+		if err := st.writeBytes(copyName, []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+		if _, got, err := loadCopySettings(st); err != nil || got == nil || got.FreeExcludes == nil || len(got.FreeExcludes) != 0 || got.FreeIncludes == nil || len(got.FreeIncludes) != 0 {
+			t.Errorf("%s = %+v, %v", body, got, err)
+		}
+	}
+	body := `{"version":1,"excludes":["Video"],"free_excludes":["/MyWorks/M 31","*.mp4"],"free_includes":["/MyWorks"],"future_flag":true}`
+	if err := st.writeBytes(copyName, []byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	c, set, err := loadCopySettings(st)
+	if err != nil || set == nil {
+		t.Fatalf("load = %+v, %v", set, err)
+	}
+	if !reflect.DeepEqual(set.FreeExcludes, []string{"/MyWorks/M 31", "*.mp4"}) || !reflect.DeepEqual(set.FreeIncludes, []string{"/MyWorks"}) ||
+		!reflect.DeepEqual(set.Excludes, []string{"Video"}) {
+		t.Errorf("loaded %+v", set)
+	}
+	set.FreeIncludes = []string{}
+	if err := c.save(*set); err != nil {
+		t.Fatal(err)
+	}
+	_, again, err := loadCopySettings(st)
+	if err != nil || again == nil || !reflect.DeepEqual(again.FreeExcludes, []string{"/MyWorks/M 31", "*.mp4"}) || len(again.FreeIncludes) != 0 {
+		t.Errorf("after a save = %+v, %v", again, err)
+	}
+	b, err := os.ReadFile(filepath.Join(st.root, copyName))
+	if err != nil || !bytes.Contains(b, []byte(`"future_flag":true`)) || !bytes.Contains(b, []byte(`"version":1,`)) {
+		t.Errorf("copy.json = %s, %v", b, err)
+	}
+}
+
 // No copy.json is no settings yet, and loading doesn't create one.
 func TestCopySettingsMissing(t *testing.T) {
 	st := testStorage(t)
@@ -134,6 +173,7 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 	want := map[string]any{
 		"version": 1.0, "folder": "/synthetic/Other", "interval_minutes": 9.0, "excludes": []any{}, "includes": []any{},
 		"skip_built_in": true, "start_copying": false, "once": false, "files_at_once": 1.0, "older_than_days": 7.0, "trust_state": false,
+		"free_excludes": []any{}, "free_includes": []any{},
 		"future_object": map[string]any{"enabled": true, "limit": 17.0}, "future_array": []any{1.0, "two", map[string]any{"three": nil}}, "future_flag": false,
 	}
 	if !reflect.DeepEqual(got, want) {

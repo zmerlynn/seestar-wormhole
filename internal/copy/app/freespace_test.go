@@ -442,3 +442,51 @@ func TestFreeCheckFail(t *testing.T) {
 		t.Errorf("check failed: %+v", v)
 	}
 }
+
+// Free up space selects with its own patterns, after the built-in
+// excludes, as `delete` does; Copy's patterns and its built-in switch play
+// no part.
+func TestFreePatterns(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/M 42/a.jpg", "MyWorks/M 31/b.jpg", "MyWorks/M 31/c.mp4", "Other/d.jpg", "log/e.txt")
+	e.set.SkipBuiltIn = false
+	e.copy()
+	paths := func(v freeView) []string {
+		var got []string
+		for _, g := range v.Groups {
+			for _, f := range g.Files {
+				got = append(got, f.Path)
+			}
+		}
+		return got
+	}
+	// Copy's Leave out and Only copy no longer narrow a delete.
+	e.set.Excludes, e.set.Includes = []string{"M 42"}, []string{"/Other"}
+	for _, c := range []struct {
+		name               string
+		excludes, includes []string
+		want               []string
+	}{
+		{"neither", nil, nil, []string{"MyWorks/M 31/b.jpg", "MyWorks/M 31/c.mp4", "MyWorks/M 42/a.jpg", "Other/d.jpg"}},
+		{"keep", []string{"M 42", "*.mp4"}, nil, []string{"MyWorks/M 31/b.jpg", "Other/d.jpg"}},
+		{"only", nil, []string{"/MyWorks"}, []string{"MyWorks/M 31/b.jpg", "MyWorks/M 31/c.mp4", "MyWorks/M 42/a.jpg"}},
+		{"both", []string{"*.mp4"}, []string{"/MyWorks/M 31"}, []string{"MyWorks/M 31/b.jpg"}},
+	} {
+		e.set.FreeExcludes, e.set.FreeIncludes = c.excludes, c.includes
+		if got := paths(e.preview()); !slices.Equal(got, c.want) {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+	// The delete uses the preview's patterns.
+	v := e.preview()
+	if err := e.f.confirm(v.ID, []string{"MyWorks/M 31"}, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.wait(frDone, frStopped, frFailed); d.Title != "Deleted 1 file." {
+		t.Errorf("done: %+v", d)
+	}
+	for p, want := range map[string]bool{"MyWorks/M 31/b.jpg": false, "MyWorks/M 31/c.mp4": true, "log/e.txt": true} {
+		if e.has(p) != want {
+			t.Errorf("%s on the share: %v, want %v", p, !want, want)
+		}
+	}
+}

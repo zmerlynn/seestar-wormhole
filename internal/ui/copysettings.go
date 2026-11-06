@@ -47,6 +47,12 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 	if f.Includes == nil {
 		f.Includes = []string{}
 	}
+	if f.FreeExcludes == nil {
+		f.FreeExcludes = []string{}
+	}
+	if f.FreeIncludes == nil {
+		f.FreeIncludes = []string{}
+	}
 	c.unknown = f.Unknown
 	return c, &f.Settings, nil
 }

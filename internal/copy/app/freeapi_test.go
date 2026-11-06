@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -58,6 +59,49 @@ func TestFreeAPI(t *testing.T) {
 	if set := last(); set.OlderThanDays != 0 || !set.TrustState {
 		t.Errorf("a settings save changed the options: %+v", set)
 	}
+
+	// Find checks and saves its own patterns, which a settings save keeps.
+	idle := func() {
+		for e.s.free.running() {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	idle()
+	w = e.post("/copy/api/delete", `{"action":"find","days":"x","free_excludes":["ok","[x"],"free_includes":["","**/"]}`)
+	got := decode[fieldErrors](t, w)
+	want := map[string]string{
+		"days":          "Enter a whole number of days, 0 or more.",
+		"free_excludes": "Line 2: " + patternErr(t, "[x") + ". Correct this pattern and preview again.",
+		"free_includes": "Line 2: " + patternErr(t, "**/") + ". Correct this pattern and preview again.",
+	}
+	if w.Code != 400 || !maps.Equal(got.Fields, want) {
+		t.Errorf("bad patterns: %d %+v", w.Code, got)
+	}
+	w = e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true,"free_excludes":["/MyWorks/M 31",""],"free_includes":["/MyWorks"]}`)
+	if w.Code != 200 {
+		t.Errorf("find: %d %s", w.Code, w.Body)
+	}
+	if set := last(); !slices.Equal(set.FreeExcludes, []string{"/MyWorks/M 31"}) || !slices.Equal(set.FreeIncludes, []string{"/MyWorks"}) {
+		t.Errorf("saved patterns: %+v", set)
+	}
+	idle()
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
+		t.Fatalf("save: %d %s", w.Code, w.Body)
+	}
+	if set := last(); !slices.Equal(set.FreeExcludes, []string{"/MyWorks/M 31"}) || !slices.Equal(set.FreeIncludes, []string{"/MyWorks"}) ||
+		!slices.Equal(set.Excludes, []string{"Video", "/Preview"}) {
+		t.Errorf("a settings save changed the patterns: %+v", set)
+	}
+}
+
+// patternErr is the parser's message for a bad pattern.
+func patternErr(t *testing.T, s string) string {
+	t.Helper()
+	_, err := engine.ParsePattern(s)
+	if err == nil {
+		t.Fatalf("%q parsed", s)
+	}
+	return err.Error()
 }
 
 // A preview, a settings save, a copy pass and a confirmed delete, all
@@ -174,7 +218,8 @@ func TestFreeInProcess(t *testing.T) {
 	}
 }
 
-// A save that changes what a preview depends on clears it.
+// A save that changes what a preview depends on clears it: the folder.
+// Copy's patterns are not Free up space's.
 func TestFreeSaveClears(t *testing.T) {
 	set := savedAt(abs("/data/Seestar"))
 	set.Excludes = []string{"Video", "/Preview"}
@@ -186,9 +231,10 @@ func TestFreeSaveClears(t *testing.T) {
 		clear bool
 	}{
 		{same, false},
-		{strings.Replace(same, `"includes":[]`, `"includes":["MyWorks"]`, 1), true},
-		{strings.Replace(same, `"Video",`, ``, 1), true},
-		{strings.Replace(same, `"skip_built_in":true`, `"skip_built_in":false`, 1), true},
+		{strings.Replace(same, `"includes":[]`, `"includes":["MyWorks"]`, 1), false},
+		{strings.Replace(same, `"Video",`, ``, 1), false},
+		{strings.Replace(same, `"skip_built_in":true`, `"skip_built_in":false`, 1), false},
+		{strings.Replace(same, quote(abs("/data/Seestar")), quote(abs("/data/Other")), 1), true},
 	} {
 		if w := e.post("/copy/api/settings", c.body); w.Code != 200 {
 			t.Fatalf("save: %d %s", w.Code, w.Body)

@@ -438,7 +438,7 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
   expect(readJSON(app.copyFile)).toEqual({
     version: 1, folder: app.folder, interval_minutes: 30,
     excludes: ['Video', '/Preview'], includes: ['MyWorks'], skip_built_in: false, start_copying: false, once: false,
-    files_at_once: 4, older_than_days: 7, trust_state: false,
+    files_at_once: 4, older_than_days: 7, trust_state: false, free_excludes: [], free_includes: [],
     later: { kept: true },
   });
   // Activity shows both files, and the copy settings saved.

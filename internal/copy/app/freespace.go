@@ -59,9 +59,11 @@ func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial fu
 	}
 }
 
-// options are a run's options for set; the caller adds the rest.
+// options are a run's options for set; the caller adds the rest. Its
+// selection is Free up space's own patterns, after the built-in excludes,
+// as `delete --exclude --include` selects; Copy's patterns play no part.
 func (f *freer) options(set Settings) (engine.DeleteOptions, error) {
-	sel, err := selector(set)
+	sel, err := selector(Settings{Excludes: set.FreeExcludes, Includes: set.FreeIncludes, SkipBuiltIn: true})
 	return engine.DeleteOptions{
 		Endpoint: set.Address, Dest: set.Folder, StateDir: f.stateDir,
 		TrustState: set.TrustState, OlderThan: time.Duration(set.OlderThanDays) * 24 * time.Hour,
