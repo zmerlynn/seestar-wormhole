@@ -496,3 +496,51 @@ func TestDeleteOnlyClashOutside(t *testing.T) {
 		}
 	}
 }
+
+// dirLog is a remover that records each folder it is asked to remove.
+type dirLog struct {
+	remote.Remover
+	dirs *[]string
+}
+
+func (d dirLog) RemoveDir(ctx context.Context, p string) error {
+	*d.dirs = append(*d.dirs, p)
+	return d.Remover.RemoveDir(ctx, p)
+}
+
+// A folder that a run with Only leaves unread keeps its parent: the run
+// neither removes nor counts the parent, though the device would refuse
+// to remove it anyway.
+func TestDeleteOnlyKeepsUnreadParent(t *testing.T) {
+	for _, dry := range []bool{false, true} {
+		s := newShare(t)
+		put(t, s.dir, "Old/M1/a.jpg", "a")
+		put(t, s.dir, "Old/keep/b.jpg", "b")
+		o := s.options()
+		o.DryRun, o.IgnoreState = dry, true
+		o.Only = map[string]bool{"Old/M1/a.jpg": true}
+		var removed []string
+		open := o.OpenRemover
+		o.OpenRemover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+			rm, err := open(ctx, endpoint)
+			return dirLog{rm, &removed}, err
+		}
+		r, err := RunDelete(t.Context(), o, discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.Folders != 1 {
+			t.Errorf("dry run %v: got %d folders, want 1, Old/M1", dry, r.Folders)
+		}
+		want := []string{"Old/M1"}
+		if dry {
+			want = nil
+		}
+		if !slices.Equal(removed, want) {
+			t.Errorf("dry run %v: removed folders %q, want %q", dry, removed, want)
+		}
+		if !s.has(t, "Old/keep/b.jpg") {
+			t.Errorf("dry run %v: Old/keep/b.jpg is gone", dry)
+		}
+	}
+}
