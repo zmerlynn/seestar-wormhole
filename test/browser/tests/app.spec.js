@@ -413,6 +413,80 @@ test('the padlock keeps its body under forced colors', async ({ page, startApp }
   }
 });
 
+// The tabs are light: the selected one is underlined, not bold, so no tab
+// changes width; a keyboard focus ring sits inside the tab, clear of the
+// underline, and a click shows none; and every panel's first heading has
+// the same room under the tabs.
+test('the selected tab is underlined only, its focus ring clears the underline, and each panel starts as far below the tabs', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+  const names = ['Connection', 'Copy', 'Browse', 'Free up space', 'Activity'];
+  const widths = async () => Promise.all(names.map(async (n) => (await tab(page, n).boundingBox()).width));
+  const style = (loc, ...props) => loc.evaluate((e, props) => props.map((p) => getComputedStyle(e)[p]), props);
+  // The top of each panel's first text, or of Browse's frame.
+  const top = () => page.evaluate(() => {
+    const tabs = document.getElementById('tabs').getBoundingClientRect().bottom;
+    const panel = [...document.querySelectorAll('[role=tabpanel]')].find((p) => !p.hidden);
+    const walk = document.createTreeWalker(panel, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (n.nodeName === 'IFRAME' && n.checkVisibility()) return n.getBoundingClientRect().top - tabs;
+      if (n.nodeType === Node.TEXT_NODE && n.textContent.trim() && n.parentElement.checkVisibility() && n.parentElement.getBoundingClientRect().width > 1) {
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        return range.getBoundingClientRect().top - tabs;
+      }
+    }
+    return null;
+  });
+  const before = await widths();
+  const gaps = [];
+  for (const name of names) {
+    await tab(page, name).click();
+    await expect(tab(page, name)).toHaveAttribute('aria-selected', 'true');
+    expect(await widths(), name).toEqual(before);
+    const [weight, bottom] = await style(tab(page, name), 'fontWeight', 'borderBottomWidth');
+    expect(weight, name).toBe((await style(tab(page, names.find((n) => n !== name)), 'fontWeight'))[0]);
+    expect(Number(weight), name).toBeLessThan(600);
+    expect(bottom, name).toBe('3px');
+    // A click shows no ring.
+    expect(await tab(page, name).evaluate((e) => e.matches(':focus-visible')), name).toBe(false);
+    if (name === 'Browse') await expect(browseStatus(page)).toHaveText(rootStatus);
+    gaps.push(Math.round(await top()));
+  }
+  expect(Math.min(...gaps), String(gaps)).toBeGreaterThanOrEqual(20);
+  expect(Math.max(...gaps) - Math.min(...gaps), String(gaps)).toBeLessThanOrEqual(4);
+  // From the keyboard, the ring shows, inside the tab and above its
+  // underline.
+  await tab(page, 'Activity').focus();
+  await page.keyboard.press('ArrowLeft');
+  const focused = tab(page, 'Free up space');
+  await expect(focused).toBeFocused();
+  expect(await focused.evaluate((e) => e.matches(':focus-visible'))).toBe(true);
+  const [outline, width, offset, under] = await style(focused, 'outlineStyle', 'outlineWidth', 'outlineOffset', 'borderBottomWidth');
+  expect(outline).toBe('solid');
+  expect(parseFloat(width)).toBeGreaterThanOrEqual(2);
+  expect(-parseFloat(offset) - parseFloat(width)).toBeGreaterThanOrEqual(parseFloat(under));
+  // Under forced colors, the selected tab's underline still shows and the
+  // others have none.
+  await page.emulateMedia({ forcedColors: 'active' });
+  if (await page.evaluate(() => matchMedia('(forced-colors: active)').matches)) {
+    await tab(page, 'Free up space').click();
+    const line = (n) => style(tab(page, n), 'borderBottomStyle', 'borderBottomWidth', 'borderBottomColor');
+    const [on, off] = [await line('Free up space'), await line('Copy')];
+    const canvas = await page.evaluate(() => {
+      const probe = document.body.appendChild(document.createElement('div'));
+      probe.style.backgroundColor = 'Canvas';
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    });
+    expect(on.slice(0, 2)).toEqual(['solid', '3px']);
+    expect(contrast(on[2], canvas)).toBeGreaterThanOrEqual(3);
+    expect(off[2]).toBe(canvas);
+  }
+});
+
 test('Copy settings save every field and keep unknown keys', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openCopy(page, app.url);

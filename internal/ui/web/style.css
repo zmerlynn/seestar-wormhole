@@ -290,9 +290,40 @@ header {
   background:none;
   padding:.55rem .8rem
 }
+/* The selected tab is underlined only: a bolder label would widen it. A
+   keyboard focus ring sits inside the tab, clear of the underline. */
 [role=tab][aria-selected=true] {
-  border-bottom-color:var(--focus);
-  font-weight:600
+  border-bottom-color:var(--focus)
+}
+[role=tab]:focus-visible {
+  outline-offset:-7px
+}
+/* Forced colors draw every tab's border; only the selected one's
+   underline keeps a color of its own. */
+@media (forced-colors:active) {
+  [role=tab] {
+    border-bottom-color:Canvas
+  }
+  [role=tab][aria-selected=true] {
+    border-bottom-color:Highlight
+  }
+}
+/* Each panel starts as far below the tabs: its padding, with the first
+   thing in it dropping its own top margin. */
+[role=tabpanel] {
+  padding-top:1.5rem
+}
+[role=tabpanel] > .notice:first-child,#c-main > .notice:first-child,#c-box > .big:first-child,#x-box > .big:first-child,#x-box:not(.notice) ~ #x-options > #x-intro {
+  margin-top:0
+}
+/* Activity's details start the panel: no rule above them. */
+#details {
+  margin-top:0;
+  border-top:0;
+  padding-top:0
+}
+#details > summary {
+  padding-top:0
 }
 /* A locked tab is dimmed, refuses the pointer and shows a padlock: its
    shackle and body, drawn in the label's color. The body's border keeps
