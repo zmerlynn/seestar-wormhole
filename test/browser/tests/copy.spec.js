@@ -407,6 +407,7 @@ test('Preview shows what Start would copy by folder and copies nothing; Start di
   expect(start.y).toBeLessThan((await page.locator('#c-ptable').boundingBox()).y);
   await expect(title(page)).toHaveText(off);
   await expect(chip(page)).toHaveText('Copying is off');
+  await expect(page.locator('#preview-chip')).toBeHidden();
   expect(fs.existsSync(app.folder) ? fs.readdirSync(app.folder) : []).toEqual([]);
   await expect(passes(page)).toHaveCount(0);
 
@@ -455,10 +456,13 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   await openCopy(page, app.url);
   await expect(title(page)).toHaveText(off);
   const base = { state: 'off', on: false, chip: 'Copying is off', title: off };
-  v = { ...base, preview: { state: 'running', title: 'Looking for new files… 3 folders checked.' } };
+  v = { ...base, preview: { state: 'running', title: 'Looking for new files… 3 folders checked.', chip: 'Previewing copy' } };
   await expect(page.locator('#c-ptitle')).toHaveText('Looking for new files… 3 folders checked.');
   await expect(page.locator('#c-live')).toHaveText('Looking for new files… 3 folders checked.');
   await expect(page.locator('#c-pbusy')).toBeVisible();
+  // The header's bubble names it while it runs.
+  await expect(page.locator('#preview-chip')).toHaveText('Previewing copy');
+  await expect(page.locator('#preview-chip')).toBeVisible();
   await expect(page.locator('#c-pbusy')).toHaveAttribute('aria-label', 'Previewing');
   await expect(button(page, 'Preview')).toBeHidden();
   await expect(button(page, 'Start copying')).toBeVisible();
@@ -478,6 +482,7 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   v = { ...base, preview: { state: 'done', title: 'Would copy 2 files (2 B)' } };
   await expect(page.locator('#c-ptitle')).toBeFocused();
   await expect(page.locator('#c-live')).toHaveText('Would copy 2 files (2 B)');
+  await expect(page.locator('#preview-chip')).toBeHidden();
   await expect(button(page, 'Cancel')).toBeHidden();
   await expect(page.locator('#c-ppath')).toBeHidden();
   await expect(page.locator('#c-ptocopy')).toBeHidden();

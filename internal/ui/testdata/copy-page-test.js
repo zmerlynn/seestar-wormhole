@@ -101,6 +101,9 @@ async function checkCopySetup(st) {
   await copySave();
   copyAssert($('f-saved').textContent === 'Settings saved.' && document.activeElement === $('s-change'), 'a later save lacks its confirmation');
   copyAssert(!$('copy-chip').hidden && $('copy-chip').textContent === st.after.copy.chip && $('copy-chip').className === 'chip off', 'the copy chip is hidden once set up');
+  copyAssert($('preview-chip').hidden && $('free-chip').hidden, 'an idle preview or delete showed its bubble');
+  $('copy-chip').dispatchEvent(new Event('click'));
+  copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'the copy chip did not open Copy');
   render(st.locked);
   copyRender(st.after);
   copyAssert($('copy-chip').hidden, 'the copy chip shows without a route');

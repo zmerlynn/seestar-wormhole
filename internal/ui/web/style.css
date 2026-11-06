@@ -249,8 +249,9 @@ header {
 }
 #connection-line {
   display:flex;
+  flex-wrap:wrap;
   align-items:center;
-  gap:.45rem;
+  gap:.3rem .45rem;
   margin:0;
   font-weight:600;
   overflow-wrap:anywhere
@@ -381,10 +382,12 @@ header {
 #lan-result[data-tone=error] {
   color:var(--error)
 }
-/* Copy, Browse and Free up space, from seestar-copy's page. */
+/* Copy, Browse and Free up space, from seestar-copy's page. A chip is a
+   button that opens its run's tab. */
 .chip {
   margin-left:.4rem;
   padding:0 .5rem;
+  background:none;
   border:1px solid;
   border-radius:.7rem;
   font-size:.85em;

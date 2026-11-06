@@ -13,6 +13,10 @@ this network it shows the saved address, then **On this network: reachable**
 or **Can't reach** the address once **Test** has run. Once copying is set up,
 a chip after the line says how copying stands: **Copying**, **Up to date**,
 how many files were not copied, **Copying is on** or **Copying is off**.
+While a run is busy, a chip of its own follows: **Previewing copy**, **Checking
+what to delete**, **Checking N files again** or **Deleting 3 of 12**. It goes
+away when the run ends. Each chip opens its tab, Copy or Free up space. A run's
+start is announced once when another tab is open.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move

@@ -779,6 +779,7 @@ function renderCopy(v) {
   chip.className = 'chip ' + (st === 'failures' || st === 'done' && v.failed ? 'warn' : v.on ? 'on' : 'off');
   put('copy-chip', v.chip);
   chip.hidden = !state?.copy_unlocked || !copySaved || !v.chip;
+  activityChip('preview-chip', v.preview?.chip, v.preview?.state);
   // Settings can't change, nor the history clear, while copying is on.
   $('f-set').disabled = v.on;
   copyOn = v.on;
@@ -872,8 +873,22 @@ function freeErrors(fields) {
   }
   return first;
 }
+// activityChip shows a run's bubble in the header while it is busy, beside
+// copying's. Its text changes are not announced; a run starting, or a
+// delete's next stage, is, once, when its tab isn't the one open.
+const chipShown = {};
+function activityChip(id, label, stage) {
+  const chip = $(id);
+  put(id, label);
+  chip.hidden = !state?.copy_unlocked || !label;
+  stage = label ? stage : '';
+  if (stage && stage !== chipShown[id] && currentTab !== chipTabs[id]) put('chip-live', label);
+  chipShown[id] = stage;
+}
+const chipTabs = {'copy-chip': 'copy', 'preview-chip': 'copy', 'free-chip': 'free'};
 function renderFree(v) {
   const st = v.state;
+  activityChip('free-chip', v.chip, st + (v.recheck ? '-recheck' : ''));
   put('x-title', v.title);
   put('x-text', v.text);
   put('x-sub', v.sub);
@@ -1414,6 +1429,11 @@ function openExternalLink(event) {
   window._wails.invoke('seestar:open:' + link.href);
 }
 for (const tab of tabNames) $('tab-' + tab).addEventListener('click', () => selectTab(tab));
+// A bubble opens its run's tab.
+for (const [id, tab] of Object.entries(chipTabs)) $(id).addEventListener('click', () => {
+  selectTab(tab);
+  $('tab-' + tab).focus();
+});
 $('tabs').addEventListener('keydown', tabKey);
 for (const id of ['route-account', 'route-lan']) $(id).addEventListener('change', () => {
   if ($(id).checked) routeChoice = $(id).value;

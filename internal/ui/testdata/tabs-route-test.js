@@ -46,7 +46,7 @@ async function checkActivityMove() {
   for (const [panel, ids] of [['panel-copy', ['c-main', 's-box', 'copy-form', 'h-details']], ['panel-browse', ['b-frame']], ['panel-free', ['x-box', 'x-find']]]) {
     for (const id of ids) tabAssert(inside(id, panel) && !inside(id, 'panel-connection') && !inside(id, 'panel-activity'), id + ' is not in ' + panel);
   }
-  for (const id of ['quit', 'version', 'connection-text', 'connection-dot', 'copy-chip', 'tabs', 'copy-reach', 'x-confirm', 'h-confirm']) {
+  for (const id of ['quit', 'version', 'connection-text', 'connection-dot', 'copy-chip', 'preview-chip', 'free-chip', 'chip-live', 'tabs', 'copy-reach', 'x-confirm', 'h-confirm']) {
     tabAssert(!inside(id, 'panel-connection') && !inside(id, 'panel-activity'), id + ' is not on every tab');
   }
   tabAssert($('details').attributes.open !== undefined, 'Activity opens with its details collapsed');
