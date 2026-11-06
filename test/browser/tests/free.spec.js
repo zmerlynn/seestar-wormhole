@@ -296,6 +296,12 @@ test("the header's bubble shows each stage of a check and a delete, opens Free u
   await expect(page.locator('#c-title')).toHaveText('Copying is off.');
   await expect(page.locator('#copy-chip')).toBeHidden();
   await expect(chip).toBeHidden();
+  // Each change to the header's status region is counted.
+  await page.evaluate(() => {
+    window.liveChanges = 0;
+    new MutationObserver(() => window.liveChanges++).observe(document.getElementById('chip-live'), { childList: true, characterData: true, subtree: true });
+  });
+  const changes = () => page.evaluate(() => window.liveChanges);
   // On another tab, each stage's start is announced once; its counts are not.
   for (const [view, text] of [
     [{ state: 'checking', title: 'Checking files…', chip: 'Checking what to delete' }, 'Checking what to delete'],
@@ -307,23 +313,42 @@ test("the header's bubble shows each stage of a check and a delete, opens Free u
     await expect(chip).toBeVisible();
     await expect(live).toHaveText(text);
   }
+  // A count changing is not announced.
+  const before = await changes();
   f = { state: 'deleting', title: 'Deleting 2 of 2…', chip: 'Deleting 2 of 2', progress: { done: 1, total: 2 } };
   await expect(chip).toHaveText('Deleting 2 of 2');
   await expect(live).toHaveText('Deleting 1 of 2');
+  await page.waitForTimeout(1500);
+  expect(await changes()).toBe(before);
   // A bubble is a button that opens its tab.
   await page.getByRole('button', { name: 'Deleting 2 of 2' }).click();
   await expect(page.getByRole('tabpanel', { name: 'Free up space' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Free up space' })).toBeFocused();
+  // The announcement goes with the run.
   f = { state: 'done', title: 'Deleted 2 files.' };
   await expect(chip).toBeHidden();
+  await expect(live).toHaveText('');
   // On the run's own tab, its status region announces it, not the header.
   f = { state: 'checking', title: 'Checking files…', chip: 'Checking what to delete' };
   await expect(chip).toHaveText('Checking what to delete');
   await expect(page.locator('#x-live')).toHaveText('Checking files…');
-  await expect(live).toHaveText('Deleting 1 of 2');
+  await expect(live).toHaveText('');
   f = null;
   await expect(chip).toBeHidden();
+  // From another tab, a second check after an idle spell is announced
+  // again, worded as the first.
+  await tab(page, 'Copy').click();
+  for (let i = 0; i < 2; i++) {
+    const n = await changes();
+    f = { state: 'checking', title: 'Checking files…', chip: 'Checking what to delete' };
+    await expect(live).toHaveText('Checking what to delete');
+    expect(await changes()).toBeGreaterThan(n);
+    f = null;
+    await expect(chip).toBeHidden();
+    await expect(live).toHaveText('');
+  }
   // Copying's bubble shows while a pass runs, and opens Copy.
+  await tab(page, 'Free up space').click();
   c = { state: 'copying', title: 'Copying 1 of 3 files', chip: 'Copying' };
   await page.getByRole('button', { name: 'Copying', exact: true }).click();
   await expect(page.getByRole('tabpanel', { name: 'Copy' })).toBeVisible();

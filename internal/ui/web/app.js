@@ -875,14 +875,23 @@ function freeErrors(fields) {
 }
 // activityChip shows a run's bubble in the header while it is busy, beside
 // copying's. Its text changes are not announced; a run starting, or a
-// delete's next stage, is, once, when its tab isn't the one open.
+// delete's next stage, is, once, when its tab isn't the one open. The
+// announcement goes when its run ends, so the next run's start, worded
+// the same, is announced too.
 const chipShown = {};
+let chipLive = '';
 function activityChip(id, label, stage) {
   const chip = $(id);
   put(id, label);
   chip.hidden = !state?.copy_unlocked || !label;
   stage = label ? stage : '';
-  if (stage && stage !== chipShown[id] && currentTab !== chipTabs[id]) put('chip-live', label);
+  if (stage && stage !== chipShown[id] && currentTab !== chipTabs[id]) {
+    put('chip-live', label);
+    chipLive = id;
+  } else if (!stage && chipLive === id) {
+    put('chip-live', '');
+    chipLive = '';
+  }
   chipShown[id] = stage;
 }
 const chipTabs = {'copy-chip': 'copy', 'preview-chip': 'copy', 'free-chip': 'free'};
