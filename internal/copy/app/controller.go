@@ -701,17 +701,17 @@ func (c *controller) view(now time.Time) copyView {
 	if onceChecked && st.last.Waiting > 0 {
 		v.Settling = count(st.last.Waiting, "new file is", "new files are") + " still being written. Start copying again in a few minutes to copy them."
 	}
+	// The chip shows only while copying runs: a pass, or the wait for the
+	// next one. Copying off, or a copy once that ended, has none.
 	switch {
 	case st.state == stConnecting || st.state == stListing || st.state == stCopying:
 		v.Chip = "Copying"
 	case st.state == stUpToDate:
 		v.Chip = "Up to date"
-	case st.state == stFailures, st.state == stDone && st.outcome == stFailures:
+	case st.state == stFailures:
 		v.Chip = count(len(st.last.Failed), "file", "files") + " not copied"
 	case v.On:
 		v.Chip = "Copying is on"
-	default:
-		v.Chip = "Copying is off"
 	}
 	return v
 }

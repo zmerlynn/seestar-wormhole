@@ -287,12 +287,14 @@ test('a check names the folder or file it is looking at, and announces only its 
 
 test("the header's bubble shows each stage of a check and a delete, opens Free up space, and hides after", async ({ page, startApp }) => {
   const app = await startApp(copying(false));
-  let f = null;
-  await fakeStatus(page, () => null, () => f);
+  let f = null, c = null;
+  await fakeStatus(page, () => c, () => f);
   await openCopy(page, app.url);
   const chip = page.locator('#free-chip');
   const live = page.locator('#chip-live');
-  await expect(page.locator('#copy-chip')).toHaveText('Copying is off');
+  // Copying is off and nothing runs: no bubble at all.
+  await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+  await expect(page.locator('#copy-chip')).toBeHidden();
   await expect(chip).toBeHidden();
   // On another tab, each stage's start is announced once; its counts are not.
   for (const [view, text] of [
@@ -321,8 +323,11 @@ test("the header's bubble shows each stage of a check and a delete, opens Free u
   await expect(live).toHaveText('Deleting 1 of 2');
   f = null;
   await expect(chip).toBeHidden();
-  // Copying's bubble opens Copy.
-  await page.locator('#copy-chip').click();
+  // Copying's bubble shows while a pass runs, and opens Copy.
+  c = { state: 'copying', title: 'Copying 1 of 3 files', chip: 'Copying' };
+  await page.getByRole('button', { name: 'Copying', exact: true }).click();
   await expect(page.getByRole('tabpanel', { name: 'Copy' })).toBeVisible();
   await expect(page.getByRole('tab', { name: 'Copy' })).toBeFocused();
+  c = null;
+  await expect(page.locator('#copy-chip')).toBeHidden();
 });

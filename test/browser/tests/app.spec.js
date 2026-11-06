@@ -94,7 +94,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(page.locator('#c-title')).toHaveText('Copying is off.');
   await expect(page.getByRole('button', { name: 'Start copying' })).toBeVisible();
   await expect(page.locator('#s-first')).toBeHidden();
-  await expect(page.locator('#copy-chip')).toHaveText('Copying is off');
+  await expect(page.locator('#copy-chip')).toBeHidden();
 
   await tab(page, 'Browse').click();
   await expect(browseStatus(page)).toHaveText(rootStatus);

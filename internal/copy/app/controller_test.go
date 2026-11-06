@@ -185,7 +185,7 @@ func TestCopyStartCheckStop(t *testing.T) {
 	e.c.stop()
 	e.waitOff()
 	v = e.wait(stOff)
-	if v.On || v.Chip != "Copying is off" || v.Title != "Copying is off." || !strings.HasPrefix(v.Summary, "No files were copied.") {
+	if v.On || v.Chip != "" || v.Title != "Copying is off." || !strings.HasPrefix(v.Summary, "No files were copied.") {
 		t.Errorf("after Stop: %+v", v)
 	}
 	if e.locked() {
@@ -209,7 +209,7 @@ func TestCopyOnce(t *testing.T) {
 	}
 	e.waitOff()
 	v := e.wait(stDone)
-	if v.Title != "Up to date."+once || v.On || v.Chip != "Copying is off" || !strings.HasPrefix(v.Summary, "Copied 1 file (3 B) in ") || v.Notice != "" {
+	if v.Title != "Up to date."+once || v.On || v.Chip != "" || !strings.HasPrefix(v.Summary, "Copied 1 file (3 B) in ") || v.Notice != "" {
 		t.Errorf("after one check: %+v", v)
 	}
 	if e.dialCount() != 1 || e.locked() {
@@ -235,7 +235,7 @@ func TestCopyOnce(t *testing.T) {
 	}
 	e.waitOff()
 	v = e.wait(stDone)
-	if v.Title != "Check finished with 1 file not copied."+once || v.Chip != "1 file not copied" || v.On ||
+	if v.Title != "Check finished with 1 file not copied."+once || v.Chip != "" || v.On ||
 		v.Notice != "1 file couldn't be copied. Start copying to try it again." || len(v.Failed) != 1 || v.Failed[0].Path != "MyWorks/M 42/c.jpg" {
 		t.Errorf("failures: %+v", v)
 	}
@@ -246,7 +246,7 @@ func TestCopyOnce(t *testing.T) {
 	}
 	e.waitOff()
 	v = e.wait(stDone)
-	if v.Title != "Can't reach the telescope at 192.0.2.10:445."+once || v.Text != checkReach || v.Chip != "Copying is off" || v.On || v.Contact != "err" {
+	if v.Title != "Can't reach the telescope at 192.0.2.10:445."+once || v.Text != checkReach || v.Chip != "" || v.On || v.Contact != "err" {
 		t.Errorf("unreachable: %+v", v)
 	}
 }
@@ -315,7 +315,7 @@ func TestCopyFolderInUse(t *testing.T) {
 	}
 	e.waitOff()
 	v := e.wait(stInUse)
-	if v.On || !strings.HasPrefix(v.Title, "Another copy is already using this folder") || v.Chip != "Copying is off" {
+	if v.On || !strings.HasPrefix(v.Title, "Another copy is already using this folder") || v.Chip != "" {
 		t.Errorf("in use: %+v", v)
 	}
 	if e.dials != 0 {
@@ -501,7 +501,7 @@ func TestCopyPassStates(t *testing.T) {
 	h := c.hooks(t.Context())
 	h.PassDone(engine.Summary{Err: fmt.Errorf("list the share: %w", &fs.PathError{Op: "readdir", Path: `MyWorks\M 42_sub`, Err: errors.New("access denied")})})
 	v := c.view(time.Now())
-	if v.State != stListFail || !strings.HasPrefix(v.Title, "Couldn't read MyWorks/M 42_sub.") || !strings.HasPrefix(v.Text, "No files were copied. Trying again at ") || v.Chip != "Copying is off" {
+	if v.State != stListFail || !strings.HasPrefix(v.Title, "Couldn't read MyWorks/M 42_sub.") || !strings.HasPrefix(v.Text, "No files were copied. Trying again at ") || v.Chip != "" {
 		t.Errorf("list failed: %+v", v)
 	}
 	h.PassDone(engine.Summary{Copied: 3, Bytes: 1_200_000, Elapsed: 151 * time.Second, Failed: []engine.Failure{{Path: "a:b.jpg", Reason: "Windows can't store this name (it contains :)"}, {Path: "c.jpg", Reason: "Disk full"}}})
