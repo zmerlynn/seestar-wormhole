@@ -167,7 +167,7 @@ const copyViews = {
 // Synthetic Free up space views, with a long path, for layouts.
 const freeViews = {
   checking: {
-    state: 'checking', title: 'Checking 1,830 files…', progress: { done: 1200, total: 4000, text: 'Checking your copies: 1.2 GB of 4.0 GB' },
+    state: 'checking', title: 'Checking 1,830 files…', chip: 'Checking what to delete', progress: { done: 1200, total: 4000, text: 'Checking your copies: 1.2 GB of 4.0 GB' },
     file: 'Checking ' + longPath + '…',
   },
   preview: {
@@ -180,7 +180,7 @@ const freeViews = {
     kept: 'Kept: 1 changed on the telescope',
     kept_list: [{ path: longPath, reason: 'changed on the telescope since it was copied' }],
   },
-  deleting: { state: 'deleting', title: 'Deleting 2 of 2…', progress: { done: 1, total: 2 }, file: 'Last deleted: ' + longPath },
+  deleting: { state: 'deleting', title: 'Deleting 2 of 2…', chip: 'Deleting 2 of 2', progress: { done: 1, total: 2 }, file: 'Last deleted: ' + longPath },
   done: {
     state: 'done', title: 'Deleted 1 file.', text: 'Freed 33.2 MB on the telescope.', kept: '1 file was kept.',
     kept_list: [{ path: longPath, reason: 'kept: changed on the telescope since it was copied' }],
