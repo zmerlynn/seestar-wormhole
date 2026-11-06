@@ -43,12 +43,12 @@ type freeStatus struct {
 	// Deleting, and how it ended.
 	total      int  // the files Only holds
 	rechecking bool // the checked files are listed again, before any is deleted
-	deleted  int
-	bytes    int64
-	current  string // Checking and Deleting: what the run is looking at, or the last file deleted
-	stopping bool
-	result   engine.DeleteResult
-	err      error
+	deleted    int
+	bytes      int64
+	current    string // Checking and Deleting: what the run is looking at, or the last file deleted
+	stopping   bool
+	result     engine.DeleteResult
+	err        error
 }
 
 // freeView is the Free up space tab's state and its text, for the page.
