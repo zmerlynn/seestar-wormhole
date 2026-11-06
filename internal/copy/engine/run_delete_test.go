@@ -415,3 +415,84 @@ func TestDeleteResultFoldersAndRecent(t *testing.T) {
 		t.Errorf("got %d folders, want 1: Done removed and MyWorks/new.jpg kept", r.Folders)
 	}
 }
+
+// A run with Only lists only the folders that hold its files and those
+// above them, and still proves each file: one changed on the device since
+// the preview is kept. A folder it emptied is removed, and so is one above
+// it left empty; one with a folder it did not read stays.
+func TestDeleteOnlyListsItsFolders(t *testing.T) {
+	files := map[string]string{
+		"Done/M 31/a.jpg":        "a",
+		"Done/M 31/b.jpg":        "b",
+		"MyWorks/M 42/c.jpg":     "c",
+		"MyWorks/M 42/x.jpg":     "x",
+		"MyWorks/M 42/sub/d.jpg": "d",
+		"MyWorks/M 45/e.jpg":     "e",
+		"Old/M 1/h.jpg":          "h",
+		"Old/keep/k.jpg":         "k",
+		"Other/f.jpg":            "f",
+		"Other/deep/g.jpg":       "g",
+		"r.jpg":                  "r",
+	}
+	s := newShare(t)
+	recs := map[string]string{}
+	for p, data := range files {
+		put(t, s.dir, p, data)
+		put(t, s.dest, p, data)
+		recs[p] = data
+	}
+	// x.jpg was copied as "x"; the device has changed it since.
+	put(t, s.dir, "MyWorks/M 42/x.jpg", "xy")
+	s.record(t, recs)
+	o := s.options()
+	o.Only = map[string]bool{"Done/M 31/a.jpg": true, "Done/M 31/b.jpg": true, "MyWorks/M 42/c.jpg": true, "MyWorks/M 42/x.jpg": true, "Old/M 1/h.jpg": true}
+	var listed []string
+	o.Hooks.Listed = func(p string, n int) { listed = append(listed, fmt.Sprint(n, " ", p)) }
+	r, err := RunDelete(t.Context(), o, discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"1 Done", "2 Done/M 31", "3 MyWorks", "4 MyWorks/M 42", "5 Old", "6 Old/M 1"}; !slices.Equal(listed, want) {
+		t.Errorf("got Listed %q, want %q", listed, want)
+	}
+	want := []string{"Old/M 1/h.jpg deleted", "MyWorks/M 42/x.jpg kept", "MyWorks/M 42/c.jpg deleted", "Done/M 31/b.jpg deleted", "Done/M 31/a.jpg deleted"}
+	if got := outcomes(r); !slices.Equal(got, want) {
+		t.Errorf("got outcomes %q, want %q", got, want)
+	}
+	if r.Files[1].Reason != plan.KeepChanged {
+		t.Errorf("x.jpg: got reason %q, want %q", r.Files[1].Reason, plan.KeepChanged)
+	}
+	if r.Folders != 3 || s.has(t, "Done") || s.has(t, "Old/M 1") || !s.has(t, "Old") {
+		t.Errorf("got %d folders removed, want 3: Done/M 31, Done and Old/M 1, with Old kept", r.Folders)
+	}
+	for _, p := range []string{"MyWorks/M 42/x.jpg", "MyWorks/M 42/sub/d.jpg", "MyWorks/M 45/e.jpg", "Old/keep/k.jpg", "Other/f.jpg", "Other/deep/g.jpg", "r.jpg"} {
+		if !s.has(t, p) {
+			t.Errorf("%s: gone from the device, want it kept", p)
+		}
+	}
+}
+
+// A folder a run with Only leaves unread is still a name its files can
+// clash with: the outcome is the one a run that read it gives.
+func TestDeleteOnlyClashOutside(t *testing.T) {
+	for _, only := range []map[string]bool{nil, {"MyWorks/M 31/a.jpg": true}} {
+		s := newShare(t)
+		put(t, s.dir, "MyWorks/M 31/a.jpg", "a")
+		put(t, s.dir, "MyWorks/m 31/b.jpg", "b")
+		o := s.options()
+		o.IgnoreState, o.Only = true, only
+		var listed []string
+		o.Hooks.Listed = func(p string, _ int) { listed = append(listed, p) }
+		r, err := RunDelete(t.Context(), o, discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(r.Files, func(f DeleteFile) bool { return f.Path == "MyWorks/M 31/a.jpg" })
+		if i < 0 || r.Files[i].Outcome != FileKept || !strings.Contains(r.Files[i].Reason, "MyWorks/m 31") {
+			t.Errorf("only %v: got files %+v, want MyWorks/M 31/a.jpg kept for the clash", only, r.Files)
+		}
+		if only != nil && slices.Contains(listed, "MyWorks/m 31") {
+			t.Errorf("listed %q, want MyWorks/m 31 left unread", listed)
+		}
+	}
+}

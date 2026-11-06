@@ -44,6 +44,9 @@ type LeftOut struct {
 	// reason: a folder with something in it that the walk did not list.
 	// The root is ".".
 	keptParents map[string]bool
+	// outside are the folders a walk limited to some folders did not
+	// read, in listing order.
+	outside []string
 }
 
 // Skipped is a listed entry that an exclude matched.
@@ -58,13 +61,15 @@ type Skipped struct {
 // read. Any listing failure, of the root or of a folder that is kept, fails
 // the walk; what was left out before it is still returned.
 func (s Selector) Walk(ctx context.Context, sess remote.Session) ([]remote.Entry, LeftOut, error) {
-	return s.walk(ctx, sess, nil, nil)
+	return s.walk(ctx, sess, nil, nil, nil)
 }
 
 // walk is [Selector.Walk] that also calls listed, if not nil, with each
 // folder kept and the number kept so far, before it is read, and passes
-// kept to [remote.Session.Walk].
-func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folder string, folders int), kept func(remote.Entry)) ([]remote.Entry, LeftOut, error) {
+// kept to [remote.Session.Walk]. If within is not nil, a folder the
+// selection keeps is read only if within reports true for it; any other is
+// left out unread and noted in outside.
+func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folder string, folders int), kept func(remote.Entry), within func(dir string) bool) ([]remote.Entry, LeftOut, error) {
 	out := LeftOut{keptParents: map[string]bool{}}
 	folders := 0
 	entries, err := sess.Walk(ctx, func(p string, dir bool) bool {
@@ -75,6 +80,11 @@ func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(fol
 		}
 		if !s.included(p, dir) {
 			out.Unmatched++
+			out.keptParents[path.Dir(p)] = true
+			return true
+		}
+		if dir && within != nil && !within(p) {
+			out.outside = append(out.outside, p)
 			out.keptParents[path.Dir(p)] = true
 			return true
 		}
