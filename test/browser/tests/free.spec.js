@@ -1,8 +1,9 @@
 // The app's Free up space tab against the Samba fixture's browse tree,
-// which is read-only: a preview, the confirm dialog and Cancel, and a
-// settings save and a history clear that clear the preview. The confirmed delete is tested
-// in the Samba job. What a check is looking at uses synthetic states.
-const { test, expect, lan, tab, field, openCopy, fakeStatus } = require('./app');
+// which is read-only: a preview, the confirm dialog and Cancel, the tab's
+// own patterns, and what a settings save or a history clear does to the
+// preview. The confirmed delete is tested in the Samba job. What a check is
+// looking at uses synthetic states.
+const { test, expect, lan, tab, field, openCopy, fakeStatus, readJSON } = require('./app');
 
 const upToDate = /^Up to date\. Next check at \d\d:\d\d\.$/;
 const safe = /^7 files \(\d.*\) are copied and safe to delete\.$/;
@@ -117,8 +118,8 @@ test('a different preview closes an open confirm dialog', async ({ page, startAp
   expect(deletes).toEqual([]);
 });
 
-test('a settings save that changes a pattern clears the preview', async ({ page, startApp }) => {
-  await copied(page, startApp);
+test("a settings save keeps the preview unless it changes the folder: Copy's patterns are not Free up space's", async ({ page, startApp }) => {
+  const app = await copied(page, startApp);
   await trust(page).check();
   await expect(page.locator('#x-intro')).toHaveText("Free up space uses this app's saved copy records. Your copies will not be checked.");
   await find(page, /^7 files \(\d.*\) match the saved copy records\.$/);
@@ -128,7 +129,16 @@ test('a settings save that changes a pattern clears the preview', async ({ page,
   await button(page, 'Change…').click();
   await page.locator('#s-stop').click();
   await expect(field(page, 'Folder for your images')).toBeFocused();
-  await field(page, 'Leave out').fill('Notes');
+  await field(page, 'Leave out').fill('MyWorks');
+  await button(page, 'Save').click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await tab(page, 'Free up space').click();
+  await expect(page.locator('#x-changed')).toBeHidden();
+  await expect(deleteButton(page)).toHaveText('Delete 7 files…');
+
+  await tab(page, 'Copy').click();
+  await button(page, 'Change…').click();
+  await field(page, 'Folder for your images').fill(app.folder + '-other');
   await button(page, 'Save').click();
   await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
   await tab(page, 'Free up space').click();
@@ -136,6 +146,57 @@ test('a settings save that changes a pattern clears the preview', async ({ page,
   await expect(button(page, 'Preview what to delete')).toBeVisible();
   await expect(deleteButton(page)).toBeHidden();
   await expect(trust(page)).toBeChecked();
+});
+
+test('Keep on the telescope and Only free up select what a preview deletes, and are saved', async ({ page, startApp }) => {
+  const app = await copied(page, startApp);
+  await expect(page.locator('#x-patterns-help')).toHaveText(
+    "These patterns are separate from Copy's Leave out and Only copy, which don't change what is deleted. The telescope's logs, scratch and system files are never deleted.");
+  const folders = () => page.locator('#x-groups summary').allTextContents();
+  await find(page);
+  const all = await folders();
+  expect(all).toContain('MyWorks/M 31');
+  // The pattern matches the folder and everything below it.
+  const inM31 = (f) => f === 'MyWorks/M 31' || f.startsWith('MyWorks/M 31/');
+  expect(all.filter((f) => !inM31(f)).length).toBeGreaterThan(0);
+
+  await button(page, 'Change options').click();
+  await field(page, 'Keep on the telescope').fill('/MyWorks/M 31');
+  await find(page, /^\d+ files? \(\d.*\) (is|are) copied and safe to delete\.$/);
+  await expect(title(page)).not.toHaveText(safe);
+  expect(await folders()).toEqual(all.filter((f) => !inM31(f)));
+
+  await button(page, 'Change options').click();
+  await field(page, 'Keep on the telescope').fill('');
+  await field(page, 'Only free up').fill('\n/MyWorks/M 31');
+  await find(page, /^\d+ files? \(\d.*\) (is|are) copied and safe to delete\.$/);
+  expect(await folders()).toEqual(all.filter(inM31));
+  expect(readJSON(app.copyFile)).toMatchObject({ excludes: [], free_excludes: [], free_includes: ['/MyWorks/M 31'] });
+
+  // A reload shows what was saved.
+  await page.reload();
+  await expect(page.locator('#quit')).toBeEnabled();
+  await tab(page, 'Free up space').click();
+  await button(page, 'Change options').click();
+  await expect(field(page, 'Only free up')).toHaveValue('/MyWorks/M 31');
+  await expect(field(page, 'Keep on the telescope')).toHaveValue('');
+});
+
+test('a bad pattern is refused at its field', async ({ page, startApp }) => {
+  await copied(page, startApp);
+  await field(page, 'Keep on the telescope').fill('Video\n[x');
+  await button(page, 'Preview what to delete').click();
+  const err = page.locator('#x-ex-err');
+  await expect(err).toHaveText(/^Line 2: .+\. Correct this pattern and preview again\.$/);
+  await expect(field(page, 'Keep on the telescope')).toHaveAttribute('aria-invalid', 'true');
+  await expect(field(page, 'Keep on the telescope')).toBeFocused();
+  await expect(page.locator('#x-in-err')).toBeHidden();
+  await expect(title(page)).toHaveText('');
+  // Correcting it clears the message.
+  await field(page, 'Keep on the telescope').fill('Video');
+  await find(page);
+  await expect(err).toBeHidden();
+  await expect(field(page, 'Keep on the telescope')).not.toHaveAttribute('aria-invalid', 'true');
 });
 
 test('Clear history clears the preview', async ({ page, startApp }) => {

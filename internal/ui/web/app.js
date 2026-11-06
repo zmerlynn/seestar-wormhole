@@ -846,6 +846,8 @@ const fileCount = n => n === 1 ? '1 file' : n.toLocaleString('en-US') + ' files'
 function freeFill(s) {
   $('x-days').value = String(s.older_than_days);
   $('x-trust').checked = s.trust_state;
+  $('x-ex').value = s.free_excludes.join('\n');
+  $('x-in').value = s.free_includes.join('\n');
   freeIntro();
 }
 // freeIntro words the Start text for the options as set.
@@ -854,11 +856,21 @@ function freeIntro() {
     : 'Free up space deletes files from the telescope only after they have been copied here, and checks that your copy still matches.');
   $('x-restack').hidden = !(Number($('x-days').value) > 0);
 }
-function daysError(message) {
-  put('x-days-err', message);
-  $('x-days-err').hidden = !message;
-  if (message) $('x-days').setAttribute('aria-invalid', 'true');
-  else $('x-days').removeAttribute('aria-invalid');
+// freeErrors puts each message under its option, as showErrors does for
+// Copy's, and returns the first option in error.
+const freeFields = {days: 'x-days', free_excludes: 'x-ex', free_includes: 'x-in'};
+function freeErrors(fields) {
+  let first = null;
+  for (const [name, id] of Object.entries(freeFields)) {
+    const message = fields[name] || '';
+    put(id + '-err', message);
+    $(id + '-err').hidden = !message;
+    if (message) {
+      $(id).setAttribute('aria-invalid', 'true');
+      first ||= $(id);
+    } else $(id).removeAttribute('aria-invalid');
+  }
+  return first;
 }
 function renderFree(v) {
   const st = v.state;
@@ -953,15 +965,14 @@ async function freeAction(body) {
   } catch (e) {
     freePressed = null;
     if (e?.fields) {
-      daysError(e.fields.days || '');
-      $('x-days').focus();
+      freeErrors(e.fields)?.focus();
       return;
     }
-    daysError('');
+    freeErrors({});
     result('x-err', copyError(e), 'err');
     return;
   }
-  daysError('');
+  freeErrors({});
   result('x-err', '');
   renderFree(v);
 }
@@ -970,7 +981,10 @@ async function freePress(event, body) {
   await freeAction(body);
 }
 function freeFind(event) {
-  return freePress(event, {action: 'find', days: $('x-days').value, trust: $('x-trust').checked});
+  return freePress(event, {
+    action: 'find', days: $('x-days').value, trust: $('x-trust').checked,
+    free_excludes: lines($('x-ex').value), free_includes: lines($('x-in').value)
+  });
 }
 // freeAsk shows the confirm dialog for the checked folders.
 function freeAsk() {
