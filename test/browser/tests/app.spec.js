@@ -820,19 +820,22 @@ for (const colorScheme of ['light', 'dark']) {
 }
 
 // The layouts DESIGN asks the app to survive: twice the text size, the
-// wider text spacing of WCAG 1.4.12, and a 480 px wide window.
+// wider text spacing of WCAG 1.4.12, a 480 px wide window, and both of
+// the first and last together.
 const layouts = {
   'text-200': { width: 1280 },
   'text-spacing': { width: 1280 },
   'narrow-480': { width: 480 },
+  'narrow-480-text-200': { width: 480 },
 };
 
 // restyle applies a layout's text changes to one document, through the
-// CSSOM, which the pages' style policy allows.
+// CSSOM, which the pages' style policy allows. It doubles what is there,
+// so it runs once per load.
 async function restyle(target, layout) {
   await target.evaluate((layout) => {
     const all = [document.documentElement, ...document.querySelectorAll('*')];
-    if (layout === 'text-200') {
+    if (layout.endsWith('text-200')) {
       const sizes = all.map((el) => parseFloat(getComputedStyle(el).fontSize));
       all.forEach((el, i) => el.style.setProperty('font-size', sizes[i] * 2 + 'px', 'important'));
     }
@@ -906,6 +909,15 @@ for (const [layout, { width }] of Object.entries(layouts)) {
     await tabsWrap(page);
     await shot('first-run');
 
+    // The remote route's Advanced, with the Services table, which scrolls
+    // in its own box.
+    await page.getByLabel('Remotely through Telescope Network').check();
+    await page.locator('#advanced summary').click();
+    await expect(page.locator('#ports input').first()).toBeVisible();
+    await fits(page);
+    expect(await page.locator('#ports').evaluate((el) => getComputedStyle(el).overflowX)).toBe('auto');
+    await shot('advanced');
+
     const first = await startApp({ 'config.json': lan() });
     await openCopy(page, first.url);
     await restyle(page, layout);
@@ -925,7 +937,7 @@ for (const [layout, { width }] of Object.entries(layouts)) {
     await tab(page, 'Browse').click();
     await expect(browseStatus(page)).toHaveText(rootStatus);
     const browse = await (await page.locator('#b-frame').elementHandle()).contentFrame();
-    await restyle(page, layout);
+    // The page has its layout from Copy; Browse's frame is its own document.
     await restyle(browse, layout);
     await fits(page);
     await tabsWrap(page);
