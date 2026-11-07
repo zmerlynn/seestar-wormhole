@@ -116,8 +116,9 @@ disk image first, as in [Install](../README.md#install). In PowerShell, write
 
 `seestar-copy-cli` doesn't sign in or connect through Telescope Network
 itself. Through Telescope Network, keep the app connected, or run
-`seestar-wormhole-cli proxy` in another terminal (see
-[Sign in](../README.md#sign-in)), while it runs. For a telescope on this
+`./seestar-wormhole-cli proxy` from the tools' folder in another terminal
+(see [Sign in](../README.md#sign-in)) while the copy command runs. In
+PowerShell, use `.\seestar-wormhole-cli.exe proxy`. For a telescope on this
 network, give its address directly; no proxy or account is needed.
 
 1. Find the address to connect to. On the telescope's network, that is

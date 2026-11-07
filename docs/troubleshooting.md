@@ -68,11 +68,12 @@ pasting them into a command line.
 
 ## Filing an issue
 
-Include the version (`seestar-wormhole-cli --version` or
-`seestar-copy-cli --version`), your platform, the telescope model and
-firmware, and the log lines around the problem. In the app, **Copy diagnostic
-summary** on the [Activity](ui.md#activity) tab copies the version, settings
-and recent events at once. Logs and diagnostics leave out your credentials,
+Include the version (`./seestar-wormhole-cli --version` or
+`./seestar-copy-cli --version`, run from the tools' folder; in PowerShell,
+`.\seestar-wormhole-cli.exe --version`), your platform, the telescope model
+and firmware, and the log lines around the problem. In the app, **Copy
+diagnostic summary** on the [Activity](ui.md#activity) tab copies the version,
+settings and recent events at once. Logs and diagnostics leave out your credentials,
 but they can include the telescope's serial number, network addresses, your
 local folders, selection patterns and file names. Read them over and remove
 anything you'd rather keep before posting.
