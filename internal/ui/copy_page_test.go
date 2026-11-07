@@ -80,3 +80,8 @@ func TestFreeFolderPage(t *testing.T) {
 func TestCopyOnceIntervalPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkCopyOnceInterval("+copyPageStatuses(t)+")")
 }
+
+// Copy's and Free up space's action errors are announced once.
+func TestActionAlertsPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkActionAlerts("+copyPageStatuses(t)+")")
+}

@@ -327,3 +327,22 @@ async function checkCopyOnceInterval(st) {
   $('f-repeat').dispatchEvent({type: 'change'});
   copyAssert(!$('f-int').disabled && $('f-int').value === '12', 'repeating again lost the interval');
 }
+
+// Copy's and Free up space's action errors are alerts, written only when
+// they change, so a poll doesn't announce one again.
+async function checkActionAlerts(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.after);
+  for (const [id, act] of [['c-err', () => copyAction('start')], ['x-err', () => freeAction({action: 'find'})]]) {
+    copyAssert($(id).getAttribute('role') === 'alert', id + ' is not an alert');
+    let writes = 0, shown = '';
+    Object.defineProperty($(id), 'textContent', {get: () => shown, set: value => {writes++; shown = value;}, configurable: true});
+    api = async () => {throw {error: "Couldn't preview: synthetic."};};
+    await act();
+    await act();
+    copyAssert(shown === "Couldn't preview: synthetic." && writes === 1, id + ' wrote ' + writes + ' times: ' + shown);
+    api = async () => st.after[id === 'c-err' ? 'copy' : 'free'];
+    await act();
+    copyAssert(shown === '' && writes === 2, id + ' was not cleared');
+  }
+}
