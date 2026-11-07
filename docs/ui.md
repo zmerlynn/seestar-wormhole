@@ -154,7 +154,9 @@ can't change while copying runs:
 - **Check for new files every** N minutes, 5 by default. Its checkbox, on by
   default, turns the repeating check off to copy once: **Start copying** then
   checks once, copies what is new and stops, and Copy says **Checked once;
-  copying is off.** The summary then says "once each time you start".
+  copying is off.** The summary then says "once each time you start". With
+  the checkbox off, the minutes are disabled and keep their last valid
+  value for when you turn it back on; they never block **Save**.
 - **Files at once**: how many files copying runs at once, 1 to 4, 4 by
   default. Through Telescope Network, copying shares the connection with
   the Seestar app and seestar_alp; if they are slow to respond while copying,

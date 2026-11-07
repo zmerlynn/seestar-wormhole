@@ -559,17 +559,36 @@ const copyFields = {folder: 'f-folder', interval: 'f-int', files_at_once: 'f-fil
 const lines = value => value === '' ? [] : value.split('\n');
 function copyFill(s) {
   $('f-folder').value = s.folder;
-  $('f-int').value = String(s.interval_minutes);
+  $('f-int').value = copyInterval = String(s.interval_minutes);
   $('f-repeat').checked = !s.once;
+  repeatChange();
   $('f-files').value = String(s.files_at_once);
   $('f-ex').value = s.excludes.join('\n');
   $('f-in').value = s.includes.join('\n');
   $('f-skip').checked = s.skip_built_in;
   $('f-start').checked = s.start_copying;
 }
+// The interval counts only while copying repeats. Copy once disables it,
+// showing and sending its last valid value, kept for a later return to
+// repeating, and drops an error it had.
+let copyInterval = '5';
+function intervalInput() {
+  const value = $('f-int').value.trim(), n = Number(value);
+  if (value && Number.isInteger(n) && n >= 1 && n <= 1440) copyInterval = value;
+}
+function repeatChange() {
+  const repeat = $('f-repeat').checked;
+  if (!repeat) {
+    $('f-int').value = copyInterval;
+    put('f-int-err', '');
+    $('f-int-err').hidden = true;
+    $('f-int').removeAttribute('aria-invalid');
+  }
+  $('f-int').disabled = !repeat;
+}
 function copyInput() {
   return {
-    folder: $('f-folder').value, interval: $('f-int').value, files_at_once: $('f-files').value,
+    folder: $('f-folder').value, interval: $('f-repeat').checked ? $('f-int').value : copyInterval, files_at_once: $('f-files').value,
     excludes: lines($('f-ex').value), includes: lines($('f-in').value),
     skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked
   };
@@ -1480,6 +1499,8 @@ $('copy-form').addEventListener('submit', e => {
 $('s-change').addEventListener('click', openCopyForm);
 $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);
+$('f-int').addEventListener('input', intervalInput);
+$('f-repeat').addEventListener('change', repeatChange);
 $('f-choose').addEventListener('click', copyChoose);
 $('b-setup-go').addEventListener('click', goSetup);
 $('copy-steps-go').addEventListener('click', goSetup);

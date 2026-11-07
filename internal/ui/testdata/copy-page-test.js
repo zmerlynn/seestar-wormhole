@@ -296,3 +296,34 @@ async function checkFreeFolder(st) {
   $('x-folder-go').dispatchEvent({type: 'click'});
   copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'the folder link did not open Copy');
 }
+
+// With the check for new files off, the interval is disabled, keeps its
+// last valid value, and doesn't block Save.
+async function checkCopyOnceInterval(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.before);
+  copyAssert($('f-repeat').checked && !$('f-int').disabled && $('f-int').value === '5', 'repeat starts on with its interval');
+  $('f-int').value = '12';
+  $('f-int').dispatchEvent({type: 'input'});
+  $('f-int').value = '';
+  $('f-int').dispatchEvent({type: 'input'});
+  showErrors({interval: 'Enter a whole number of minutes from 1 to 1440.'});
+  $('f-repeat').checked = false;
+  $('f-repeat').dispatchEvent({type: 'change'});
+  copyAssert($('f-int').disabled && $('f-int').value === '12', 'copy once left the interval at ' + JSON.stringify($('f-int').value) + (($('f-int').disabled) ? '' : ', enabled'));
+  copyAssert($('f-int-err').hidden && $('f-int').getAttribute('aria-invalid') === null, 'copy once kept the interval error');
+  let sent = null;
+  api = async (action, body) => {
+    if (action === 'settings') {
+      sent = body;
+      return {...st.saved, settings: {...st.saved.settings, once: true, interval_minutes: 12}};
+    }
+    return st.after;
+  };
+  $('f-folder').value = st.saved.settings.folder;
+  await copySave();
+  copyAssert(sent && sent.once === true && sent.interval === '12', 'Save sent ' + JSON.stringify(sent));
+  $('f-repeat').checked = true;
+  $('f-repeat').dispatchEvent({type: 'change'});
+  copyAssert(!$('f-int').disabled && $('f-int').value === '12', 'repeating again lost the interval');
+}

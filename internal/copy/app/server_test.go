@@ -328,6 +328,14 @@ func TestSaveCallsSave(t *testing.T) {
 	if saves := e.saves(); len(saves) != 2 || !saves[1].Once {
 		t.Errorf("saved %+v, want copy once", saves)
 	}
+	// Copy once doesn't use the interval, so one that isn't valid doesn't
+	// block the save: the default is kept for a later return to repeating.
+	if w := e.post("/copy/api/settings", `{"once":true,`+strings.Replace(goodInput[1:], `"interval":"5"`, `"interval":""`, 1)); w.Code != 200 {
+		t.Fatalf("copy once without an interval: code %d %q", w.Code, w.Body.String())
+	}
+	if saves := e.saves(); len(saves) != 3 || !saves[2].Once || saves[2].IntervalMinutes != 5 {
+		t.Errorf("saved %+v, want copy once every 5 minutes", saves)
+	}
 }
 
 func TestSaveFailure(t *testing.T) {

@@ -62,8 +62,14 @@ func checkInput(in input) (Settings, map[string]string) {
 	if !filepath.IsAbs(set.Folder) {
 		errs["folder"] = folderError
 	}
+	// Copy once never waits between checks: its interval, kept for a later
+	// return to repeating, is the default when it isn't one.
 	n, err := strconv.Atoi(strings.TrimSpace(in.Interval))
-	if err != nil || n < 1 || n > 1440 {
+	switch {
+	case err == nil && n >= 1 && n <= 1440:
+	case in.Once:
+		n = DefaultSettings().IntervalMinutes
+	default:
 		errs["interval"] = intervalError
 	}
 	set.IntervalMinutes = n

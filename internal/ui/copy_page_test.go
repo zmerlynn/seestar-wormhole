@@ -75,3 +75,8 @@ func TestFreeSetupPage(t *testing.T) {
 func TestFreeFolderPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkFreeFolder("+copyPageStatuses(t)+")")
 }
+
+// Copy once disables the interval and saves without it.
+func TestCopyOnceIntervalPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkCopyOnceInterval("+copyPageStatuses(t)+")")
+}
