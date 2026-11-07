@@ -218,7 +218,8 @@ func (p *previewer) quit() {
 // previewView is the Copy tab's preview and its text, for the page.
 type previewView struct {
 	State  string        `json:"state"`
-	Title  string        `json:"title"` // also the status region's text
+	Title  string        `json:"title"`          // also the status region's text
+	Chip   string        `json:"chip,omitempty"` // the header's bubble while it runs
 	Text   string        `json:"text,omitempty"`
 	Sub    string        `json:"sub,omitempty"`
 	Path   string        `json:"path,omitempty"` // what is being looked at
@@ -237,6 +238,7 @@ func (p *previewer) view() *previewView {
 	v := &previewView{State: st.state}
 	switch st.state {
 	case pvRunning:
+		v.Chip = "Previewing copy"
 		v.Title = "Connecting to " + st.endpoint + "…"
 		if st.listing {
 			v.Title = "Looking for new files…"

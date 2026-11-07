@@ -8,31 +8,34 @@ on your computer in three ways:
   scripts and services, which comes in every download;
 - [rclone or another SMB app](#with-rclone), through the proxy's SMB listener.
 
-The app and `seestar-copy-cli` reach the telescope either through your Seestar
-account, sharing the proxy's connection, or directly on the network the
-telescope is on. See [tested coverage](status.md#copying) for what has been
+The app and `seestar-copy-cli` reach the telescope either remotely through
+Telescope Network, sharing the proxy's connection, or directly on the network
+the telescope is on. See [tested coverage](status.md#copying) for what has been
 tried on each route.
 
 ## Copy in the app
 
 1. **Choose how to reach the telescope.** On the **Connection** tab, under
-   **Reach the telescope**, choose **Through my Seestar account** and
+   **Reach the telescope**, choose **Remotely through Telescope Network** and
    **Connect**, or choose **On this network**, enter the telescope's address,
    and **Save**. Until one is saved, Copy, Browse and Free up space are
-   unavailable and say so. On your account, copying uses the proxy's SMB port
+   unavailable and say so. Through Telescope Network, copying uses the proxy's SMB port
    (local port 4445 by default) and waits for the connection; it never starts
    it.
 2. **Choose a folder.** The first time you open **Copy**, choose the folder for
-   your images and **Save and continue**. Nothing is copied yet.
+   your images and **Save**. Nothing is copied yet: copying
+   starts when you press **Start copying**.
 3. **Start copying.** **Start copying** checks the telescope every 5 minutes
    by default and copies what is new; **Check now** checks at once, and **Stop
-   copying** stops. **Preview** shows what Start would copy without copying
-   anything. Keep the app open while it copies.
+   copying** stops. To copy once instead, turn off **Check for new files
+   every** in the settings: **Start copying** then copies what is new and
+   stops. **Preview** shows what Start would copy without copying anything.
+   Keep the app open while it copies.
 
 Images land in the folder as they are on the telescope, such as
 `~/Seestar/MyWorks/M 31/`. The telescope's logs, scratch and system files are
 skipped by default. **Change…** opens the settings: the folder, how often to
-check, how many files to copy at once, what to leave out or only copy, and
+check or whether to copy once, how many files to copy at once, what to leave out or only copy, and
 whether to start copying when the app opens. [Using the UI](ui.md#copy) has every setting and message.
 
 **Browse** shows the telescope's files one folder at a time, with its `.jpg`
@@ -44,7 +47,9 @@ pick. See [Browse](ui.md#browse).
 copied. Copy first, make your own backup or export of the folder, then
 **Preview what to delete**. It lists, per folder, the files whose copy in your
 folder still matches and that haven't changed on the telescope, 7 days old or
-more by default. Uncheck a folder to keep it. Nothing is deleted until you
+more by default. **Keep on the telescope** and **Only free up** choose what
+it may delete, with the same patterns as Copy's; they are separate from Copy's
+**Leave out** and **Only copy**. Uncheck a folder to keep it. Nothing is deleted until you
 choose **Delete N files…** and confirm. Avoid it while the telescope is busy.
 See [Free up space](ui.md#free-up-space) and the
 [proof modes](copy-reference.md#proof-modes).
@@ -79,9 +84,10 @@ history.
   it. If it is blocked, **Test**, Copy and Preview can't reach the telescope
   there, and on a Mac they say where to allow it: enable seestar-wormhole in
   System Settings → Privacy & Security → Local Network, then **Test** again.
-  If a permission request is open, allow access first. Through your account,
-  copying doesn't need it.
-- **Through your account, a large copy is shared.** It uses the same telescope
+  While the request is open, the first **Test**, **Save** or copy after the
+  app starts waits up to 5 seconds for your answer. Through Telescope
+  Network, copying doesn't need it.
+- **Through Telescope Network, a large copy is shared.** It uses the same telescope
   session as the phone app and control clients, and delays their status
   replies. **Files at once** in Copy settings sets how many files copying
   runs at once, 4 by default: if the Seestar app or seestar_alp is slow to

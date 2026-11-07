@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -10,7 +11,10 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
 
@@ -54,7 +58,7 @@ func normalizeAddress(s string) (string, bool) {
 // or a message for each field in error, keyed by field.
 func checkInput(in input) (Settings, map[string]string) {
 	errs := map[string]string{}
-	set := Settings{Version: SettingsVersion, Folder: strings.TrimSpace(in.Folder), SkipBuiltIn: in.SkipBuiltIn, StartCopying: in.StartCopying}
+	set := Settings{Version: SettingsVersion, Folder: strings.TrimSpace(in.Folder), SkipBuiltIn: in.SkipBuiltIn, StartCopying: in.StartCopying, Once: in.Once}
 	if !filepath.IsAbs(set.Folder) {
 		errs["folder"] = folderError
 	}
@@ -69,7 +73,7 @@ func checkInput(in input) (Settings, map[string]string) {
 	}
 	set.FilesAtOnce = n
 	for field, lines := range map[string][]string{"excludes": in.Excludes, "includes": in.Includes} {
-		patterns, msg := checkPatterns(lines)
+		patterns, msg := checkPatterns(lines, "save")
 		if msg != "" {
 			errs[field] = msg
 		}
@@ -85,8 +89,9 @@ func checkInput(in input) (Settings, map[string]string) {
 // checkPatterns checks a pattern box's lines with the CLI's parser. Blank
 // lines are skipped but counted, so the line number in a message is the
 // one the user sees. It returns the patterns, or a message for the first
-// line in error.
-func checkPatterns(lines []string) ([]string, string) {
+// line in error, which says to correct it and then press the button verb
+// names.
+func checkPatterns(lines []string, verb string) ([]string, string) {
 	patterns := []string{}
 	for i, line := range lines {
 		line = strings.TrimSuffix(line, "\r")
@@ -94,7 +99,7 @@ func checkPatterns(lines []string) ([]string, string) {
 			continue
 		}
 		if _, err := engine.ParsePattern(line); err != nil {
-			return nil, fmt.Sprintf("Line %d: %s. Correct this pattern and save again.", i+1, err)
+			return nil, fmt.Sprintf("Line %d: %s. Correct this pattern and %s again.", i+1, err, verb)
 		}
 		patterns = append(patterns, line)
 	}
@@ -116,23 +121,109 @@ func LocalNetworkHint(goos string, err error) string {
 }
 
 // unanswered reports whether err is a TCP connect that nothing answered:
-// it timed out, the context's deadline passed while it waited, or there
-// was no route to the host or network, the on-link host did not answer
-// (EHOSTDOWN, which macOS returns for that), or the system refused to send it.
-// Apple documents no errno for a Local Network denial, so these are the
-// failures where one could hide. A refusal, a name not found, a DNS
-// server's answer and anything the SMB server said after connecting are
-// answers.
+// it timed out, the context's deadline passed while it waited, or the
+// system failed it at once ([connectBlocked]). Apple documents no errno for
+// a Local Network denial, so these are the failures where one could hide.
+// A refusal, a name not found, a DNS server's answer and anything the SMB
+// server said after connecting are answers.
 func unanswered(err error) bool {
+	op, ok := errors.AsType[*net.OpError](err)
+	return ok && op.Op == "dial" && op.Timeout() || connectBlocked(err)
+}
+
+// connectBlocked reports whether err is a TCP connect the system failed
+// without an answer or a timeout: there was no route to the host or
+// network, the on-link host did not answer (EHOSTDOWN, which macOS returns
+// for that), or the system refused to send it. While macOS asks whether
+// the app may use the Local Network, its connects fail this way.
+func connectBlocked(err error) bool {
 	op, ok := errors.AsType[*net.OpError](err)
 	if !ok || op.Op != "dial" {
 		return false
 	}
-	if op.Timeout() {
-		return true
-	}
 	sys, ok := errors.AsType[*os.SyscallError](op.Err)
 	return ok && sys.Syscall == "connect" && (errors.Is(sys.Err, syscall.EHOSTUNREACH) || errors.Is(sys.Err, syscall.ENETUNREACH) || errors.Is(sys.Err, syscall.EHOSTDOWN) || errors.Is(sys.Err, syscall.EPERM))
+}
+
+// localNetworkRetry is how a dial to an address on this network waits out
+// macOS's Local Network prompt; tests replace it.
+var localNetworkRetry = &lanRetry{goos: runtime.GOOS, every: time.Second, limit: 5 * time.Second, now: time.Now, after: time.After}
+
+// lanRetry is when [retryLAN] tries again: on goos "darwin" only, every
+// interval, until limit has passed, and only in the first dial to an
+// address on this network since the app started. Only that dial can raise
+// macOS's prompt; every later one, even while the first still waits, dials
+// once. now and after are the clock.
+type lanRetry struct {
+	goos         string
+	every, limit time.Duration
+	now          func() time.Time
+	after        func(time.Duration) <-chan time.Time
+
+	claimed atomic.Bool // the first dial has begun
+}
+
+// retryLAN runs try, a dial to an address on this network, and on macOS
+// runs it again while it fails with [connectBlocked]: the system fails
+// connects that way while its Local Network prompt is open, and the first
+// one after the user allows access goes through. Only the app's first such
+// dial does, for at most r's limit in all: a try again is bounded by the
+// time left. Once ctx is done it returns too. It returns the last try's
+// result, or the last failure before the limit cut a try short. Any other
+// failure, a timeout, a refusal or anything the server said, returns at
+// once.
+func retryLAN[T any](ctx context.Context, r *lanRetry, try func(context.Context) (T, error)) (T, error) {
+	// The first dial claims the retries for good, however it ends.
+	if !r.claimed.CompareAndSwap(false, true) {
+		return try(ctx)
+	}
+	cutoff := r.now().Add(r.limit)
+	v, err := try(ctx)
+	for ctx.Err() == nil && r.goos == "darwin" && connectBlocked(err) && r.now().Add(r.every).Before(cutoff) {
+		select {
+		case <-ctx.Done():
+			return v, err
+		case <-r.after(r.every):
+		}
+		// A timer that fired late leaves less, or nothing.
+		d := cutoff.Sub(r.now())
+		if d <= 0 || ctx.Err() != nil {
+			return v, err
+		}
+		next, nextErr, cut := tryWithin(ctx, d, try)
+		if cut && ctx.Err() == nil {
+			var zero T
+			return zero, err
+		}
+		v, err = next, nextErr
+	}
+	return v, err
+}
+
+// tryWithin runs try with a context that ends after d unless try has
+// returned by then, so a session it dials keeps ctx's lifetime. cut
+// reports that d ran out first: a session try dialed is then closed.
+func tryWithin[T any](ctx context.Context, d time.Duration, try func(context.Context) (T, error)) (v T, err error, cut bool) {
+	tctx, cancel := context.WithCancel(ctx)
+	var mu sync.Mutex
+	returned := false
+	timer := time.AfterFunc(d, func() {
+		mu.Lock()
+		defer mu.Unlock()
+		if !returned {
+			cut = true
+			cancel()
+		}
+	})
+	v, err = try(tctx)
+	timer.Stop()
+	mu.Lock()
+	returned = true
+	mu.Unlock()
+	if err != nil || cut {
+		cancel()
+	}
+	return v, err, cut
 }
 
 // testMessage words Test's result for the page on goos. Test checks an

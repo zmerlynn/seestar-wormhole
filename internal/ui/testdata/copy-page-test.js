@@ -56,7 +56,7 @@ async function checkCopySetup(st) {
   copyAssert(!st.before.set_up && st.after.set_up && st.saved.browse_changed, 'server statuses changed shape');
   copyRender(st.before);
   copyAssert($('c-main').hidden && !$('s-first').hidden && $('s-line').hidden, 'the first visit shows the copy controls');
-  copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save and continue', 'the first visit lacks Save and continue');
+  copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
   copyAssert($('b-frame').src === undefined || $('b-frame').src === '', 'Browse loaded before settings');
   // A field error goes under its field and takes focus.
@@ -69,7 +69,7 @@ async function checkCopySetup(st) {
   copyAssert(!$('f-folder-err').hidden && $('f-folder-err').textContent === 'Choose a folder.' && $('f-folder').getAttribute('aria-invalid') === 'true', 'the folder error is not shown');
   copyAssert(document.activeElement === $('f-folder') && !$('f-save').disabled, 'the folder error did not take focus');
   copyAssert(calls.length === 1 && calls[0][0] === 'settings' && calls[0][1] === '/copy/api/', 'Save posted elsewhere');
-  // Save and continue: the summary replaces the form, and Browse loads.
+  // The first Save: the summary replaces the form, and Browse loads.
   let sent = null;
   api = async (action, body) => {
     if (action === 'settings') {
@@ -86,7 +86,7 @@ async function checkCopySetup(st) {
   copyAssert(!$('c-main').hidden && $('s-first').hidden && !$('s-line').hidden && $('copy-form').hidden, 'the summary did not replace the form');
   copyAssert($('s-summary').textContent === 'Copying to ' + st.saved.settings.folder + ' every 5 min, skipping logs and system files, leaving out Video.', 'summary: ' + $('s-summary').textContent);
   copyAssert($('b-frame').src === '/browse/', 'Browse did not load after the first save');
-  copyAssert(document.activeElement === $('c-title'), 'the first save did not move to Copy');
+  copyAssert(document.activeElement === $('c-next') && !$('c-next').hidden, 'the first save did not say Start copying is next');
   copyAssert(!$('h-details').hidden && $('h-path').textContent === st.after.history, 'Copy history');
   // Change… opens the form; Cancel puts the saved values back.
   openCopyForm();
@@ -100,9 +100,17 @@ async function checkCopySetup(st) {
   openCopyForm();
   await copySave();
   copyAssert($('f-saved').textContent === 'Settings saved.' && document.activeElement === $('s-change'), 'a later save lacks its confirmation');
-  copyAssert(!$('copy-chip').hidden && $('copy-chip').textContent === st.after.copy.chip && $('copy-chip').className === 'chip off', 'the copy chip is hidden once set up');
+  copyAssert($('copy-chip').hidden && !st.after.copy.chip, 'the copy chip shows while copying is off');
+  copyAssert($('preview-chip').hidden && $('free-chip').hidden, 'an idle preview or delete showed its bubble');
+  // While copying runs, its chip shows and opens Copy.
+  const running = {...st.after, copy: {...st.after.copy, state: 'copying', on: true, chip: 'Copying'}};
+  copyRender(running);
+  copyAssert(!$('copy-chip').hidden && $('copy-chip').textContent === 'Copying' && $('copy-chip').className === 'chip on', 'the copy chip is hidden while copying');
+  selectTab('connection');
+  $('copy-chip').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'the copy chip did not open Copy');
   render(st.locked);
-  copyRender(st.after);
+  copyRender(running);
   copyAssert($('copy-chip').hidden, 'the copy chip shows without a route');
 }
 

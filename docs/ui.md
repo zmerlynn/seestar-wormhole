@@ -10,34 +10,48 @@ They share one connection to the telescope.
 The header shows a dot and a line with the connection's state: **Not
 connected**, the status while connecting, or **Connected to** your Seestar. On
 this network it shows the saved address, then **On this network: reachable**
-or **Can't reach** the address once **Test** has run. Once copying is set up,
-a chip after the line says how copying stands: **Copying**, **Up to date**,
-how many files were not copied, **Copying is on** or **Copying is off**.
+or **Can't reach** the address once **Test** has run. While copying is on, a
+chip after the line says how it stands: **Copying**, **Up to date**, how many
+files were not copied, or **Copying is on**. A copy once shows **Copying**
+while its check runs. With copying off, there is no chip.
+While a run is busy, a chip of its own follows: **Previewing copy**, **Checking
+what to delete**, **Checking N files again** or **Deleting 3 of 12**. It goes
+away when the run ends. Each chip opens its tab, Copy or Free up space. A run's
+start is announced once when another tab is open, each time it starts.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
-between them. Copy, Browse and Free up space open once you connect through
-your account, or save an address on this network; until then they are
-unavailable and say so. Quit and the version are below every tab.
+between them. Copy, Browse and Free up space open once you connect remotely
+through Telescope Network, or save an address on this network; until then
+they are dimmed, show a padlock, and say so. Quit and the version are below every tab.
 
 ## Reaching the telescope
 
-**Connection** starts with **Reach the telescope**:
+**Connection** starts with **Reach the telescope**, and a line under it says
+what each choice gives: through Telescope Network, one connection serves
+both the Seestar app and the telescope's files; on this network, it serves
+only the telescope's files, for Copy, Browse and Free up space.
 
-- **Through my Seestar account** is the setup on the rest of this page: the
-  proxy connects to your Seestar through your account, and copying will use
-  its file-sharing (SMB) port.
+- **Remotely through Telescope Network** is the setup on the rest of this
+  page: the proxy signs in with your Seestar account and connects to your
+  Seestar through Telescope Network, and copying will use its file-sharing
+  (SMB) port.
 - **On this network** is for a Seestar on the same network as this computer.
-  Enter its address, with an optional port (445 by default). **Test** checks
-  that it answers file sharing; **Save** tests it first, unless it has just
-  passed, and saves it only if it answers. Otherwise the saved route stays.
+  Enter its address, with an optional port (445 by default); its help says
+  that Copy, Browse and Free up space read the telescope's files there.
+  **Test** checks that it answers file sharing and saves nothing: when it
+  passes for an address other than the saved one, it says to **Save**.
+  **Save** tests it first, unless it has just passed, then checks that it
+  still answers (the line under the address says **Checking…**) and saves
+  it only if it does; Copy, Browse and Free up space then use it. Otherwise
+  the saved route stays.
   On a Mac, when nothing answers at the address, Test or Save also says to
   enable seestar-wormhole in System Settings → Privacy & Security → Local
   Network, which macOS may be blocking; see [Local Network access](copying.md#things-to-know).
   This route doesn't start the proxy or use your account.
 
 You can't change the choice while a connection is running or while copying or
-deleting is running; stop it first. **Connect** saves the account route, so
+deleting is running; stop it first. **Connect** saves the Telescope Network route, so
 it is refused too while copying or deleting runs on this network.
 
 ## Setting up
@@ -109,7 +123,7 @@ Keep seestar-wormhole open while you use the telescope.
 telescope's file share to a folder on this computer, show what is on the
 share, and delete what is safely copied. They use the same rules and the same
 copy history as [`seestar-copy-cli`](copy-reference.md)'s `sync`, `browse` and
-`delete`. On your account they reach the share through the proxy's SMB port
+`delete`. Through Telescope Network they reach the share through the proxy's SMB port
 (local port 4445 by default); on this network, at the saved address.
 
 If they can't reach the share, each says why and links to the fix:
@@ -124,8 +138,10 @@ If they can't reach the share, each says why and links to the fix:
 
 The first time you open Copy, **Copy settings** is open: choose the folder for
 your images, with **Choose…** in the app's window or by typing its full path,
-then **Save and continue**. Nothing is
-copied until you start. After that, Copy shows what copying is doing, with
+then **Save**. Saving doesn't start copying: a notice above the
+buttons says copying starts when you press **Start copying**, and that
+**Preview** shows what it would copy first. After that, Copy shows what
+copying is doing, with
 **Start copying**, **Preview**, **Check now** and **Stop copying**, and below
 them a summary of the settings, such as "Copying to ~/Seestar every 5 min,
 skipping logs and system files." **Change…** opens the settings, which you
@@ -133,16 +149,21 @@ can't change while copying runs:
 
 - **Folder for your images.** Images are copied there in the same folders as
   on the telescope. Each folder has its own copy history.
-- **Check for new files every** N minutes, 5 by default.
+- **Check for new files every** N minutes, 5 by default. Its checkbox, on by
+  default, turns the repeating check off to copy once: **Start copying** then
+  checks once, copies what is new and stops, and Copy says **Checked once;
+  copying is off.** The summary then says "once each time you start".
 - **Files at once**: how many files copying runs at once, 1 to 4, 4 by
-  default. Through your Seestar account, copying shares the connection with
+  default. Through Telescope Network, copying shares the connection with
   the Seestar app and seestar_alp; if they are slow to respond while copying,
   lower it to 1 or 2.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
   [`--exclude` and `--include`](copy-reference.md#selection).
 - **Skip the telescope's logs, scratch and system files**, on by default.
-- **Start copying when the app opens**, off by default. On your account,
-  copying then starts once the connection is ready.
+- **Start copying when the app opens**, off by default. Through Telescope
+  Network, copying then starts once the connection is ready; pressing
+  **Start copying** before then takes its place. With the check for new
+  files off, it copies once each time the app opens.
 
 While copying is off, **Preview** shows what **Start copying** would do, from
 one [dry run](copy-reference.md#dry-run) with the saved settings: how many
@@ -169,8 +190,10 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 
 Browse is `seestar-copy-cli browse`'s page for the share, with the saved
 folder's [statuses](copy-reference.md#statuses). What the settings leave out
-shows as [`left out`](copy-reference.md#left-out-in-browse). A Save that
-changes the folder or the selection reloads it at the share's top. Until the
+shows as [`left out`](copy-reference.md#left-out-in-browse). After a Save
+that changes the folder or the selection, or a change of how the telescope
+is reached, Browse loads again at the share's top when it is next shown, so
+an error from before goes without a retry. Until the
 folder is saved, Browse says to choose it, with **Go to Copy**. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
 
@@ -182,8 +205,22 @@ nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent
 sessions on the telescope, and **My copies have moved or the drive is
 offline** checks only the app's record of each copy, as `--trust-state`
-does. **Delete N files…** asks once more; **Stop** ends a delete that is
-running.
+does. **Keep on the telescope** and **Only free up** take one pattern per
+line, as `delete`'s [`--exclude` and `--include`](copy-reference.md#selection):
+a file that matches Keep on the telescope is never deleted, and when Only free
+up is not empty, only files that match it are. They are separate from Copy's
+**Leave out** and **Only copy**, which don't change what is deleted.
+**Always kept**, beside them, lists what is never deleted, as `delete` leaves
+it out by default: the telescope's log and scratch folders (`/log`,
+`/tmp_stitch`, `/batch_stack_tmp`), names starting with a dot, unfinished
+`.tmp` files, and Windows system files (`Thumbs.db`, `desktop.ini`,
+`$RECYCLE.BIN`, `System Volume Information`). A Copy Save that changes the folder discards a
+preview, and so does a change of how the telescope is reached, which also
+clears a check that couldn't finish. **Delete N files…** asks once more. The delete then lists the checked
+folders again, and only those, saying **Checking N files again before
+deleting…**, and proves each file again just before it removes it: a file
+that changed or went away since the preview is kept. **Stop** ends a delete
+that is running.
 
 ## Stopping and quitting
 
@@ -355,9 +392,9 @@ copy into one folder at once.
 | `serial`, `model`, `email` | Empty strings. |
 | `ports` | `[]`, using the standard service mappings. |
 | `remember_password` | `false` |
-| `route` | Empty, meaning the account route. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means the account route. |
+| `route` | Empty, meaning **Remotely through Telescope Network**. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means Telescope Network. |
 | `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
-| `route_established` | `false`. `true` once the account has connected or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
+| `route_established` | `false`. `true` once a connection through Telescope Network is ready or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
 
 These defaults differ from the UI's first-run phone setup.
 
@@ -380,12 +417,14 @@ options, never on load.
 |---|---|
 | `folder` | `Seestar` in your home folder. |
 | `interval_minutes` | `5` |
+| `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
-| `skip_built_in` | `true` |
+| `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
 | `start_copying` | `false` |
 | `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range stops the app at startup. |
 | `older_than_days` | `7` |
 | `trust_state` | `false` |
+| `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
 
 The telescope's address is not in it; it comes from the route in `config.json`.
 

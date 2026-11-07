@@ -42,9 +42,11 @@ type server struct {
 	version  string
 	stateDir string
 	log      *slog.Logger
-	// dial opens a browse session at the target; test runs Test.
-	dial func(ctx context.Context) (remote.Session, error)
-	test func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	// dial opens a browse session at the target; test runs Test, and
+	// reach a route's Save's check.
+	dial  func(ctx context.Context) (remote.Session, error)
+	test  func(ctx context.Context, endpoint string) ([]remote.Entry, error)
+	reach func(ctx context.Context, endpoint string) error
 	// target is where the telescope is for every dial and start.
 	target  func() (Target, error)
 	native  Native // the window's dialogs; each nil without one
@@ -58,11 +60,19 @@ type server struct {
 	// checks and its start. It may be held across a save to disk but is
 	// never taken by status, views, Busy or the end of any of them.
 	admit sync.Mutex
+	// started is set, under admit, once copying has started since the app
+	// did, from the page or as the app opened.
+	started bool
 
 	mu       sync.Mutex
 	file     *settingsFile
 	browse   *browse.Handler // nil until a folder is saved
 	sessions *browse.Sessions
+	// view counts what Browse shows, for the page, which loads its frame
+	// again once it moved: each new pool moves it, and so does each new
+	// endpoint status finds, such as a route's run connecting.
+	view   int
+	viewAt string // the endpoint view last moved for; "" for none
 }
 
 func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server {
@@ -78,6 +88,10 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	}
 	if o.Test != nil {
 		s.test = o.Test
+	}
+	s.reach = o.Reach
+	if s.reach == nil {
+		s.reach = remote.Reach
 	}
 	if o.Native != nil {
 		s.native = *o.Native
@@ -142,7 +156,9 @@ func (s *server) resolve(set Settings) (Settings, Target, error) {
 // newBrowse builds a browse handler with its own session pool, which
 // reaches the target, records for the folder, and what the selection
 // leaves out.
+// It is called holding s.mu, or before the server is shared.
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
+	s.view++
 	folder, log := set.Folder, s.log
 	sel, err := selector(set)
 	if err != nil {
@@ -159,12 +175,20 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	return h, sessions
 }
 
+// errStarted refuses the start as the app opens once copying has started.
+var errStarted = errors.New("copying has started since the app opened")
+
 // startCopying turns copying on with the saved settings, which discards
 // a preview. Holding s.admit keeps a Save or a change of endpoint from
-// landing between the check and the start.
-func (s *server) startCopying() error {
+// landing between the check and the start. The start as the app opens,
+// opening, is refused once copying has started, even if it has since
+// stopped, as a pass of copying once does by itself.
+func (s *server) startCopying(opening bool) error {
 	s.admit.Lock()
 	defer s.admit.Unlock()
+	if opening && s.started {
+		return errStarted
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.setUp() {
@@ -177,6 +201,7 @@ func (s *server) startCopying() error {
 	if err := s.copy.start(set, t); err != nil {
 		return err
 	}
+	s.started = true
 	s.preview.discard()
 	return nil
 }
@@ -212,13 +237,16 @@ func (s *server) copyView() copyView {
 var errNotSetUp = errors.New("save the copy settings first")
 
 // endpointChanged follows a change of where the telescope is, which the
-// caller made holding s.admit: the previews go back to Start, as their
-// proof was taken elsewhere, and browse gets a new pool, so no request
+// caller made holding s.admit: the previews, and a check that failed, go
+// back to Start, as their proof was taken elsewhere, a copy once that
+// couldn't reach the telescope shows as off, and browse gets a new pool,
+// so no request
 // reaches the old endpoint through a session already open there.
 func (s *server) endpointChanged() {
 	s.mu.Lock()
 	s.free.clear()
 	s.preview.discard()
+	s.copy.moved()
 	old := s.sessions
 	if s.browse != nil {
 		s.browse, s.sessions = s.newBrowse(s.file.settings)
@@ -332,17 +360,28 @@ type input struct {
 	Includes     []string `json:"includes"`
 	SkipBuiltIn  bool     `json:"skip_built_in"`
 	StartCopying bool     `json:"start_copying"`
+	Once         bool     `json:"once"`
 	Action       string   `json:"action"` // the copy and delete APIs'
 	// The delete API's: Find's options, and Delete's preview and folders.
-	Days    string   `json:"days"`
-	Trust   bool     `json:"trust"`
-	ID      int      `json:"id"`
-	Folders []string `json:"folders"`
+	Days         string   `json:"days"`
+	Trust        bool     `json:"trust"`
+	FreeExcludes []string `json:"free_excludes"` // the box's lines
+	FreeIncludes []string `json:"free_includes"`
+	ID           int      `json:"id"`
+	Folders      []string `json:"folders"`
 }
 
 func (s *server) status(w http.ResponseWriter) {
+	t, err := s.target()
+	if err != nil {
+		t.Endpoint = ""
+	}
 	s.mu.Lock()
-	set, setUp := s.file.settings, s.setUp()
+	if t.Endpoint != s.viewAt {
+		s.viewAt = t.Endpoint
+		s.view++
+	}
+	set, setUp, view := s.file.settings, s.setUp(), s.view
 	s.mu.Unlock()
 	// The saved folder's state file, as sync names it.
 	var history string
@@ -360,8 +399,9 @@ func (s *server) status(w http.ResponseWriter) {
 		Free            freeView `json:"free"`
 		Activity        []entry  `json:"activity"` // newest first
 		ActivitySeq     int      `json:"activity_seq"`
-		Choose          bool     `json:"choose"` // the window's folder picker is there
-	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil})
+		Choose          bool     `json:"choose"`      // the window's folder picker is there
+		BrowseView      int      `json:"browse_view"` // moves when Browse should load again
+	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil, view})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -370,9 +410,7 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		localhttp.Respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"address": addressError}})
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, testTimeout)
-	defer cancel()
-	entries, err := s.test(ctx, endpoint)
+	entries, err := s.testLAN(ctx, endpoint)
 	if err != nil {
 		s.log.Warn("test failed", "endpoint", endpoint, "err", err)
 	} else {
@@ -383,6 +421,24 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		Address string `json:"address"`
 		Message string `json:"message"`
 	}{err == nil, endpoint, testMessage(hostOS, endpoint, entries, err)})
+}
+
+// testLAN runs Test of endpoint, an address on this network, within
+// testTimeout, waiting out macOS's Local Network prompt.
+func (s *server) testLAN(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+	ctx, cancel := context.WithTimeout(ctx, testTimeout)
+	defer cancel()
+	return retryLAN(ctx, localNetworkRetry, func(ctx context.Context) ([]remote.Entry, error) { return s.test(ctx, endpoint) })
+}
+
+// reachLAN is testLAN for a route's Save: it checks only that the
+// telescope answers at endpoint, since the page's Test has checked its
+// share.
+func (s *server) reachLAN(ctx context.Context, endpoint string) error {
+	ctx, cancel := context.WithTimeout(ctx, testTimeout)
+	defer cancel()
+	_, err := retryLAN(ctx, localNetworkRetry, func(ctx context.Context) (struct{}, error) { return struct{}{}, s.reach(ctx, endpoint) })
+	return err
 }
 
 type fieldErrors struct {
@@ -408,6 +464,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	old, wasSetUp := s.file.settings, s.setUp()
 	// The Free up space options are saved by Find, not by this form.
 	set.OlderThanDays, set.TrustState = old.OlderThanDays, old.TrustState
+	set.FreeExcludes, set.FreeIncludes = old.FreeExcludes, old.FreeIncludes
 	if err := s.file.save(set); err != nil {
 		s.mu.Unlock()
 		s.log.Error("save settings", "err", err)
@@ -418,11 +475,15 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		return
 	}
 	// A new selection replaces browse too, which shows what it leaves out.
+	// Free up space's preview depends on the folder alone: it has its own
+	// patterns.
 	changed := !wasSetUp || old.Folder != set.Folder ||
 		!slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn
+	if !wasSetUp || old.Folder != set.Folder {
+		s.free.clear()
+	}
 	var oldSessions *browse.Sessions
 	if changed {
-		s.free.clear()
 		s.preview.discard()
 		oldSessions = s.sessions
 		s.browse, s.sessions = s.newBrowse(set)
@@ -446,7 +507,7 @@ func (s *server) copyAction(w http.ResponseWriter, action string) {
 	verb := "start copying"
 	switch action {
 	case "start":
-		err = s.startCopying()
+		err = s.startCopying(false)
 	case "stop":
 		s.copy.stop()
 	case "check":
@@ -478,9 +539,21 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 	}
 	switch in.Action {
 	case "find":
+		errs := map[string]string{}
 		days, err := strconv.Atoi(strings.TrimSpace(in.Days))
 		if err != nil || days < 0 || days > maxDays {
-			localhttp.Respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"days": "Enter a whole number of days, 0 or more."}})
+			errs["days"] = "Enter a whole number of days, 0 or more."
+		}
+		excludes, msg := checkPatterns(in.FreeExcludes, "preview")
+		if msg != "" {
+			errs["free_excludes"] = msg
+		}
+		includes, msg := checkPatterns(in.FreeIncludes, "preview")
+		if msg != "" {
+			errs["free_includes"] = msg
+		}
+		if len(errs) > 0 {
+			localhttp.Respond(w, http.StatusBadRequest, fieldErrors{errs})
 			return
 		}
 		// Holding s.admit keeps a Save or a change of endpoint from
@@ -494,15 +567,27 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			conflict("Couldn't preview: " + errNotSetUp.Error() + ".")
 			return
 		}
+		// A Find refused as busy saves nothing: the running check keeps
+		// the options it started with.
+		if s.free.running() {
+			s.mu.Unlock()
+			conflict("Couldn't preview: " + errFreeBusy.Error() + ".")
+			return
+		}
 		set, old := s.file.settings, s.file.settings
 		set.OlderThanDays, set.TrustState = days, in.Trust
-		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState {
+		set.FreeExcludes, set.FreeIncludes = excludes, includes
+		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState ||
+			!slices.Equal(set.FreeExcludes, old.FreeExcludes) || !slices.Equal(set.FreeIncludes, old.FreeIncludes) {
 			if err := s.file.save(set); err != nil {
 				s.mu.Unlock()
 				s.log.Error("save settings", "err", err)
 				conflict("Couldn't save the options: " + reason(err) + ". Try again.")
 				return
 			}
+			// The preview shown was checked with the old options, so it
+			// goes before the new check starts, even if that fails.
+			s.free.clear()
 		}
 		var t Target
 		if set, t, err = s.resolve(set); err == nil {

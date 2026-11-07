@@ -34,9 +34,7 @@ func TestBrowseDownloadOutlastsWriteTimeout(t *testing.T) {
 		Dial: func(context.Context, string) (remote.Session, error) {
 			return remote.NewFake(fstest.MapFS{"MyWorks/big.fit": {Data: big}}), nil
 		},
-		Test: func(context.Context, string) ([]remote.Entry, error) {
-			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
-		},
+		Reach: func(context.Context, string) error { return nil },
 	})
 	t.Cleanup(s.copy.Quit)
 	copySettings(t, s)

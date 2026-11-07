@@ -15,7 +15,8 @@ whether seestar-wormhole may find and connect to devices on your local
 network; the app needs it for the Seestar app to find this computer and to
 reach a telescope on this network. If the request was denied, enable
 seestar-wormhole in System Settings → Privacy & Security → Local Network, then
-**Test** again. If a permission request is open, allow access first. A failed
+**Test** again. While the request is open, the first **Test**, **Save** or
+copy after the app starts waits up to 5 seconds for your answer. A failed
 **Test** on this network says so on a Mac.
 
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.

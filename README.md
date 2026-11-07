@@ -80,8 +80,8 @@ the Seestar app's Remote mode can use it; **Quit** exits. See [Using the UI](doc
 
 The **Copy**, **Browse** and **Free up space** tabs copy your images to a
 folder on this computer, show what is on the telescope, and delete what is
-safely copied. They work through your account or, for a telescope on the same
-network as this computer, directly. See [Copy images](docs/copying.md).
+safely copied. They work remotely through Telescope Network or, for a
+telescope on the same network as this computer, directly. See [Copy images](docs/copying.md).
 
 ## Use the command line
 

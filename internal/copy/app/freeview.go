@@ -41,13 +41,14 @@ type freeStatus struct {
 	preview *engine.DeleteResult
 	id      int
 	// Deleting, and how it ended.
-	total    int // the files Only holds
-	deleted  int
-	bytes    int64
-	current  string // Checking and Deleting: what the run is looking at, or the last file deleted
-	stopping bool
-	result   engine.DeleteResult
-	err      error
+	total      int  // the files Only holds
+	rechecking bool // the checked files are listed again, before any is deleted
+	deleted    int
+	bytes      int64
+	current    string // Checking and Deleting: what the run is looking at, or the last file deleted
+	stopping   bool
+	result     engine.DeleteResult
+	err        error
 }
 
 // freeView is the Free up space tab's state and its text, for the page.
@@ -55,12 +56,14 @@ type freeView struct {
 	State    string        `json:"state"`
 	Changed  bool          `json:"changed,omitzero"`
 	Title    string        `json:"title,omitempty"` // also the status region's text
+	Chip     string        `json:"chip,omitempty"`  // the header's bubble while a run is busy
 	Text     string        `json:"text,omitempty"`
 	Sub      string        `json:"sub,omitempty"`
 	Progress *freeBar      `json:"progress,omitempty"`
 	File     string        `json:"file,omitempty"`
 	Stopping bool          `json:"stopping,omitzero"`
-	ID       int           `json:"id,omitzero"` // the preview's
+	Recheck  bool          `json:"recheck,omitzero"` // Deleting: the checked files are listed again first
+	ID       int           `json:"id,omitzero"`      // the preview's
 	Groups   []folderGroup `json:"groups,omitempty"`
 	Trust    bool          `json:"trust,omitzero"` // the preview's proof is the records alone
 	Kept     string        `json:"kept,omitempty"` // "Kept: …" or the Done counts
@@ -95,6 +98,7 @@ func (st *freeStatus) view() freeView {
 	switch st.state {
 	case frChecking:
 		v.Title = "Checking files…"
+		v.Chip = "Checking what to delete"
 		if st.files > 0 {
 			v.Title = "Checking " + many(st.files, "file", "files") + "…"
 		}
@@ -157,6 +161,12 @@ func (st *freeStatus) view() freeView {
 		v.Kept, v.KeptList = keptSummary(st.preview.Files, days)
 	case frDeleting:
 		v.Title = fmt.Sprintf("Deleting %s of %s…", num(min(st.deleted+1, st.total)), num(st.total))
+		v.Chip = fmt.Sprintf("Deleting %s of %s", num(min(st.deleted+1, st.total)), num(st.total))
+		if st.rechecking {
+			v.Title = "Checking " + many(st.total, "file", "files") + " again before deleting…"
+			v.Chip = "Checking " + many(st.total, "file", "files") + " again"
+			v.Recheck = true
+		}
 		v.Progress = &freeBar{Done: int64(st.deleted), Total: int64(st.total)}
 		v.File = st.current
 		v.Stopping = st.stopping

@@ -443,7 +443,7 @@ func (s *syncer) list(ctx context.Context, sess remote.Session) ([]plan.Entry, s
 	if h := s.opts.Hooks.ToCopy; h != nil {
 		kept = s.toCopy(h)
 	}
-	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed, kept)
+	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed, kept, nil)
 	sel := selection{LeftOut: out}
 	if err != nil {
 		return nil, sel, fmt.Errorf("list the share: %w", err)

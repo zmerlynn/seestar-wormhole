@@ -215,6 +215,54 @@ func TestFreePreviewAndDelete(t *testing.T) {
 	}
 }
 
+// watcher is a share that calls seen after each folder its walk decides on.
+type watcher struct {
+	*remote.FakeDir
+	seen func()
+}
+
+func (w watcher) Walk(ctx context.Context, skip func(string, bool) bool, kept func(remote.Entry)) ([]remote.Entry, error) {
+	return w.FakeDir.Walk(ctx, func(p string, dir bool) bool {
+		s := skip(p, dir)
+		if dir {
+			w.seen()
+		}
+		return s
+	}, kept)
+}
+
+// A delete first says it is checking the checked files again, and while it
+// does, its status names no folder outside the ones checked.
+func TestFreeRecheckChecked(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/M 42/a.jpg", "MyWorks/M 42/b.jpg", "MyWorks/M 31/c.jpg", "Other/d.jpg", "Other/deep/e.jpg")
+	e.copy()
+	v := e.preview()
+	var seen []string
+	e.f.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+		d, err := e.share()
+		return watcher{d, func() {
+			v := e.f.view()
+			seen = append(seen, v.Title+" | "+v.File)
+		}}, err
+	}
+	if err := e.f.confirm(v.ID, []string{"MyWorks/M 42"}, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.wait(frDone, frStopped, frFailed); d.Title != "Deleted 2 files and removed 1 empty folder." {
+		t.Errorf("done: %+v", d)
+	}
+	// The walk reaches MyWorks, MyWorks/M 31, MyWorks/M 42 and Other, in
+	// the share's order.
+	if len(seen) != 4 || !slices.Contains(seen, "Checking 2 files again before deleting… | Listing MyWorks/M 42…") {
+		t.Errorf("while checking again: %q", seen)
+	}
+	for _, s := range seen {
+		if s != "Checking 2 files again before deleting… | " && s != "Checking 2 files again before deleting… | Listing MyWorks/M 42…" {
+			t.Errorf("while checking again: %q", s)
+		}
+	}
+}
+
 // Delete is refused for a preview that is not the current one, and for
 // no folder checked.
 func TestFreeConfirmRefused(t *testing.T) {
@@ -392,5 +440,59 @@ func TestFreeCheckFail(t *testing.T) {
 	v := e.wait(frCheckFail)
 	if v.Title != "Couldn't finish checking files: connect to 192.0.2.10:445: no route." || v.Text != "Preview again to retry." {
 		t.Errorf("check failed: %+v", v)
+	}
+	// A change of where the telescope is, or a Save, takes the error, which
+	// was from before, back to Start: there was no preview to change.
+	e.f.clear()
+	if v := e.f.view(); v.State != frStart || v.Changed || v.Title != "" {
+		t.Errorf("check failed, then cleared: %+v", v)
+	}
+}
+
+// Free up space selects with its own patterns, after the built-in
+// excludes, as `delete` does; Copy's patterns and its built-in switch play
+// no part.
+func TestFreePatterns(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/M 42/a.jpg", "MyWorks/M 31/b.jpg", "MyWorks/M 31/c.mp4", "Other/d.jpg", "log/e.txt")
+	e.set.SkipBuiltIn = false
+	e.copy()
+	paths := func(v freeView) []string {
+		var got []string
+		for _, g := range v.Groups {
+			for _, f := range g.Files {
+				got = append(got, f.Path)
+			}
+		}
+		return got
+	}
+	// Copy's Leave out and Only copy no longer narrow a delete.
+	e.set.Excludes, e.set.Includes = []string{"M 42"}, []string{"/Other"}
+	for _, c := range []struct {
+		name               string
+		excludes, includes []string
+		want               []string
+	}{
+		{"neither", nil, nil, []string{"MyWorks/M 31/b.jpg", "MyWorks/M 31/c.mp4", "MyWorks/M 42/a.jpg", "Other/d.jpg"}},
+		{"keep", []string{"M 42", "*.mp4"}, nil, []string{"MyWorks/M 31/b.jpg", "Other/d.jpg"}},
+		{"only", nil, []string{"/MyWorks"}, []string{"MyWorks/M 31/b.jpg", "MyWorks/M 31/c.mp4", "MyWorks/M 42/a.jpg"}},
+		{"both", []string{"*.mp4"}, []string{"/MyWorks/M 31"}, []string{"MyWorks/M 31/b.jpg"}},
+	} {
+		e.set.FreeExcludes, e.set.FreeIncludes = c.excludes, c.includes
+		if got := paths(e.preview()); !slices.Equal(got, c.want) {
+			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
+		}
+	}
+	// The delete uses the preview's patterns.
+	v := e.preview()
+	if err := e.f.confirm(v.ID, []string{"MyWorks/M 31"}, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.wait(frDone, frStopped, frFailed); d.Title != "Deleted 1 file." {
+		t.Errorf("done: %+v", d)
+	}
+	for p, want := range map[string]bool{"MyWorks/M 31/b.jpg": false, "MyWorks/M 31/c.mp4": true, "log/e.txt": true} {
+		if e.has(p) != want {
+			t.Errorf("%s on the share: %v, want %v", p, !want, want)
+		}
 	}
 }

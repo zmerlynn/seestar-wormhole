@@ -291,7 +291,7 @@ func TestPreviewDiscardAtEnd(t *testing.T) {
 func TestPreviewListing(t *testing.T) {
 	e := newPreviewEnv(t, nil)
 	e.p.st = previewStatus{state: pvRunning, endpoint: "192.0.2.10:445", listing: true}
-	if v := e.p.view(); v.Title != "Looking for new files…" || v.ToCopy != "Nothing to copy so far" {
+	if v := e.p.view(); v.Title != "Looking for new files…" || v.ToCopy != "Nothing to copy so far" || v.Chip != "Previewing copy" {
 		t.Errorf("listing: %+v", v)
 	}
 	e.p.st.folders = 12
@@ -319,7 +319,7 @@ func TestPreviewListing(t *testing.T) {
 			}
 		}}, err
 	}
-	if v := e.run(); v == nil || v.ToCopy != "" {
+	if v := e.run(); v == nil || v.ToCopy != "" || v.Chip != "" {
 		t.Errorf("done: %+v", v)
 	}
 	want := []string{"Looking for new files… 1 folder checked. Listing MyWorks… 1 to copy so far (1 B)", "Looking for new files… 2 folders checked. Listing MyWorks/M 31… 1 to copy so far (1 B)"}

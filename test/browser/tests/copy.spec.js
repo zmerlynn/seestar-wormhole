@@ -31,11 +31,14 @@ test('Start copying after the first Save runs a pass, and the settings are locke
   const app = await startApp({ 'config.json': lan() });
   await openCopy(page, app.url);
   await field(page, 'Folder for your images').fill(app.folder);
-  await button(page, 'Save and continue').click();
+  await button(page, 'Save').click();
 
   await expect(title(page)).toHaveText(off);
+  // Saving didn't start copying; the notice says Start copying is next.
+  await expect(page.locator('#c-next')).toBeVisible();
   await button(page, 'Start copying').click();
   await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
+  await expect(page.locator('#c-next')).toBeHidden();
   await expect(title(page)).toBeFocused();
   await expect(page.locator('#c-live')).toHaveText(upToDate);
   await expect(page.locator('#c-summary')).toHaveText(copiedAll);
@@ -67,7 +70,7 @@ test('Start copying after the first Save runs a pass, and the settings are locke
   await expect(field(page, 'Folder for your images')).toBeEnabled();
   await expect(field(page, 'Folder for your images')).toBeFocused();
   await expect(button(page, 'Clear history…')).toBeEnabled();
-  await expect(chip(page)).toHaveText('Copying is off');
+  await expect(chip(page)).toBeHidden();
   await expect(title(page)).toHaveText(off);
   // The last pass's summary stays.
   await expect(page.locator('#c-summary')).toHaveText(copiedAll);
@@ -120,12 +123,98 @@ test('Check now runs another pass, and Stop and Start move focus to the heading'
   await expect(page.locator('#c-live')).toHaveText(off);
   await expect(button(page, 'Start copying')).toBeVisible();
   await expect(button(page, 'Check now')).toBeHidden();
-  await expect(chip(page)).toHaveText('Copying is off');
+  await expect(chip(page)).toBeHidden();
 
   await button(page, 'Start copying').click();
   await expect(title(page)).toHaveText(upToDate);
   await expect(title(page)).toBeFocused();
   await expect(passes(page)).toHaveCount(3);
+});
+
+// With the check for new files off, Start copying runs one pass, then
+// copying turns itself off and says so; starting when the app opens does
+// the same.
+const once = 'Up to date. Checked once; copying is off.';
+test('with the check for new files off, Start copying copies once and stops', async ({ page, startApp }) => {
+  const app = await startApp(copying(false));
+  await openCopy(page, app.url);
+  await button(page, 'Change…').click();
+  const repeat = page.getByRole('checkbox', { name: 'Check for new files every' });
+  await expect(repeat).toBeChecked();
+  await expect(repeat).toHaveAccessibleDescription("Turn this off to copy once: Start copying then copies what's new and stops.");
+  await expect(page.getByRole('spinbutton', { name: 'Minutes between checks' })).toHaveValue('5');
+  await repeat.uncheck();
+  await button(page, 'Save').click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await expect(page.locator('#s-summary')).toHaveText(`Copying to ${app.folder} once each time you start, skipping logs and system files.`);
+  expect(JSON.parse(fs.readFileSync(app.copyFile, 'utf8'))).toMatchObject({ once: true, interval_minutes: 5 });
+
+  await button(page, 'Start copying').click();
+  await expect(title(page)).toHaveText(once, { timeout: 30000 });
+  await expect(page.locator('#c-live')).toHaveText(once);
+  await expect(page.locator('#c-summary')).toHaveText(copiedAll);
+  await expect(chip(page)).toBeHidden();
+  await expect(button(page, 'Start copying')).toBeVisible();
+  await expect(button(page, 'Preview')).toBeVisible();
+  await expect(button(page, 'Check now')).toBeHidden();
+  await expect(button(page, 'Stop copying')).toBeHidden();
+  await expect(page.locator('#c-help')).toBeHidden();
+  await expect(passes(page)).toHaveCount(1);
+  // Settings unlock once the check is done.
+  await button(page, 'Change…').click();
+  await expect(field(page, 'Folder for your images')).toBeEnabled();
+  await expect(repeat).not.toBeChecked();
+
+  // Starting when the app opens copies once too.
+  const opens = await startApp({
+    'config.json': lan(), 'copy.json': (folder) => ({ version: 1, folder, start_copying: true, once: true }),
+  });
+  await openCopy(page, opens.url);
+  await expect(title(page)).toHaveText(once, { timeout: 30000 });
+  await expect(page.locator('#c-summary')).toHaveText(copiedAll);
+  await expect(button(page, 'Start copying')).toBeVisible();
+  await expect(passes(page)).toHaveCount(1);
+});
+
+// A one-pass run can be done before the page hears that it started: the
+// first state the page sees is done, which shows Start copying again, but
+// the notice that Start copying is next still goes.
+test('a one-pass Start done before its answer still clears the first-Save notice', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  await openCopy(page, app.url);
+  await field(page, 'Folder for your images').fill(app.folder);
+  await page.getByRole('checkbox', { name: 'Check for new files every' }).uncheck();
+  await button(page, 'Save').click();
+  await expect(page.locator('#c-next')).toBeVisible();
+
+  // Status answers stay in hand from the press until the pass is done,
+  // and then all say done; so does the answer to Start.
+  let pressed = false, finished;
+  const done = new Promise((resolve) => (finished = resolve));
+  await page.route('**/copy/api/status', async (route) => {
+    const response = await route.fetch();
+    const json = await response.json();
+    if (pressed) json.copy = await done;
+    await route.fulfill({ response, json });
+  });
+  await page.route('**/copy/api/copy', async (route) => {
+    const response = await route.fetch();
+    if (route.request().postDataJSON().action !== 'start') return route.fulfill({ response });
+    const headers = route.request().headers();
+    let view;
+    await expect.poll(async () => {
+      view = (await (await page.request.get(new URL('/copy/api/status', app.url).href, { headers })).json()).copy;
+      return view.on ? 'copying' : view.state;
+    }, { timeout: 30000 }).toBe('done');
+    finished(view);
+    await route.fulfill({ response, json: view });
+  });
+  pressed = true;
+  await button(page, 'Start copying').click();
+  await expect(title(page)).toHaveText(once, { timeout: 30000 });
+  await expect(button(page, 'Start copying')).toBeVisible();
+  await expect(page.locator('#c-next')).toBeHidden();
+  await expect(passes(page)).toHaveCount(1);
 });
 
 test('the CLI copying to the same folder shows Folder in use until it stops', async ({ page, startApp }, testInfo) => {
@@ -152,7 +241,7 @@ test('the CLI copying to the same folder shows Folder in use until it stops', as
     await expect(page.locator('#c-text')).toHaveText(inUseText);
     await expect(page.locator('#c-box')).toHaveClass('notice err');
     await expect(page.locator('#c-live')).toHaveText(inUse);
-    await expect(chip(page)).toHaveText('Copying is off');
+    await expect(chip(page)).toBeHidden();
     await expect(button(page, 'Start copying')).toBeVisible();
     await expect(button(page, 'Stop copying')).toBeHidden();
     // The settings stay open: nothing is copying here.
@@ -184,7 +273,7 @@ test('a second app on the same folder shows Folder in use until the first stops'
   await openCopy(other, second.url);
   await expect(title(other)).toHaveText(inUse);
   await expect(button(other, 'Start copying')).toBeVisible();
-  await expect(chip(other)).toHaveText('Copying is off');
+  await expect(chip(other)).toBeHidden();
 
   await button(page, 'Stop copying').click();
   await expect(title(page)).toHaveText(off);
@@ -317,7 +406,8 @@ test('Preview shows what Start would copy by folder and copies nothing; Start di
   const start = await button(page, 'Start copying').boundingBox();
   expect(start.y).toBeLessThan((await page.locator('#c-ptable').boundingBox()).y);
   await expect(title(page)).toHaveText(off);
-  await expect(chip(page)).toHaveText('Copying is off');
+  await expect(chip(page)).toBeHidden();
+  await expect(page.locator('#preview-chip')).toBeHidden();
   expect(fs.existsSync(app.folder) ? fs.readdirSync(app.folder) : []).toEqual([]);
   await expect(passes(page)).toHaveCount(0);
 
@@ -365,11 +455,14 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   await fakeStatus(page, () => v);
   await openCopy(page, app.url);
   await expect(title(page)).toHaveText(off);
-  const base = { state: 'off', on: false, chip: 'Copying is off', title: off };
-  v = { ...base, preview: { state: 'running', title: 'Looking for new files… 3 folders checked.' } };
+  const base = { state: 'off', on: false, chip: '', title: off };
+  v = { ...base, preview: { state: 'running', title: 'Looking for new files… 3 folders checked.', chip: 'Previewing copy' } };
   await expect(page.locator('#c-ptitle')).toHaveText('Looking for new files… 3 folders checked.');
   await expect(page.locator('#c-live')).toHaveText('Looking for new files… 3 folders checked.');
   await expect(page.locator('#c-pbusy')).toBeVisible();
+  // The header's bubble names it while it runs.
+  await expect(page.locator('#preview-chip')).toHaveText('Previewing copy');
+  await expect(page.locator('#preview-chip')).toBeVisible();
   await expect(page.locator('#c-pbusy')).toHaveAttribute('aria-label', 'Previewing');
   await expect(button(page, 'Preview')).toBeHidden();
   await expect(button(page, 'Start copying')).toBeVisible();
@@ -389,6 +482,7 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   v = { ...base, preview: { state: 'done', title: 'Would copy 2 files (2 B)' } };
   await expect(page.locator('#c-ptitle')).toBeFocused();
   await expect(page.locator('#c-live')).toHaveText('Would copy 2 files (2 B)');
+  await expect(page.locator('#preview-chip')).toBeHidden();
   await expect(button(page, 'Cancel')).toBeHidden();
   await expect(page.locator('#c-ppath')).toBeHidden();
   await expect(page.locator('#c-ptocopy')).toBeHidden();
@@ -425,7 +519,7 @@ for (const colorScheme of ['light', 'dark']) {
     await expect(page.locator('#c-failed')).toBeVisible();
     await page.getByText('Show files').click();
     await shot('failures');
-    v = { state: 'inuse', on: false, chip: 'Copying is off', title: inUse, text: inUseText };
+    v = { state: 'inuse', on: false, chip: '', title: inUse, text: inUseText };
     await expect(title(page)).toHaveText(inUse);
     await shot('inuse');
   });

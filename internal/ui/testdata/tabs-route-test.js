@@ -46,7 +46,7 @@ async function checkActivityMove() {
   for (const [panel, ids] of [['panel-copy', ['c-main', 's-box', 'copy-form', 'h-details']], ['panel-browse', ['b-frame']], ['panel-free', ['x-box', 'x-find']]]) {
     for (const id of ids) tabAssert(inside(id, panel) && !inside(id, 'panel-connection') && !inside(id, 'panel-activity'), id + ' is not in ' + panel);
   }
-  for (const id of ['quit', 'version', 'connection-text', 'connection-dot', 'copy-chip', 'tabs', 'copy-reach', 'x-confirm', 'h-confirm']) {
+  for (const id of ['quit', 'version', 'connection-text', 'connection-dot', 'copy-chip', 'preview-chip', 'free-chip', 'chip-live', 'tabs', 'copy-reach', 'x-confirm', 'h-confirm']) {
     tabAssert(!inside(id, 'panel-connection') && !inside(id, 'panel-activity'), id + ' is not on every tab');
   }
   tabAssert($('details').attributes.open !== undefined, 'Activity opens with its details collapsed');
@@ -148,7 +148,8 @@ async function checkLANForm(statuses, replies, scenario) {
     $('lan-address').value = ' 192.0.2.20 ';
     await lanTest();
     tabAssert(JSON.stringify(calls) === JSON.stringify([['/copy/api/test', {address: '192.0.2.20'}]]), 'Test request ' + JSON.stringify(calls));
-    tabAssert($('lan-result').textContent === replies['192.0.2.20'].body.message && $('lan-result').getAttribute('data-tone') === 'ok' && $('lan-address-error').hidden, 'Test result');
+    // The saved route is Telescope Network, so the Test says to Save.
+    tabAssert($('lan-result').textContent === replies['192.0.2.20'].body.message + ' Save to use this address for Copy, Browse and Free up space.' && $('lan-result').getAttribute('data-tone') === 'ok' && $('lan-address-error').hidden, 'Test result: ' + $('lan-result').textContent);
     tabAssert(!$('lan-options').disabled && $('lan-test').textContent === 'Test', 'Test left the form locked');
     break;
   }

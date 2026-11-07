@@ -10,6 +10,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"time"
@@ -49,8 +50,10 @@ type DeleteOptions struct {
 	OpenRemover func(ctx context.Context, endpoint string) (remote.Remover, error)
 	// Only, if not nil, limits the run to the files it holds, such as
 	// those a preview showed: any other file is left alone, and is neither
-	// logged nor counted. Each file in it is still checked as usual. An
-	// empty map deletes nothing.
+	// logged nor counted. Each file in it is still checked as usual. The
+	// run lists only the folders that hold them and the folders above
+	// those, and removes no folder below them. An empty map deletes
+	// nothing.
 	Only map[string]bool
 	// Stop, once closed, ends the run between files: the file being
 	// checked or deleted finishes and is counted, and nothing after it
@@ -228,7 +231,7 @@ func (d *deleter) run(ctx context.Context) (failed int, err error) {
 		return 0, fmt.Errorf("connect to %s: %w", d.opts.Endpoint, err)
 	}
 	defer sess.Close()
-	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed, nil)
+	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed, nil, d.within())
 	skip := "skipped"
 	if d.opts.DryRun {
 		skip = "would skip"
@@ -248,6 +251,11 @@ func (d *deleter) run(ctx context.Context) (failed int, err error) {
 	}
 	for _, e := range entries {
 		in.Listing = append(in.Listing, plan.Entry{Path: e.Path, Size: e.Size, ModTime: e.ModTime, Regular: e.Kind == remote.Regular})
+	}
+	// A folder left unread is still a name a listed file can clash with,
+	// as in a run that read it.
+	for _, p := range left.outside {
+		in.Listing = append(in.Listing, plan.Entry{Path: p})
 	}
 	decisions := plan.DecideDelete(in)
 	files := 0
@@ -360,6 +368,21 @@ func (d *deleter) file(ctx context.Context, e remote.Entry, dec plan.DeleteDecis
 	}
 	d.fail(e, err)
 	return false, err
+}
+
+// within is what a run with Only reads: the folders holding its files and
+// every folder above them. It is nil, all of them, without Only.
+func (d *deleter) within() func(dir string) bool {
+	if d.opts.Only == nil {
+		return nil
+	}
+	need := map[string]bool{}
+	for p := range d.opts.Only {
+		for dir := path.Dir(p); dir != "." && !need[dir]; dir = path.Dir(dir) {
+			need[dir] = true
+		}
+	}
+	return func(dir string) bool { return need[dir] }
 }
 
 // wanted reports whether Only lets the run decide on the file p.

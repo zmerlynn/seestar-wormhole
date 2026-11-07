@@ -10,7 +10,10 @@ const {
 } = require('./app');
 
 const rootStatus = '2 folders, 2 files.';
-const connected = /^Connected\. The telescope's share has the folders (Long names and MyWorks|MyWorks and Long names)\.$/;
+const shares = String.raw`Connected\. The telescope's share has the folders (Long names and MyWorks|MyWorks and Long names)\.`;
+// A passed Test of the saved address, and of any other, which says to Save.
+const connected = new RegExp(`^${shares}$`);
+const connectedUnsaved = new RegExp(`^${shares} Save to use this address for Copy, Browse and Free up space\\.$`);
 const refusedMessage = "127.0.0.1 answered but refused port 1. Is this the telescope's address?";
 const addressError = 'Enter the telescope address, with an optional port.';
 
@@ -37,6 +40,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeDisabled();
   await expect(page.locator('#tabs-note')).toBeVisible();
   await expect(page.locator('#connection-text')).toHaveText('Not connected');
+  await expect(page.getByLabel('Remotely through Telescope Network')).toBeChecked();
   // The arrow keys pass over the closed tabs.
   await connection.focus();
   await page.keyboard.press('ArrowRight');
@@ -60,7 +64,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   // Copy's first visit has its settings open, with the default folder and
   // no example values.
   await tab(page, 'Copy').click();
-  await expect(page.locator('#s-first')).toHaveText(/^Choose the folder for your images, then Save and continue\./);
+  await expect(page.locator('#s-first')).toHaveText('Choose the folder for your images, then press Save. Copying starts later, when you press Start copying.');
   await expect(page.locator('#c-main')).toBeHidden();
   await expect(field(page, 'Folder for your images')).toHaveValue(path.join(app.home, 'Seestar'));
   await expect(field(page, 'Leave out')).toBeVisible();
@@ -79,14 +83,18 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(field(page, 'Folder for your images')).toBeFocused();
 
   await field(page, 'Folder for your images').fill(app.folder);
-  await expect(copySave(page)).toHaveText('Save and continue');
+  await expect(copySave(page)).toHaveText('Save');
   await copySave(page).click();
 
-  // Focus is on the Copy heading, and copying is off.
-  await expect(page.locator('#c-title')).toBeFocused();
+  // Copying is off, and the notice that says Start copying is next has
+  // focus, just above it.
+  const next = page.locator('#c-next');
+  await expect(next).toBeFocused();
+  await expect(next).toHaveText('Settings saved. Copying starts when you press Start copying. Preview shows what it would copy first.');
   await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+  await expect(page.getByRole('button', { name: 'Start copying' })).toBeVisible();
   await expect(page.locator('#s-first')).toBeHidden();
-  await expect(page.locator('#copy-chip')).toHaveText('Copying is off');
+  await expect(page.locator('#copy-chip')).toBeHidden();
 
   await tab(page, 'Browse').click();
   await expect(browseStatus(page)).toHaveText(rootStatus);
@@ -96,7 +104,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(frame(page).locator('.badge.new').first()).toBeVisible();
 
   expect(readJSON(app.copyFile)).toMatchObject({
-    version: 1, folder: app.folder, interval_minutes: 5, files_at_once: 4, skip_built_in: true, start_copying: false,
+    version: 1, folder: app.folder, interval_minutes: 5, files_at_once: 4, skip_built_in: true, start_copying: false, once: false,
   });
 });
 
@@ -128,11 +136,27 @@ test('a failed first Save is off while it runs and says so, and Enter saves', as
   expect(fs.existsSync(app.copyFile)).toBe(false);
   await page.unroute('**/copy/api/settings');
 
-  // Enter in a field saves, and opens Copy with copying off.
+  // Enter in a field saves, and opens Copy with copying off; focus is on
+  // the notice that says Start copying is next, not on Start copying.
   await field(page, 'Folder for your images').press('Enter');
-  await expect(page.locator('#c-title')).toBeFocused();
+  await expect(page.locator('#c-next')).toBeFocused();
   await expect(page.locator('#c-title')).toHaveText('Copying is off.');
   expect(readJSON(app.copyFile)).toMatchObject({ folder: app.folder, start_copying: false });
+});
+
+// Connection says what each way of reaching the telescope gives, and
+// what the address on this network is for.
+test('Connection says what each route and the address are for', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  const purpose = "Through Telescope Network, one connection serves both the Seestar app and the telescope's files. On this network, it serves only the telescope's files, for Copy, Browse and Free up space.";
+  await expect(page.locator('#route-purpose')).toHaveText(purpose);
+  await expect(page.getByRole('group', { name: 'Reach the telescope' })).toHaveAccessibleDescription(new RegExp('^' + purpose.replace(/\./g, '\\$&')));
+  await expect(page.locator('#route-purpose')).toBeVisible();
+  await chooseLAN(page);
+  await expect(page.locator('#route-purpose')).toBeVisible();
+  await expect(field(page, 'Telescope address')).toHaveAccessibleDescription(
+    "Your Seestar's address on this network, with an optional port. Port 445 is the default. Copy, Browse and Free up space read the telescope's files at this address.");
 });
 
 // countTests counts the page's Test requests.
@@ -151,12 +175,70 @@ test('a Test that passed is not run again by Save, and the header shows it', asy
   await chooseLAN(page);
   await field(page, 'Telescope address').fill(share);
   await page.getByRole('button', { name: 'Test' }).click();
-  await expect(lanResult(page)).toHaveText(connected);
+  await expect(lanResult(page)).toHaveText(connectedUnsaved);
   await expect(page.locator('#connection-text')).toHaveText('Not connected');
-  await page.locator('#lan-save').click();
+  // Test saves nothing: the tabs stay locked until Save.
+  await expect(tab(page, 'Copy')).toBeDisabled();
+  // While Save checks the address, the result line says so.
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  await page.route('**/api/route', async (route) => {
+    await held;
+    await route.continue();
+  });
+  try {
+    await page.locator('#lan-save').click();
+    await expect(lanResult(page)).toHaveText(`Checking ${share}…`);
+    await expect(page.locator('#lan-save')).toHaveText('Saving…');
+  } finally {
+    release();
+  }
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
   await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+  for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeEnabled();
   expect(n.tests).toBe(1);
+});
+
+// The suffix and the header compare endpoints, not their spelling: the
+// saved address in another case, IPv6 form or port spelling is the saved
+// address. An address kept while Telescope Network is the route is not.
+test('Test of the saved address in another spelling does not say to Save', async ({ page, startApp }) => {
+  const cases = [
+    ['scope.local:445', 'SCOPE.Local:0445'],
+    ['[2001:db8::1]:445', '[2001:DB8:0:0:0:0:0:1]:445'],
+    ['[::ffff:192.0.2.7]:445', '192.0.2.7:445'],
+    ['[fe80::1%ethA]:445', '[FE80:0:0:0:0:0:0:1%ethA]:445'],
+  ];
+  const message = "Connected. The telescope's share has the folder MyWorks.";
+  for (const [saved, answered] of cases) {
+    const app = await startApp({ 'config.json': lan(saved) });
+    await page.route('**/copy/api/test', (r) => r.fulfill({ json: { ok: true, address: answered, message } }));
+    await openApp(page, app.url);
+    await field(page, 'Telescope address').fill(answered);
+    await page.getByRole('button', { name: 'Test' }).click();
+    await expect(lanResult(page)).toHaveText(message);
+    await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+    await page.unroute('**/copy/api/test');
+  }
+});
+
+// An IPv6 zone names an interface, and interface names differ by case.
+test('Test of the saved address on another interface says to Save', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan('[fe80::1%ethA]:445') });
+  await page.route('**/copy/api/test', (r) => r.fulfill({ json: { ok: true, address: '[fe80::1%etha]:445', message: 'Connected.' } }));
+  await openApp(page, app.url);
+  await field(page, 'Telescope address').fill('[fe80::1%etha]:445');
+  await page.getByRole('button', { name: 'Test' }).click();
+  await expect(lanResult(page)).toHaveText('Connected. Save to use this address for Copy, Browse and Free up space.');
+});
+
+test('Test of an address kept while Telescope Network is the route says to Save', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), route: 'account' } });
+  await openApp(page, app.url);
+  await chooseLAN(page);
+  await expect(field(page, 'Telescope address')).toHaveValue(share);
+  await page.getByRole('button', { name: 'Test' }).click();
+  await expect(lanResult(page)).toHaveText(connectedUnsaved);
 });
 
 test('Test reports success and failure under the address, and Save keeps a refused address out', async ({ page, startApp }) => {
@@ -167,7 +249,7 @@ test('Test reports success and failure under the address, and Save keeps a refus
 
   await field(page, 'Telescope address').fill(share);
   await page.getByRole('button', { name: 'Test' }).click();
-  await expect(result).toHaveText(connected);
+  await expect(result).toHaveText(connectedUnsaved);
   await expect(result).toHaveAttribute('data-tone', 'ok');
   await expect(result).toHaveAttribute('role', 'status');
 
@@ -192,6 +274,23 @@ test('Test reports success and failure under the address, and Save keeps a refus
   await field(page, 'Telescope address').press('End');
   await field(page, 'Telescope address').type('c');
   await expect(page.locator('#lan-address-error')).toBeHidden();
+});
+
+// The status poll renders every second. A press held across a render
+// still clicks: WebKit drops a click whose press and release straddle a
+// rewrite of the button's text.
+test('a click held across a status poll still clicks', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  await chooseLAN(page);
+  await field(page, 'Telescope address').fill(share);
+  const box = await page.locator('#lan-test').boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  // Copy's status is read once the page has rendered its own.
+  await page.waitForResponse((r) => r.url().endsWith('/copy/api/status'));
+  await page.mouse.up();
+  await expect(lanResult(page)).toHaveText(connectedUnsaved);
 });
 
 test('first-run field errors block saving and focus the first field', async ({ page, startApp }) => {
@@ -260,6 +359,134 @@ test('the tabs follow the tab pattern', async ({ page, startApp }) => {
   await expect(page.getByRole('tabpanel', { name: 'Browse' })).toBeVisible();
 });
 
+// A locked tab is dimmed, refuses the pointer and shows a padlock, and
+// its label stays legible, in light and dark.
+test('locked tabs look locked', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  const look = (name) => tab(page, name).evaluate((e) => {
+    const s = getComputedStyle(e), before = getComputedStyle(e, '::before'), after = getComputedStyle(e, '::after');
+    let bg = e, color = 'rgba(0, 0, 0, 0)';
+    while (bg && /^rgba\(.*, 0\)$|^transparent$/.test(color = getComputedStyle(bg).backgroundColor)) bg = bg.parentElement;
+    return {
+      cursor: s.cursor, opacity: Number(s.opacity), color: s.color, bg: color,
+      lock: before.content !== 'none' && after.content !== 'none' && after.backgroundColor === s.color,
+    };
+  });
+  // shown is color seen at opacity over bg.
+  const shown = (color, opacity, bg) => {
+    const [c, b] = [color, bg].map((v) => v.match(/\d+/g).slice(0, 3).map(Number));
+    return `rgb(${c.map((v, i) => Math.round(v * opacity + b[i] * (1 - opacity))).join(', ')})`;
+  };
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    const open = await look('Activity');
+    expect(open, colorScheme).toMatchObject({ cursor: 'pointer', opacity: 1, lock: false });
+    for (const name of ['Copy', 'Browse', 'Free up space']) {
+      await expect(tab(page, name)).toHaveAttribute('aria-describedby', 'tabs-note');
+      const locked = await look(name);
+      expect(locked, `${name} ${colorScheme}`).toMatchObject({ cursor: 'not-allowed', lock: true });
+      expect(locked.opacity, `${name} ${colorScheme}`).toBeLessThanOrEqual(0.75);
+      expect(contrast(shown(locked.color, locked.opacity, locked.bg), locked.bg), `${name} ${colorScheme}`).toBeGreaterThanOrEqual(3);
+      expect(contrast(shown(locked.color, locked.opacity, locked.bg), locked.bg)).toBeLessThan(contrast(open.color, open.bg));
+    }
+  }
+  await expect(page.locator('#tabs-note')).toBeVisible();
+});
+
+// Forced colors drop the padlock body's background; its border, in the
+// label's color, still draws it. A browser that can't emulate forced
+// colors skips this.
+test('the padlock keeps its body under forced colors', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  await page.emulateMedia({ forcedColors: 'active' });
+  test.skip(!(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)), 'no forced colors emulation');
+  for (const name of ['Copy', 'Browse', 'Free up space']) {
+    const lock = await tab(page, name).evaluate((e) => {
+      const after = getComputedStyle(e, '::after');
+      return { label: getComputedStyle(e).color, style: after.borderTopStyle, width: parseFloat(after.borderTopWidth), color: after.borderTopColor };
+    });
+    expect(lock.style, name).toBe('solid');
+    expect(lock.width, name).toBeGreaterThan(0);
+    expect(lock.color, name).toBe(lock.label);
+  }
+});
+
+// The tabs are light: the selected one is underlined, not bold, so no tab
+// changes width; a keyboard focus ring sits inside the tab, clear of the
+// underline, and a click shows none; and every panel's first heading has
+// the same room under the tabs.
+test('the selected tab is underlined only, its focus ring clears the underline, and each panel starts as far below the tabs', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+  const names = ['Connection', 'Copy', 'Browse', 'Free up space', 'Activity'];
+  const widths = async () => Promise.all(names.map(async (n) => (await tab(page, n).boundingBox()).width));
+  const style = (loc, ...props) => loc.evaluate((e, props) => props.map((p) => getComputedStyle(e)[p]), props);
+  // The top of each panel's first text, or of Browse's frame.
+  const top = () => page.evaluate(() => {
+    const tabs = document.getElementById('tabs').getBoundingClientRect().bottom;
+    const panel = [...document.querySelectorAll('[role=tabpanel]')].find((p) => !p.hidden);
+    const walk = document.createTreeWalker(panel, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+      if (n.nodeName === 'IFRAME' && n.checkVisibility()) return n.getBoundingClientRect().top - tabs;
+      if (n.nodeType === Node.TEXT_NODE && n.textContent.trim() && n.parentElement.checkVisibility() && n.parentElement.getBoundingClientRect().width > 1) {
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        return range.getBoundingClientRect().top - tabs;
+      }
+    }
+    return null;
+  });
+  const before = await widths();
+  const gaps = [];
+  for (const name of names) {
+    await tab(page, name).click();
+    await expect(tab(page, name)).toHaveAttribute('aria-selected', 'true');
+    expect(await widths(), name).toEqual(before);
+    const [weight, bottom] = await style(tab(page, name), 'fontWeight', 'borderBottomWidth');
+    expect(weight, name).toBe((await style(tab(page, names.find((n) => n !== name)), 'fontWeight'))[0]);
+    expect(Number(weight), name).toBeLessThan(600);
+    expect(bottom, name).toBe('3px');
+    // A click shows no ring.
+    expect(await tab(page, name).evaluate((e) => e.matches(':focus-visible')), name).toBe(false);
+    if (name === 'Browse') await expect(browseStatus(page)).toHaveText(rootStatus);
+    gaps.push(Math.round(await top()));
+  }
+  expect(Math.min(...gaps), String(gaps)).toBeGreaterThanOrEqual(20);
+  expect(Math.max(...gaps) - Math.min(...gaps), String(gaps)).toBeLessThanOrEqual(4);
+  // From the keyboard, the ring shows, inside the tab and above its
+  // underline.
+  await tab(page, 'Activity').focus();
+  await page.keyboard.press('ArrowLeft');
+  const focused = tab(page, 'Free up space');
+  await expect(focused).toBeFocused();
+  expect(await focused.evaluate((e) => e.matches(':focus-visible'))).toBe(true);
+  const [outline, width, offset, under] = await style(focused, 'outlineStyle', 'outlineWidth', 'outlineOffset', 'borderBottomWidth');
+  expect(outline).toBe('solid');
+  expect(parseFloat(width)).toBeGreaterThanOrEqual(2);
+  expect(-parseFloat(offset) - parseFloat(width)).toBeGreaterThanOrEqual(parseFloat(under));
+  // Under forced colors, the selected tab's underline still shows and the
+  // others have none.
+  await page.emulateMedia({ forcedColors: 'active' });
+  if (await page.evaluate(() => matchMedia('(forced-colors: active)').matches)) {
+    await tab(page, 'Free up space').click();
+    const line = (n) => style(tab(page, n), 'borderBottomStyle', 'borderBottomWidth', 'borderBottomColor');
+    const [on, off] = [await line('Free up space'), await line('Copy')];
+    const canvas = await page.evaluate(() => {
+      const probe = document.body.appendChild(document.createElement('div'));
+      probe.style.backgroundColor = 'Canvas';
+      const color = getComputedStyle(probe).backgroundColor;
+      probe.remove();
+      return color;
+    });
+    expect(on.slice(0, 2)).toEqual(['solid', '3px']);
+    expect(contrast(on[2], canvas)).toBeGreaterThanOrEqual(3);
+    expect(off[2]).toBe(canvas);
+  }
+});
+
 test('Copy settings save every field and keep unknown keys', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openCopy(page, app.url);
@@ -284,8 +511,8 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
 
   expect(readJSON(app.copyFile)).toEqual({
     version: 1, folder: app.folder, interval_minutes: 30,
-    excludes: ['Video', '/Preview'], includes: ['MyWorks'], skip_built_in: false, start_copying: false,
-    files_at_once: 4, older_than_days: 7, trust_state: false,
+    excludes: ['Video', '/Preview'], includes: ['MyWorks'], skip_built_in: false, start_copying: false, once: false,
+    files_at_once: 4, older_than_days: 7, trust_state: false, free_excludes: [], free_includes: [],
     later: { kept: true },
   });
   // Activity shows both files, and the copy settings saved.
@@ -346,7 +573,7 @@ test('Files at once defaults to 4, saves 1 to 4 and refuses anything else', asyn
   await expect(count).toHaveValue('4');
   await expect(count).toHaveAttribute('min', '1');
   await expect(count).toHaveAttribute('max', '4');
-  await expect(page.locator('#f-files-help')).toHaveText(/^Copying runs this many files at once, 1 to 4\. Through your Seestar account, .* lower this to 1 or 2\.$/);
+  await expect(page.locator('#f-files-help')).toHaveText(/^Copying runs this many files at once, 1 to 4\. Through Telescope Network, .* lower this to 1 or 2\.$/);
   await expect(count).toHaveAccessibleDescription(/lower this to 1 or 2/);
 
   for (const value of ['5', '0', '2.5']) {
@@ -387,17 +614,61 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// An error Browse showed at one address goes with a change of route:
+// Browse loads again through the new one when it is next shown.
+test('Browse follows a change of route', async ({ page, startApp }) => {
+  const app = await startApp({ ...setUp('/nowhere'), 'config.json': lan(refused) });
+  await openCopy(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toContainText('Select Share or a parent folder above', { timeout: 30000 });
+  await tab(page, 'Connection').click();
+  await field(page, 'Telescope address').fill(share);
+  await page.locator('#lan-save').click();
+  await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+});
+
+// The frame is named for assistive technology without a title, which
+// would show as a tooltip over the list.
+test("Browse's frame is named The telescope's files, with no title", async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const browse = page.locator('#b-frame');
+  await expect(browse).not.toHaveAttribute('title');
+  await expect(browse).toHaveAccessibleName("The telescope's files");
+  await expect(page.getByRole('tabpanel', { name: 'Browse' }).locator('iframe[title]')).toHaveCount(0);
+});
+
 test('Browse marks what Leave out leaves out, with a key', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openCopy(page, app.url);
   await tab(page, 'Browse').click();
   await expect(browseStatus(page)).toHaveText(rootStatus);
-  const key = frame(page).locator('#key');
-  await expect(key).toHaveText('new: not copied yet · copied: already copied · changed: differs from the copy · left out: not copied by the selection');
+  // The key is a list: each status's badge, then what it means.
+  const key = frame(page).getByRole('list', { name: 'Status key' });
   await expect(key).toBeVisible();
+  // It sits in a box of its own, headed Key, apart from the table.
+  const box = frame(page).locator('#key');
+  await expect(box.getByRole('heading', { name: 'Key', exact: true })).toBeVisible();
+  const table = await frame(page).locator('#list').boundingBox();
+  expect((await box.boundingBox()).y - (table.y + table.height)).toBeGreaterThanOrEqual(16);
+  await expect(key.getByRole('listitem')).toHaveText(['new: not copied yet', 'copied: already copied', 'changed: differs from the copy', 'left out: not copied by the selection']);
+  const keyBadge = (name) => key.getByRole('listitem').filter({ hasText: name + ':' }).locator('.badge');
   const badge = (name) => frame(page).locator('#list tbody tr').filter({ has: frame(page).getByText(name, { exact: true }) }).locator('.badge');
+  // Its badges are drawn as the list's are, and each meaning follows its
+  // badge on the same line.
+  const look = (loc) => loc.evaluate((e) => { const s = getComputedStyle(e); return [s.color, s.borderTopStyle, s.borderTopWidth, s.borderRadius, s.fontSize, s.paddingLeft]; });
+  await expect(keyBadge('new')).toHaveText('new');
+  expect(await look(keyBadge('new'))).toEqual(await look(badge('empty.txt')));
+  for (const item of await key.getByRole('listitem').all()) {
+    const [b, i] = [await item.locator('.badge').boundingBox(), await item.boundingBox()];
+    expect(i.height).toBeLessThan(2 * b.height);
+  }
   await expect(badge('empty.txt')).toHaveText('new');
-  await expect(frame(page).locator('.badge.left-out')).toHaveCount(0);
+  await expect(frame(page).locator('#list .badge.left-out')).toHaveCount(0);
 
   await tab(page, 'Copy').click();
   await page.getByRole('button', { name: 'Change…' }).click();
@@ -412,6 +683,7 @@ test('Browse marks what Leave out leaves out, with a key', async ({ page, startA
   await expect(badge('00-notes.txt')).toHaveText('new');
   await expect(badge('MyWorks/')).toHaveCount(0);
   await expect(key).toBeVisible();
+  expect(await look(keyBadge('left out'))).toEqual(await look(badge('empty.txt')));
 
   // Muted against new: a dashed border, and readable in light and dark.
   for (const colorScheme of ['light', 'dark']) {
@@ -423,6 +695,14 @@ test('Browse marks what Leave out leaves out, with a key', async ({ page, startA
     expect(await style(badge('00-notes.txt'), 'borderTopStyle')).toBe('solid');
     expect(muted).not.toBe(await style(badge('00-notes.txt'), 'color'));
     expect(contrast(muted, bg), colorScheme).toBeGreaterThanOrEqual(4.5);
+    // The key's box is bordered and tinted, and its muted text stays
+    // readable on the tint.
+    const tint = await style(box, 'backgroundColor');
+    expect(tint, colorScheme).not.toBe(bg);
+    expect(await style(box, 'borderTopStyle')).toBe('solid');
+    expect(contrast(await style(box, 'borderTopColor'), tint), colorScheme).toBeGreaterThan(1.3);
+    expect(contrast(await style(keyBadge('left out'), 'color'), tint), colorScheme).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(await style(key, 'color'), tint), colorScheme).toBeGreaterThanOrEqual(4.5);
   }
 });
 
@@ -568,18 +848,27 @@ async function restyle(target, layout) {
 }
 
 // fits checks that the page does not scroll sideways and that every
-// visible control is inside the window once scrolled to.
+// visible control is inside the window once scrolled to. It measures in
+// one pass in the page: a round trip per control made the layouts slow.
 async function fits(page) {
   const width = page.viewportSize().width;
-  const [scrollWidth, clientWidth] = await page.evaluate(
-    () => [document.documentElement.scrollWidth, document.documentElement.clientWidth]);
+  const [scrollWidth, clientWidth, boxes] = await page.evaluate(() => {
+    const boxes = [];
+    for (const el of document.querySelectorAll('button, input, select, textarea, iframe')) {
+      // Visible as Playwright has it: a box, and not visibility: hidden.
+      const shown = el.getBoundingClientRect();
+      if (!shown.width || !shown.height || getComputedStyle(el).visibility === 'hidden') continue;
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      const box = el.getBoundingClientRect();
+      boxes.push({ name: el.id || el.textContent, x: box.x, right: box.right });
+    }
+    return [document.documentElement.scrollWidth, document.documentElement.clientWidth, boxes];
+  });
   expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
-  for (const control of await page.locator('button, input, select, textarea, iframe').filter({ visible: true }).all()) {
-    await control.scrollIntoViewIfNeeded();
-    const box = await control.boundingBox();
-    const name = await control.evaluate((el) => el.id || el.textContent);
-    expect(box.x, name).toBeGreaterThanOrEqual(0);
-    expect(box.x + box.width, name).toBeLessThanOrEqual(width + 0.5);
+  expect(boxes.length).toBeGreaterThan(0);
+  for (const { name, x, right } of boxes) {
+    expect(x, name).toBeGreaterThanOrEqual(0);
+    expect(right, name).toBeLessThanOrEqual(width + 0.5);
   }
 }
 
@@ -650,15 +939,17 @@ for (const [layout, { width }] of Object.entries(layouts)) {
 
     for (const name of ['Free up space', 'Connection', 'Activity']) {
       await tab(page, name).click();
+      if (name === 'Free up space') await page.locator('#x-always summary').click();
       await fits(page);
       await tabsWrap(page);
       await shot(name.toLowerCase().replaceAll(' ', '-'));
     }
 
     // An active pass, with long paths in flight and failed, and the lists
-    // open.
-    let v = null;
-    await fakeStatus(page, () => v);
+    // open. One route serves both tabs' views: WebKit can miss requests
+    // after an unroute and a new route.
+    let v = null, f = null;
+    await fakeStatus(page, () => v, () => f);
     for (const [name, view] of Object.entries(copyViews)) {
       v = view;
       await reopen(page, 'Copy');
@@ -677,10 +968,7 @@ for (const [layout, { width }] of Object.entries(layouts)) {
 
     // Free up space's states, with a long path, its lists open and the
     // confirm dialog.
-    await page.unrouteAll({ behavior: 'wait' });
     v = null;
-    let f = null;
-    await fakeStatus(page, () => v, () => f);
     for (const [name, view] of Object.entries(freeViews)) {
       f = view;
       await reopen(page, 'Free up space');

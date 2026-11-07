@@ -125,7 +125,7 @@ function load(s) {
   portsTable('ports', portValues(s), true);
   currentGoal = goalFor(s);
   $('goal').value = currentGoal;
-  // An older file has no route: the account route.
+  // An older file has no route: the Telescope Network route.
   routeChoice = s.route === 'lan' ? 'lan' : 'account';
   $('lan-address').value = s.lan_address || '';
 }
@@ -143,6 +143,9 @@ function clearField(field) {
   $(field + '-error').hidden = true;
   delete fieldErrors[field];
 }
+// text sets an element's text only when it changed: WebKit drops a click
+// whose press and release straddle a rewrite of the button's text, and the
+// status poll renders every second.
 function text(id,value) {
   if ($(id).textContent !== value) $(id).textContent = value;
 }
@@ -228,7 +231,7 @@ function controls() {
   $('settings').hidden = active;
   $('running').hidden = !active;
   $('start').type = active ? 'button' : 'submit';
-  $('start').textContent = state?.stopping || pending === 'stop' ? 'Stopping…' : active ? (state?.cancel ? 'Cancel' : 'Stop') : 'Connect';
+  text('start', state?.stopping || pending === 'stop' ? 'Stopping…' : active ? (state?.cancel ? 'Cancel' : 'Stop') : 'Connect');
   $('start').disabled = blocked || state?.stopping || pending === 'stop' || pending === 'quit' || (!active && !!pending);
   $('quit').disabled = !initialized || ended || pending === 'quit';
   $('idle-options').hidden = $('mode').value !== 'idle';
@@ -245,7 +248,7 @@ function controls() {
   text('password-note', selectedSaved ? 'Saved in your keychain.' : 'Kept until you quit. Save to your keychain to use it next time.');
   $('forget').hidden = !password.saved;
   $('forget').disabled = blocked || !!pending || password.busy;
-  $('forget').textContent = pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password';
+  text('forget', pending === 'forget' ? 'Removing saved password…' : retryRemoval ? 'Retry removal' : 'Remove saved password');
   $('retry-storage').disabled = blocked || !!pending;
   $('custom-help').hidden = currentGoal !== 'custom';
   $('goal-help').hidden = currentGoal === 'custom';
@@ -291,7 +294,7 @@ function controls() {
     });
   }
 }
-// The route choice is locked while the account route runs and while copying
+// The route choice is locked while the Telescope Network route runs and while copying
 // or deleting runs; the LAN form is too.
 function routeControls(blocked) {
   if (active) routeChoice = 'account';
@@ -303,17 +306,17 @@ function routeControls(blocked) {
   $('account-route').hidden = routeChoice !== 'account';
   $('lan-route').hidden = routeChoice !== 'lan';
   $('lan-options').disabled = blocked || active || busy || !!lanPending;
-  $('lan-test').textContent = lanPending === 'test' ? 'Testing…' : 'Test';
-  $('lan-save').textContent = lanPending === 'save' ? 'Saving…' : 'Save';
+  text('lan-test', lanPending === 'test' ? 'Testing…' : 'Test');
+  text('lan-save', lanPending === 'save' ? 'Saving…' : 'Save');
   connectionLine();
 }
-// The header's line and dot: the proxy's status on the account route, and
+// The header's line and dot: the proxy's status on the Telescope Network route, and
 // the saved address and its last Test on this network.
 function connectionLine() {
   let line = 'Loading…', tone = 'off';
   const saved = state?.settings?.route === 'lan' ? state.settings.lan_address || '' : '';
   if (state && saved && !active) {
-    const tested = lanReach?.address === saved;
+    const tested = sameEndpoint(lanReach?.address, saved);
     line = !tested ? 'On this network: ' + saved : lanReach.ok ? 'On this network: reachable' : "Can't reach " + saved;
     tone = !tested ? 'off' : lanReach.ok ? 'on' : 'error';
   } else if (state) {
@@ -334,6 +337,29 @@ function lanResult(message, tone = '') {
   if (tone) $('lan-result').setAttribute('data-tone', tone);
   else $('lan-result').removeAttribute('data-tone');
 }
+// endpointKey is a host:port as the server keeps it, in one spelling for
+// every way of writing the same endpoint: a name in lower case, an IPv6
+// address compressed and in lower case, an unscoped IPv4-mapped one as
+// IPv4, and the port as a number. An IPv6 zone is an interface name, whose
+// case matters, so it is kept exactly. Anything else is kept as it is.
+function endpointKey(endpoint) {
+  const m = /^(?:\[([^\]]*)\]|([^:]*)):(\d+)$/.exec(endpoint || '');
+  if (!m) return endpoint || '';
+  if (m[1] === undefined) return m[2].toLowerCase() + ':' + Number(m[3]);
+  const at = m[1].indexOf('%');
+  let host = (at < 0 ? m[1] : m[1].slice(0, at)).toLowerCase();
+  const zone = at < 0 ? '' : m[1].slice(at);
+  try {
+    host = new URL('http://[' + host + ']/').hostname.slice(1, -1);
+  } catch {}
+  const v4 = !zone && /^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/.exec(host);
+  if (v4) return [v4[1], v4[2]].map((h) => parseInt(h, 16)).flatMap((n) => [n >> 8, n & 255]).join('.') + ':' + Number(m[3]);
+  return '[' + host + zone + ']:' + Number(m[3]);
+}
+// sameEndpoint reports whether a and b are the same endpoint.
+function sameEndpoint(a, b) {
+  return !!a && !!b && endpointKey(a) === endpointKey(b);
+}
 // Test checks that the address answers SMB, as seestar-copy's Test does.
 async function lanTest() {
   if (lanPending) return null;
@@ -347,7 +373,10 @@ async function lanTest() {
   try {
     r = await api('test', {address: typed}, '/copy/api/');
     lanReach = {typed, address: r.address, ok: r.ok};
-    lanResult(r.message, r.ok ? 'ok' : 'error');
+    // Test saves nothing: until Save, the copy tabs use the saved route.
+    const saved = state?.settings?.route === 'lan' ? state.settings.lan_address : '';
+    const unsaved = r.ok && !sameEndpoint(r.address, saved) ? ' Save to use this address for Copy, Browse and Free up space.' : '';
+    lanResult(r.message + unsaved, r.ok ? 'ok' : 'error');
   } catch (e) {
     if (e.fields?.address) {
       lanResult('');
@@ -362,7 +391,8 @@ async function lanTest() {
   return r;
 }
 // Save Tests the address first, unless it just passed, and makes this
-// network the route only if it answers; the server Tests it again.
+// network the route only if it answers; the server checks again that it
+// answers, and the result line says so meanwhile.
 async function lanSave() {
   if (lanPending) return;
   const typed = $('lan-address').value.trim();
@@ -374,7 +404,7 @@ async function lanSave() {
   }
   lanPending = 'save';
   lanError('');
-  lanResult('');
+  lanResult('Checking ' + address + '…');
   controls();
   let saved = false;
   try {
@@ -462,14 +492,20 @@ function goReach() {
   const target = $(reach === 'smb_off' ? 'ports' : reach === 'no_lan_address' ? 'lan-address' : 'start');
   (target.disabled ? $('tab-connection') : target).focus();
 }
-// Browse loads once there are settings, and again when they change what
-// it shows.
-// Until then its notice says where to set the folder.
-function browseFrame(reload = false) {
+// Browse loads once there are settings; until then its notice says where
+// to set the folder. It loads again, once it is in view, when copy's
+// status says what it shows moved: a new folder or selection, or the
+// telescope reached another way, since an error the frame shows from
+// before would stay until retried.
+let browseView = null;
+function browseFrame() {
   $('b-setup').hidden = !!copySaved;
   $('b-frame').hidden = !copySaved;
   if (!copySaved || !state?.copy_unlocked) return;
-  if (reload || !$('b-frame').src) $('b-frame').src = '/browse/';
+  const view = copyStatus?.browse_view;
+  if ($('b-frame').src && (view === browseView || currentTab !== 'browse')) return;
+  browseView = view;
+  $('b-frame').src = '/browse/';
 }
 function goSetup() {
   selectTab('copy');
@@ -514,12 +550,13 @@ function copyError(e) {
 }
 
 // The copy settings: a summary line, and the form Change… opens. The
-// first visit has the form open, with Save and continue.
+// first visit has the form open, without Cancel.
 const copyFields = {folder: 'f-folder', interval: 'f-int', files_at_once: 'f-files', excludes: 'f-ex', includes: 'f-in'};
 const lines = value => value === '' ? [] : value.split('\n');
 function copyFill(s) {
   $('f-folder').value = s.folder;
   $('f-int').value = String(s.interval_minutes);
+  $('f-repeat').checked = !s.once;
   $('f-files').value = String(s.files_at_once);
   $('f-ex').value = s.excludes.join('\n');
   $('f-in').value = s.includes.join('\n');
@@ -530,7 +567,7 @@ function copyInput() {
   return {
     folder: $('f-folder').value, interval: $('f-int').value, files_at_once: $('f-files').value,
     excludes: lines($('f-ex').value), includes: lines($('f-in').value),
-    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked
+    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked
   };
 }
 // showErrors puts each message under its field and returns the first
@@ -549,7 +586,7 @@ function showErrors(fields) {
   return first;
 }
 function copySummary(s) {
-  const minutes = s.interval_minutes === 1 ? 'every minute' : 'every ' + s.interval_minutes + ' min';
+  const minutes = s.once ? 'once each time you start' : s.interval_minutes === 1 ? 'every minute' : 'every ' + s.interval_minutes + ' min';
   const parts = ['Copying to ' + s.folder + ' ' + minutes];
   if (s.files_at_once !== 4) parts.push(s.files_at_once === 1 ? '1 file at once' : s.files_at_once + ' files at once');
   if (s.skip_built_in) parts.push('skipping logs and system files');
@@ -567,7 +604,6 @@ function renderSetup() {
   $('copy-form').hidden = !copyFormOpen;
   $('s-change').setAttribute('aria-expanded', String(copyFormOpen));
   $('f-cancel').hidden = first;
-  put('f-save', first ? 'Save and continue' : 'Save');
   $('s-locked').hidden = !(copyOn && copyFormOpen);
   renderHistory();
 }
@@ -613,9 +649,11 @@ async function copySave() {
     copyFill(copySaved);
     copyFormOpen = false;
     renderSetup();
-    browseFrame(data.browse_changed);
+    // The first Save doesn't start copying; the notice above Start copying
+    // says it is the next step, and takes focus so it is read.
+    copyNext = first;
     await copyRefresh();
-    if (first) $('c-title').focus();
+    if (first) $('c-next').focus();
     else {
       result('f-saved', 'Settings saved.', 'ok');
       $('s-change').focus();
@@ -654,7 +692,7 @@ function renderHistory() {
 // The Copy tab: the server words each state; the page shows its parts.
 // Each state's buttons, and the states the help line shows in.
 const copyShows = {
-  'c-start': ['off', 'stopped', 'inuse', 'cantwrite'],
+  'c-start': ['off', 'stopped', 'inuse', 'cantwrite', 'done'],
   'c-check': ['uptodate', 'failures', 'listfail', 'unreachable'],
   'c-stop': ['connecting', 'listing', 'copying', 'uptodate', 'failures', 'listfail', 'unreachable'],
   'c-help': ['connecting', 'listing', 'copying', 'uptodate', 'failures', 'listfail', 'unreachable']
@@ -662,6 +700,9 @@ const copyShows = {
 const copyBusy = {connecting: 'Connecting', listing: 'Looking for new files'};
 let copyOn = false, copyShown = {state: '', files: '', preview: '', pgroups: ''};
 let pressed = null; // a button the user pressed, until the state after it is shown
+// copyNext shows, after the first Save, that Start copying is the next
+// step, until copying starts.
+let copyNext = false;
 // renderPreview shows the Copy tab's preview, if any, and its buttons in
 // the states Start shows in. A preview's state change is announced, and so
 // is its going away: a Cancel, or Copy's title when it is discarded.
@@ -733,14 +774,17 @@ function renderCopy(v) {
     listItems('c-files', v.failed || [], pathItem);
   }
   for (const [id, states] of Object.entries(copyShows)) $(id).hidden = !states.includes(st);
+  if (!copyShows['c-start'].includes(st)) copyNext = false;
+  $('c-next').hidden = !copyNext;
   // A stage change is announced; ticks within a stage are not.
   if (st !== copyShown.state) put('c-live', v.title);
   copyShown.state = st;
   renderPreview(v, st);
   const chip = $('copy-chip');
-  chip.className = 'chip ' + (st === 'failures' ? 'warn' : v.on ? 'on' : 'off');
+  chip.className = 'chip ' + (st === 'failures' || st === 'done' && v.failed ? 'warn' : v.on ? 'on' : 'off');
   put('copy-chip', v.chip);
   chip.hidden = !state?.copy_unlocked || !copySaved || !v.chip;
+  activityChip('preview-chip', v.preview?.chip, v.preview?.state);
   // Settings can't change, nor the history clear, while copying is on.
   $('f-set').disabled = v.on;
   copyOn = v.on;
@@ -758,6 +802,9 @@ async function copyAction(action) {
   try {
     const v = await api('copy', {action}, '/copy/api/');
     result('c-err', '');
+    // Copying has started, even if a one-pass run is already done by the
+    // time the answer comes and the state shows Start copying again.
+    if (action === 'start') copyNext = false;
     renderCopy(v);
   } catch (e) {
     result('c-err', copyError(e), 'err');
@@ -785,8 +832,9 @@ const freeShows = {
   'x-done': ['done', 'stopped', 'failed']
 };
 const freeBox = {checkfail: 'notice err', failed: 'notice err', nothing: 'notice', stopped: 'notice', done: 'notice ok'};
-// The shown state, the preview's id, options and groups with their boxes.
-let freeShown = {state: '', id: 0, kept: '', groups: [], boxes: [], trust: false};
+// The shown state and stage, the preview's id, options and groups with
+// their boxes.
+let freeShown = {state: '', stage: '', id: 0, kept: '', groups: [], boxes: [], trust: false};
 let freePressed = null; // as pressed, for this tab
 // byteSize words a byte count as the server does: decimal units, with one
 // decimal below 100.
@@ -804,6 +852,8 @@ const fileCount = n => n === 1 ? '1 file' : n.toLocaleString('en-US') + ' files'
 function freeFill(s) {
   $('x-days').value = String(s.older_than_days);
   $('x-trust').checked = s.trust_state;
+  $('x-ex').value = s.free_excludes.join('\n');
+  $('x-in').value = s.free_includes.join('\n');
   freeIntro();
 }
 // freeIntro words the Start text for the options as set.
@@ -812,14 +862,47 @@ function freeIntro() {
     : 'Free up space deletes files from the telescope only after they have been copied here, and checks that your copy still matches.');
   $('x-restack').hidden = !(Number($('x-days').value) > 0);
 }
-function daysError(message) {
-  put('x-days-err', message);
-  $('x-days-err').hidden = !message;
-  if (message) $('x-days').setAttribute('aria-invalid', 'true');
-  else $('x-days').removeAttribute('aria-invalid');
+// freeErrors puts each message under its option, as showErrors does for
+// Copy's, and returns the first option in error.
+const freeFields = {days: 'x-days', free_excludes: 'x-ex', free_includes: 'x-in'};
+function freeErrors(fields) {
+  let first = null;
+  for (const [name, id] of Object.entries(freeFields)) {
+    const message = fields[name] || '';
+    put(id + '-err', message);
+    $(id + '-err').hidden = !message;
+    if (message) {
+      $(id).setAttribute('aria-invalid', 'true');
+      first ||= $(id);
+    } else $(id).removeAttribute('aria-invalid');
+  }
+  return first;
 }
+// activityChip shows a run's bubble in the header while it is busy, beside
+// copying's. Its text changes are not announced; a run starting, or a
+// delete's next stage, is, once, when its tab isn't the one open. The
+// announcement goes when its run ends, so the next run's start, worded
+// the same, is announced too.
+const chipShown = {};
+let chipLive = '';
+function activityChip(id, label, stage) {
+  const chip = $(id);
+  put(id, label);
+  chip.hidden = !state?.copy_unlocked || !label;
+  stage = label ? stage : '';
+  if (stage && stage !== chipShown[id] && currentTab !== chipTabs[id]) {
+    put('chip-live', label);
+    chipLive = id;
+  } else if (!stage && chipLive === id) {
+    put('chip-live', '');
+    chipLive = '';
+  }
+  chipShown[id] = stage;
+}
+const chipTabs = {'copy-chip': 'copy', 'preview-chip': 'copy', 'free-chip': 'free'};
 function renderFree(v) {
   const st = v.state;
+  activityChip('free-chip', v.chip, st + (v.recheck ? '-recheck' : ''));
   put('x-title', v.title);
   put('x-text', v.text);
   put('x-sub', v.sub);
@@ -880,8 +963,11 @@ function renderFree(v) {
     listItems('x-klist', v.kept_list || [], pathItem);
   }
   $('x-kept').hidden = !v.kept || !v.kept_list || !['preview', 'nothing', 'done'].includes(st);
-  if (st !== freeShown.state) put('x-live', v.title);
+  // Checking the files again is a stage of its own before Deleting.
+  const stage = st + (v.recheck ? '-recheck' : '');
+  if (stage !== freeShown.stage) put('x-live', v.title);
   freeShown.state = st;
+  freeShown.stage = stage;
   clearable();
   // As for Copy: focus moves to the new state's heading only when the
   // button pressed went away.
@@ -908,15 +994,14 @@ async function freeAction(body) {
   } catch (e) {
     freePressed = null;
     if (e?.fields) {
-      daysError(e.fields.days || '');
-      $('x-days').focus();
+      freeErrors(e.fields)?.focus();
       return;
     }
-    daysError('');
+    freeErrors({});
     result('x-err', copyError(e), 'err');
     return;
   }
-  daysError('');
+  freeErrors({});
   result('x-err', '');
   renderFree(v);
 }
@@ -925,7 +1010,10 @@ async function freePress(event, body) {
   await freeAction(body);
 }
 function freeFind(event) {
-  return freePress(event, {action: 'find', days: $('x-days').value, trust: $('x-trust').checked});
+  return freePress(event, {
+    action: 'find', days: $('x-days').value, trust: $('x-trust').checked,
+    free_excludes: lines($('x-ex').value), free_includes: lines($('x-in').value)
+  });
 }
 // freeAsk shows the confirm dialog for the checked folders.
 function freeAsk() {
@@ -1111,7 +1199,7 @@ function render(s) {
   text('version',s.version);
   active = s.active;
   $('last-known').hidden = true;
-  $('quit').textContent = s.native ? 'Quit' : 'Quit service';
+  text('quit', s.native ? 'Quit' : 'Quit service');
   $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';
   $('retry-storage').hidden = !s.save_failed;
   if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Settings could not be saved; they may reset next time.');
@@ -1355,6 +1443,11 @@ function openExternalLink(event) {
   window._wails.invoke('seestar:open:' + link.href);
 }
 for (const tab of tabNames) $('tab-' + tab).addEventListener('click', () => selectTab(tab));
+// A bubble opens its run's tab.
+for (const [id, tab] of Object.entries(chipTabs)) $(id).addEventListener('click', () => {
+  selectTab(tab);
+  $('tab-' + tab).focus();
+});
 $('tabs').addEventListener('keydown', tabKey);
 for (const id of ['route-account', 'route-lan']) $(id).addEventListener('change', () => {
   if ($(id).checked) routeChoice = $(id).value;

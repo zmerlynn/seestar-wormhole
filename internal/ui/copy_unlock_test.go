@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -53,6 +54,66 @@ func TestCopyUnlocksOnSavedLAN(t *testing.T) {
 	}
 	if got := e.copyStatus(); !got.Unlocked || got.Reach != "not_connected" {
 		t.Errorf("after switching back = %+v", got)
+	}
+}
+
+// Test alone saves nothing and leaves the tabs locked. Save opens them
+// whichever Test came before it, and after a Connect through Telescope
+// Network that never connected. A Connect still connecting holds the
+// route until it is stopped.
+func TestCopyUnlocksOnSaveAfterTest(t *testing.T) {
+	test := func(e *routeEnv, address string) {
+		e.t.Helper()
+		if code, body := e.post("/copy/api/test", `{"address":"`+address+`"}`); code != 200 {
+			e.t.Fatalf("Test %s = %d %s", address, code, body)
+		}
+	}
+	for _, tc := range []struct {
+		name   string
+		before func(e *routeEnv)
+	}{
+		{"no Test", func(*routeEnv) {}},
+		{"Test of the same address", func(e *routeEnv) { test(e, "192.0.2.10") }},
+		{"Test of another address", func(e *routeEnv) { test(e, "192.0.2.20") }},
+		{"failed Test", func(e *routeEnv) { test(e, "192.0.2.99") }},
+		{"account route saved", func(e *routeEnv) {
+			if code, body := e.post("/api/route", `{"settings":{"route":"account"}}`); code != 200 {
+				e.t.Fatalf("account route = %d %s", code, body)
+			}
+		}},
+		{"Connect that never connected", func(e *routeEnv) {
+			e.s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+				return errors.New("synthetic sign-in failure")
+			}
+			if code, body := e.start(testSettings()); code != 200 {
+				e.t.Fatalf("Connect = %d %s", code, body)
+			}
+			e.until("the run to end", func() bool { _, active := e.s.controller.snapshot(); return !active })
+		}},
+		{"Connect stopped while connecting", func(e *routeEnv) {
+			a := e.account()
+			if code, body := e.start(testSettings()); code != 200 {
+				e.t.Fatalf("Connect = %d %s", code, body)
+			}
+			test(e, "192.0.2.10")
+			if code, _ := e.post("/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.10"}}`); code == 200 {
+				e.t.Error("a LAN save succeeded while Connect runs")
+			}
+			a.stop()
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newRouteEnv(t)
+			e.s.settings, e.s.controller.lastSaved = defaultSettings(), defaultSettings()
+			tc.before(e)
+			if got := e.copyStatus(); got.Unlocked {
+				t.Fatalf("open before Save: %+v", got)
+			}
+			e.lan("192.0.2.10")
+			if got := e.copyStatus(); !got.Unlocked || got.Reach != "" {
+				t.Errorf("after Save = %+v", got)
+			}
+		})
 	}
 }
 

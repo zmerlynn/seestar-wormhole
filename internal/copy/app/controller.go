@@ -45,6 +45,7 @@ const (
 	stStopped     = "stopped" // stopped during a pass's downloads
 	stInUse       = "inuse"
 	stCantWrite   = "cantwrite" // the loop ended with an error, other than the lock
+	stDone        = "done"      // a copy once ended after its check
 )
 
 // checkReach is what to check when the telescope can't be reached.
@@ -96,6 +97,7 @@ type status struct {
 	endpoint string
 	folder   string
 	interval time.Duration
+	once     bool   // the loop ends after one pass
 	contact  string // the last contact: "", "connecting", "ok" or "err"
 
 	// The current pass.
@@ -115,6 +117,7 @@ type status struct {
 	last    *engine.Summary // the last pass that listed the share
 	passErr error           // why the last pass failed before copying
 	next    time.Time       // the next pass's start, while waiting
+	outcome string          // how a copy once's pass ended, as a waiting state
 
 	// A stop during downloads.
 	stopCopied, stopDiscarded int
@@ -151,9 +154,9 @@ func (c *controller) start(set Settings, t Target) error {
 	c.cancel, c.done, c.stopping = cancel, done, false
 	c.bound, c.pass, c.ended = t, false, nil
 	interval := time.Duration(set.IntervalMinutes) * time.Minute
-	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, contact: c.st.contact, last: c.st.last}
+	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, once: set.Once, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
-		Endpoint: set.Address, Dest: set.Folder, StateDir: c.stateDir, Selector: sel, Interval: interval,
+		Endpoint: set.Address, Dest: set.Folder, StateDir: c.stateDir, Selector: sel, Interval: interval, Once: set.Once,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: c.dialPass, Hooks: c.hooks(ctx), CheckNow: c.checkNow, Recreate: true,
 	}
@@ -226,6 +229,17 @@ func selector(set Settings) (engine.Selector, error) {
 	return sel, nil
 }
 
+// moved follows a change of where the telescope is: a copy once that
+// couldn't reach or read it was told so about where it was, so copying
+// shows as off instead, with no contact.
+func (c *controller) moved() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.st.state == stDone && (c.st.outcome == stUnreachable || c.st.outcome == stListFail) {
+		c.st.state, c.st.contact = stOff, ""
+	}
+}
+
 // finish records how the loop ended.
 func (c *controller) finish(err error) {
 	c.mu.Lock()
@@ -237,6 +251,10 @@ func (c *controller) finish(err error) {
 	switch {
 	case errors.Is(err, state.ErrLocked):
 		st.state = stInUse
+	case st.state == stDone && !c.stopping:
+		// A copy once's check ended the loop; the state words how,
+		// failed files included.
+		err = nil
 	case err != nil:
 		st.state, st.startErr = stCantWrite, err
 	case c.stopping && st.wasCopying:
@@ -325,7 +343,7 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 	c.pass = true
 	if ctx.Err() == nil {
 		last, contact := st.last, st.contact
-		*st = status{state: stConnecting, endpoint: st.endpoint, folder: st.folder, interval: st.interval, last: last, contact: contact}
+		*st = status{state: stConnecting, endpoint: st.endpoint, folder: st.folder, interval: st.interval, once: st.once, last: last, contact: contact}
 		st.contact = "connecting"
 	}
 	c.mu.Unlock()
@@ -335,7 +353,16 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 	endpoint, err := c.follow(endpoint)
 	var sess remote.Session
 	if err == nil {
-		sess, err = c.dial(ctx, endpoint)
+		// On this network, the dial waits out macOS's Local Network prompt.
+		dial := func(ctx context.Context) (remote.Session, error) { return c.dial(ctx, endpoint) }
+		c.mu.Lock()
+		lan := c.bound.onLAN()
+		c.mu.Unlock()
+		if lan {
+			sess, err = retryLAN(ctx, localNetworkRetry, dial)
+		} else {
+			sess, err = dial(ctx)
+		}
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -451,6 +478,9 @@ func (c *controller) hooks(ctx context.Context) engine.Hooks {
 				st.last, st.state = &sum, stFailures
 			default:
 				st.last, st.state = &sum, stUpToDate
+			}
+			if st.once {
+				st.outcome, st.state = st.state, stDone
 			}
 		},
 	}
@@ -615,6 +645,31 @@ func (c *controller) view(now time.Time) copyView {
 		if c.bound.onLAN() {
 			v.Text += LocalNetworkHint(hostOS, st.reachErr)
 		}
+	case stDone:
+		const once = " Checked once; copying is off."
+		switch st.outcome {
+		case stUnreachable:
+			v.Title = "Can't reach the telescope at " + st.endpoint + "." + once
+			v.Text = checkReach
+			if c.bound.onLAN() {
+				v.Text += LocalNetworkHint(hostOS, st.reachErr)
+			}
+		case stListFail:
+			v.Title = "Couldn't read " + unread(st.passErr) + "." + once
+			v.Text = "No files were copied."
+		case stFailures:
+			n := len(st.last.Failed)
+			v.Title = "Check finished with " + count(n, "file", "files") + " not copied." + once
+			v.Notice = count(n, "file", "files") + " couldn't be copied. Start copying to try them again."
+			if n == 1 {
+				v.Notice = "1 file couldn't be copied. Start copying to try it again."
+			}
+			for _, f := range st.last.Failed {
+				v.Failed = append(v.Failed, failure{f.Path, f.Reason})
+			}
+		default:
+			v.Title = "Up to date." + once
+		}
 	case stStopping:
 		v.Title = "Stopping…"
 	case stStopped:
@@ -646,15 +701,19 @@ func (c *controller) view(now time.Time) copyView {
 			v.Text = "Fix the problem, then start copying."
 		}
 	}
-	switch st.state {
-	case stOff, stUpToDate, stFailures:
-		if st.last != nil {
-			v.Summary = summaryLine(*st.last)
-		}
+	checked := st.state == stUpToDate || st.state == stFailures
+	onceChecked := st.state == stDone && (st.outcome == stUpToDate || st.outcome == stFailures)
+	if (checked || onceChecked || st.state == stOff) && st.last != nil {
+		v.Summary = summaryLine(*st.last)
 	}
-	if (st.state == stUpToDate || st.state == stFailures) && st.last.Waiting > 0 {
+	if checked && st.last.Waiting > 0 {
 		v.Settling = count(st.last.Waiting, "new file is", "new files are") + " still being written. They'll be copied on a later check."
 	}
+	if onceChecked && st.last.Waiting > 0 {
+		v.Settling = count(st.last.Waiting, "new file is", "new files are") + " still being written. Start copying again in a few minutes to copy them."
+	}
+	// The chip shows only while copying runs: a pass, or the wait for the
+	// next one. Copying off, or a copy once that ended, has none.
 	switch {
 	case st.state == stConnecting || st.state == stListing || st.state == stCopying:
 		v.Chip = "Copying"
@@ -664,8 +723,6 @@ func (c *controller) view(now time.Time) copyView {
 		v.Chip = count(len(st.last.Failed), "file", "files") + " not copied"
 	case v.On:
 		v.Chip = "Copying is on"
-	default:
-		v.Chip = "Copying is off"
 	}
 	return v
 }

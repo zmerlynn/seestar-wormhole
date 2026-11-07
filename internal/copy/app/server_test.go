@@ -19,9 +19,11 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"testing/fstest"
+	"testing/synctest"
 	"time"
 
 	"github.com/hirochachacha/go-smb2/v2/x/protocol"
@@ -65,6 +67,7 @@ type appEnv struct {
 
 	mu       sync.Mutex
 	endpoint string     // the target's
+	lost     error      // what finding the target fails with
 	saved    []Settings // each Save, in order
 	saveErr  error      // what Save fails with
 }
@@ -80,7 +83,7 @@ func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 		Target: func() (Target, error) {
 			e.mu.Lock()
 			defer e.mu.Unlock()
-			return Target{Endpoint: e.endpoint}, nil
+			return Target{Endpoint: e.endpoint}, e.lost
 		},
 		Dial: e.d.dial,
 		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
@@ -318,6 +321,13 @@ func TestSaveCallsSave(t *testing.T) {
 	if saves := e.saves(); len(saves) != 1 || fmt.Sprint(saves[0]) != fmt.Sprint(want) {
 		t.Errorf("saved %+v, want %+v", saves, want)
 	}
+	// Copy once is saved as posted.
+	if w := e.post("/copy/api/settings", `{"once":true,`+goodInput[1:]); w.Code != 200 {
+		t.Fatalf("code %d %q", w.Code, w.Body.String())
+	}
+	if saves := e.saves(); len(saves) != 2 || !saves[1].Once {
+		t.Errorf("saved %+v, want copy once", saves)
+	}
 }
 
 func TestSaveFailure(t *testing.T) {
@@ -456,6 +466,344 @@ func TestLocalNetworkHint(t *testing.T) {
 	}
 }
 
+// setRetry makes localNetworkRetry a new one, as when the app starts, that
+// runs on goos at its own interval and limit, with a clock that moves only
+// while it waits. It returns how long it waited.
+func setRetry(t *testing.T, goos string) *atomic.Int64 {
+	var waited atomic.Int64
+	start := time.Unix(1, 0)
+	old := localNetworkRetry
+	localNetworkRetry = &lanRetry{
+		goos: goos, every: old.every, limit: old.limit,
+		now: func() time.Time { return start.Add(time.Duration(waited.Load())) },
+		after: func(d time.Duration) <-chan time.Time {
+			waited.Add(int64(d))
+			c := make(chan time.Time, 1)
+			c <- start
+			return c
+		},
+	}
+	t.Cleanup(func() { localNetworkRetry = old })
+	return &waited
+}
+
+// newRetry is a new localNetworkRetry on macOS with the real clock, for a
+// synctest bubble.
+func newRetry() *lanRetry {
+	return &lanRetry{goos: "darwin", every: localNetworkRetry.every, limit: localNetworkRetry.limit, now: time.Now, after: time.After}
+}
+
+// On macOS, a dial the system failed at once is tried again every second,
+// as when the Local Network prompt is open, until it goes through or 5 s
+// have passed. A timeout, a refusal, a DNS failure or any SMB answer
+// returns at once, as does every failure elsewhere.
+func TestRetryLAN(t *testing.T) {
+	if localNetworkRetry.every != time.Second || localNetworkRetry.limit != 5*time.Second {
+		t.Errorf("retry every %v for %v, want every 1s for 5s", localNetworkRetry.every, localNetworkRetry.limit)
+	}
+	smb := fmt.Errorf("dial 192.0.2.10:445: %w", smbStatus(0xC000006D))
+	dns := fmt.Errorf("dial seestar.local:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{Err: "no such host", Name: "seestar.local", IsNotFound: true}})
+	tests := []struct {
+		name  string
+		goos  string
+		err   error
+		tries int
+	}{
+		{"no route to host", "darwin", noRoute, 3},
+		{"network unreachable", "darwin", connectFailed(syscall.ENETUNREACH), 3},
+		{"on-link host down", "darwin", connectFailed(syscall.EHOSTDOWN), 3},
+		{"connect not permitted", "darwin", connectFailed(syscall.EPERM), 3},
+		{"connect timed out", "darwin", connectFailed(syscall.ETIMEDOUT), 1},
+		{"deadline", "darwin", fmt.Errorf("dial 192.0.2.10:445: %w", &net.OpError{Op: "dial", Net: "tcp", Err: context.DeadlineExceeded}), 1},
+		{"refused", "darwin", connectFailed(syscall.ECONNREFUSED), 1},
+		{"name not found", "darwin", dns, 1},
+		{"logon failure", "darwin", smb, 1},
+		{"Linux", "linux", noRoute, 1},
+		{"Windows", "windows", noRoute, 1},
+	}
+	for _, tt := range tests {
+		waited := setRetry(t, tt.goos)
+		tries := 0
+		// The third try goes through.
+		got, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) {
+			if tries++; tries < 3 {
+				return 0, tt.err
+			}
+			return 7, nil
+		})
+		if tries != tt.tries || time.Duration(waited.Load()) != time.Duration(tt.tries-1)*time.Second {
+			t.Errorf("%s on %s: %d tries over %v, want %d", tt.name, tt.goos, tries, time.Duration(waited.Load()), tt.tries)
+		}
+		if tt.tries == 3 && (got != 7 || err != nil) {
+			t.Errorf("%s on %s: %v, %v after the try that went through", tt.name, tt.goos, got, err)
+		}
+		if tt.tries == 1 && err != tt.err {
+			t.Errorf("%s on %s: %v, want %v", tt.name, tt.goos, err, tt.err)
+		}
+		// Only the first dial waits: one after it fails at once.
+		tries, before := 0, waited.Load()
+		if _, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute || tries != 1 || waited.Load() != before {
+			t.Errorf("%s on %s, then a blocked connect: %v after %d tries over %v", tt.name, tt.goos, err, tries, time.Duration(waited.Load()-before))
+		}
+	}
+
+	// It gives up after 5 s with the last try's error, and later dials
+	// don't wait.
+	waited := setRetry(t, "darwin")
+	for _, want := range []int{5, 1} {
+		tries := 0
+		if _, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute ||
+			tries != want || time.Duration(waited.Load()) != 4*time.Second {
+			t.Errorf("a blocked connect: %v after %d tries over %v, want %d tries over 4s", err, tries, time.Duration(waited.Load()), want)
+		}
+	}
+	// The caller's context ends it too, with the dial's error. That dial
+	// was the first, so the next one doesn't wait either.
+	waited = setRetry(t, "darwin")
+	ctx, cancel := context.WithCancel(t.Context())
+	tries := 0
+	if _, err := retryLAN(ctx, localNetworkRetry, func(context.Context) (int, error) {
+		if tries++; tries == 2 {
+			cancel()
+		}
+		return 0, noRoute
+	}); err != noRoute || tries != 2 {
+		t.Errorf("a canceled retry: %v after %d tries", err, tries)
+	}
+	tries, before := 0, waited.Load()
+	if _, err := retryLAN(t.Context(), localNetworkRetry, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute ||
+		tries != 1 || waited.Load() != before {
+		t.Errorf("after a canceled retry: %v after %d tries over %v", err, tries, time.Duration(waited.Load()-before))
+	}
+}
+
+// The limit counts the time spent dialing, not just waiting: a try again
+// gets only what is left, and the failure before it is returned.
+func TestRetryLANLimitCountsDials(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRetry()
+		start := time.Now()
+		tries := 0
+		var cut context.Context
+		_, err := retryLAN(t.Context(), r, func(ctx context.Context) (int, error) {
+			tries++
+			select {
+			case <-time.After(3 * time.Second):
+				return 0, noRoute
+			case <-ctx.Done():
+				cut = ctx
+				return 0, ctx.Err()
+			}
+		})
+		if elapsed := time.Since(start); elapsed != r.limit || tries != 2 || err != noRoute || cut == nil {
+			t.Errorf("%v after %d tries over %v, cut %v", err, tries, elapsed, cut != nil)
+		}
+	})
+}
+
+// A try again that goes through keeps the caller's context: the limit
+// doesn't end the session it dialed.
+func TestRetryLANKeepsSession(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		tries := 0
+		sess, err := retryLAN(t.Context(), newRetry(), func(ctx context.Context) (context.Context, error) {
+			if tries++; tries == 1 {
+				return nil, noRoute
+			}
+			return ctx, nil
+		})
+		time.Sleep(time.Minute)
+		if err != nil || tries != 2 || sess.Err() != nil {
+			t.Errorf("%v after %d tries; session context %v", err, tries, sess.Err())
+		}
+	})
+}
+
+// A timer that fires late doesn't start a dial past the limit.
+func TestRetryLANLateTimer(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRetry()
+		r.after = func(d time.Duration) <-chan time.Time { return time.After(d + 10*time.Second) }
+		tries := 0
+		for range 2 {
+			if _, err := retryLAN(t.Context(), r, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute {
+				t.Errorf("err %v", err)
+			}
+		}
+		if tries != 2 {
+			t.Errorf("%d tries, want one for each dial", tries)
+		}
+	})
+}
+
+// Canceling the caller while the retry waits returns at once, without
+// another try.
+func TestRetryLANCanceledWhileWaiting(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		done := make(chan error, 1)
+		tries := 0
+		start := time.Now()
+		go func() {
+			_, err := retryLAN(ctx, newRetry(), func(context.Context) (int, error) { tries++; return 0, noRoute })
+			done <- err
+		}()
+		synctest.Wait()
+		cancel()
+		synctest.Wait()
+		select {
+		case err := <-done:
+			if err != noRoute || tries != 1 || time.Since(start) != 0 {
+				t.Errorf("%v after %d tries over %v", err, tries, time.Since(start))
+			}
+		default:
+			t.Error("still waiting after the caller was canceled")
+			<-done
+		}
+	})
+}
+
+// A first dial canceled while it waits has still used the retries: the
+// next dial tries once.
+func TestRetryLANCanceledFirstIsSpent(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		r := newRetry()
+		ctx, cancel := context.WithCancel(t.Context())
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			retryLAN(ctx, r, func(context.Context) (int, error) { return 0, noRoute })
+		}()
+		synctest.Wait()
+		cancel()
+		<-done
+		start, tries := time.Now(), 0
+		if _, err := retryLAN(t.Context(), r, func(context.Context) (int, error) { tries++; return 0, noRoute }); err != noRoute || tries != 1 || time.Since(start) != 0 {
+			t.Errorf("then %v after %d tries over %v", err, tries, time.Since(start))
+		}
+	})
+}
+
+// While the first dial on this network waits, Test, Save and copying each
+// dial once and return at once, and the first dial keeps its retries.
+func TestRetryLANOnlyFirstOfOverlapping(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		old := localNetworkRetry
+		localNetworkRetry = newRetry()
+		defer func() { localNetworkRetry = old }()
+		e := newAppEnv(t, nil)
+		// Test's dials: the first fails until its third try.
+		var tests atomic.Int32
+		e.s.test = func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+			if tests.Add(1) < 3 {
+				return nil, connectFailed(syscall.EPERM)
+			}
+			return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
+		}
+		var reaches atomic.Int32
+		e.s.reach = func(ctx context.Context, endpoint string) error {
+			reaches.Add(1)
+			return connectFailed(syscall.EPERM)
+		}
+		first := make(chan error, 1)
+		start := time.Now()
+		go func() {
+			_, err := e.s.testLAN(t.Context(), "192.0.2.10:445")
+			first <- err
+		}()
+		synctest.Wait() // the first dial is waiting to try again
+		if err := e.m.Reach(t.Context(), "192.0.2.10:445"); err == nil || reaches.Load() != 1 || time.Since(start) != 0 {
+			t.Errorf("Save while the first dial waits: %v after %d tries over %v", err, reaches.Load(), time.Since(start))
+		}
+		c := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+		c.dialErr = noRoute
+		if err := c.c.start(c.set, Target{Endpoint: c.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait() // copying waits for its next check
+		if v := c.c.view(time.Now()); v.State != stUnreachable || c.dialCount() != 1 || time.Since(start) != 0 {
+			t.Errorf("copying while the first dial waits: %d dials over %v, view %+v", c.dialCount(), time.Since(start), v)
+		}
+		c.c.stop()
+		if err := <-first; err != nil || tests.Load() != 3 || time.Since(start) != 2*time.Second {
+			t.Errorf("the first dial: %v after %d tries over %v", err, tests.Load(), time.Since(start))
+		}
+	})
+}
+
+// Test, from the page and from a route's Save, waits out the Local Network
+// prompt on macOS, once: a later Test fails at once.
+func TestTestWaitsForLocalNetwork(t *testing.T) {
+	waited := setRetry(t, "darwin")
+	e := newAppEnv(t, nil)
+	tries := 0
+	e.s.test = func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+		if tries++; tries%3 != 0 {
+			return nil, fmt.Errorf("connect to %s: %w", endpoint, connectFailed(syscall.EPERM))
+		}
+		return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
+	}
+	e.s.reach = func(ctx context.Context, endpoint string) error {
+		_, err := e.s.test(ctx, endpoint)
+		return err
+	}
+	type answer struct {
+		OK bool `json:"ok"`
+	}
+	if got := decode[answer](t, e.post("/copy/api/test", `{"address":"192.0.2.10"}`)); !got.OK || tries != 3 {
+		t.Errorf("test = %+v after %d tries", got, tries)
+	}
+	if err := e.m.Reach(t.Context(), "192.0.2.10:445"); err == nil || tries != 4 {
+		t.Errorf("Mount.Reach = %v after %d tries", err, tries)
+	}
+	if got := time.Duration(waited.Load()); got != 2*time.Second {
+		t.Errorf("waited %v, want 2s", got)
+	}
+	setRetry(t, "darwin")
+	tries = 0
+	if err := e.m.Reach(t.Context(), "192.0.2.10:445"); err != nil || tries != 3 {
+		t.Errorf("Mount.Reach first = %v after %d tries", err, tries)
+	}
+	// Once the wait runs out, Test says where to allow access.
+	setHostOS(t, "darwin")
+	waited = setRetry(t, "darwin")
+	e.s.test = func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+		return nil, fmt.Errorf("connect to %s: %w", endpoint, connectFailed(syscall.EPERM))
+	}
+	type failed struct {
+		OK      bool   `json:"ok"`
+		Message string `json:"message"`
+	}
+	if got := decode[failed](t, e.post("/copy/api/test", `{"address":"192.0.2.10"}`)); got.OK || !strings.HasSuffix(got.Message, lanHint) ||
+		time.Duration(waited.Load()) != 4*time.Second {
+		t.Errorf("test = %+v after %v", got, time.Duration(waited.Load()))
+	}
+}
+
+// When the limit cuts a Test's try short, Test still says where to allow
+// access.
+func TestTestLimitKeepsHint(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		old := localNetworkRetry
+		localNetworkRetry = newRetry()
+		defer func() { localNetworkRetry = old }()
+		tries := 0
+		s := &server{test: func(ctx context.Context, _ string) ([]remote.Entry, error) {
+			if tries++; tries == 1 {
+				return nil, noRoute
+			}
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}}
+		start := time.Now()
+		_, err := s.testLAN(t.Context(), "192.0.2.10:445")
+		if elapsed := time.Since(start); elapsed != 5*time.Second || tries != 2 || LocalNetworkHint("darwin", err) == "" {
+			t.Errorf("%v after %d tries over %v", err, tries, elapsed)
+		}
+	})
+}
+
 func TestTestAPI(t *testing.T) {
 	e := newAppEnv(t, nil)
 	var tested []string
@@ -561,6 +909,70 @@ func TestBrowseSwap(t *testing.T) {
 	}](t, e.post("/copy/api/settings", refolder)); !got.BrowseChanged {
 		t.Error("a folder change kept browse")
 	}
+}
+
+// A change of where the telescope is takes back what failed where it was:
+// a copy once that couldn't reach it, and a Free up space check.
+func TestChangeClearsFailures(t *testing.T) {
+	e := newAppEnv(t, savedAt(t.TempDir()))
+	e.s.copy.mu.Lock()
+	e.s.copy.st.state, e.s.copy.st.outcome, e.s.copy.st.endpoint = stDone, stUnreachable, testEndpoint
+	e.s.copy.mu.Unlock()
+	e.s.free.mu.Lock()
+	e.s.free.st = freeStatus{state: frCheckFail, err: errors.New("connect to " + testEndpoint + ": no route")}
+	e.s.free.mu.Unlock()
+	e.move("192.0.2.20:4445")
+	if v := e.s.copy.view(time.Now()); v.State != stOff {
+		t.Errorf("copy after a change: %+v", v)
+	}
+	if v := e.s.free.view(); v.State != frStart || v.Changed {
+		t.Errorf("free up space after a change: %+v", v)
+	}
+}
+
+// Browse's view moves when what it shows does: a change of route or
+// address, the target's endpoint changing or going, and a save that
+// replaces Browse. Status alone, or a save that keeps Browse, leaves it.
+func TestBrowseViewMoves(t *testing.T) {
+	e := newAppEnv(t, nil)
+	view := func() int {
+		return decode[struct {
+			BrowseView int `json:"browse_view"`
+		}](t, e.serve("GET", "/copy/api/status", "")).BrowseView
+	}
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	last := view()
+	step := func(what string, moves bool) {
+		t.Helper()
+		got := view()
+		if moved := got != last; moved != moves {
+			t.Errorf("%s: view %d after %d, want moved %v", what, got, last, moves)
+		}
+		last = got
+	}
+	step("status again", false)
+	e.post("/copy/api/settings", strings.Replace(goodInput, `"interval":"5"`, `"interval":"9"`, 1))
+	step("an interval change", false)
+	e.move("192.0.2.20:4445")
+	step("a change of route", true)
+	e.move("192.0.2.20:4445")
+	step("a change to the same endpoint", true)
+	e.mu.Lock()
+	e.endpoint = "127.0.0.1:4445"
+	e.mu.Unlock()
+	step("a new endpoint without a change", true)
+	e.mu.Lock()
+	e.lost = errors.New("not connected")
+	e.mu.Unlock()
+	step("the target going", true)
+	e.mu.Lock()
+	e.lost = nil
+	e.mu.Unlock()
+	step("the target back", true)
+	e.post("/copy/api/settings", strings.Replace(goodInput, quote(abs("/data/Seestar")), quote(abs("/data/Other")), 1))
+	step("a new folder", true)
 }
 
 func TestBrowseStatuses(t *testing.T) {

@@ -95,7 +95,7 @@ These are one setup's measurements, not guarantees. One worker was slower
 than four in these measurements. More workers may not help once the link is
 near its ceiling. All workers share one SMB session.
 
-Through your Seestar account, that session is the proxy's, shared with the
+Through Telescope Network, that session is the proxy's, shared with the
 Seestar app and control clients such as seestar_alp. If they are slow to
 respond while a copy runs, lower `--workers` to 1 or 2. The app's **Files at
 once** setting is the same choice.
@@ -907,8 +907,8 @@ instead of `copied`, `changed` or `new`: a sync pass would not copy it,
 whatever the state records. That is a file or folder an exclude matches,
 anything inside such a folder, and, with includes, whatever no include
 selects, by the same rules a pass uses. Folders show only `left out`; a
-folder the selection keeps has no status. A key under the table explains
-the statuses.
+folder the selection keeps has no status. A key under the table lists
+each status's badge with what it means.
 
 A file's preview is the telescope's own small image: for a file `S.ext`,
 `S_thn.jpg` in the same folder if there is one, and otherwise `S.jpg`. Browse

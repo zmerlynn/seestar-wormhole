@@ -23,6 +23,13 @@ table:not(.statuses) .st { display: none; }
 .badge.changed { color: #8a4b00; }
 .badge.new { color: #0b57d0; }
 .badge.left-out { color: #555; border-style: dashed; }
+/* The key: a tinted box of its own, set apart from the table. Each
+   status's badge, as the list shows it, then its meaning; one per line,
+   or a grid where there is room. A styled-out list keeps its role only
+   with role=list. */
+#key { margin: 1.5rem 0 0; padding: 0.5rem 0.75rem 0.6rem; border: 1px solid #ccc; border-radius: 0.4rem; background: #f5f6f8; }
+#key h2 { font-size: 1em; font-weight: 600; margin: 0 0 0.35rem; }
+#key ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr)); gap: 0.25rem 1rem; }
 .hide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 dialog { max-width: 95vw; max-height: 95vh; padding: 0; }
 #vbody { padding: 0.5rem; }
@@ -38,6 +45,7 @@ dialog p { margin: 0.5rem 0 0; display: flex; gap: 1rem; align-items: center; }
   .note, .badge.left-out { color: #aaa; }
   a, .badge.new { color: #8ab4f8; }
   th, td { border-bottom-color: #333; }
+  #key { background: #1f2124; border-color: #555; }
   .badge.copied { color: #7fd18b; }
   .badge.changed { color: #f2b45a; }
   dialog { color: inherit; background: #222; }

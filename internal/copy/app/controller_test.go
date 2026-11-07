@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -32,15 +33,16 @@ func image(data string) *fstest.MapFile {
 
 // copyEnv is a controller copying from a fake share into a temp folder.
 type copyEnv struct {
-	t        *testing.T
-	c        *controller
-	files    fstest.MapFS
-	set      Settings
-	stateDir string
-	mu       sync.Mutex
-	faults   map[string]remote.Fault
-	dialErr  error
-	dials    int
+	t         *testing.T
+	c         *controller
+	files     fstest.MapFS
+	set       Settings
+	stateDir  string
+	mu        sync.Mutex
+	faults    map[string]remote.Fault
+	dialErr   error
+	failDials int // if set, only the first this many dials fail with dialErr
+	dials     int
 }
 
 func newCopyEnv(t *testing.T, files fstest.MapFS) *copyEnv {
@@ -53,7 +55,7 @@ func newCopyEnv(t *testing.T, files fstest.MapFS) *copyEnv {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		e.dials++
-		if e.dialErr != nil {
+		if e.dialErr != nil && (e.failDials == 0 || e.dials <= e.failDials) {
 			return nil, e.dialErr
 		}
 		f := remote.NewFake(e.files)
@@ -78,6 +80,13 @@ func (e *copyEnv) wait(states ...string) copyView {
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+}
+
+// dialCount is how many dials there have been.
+func (e *copyEnv) dialCount() int {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.dials
 }
 
 // waitOff waits for the loop to return.
@@ -176,7 +185,7 @@ func TestCopyStartCheckStop(t *testing.T) {
 	e.c.stop()
 	e.waitOff()
 	v = e.wait(stOff)
-	if v.On || v.Chip != "Copying is off" || v.Title != "Copying is off." || !strings.HasPrefix(v.Summary, "No files were copied.") {
+	if v.On || v.Chip != "" || v.Title != "Copying is off." || !strings.HasPrefix(v.Summary, "No files were copied.") {
 		t.Errorf("after Stop: %+v", v)
 	}
 	if e.locked() {
@@ -186,6 +195,120 @@ func TestCopyStartCheckStop(t *testing.T) {
 		t.Errorf("start after Stop: %v", err)
 	}
 	e.wait(stUpToDate)
+}
+
+// A copy once runs one check, then turns copying off by itself and frees
+// the lock; the status says so, and how the check ended. A failed file, a
+// failed listing or connection doesn't make it a failure to start.
+func TestCopyOnce(t *testing.T) {
+	const once = " Checked once; copying is off."
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/M 42/a.jpg": image("abc")})
+	e.set.Once = true
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v := e.wait(stDone)
+	if v.Title != "Up to date."+once || v.On || v.Chip != "" || !strings.HasPrefix(v.Summary, "Copied 1 file (3 B) in ") || v.Notice != "" {
+		t.Errorf("after one check: %+v", v)
+	}
+	if e.dialCount() != 1 || e.locked() {
+		t.Errorf("%d dials, locked %v; want 1 and free", e.dialCount(), e.locked())
+	}
+
+	// A file still being written waits for a later check: copy once says
+	// to start again.
+	e.files["MyWorks/M 42/b.jpg"] = &fstest.MapFile{Data: []byte("b"), ModTime: time.Now()}
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v = e.wait(stDone)
+	if v.Settling != "1 new file is still being written. Start copying again in a few minutes to copy them." {
+		t.Errorf("settling: %+v", v)
+	}
+
+	e.faults = map[string]remote.Fault{"MyWorks/M 42/c.jpg": {ReadErr: errors.New("synthetic read failure")}}
+	e.files["MyWorks/M 42/c.jpg"] = image("c")
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v = e.wait(stDone)
+	if v.Title != "Check finished with 1 file not copied."+once || v.Chip != "" || v.On ||
+		v.Notice != "1 file couldn't be copied. Start copying to try it again." || len(v.Failed) != 1 || v.Failed[0].Path != "MyWorks/M 42/c.jpg" {
+		t.Errorf("failures: %+v", v)
+	}
+
+	e.dialErr = errors.New("connection refused")
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	e.waitOff()
+	v = e.wait(stDone)
+	if v.Title != "Can't reach the telescope at 192.0.2.10:445."+once || v.Text != checkReach || v.Chip != "" || v.On || v.Contact != "err" {
+		t.Errorf("unreachable: %+v", v)
+	}
+}
+
+// A copy once that couldn't reach or read the telescope was about where
+// it was: once a change of route moves it, copying shows as off, with no
+// error and no contact. Any other copy is left as it is.
+func TestChangeAfterCopyOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		dial  func(ctx context.Context, endpoint string) (remote.Session, error)
+		title string
+	}{
+		{"unreachable", func(context.Context, string) (remote.Session, error) {
+			return nil, errors.New("connection refused")
+		}, "Can't reach the telescope at " + testEndpoint + "."},
+		{"listing failed", func(context.Context, string) (remote.Session, error) {
+			return failDir{remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": image("a")}), "MyWorks"}, nil
+		}, "Couldn't read MyWorks."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newAppEnv(t, savedAt(t.TempDir()))
+			ce := &copyEnv{t: t, c: e.s.copy}
+			ce.c.dial = tc.dial
+			set := DefaultSettings()
+			set.Folder, set.Once = t.TempDir(), true
+			if err := ce.c.start(set, Target{Endpoint: testEndpoint}); err != nil {
+				t.Fatal(err)
+			}
+			ce.waitOff()
+			if v := ce.wait(stDone); !strings.HasPrefix(v.Title, tc.title) || v.Text == "" {
+				t.Fatalf("before the change: %+v", v)
+			}
+			e.move("192.0.2.20:445")
+			if v := ce.c.view(time.Now()); v.State != stOff || v.Title != "Copying is off." || v.Text != "" || v.Contact != "" {
+				t.Errorf("after the change: %+v", v)
+			}
+		})
+	}
+
+	for _, tc := range []struct{ state, outcome string }{
+		{stCopying, ""},
+		{stStopping, ""},
+		{stUnreachable, ""}, // copying is on and will try again
+		{stListFail, ""},
+		{stDone, stUpToDate},
+		{stDone, stFailures},
+	} {
+		t.Run("keeps "+strings.TrimSpace(tc.state+" "+tc.outcome), func(t *testing.T) {
+			e := newAppEnv(t, savedAt(t.TempDir()))
+			c := e.s.copy
+			c.mu.Lock()
+			c.st = status{state: tc.state, outcome: tc.outcome, endpoint: testEndpoint, contact: "err"}
+			c.mu.Unlock()
+			e.move("192.0.2.20:445")
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.st.state != tc.state || c.st.outcome != tc.outcome || c.st.contact != "err" {
+				t.Errorf("after the change: state %q, outcome %q, contact %q", c.st.state, c.st.outcome, c.st.contact)
+			}
+		})
+	}
 }
 
 // Stop during a download discards it, says so, and leaves no temp file.
@@ -252,7 +375,7 @@ func TestCopyFolderInUse(t *testing.T) {
 	}
 	e.waitOff()
 	v := e.wait(stInUse)
-	if v.On || !strings.HasPrefix(v.Title, "Another copy is already using this folder") || v.Chip != "Copying is off" {
+	if v.On || !strings.HasPrefix(v.Title, "Another copy is already using this folder") || v.Chip != "" {
 		t.Errorf("in use: %+v", v)
 	}
 	if e.dials != 0 {
@@ -376,6 +499,32 @@ func TestCopyUnreachableLocalNetworkHint(t *testing.T) {
 	}
 }
 
+// On macOS, copying on this network waits out the Local Network prompt:
+// its dial is tried again while the system fails it at once. Through the
+// account it is not, and a dial through the account, even the app's first,
+// leaves the wait to the first dial on this network.
+func TestCopyWaitsForLocalNetwork(t *testing.T) {
+	waited := setRetry(t, "darwin")
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.dialErr = noRoute
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if e.wait(stUnreachable); e.dialCount() != 1 || waited.Load() != 0 {
+		t.Errorf("through the account: %d dials over %v", e.dialCount(), time.Duration(waited.Load()))
+	}
+
+	e = newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.dialErr = connectFailed(syscall.EPERM)
+	e.failDials = 2
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	if v := e.wait(stUpToDate); e.dialCount() != 3 || time.Duration(waited.Load()) != 2*time.Second {
+		t.Errorf("then on this network: %d dials over %v, view %+v", e.dialCount(), time.Duration(waited.Load()), v)
+	}
+}
+
 // The folder removed between passes is created again while the lock stays
 // held.
 func TestCopyRecreatesFolder(t *testing.T) {
@@ -412,7 +561,7 @@ func TestCopyPassStates(t *testing.T) {
 	h := c.hooks(t.Context())
 	h.PassDone(engine.Summary{Err: fmt.Errorf("list the share: %w", &fs.PathError{Op: "readdir", Path: `MyWorks\M 42_sub`, Err: errors.New("access denied")})})
 	v := c.view(time.Now())
-	if v.State != stListFail || !strings.HasPrefix(v.Title, "Couldn't read MyWorks/M 42_sub.") || !strings.HasPrefix(v.Text, "No files were copied. Trying again at ") || v.Chip != "Copying is off" {
+	if v.State != stListFail || !strings.HasPrefix(v.Title, "Couldn't read MyWorks/M 42_sub.") || !strings.HasPrefix(v.Text, "No files were copied. Trying again at ") || v.Chip != "" {
 		t.Errorf("list failed: %+v", v)
 	}
 	h.PassDone(engine.Summary{Copied: 3, Bytes: 1_200_000, Elapsed: 151 * time.Second, Failed: []engine.Failure{{Path: "a:b.jpg", Reason: "Windows can't store this name (it contains :)"}, {Path: "c.jpg", Reason: "Disk full"}}})

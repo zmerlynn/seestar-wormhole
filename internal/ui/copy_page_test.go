@@ -33,7 +33,7 @@ func TestCopyUnlockPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkCopyUnlock("+copyPageStatuses(t)+")")
 }
 
-// The first visit has the settings form open with Save and continue; after
+// The first visit has the settings form open without Cancel; after
 // it, a summary line and Change….
 func TestCopySetupPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkCopySetup("+copyPageStatuses(t)+")")

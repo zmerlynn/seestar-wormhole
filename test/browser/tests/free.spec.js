@@ -1,8 +1,9 @@
 // The app's Free up space tab against the Samba fixture's browse tree,
-// which is read-only: a preview, the confirm dialog and Cancel, and a
-// settings save and a history clear that clear the preview. The confirmed delete is tested
-// in the Samba job. What a check is looking at uses synthetic states.
-const { test, expect, lan, tab, field, openCopy, fakeStatus } = require('./app');
+// which is read-only: a preview, the confirm dialog and Cancel, the tab's
+// own patterns, and what a settings save or a history clear does to the
+// preview. The confirmed delete is tested in the Samba job. What a check is
+// looking at uses synthetic states.
+const { test, expect, lan, tab, field, openCopy, fakeStatus, readJSON } = require('./app');
 
 const upToDate = /^Up to date\. Next check at \d\d:\d\d\.$/;
 const safe = /^7 files \(\d.*\) are copied and safe to delete\.$/;
@@ -47,6 +48,7 @@ test('a preview groups the files by folder, and the confirm dialog cancels back 
   // status region says the stage.
   await expect(title(page)).toBeFocused();
   await expect(page.locator('#x-live')).toHaveText(safe);
+  await expect(page.locator('#free-chip')).toBeHidden();
   await expect(page.locator('#x-sub')).toHaveText('Any age · your copies checked');
   await expect(button(page, 'Preview what to delete')).toBeHidden();
   await expect(deleteButton(page)).toHaveText('Delete 7 files…');
@@ -117,8 +119,8 @@ test('a different preview closes an open confirm dialog', async ({ page, startAp
   expect(deletes).toEqual([]);
 });
 
-test('a settings save that changes a pattern clears the preview', async ({ page, startApp }) => {
-  await copied(page, startApp);
+test("a settings save keeps the preview unless it changes the folder: Copy's patterns are not Free up space's", async ({ page, startApp }) => {
+  const app = await copied(page, startApp);
   await trust(page).check();
   await expect(page.locator('#x-intro')).toHaveText("Free up space uses this app's saved copy records. Your copies will not be checked.");
   await find(page, /^7 files \(\d.*\) match the saved copy records\.$/);
@@ -128,7 +130,16 @@ test('a settings save that changes a pattern clears the preview', async ({ page,
   await button(page, 'Change…').click();
   await page.locator('#s-stop').click();
   await expect(field(page, 'Folder for your images')).toBeFocused();
-  await field(page, 'Leave out').fill('Notes');
+  await field(page, 'Leave out').fill('MyWorks');
+  await button(page, 'Save').click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await tab(page, 'Free up space').click();
+  await expect(page.locator('#x-changed')).toBeHidden();
+  await expect(deleteButton(page)).toHaveText('Delete 7 files…');
+
+  await tab(page, 'Copy').click();
+  await button(page, 'Change…').click();
+  await field(page, 'Folder for your images').fill(app.folder + '-other');
   await button(page, 'Save').click();
   await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
   await tab(page, 'Free up space').click();
@@ -136,6 +147,70 @@ test('a settings save that changes a pattern clears the preview', async ({ page,
   await expect(button(page, 'Preview what to delete')).toBeVisible();
   await expect(deleteButton(page)).toBeHidden();
   await expect(trust(page)).toBeChecked();
+});
+
+test('Keep on the telescope and Only free up select what a preview deletes, and are saved', async ({ page, startApp }) => {
+  const app = await copied(page, startApp);
+  await expect(page.locator('#x-patterns-help')).toHaveText(
+    "These patterns are separate from Copy's Leave out and Only copy, which don't change what is deleted.");
+  // Always kept sits with the fields, closed, and opens to the
+  // telescope's built-in patterns, each named in plain words.
+  const always = page.locator('#x-always');
+  await expect(always.locator('summary')).toHaveText('Always kept');
+  await expect(always).not.toHaveAttribute('open');
+  await always.locator('summary').click();
+  await expect(always.locator('li')).toHaveText([
+    "The telescope's log and scratch folders: /log, /tmp_stitch, /batch_stack_tmp",
+    'Names starting with a dot: .*',
+    'Unfinished .tmp files: *.tmp',
+    'Windows system files: Thumbs.db, desktop.ini, $RECYCLE.BIN, System Volume Information',
+  ]);
+  await expect(always.locator('li').first()).toBeVisible();
+  const folders = () => page.locator('#x-groups summary').allTextContents();
+  await find(page);
+  const all = await folders();
+  expect(all).toContain('MyWorks/M 31');
+  // The pattern matches the folder and everything below it.
+  const inM31 = (f) => f === 'MyWorks/M 31' || f.startsWith('MyWorks/M 31/');
+  expect(all.filter((f) => !inM31(f)).length).toBeGreaterThan(0);
+
+  await button(page, 'Change options').click();
+  await field(page, 'Keep on the telescope').fill('/MyWorks/M 31');
+  await find(page, /^\d+ files? \(\d.*\) (is|are) copied and safe to delete\.$/);
+  await expect(title(page)).not.toHaveText(safe);
+  expect(await folders()).toEqual(all.filter((f) => !inM31(f)));
+
+  await button(page, 'Change options').click();
+  await field(page, 'Keep on the telescope').fill('');
+  await field(page, 'Only free up').fill('\n/MyWorks/M 31');
+  await find(page, /^\d+ files? \(\d.*\) (is|are) copied and safe to delete\.$/);
+  expect(await folders()).toEqual(all.filter(inM31));
+  expect(readJSON(app.copyFile)).toMatchObject({ excludes: [], free_excludes: [], free_includes: ['/MyWorks/M 31'] });
+
+  // A reload shows what was saved.
+  await page.reload();
+  await expect(page.locator('#quit')).toBeEnabled();
+  await tab(page, 'Free up space').click();
+  await button(page, 'Change options').click();
+  await expect(field(page, 'Only free up')).toHaveValue('/MyWorks/M 31');
+  await expect(field(page, 'Keep on the telescope')).toHaveValue('');
+});
+
+test('a bad pattern is refused at its field', async ({ page, startApp }) => {
+  await copied(page, startApp);
+  await field(page, 'Keep on the telescope').fill('Video\n[x');
+  await button(page, 'Preview what to delete').click();
+  const err = page.locator('#x-ex-err');
+  await expect(err).toHaveText(/^Line 2: .+\. Correct this pattern and preview again\.$/);
+  await expect(field(page, 'Keep on the telescope')).toHaveAttribute('aria-invalid', 'true');
+  await expect(field(page, 'Keep on the telescope')).toBeFocused();
+  await expect(page.locator('#x-in-err')).toBeHidden();
+  await expect(title(page)).toHaveText('');
+  // Correcting it clears the message.
+  await field(page, 'Keep on the telescope').fill('Video');
+  await find(page);
+  await expect(err).toBeHidden();
+  await expect(field(page, 'Keep on the telescope')).not.toHaveAttribute('aria-invalid', 'true');
 });
 
 test('Clear history clears the preview', async ({ page, startApp }) => {
@@ -196,6 +271,11 @@ test('a check names the folder or file it is looking at, and announces only its 
   await expect(page.locator('#x-busy')).toBeHidden();
   await expect(live).toHaveText('Checking files…');
 
+  // A delete first checks the checked files again, a stage of its own.
+  f = { state: 'deleting', recheck: true, title: 'Checking 2 files again before deleting…', progress: { done: 0, total: 2 }, file: 'Listing MyWorks/M 31…' };
+  await expect(title(page)).toHaveText('Checking 2 files again before deleting…');
+  await expect(live).toHaveText('Checking 2 files again before deleting…');
+  await expect(file).toHaveText('Listing MyWorks/M 31…');
   f = { state: 'deleting', title: 'Deleting 1 of 2…', progress: { done: 0, total: 2 }, file: 'Checking MyWorks/M 31/a.fit…' };
   await expect(live).toHaveText('Deleting 1 of 2…');
   await expect(file).toHaveText('Checking MyWorks/M 31/a.fit…');
@@ -216,4 +296,76 @@ test('a check names the folder or file it is looking at, and announces only its 
   await expect(file).toBeHidden();
   await expect(file).toHaveText('');
   await expect(file).toHaveAttribute('title', '');
+});
+
+test("the header's bubble shows each stage of a check and a delete, opens Free up space, and hides after", async ({ page, startApp }) => {
+  const app = await startApp(copying(false));
+  let f = null, c = null;
+  await fakeStatus(page, () => c, () => f);
+  await openCopy(page, app.url);
+  const chip = page.locator('#free-chip');
+  const live = page.locator('#chip-live');
+  // Copying is off and nothing runs: no bubble at all.
+  await expect(page.locator('#c-title')).toHaveText('Copying is off.');
+  await expect(page.locator('#copy-chip')).toBeHidden();
+  await expect(chip).toBeHidden();
+  // Each change to the header's status region is counted.
+  await page.evaluate(() => {
+    window.liveChanges = 0;
+    new MutationObserver(() => window.liveChanges++).observe(document.getElementById('chip-live'), { childList: true, characterData: true, subtree: true });
+  });
+  const changes = () => page.evaluate(() => window.liveChanges);
+  // On another tab, each stage's start is announced once; its counts are not.
+  for (const [view, text] of [
+    [{ state: 'checking', title: 'Checking files…', chip: 'Checking what to delete' }, 'Checking what to delete'],
+    [{ state: 'deleting', recheck: true, title: 'Checking 2 files again before deleting…', chip: 'Checking 2 files again', progress: { done: 0, total: 2 } }, 'Checking 2 files again'],
+    [{ state: 'deleting', title: 'Deleting 1 of 2…', chip: 'Deleting 1 of 2', progress: { done: 0, total: 2 } }, 'Deleting 1 of 2'],
+  ]) {
+    f = view;
+    await expect(chip).toHaveText(text);
+    await expect(chip).toBeVisible();
+    await expect(live).toHaveText(text);
+  }
+  // A count changing is not announced.
+  const before = await changes();
+  f = { state: 'deleting', title: 'Deleting 2 of 2…', chip: 'Deleting 2 of 2', progress: { done: 1, total: 2 } };
+  await expect(chip).toHaveText('Deleting 2 of 2');
+  await expect(live).toHaveText('Deleting 1 of 2');
+  await page.waitForTimeout(1500);
+  expect(await changes()).toBe(before);
+  // A bubble is a button that opens its tab.
+  await page.getByRole('button', { name: 'Deleting 2 of 2' }).click();
+  await expect(page.getByRole('tabpanel', { name: 'Free up space' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Free up space' })).toBeFocused();
+  // The announcement goes with the run.
+  f = { state: 'done', title: 'Deleted 2 files.' };
+  await expect(chip).toBeHidden();
+  await expect(live).toHaveText('');
+  // On the run's own tab, its status region announces it, not the header.
+  f = { state: 'checking', title: 'Checking files…', chip: 'Checking what to delete' };
+  await expect(chip).toHaveText('Checking what to delete');
+  await expect(page.locator('#x-live')).toHaveText('Checking files…');
+  await expect(live).toHaveText('');
+  f = null;
+  await expect(chip).toBeHidden();
+  // From another tab, a second check after an idle spell is announced
+  // again, worded as the first.
+  await tab(page, 'Copy').click();
+  for (let i = 0; i < 2; i++) {
+    const n = await changes();
+    f = { state: 'checking', title: 'Checking files…', chip: 'Checking what to delete' };
+    await expect(live).toHaveText('Checking what to delete');
+    expect(await changes()).toBeGreaterThan(n);
+    f = null;
+    await expect(chip).toBeHidden();
+    await expect(live).toHaveText('');
+  }
+  // Copying's bubble shows while a pass runs, and opens Copy.
+  await tab(page, 'Free up space').click();
+  c = { state: 'copying', title: 'Copying 1 of 3 files', chip: 'Copying' };
+  await page.getByRole('button', { name: 'Copying', exact: true }).click();
+  await expect(page.getByRole('tabpanel', { name: 'Copy' })).toBeVisible();
+  await expect(page.getByRole('tab', { name: 'Copy' })).toBeFocused();
+  c = null;
+  await expect(page.locator('#copy-chip')).toBeHidden();
 });

@@ -2,7 +2,9 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -58,6 +60,49 @@ func TestFreeAPI(t *testing.T) {
 	if set := last(); set.OlderThanDays != 0 || !set.TrustState {
 		t.Errorf("a settings save changed the options: %+v", set)
 	}
+
+	// Find checks and saves its own patterns, which a settings save keeps.
+	idle := func() {
+		for e.s.free.running() {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	idle()
+	w = e.post("/copy/api/delete", `{"action":"find","days":"x","free_excludes":["ok","[x"],"free_includes":["","**/"]}`)
+	got := decode[fieldErrors](t, w)
+	want := map[string]string{
+		"days":          "Enter a whole number of days, 0 or more.",
+		"free_excludes": "Line 2: " + patternErr(t, "[x") + ". Correct this pattern and preview again.",
+		"free_includes": "Line 2: " + patternErr(t, "**/") + ". Correct this pattern and preview again.",
+	}
+	if w.Code != 400 || !maps.Equal(got.Fields, want) {
+		t.Errorf("bad patterns: %d %+v", w.Code, got)
+	}
+	w = e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true,"free_excludes":["/MyWorks/M 31",""],"free_includes":["/MyWorks"]}`)
+	if w.Code != 200 {
+		t.Errorf("find: %d %s", w.Code, w.Body)
+	}
+	if set := last(); !slices.Equal(set.FreeExcludes, []string{"/MyWorks/M 31"}) || !slices.Equal(set.FreeIncludes, []string{"/MyWorks"}) {
+		t.Errorf("saved patterns: %+v", set)
+	}
+	idle()
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
+		t.Fatalf("save: %d %s", w.Code, w.Body)
+	}
+	if set := last(); !slices.Equal(set.FreeExcludes, []string{"/MyWorks/M 31"}) || !slices.Equal(set.FreeIncludes, []string{"/MyWorks"}) ||
+		!slices.Equal(set.Excludes, []string{"Video", "/Preview"}) {
+		t.Errorf("a settings save changed the patterns: %+v", set)
+	}
+}
+
+// patternErr is the parser's message for a bad pattern.
+func patternErr(t *testing.T, s string) string {
+	t.Helper()
+	_, err := engine.ParsePattern(s)
+	if err == nil {
+		t.Fatalf("%q parsed", s)
+	}
+	return err.Error()
 }
 
 // A preview, a settings save, a copy pass and a confirmed delete, all
@@ -174,7 +219,8 @@ func TestFreeInProcess(t *testing.T) {
 	}
 }
 
-// A save that changes what a preview depends on clears it.
+// A save that changes what a preview depends on clears it: the folder.
+// Copy's patterns are not Free up space's.
 func TestFreeSaveClears(t *testing.T) {
 	set := savedAt(abs("/data/Seestar"))
 	set.Excludes = []string{"Video", "/Preview"}
@@ -186,9 +232,10 @@ func TestFreeSaveClears(t *testing.T) {
 		clear bool
 	}{
 		{same, false},
-		{strings.Replace(same, `"includes":[]`, `"includes":["MyWorks"]`, 1), true},
-		{strings.Replace(same, `"Video",`, ``, 1), true},
-		{strings.Replace(same, `"skip_built_in":true`, `"skip_built_in":false`, 1), true},
+		{strings.Replace(same, `"includes":[]`, `"includes":["MyWorks"]`, 1), false},
+		{strings.Replace(same, `"Video",`, ``, 1), false},
+		{strings.Replace(same, `"skip_built_in":true`, `"skip_built_in":false`, 1), false},
+		{strings.Replace(same, quote(abs("/data/Seestar")), quote(abs("/data/Other")), 1), true},
 	} {
 		if w := e.post("/copy/api/settings", c.body); w.Code != 200 {
 			t.Fatalf("save: %d %s", w.Code, w.Body)
@@ -202,5 +249,102 @@ func TestFreeSaveClears(t *testing.T) {
 			t.Fatal(w.Body)
 		}
 		e.s.free.st = freeStatus{state: frNothing, preview: &engine.DeleteResult{}}
+	}
+}
+
+// A preview never deletes a file that the Find options saved since protect:
+// a Find refused while a check runs saves nothing, and a Find that saves
+// new patterns takes the old preview away, even when its check can't
+// start.
+func TestFreeFindPatternsGuard(t *testing.T) {
+	for _, field := range []string{"free_excludes", "free_includes"} {
+		t.Run(field, func(t *testing.T) {
+			files := newFreeEnv(t, "MyWorks/a.jpg", "Other/b.jpg")
+			files.copy()
+			e := newAppEnv(t, &files.set)
+			e.s.free.stateDir = files.stateDir
+			e.s.free.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) { return files.share() }
+			release := make(chan struct{})
+			e.s.free.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+				select {
+				case <-release:
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				}
+				return files.share()
+			}
+			wait := func() {
+				t.Helper()
+				e.s.free.mu.Lock()
+				done := e.s.free.done
+				e.s.free.mu.Unlock()
+				if done != nil {
+					<-done
+				}
+			}
+			protect := `{"action":"find","days":"0","trust":true,"` + field + `":["/Other"]}`
+			kept := map[string]string{"free_excludes": "Other/b.jpg", "free_includes": "MyWorks/a.jpg"}[field]
+
+			// Refused while a check runs: nothing is saved.
+			if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true}`); w.Code != 200 {
+				t.Fatalf("first find: %d %s", w.Code, w.Body)
+			}
+			saves := len(e.saves())
+			if w := e.post("/copy/api/delete", protect); w.Code != 409 || !strings.Contains(w.Body.String(), "a check or a delete is already running") {
+				t.Fatalf("busy find: %d %s", w.Code, w.Body)
+			}
+			if got := e.saves(); len(got) != saves {
+				t.Fatalf("a refused find saved %+v", got[len(got)-1])
+			}
+			e.s.mu.Lock()
+			set := e.s.file.settings
+			e.s.mu.Unlock()
+			if len(set.FreeExcludes)+len(set.FreeIncludes) != 0 {
+				t.Fatalf("a refused find changed the options: %+v", set)
+			}
+			close(release)
+			wait()
+			v := e.s.free.view()
+			if v.State != frPreview {
+				t.Fatalf("first preview: %+v", v)
+			}
+
+			// Saved, but the new check can't start: the old preview is gone.
+			e.mu.Lock()
+			e.lost = errors.New("the telescope is not connected")
+			e.mu.Unlock()
+			if w := e.post("/copy/api/delete", protect); w.Code != 409 {
+				t.Fatalf("find without a target: %d %s", w.Code, w.Body)
+			}
+			if got := e.saves(); len(got) == saves {
+				t.Fatal("the new patterns were not saved")
+			}
+			e.mu.Lock()
+			e.lost = nil
+			e.mu.Unlock()
+			w := e.post("/copy/api/delete", fmt.Sprintf(`{"action":"delete","id":%d,"folders":["MyWorks","Other"]}`, v.ID))
+			if w.Code != 409 || !strings.Contains(w.Body.String(), "Preview again before deleting.") {
+				t.Fatalf("delete with the old preview: %d %s", w.Code, w.Body)
+			}
+			wait()
+			if !files.has("MyWorks/a.jpg") || !files.has("Other/b.jpg") {
+				t.Fatal("the old preview deleted a file")
+			}
+
+			// A preview with the saved patterns spares the protected file.
+			if w := e.post("/copy/api/delete", protect); w.Code != 200 {
+				t.Fatalf("find: %d %s", w.Code, w.Body)
+			}
+			wait()
+			v = e.s.free.view()
+			w = e.post("/copy/api/delete", fmt.Sprintf(`{"action":"delete","id":%d,"folders":["MyWorks","Other"]}`, v.ID))
+			if w.Code != 200 {
+				t.Fatalf("delete: %d %s", w.Code, w.Body)
+			}
+			wait()
+			if !files.has(kept) {
+				t.Fatalf("deleted %s, which the saved %s protect", kept, field)
+			}
+		})
 	}
 }
