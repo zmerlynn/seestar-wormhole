@@ -114,6 +114,12 @@ Run these commands from the folder that holds it; on macOS, copy it off the
 disk image first, as in [Install](../README.md#install). In PowerShell, write
 `.\seestar-copy-cli.exe` for `./seestar-copy-cli`.
 
+`seestar-copy-cli` doesn't sign in or connect through Telescope Network
+itself. Through Telescope Network, keep the app connected, or run
+`seestar-wormhole-cli proxy` in another terminal (see
+[Sign in](../README.md#sign-in)), while it runs. For a telescope on this
+network, give its address directly; no proxy or account is needed.
+
 1. Find the address to connect to. On the telescope's network, that is
    [its address](#find-the-telescopes-address) and port 445, such as
    `192.0.2.10:445`. Through seestar-wormhole, it is the proxy's SMB
