@@ -66,6 +66,12 @@ func (h *Handler) Download(w http.ResponseWriter, r *http.Request) (string, bool
 	return h.serve(w, r, true)
 }
 
+// The page's title on its own, and as one of the app's tabs.
+const (
+	standaloneTitle = "<title>Browse telescope files</title>"
+	inAppTitle      = "<title>Browse — seestar-wormhole</title>"
+)
+
 func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) (string, bool) {
 	hd := w.Header()
 	localhttp.SetHeaders(hd, !h.cfg.InApp)
@@ -102,6 +108,7 @@ func (h *Handler) serve(w http.ResponseWriter, r *http.Request, intercept bool) 
 		}
 		if h.cfg.InApp && asset.file == "web/index.html" {
 			b = bytes.Replace(b, []byte(`<html lang="en">`), []byte(`<html lang="en" class="in-app">`), 1)
+			b = bytes.Replace(b, []byte(standaloneTitle), []byte(inAppTitle), 1)
 		}
 		hd.Set("Content-Type", asset.typ)
 		w.Write(b)
