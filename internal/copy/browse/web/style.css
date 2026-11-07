@@ -8,7 +8,9 @@ h1 { font-size: 1.1rem; margin: 0; }
 .note { color: #555; }
 nav { margin: 0.75rem 0; overflow-wrap: anywhere; }
 a { color: #0b57d0; }
-.scroll { max-width: 100%; overflow-x: auto; }
+/* Positioned, so the table's visually hidden headers stay inside its
+   scroll box instead of widening the page. */
+.scroll { max-width: 100%; overflow-x: auto; position: relative; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #eee; vertical-align: middle; }
 th { font-weight: 600; border-bottom-color: #ccc; }
