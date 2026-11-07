@@ -21,10 +21,14 @@ tag scheme join the contract from that release, with the image tagged by the bin
 
 1. **Commands and flags.** `proxy`, `discovery`, `licenses`, and GUI-only `ui`; flag names, meanings and grammar; defaults that change what is
    written or sent; and the rules about which combinations are refused.
-2. **Runtime inputs.** `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` and how they are interpreted. The binary discovers no config or credential file (a systemd EnvironmentFile is the service manager's,
-   not ours). Adding opt-in config discovery later is additive and must not override explicit flags or variables.
-3. **Installation identity.** Memory-only unless `--state-dir` is given; with it, the identity at
-   `<state-dir>/InterProcessKV/device_uuid` is kept, or migrated compatibly.
+2. **Runtime inputs.** `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` and how they are interpreted. Without `--config`,
+   `proxy` reads no config or credential file (a systemd EnvironmentFile is the service manager's, not ours). With
+   `--config`, it reads the UI's saved `config.json` without rewriting it, and takes the password from the OS keychain
+   when `SEESTAR_PASSWORD` is unset; explicit flags and the variables override saved choices. See
+   [use saved settings headless](reference.md#use-saved-settings-headless).
+3. **Installation identity.** Memory-only without `--config` or `--state-dir`. With `--state-dir`, the identity at
+   `<state-dir>/InterProcessKV/device_uuid` is kept, or migrated compatibly; `--config` alone uses the UI's state root
+   and shares its identity.
 4. **Exit codes.** 0, 1, 2 and 3, as in docs/reference.md "Exit codes", and which outcome maps to which code.
 5. **Reasons.** One authoritative table of every `reason` and `cleanup_reason` value with its mapping to exit
    codes. Readers must treat an unknown reason as an unspecified failure and use the process exit code. A new reason for a new
