@@ -249,10 +249,65 @@ func TestCopyOnce(t *testing.T) {
 	if v.Title != "Can't reach the telescope at 192.0.2.10:445."+once || v.Text != checkReach || v.Chip != "" || v.On || v.Contact != "err" {
 		t.Errorf("unreachable: %+v", v)
 	}
-	// Once the telescope is reached another way, that was about before.
-	e.c.moved()
-	if v := e.c.view(time.Now()); v.State != stOff || v.Title != "Copying is off." || v.Text != "" || v.Contact != "" {
-		t.Errorf("unreachable, then moved: %+v", v)
+}
+
+// A copy once that couldn't reach or read the telescope was about where
+// it was: once a change of route moves it, copying shows as off, with no
+// error and no contact. Any other copy is left as it is.
+func TestChangeAfterCopyOnce(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		dial  func(ctx context.Context, endpoint string) (remote.Session, error)
+		title string
+	}{
+		{"unreachable", func(context.Context, string) (remote.Session, error) {
+			return nil, errors.New("connection refused")
+		}, "Can't reach the telescope at " + testEndpoint + "."},
+		{"listing failed", func(context.Context, string) (remote.Session, error) {
+			return failDir{remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": image("a")}), "MyWorks"}, nil
+		}, "Couldn't read MyWorks."},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newAppEnv(t, savedAt(t.TempDir()))
+			ce := &copyEnv{t: t, c: e.s.copy}
+			ce.c.dial = tc.dial
+			set := DefaultSettings()
+			set.Folder, set.Once = t.TempDir(), true
+			if err := ce.c.start(set, Target{Endpoint: testEndpoint}); err != nil {
+				t.Fatal(err)
+			}
+			ce.waitOff()
+			if v := ce.wait(stDone); !strings.HasPrefix(v.Title, tc.title) || v.Text == "" {
+				t.Fatalf("before the change: %+v", v)
+			}
+			e.move("192.0.2.20:445")
+			if v := ce.c.view(time.Now()); v.State != stOff || v.Title != "Copying is off." || v.Text != "" || v.Contact != "" {
+				t.Errorf("after the change: %+v", v)
+			}
+		})
+	}
+
+	for _, tc := range []struct{ state, outcome string }{
+		{stCopying, ""},
+		{stStopping, ""},
+		{stUnreachable, ""}, // copying is on and will try again
+		{stListFail, ""},
+		{stDone, stUpToDate},
+		{stDone, stFailures},
+	} {
+		t.Run("keeps "+strings.TrimSpace(tc.state+" "+tc.outcome), func(t *testing.T) {
+			e := newAppEnv(t, savedAt(t.TempDir()))
+			c := e.s.copy
+			c.mu.Lock()
+			c.st = status{state: tc.state, outcome: tc.outcome, endpoint: testEndpoint, contact: "err"}
+			c.mu.Unlock()
+			e.move("192.0.2.20:445")
+			c.mu.Lock()
+			defer c.mu.Unlock()
+			if c.st.state != tc.state || c.st.outcome != tc.outcome || c.st.contact != "err" {
+				t.Errorf("after the change: state %q, outcome %q, contact %q", c.st.state, c.st.outcome, c.st.contact)
+			}
+		})
 	}
 }
 
