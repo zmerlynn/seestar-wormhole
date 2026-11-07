@@ -1094,8 +1094,9 @@ async function copyRefresh() {
   }
 }
 // Activity: one list, newest first, of the connection's events and copy's
-// and Free up space's activity, each row tagged with its source.
-const sourceNames = {connection: 'Connection', copy: 'Copy', delete: 'Delete'};
+// and Free up space's activity, each row tagged with its source. The
+// source "delete" is Free up space's, named as its tab is.
+const sourceNames = {connection: 'Connection', copy: 'Copy', delete: 'Free up space'};
 function activityRows() {
   const rows = (state?.events || []).map(event => ({...event, source: 'connection'})).reverse();
   for (const e of copyStatus?.activity || []) rows.push({time: e.at, source: e.source, message: e.text, ...(e.warn ? {warn: true} : {})});

@@ -316,7 +316,7 @@ setup uses local port 8080 instead. SMB uses local port 4445 for Seestar port
 
 The **Activity** tab lists the connection's recent events and copying's and
 deleting's activity in one list, newest first, each tagged **Connection**,
-**Copy** or **Delete**. **Details and logs** holds your connection and copy
+**Copy** or **Free up space**. **Details and logs** holds your connection and copy
 settings as JSON, error codes, and the paths of the private log and the
 settings files, `config.json` and `copy.json`.
 

@@ -140,7 +140,7 @@ async function checkActivityMerge(st) {
   render({...st.unlocked, events, log_path: 'synthetic-log'});
   copyRender({...st.after, activity, activity_seq: 2});
   const want = [['delete', 'Deleted 2 files (6 B).'], ['connection', 'Connected to your Seestar'], ['copy', "Couldn't copy 1 file."], ['connection', 'Account telescopes: S30 synthetic']];
-  const names = {connection: 'Connection', copy: 'Copy', delete: 'Delete'};
+  const names = {connection: 'Connection', copy: 'Copy', delete: 'Free up space'};
   const rows = $('events').children;
   copyAssert(rows.length === want.length, 'merged ' + rows.length + ' rows');
   want.forEach(([source, message], i) => {
