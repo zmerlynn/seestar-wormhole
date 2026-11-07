@@ -209,9 +209,12 @@ does. **Keep on the telescope** and **Only free up** take one pattern per
 line, as `delete`'s [`--exclude` and `--include`](copy-reference.md#selection):
 a file that matches Keep on the telescope is never deleted, and when Only free
 up is not empty, only files that match it are. They are separate from Copy's
-**Leave out** and **Only copy**, which don't change what is deleted. The
-telescope's logs, scratch and system files are never deleted, as `delete`
-leaves them out by default. A Copy Save that changes the folder discards a
+**Leave out** and **Only copy**, which don't change what is deleted.
+**Always kept**, beside them, lists what is never deleted, as `delete` leaves
+it out by default: the telescope's log and scratch folders (`/log`,
+`/tmp_stitch`, `/batch_stack_tmp`), names starting with a dot, unfinished
+`.tmp` files, and Windows system files (`Thumbs.db`, `desktop.ini`,
+`$RECYCLE.BIN`, `System Volume Information`). A Copy Save that changes the folder discards a
 preview, and so does a change of how the telescope is reached, which also
 clears a check that couldn't finish. **Delete N files…** asks once more. The delete then lists the checked
 folders again, and only those, saying **Checking N files again before

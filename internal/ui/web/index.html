@@ -187,7 +187,13 @@
 <p class="help" id="x-days-help">0 means any age.<span id="x-restack"> Recent sessions stay on the telescope so you can restack them.</span></p>
 <p class="error" id="x-days-err" role="alert" hidden></p>
 <label class="check"><input type="checkbox" id="x-trust"> <span><b>My copies have moved or the drive is offline</b><br><span class="muted">Checks only this app's record of each copy, not the copy itself. Leave this off if your images are still in your folder.</span></span></label>
-<p class="help" id="x-patterns-help">These patterns are separate from Copy's Leave out and Only copy, which don't change what is deleted. The telescope's logs, scratch and system files are never deleted.</p>
+<p class="help" id="x-patterns-help">These patterns are separate from Copy's Leave out and Only copy, which don't change what is deleted.</p>
+<details class="help" id="x-always"><summary>Always kept</summary><ul>
+<li>The telescope's log and scratch folders: <code>/log</code>, <code>/tmp_stitch</code>, <code>/batch_stack_tmp</code></li>
+<li>Names starting with a dot: <code>.*</code></li>
+<li>Unfinished .tmp files: <code>*.tmp</code></li>
+<li>Windows system files: <code>Thumbs.db</code>, <code>desktop.ini</code>, <code>$RECYCLE.BIN</code>, <code>System Volume Information</code></li>
+</ul></details>
 <label for="x-ex">Keep on the telescope</label>
 <textarea id="x-ex" spellcheck="false" aria-describedby="x-ex-help x-ex-err"></textarea>
 <p class="error" id="x-ex-err" role="alert" hidden></p>

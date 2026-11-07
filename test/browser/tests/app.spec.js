@@ -939,6 +939,7 @@ for (const [layout, { width }] of Object.entries(layouts)) {
 
     for (const name of ['Free up space', 'Connection', 'Activity']) {
       await tab(page, name).click();
+      if (name === 'Free up space') await page.locator('#x-always summary').click();
       await fits(page);
       await tabsWrap(page);
       await shot(name.toLowerCase().replaceAll(' ', '-'));

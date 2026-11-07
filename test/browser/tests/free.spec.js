@@ -152,7 +152,20 @@ test("a settings save keeps the preview unless it changes the folder: Copy's pat
 test('Keep on the telescope and Only free up select what a preview deletes, and are saved', async ({ page, startApp }) => {
   const app = await copied(page, startApp);
   await expect(page.locator('#x-patterns-help')).toHaveText(
-    "These patterns are separate from Copy's Leave out and Only copy, which don't change what is deleted. The telescope's logs, scratch and system files are never deleted.");
+    "These patterns are separate from Copy's Leave out and Only copy, which don't change what is deleted.");
+  // Always kept sits with the fields, closed, and opens to the
+  // telescope's built-in patterns, each named in plain words.
+  const always = page.locator('#x-always');
+  await expect(always.locator('summary')).toHaveText('Always kept');
+  await expect(always).not.toHaveAttribute('open');
+  await always.locator('summary').click();
+  await expect(always.locator('li')).toHaveText([
+    "The telescope's log and scratch folders: /log, /tmp_stitch, /batch_stack_tmp",
+    'Names starting with a dot: .*',
+    'Unfinished .tmp files: *.tmp',
+    'Windows system files: Thumbs.db, desktop.ini, $RECYCLE.BIN, System Volume Information',
+  ]);
+  await expect(always.locator('li').first()).toBeVisible();
   const folders = () => page.locator('#x-groups summary').allTextContents();
   await find(page);
   const all = await folders();
