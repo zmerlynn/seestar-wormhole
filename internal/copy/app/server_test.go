@@ -911,6 +911,70 @@ func TestBrowseSwap(t *testing.T) {
 	}
 }
 
+// A change of where the telescope is takes back what failed where it was:
+// a copy once that couldn't reach it, and a Free up space check.
+func TestChangeClearsFailures(t *testing.T) {
+	e := newAppEnv(t, savedAt(t.TempDir()))
+	e.s.copy.mu.Lock()
+	e.s.copy.st.state, e.s.copy.st.outcome, e.s.copy.st.endpoint = stDone, stUnreachable, testEndpoint
+	e.s.copy.mu.Unlock()
+	e.s.free.mu.Lock()
+	e.s.free.st = freeStatus{state: frCheckFail, err: errors.New("connect to " + testEndpoint + ": no route")}
+	e.s.free.mu.Unlock()
+	e.move("192.0.2.20:4445")
+	if v := e.s.copy.view(time.Now()); v.State != stOff {
+		t.Errorf("copy after a change: %+v", v)
+	}
+	if v := e.s.free.view(); v.State != frStart || v.Changed {
+		t.Errorf("free up space after a change: %+v", v)
+	}
+}
+
+// Browse's view moves when what it shows does: a change of route or
+// address, the target's endpoint changing or going, and a save that
+// replaces Browse. Status alone, or a save that keeps Browse, leaves it.
+func TestBrowseViewMoves(t *testing.T) {
+	e := newAppEnv(t, nil)
+	view := func() int {
+		return decode[struct {
+			BrowseView int `json:"browse_view"`
+		}](t, e.serve("GET", "/copy/api/status", "")).BrowseView
+	}
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	last := view()
+	step := func(what string, moves bool) {
+		t.Helper()
+		got := view()
+		if moved := got != last; moved != moves {
+			t.Errorf("%s: view %d after %d, want moved %v", what, got, last, moves)
+		}
+		last = got
+	}
+	step("status again", false)
+	e.post("/copy/api/settings", strings.Replace(goodInput, `"interval":"5"`, `"interval":"9"`, 1))
+	step("an interval change", false)
+	e.move("192.0.2.20:4445")
+	step("a change of route", true)
+	e.move("192.0.2.20:4445")
+	step("a change to the same endpoint", true)
+	e.mu.Lock()
+	e.endpoint = "127.0.0.1:4445"
+	e.mu.Unlock()
+	step("a new endpoint without a change", true)
+	e.mu.Lock()
+	e.lost = errors.New("not connected")
+	e.mu.Unlock()
+	step("the target going", true)
+	e.mu.Lock()
+	e.lost = nil
+	e.mu.Unlock()
+	step("the target back", true)
+	e.post("/copy/api/settings", strings.Replace(goodInput, quote(abs("/data/Seestar")), quote(abs("/data/Other")), 1))
+	step("a new folder", true)
+}
+
 func TestBrowseStatuses(t *testing.T) {
 	// Browse's statuses come from the saved folder's state in the state
 	// folder: with no state, every file is new.

@@ -229,6 +229,17 @@ func selector(set Settings) (engine.Selector, error) {
 	return sel, nil
 }
 
+// moved follows a change of where the telescope is: a copy once that
+// couldn't reach or read it was told so about where it was, so copying
+// shows as off instead, with no contact.
+func (c *controller) moved() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.st.state == stDone && (c.st.outcome == stUnreachable || c.st.outcome == stListFail) {
+		c.st.state, c.st.contact = stOff, ""
+	}
+}
+
 // finish records how the loop ended.
 func (c *controller) finish(err error) {
 	c.mu.Lock()

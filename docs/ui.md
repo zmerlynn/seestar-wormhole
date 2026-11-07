@@ -190,8 +190,10 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 
 Browse is `seestar-copy-cli browse`'s page for the share, with the saved
 folder's [statuses](copy-reference.md#statuses). What the settings leave out
-shows as [`left out`](copy-reference.md#left-out-in-browse). A Save that
-changes the folder or the selection reloads it at the share's top. Until the
+shows as [`left out`](copy-reference.md#left-out-in-browse). After a Save
+that changes the folder or the selection, or a change of how the telescope
+is reached, Browse loads again at the share's top when it is next shown, so
+an error from before goes without a retry. Until the
 folder is saved, Browse says to choose it, with **Go to Copy**. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
 
@@ -210,7 +212,8 @@ up is not empty, only files that match it are. They are separate from Copy's
 **Leave out** and **Only copy**, which don't change what is deleted. The
 telescope's logs, scratch and system files are never deleted, as `delete`
 leaves them out by default. A Copy Save that changes the folder discards a
-preview. **Delete N files…** asks once more. The delete then lists the checked
+preview, and so does a change of how the telescope is reached, which also
+clears a check that couldn't finish. **Delete N files…** asks once more. The delete then lists the checked
 folders again, and only those, saying **Checking N files again before
 deleting…**, and proves each file again just before it removes it: a file
 that changed or went away since the preview is kept. **Stop** ends a delete

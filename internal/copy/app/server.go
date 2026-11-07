@@ -68,6 +68,11 @@ type server struct {
 	file     *settingsFile
 	browse   *browse.Handler // nil until a folder is saved
 	sessions *browse.Sessions
+	// view counts what Browse shows, for the page, which loads its frame
+	// again once it moved: each new pool moves it, and so does each new
+	// endpoint status finds, such as a route's run connecting.
+	view   int
+	viewAt string // the endpoint view last moved for; "" for none
 }
 
 func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server {
@@ -151,7 +156,9 @@ func (s *server) resolve(set Settings) (Settings, Target, error) {
 // newBrowse builds a browse handler with its own session pool, which
 // reaches the target, records for the folder, and what the selection
 // leaves out.
+// It is called holding s.mu, or before the server is shared.
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
+	s.view++
 	folder, log := set.Folder, s.log
 	sel, err := selector(set)
 	if err != nil {
@@ -230,13 +237,16 @@ func (s *server) copyView() copyView {
 var errNotSetUp = errors.New("save the copy settings first")
 
 // endpointChanged follows a change of where the telescope is, which the
-// caller made holding s.admit: the previews go back to Start, as their
-// proof was taken elsewhere, and browse gets a new pool, so no request
+// caller made holding s.admit: the previews, and a check that failed, go
+// back to Start, as their proof was taken elsewhere, a copy once that
+// couldn't reach the telescope shows as off, and browse gets a new pool,
+// so no request
 // reaches the old endpoint through a session already open there.
 func (s *server) endpointChanged() {
 	s.mu.Lock()
 	s.free.clear()
 	s.preview.discard()
+	s.copy.moved()
 	old := s.sessions
 	if s.browse != nil {
 		s.browse, s.sessions = s.newBrowse(s.file.settings)
@@ -362,8 +372,16 @@ type input struct {
 }
 
 func (s *server) status(w http.ResponseWriter) {
+	t, err := s.target()
+	if err != nil {
+		t.Endpoint = ""
+	}
 	s.mu.Lock()
-	set, setUp := s.file.settings, s.setUp()
+	if t.Endpoint != s.viewAt {
+		s.viewAt = t.Endpoint
+		s.view++
+	}
+	set, setUp, view := s.file.settings, s.setUp(), s.view
 	s.mu.Unlock()
 	// The saved folder's state file, as sync names it.
 	var history string
@@ -381,8 +399,9 @@ func (s *server) status(w http.ResponseWriter) {
 		Free            freeView `json:"free"`
 		Activity        []entry  `json:"activity"` // newest first
 		ActivitySeq     int      `json:"activity_seq"`
-		Choose          bool     `json:"choose"` // the window's folder picker is there
-	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil})
+		Choose          bool     `json:"choose"`      // the window's folder picker is there
+		BrowseView      int      `json:"browse_view"` // moves when Browse should load again
+	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil, view})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {

@@ -249,6 +249,11 @@ func TestCopyOnce(t *testing.T) {
 	if v.Title != "Can't reach the telescope at 192.0.2.10:445."+once || v.Text != checkReach || v.Chip != "" || v.On || v.Contact != "err" {
 		t.Errorf("unreachable: %+v", v)
 	}
+	// Once the telescope is reached another way, that was about before.
+	e.c.moved()
+	if v := e.c.view(time.Now()); v.State != stOff || v.Title != "Copying is off." || v.Text != "" || v.Contact != "" {
+		t.Errorf("unreachable, then moved: %+v", v)
+	}
 }
 
 // Stop during a download discards it, says so, and leaves no temp file.

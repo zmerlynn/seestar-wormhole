@@ -614,6 +614,21 @@ function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+// An error Browse showed at one address goes with a change of route:
+// Browse loads again through the new one when it is next shown.
+test('Browse follows a change of route', async ({ page, startApp }) => {
+  const app = await startApp({ ...setUp('/nowhere'), 'config.json': lan(refused) });
+  await openCopy(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toContainText('Select Share or a parent folder above', { timeout: 30000 });
+  await tab(page, 'Connection').click();
+  await field(page, 'Telescope address').fill(share);
+  await page.locator('#lan-save').click();
+  await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+});
+
 // The frame is named for assistive technology without a title, which
 // would show as a tooltip over the list.
 test("Browse's frame is named The telescope's files, with no title", async ({ page, startApp }) => {

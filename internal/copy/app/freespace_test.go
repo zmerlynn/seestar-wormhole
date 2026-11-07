@@ -441,6 +441,12 @@ func TestFreeCheckFail(t *testing.T) {
 	if v.Title != "Couldn't finish checking files: connect to 192.0.2.10:445: no route." || v.Text != "Preview again to retry." {
 		t.Errorf("check failed: %+v", v)
 	}
+	// A change of where the telescope is, or a Save, takes the error, which
+	// was from before, back to Start: there was no preview to change.
+	e.f.clear()
+	if v := e.f.view(); v.State != frStart || v.Changed || v.Title != "" {
+		t.Errorf("check failed, then cleared: %+v", v)
+	}
 }
 
 // Free up space selects with its own patterns, after the built-in

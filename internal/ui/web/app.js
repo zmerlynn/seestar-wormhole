@@ -492,14 +492,20 @@ function goReach() {
   const target = $(reach === 'smb_off' ? 'ports' : reach === 'no_lan_address' ? 'lan-address' : 'start');
   (target.disabled ? $('tab-connection') : target).focus();
 }
-// Browse loads once there are settings, and again when they change what
-// it shows.
-// Until then its notice says where to set the folder.
-function browseFrame(reload = false) {
+// Browse loads once there are settings; until then its notice says where
+// to set the folder. It loads again, once it is in view, when copy's
+// status says what it shows moved: a new folder or selection, or the
+// telescope reached another way, since an error the frame shows from
+// before would stay until retried.
+let browseView = null;
+function browseFrame() {
   $('b-setup').hidden = !!copySaved;
   $('b-frame').hidden = !copySaved;
   if (!copySaved || !state?.copy_unlocked) return;
-  if (reload || !$('b-frame').src) $('b-frame').src = '/browse/';
+  const view = copyStatus?.browse_view;
+  if ($('b-frame').src && (view === browseView || currentTab !== 'browse')) return;
+  browseView = view;
+  $('b-frame').src = '/browse/';
 }
 function goSetup() {
   selectTab('copy');
@@ -643,7 +649,6 @@ async function copySave() {
     copyFill(copySaved);
     copyFormOpen = false;
     renderSetup();
-    browseFrame(data.browse_changed);
     // The first Save doesn't start copying; the notice above Start copying
     // says it is the next step, and takes focus so it is read.
     copyNext = first;

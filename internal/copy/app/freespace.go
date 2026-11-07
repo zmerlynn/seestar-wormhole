@@ -315,14 +315,18 @@ func (f *freer) reset() {
 	}
 }
 
-// clear is a Save that changed what a preview depends on: a preview goes
-// back to Start, and a running check ends there.
+// clear is a Save, or a change of where the telescope is, that changed
+// what a preview depends on: a preview or a failed check goes back to
+// Start, and a running check ends there.
 func (f *freer) clear() {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	switch f.st.state {
 	case frPreview, frNothing:
 		f.st = freeStatus{state: frStart, changed: true}
+	case frCheckFail:
+		// Its error was from before; there was no preview to change.
+		f.st = freeStatus{state: frStart}
 	case frChecking:
 		f.st.stale = true
 	}
