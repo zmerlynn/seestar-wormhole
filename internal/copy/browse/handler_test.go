@@ -437,7 +437,7 @@ func TestStatic(t *testing.T) {
 		}
 	}
 	if size > 15000 {
-		t.Errorf("the page is %d bytes, over 15 KB", size)
+		t.Errorf("Browse source assets total %d bytes, over the 15 KB budget", size)
 	}
 	if e.d.dials() != 0 {
 		t.Errorf("the page made %d dials", e.d.dials())
