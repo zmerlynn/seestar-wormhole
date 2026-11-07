@@ -66,8 +66,9 @@ CGO_ENABLED=0 go build -mod=vendor -o seestar-wormhole-cli ./cmd/seestar-wormhol
 
 ## Before you start: your account and your site
 
-seestar-wormhole signs in with your Seestar account, the same one the app
-uses.
+Through Telescope Network, seestar-wormhole signs in with your Seestar
+account, the same one the app uses. Copying from a telescope on the same
+network as this computer needs no account.
 
 [The device keeps the site and clock it has.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#overview) The proxy drops the app's location
 and time setters, so your phone cannot move the telescope into your living
@@ -79,10 +80,20 @@ Before using the proxy, make sure the telescope has the right site. To change it
 
 ## Use the UI
 
-Open seestar-wormhole (from Applications on macOS) and its window opens.
-Enter your Seestar account and choose **Connect**. It starts set up for a phone
-on the same network; once connected, it shows how to select the telescope in
-the phone app and how to copy images.
+Open seestar-wormhole (from Applications on macOS). On the **Connection** tab,
+under **Reach the telescope**, choose how to reach your Seestar:
+
+- **Remotely through Telescope Network** serves both the Seestar app and the
+  telescope's files. Under **Use with**, keep **Phone on this network** for
+  the phone app (see [the phone app guide](docs/phone-app.md#start-the-proxy)
+  for permissions), or choose **This computer only** for apps on this
+  computer. Enter your Seestar account and choose **Connect**. Once
+  connected, it shows how to select the telescope in the phone app and how
+  to copy images.
+- **On this network** serves only the telescope's files, from a Seestar on
+  the same network as this computer. Enter its
+  [address](docs/copying.md#find-the-telescopes-address) and choose **Save**.
+  No account is needed, and the proxy doesn't start.
 
 ![seestar-wormhole connected to a Seestar, with the phone-app and copying steps](docs/images/gui-connected.png)
 
