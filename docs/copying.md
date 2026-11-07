@@ -17,9 +17,10 @@ tried on each route.
 
 1. **Choose how to reach the telescope.** On the **Connection** tab, under
    **Reach the telescope**, choose **Remotely through Telescope Network** and
-   **Connect**, or choose **On this network**, enter the telescope's address,
-   and **Save**. Until one is saved, Copy, Browse and Free up space are
-   unavailable and say so. Through Telescope Network, copying uses the proxy's SMB port
+   **Connect**, or choose **On this network**, enter the
+   [telescope's address](#find-the-telescopes-address), and **Save**. Until
+   one is saved, Copy, Browse and Free up space are unavailable and say so.
+   Through Telescope Network, copying uses the proxy's SMB port
    (local port 4445 by default) and waits for the connection; it never starts
    it.
 2. **Choose a folder.** The first time you open **Copy**, choose the folder for
@@ -93,6 +94,19 @@ history.
   runs at once, 4 by default: if the Seestar app or seestar_alp is slow to
   respond while copying, lower it to 1 or 2.
 
+## Find the telescope's address
+
+On this network, the app and `seestar-copy-cli` need the telescope's address.
+Through Telescope Network they use the proxy's listener instead.
+
+When the telescope is on your home Wi-Fi, your router gave it its address.
+Open the router's list of connected devices and find the telescope's entry,
+not this computer's, with an address such as `192.0.2.10`. In the app,
+**Test** checks that the address answers file sharing.
+
+The app takes the address alone and uses SMB port 445 unless you add another
+port. `seestar-copy-cli` needs the port too: `--endpoint 192.0.2.10:445`.
+
 ## From the command line
 
 `seestar-copy-cli` comes in every download, next to `seestar-wormhole-cli`.
@@ -100,9 +114,10 @@ Run these commands from the folder that holds it; on macOS, copy it off the
 disk image first, as in [Install](../README.md#install). In PowerShell, write
 `.\seestar-copy-cli.exe` for `./seestar-copy-cli`.
 
-1. Find the address to connect to. On the telescope's network, that is its IP
-   address and port 445, such as `192.0.2.10:445`. Through seestar-wormhole,
-   it is the proxy's SMB listener, `127.0.0.1:4445` by default.
+1. Find the address to connect to. On the telescope's network, that is
+   [its address](#find-the-telescopes-address) and port 445, such as
+   `192.0.2.10:445`. Through seestar-wormhole, it is the proxy's SMB
+   listener, `127.0.0.1:4445` by default.
 2. Run one pass to check the connection:
 
    ```sh
