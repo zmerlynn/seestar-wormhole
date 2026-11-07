@@ -657,6 +657,37 @@ test("Browse's frame is named The telescope's files, with no title", async ({ pa
   await expect(page.getByRole('tabpanel', { name: 'Browse' }).locator('iframe[title]')).toHaveCount(0);
 });
 
+// Browse is one of the app's tabs, not a second app in a frame: the
+// app's type, page, text, links, focus ring and buttons, light and dark.
+test("Browse takes the app's look", async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const browse = frame(page);
+  expect(await browse.locator('html').evaluate(() => document.title)).toBe('Browse — seestar-wormhole');
+  const look = (loc, ...props) => loc.evaluate((e, props) => props.map((p) => getComputedStyle(e)[p]), props);
+  const type = ['fontFamily', 'fontSize', 'lineHeight', 'color'];
+  const button = ['color', 'backgroundColor', 'borderTopColor', 'borderTopWidth', 'borderTopLeftRadius', 'paddingTop', 'paddingLeft'];
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    expect(await look(browse.locator('body'), ...type), colorScheme).toEqual(await look(page.locator('main'), ...type));
+    expect(await look(browse.locator('body'), 'backgroundColor'), colorScheme).toEqual(await look(page.locator('html'), 'backgroundColor'));
+    expect(await look(browse.getByRole('link', { name: 'MyWorks/' }), 'color'), colorScheme)
+      .toEqual(await look(page.locator('footer a').first(), 'color'));
+    expect(await look(browse.locator('#vclose'), ...button), colorScheme).toEqual(await look(page.locator('#quit'), ...button));
+  }
+  // The keyboard's focus ring, as the app draws it: 3 px in its focus
+  // color, 3 px out.
+  await browse.getByRole('link', { name: 'MyWorks/' }).focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  const focused = browse.locator(':focus');
+  expect(await focused.evaluate((e) => e.matches(':focus-visible'))).toBe(true);
+  expect(await look(focused, 'outlineStyle', 'outlineWidth', 'outlineOffset', 'outlineColor'))
+    .toEqual(['solid', '3px', '3px', (await look(page.locator('footer a').first(), 'color'))[0]]);
+});
+
 test('Browse marks what Leave out leaves out, with a key', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openCopy(page, app.url);
