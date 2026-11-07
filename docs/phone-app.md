@@ -33,8 +33,9 @@ Advanced shows a fixed port table. Local ports are on your computer; leave a
 effective ports and Seestar app steps. Connect your phone to the same network
 as your computer and open the Seestar app.
 Keep seestar-wormhole running. Stop and wait for release before using the app's
-remote mode. Details and logs, on the Activity tab, contains safe diagnostic
-history. If the GUI reports a phone HTTP permission failure, see
+remote mode. **Details and logs**, on the Activity tab, holds diagnostic
+history; review it before you share it, as in
+[filing an issue](troubleshooting.md#filing-an-issue). If the GUI reports a phone HTTP permission failure, see
 [port 80 and permissions](#port-80-and-permissions).
 
 For the CLI, start with discovery enabled:
