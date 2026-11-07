@@ -208,7 +208,10 @@ nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent
 sessions on the telescope, and **My copies have moved or the drive is
 offline** checks only the app's record of each copy, as `--trust-state`
-does. **Keep on the telescope** and **Only free up** take one pattern per
+does. Above the options, **Copies in:** names Copy's saved folder, whose
+copies the check proves; with that option on, **Copy history for:** names the
+folder whose history it uses instead. **Go to Copy** beside it is where to
+change the folder. **Keep on the telescope** and **Only free up** take one pattern per
 line, as `delete`'s [`--exclude` and `--include`](copy-reference.md#selection):
 a file that matches Keep on the telescope is never deleted, and when Only free
 up is not empty, only files that match it are. They are separate from Copy's

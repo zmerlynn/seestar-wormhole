@@ -278,3 +278,21 @@ async function checkFreeSetup(st) {
   selectTab('free');
   copyAssert($('x-setup').hidden && !$('x-main').hidden && !$('x-options').hidden, 'Free up space hides its form after setup');
 }
+
+// Free up space names the saved folder whose copies, or copy history, its
+// check uses, and links to Copy.
+async function checkFreeFolder(st) {
+  copyFixture(st, st.unlocked);
+  copyFormOpen = false;
+  copyRender(st.after);
+  selectTab('free');
+  const folder = st.after.settings.folder;
+  copyAssert($('x-folder-text').textContent === 'Copies in: ' + folder, 'proof folder: ' + $('x-folder-text').textContent);
+  $('x-trust').checked = true;
+  $('x-trust').dispatchEvent({type: 'change'});
+  copyAssert($('x-folder-text').textContent === 'Copy history for: ' + folder, 'record folder: ' + $('x-folder-text').textContent);
+  $('x-trust').checked = false;
+  $('x-trust').dispatchEvent({type: 'change'});
+  $('x-folder-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'the folder link did not open Copy');
+}

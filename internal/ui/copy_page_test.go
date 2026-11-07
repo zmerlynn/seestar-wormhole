@@ -70,3 +70,8 @@ func TestCopyStepsPage(t *testing.T) {
 func TestFreeSetupPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkFreeSetup("+copyPageStatuses(t)+")")
 }
+
+// Free up space names the folder its check uses.
+func TestFreeFolderPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkFreeFolder("+copyPageStatuses(t)+")")
+}

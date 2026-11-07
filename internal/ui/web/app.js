@@ -860,10 +860,13 @@ function freeFill(s) {
   $('x-in').value = s.free_includes.join('\n');
   freeIntro();
 }
-// freeIntro words the Start text for the options as set.
+// freeIntro words the Start text for the options as set, and names the
+// saved folder whose copies, or copy history, the check uses.
 function freeIntro() {
-  put('x-intro', $('x-trust').checked ? "Free up space uses this app's saved copy records. Your copies will not be checked."
+  const trust = $('x-trust').checked;
+  put('x-intro', trust ? "Free up space uses this app's saved copy records. Your copies will not be checked."
     : 'Free up space deletes files from the telescope only after they have been copied here, and checks that your copy still matches.');
+  put('x-folder-text', copySaved && (trust ? 'Copy history for: ' : 'Copies in: ') + copySaved.folder);
   $('x-restack').hidden = !(Number($('x-days').value) > 0);
 }
 // freeErrors puts each message under its option, as showErrors does for
@@ -910,6 +913,7 @@ function renderFree(v) {
   const st = v.state;
   $('x-setup').hidden = !!copySaved;
   $('x-main').hidden = !copySaved;
+  freeIntro();
   activityChip('free-chip', v.chip, st + (v.recheck ? '-recheck' : ''));
   put('x-title', v.title);
   put('x-text', v.text);
@@ -1480,6 +1484,7 @@ $('f-choose').addEventListener('click', copyChoose);
 $('b-setup-go').addEventListener('click', goSetup);
 $('copy-steps-go').addEventListener('click', goSetup);
 $('x-setup-go').addEventListener('click', goSetup);
+$('x-folder-go').addEventListener('click', goSetup);
 $('c-start').addEventListener('click', e => press(e, 'start'));
 $('c-check').addEventListener('click', e => press(e, 'check'));
 $('c-stop').addEventListener('click', e => press(e, 'stop'));
