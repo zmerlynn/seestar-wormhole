@@ -326,6 +326,20 @@ async function checkCopyOnceInterval(st) {
   $('f-repeat').checked = true;
   $('f-repeat').dispatchEvent({type: 'change'});
   copyAssert(!$('f-int').disabled && $('f-int').value === '12', 'repeating again lost the interval');
+  // A whole number in another spelling is kept in the digits the server
+  // reads.
+  for (const [spelling, want] of [['12.0', '12'], ['1e1', '10'], ['+12', '12']]) {
+    $('f-repeat').checked = true;
+    $('f-repeat').dispatchEvent({type: 'change'});
+    $('f-int').value = spelling;
+    $('f-int').dispatchEvent({type: 'input'});
+    $('f-repeat').checked = false;
+    $('f-repeat').dispatchEvent({type: 'change'});
+    copyAssert($('f-int').value === want, spelling + ' was kept as ' + JSON.stringify($('f-int').value));
+    sent = null;
+    await copySave();
+    copyAssert(sent && sent.interval === want, spelling + ' was sent as ' + JSON.stringify(sent && sent.interval));
+  }
 }
 
 // Copy's and Free up space's action errors are alerts, written only when

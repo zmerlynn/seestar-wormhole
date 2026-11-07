@@ -165,6 +165,20 @@ test('with the check for new files off, Start copying copies once and stops', as
   await expect(field(page, 'Folder for your images')).toBeEnabled();
   await expect(repeat).not.toBeChecked();
 
+  // A whole number typed in another spelling is the interval copy once
+  // keeps, saved as the server reads it.
+  for (const [spelling, want] of [['12.0', 12], ['1e1', 10], ['+12', 12]]) {
+    await repeat.check();
+    await page.getByRole('spinbutton', { name: 'Minutes between checks' }).fill(spelling);
+    await repeat.uncheck();
+    await expect(page.getByRole('spinbutton', { name: 'Minutes between checks' })).toHaveValue(String(want));
+    await button(page, 'Save').click();
+    await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+    expect(JSON.parse(fs.readFileSync(app.copyFile, 'utf8')), spelling).toMatchObject({ once: true, interval_minutes: want });
+    await button(page, 'Change…').click();
+  }
+  await button(page, 'Cancel').click();
+
   // Starting when the app opens copies once too.
   const opens = await startApp({
     'config.json': lan(), 'copy.json': (folder) => ({ version: 1, folder, start_copying: true, once: true }),

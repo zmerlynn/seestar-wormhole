@@ -572,11 +572,12 @@ function copyFill(s) {
 }
 // The interval counts only while copying repeats. Copy once disables it,
 // showing and sending its last valid value, kept for a later return to
-// repeating, and drops an error it had.
+// repeating, and drops an error it had. The value is kept in the digits
+// the server reads, since the field also takes 12.0 or 1e1.
 let copyInterval = '5';
 function intervalInput() {
   const value = $('f-int').value.trim(), n = Number(value);
-  if (value && Number.isInteger(n) && n >= 1 && n <= 1440) copyInterval = value;
+  if (value && Number.isInteger(n) && n >= 1 && n <= 1440) copyInterval = String(n);
 }
 function repeatChange() {
   const repeat = $('f-repeat').checked;
