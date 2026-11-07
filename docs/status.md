@@ -81,7 +81,8 @@ test the command's version and help output.
   loopback behavior is tested in CI:
   unicast reply address/port, malformed and oversized input, and cancellation.
   Real LAN behavior on Windows is not yet validated.
-  [rclone is the supported copying route](copying.md#windows).
+  Copy with the app, `seestar-copy-cli` or rclone; see
+  [copying on Windows](copying.md#windows).
 - **Containers** are checked for the image's user and startup. The phone setup
   hasn't been run in one.
 

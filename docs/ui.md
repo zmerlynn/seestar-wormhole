@@ -37,7 +37,8 @@ only the telescope's files, for Copy, Browse and Free up space.
   Seestar through Telescope Network, and copying will use its file-sharing
   (SMB) port.
 - **On this network** is for a Seestar on the same network as this computer.
-  Enter its address, with an optional port (445 by default); its help says
+  Enter its [address](copying.md#find-the-telescopes-address), with an
+  optional port (445 by default); its help says
   that Copy, Browse and Free up space read the telescope's files there.
   **Test** checks that it answers file sharing and saves nothing: when it
   passes for an address other than the saved one, it says to **Save**.

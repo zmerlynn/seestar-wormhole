@@ -23,7 +23,8 @@ func TestSandboxPreflight(t *testing.T) {
 		if !called || (err == nil) != (failure == nil) {
 			t.Fatalf("failure %v returned %v", failure, err)
 		}
-		if err != nil && err.Error() != sandboxRequirement {
+		// The archive has no docs, so the message links the published page.
+		if err != nil && err.Error() != "WebKit sandbox unavailable. Install bubblewrap and allow unprivileged user namespaces. See https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/troubleshooting.md#linux-native-window" {
 			t.Fatalf("unclear startup error: %v", err)
 		}
 	}

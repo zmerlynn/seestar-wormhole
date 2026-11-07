@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-const sandboxRequirement = "WebKit sandbox unavailable. Install bubblewrap and allow unprivileged user namespaces. See docs/troubleshooting.md (Linux native window)."
+const sandboxRequirement = "WebKit sandbox unavailable. Install bubblewrap and allow unprivileged user namespaces. See https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/troubleshooting.md#linux-native-window"
 
 func checkWindowSandbox() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
