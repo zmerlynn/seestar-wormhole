@@ -24,7 +24,7 @@ let routeChoice = 'account', lanPending = '', lanReach = null, currentTab = 'con
 const tabNames = ['connection', 'copy', 'browse', 'free', 'activity'];
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
-  email: 'Enter your Seestar account email.', password: 'Enter a password or use a saved password.',
+  email: 'Enter your Seestar account email.', password: 'Enter a password of 8 to 32 characters, or use a saved password.',
   idle: 'Enter a wait time greater than zero.'
 };
 async function api(action, body, base = '/api/') {
@@ -198,7 +198,9 @@ function validate() {
     fieldError('email',fieldCopy.email,'email',true);
     return false;
   }
-  if (!$('password').value && !usingSaved() && !passwordState().memory) {
+  // A string's length counts UTF-16 units, as the account's rule does.
+  const typed = $('password').value.length;
+  if (!usingSaved() && (typed ? typed < 8 || typed > 32 : !passwordState().memory)) {
     actionError = 'password';
     fieldError('password',fieldCopy.password,'password',true);
     return false;

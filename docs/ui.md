@@ -68,8 +68,10 @@ Under **Use with**, choose who can connect:
 - **Custom** uses your own settings under **Advanced**. Changing any of them
   selects **Custom**; picking another setup replaces them.
 
-Enter your Seestar account email and password. Nothing connects until you
-choose **Connect**, and next time your choices are already filled in.
+Enter your Seestar account email and password. A Seestar account password
+has 8 to 32 characters, and the field says so if yours doesn't. Nothing
+connects until you choose **Connect**, and next time your choices are already
+filled in.
 
 Your password stays in memory until you quit. To skip typing it next time,
 choose **Save password to keychain**; the field then shows **Saved in

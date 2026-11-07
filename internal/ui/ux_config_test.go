@@ -3,6 +3,8 @@ package ui
 import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -86,6 +88,7 @@ func TestCredentialValidationTargetsItsField(t *testing.T) {
 	for _, tc := range []struct{ email, password, field string }{
 		{"invalid", testPassword, "email"},
 		{testSettings().Email, "short", "password"},
+		{testSettings().Email, strings.Repeat("x", 33), "password"},
 	} {
 		c := &credentialStore{chain: &fakeKeychain{}}
 		s := testSettings()
@@ -95,4 +98,14 @@ func TestCredentialValidationTargetsItsField(t *testing.T) {
 			t.Fatalf("credential field: %+v", e)
 		}
 	}
+}
+
+// A refused password names the length rule, in the server's words and the
+// page's alike.
+func TestPasswordLengthCopy(t *testing.T) {
+	want := errorCopy("password")
+	if !strings.Contains(want, "8 to 32 characters") {
+		t.Fatalf("password copy %q lacks the length rule", want)
+	}
+	runPageRegression(t, "password-length-test.js", "checkPasswordLength("+strconv.Quote(want)+")")
 }
