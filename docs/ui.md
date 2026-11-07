@@ -201,7 +201,8 @@ window, a file's **Save** asks where to save it; in a browser, it downloads.
 
 ### Free up space
 
-**Preview what to delete** lists, per folder, the files that are copied and
+Until Copy's folder is saved, Free up space says to choose it, with **Go to
+Copy**, as Browse does. **Preview what to delete** lists, per folder, the files that are copied and
 safe to delete, as `delete` [proves it](copy-reference.md#proof-modes), and
 nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent

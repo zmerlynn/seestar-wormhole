@@ -904,8 +904,12 @@ function activityChip(id, label, stage) {
   chipShown[id] = stage;
 }
 const chipTabs = {'copy-chip': 'copy', 'preview-chip': 'copy', 'free-chip': 'free'};
+// Free up space, like Browse, waits for Copy's folder; until it is saved,
+// its notice says where to set it.
 function renderFree(v) {
   const st = v.state;
+  $('x-setup').hidden = !!copySaved;
+  $('x-main').hidden = !copySaved;
   activityChip('free-chip', v.chip, st + (v.recheck ? '-recheck' : ''));
   put('x-title', v.title);
   put('x-text', v.text);
@@ -1475,6 +1479,7 @@ $('f-folder').addEventListener('input', renderHistory);
 $('f-choose').addEventListener('click', copyChoose);
 $('b-setup-go').addEventListener('click', goSetup);
 $('copy-steps-go').addEventListener('click', goSetup);
+$('x-setup-go').addEventListener('click', goSetup);
 $('c-start').addEventListener('click', e => press(e, 'start'));
 $('c-check').addEventListener('click', e => press(e, 'check'));
 $('c-stop').addEventListener('click', e => press(e, 'stop'));

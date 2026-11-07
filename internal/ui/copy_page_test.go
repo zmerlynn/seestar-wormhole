@@ -65,3 +65,8 @@ func TestBrowseSetupPage(t *testing.T) {
 func TestCopyStepsPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkCopySteps("+copyPageStatuses(t)+")")
 }
+
+// Free up space waits for Copy's folder.
+func TestFreeSetupPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkFreeSetup("+copyPageStatuses(t)+")")
+}

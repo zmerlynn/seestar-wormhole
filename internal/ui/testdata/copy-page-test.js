@@ -262,3 +262,19 @@ async function checkCopySteps(st) {
   render({...connected, copy_unlocked: false});
   copyAssert($('copy-steps-go').hidden, 'Go to Copy shows while Copy is locked');
 }
+
+// Free up space before Copy's folder is saved says where to set it, as
+// Browse does.
+async function checkFreeSetup(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.before);
+  selectTab('free');
+  copyAssert(!$('x-setup').hidden && $('x-main').hidden, 'Free up space offers its form before setup');
+  copyAssert($('x-setup').textContent.startsWith('Choose the folder for your images on the Copy tab before freeing up space.'), 'setup wording: ' + $('x-setup').textContent);
+  $('x-setup-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && document.activeElement === $('f-folder'), 'Go to Copy did not open the folder field');
+  copyFormOpen = false;
+  copyRender(st.after);
+  selectTab('free');
+  copyAssert($('x-setup').hidden && !$('x-main').hidden && !$('x-options').hidden, 'Free up space hides its form after setup');
+}
