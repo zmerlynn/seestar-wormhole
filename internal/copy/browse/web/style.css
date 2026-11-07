@@ -5,12 +5,10 @@
   --rule: #eee; --rule-head: #ccc; --tint: #f5f6f8; --tint-border: #ccc;
   --btn: #f0f0f0; --btn-border: #767676; --copied: #146c2e; --changed: #8a4b00;
 }
-/* In the app, Browse is one of its tabs: the app's type, palette, focus
-   ring and controls, from internal/ui/web/style.css. */
+/* In the app, Browse takes the app's look (internal/ui/web/style.css). */
 :root.in-app {
-  --bg: #fff; --surface: #fff; --text: #18202b; --muted: #485362; --link: #075bb5;
-  --rule: #d5d9de; --rule-head: #68717c; --tint: #f3f5f8; --tint-border: #68717c;
-  --btn: #fff; --btn-border: #68717c; --copied: #17692f; --changed: #8a5a00;
+  --text: #18202b; --muted: #485362; --link: #075bb5; --rule: #d5d9de;
+  --rule-head: #68717c; --tint: #f3f5f8; --tint-border: #68717c; --btn: #fff; --btn-border: #68717c;
 }
 body { font: 14px/1.4 system-ui, sans-serif; margin: 0 1rem 2rem; color: var(--text); background: var(--bg); }
 .in-app body { font: 1rem/1.5 system-ui, sans-serif; }
@@ -21,8 +19,7 @@ h1 { font-size: 1.1rem; margin: 0; }
 .note { color: var(--muted); }
 nav { margin: 0.75rem 0; overflow-wrap: anywhere; }
 a { color: var(--link); }
-/* Positioned, so the table's visually hidden headers stay inside its
-   scroll box instead of widening the page. */
+/* Positioned, so hidden headers can't widen the page. */
 .scroll { max-width: 100%; overflow-x: auto; position: relative; }
 table { border-collapse: collapse; width: 100%; }
 th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--rule); vertical-align: middle; }
@@ -38,10 +35,7 @@ table:not(.statuses) .st { display: none; }
 .badge.changed { color: var(--changed); }
 .badge.new { color: var(--link); }
 .badge.left-out { color: var(--muted); border-style: dashed; }
-/* The key: a tinted box of its own, set apart from the table. Each
-   status's badge, as the list shows it, then its meaning; one per line,
-   or a grid where there is room. A styled-out list keeps its role only
-   with role=list. */
+/* A styled-out list keeps its role only with role=list. */
 #key { margin: 1.5rem 0 0; padding: 0.5rem 0.75rem 0.6rem; border: 1px solid var(--tint-border); border-radius: 0.4rem; background: var(--tint); }
 #key h2 { font-size: 1em; font-weight: 600; margin: 0 0 0.35rem; }
 #key ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr)); gap: 0.25rem 1rem; }
@@ -66,6 +60,6 @@ dialog p { margin: 0.5rem 0 0; display: flex; gap: 1rem; align-items: center; }
   :root.in-app {
     --bg: #121b29; --surface: #192638; --text: #eef4ff; --muted: #c0ccdc; --link: #83c7ff;
     --rule: #2c3a4f; --rule-head: #93a2b8; --tint: #192638; --tint-border: #93a2b8;
-    --btn: #192638; --btn-border: #93a2b8; --copied: #7ee09a; --changed: #f0c060;
+    --btn: #192638; --btn-border: #93a2b8;
   }
 }
