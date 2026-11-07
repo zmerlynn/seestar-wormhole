@@ -113,8 +113,9 @@ and **Purpose** names the service. You can't edit them while connected.
 
 When discovery is on, **Using the Seestar app** tells you to pick your
 telescope from the **LAN** tab of the Seestar app. If it doesn't appear, see
-the [phone app guide](phone-app.md). **Copying files** shows
-the local SMB port; see [copying images](copying.md).
+the [phone app guide](phone-app.md). **Copying files** points you to the
+**Copy** tab, with **Go to Copy**, and to **Browse**; below that, it shows the
+local SMB port for [another file-sharing app](copying.md#copy-with-a-graphical-app).
 
 Keep seestar-wormhole open while you use the telescope.
 

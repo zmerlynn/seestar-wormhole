@@ -227,3 +227,25 @@ async function checkBrowseSetup(st) {
   selectTab('browse');
   copyAssert($('b-setup').hidden && !$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse did not show after setup');
 }
+
+// The connected page's copying step leads with Copy and Browse, its Go to
+// Copy opens the tab, and other SMB apps come second.
+async function checkCopySteps(st) {
+  copyFixture(st, st.unlocked);
+  const connected = {...st.unlocked, active: true, effective: {...st.unlocked.effective, ports: {...st.unlocked.effective.ports, 445: 1234}}};
+  render(connected);
+  const steps = $('copy-steps').textContent, lead = steps.indexOf("Use the Copy tab to save your images to a folder on this computer, or Browse to view the telescope's files. Go to Copy"), other = steps.indexOf('Another file-sharing (SMB) app can also connect to this computer on port');
+  copyAssert(!$('copy-steps').hidden && !$('copy-steps-go').hidden && $('copy-steps-go').parentElement === $('copy-steps'), 'the copying step lacks Go to Copy');
+  copyAssert(lead > 0 && other > lead && String($('copy-port').textContent) === '1234', 'the copying step does not lead with Copy: ' + steps);
+  copyRender(st.before);
+  $('copy-steps-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && !$('panel-copy').hidden && document.activeElement === $('f-folder'), 'Go to Copy did not open the folder field');
+  // Saved, with the form closed, it opens at the tab.
+  selectTab('connection');
+  copyFormOpen = false;
+  copyRender(st.after);
+  $('copy-steps-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'Go to Copy after setup focused ' + JSON.stringify(document.activeElement?.attributes));
+  render({...connected, copy_unlocked: false});
+  copyAssert($('copy-steps-go').hidden, 'Go to Copy shows while Copy is locked');
+}

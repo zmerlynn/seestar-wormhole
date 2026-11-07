@@ -470,6 +470,7 @@ function copyTabs(s) {
     else button.setAttribute('aria-describedby', 'tabs-note');
   }
   $('tabs-note').hidden = open;
+  $('copy-steps-go').hidden = !open;
   if (!open && copyTabNames.includes(currentTab)) selectTab('connection');
   copyNotice();
 }
@@ -507,9 +508,10 @@ function browseFrame() {
   browseView = view;
   $('b-frame').src = '/browse/';
 }
+// goSetup opens Copy at its folder while the form shows, else at its tab.
 function goSetup() {
   selectTab('copy');
-  if (!$('f-folder').disabled) $('f-folder').focus();
+  (copyFormOpen && !$('f-set').disabled ? $('f-folder') : $('tab-copy')).focus();
 }
 function put(id, value) {
   text(id, value || '');
@@ -1468,6 +1470,7 @@ $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);
 $('f-choose').addEventListener('click', copyChoose);
 $('b-setup-go').addEventListener('click', goSetup);
+$('copy-steps-go').addEventListener('click', goSetup);
 $('c-start').addEventListener('click', e => press(e, 'start'));
 $('c-check').addEventListener('click', e => press(e, 'check'));
 $('c-stop').addEventListener('click', e => press(e, 'stop'));

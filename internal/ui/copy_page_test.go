@@ -60,3 +60,8 @@ func TestCopyChoosePage(t *testing.T) {
 func TestBrowseSetupPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkBrowseSetup("+copyPageStatuses(t)+")")
 }
+
+// The connected page's copying step leads with the Copy tab.
+func TestCopyStepsPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkCopySteps("+copyPageStatuses(t)+")")
+}
