@@ -1250,7 +1250,7 @@ the output exits 1. See [NOTICE](../NOTICE).
   only.
 - Flags take their value as `--flag value` or `--flag=value`. Boolean flags
   need no value; `--once=false` turns one off. A flag given twice keeps the
-  last value, except `--exclude`, which collects every value.
+  last value, except `--exclude` and `--include`, which collect every value.
 - Help and version need no network and touch no files.
 - `sync` without `--once` or `--dry-run`, and `browse`, run until Ctrl+C or
   SIGTERM stops them. The other commands run once and exit.
