@@ -33,7 +33,10 @@ Every download has one app and two command-line tools:
 - `seestar-copy-cli` copies images from the telescope for terminals, scripts
   and services.
 
-On Linux the app needs GTK 4 and WebKitGTK 6.0; the command-line tools need
+On Linux the app needs GTK 4, WebKitGTK 6.0 and bubblewrap, and permission to
+create the user namespaces WebKit's sandbox uses; see
+[Linux native window](docs/troubleshooting.md#linux-native-window). On Windows
+it needs the Microsoft Edge WebView2 Runtime. The command-line tools need
 nothing extra.
 
 On macOS, the command-line tools sit beside the app on the disk image, and
