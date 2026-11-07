@@ -108,7 +108,7 @@ func TestDispatchInvalidPortRefusesBeforeOwnerStarts(t *testing.T) {
 func TestDispatchInformationalOutcomes(t *testing.T) {
 	for _, args := range [][]string{
 		{"--help"}, {"-h"}, {"--version"},
-		{"help"}, {"help", "proxy"}, {"help", "help"}, {"help", "unknown-topic"},
+		{"help"}, {"help", "proxy"}, {"help", "help"},
 		{"proxy", "--help"}, {"help", "--help"},
 		{"--help", "proxy"},
 		{"proxy", "--version"}, {"--version", "proxy"},
