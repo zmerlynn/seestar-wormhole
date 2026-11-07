@@ -313,6 +313,13 @@ header {
   [role=tab][aria-selected=true] {
     border-bottom-color:Highlight
   }
+  /* The drawn arrow is dropped or keeps the page's color; the native
+     one follows the system's. */
+  select {
+    appearance:auto;
+    background-image:none;
+    padding-right:.55rem
+  }
 }
 /* Each panel starts as far below the tabs: its padding, with the first
    thing in it dropping its own top margin. */

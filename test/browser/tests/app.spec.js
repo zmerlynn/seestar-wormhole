@@ -413,6 +413,21 @@ test('the padlock keeps its body under forced colors', async ({ page, startApp }
   }
 });
 
+// Forced colors give the selects their native arrow back: the drawn one
+// is dropped (Chromium) or keeps the page's color (WebKit). A browser
+// that can't emulate forced colors skips this.
+test('the selects are native under forced colors', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  const style = (...props) => page.locator('#mode').evaluate((e, props) => props.map((p) => getComputedStyle(e)[p]), props);
+  expect(await style('appearance')).toEqual(['none']);
+  await page.emulateMedia({ forcedColors: 'active' });
+  test.skip(!(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)), 'no forced colors emulation');
+  const [appearance, image] = await style('appearance', 'backgroundImage');
+  expect(appearance).toBe('auto');
+  expect(image).not.toContain('gradient');
+});
+
 // The tabs are light: the selected one is underlined, not bold, so no tab
 // changes width; a keyboard focus ring sits inside the tab, clear of the
 // underline, and a click shows none; and every panel's first heading has
