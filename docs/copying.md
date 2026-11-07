@@ -96,6 +96,9 @@ history.
 ## From the command line
 
 `seestar-copy-cli` comes in every download, next to `seestar-wormhole-cli`.
+Run these commands from the folder that holds it; on macOS, copy it off the
+disk image first, as in [Install](../README.md#install). In PowerShell, write
+`.\seestar-copy-cli.exe` for `./seestar-copy-cli`.
 
 1. Find the address to connect to. On the telescope's network, that is its IP
    address and port 445, such as `192.0.2.10:445`. Through seestar-wormhole,
@@ -103,7 +106,13 @@ history.
 2. Run one pass to check the connection:
 
    ```sh
-   seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar --once
+   ./seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar --once
+   ```
+
+   In PowerShell:
+
+   ```powershell
+   .\seestar-copy-cli.exe sync --endpoint 127.0.0.1:4445 --dest "$HOME\Seestar" --once
    ```
 
 3. Run it without `--once` to keep copying. Press Ctrl+C to stop it.
@@ -111,12 +120,12 @@ history.
 To look through the telescope's files in your web browser:
 
 ```sh
-seestar-copy-cli browse --endpoint 127.0.0.1:4445 --open
+./seestar-copy-cli browse --endpoint 127.0.0.1:4445 --open
 ```
 
 To free space on the telescope, run sync, make your own backup of the folder,
 then preview with
-`seestar-copy-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar`, which
+`./seestar-copy-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar`, which
 only reports what it would delete. When the preview looks right, add
 `--force`.
 

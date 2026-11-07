@@ -36,12 +36,21 @@ Every download has one app and two command-line tools:
 On Linux the app needs GTK 4 and WebKitGTK 6.0; the command-line tools need
 nothing extra.
 
-Check the command-line tools with:
+On macOS, the command-line tools sit beside the app on the disk image, and
+dragging the app doesn't install them. To use them, copy
+`seestar-wormhole-cli` and `seestar-copy-cli` from the disk image to a folder
+of your own, such as `~/bin`, before you eject it.
+
+Check the command-line tools from the folder that holds them:
 
 ```sh
 ./seestar-wormhole-cli --version
 ./seestar-copy-cli --version
 ```
+
+These examples, and the copy guide's, run the tools from that folder. In
+PowerShell, write `.\seestar-copy-cli.exe` for `./seestar-copy-cli`, and
+likewise for `seestar-wormhole-cli`.
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
 Saving the password needs an available OS keychain.
