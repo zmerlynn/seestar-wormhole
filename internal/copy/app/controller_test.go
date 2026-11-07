@@ -246,7 +246,7 @@ func TestCopyOnce(t *testing.T) {
 	}
 	e.waitOff()
 	v = e.wait(stDone)
-	if v.Title != "Can't reach the telescope at 192.0.2.10:445."+once || v.Text != checkReach || v.Chip != "" || v.On || v.Contact != "err" {
+	if v.Title != "Can't reach the telescope at 192.0.2.10:445."+once || v.Text != "Check that the telescope is on and on this computer's network." || v.Chip != "" || v.On || v.Contact != "err" {
 		t.Errorf("unreachable: %+v", v)
 	}
 }
@@ -427,7 +427,8 @@ func TestCopyUnreachable(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := e.wait(stUnreachable)
-	if v.Title != "Can't reach the telescope at 192.0.2.10:445." || v.Chip != "Copying is on" || v.Contact != "err" || !v.On {
+	if v.Title != "Can't reach the telescope at 192.0.2.10:445." || v.Chip != "Copying is on" || v.Contact != "err" || !v.On ||
+		!strings.HasSuffix(v.Text, ". Check that the telescope is on and on this computer's network. Copying stays on and keeps trying.") {
 		t.Errorf("unreachable: %+v", v)
 	}
 	e.mu.Lock()
@@ -436,6 +437,20 @@ func TestCopyUnreachable(t *testing.T) {
 	v = e.next()
 	if v.Contact != "ok" {
 		t.Errorf("contact %q after reaching it", v.Contact)
+	}
+}
+
+// Through Telescope Network, a failed connection points at the Connection
+// tab rather than the telescope's network.
+func TestCopyUnreachableRemote(t *testing.T) {
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+	e.dialErr = errors.New("connection refused")
+	if err := e.c.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
+		t.Fatal(err)
+	}
+	v := e.wait(stUnreachable)
+	if !strings.HasSuffix(v.Text, ". Check the connection and telescope status on the Connection tab. Copying stays on and keeps trying.") {
+		t.Errorf("unreachable: %+v", v)
 	}
 }
 

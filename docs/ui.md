@@ -132,7 +132,7 @@ If they can't reach the share, each says why and links to the fix:
 
 | Notice | Fix |
 |---|---|
-| **Not connected. Copying resumes when the connection is ready.** | **Go to Connection** and connect. Scheduled checks wait for the connection; they don't start it. |
+| **Not connected.** | **Go to Connection** and connect. On Copy, while copying repeats, the notice adds **Copying resumes at the next check after you connect.** Scheduled checks wait for the connection; they don't start it. |
 | **SMB is off. Turn on its port in Connection > Advanced.** | **Open Advanced** and forward a local port to Seestar port 445. |
 | **Save the telescope's address on the Connection tab first.** | **Go to Connection**, choose **On this network**, and save the address. |
 

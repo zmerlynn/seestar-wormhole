@@ -259,7 +259,7 @@ func testMessage(goos, endpoint string, entries []remote.Entry, err error) strin
 	case isNoShare(err):
 		return `Connected, but this isn't a Seestar: it has no "EMMC Images" share.`
 	default:
-		return "Can't reach " + endpoint + ". Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + LocalNetworkHint(goos, err)
+		return "Can't reach " + endpoint + ". " + checkReach(true) + LocalNetworkHint(goos, err)
 	}
 }
 

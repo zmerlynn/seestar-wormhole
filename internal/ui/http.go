@@ -359,7 +359,7 @@ func (s *server) changeRoute(moves func() bool, commit func() error) error {
 
 // Copier endpoint errors, shown after "Couldn't start copying: ".
 var (
-	errNotConnected = errors.New("Not connected. Copying resumes when the connection is ready")
+	errNotConnected = errors.New("Not connected. Go to Connection to reconnect")
 	errSMBOff       = errors.New("SMB is off. Turn on its port in Connection > Advanced")
 	errNoLANAddress = errors.New("Save the telescope's address on the Connection tab first")
 )

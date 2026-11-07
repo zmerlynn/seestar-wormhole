@@ -453,7 +453,7 @@ function tabKey(event) {
 // target, a notice says why and links to Connection.
 const copyTabNames = ['copy', 'browse', 'free'];
 const reachCopy = {
-  not_connected: ['Not connected. Copying resumes when the connection is ready.', 'Go to Connection'],
+  not_connected: ['Not connected.', 'Go to Connection'],
   smb_off: ['SMB is off. Turn on its port in Connection > Advanced.', 'Open Advanced'],
   no_lan_address: ["Save the telescope's address on the Connection tab first.", 'Go to Connection']
 };
@@ -474,11 +474,13 @@ function copyTabs(s) {
   if (!open && copyTabNames.includes(currentTab)) selectTab('connection');
   copyNotice();
 }
+// Only Copy, while copying repeats, says copying will go on.
 function copyNotice() {
   const reach = reachCopy[state?.copy_reach];
   $('copy-reach').hidden = !reach || !copyTabNames.includes(currentTab);
   if (!reach) return;
-  text('copy-reach-text', reach[0]);
+  const repeating = currentTab === 'copy' && state.copy_reach === 'not_connected' && copyStatus?.copy.on && !copySaved?.once;
+  text('copy-reach-text', repeating ? 'Not connected. Copying resumes at the next check after you connect.' : reach[0]);
   text('copy-reach-go', reach[1]);
 }
 // The notice's link opens what it names: Advanced's ports for SMB, the
@@ -1079,6 +1081,7 @@ function copyRender(c) {
   renderCopy(c.copy);
   renderFree(c.free);
   browseFrame();
+  copyNotice();
   text('copy-settings', JSON.stringify(c.settings, null, 2));
   renderEvents();
 }

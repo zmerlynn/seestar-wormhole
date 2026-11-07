@@ -301,7 +301,8 @@ func TestCopyWaitsForTheConnection(t *testing.T) {
 	}
 	copySettings(t, s)
 	w := serve(s, request(s, "POST", "/copy/api/copy", `{"action":"start"}`))
-	if w.Code != 409 || !strings.Contains(w.Body.String(), "Not connected") {
+	// Nothing was started, so nothing resumes.
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "Not connected. Go to Connection to reconnect.") {
 		t.Errorf("start copying while connecting = %d %s", w.Code, w.Body)
 	}
 }

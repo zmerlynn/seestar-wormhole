@@ -27,7 +27,7 @@ async function checkCopyUnlock(st) {
   copyAssert($('copy-reach').hidden, 'a ready route showed the reach notice');
   // Each reach state words the notice, and its link opens what it names.
   for (const [reach, wording, link, focus] of [
-    ['not_connected', 'Not connected. Copying resumes when the connection is ready.', 'Go to Connection', 'start'],
+    ['not_connected', 'Not connected.', 'Go to Connection', 'start'],
     ['smb_off', 'SMB is off. Turn on its port in Connection > Advanced.', 'Open Advanced', 'ports'],
     ['no_lan_address', "Save the telescope's address on the Connection tab first.", 'Go to Connection', 'lan-address']
   ]) {
@@ -40,6 +40,19 @@ async function checkCopyUnlock(st) {
     copyAssert(document.activeElement === $(focus) || document.activeElement === $('tab-connection'), reach + ' link focused ' + JSON.stringify(document.activeElement?.attributes));
     copyAssert(($('advanced').open === true) === (reach === 'smb_off'), reach + ' Advanced');
     if (reach === 'no_lan_address') copyAssert(routeChoice === 'lan', 'the LAN link did not choose On this network');
+  }
+  // Only a repeating copy, and only on Copy, says it resumes.
+  render({...st.unlocked, copy_reach: 'not_connected'});
+  for (const [copy, settings, tab, wording] of [
+    [st.after.copy, st.after.settings, 'copy', 'Not connected.'],
+    [{...st.after.copy, on: true}, st.after.settings, 'copy', 'Not connected. Copying resumes at the next check after you connect.'],
+    [{...st.after.copy, on: true}, st.after.settings, 'browse', 'Not connected.'],
+    [{...st.after.copy, on: true}, st.after.settings, 'free', 'Not connected.'],
+    [{...st.after.copy, on: true}, {...st.after.settings, once: true}, 'copy', 'Not connected.']
+  ]) {
+    copyRender({...st.after, copy, settings});
+    selectTab(tab);
+    copyAssert(!$('copy-reach').hidden && $('copy-reach-text').textContent === wording, tab + (copy.on ? ' on' : ' off') + (settings.once ? ' once' : '') + ': ' + $('copy-reach-text').textContent);
   }
   // Losing the route while on a copy tab falls back to Connection.
   render(st.unlocked);

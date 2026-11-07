@@ -165,7 +165,7 @@ func TestPreviewFails(t *testing.T) {
 	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/M 42/a.jpg": image("a")})
 	e.dialErr = noRoute
 	v := e.run()
-	if v.State != pvFailed || v.Title != "Can't reach the telescope at 192.0.2.10:445." || v.Text != checkReach+" Preview again to retry." {
+	if v.State != pvFailed || v.Title != "Can't reach the telescope at 192.0.2.10:445." || v.Text != "Check that the telescope is on and on this computer's network. Preview again to retry." {
 		t.Errorf("unreachable: %+v", v)
 	}
 	e.dialErr = nil
@@ -201,7 +201,7 @@ func TestPreviewLocalNetworkHint(t *testing.T) {
 	setHostOS(t, "darwin")
 	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
 	e.dialErr = noRoute
-	if v := e.run(); v.State != pvFailed || v.Text != checkReach+" Preview again to retry."+lanHint {
+	if v := e.run(); v.State != pvFailed || v.Text != "Check that the telescope is on and on this computer's network. Preview again to retry."+lanHint {
 		t.Errorf("on this network: %+v", v)
 	}
 	if err := e.p.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
@@ -211,7 +211,7 @@ func TestPreviewLocalNetworkHint(t *testing.T) {
 	done := e.p.done
 	e.p.mu.Unlock()
 	<-done
-	if v := e.p.view(); v.State != pvFailed || v.Text != checkReach+" Preview again to retry." {
+	if v := e.p.view(); v.State != pvFailed || v.Text != "Check the connection and telescope status on the Connection tab. Preview again to retry." {
 		t.Errorf("through the account: %+v", v)
 	}
 }
