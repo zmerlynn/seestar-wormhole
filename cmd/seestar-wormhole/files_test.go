@@ -23,6 +23,7 @@ func fileArgs(t *testing.T) map[string][]string {
 		"find":   {"find", "--endpoint", "127.0.0.1:1"},
 		"browse": {"browse", "--endpoint", "127.0.0.1:1"},
 		"delete": {"delete", "--endpoint", "127.0.0.1:1", "--dest", dest},
+		"scan":   {"scan"},
 	}
 }
 
@@ -40,6 +41,7 @@ func TestFileLoggingDefaults(t *testing.T) {
 		{files["find"], "text"},
 		{files["browse"], "text"},
 		{files["delete"], "text"},
+		{files["scan"], "text"},
 		{append(files["sync"], "--log-format", "json"), "json"},
 		{[]string{"proxy", "--log-format", "text"}, "text"},
 		{append(discoveryArgs(), "--log-format=text"), "text"},
@@ -90,6 +92,7 @@ func TestFileReadOnlyGuard(t *testing.T) {
 		{files["browse"], true},
 		{append(files["sync"], "--dry-run"), true},
 		{files["delete"], true}, // a preview
+		{files["scan"], true},
 		{files["sync"], false},
 		{append(files["delete"], "--force"), false},
 	} {

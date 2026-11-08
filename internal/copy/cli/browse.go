@@ -19,8 +19,10 @@ import (
 )
 
 type browseOptions struct {
-	profile   profileFlag
-	endpoint  string
+	profile  profileFlag
+	endpoint string
+	// follow follows a moved telescope at the endpoint the profile filled.
+	follow    *follow
 	listen    string
 	addr      netip.AddrPort // set by validate from listen
 	open      bool
@@ -62,7 +64,7 @@ starts.
 --profile default fills --dest, --history-dir and --endpoint from the app's
 saved settings where they are not given, and, with a destination,
 --exclude, --include and --no-default-excludes from its Copy settings.
-browse never writes: not to the telescope, not to --dest, not to the state.
+` + followHelp + `browse never writes: not to the telescope, not to --dest, not to the state.
 Logs and errors go to stderr.
 Exit 0 when stopped by Ctrl+C, 1 when it cannot start or keep serving, 2 on
 a usage error.`,
@@ -193,7 +195,7 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 	}
 	addr := netip.AddrPortFrom(o.addr.Addr(), uint16(ln.Addr().(*net.TCPAddr).Port))
 	sessions := browse.NewSessions(ctx, func(ctx context.Context) (remote.Session, error) {
-		return dial(ctx, o.endpoint, log)
+		return followDial(ctx, o.follow, o.endpoint, log, dial)
 	}, log.With("endpoint", o.endpoint), browse.Reporter{})
 	srv := &http.Server{
 		Handler: browse.NewHandler(browse.Config{

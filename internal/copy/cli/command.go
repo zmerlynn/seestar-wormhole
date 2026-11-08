@@ -1,4 +1,5 @@
-// Package cli holds the file commands sync, find, browse and delete: their
+// Package cli holds the file commands sync, find, browse and delete, and
+// scan, which finds the telescopes they reach on this network: their
 // flags, validation and runs. A program mounts them in its own command tree,
 // and that program owns the usage errors, the logs, the exit codes and the
 // read-only guard.
@@ -34,7 +35,7 @@ func (c *Command) store(readOnly bool, run func(context.Context, io.Writer, *slo
 // Commands returns the file commands of program, in help order. load reads
 // --profile default; nil means the program has none.
 func Commands(program string, load LoadProfile) []*Command {
-	return []*Command{NewSync(program, load), NewFind(program, load), NewBrowse(program, load), NewDelete(program, load)}
+	return []*Command{NewSync(program, load), NewFind(program, load), NewBrowse(program, load), NewDelete(program, load), NewScan(program)}
 }
 
 // ValueRule returns the rule for a file-command flag value of type typ that

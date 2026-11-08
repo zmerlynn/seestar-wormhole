@@ -303,9 +303,18 @@ func (s *Scanner) run(ctx context.Context, targets []netip.Addr, local map[netip
 	if result.Replies == 0 && blocked > 0 {
 		result.Blocked = true
 	} else if result.Replies == 0 && attempts > 0 && failed == attempts {
-		return result, fmt.Errorf("LAN scan: %w", sendErr)
+		return result, fmt.Errorf("LAN scan: %w", unaddressed(sendErr))
 	}
 	return result, ctx.Err()
+}
+
+// unaddressed is a send's error without the addresses a *net.OpError
+// names, so its text can be logged.
+func unaddressed(err error) error {
+	if op, ok := errors.AsType[*net.OpError](err); ok && op.Err != nil {
+		return fmt.Errorf("%s: %w", op.Op, op.Err)
+	}
+	return err
 }
 
 func sourceAddr(from net.Addr) (netip.Addr, bool) {

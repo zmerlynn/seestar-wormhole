@@ -3,14 +3,15 @@ package diagnostic
 import "errors"
 
 // The sources of a file-tool outcome: the tool an operation belongs to.
-// Connection names the connection lines of the app's trail, and Find only
-// the CLI's find command.
+// Connection names the connection lines of the app's trail, and Find and
+// Scan only the CLI's find and scan commands.
 const (
 	SourceConnection = "connection"
 	SourceCopy       = "copy"
 	SourceBrowse     = "browse"
 	SourceDelete     = "delete"
 	SourceFind       = "find"
+	SourceScan       = "scan"
 )
 
 // The operations of a file tool. List and Run are the CLI's only: find's

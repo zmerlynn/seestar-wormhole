@@ -22,8 +22,10 @@ import (
 )
 
 type findOptions struct {
-	profile   profileFlag
-	endpoint  string
+	profile  profileFlag
+	endpoint string
+	// follow follows a moved telescope at the endpoint the profile filled.
+	follow    *follow
 	selection selectionFlags
 	// selector is set by validate from selection.
 	selector      engine.Selector
@@ -61,7 +63,7 @@ size or mtime) or new (not recorded).
 --no-default-excludes from the app's Copy settings, and --endpoint from its
 connection, where they are not given; a --dest it fills gives statuses as a
 given one does.
-find never writes: not to the telescope, not to --dest, not to the state.
+` + followHelp + `find never writes: not to the telescope, not to --dest, not to the state.
 Durations use Go units, such as 36h or 90m, or whole days, such as 7d.
 Logs and errors go to stderr.
 Exit 0 when the listing is complete, 1 when it fails or is stopped, 2 on a
@@ -177,7 +179,7 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		}
 		log.Info("listing done", args...)
 	}()
-	sess, err := dial(ctx, o.endpoint, log)
+	sess, err := followDial(ctx, o.follow, o.endpoint, log, dial)
 	if err != nil {
 		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.endpoint, err))
 	}

@@ -20,8 +20,10 @@ import (
 const maxWorkers = 64
 
 type syncOptions struct {
-	profile   profileFlag
-	endpoint  string
+	profile  profileFlag
+	endpoint string
+	// follow follows a moved telescope at the endpoint the profile filled.
+	follow    *follow
 	dest      string
 	selection selectionFlags
 	// selector is set by validate from selection.
@@ -72,7 +74,7 @@ exclude skips.
 from its connection. A flag given always wins, and one --exclude or
 --include replaces the whole saved list. Without --profile, no saved
 settings are read.
-Durations use Go units, such as 30s, 5m or 1h30m.
+` + followHelp + `Durations use Go units, such as 30s, 5m or 1h30m.
 Logs and errors go to stderr; help goes to stdout.
 Exit 0 when stopped or after a clean --once or --dry-run pass, 1 on a runtime
 failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
@@ -187,6 +189,8 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, Selector: o.selector,
 		Interval: o.interval, Once: o.once, DryRun: o.dryRun,
 		ReadyAge: o.readyAge, FirstPassAge: o.firstPassAge, Workers: o.workers,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return dial(ctx, endpoint, log) },
+		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
+			return followDial(ctx, o.follow, endpoint, log, dial)
+		},
 	}, log)
 }

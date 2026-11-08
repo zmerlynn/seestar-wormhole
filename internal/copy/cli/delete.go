@@ -14,8 +14,10 @@ import (
 )
 
 type deleteOptions struct {
-	profile       profileFlag
-	endpoint      string
+	profile  profileFlag
+	endpoint string
+	// follow follows a moved telescope at the endpoint the profile filled.
+	follow        *follow
 	dest          string
 	destSet       bool
 	historyDir    string
@@ -65,7 +67,7 @@ last removal, and exits 1 if a sync pass or another delete holds it.
 --dest and --history-dir, except with --ignore-state, and --endpoint, where
 they are not given. The app's Copy patterns and Free up space options are
 never applied: give the selection, the proof and --older-than here.
-Durations use Go units, such as 36h, or whole days, such as 7d.
+` + followHelp + `Durations use Go units, such as 36h, or whole days, such as 7d.
 Logs and errors go to stderr.
 Exit 0 when the run finishes, however many files it kept, or is stopped;
 1 on a runtime failure or failed files; 2 on a usage error.`,
@@ -169,9 +171,11 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 	_, err := engine.RunDelete(ctx, engine.DeleteOptions{
 		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
 		OlderThan: o.olderThan, Selector: o.selector, DryRun: o.dryRun,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return dial(ctx, endpoint, log) },
+		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
+			return followDial(ctx, o.follow, endpoint, log, dial)
+		},
 		OpenRemover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
-			return dialRemover(ctx, endpoint, log)
+			return followDial(ctx, o.follow, endpoint, log, dialRemover)
 		},
 	}, log)
 	return err

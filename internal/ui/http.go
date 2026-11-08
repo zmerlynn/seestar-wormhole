@@ -482,6 +482,15 @@ func SavedCopyEndpoint(s Settings) (string, error) {
 	return "", errSMBOff
 }
 
+// SavedLANSerial is the serial saved with this network's address, when
+// that is the route, or "".
+func SavedLANSerial(s Settings) string {
+	if s.Route != routeLAN {
+		return ""
+	}
+	return s.LANSerial
+}
+
 // lanEndpoint is this network's saved address, normalized.
 func lanEndpoint(s Settings) (string, error) {
 	if address, ok := copyapp.NormalizeAddress(s.LANAddress); ok {

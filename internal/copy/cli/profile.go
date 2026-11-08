@@ -19,8 +19,12 @@ type Saved struct {
 	Dest       string
 	HistoryDir string
 	Endpoint   string
-	Excludes   []string
-	Includes   []string
+	// LANSerial is the serial the app saved with Endpoint on this
+	// network, or "". It is never shown or logged; a run that dials the
+	// filled Endpoint follows the telescope by it when it moved.
+	LANSerial string
+	Excludes  []string
+	Includes  []string
 	// NoDefaultExcludes is true when the saved settings don't skip what
 	// the built-in patterns match.
 	NoDefaultExcludes bool
@@ -134,6 +138,7 @@ func (o *syncOptions) fillSaved(s Saved, changed func(string) bool) []string {
 	f.str("dest", &o.dest, s.Dest)
 	f.str("history-dir", &o.historyDir, s.HistoryDir)
 	f.str("endpoint", &o.endpoint, s.Endpoint)
+	o.follow = newFollow(s, changed)
 	o.selection.fill(f, s)
 	if f.take("interval", s.Interval > 0) {
 		o.interval = s.Interval
@@ -153,6 +158,7 @@ func (o *findOptions) fillSaved(s Saved, changed func(string) bool) []string {
 	f.str("dest", &o.dest, s.Dest)
 	f.str("history-dir", &o.historyDir, s.HistoryDir)
 	f.str("endpoint", &o.endpoint, s.Endpoint)
+	o.follow = newFollow(s, changed)
 	o.selection.fill(f, s)
 	return filled
 }
@@ -166,6 +172,7 @@ func (o *browseOptions) fillSaved(s Saved, changed func(string) bool) []string {
 	f.str("dest", &o.dest, s.Dest)
 	f.str("history-dir", &o.historyDir, s.HistoryDir)
 	f.str("endpoint", &o.endpoint, s.Endpoint)
+	o.follow = newFollow(s, changed)
 	if o.dest != "" {
 		o.selection.fill(f, s)
 	}
@@ -183,5 +190,6 @@ func (o *deleteOptions) fillSaved(s Saved, changed func(string) bool) []string {
 		f.str("history-dir", &o.historyDir, s.HistoryDir)
 	}
 	f.str("endpoint", &o.endpoint, s.Endpoint)
+	o.follow = newFollow(s, changed)
 	return filled
 }

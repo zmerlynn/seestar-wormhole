@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -266,9 +267,16 @@ func TestScanTellsBlockedFromSilence(t *testing.T) {
 	}
 
 	failing := newFakeConn()
-	failing.writeErr = func(netip.Addr) error { return errors.New("no buffer space") }
-	if _, err := scanner(failing, 50*time.Millisecond).Scan(t.Context()); err == nil {
+	failing.writeErr = func(to netip.Addr) error {
+		return &net.OpError{Op: "write", Net: "udp", Addr: net.UDPAddrFromAddrPort(netip.AddrPortFrom(to, Port)), Err: errors.New("no buffer space")}
+	}
+	_, err = scanner(failing, 50*time.Millisecond).Scan(t.Context())
+	if err == nil {
 		t.Fatal("every send failed and the scan reported no error")
+	}
+	// Its text names no address, so it can be logged.
+	if strings.Contains(err.Error(), "192.0.2.") || strings.Contains(err.Error(), "198.51.100.") || !strings.Contains(err.Error(), "no buffer space") {
+		t.Fatalf("scan error %q", err)
 	}
 
 	// One interface failing is not the scan failing.

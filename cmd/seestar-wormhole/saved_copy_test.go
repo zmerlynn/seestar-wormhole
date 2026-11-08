@@ -14,6 +14,8 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
+	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 )
 
 // useProfileRoot makes root the default profile's folder for the test.
@@ -149,7 +151,7 @@ func TestDefaultProfileRefusals(t *testing.T) {
 			}
 			useProfileRoot(t, tc.root, tc.rootErr)
 			before := profileFiles(t, root)
-			for _, cmd := range fileCommandNames {
+			for _, cmd := range copyCommandNames {
 				code, record, logs := usageExit(t, cmd, "--profile", "default")
 				if code != 2 || record.Option != "--profile" || record.Rule != tc.rule || strings.Contains(logs, root) || strings.Contains(logs, "synthetic") {
 					t.Errorf("%s: exit %d %+v\n%s", cmd, code, record, logs)
@@ -177,13 +179,44 @@ func TestNoProfileReadsNothing(t *testing.T) {
 	}
 }
 
+// On this network, the profile carries the serial saved with the address,
+// and only there: the proxy route's saved serial is not a LAN serial.
+func TestDefaultProfileLANSerial(t *testing.T) {
+	root := savedConfigRoot(t)
+	body, _ := fullCopyJSON(t)
+	writeSavedCopy(t, root, body)
+	useProfileRoot(t, root, nil)
+	if got, err := loadDefaultProfile(); err != nil || got.LANSerial != "" {
+		t.Errorf("the proxy route = %+v, %v", got, err)
+	}
+	s := ui.Settings{Version: 1, Bind: "127.0.0.2", Idle: "2m", Ports: []proxyrun.Port{{Local: 1445, Device: 445}},
+		Route: "lan", LANAddress: "192.0.2.7", LANSerial: "SYNTHETIC_LAN_SERIAL"}
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSavedConfig(t, root, b)
+	got, err := loadDefaultProfile()
+	if err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "SYNTHETIC_LAN_SERIAL" {
+		t.Errorf("this network = %+v, %v", got, err)
+	}
+	s.LANSerial = ""
+	if b, err = json.Marshal(s); err != nil {
+		t.Fatal(err)
+	}
+	writeSavedConfig(t, root, b)
+	if got, err = loadDefaultProfile(); err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "" {
+		t.Errorf("no saved serial = %+v, %v", got, err)
+	}
+}
+
 // With a saved profile, a file command parses with no flag but --profile.
 func TestDefaultProfileFillsFlags(t *testing.T) {
 	root := savedConfigRoot(t)
 	body, _ := fullCopyJSON(t)
 	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
-	for _, cmd := range fileCommandNames {
+	for _, cmd := range copyCommandNames {
 		if o, err := parse([]string{cmd, "--profile", "default"}, io.Discard); err != nil || o.file == nil {
 			t.Errorf("%s --profile default: %v", cmd, err)
 		}
