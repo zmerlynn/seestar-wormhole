@@ -6,7 +6,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const {
-  test, expect, share, refused, lan, readJSON, frame, browseStatus, tab, field, openApp, openCopy, fakeStatus, copyViews, freeViews,
+  test, expect, share, refused, lan, readJSON, frame, browseStatus, tab, field, openApp, settleStartFocus, openCopy, fakeStatus, copyViews, freeViews,
 } = require('./app');
 
 const rootStatus = '2 folders, 2 files.';
@@ -42,6 +42,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(page.locator('#connection-text')).toHaveText('Not connected');
   await expect(page.getByLabel('Remotely through Telescope Network')).toBeChecked();
   // The arrow keys pass over the closed tabs.
+  await settleStartFocus(page);
   await connection.focus();
   await page.keyboard.press('ArrowRight');
   await expect(tab(page, 'Activity')).toBeFocused();

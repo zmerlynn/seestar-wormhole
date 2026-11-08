@@ -112,6 +112,23 @@ async function openApp(page, url) {
   await expect(page.locator('#version')).not.toHaveText('');
 }
 
+// settleStartFocus waits out the page's first focus move. After its first
+// status load the page focuses Connect: in the next frame if the window
+// has focus, otherwise when the window first gets it, which in WebKit can
+// come in the middle of a test's key presses. Connect is enabled by that
+// same load, after which the move is due; a focus event on the window
+// sends a move still waiting for one, and two frames let it land, so a
+// test can then put focus where it wants.
+async function settleStartFocus(page) {
+  const start = page.locator('#start');
+  await expect(start).toBeEnabled();
+  await page.evaluate(() => new Promise(done => {
+    window.dispatchEvent(new FocusEvent('focus'));
+    requestAnimationFrame(() => requestAnimationFrame(done));
+  }));
+  await expect(start).toBeFocused();
+}
+
 // openCopy loads the page and opens the Copy tab once copy's status is in.
 async function openCopy(page, url) {
   await openApp(page, url);
@@ -189,5 +206,5 @@ const freeViews = {
 };
 
 module.exports = {
-  test, expect, share, refused, env, lan, readJSON, frame, browseStatus, tab, field, openApp, openCopy, fakeStatus, longPath, copyViews, freeViews,
+  test, expect, share, refused, env, lan, readJSON, frame, browseStatus, tab, field, openApp, settleStartFocus, openCopy, fakeStatus, longPath, copyViews, freeViews,
 };
