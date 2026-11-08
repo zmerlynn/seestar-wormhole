@@ -41,14 +41,7 @@ func TestEveryTabWaitsForLocalNetwork(t *testing.T) {
 				at = account
 				at.Endpoint = e.set.Address
 			}
-			if err := e.p.start(e.set, at); err != nil {
-				t.Fatal(err)
-			}
-			e.p.mu.Lock()
-			done := e.p.done
-			e.p.mu.Unlock()
-			<-done
-			v := e.p.view()
+			v := e.runAt(at)
 			if lan && (v.State != pvDone || tries.Load() != 3 || time.Duration(waited.Load()) != 2*time.Second) {
 				t.Errorf("on this network: %d tries over %v, %+v", tries.Load(), time.Duration(waited.Load()), v)
 			}
