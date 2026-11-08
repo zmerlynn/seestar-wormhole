@@ -1,15 +1,21 @@
 package app
 
 import (
+	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"testing/fstest"
+	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/browse"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
@@ -263,5 +269,60 @@ func TestSaveFileInImagesFolder(t *testing.T) {
 	save(filepath.Join(folder, ".Seestar-Wormhole.LOCK"), "That name is kept for the copy lock. Choose another name or folder.")
 	if b, err := os.ReadFile(filepath.Join(folder, plan.LockName)); err != nil || len(b) != 0 {
 		t.Errorf("the lock file: %q, %v, want it empty", b, err)
+	}
+}
+
+// A save into the images folder holds the folder's lock for the whole
+// download, not just while it starts: a second writer through its own
+// root is refused while a read is held mid-file, and once the save fails
+// the lock is free again.
+func TestSaveFileHoldsFolderLockUntilDone(t *testing.T) {
+	folder := t.TempDir()
+	e := newAppEnv(t, savedAt(folder))
+	entered := make(chan struct{})
+	sessions := browse.NewSessions(t.Context(), func(context.Context) (remote.Session, error) {
+		f := remote.NewFake(fstest.MapFS{"a.fit": {Data: []byte("abc")}})
+		f.Faults = map[string]remote.Fault{"a.fit": {After: 1, Stall: func() { close(entered) }}}
+		return f, nil
+	}, slog.New(slog.DiscardHandler))
+	defer sessions.Close()
+	done := make(chan error, 1)
+	go func() {
+		_, err := e.s.saveTo(t.Context(), sessions, "a.fit", filepath.Join(folder, "a.fit"))
+		done <- err
+	}()
+	select {
+	case <-entered:
+	case err := <-done:
+		t.Fatalf("the save ended before its read was held: %v", err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("the save did not reach the held read")
+	}
+	root, err := os.OpenRoot(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if held, err := state.LockFolder(root); !errors.Is(err, state.ErrFolderLocked) {
+		if held != nil {
+			held.Close()
+		}
+		t.Errorf("during the save a second writer got the folder lock: %v, want %v", err, state.ErrFolderLocked)
+	}
+	// Closing the sessions fails the held read, and with it the save.
+	sessions.Close()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Error("the save succeeded after its session closed")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("the save did not end after its session closed")
+	}
+	held, err := state.LockFolder(root)
+	if err != nil {
+		t.Errorf("after the failed save the folder lock is %v, want it free", err)
+	} else {
+		held.Close()
 	}
 }
