@@ -157,10 +157,12 @@ func (f *freer) find(set Settings, t Target) error {
 	}
 	o.DryRun, o.Hooks = true, f.hooks(nil)
 	o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-		if err := f.still(t); err != nil {
-			return nil, err
-		}
-		return f.dial(ctx, endpoint)
+		return establish(ctx, t, func(ctx context.Context) (remote.Session, error) {
+			if err := f.still(t); err != nil {
+				return nil, err
+			}
+			return f.dial(ctx, endpoint)
+		})
 	}
 	return f.run(freeStatus{state: frChecking, set: set, target: t}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
 		st := &f.st
@@ -204,11 +206,15 @@ func (f *freer) confirm(id int, folders []string, now Target) error {
 		return err
 	}
 	o.Only, o.Hooks = only, f.hooks(checked)
+	// Only opening the session is tried again; nothing is deleted until it
+	// is open.
 	o.OpenRemover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
-		if err := f.still(st.target); err != nil {
-			return nil, err
-		}
-		return f.remover(ctx, endpoint)
+		return establish(ctx, st.target, func(ctx context.Context) (remote.Remover, error) {
+			if err := f.still(st.target); err != nil {
+				return nil, err
+			}
+			return f.remover(ctx, endpoint)
+		})
 	}
 	if f.prepared != nil {
 		f.prepared()

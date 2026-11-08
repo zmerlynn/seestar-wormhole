@@ -109,6 +109,9 @@ func (st *freeStatus) view() freeView {
 	case frCheckFail:
 		v.Title = "Couldn't finish checking files: " + st.err.Error() + "."
 		v.Text = "Preview again to retry."
+		if st.target.onLAN() {
+			v.Text += LocalNetworkHint(hostOS, st.err)
+		}
 		if errors.Is(st.err, engine.ErrNoDest) {
 			v.Title = "Couldn't finish checking files: " + st.set.Folder + " isn't there."
 			v.Text = noDest
@@ -193,6 +196,9 @@ func (st *freeStatus) view() freeView {
 		v.Text = "No files were deleted."
 		if st.deleted > 0 {
 			v.Text = count(st.deleted, "file was", "files were") + " deleted before this; nothing after it."
+		}
+		if st.target.onLAN() {
+			v.Text += LocalNetworkHint(hostOS, st.err)
 		}
 	}
 	return v

@@ -38,7 +38,8 @@ var testAddr = netip.MustParseAddrPort("127.0.0.1:53818")
 // dials records the sessions opened, by endpoint.
 type dials struct {
 	mu        sync.Mutex
-	dir       string // if set, every session is this folder's
+	dir       string       // if set, every session is this folder's
+	fail      func() error // if set and not nil, what a dial fails with
 	endpoints []string
 	sessions  []*remote.Fake
 }
@@ -46,6 +47,11 @@ type dials struct {
 func (d *dials) dial(ctx context.Context, endpoint string) (remote.Session, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.fail != nil {
+		if err := d.fail(); err != nil {
+			return nil, err
+		}
+	}
 	if d.dir != "" {
 		return remote.NewFakeDir(d.dir)
 	}
@@ -67,6 +73,7 @@ type appEnv struct {
 
 	mu       sync.Mutex
 	endpoint string     // the target's
+	device   string     // the target's; "" on this network
 	lost     error      // what finding the target fails with
 	saved    []Settings // each Save, in order
 	saveErr  error      // what Save fails with
@@ -83,7 +90,7 @@ func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 		Target: func() (Target, error) {
 			e.mu.Lock()
 			defer e.mu.Unlock()
-			return Target{Endpoint: e.endpoint}, e.lost
+			return Target{Endpoint: e.endpoint, Device: e.device}, e.lost
 		},
 		Dial: e.d.dial,
 		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {

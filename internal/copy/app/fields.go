@@ -232,6 +232,35 @@ func tryWithin[T any](ctx context.Context, d time.Duration, try func(context.Con
 	return v, err, cut
 }
 
+// establish runs try, which opens a session at t. On this network it is
+// [retryLAN]'s, so every tab's first dial waits out macOS's Local Network
+// prompt; through the account it tries once.
+func establish[T any](ctx context.Context, t Target, try func(context.Context) (T, error)) (T, error) {
+	if t.onLAN() {
+		return retryLAN(ctx, localNetworkRetry, try)
+	}
+	return try(ctx)
+}
+
+// hinted is a failed dial with [LocalNetworkHint] after its message, for a
+// page that shows only the message. It unwraps to the dial's error.
+type hinted struct {
+	err  error
+	hint string
+}
+
+func (e *hinted) Error() string { return strings.TrimRight(e.err.Error(), ".") + "." + e.hint }
+func (e *hinted) Unwrap() error { return e.err }
+
+// withHint adds [LocalNetworkHint] to err, a failed dial to an address on
+// this network, where it applies.
+func withHint(err error) error {
+	if hint := LocalNetworkHint(hostOS, err); hint != "" {
+		return &hinted{err, hint}
+	}
+	return err
+}
+
 // testMessage words Test's result for the page on goos. Test checks an
 // address on this network.
 func testMessage(goos, endpoint string, entries []remote.Entry, err error) string {

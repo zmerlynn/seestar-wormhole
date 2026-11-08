@@ -104,12 +104,18 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	}
 	// Browse's dials ask for the endpoint again, so they reach the
 	// telescope where it is now. A change of route replaces Browse's pool.
+	// Browse's page shows only the error's message, so one on this network
+	// carries the Local Network hint.
 	s.dial = func(ctx context.Context) (remote.Session, error) {
 		t, err := s.target()
 		if err != nil {
 			return nil, err
 		}
-		return dial(ctx, t.Endpoint)
+		sess, err := establish(ctx, t, func(ctx context.Context) (remote.Session, error) { return dial(ctx, t.Endpoint) })
+		if err != nil && t.onLAN() {
+			err = withHint(err)
+		}
+		return sess, err
 	}
 	// Each pass of copying follows its telescope to where it is now, and
 	// copying stops once the target is another telescope.
