@@ -16,14 +16,20 @@ import (
 const logLimit = 64 << 10
 const eventLimit = 80
 
-// Only fixed lifecycle messages, including the selected display label, enter
-// either log. No dependency error, account, control capability, or payload is accepted.
+// Only fixed lifecycle messages, including the selected display label, and
+// the fixed file-tool lines enter either log. No dependency error, account,
+// control capability, path, file name or payload is accepted. Source is
+// "connection" for a connection line; a file-tool line also has its op, and
+// its count of failed files when there are any.
 type event struct {
 	Time    time.Time `json:"time"`
+	Source  string    `json:"source"`
+	Op      string    `json:"op,omitempty"`
 	Message string    `json:"message"`
 	Code    string    `json:"code"`
 	Phase   string    `json:"phase"`
 	Reason  string    `json:"reason"`
+	Count   int       `json:"count,omitzero"`
 }
 
 type eventLog struct {
@@ -32,6 +38,14 @@ type eventLog struct {
 	storage *storage
 	recent  []event
 	failed  bool
+	// lastConnection is the last connection line, which a repeat of it
+	// collapses into; hasConnection says there is one.
+	lastConnection event
+	hasConnection  bool
+	// failing holds each failing file-tool operation, and lastSeq the
+	// newest outcome seen of each operation, failing or not.
+	failing map[opKey]*failState
+	lastSeq map[opKey]uint64
 }
 
 func eventCode(text, telescope string, catalogs ...cloudhttp.Catalog) string {
@@ -77,21 +91,30 @@ func (l *eventLog) publishLocked(text string, err error, telescope string, catal
 	if code == "" {
 		return nil
 	}
-	entry := event{Time: time.Now().UTC(), Message: text, Code: code}
+	entry := event{Time: time.Now().UTC(), Source: diagnostic.SourceConnection, Message: text, Code: code}
 	if err != nil {
 		entry.Phase, entry.Reason = diagnostic.Fields(err, "connect")
 	}
-	if len(catalogs) == 0 && len(l.recent) > 0 {
-		last := l.recent[len(l.recent)-1]
+	// A repeat collapses into the last connection line, whatever file-tool
+	// lines came between.
+	if len(catalogs) == 0 && l.hasConnection {
+		last := l.lastConnection
 		if last.Message == entry.Message && last.Phase == entry.Phase && last.Reason == entry.Reason {
 			return nil
 		}
 	}
+	l.lastConnection, l.hasConnection = entry, true
+	l.appendLocked(entry)
+	return &entry
+}
+
+// appendLocked adds entry to the in-memory trail, keeping its newest
+// eventLimit lines. The caller holds mu.
+func (l *eventLog) appendLocked(entry event) {
 	l.recent = append(l.recent, entry)
 	if len(l.recent) > eventLimit {
 		l.recent = append([]event(nil), l.recent[len(l.recent)-eventLimit:]...)
 	}
-	return &entry
 }
 
 // The caller holds diskMu, preserving the memory publication order on disk.
@@ -166,8 +189,16 @@ func (l *eventLog) appendLine(line []byte) error {
 	return err
 }
 func (l *eventLog) snapshot() ([]event, string, bool) {
+	events, _, path, failed := l.trail()
+	return events, path, failed
+}
+
+// trail returns the in-memory trail, oldest first, the failing file-tool
+// operations, the log's path and whether its last append failed, all from
+// one moment.
+func (l *eventLog) trail() ([]event, []opFailure, string, bool) {
 	if l == nil {
-		return []event{}, "", false
+		return []event{}, []opFailure{}, "", false
 	}
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -175,7 +206,7 @@ func (l *eventLog) snapshot() ([]event, string, bool) {
 	if l.storage != nil {
 		path = filepath.Join(l.storage.root, "gui.log")
 	}
-	return append([]event{}, l.recent...), path, l.failed
+	return append([]event{}, l.recent...), l.failuresLocked(), path, l.failed
 }
 
 // addCatalog records every fetch, including consecutive identical catalogs.
