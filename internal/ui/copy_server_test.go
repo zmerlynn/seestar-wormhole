@@ -242,7 +242,11 @@ func TestBrowseFrame(t *testing.T) {
 	}
 }
 
-func TestCopyEndpoint(t *testing.T) {
+// The saved endpoint, which a copier outside the app reaches the
+// telescope at, is a TCP host:port from the saved settings alone: the
+// saved address on this network, the proxy's SMB listener through the
+// account, or errSMBOff when that listener is off. It is never a run.
+func TestSavedEndpointIsTCPOnly(t *testing.T) {
 	account := testSettings()
 	lan := account
 	lan.Route, lan.LANAddress = routeLAN, "192.0.2.10:4450"
@@ -255,25 +259,21 @@ func TestCopyEndpoint(t *testing.T) {
 	specific := account
 	specific.Bind = "192.0.2.5"
 	for _, tc := range []struct {
-		name       string
-		saved, run Settings
-		connected  bool
-		want       string
-		err        error
+		name  string
+		saved Settings
+		want  string
+		err   error
 	}{
-		{"lan", lan, Settings{}, false, "192.0.2.10:4450", nil},
-		{"lan while the account runs", lan, account, true, "192.0.2.10:4450", nil},
-		{"lan unset", Settings{Route: routeLAN}, Settings{}, false, "", errNoLANAddress},
-		{"account not connected", account, account, false, "", errNotConnected},
-		{"old file", Settings{}, account, false, "", errNotConnected},
-		{"account", account, account, true, "127.0.0.1:4445", nil},
-		{"account loopback bind", account, local, true, "127.0.0.1:4445", nil},
-		{"account specific bind", account, specific, true, "192.0.2.5:4445", nil},
-		{"account moved port", account, moved, true, "127.0.0.1:5445", nil},
-		{"smb off", account, smbOff, true, "", errSMBOff},
+		{"lan", lan, "192.0.2.10:4450", nil},
+		{"lan unset", Settings{Route: routeLAN}, "", errNoLANAddress},
+		{"account", account, "127.0.0.1:4445", nil},
+		{"account loopback bind", local, "127.0.0.1:4445", nil},
+		{"account specific bind", specific, "192.0.2.5:4445", nil},
+		{"account moved port", moved, "127.0.0.1:5445", nil},
+		{"smb off", smbOff, "", errSMBOff},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			got, err := copyEndpointFor(tc.saved, tc.run, tc.connected)
+			got, err := SavedCopyEndpoint(tc.saved)
 			if got != tc.want || !errors.Is(err, tc.err) {
 				t.Fatalf("= %q, %v; want %q, %v", got, err, tc.want, tc.err)
 			}
@@ -281,8 +281,8 @@ func TestCopyEndpoint(t *testing.T) {
 	}
 }
 
-// A run that has not reached Ready is not connected: the copier waits
-// for the connection rather than starting it.
+// A run that has not armed is not connected: the copier waits for the
+// connection rather than starting it.
 func TestCopyWaitsForTheConnection(t *testing.T) {
 	s, _ := copyServer(t)
 	release := make(chan struct{})
@@ -323,7 +323,7 @@ func TestRouteSave(t *testing.T) {
 		t.Fatalf("an old file has a route: %+v", saved)
 	}
 	s.settings, s.controller.lastSaved = saved, saved
-	if got, _ := copyEndpointFor(saved, Settings{}, false); got != "" {
+	if got, err := s.copyTarget(); got.Endpoint != "" || !errors.Is(err, errNotConnected) {
 		t.Error("an old file is not the account route")
 	}
 	post := func(body string) *httptest.ResponseRecorder {

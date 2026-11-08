@@ -223,12 +223,14 @@ func TestSessionStaysReadOnly(t *testing.T) {
 	}
 }
 
-// TestOnlyDeleteDialsRemover fails if DialRemover is referenced in a
-// non-test file under internal/ or cmd/ other than the delete command and
-// the copy app's Free up space tab. It stops accidental use; it does not prove
-// what code can reach.
+// TestOnlyDeleteDialsRemover fails if DialRemover or DialRemoverVia is
+// referenced in a non-test file under internal/ or cmd/ other than the
+// delete command, the copy app's Free up space tab, and the app's copier
+// options, which choose its route. It stops accidental use; it does not
+// prove what code can reach.
 func TestOnlyDeleteDialsRemover(t *testing.T) {
-	const allowed = "internal/copy/cli/delete.go or internal/copy/app/freespace.go"
+	const allowed = "internal/copy/cli/delete.go, internal/copy/app/freespace.go or internal/ui/runtime.go"
+	remover := func(name string) bool { return name == "DialRemover" || name == "DialRemoverVia" }
 	fset := token.NewFileSet()
 	for _, top := range []string{"internal", "cmd"} {
 		err := filepath.WalkDir(filepath.Join("..", "..", "..", top), func(p string, d fs.DirEntry, err error) error {
@@ -236,7 +238,7 @@ func TestOnlyDeleteDialsRemover(t *testing.T) {
 				return err
 			}
 			rel := filepath.ToSlash(strings.TrimPrefix(p, filepath.Join("..", "..", "..")+string(filepath.Separator)))
-			if rel == "internal/copy/cli/delete.go" || rel == "internal/copy/app/freespace.go" {
+			if rel == "internal/copy/cli/delete.go" || rel == "internal/copy/app/freespace.go" || rel == "internal/ui/runtime.go" {
 				return nil
 			}
 			f, err := parser.ParseFile(fset, p, nil, parser.SkipObjectResolution)
@@ -249,16 +251,16 @@ func TestOnlyDeleteDialsRemover(t *testing.T) {
 					// The declaration names DialRemover; its body is still inspected.
 					if n.Body != nil {
 						ast.Inspect(n.Body, func(m ast.Node) bool {
-							if id, ok := m.(*ast.Ident); ok && id.Name == "DialRemover" {
-								t.Errorf("%s: DialRemover is referenced outside %s", fset.Position(id.Pos()), allowed)
+							if id, ok := m.(*ast.Ident); ok && remover(id.Name) {
+								t.Errorf("%s: %s is referenced outside %s", fset.Position(id.Pos()), id.Name, allowed)
 							}
 							return true
 						})
 					}
 					return false
 				case *ast.Ident:
-					if n.Name == "DialRemover" {
-						t.Errorf("%s: DialRemover is referenced outside %s", fset.Position(n.Pos()), allowed)
+					if remover(n.Name) {
+						t.Errorf("%s: %s is referenced outside %s", fset.Position(n.Pos()), n.Name, allowed)
 					}
 				}
 				return true

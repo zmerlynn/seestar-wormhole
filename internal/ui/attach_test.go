@@ -535,3 +535,34 @@ func TestAdapterStopBeforeAttach(t *testing.T) {
 		t.Errorf("dial = %v, want errNotConnected", err)
 	}
 }
+
+// Admissions release their registration on the run's context as each
+// returns, success or failure, and a closed channel leaves no record: a
+// run's thousand dials leave none behind.
+func TestAdapterAdmissionReleasesRegistrations(t *testing.T) {
+	var n atomic.Int32
+	d := &fakeDialer{dial: func(context.Context) (net.Conn, error) {
+		if n.Add(1)%2 == 0 {
+			return nil, errors.New("synthetic refusal")
+		}
+		return &fakeConn{}, nil
+	}}
+	as, a, detach := attached(t, d)
+	defer detach()
+	for i := range 1000 {
+		c, err := as.dial(t.Context(), 1)
+		if (err == nil) != (i%2 == 0) {
+			t.Fatalf("dial %d = %v", i, err)
+		}
+		if c != nil {
+			c.Close()
+		}
+		as.mu.Lock()
+		conns := len(a.conns)
+		as.mu.Unlock()
+		if r := a.regs.Load(); r != 0 || conns != 0 {
+			t.Fatalf("after dial %d: %d registrations, %d channels", i, r, conns)
+		}
+	}
+	drained(t, as, a)
+}

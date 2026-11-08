@@ -118,7 +118,8 @@ func TestCopyUnlocksOnSaveAfterTest(t *testing.T) {
 }
 
 // Through the account, the tabs open once the connection is ready, and
-// say when SMB is off.
+// have the telescope whether or not the SMB port is on: the file tools
+// don't use it.
 func TestCopyUnlocksOnConnection(t *testing.T) {
 	e := newRouteEnv(t)
 	a := e.account()
@@ -131,7 +132,7 @@ func TestCopyUnlocksOnConnection(t *testing.T) {
 		t.Errorf("while connecting = %+v", got)
 	}
 	a.markReady("SYNTHETIC1")
-	if got := e.copyStatus(); !got.Unlocked || got.Reach != "smb_off" {
+	if got := e.copyStatus(); !got.Unlocked || got.Reach != "" {
 		t.Errorf("connected with SMB off = %+v", got)
 	}
 	a.stop()

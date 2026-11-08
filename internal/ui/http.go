@@ -358,15 +358,22 @@ func (s *server) changeRoute(moves func() bool, commit func() error) error {
 }
 
 // Copier endpoint errors, shown after "Couldn't start copying: ".
+// errSMBOff is the saved endpoint's only: the file tools don't need the
+// SMB port.
 var (
 	errNotConnected = errors.New("Not connected. Go to Connection to reconnect")
 	errSMBOff       = errors.New("SMB is off. Turn on its port in Connection > Advanced")
 	errNoLANAddress = errors.New("Save the telescope's address on the Connection tab first")
 )
 
+// accountEndpoint is the account route's endpoint as Browse and Copy's
+// errors show it. It is a label only: the route is the Target's Run, and
+// nothing parses or dials this text.
+const accountEndpoint = "Seestar (account connection)"
+
 // copyState reports whether Copy, Browse and Free up space are open, and
-// why the copier has no target now: "not_connected", "smb_off" or
-// "no_lan_address", or "" when it has one.
+// why the copier has no target now: "not_connected" or "no_lan_address",
+// or "" when it has one.
 func (s *server) copyState() (unlocked bool, reach string) {
 	if s.copy == nil {
 		return false, ""
@@ -375,8 +382,6 @@ func (s *server) copyState() (unlocked bool, reach string) {
 	switch {
 	case errors.Is(err, errNotConnected):
 		reach = "not_connected"
-	case errors.Is(err, errSMBOff):
-		reach = "smb_off"
 	case errors.Is(err, errNoLANAddress):
 		reach = "no_lan_address"
 	}
@@ -408,10 +413,10 @@ func (s *server) settingsFiles() settingsFiles {
 }
 
 // copyTarget is where the copier reaches the telescope now. On this
-// network it is the saved address. Through the account it is the proxy's
-// local port for the device's SMB port, with the telescope the run
-// selected and the run's number, and only while the proxy is connected:
-// the copier never starts or holds the device session itself.
+// network it is the saved address. Through the account it is the run's
+// own session, named by the run's number, with the telescope the run
+// selected, and only while the run is connected: the copier never starts
+// or holds the device session itself. It never reads the Services ports.
 func (s *server) copyTarget() (copyapp.Target, error) {
 	if copyTargetHook != nil {
 		copyTargetHook()
@@ -419,42 +424,53 @@ func (s *server) copyTarget() (copyapp.Target, error) {
 	s.mu.Lock()
 	settings := s.settings
 	s.mu.Unlock()
-	run, device, id, ok := s.controller.connected()
-	endpoint, err := copyEndpointFor(settings, run, ok)
-	if err != nil || settings.Route == routeLAN {
+	if settings.Route == routeLAN {
+		endpoint, err := lanEndpoint(settings)
 		return copyapp.Target{Endpoint: endpoint}, err
 	}
-	return copyapp.Target{Endpoint: endpoint, Device: device, Run: id}, nil
+	_, device, id, ok := s.controller.connected()
+	if !ok {
+		return copyapp.Target{}, errNotConnected
+	}
+	return copyapp.Target{Endpoint: accountEndpoint, Device: device, Run: id}, nil
 }
 
-// copyEndpointFor is copyEndpoint for the saved settings and the run's,
-// which is connected or not.
-func copyEndpointFor(settings, run Settings, connected bool) (string, error) {
-	if settings.Route == routeLAN {
-		if address, ok := copyapp.NormalizeAddress(settings.LANAddress); ok {
-			return address, nil
-		}
-		return "", errNoLANAddress
+// SavedCopyEndpoint is the TCP endpoint saved settings name for a copier
+// outside the app: on this network the saved address, through the
+// account the proxy's local listener for the device's SMB port, which
+// must be running. It reads only s, and is errSMBOff when that listener
+// is off.
+func SavedCopyEndpoint(s Settings) (string, error) {
+	if s.Route == routeLAN {
+		return lanEndpoint(s)
 	}
-	if !connected {
-		return "", errNotConnected
-	}
-	ports, _, err := run.validate()
+	ports, _, err := s.validate()
 	if err != nil {
-		return "", errNotConnected
-	}
-	// The proxy listens on its bind address; a wildcard or loopback bind
-	// is reached on loopback.
-	host := netip.AddrFrom4([4]byte{127, 0, 0, 1})
-	if addr, err := netip.ParseAddr(run.Bind); err == nil && !addr.IsUnspecified() {
-		host = addr.Unmap()
+		return "", err
 	}
 	for _, p := range ports {
-		if p.Device == 445 {
-			return netip.AddrPortFrom(host, p.Local).String(), nil
+		if p.Device == smbPort {
+			return netip.AddrPortFrom(bindHost(s.Bind), p.Local).String(), nil
 		}
 	}
 	return "", errSMBOff
+}
+
+// lanEndpoint is this network's saved address, normalized.
+func lanEndpoint(s Settings) (string, error) {
+	if address, ok := copyapp.NormalizeAddress(s.LANAddress); ok {
+		return address, nil
+	}
+	return "", errNoLANAddress
+}
+
+// bindHost is where the proxy's listeners on bind are reached: a wildcard
+// or loopback bind on loopback.
+func bindHost(bind string) netip.Addr {
+	if addr, err := netip.ParseAddr(bind); err == nil && !addr.IsUnspecified() {
+		return addr.Unmap()
+	}
+	return netip.AddrFrom4([4]byte{127, 0, 0, 1})
 }
 
 func (s *server) rejectAction(w http.ResponseWriter, err error) {

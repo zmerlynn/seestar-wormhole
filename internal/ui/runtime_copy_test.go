@@ -6,11 +6,13 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -366,5 +368,124 @@ func TestRuntimeStartupFailureStartsNoCopying(t *testing.T) {
 	}
 	if err := e.stopped(); err != nil {
 		t.Error(err)
+	}
+}
+
+// The app's one Mount is built by copyMountOptions: with no copyDial,
+// an address saved on this network reaches the telescope by the TCP
+// dialer and remover, for a pass, a listing and a preview, and only a
+// confirmed delete opens a remover.
+func TestStartupMountUsesTheBuilder(t *testing.T) {
+	e := newRuntimeEnv(t, false)
+	share := t.TempDir()
+	mtime := time.Unix(1761700000, 0)
+	if err := os.MkdirAll(filepath.Join(share, "MyWorks"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join(share, "MyWorks", "done.fit")
+	if err := os.WriteFile(name, make([]byte, 1<<10), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chtimes(name, mtime, mtime); err != nil {
+		t.Fatal(err)
+	}
+	st, err := openStorage(e.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := testSettings()
+	saved.Route, saved.LANAddress, saved.RouteEstablished = routeLAN, "192.0.2.10", true
+	err = st.write("config.json", saved)
+	st.directory.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	savedTCP, savedRemover := tcpDial, tcpRemover
+	t.Cleanup(func() { tcpDial, tcpRemover = savedTCP, savedRemover })
+	copyDial = nil
+	var mu sync.Mutex
+	var dialed []string
+	var removers int
+	tcpDial = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Session, error) {
+		mu.Lock()
+		dialed = append(dialed, endpoint)
+		mu.Unlock()
+		return remote.NewFakeDir(share)
+	}
+	tcpRemover = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Remover, error) {
+		mu.Lock()
+		dialed = append(dialed, endpoint)
+		removers++
+		mu.Unlock()
+		return remote.NewFakeDir(share)
+	}
+	removersOpened := func() int { mu.Lock(); defer mu.Unlock(); return removers }
+	until := func(what string, cond func() bool) bool {
+		for deadline := time.Now().Add(20 * time.Second); !cond(); time.Sleep(10 * time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Errorf("timed out waiting for %s", what)
+				return false
+			}
+		}
+		return true
+	}
+	e.launch(t.Context(), func(c *runtimeClient, quit func()) {
+		defer quit()
+		folder, _ := json.Marshal(e.folder)
+		if code, reply := c.do("POST", "/copy/api/settings", `{"folder":`+string(folder)+`,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`); code != 200 {
+			t.Errorf("copy settings = %d %s", code, reply)
+			return
+		}
+		if code, reply := c.do("GET", "/browse/api/list?path=MyWorks", ""); code != 200 || !strings.Contains(reply, "done.fit") {
+			t.Errorf("browse = %d %s", code, reply)
+		}
+		if code, reply := c.do("POST", "/copy/api/copy", `{"action":"start"}`); code != 200 {
+			t.Errorf("start copying = %d %s", code, reply)
+			return
+		}
+		if !until("the pass", func() bool { return c.copyState() == "uptodate" }) {
+			return
+		}
+		c.do("POST", "/copy/api/copy", `{"action":"stop"}`)
+		if code, reply := c.do("POST", "/copy/api/delete", `{"action":"find","days":"0","trust":false}`); code != 200 {
+			t.Errorf("find = %d %s", code, reply)
+			return
+		}
+		var id int
+		if !until("the preview", func() bool {
+			_, reply := c.do("GET", "/copy/api/status", "")
+			var v struct {
+				Free struct {
+					State string `json:"state"`
+					ID    int    `json:"id"`
+				} `json:"free"`
+			}
+			json.Unmarshal([]byte(reply), &v)
+			id = v.Free.ID
+			return v.Free.State == "preview"
+		}) {
+			return
+		}
+		if n := removersOpened(); n != 0 {
+			t.Errorf("the preview opened %d removers", n)
+		}
+		if code, reply := c.do("POST", "/copy/api/delete", `{"action":"delete","id":`+strconv.Itoa(id)+`,"folders":["MyWorks"]}`); code != 200 {
+			t.Errorf("delete = %d %s", code, reply)
+			return
+		}
+		until("the delete", func() bool { _, err := os.Stat(name); return os.IsNotExist(err) })
+		if n := removersOpened(); n != 1 {
+			t.Errorf("the delete opened %d removers, want 1", n)
+		}
+	})
+	mu.Lock()
+	defer mu.Unlock()
+	if len(dialed) == 0 {
+		t.Error("nothing was dialed")
+	}
+	for _, endpoint := range dialed {
+		if endpoint != "192.0.2.10:445" {
+			t.Errorf("dialed %q", endpoint)
+		}
 	}
 }
