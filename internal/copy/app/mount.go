@@ -136,7 +136,8 @@ var startEvery = time.Second
 // target: through the account it waits for the connection and never starts
 // it. It gives up once copying has started since the app opened, even from
 // the page, the setting is off, the app quits, or a start fails with a
-// target there.
+// target there. Whether to wait is decided by the look that refused the
+// start, not by a second look, which may find a target that came since.
 func (s *server) startWhenReady(ctx context.Context, every time.Duration) {
 	defer guard.Recover(s.log, "starting copying")
 	tick := time.NewTicker(every)
@@ -152,7 +153,7 @@ func (s *server) startWhenReady(ctx context.Context, every time.Duration) {
 		if err == nil || errors.Is(err, errStarted) {
 			return
 		}
-		if _, waiting := s.target(); waiting == nil {
+		if !errors.As(err, new(noTarget)) {
 			s.log.Error("start copying", "err", err)
 			return
 		}

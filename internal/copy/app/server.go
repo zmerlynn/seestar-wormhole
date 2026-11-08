@@ -187,6 +187,13 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 // errStarted refuses the start as the app opens once copying has started.
 var errStarted = errors.New("copying has started since the app opened")
 
+// noTarget is a start refused because the telescope has no target yet.
+// It reads as the target's own error.
+type noTarget struct{ err error }
+
+func (e noTarget) Error() string { return e.err.Error() }
+func (e noTarget) Unwrap() error { return e.err }
+
 // startCopying turns copying on with the saved settings, which discards
 // a preview. Holding s.admit keeps a Save or a change of endpoint from
 // landing between the check and the start. The start as the app opens,
@@ -205,7 +212,7 @@ func (s *server) startCopying(opening bool) error {
 	}
 	set, t, err := s.resolve(s.file.settings)
 	if err != nil {
-		return err
+		return noTarget{err}
 	}
 	if err := s.copy.start(set, t); err != nil {
 		return err
