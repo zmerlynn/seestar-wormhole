@@ -20,6 +20,13 @@ starts, from any tab, waits up to 5 seconds for your answer. On a Mac, a
 **Test**, copy, Preview, Browse or Free up space on this network that nothing
 answered says so.
 
+**The window says "Connection to the controls was lost."** The window can't
+reach the app behind it; the proxy may still be running. The tabs keep their
+last known state, dimmed, and their actions are disabled. Reopen
+seestar-wormhole to reconnect. If it says it couldn't read the status of Copy
+and Free up space instead, the controls are still there; the warning clears
+by itself once that status can be read again.
+
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
 `device_offline` means the cloud or connection service reports the telescope offline or asleep.
 `connection_timeout` means a connection deadline expired without establishing the session; it does not

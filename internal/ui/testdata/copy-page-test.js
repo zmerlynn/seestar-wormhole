@@ -366,3 +366,50 @@ async function checkActionAlerts(st) {
     copyAssert(shown === '' && writes === 2, id + ' was not cleared');
   }
 }
+
+// A failed poll is said above every tab, on either route: the copy tabs
+// keep their last known state, marked stale, with their actions off and
+// their drafts kept, until a poll succeeds.
+async function checkLostLine(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.after);
+  $('x-days').value = '30';
+  $('f-ex').value = 'Draft';
+  const views = ['c-box', 'c-preview', 'x-box', 'x-preview', 'b-frame'], actions = ['c-start', 'c-pbtn', 'x-find', 'f-set', 'h-clear'];
+  const everyTab = (what, wording, known) => {
+    for (const tab of tabNames) {
+      selectTab(tab);
+      copyAssert(currentTab === tab && !$('lost').hidden && $('lost-text').textContent === wording, what + ' on ' + tab + ': ' + $('lost-text').textContent);
+      copyAssert($('last-known').hidden === !known && (!known || $('last-known').textContent === known), what + ' last known: ' + $('last-known').textContent);
+    }
+    for (const id of views) copyAssert($(id).getAttribute('data-stale') === '', id + ' is not stale: ' + what);
+    for (const id of actions) copyAssert($(id).disabled, id + ' is on: ' + what);
+  };
+  // Copy's status alone: the LAN route's own controls stay on.
+  api = async (action, body, base) => {
+    if (base === '/copy/api/') throw {code: 'controls', message: lostCopy};
+    return st.unlocked;
+  };
+  await poll();
+  everyTab('copy lost', "Couldn't read the status of Copy and Free up space. They show their last known state until it can be read again.", '');
+  copyAssert(!$('lan-options').disabled, 'a lost copy status turned off the LAN form');
+  // The controls too: on this network the header line is the last known
+  // state.
+  api = async () => {
+    throw new TypeError('Load failed');
+  };
+  await poll();
+  everyTab('controls lost on this network', lostCopy, '');
+  copyAssert($('lan-options').disabled && $('notice').hidden, 'the LAN form stayed on, or the notice repeated the loss');
+  // Through the account, the last known state is the connection's.
+  render({...st.unlocked, active: true, ready: true, status: 'Connected to your Seestar', settings: {...st.unlocked.settings, route: 'account'}});
+  everyTab('controls lost through the account', lostCopy, 'Last known state: Connected to your Seestar');
+  copyAssert($('start').disabled, 'Stop stayed on');
+  // A poll that succeeds puts it all back, drafts kept.
+  api = async (action, body, base) => base === '/copy/api/' ? st.after : st.unlocked;
+  await poll();
+  copyAssert($('lost').hidden && $('last-known').hidden, 'the loss stayed after a poll succeeded');
+  for (const id of views) copyAssert($(id).getAttribute('data-stale') === null, id + ' stayed stale');
+  for (const id of actions) copyAssert(!$(id).disabled, id + ' stayed off');
+  copyAssert($('x-days').value === '30' && $('f-ex').value === 'Draft', 'a draft was lost');
+}

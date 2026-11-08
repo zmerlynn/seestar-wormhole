@@ -23,6 +23,11 @@ let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '
 let routeChoice = 'account', lanPending = '', lanReach = null, currentTab = 'connection';
 const tabNames = ['connection', 'copy', 'browse', 'free', 'activity'];
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
+const copyLostCopy = "Couldn't read the status of Copy and Free up space. They show their last known state until it can be read again.";
+// controlsLost: the controls' status poll or an action found the server
+// gone. copyLost: copy's status poll failed. Either way the copy tabs show
+// their last known state, marked stale, with their actions off.
+let controlsLost = false, copyLost = false;
 const fieldCopy = {
   email: 'Enter your Seestar account email.', password: 'Enter a password of 8 to 32 characters, or use a saved password.',
   idle: 'Enter a wait time greater than zero.'
@@ -183,12 +188,16 @@ function fieldError(field, message, code, focus = false) {
 function fail(e, focus = false) {
   const code = e.code || 'controls';
   actionError = code;
-  alertText(e.field ? '' : (e.message || fieldCopy[code] || lostCopy));
+  // A lost server is said once, above every tab.
+  alertText(e.field || code === 'controls' ? '' : (e.message || fieldCopy[code] || lostCopy));
   if (e.field) fieldError(e.field, e.message || fieldCopy[code] || 'Check this setting.', code, focus);
   if (code === 'password_remove') {
     retryRemoval = true;
   }
-  if (code === 'controls') connected = false;
+  if (code === 'controls') {
+    connected = false;
+    controlsLost = true;
+  }
 }
 function validate() {
   clearErrors();
@@ -277,6 +286,7 @@ function controls() {
   text('status', statusText);
   $('advanced').querySelector('summary').tabIndex = blocked || active || !!pending ? -1 : 0;
   routeControls(blocked);
+  lostLine();
   if (pickerFocusPending && !$('options').disabled) {
     pickerFocusPending = false;
     const picker = $('device-choice');
@@ -651,7 +661,7 @@ function closeCopyForm() {
 // saves' answers can't arrive out of order.
 async function copySave() {
   const button = $('f-save');
-  if (button.disabled) return;
+  if (button.disabled || stale()) return;
   button.disabled = true;
   const first = !copySaved;
   result('f-saved', '');
@@ -813,7 +823,7 @@ function renderCopy(v) {
   chip.hidden = !state?.copy_unlocked || !copySaved || !v.chip;
   activityChip('preview-chip', v.preview?.chip, v.preview?.state);
   // Settings can't change, nor the history clear, while copying is on.
-  $('f-set').disabled = v.on;
+  $('f-set').disabled = v.on || stale();
   copyOn = v.on;
   $('s-locked').hidden = !(copyOn && copyFormOpen);
   clearable();
@@ -839,6 +849,7 @@ async function copyAction(action) {
   }
 }
 async function press(event, action) {
+  if (stale()) return;
   pressed = event.currentTarget;
   await copyAction(action);
 }
@@ -1020,7 +1031,7 @@ function freeChecked() {
 function freeCount() {
   const n = freeChecked().reduce((a, g) => a + g.files.length, 0);
   put('x-go', 'Delete ' + fileCount(n) + '…');
-  $('x-go').disabled = n === 0;
+  $('x-go').disabled = n === 0 || stale();
 }
 async function freeAction(body) {
   let v;
@@ -1041,6 +1052,7 @@ async function freeAction(body) {
   renderFree(v);
 }
 async function freePress(event, body) {
+  if (stale()) return;
   freePressed = event.currentTarget;
   await freeAction(body);
 }
@@ -1062,6 +1074,7 @@ function freeAsk() {
   $('x-confirm').showModal();
 }
 async function confirmDelete() {
+  if (stale()) return;
   const folders = freeChecked().map(g => g.folder);
   freePressed = $('x-go');
   $('x-confirm').close();
@@ -1070,10 +1083,11 @@ async function confirmDelete() {
 // clearable disables Clear history while copying is on or Free up space
 // is checking or deleting; the server refuses those too.
 function clearable() {
-  $('h-clear').disabled = copyOn || ['checking', 'deleting'].includes(freeShown.state);
+  $('h-clear').disabled = copyOn || ['checking', 'deleting'].includes(freeShown.state) || stale();
 }
 async function clearHistory() {
   $('h-confirm').close();
+  if (stale()) return;
   try {
     await api('clear', {}, '/copy/api/');
     result('h-result', 'Copy history cleared.', 'ok');
@@ -1116,13 +1130,44 @@ function copyRender(c) {
   text('copy-settings', JSON.stringify(c.settings, null, 2));
   renderEvents();
 }
+// stale reports that what the copy tabs show may be out of date.
+function stale() {
+  return controlsLost || copyLost && !!state?.copy_unlocked;
+}
+// The actions that need the server's answer, off while stale.
+const staleActions = ['c-start', 'c-check', 'c-stop', 'c-pbtn', 'c-pcancel', 's-stop', 'h-cgo', 'x-find', 'x-cancel', 'x-change', 'x-stop', 'x-done', 'x-cgo'];
+// lostLine says, above every tab, that the controls or copy's status are
+// lost, with the connection's last known state, marks the copy tabs' views
+// stale and turns their actions off. Drafts in their fields are kept, and
+// all of it comes back once a poll succeeds.
+function lostLine() {
+  const old = stale();
+  $('lost').hidden = !old;
+  text('lost-text', controlsLost ? lostCopy : old ? copyLostCopy : '');
+  // On this network, the header line is the last known state.
+  const known = controlsLost && !(state?.settings?.route === 'lan' && !active);
+  $('last-known').hidden = !known;
+  text('last-known', known ? 'Last known state: ' + (state?.status || 'Loading…') : '');
+  for (const id of ['c-box', 'c-preview', 'x-box', 'x-preview', 'b-frame']) {
+    if (old) $(id).setAttribute('data-stale', '');
+    else $(id).removeAttribute('data-stale');
+  }
+  for (const id of staleActions) $(id).disabled = old;
+  $('f-set').disabled = copyOn || old;
+  freeCount();
+  clearable();
+}
 // copyRefresh reads copy's status; a failure leaves the last one shown,
 // since the wormhole's own poll reports a lost server.
 async function copyRefresh() {
   try {
-    copyRender(await api('status', undefined, '/copy/api/'));
+    const c = await api('status', undefined, '/copy/api/');
+    copyLost = false;
+    copyRender(c);
   } catch (_) {
+    copyLost = true;
   }
+  lostLine();
 }
 // Activity: one list, newest first, of the connection's events and copy's
 // and Free up space's activity, each row tagged with its source. The
@@ -1235,7 +1280,6 @@ function render(s) {
   projectPicker(s);
   text('version',s.version);
   active = s.active;
-  $('last-known').hidden = true;
   text('quit', s.native ? 'Quit' : 'Quit service');
   $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';
   $('retry-storage').hidden = !s.save_failed;
@@ -1284,6 +1328,7 @@ async function refresh() {
   if (ended || generation !== statusGeneration) return s;
   if (!connected && initialized) alertText('');
   connected = true;
+  controlsLost = false;
   const first = !initialized;
   if (first) {
     portDefaults = s.port_defaults;
@@ -1312,9 +1357,7 @@ async function poll() {
   } catch (_) {
     if (ended) return;
     connected = false;
-    alertText(lostCopy);
-    $('last-known').hidden = false;
-    $('last-known').textContent = 'Last known state: ' + (state?.status || 'Loading…');
+    controlsLost = true;
     controls();
   }
   if (!ended) setTimeout(poll, 1000);

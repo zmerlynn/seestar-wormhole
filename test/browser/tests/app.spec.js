@@ -789,7 +789,9 @@ test('the app page refuses a request without its token', async ({ page, startApp
     return Promise.all([fetch('/api/status'), fetch('/copy/api/status'), post('/copy/api/settings'), post('/api/route')]).then((rs) => rs.map((r) => r.status));
   });
   expect(codes).toEqual([403, 403, 403, 403]);
-  await expect(page.locator('#notice')).toHaveText('Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.');
+  await expect(page.locator('#lost-text')).toHaveText('Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.');
+  await expect(page.locator('#lost')).toBeVisible();
+  await expect(page.locator('#notice')).toBeHidden();
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeDisabled();
 });
 

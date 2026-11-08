@@ -85,3 +85,9 @@ func TestCopyOnceIntervalPage(t *testing.T) {
 func TestActionAlertsPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkActionAlerts("+copyPageStatuses(t)+")")
 }
+
+// A failed poll is said on every tab, and the copy tabs' views go stale
+// and their actions off until a poll succeeds.
+func TestLostLinePage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkLostLine("+copyPageStatuses(t)+")")
+}

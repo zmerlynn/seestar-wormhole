@@ -494,6 +494,9 @@ button.small {
 .notice.ok {
   border-left-color:var(--ok)
 }
+[data-stale] {
+  opacity:.6
+}
 .result {
   margin:.3rem 0 .8rem
 }
