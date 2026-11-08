@@ -1148,9 +1148,15 @@ function lostLine() {
   const known = controlsLost && !(state?.settings?.route === 'lan' && !active);
   $('last-known').hidden = !known;
   text('last-known', known ? 'Last known state: ' + (state?.status || 'Loading…') : '');
-  for (const id of ['c-box', 'c-preview', 'x-box', 'x-preview', 'b-frame']) {
+  for (const id of ['c-box', 'c-preview', 'x-box', 'x-preview']) {
     if (old) $(id).setAttribute('data-stale', '');
     else $(id).removeAttribute('data-stale');
+  }
+  // Browse asks the server itself, so only the controls' loss stops it:
+  // inert keeps its loaded view but takes no click, key or focus.
+  for (const name of ['data-stale', 'inert']) {
+    if (controlsLost) $('b-frame').setAttribute(name, '');
+    else $('b-frame').removeAttribute(name);
   }
   for (const id of staleActions) $(id).disabled = old;
   $('f-set').disabled = copyOn || old;

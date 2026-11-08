@@ -375,7 +375,9 @@ async function checkLostLine(st) {
   copyRender(st.after);
   $('x-days').value = '30';
   $('f-ex').value = 'Draft';
-  const views = ['c-box', 'c-preview', 'x-box', 'x-preview', 'b-frame'], actions = ['c-start', 'c-pbtn', 'x-find', 'f-set', 'h-clear'];
+  const views = ['c-box', 'c-preview', 'x-box', 'x-preview'], actions = ['c-start', 'c-pbtn', 'x-find', 'f-set', 'h-clear'];
+  // Browse asks the server itself: only the controls' loss makes it inert.
+  const browseOff = off => ['data-stale', 'inert'].every(name => ($('b-frame').getAttribute(name) === '') === off);
   const everyTab = (what, wording, known) => {
     for (const tab of tabNames) {
       selectTab(tab);
@@ -392,7 +394,7 @@ async function checkLostLine(st) {
   };
   await poll();
   everyTab('copy lost', "Couldn't read the status of Copy and Free up space. They show their last known state until it can be read again.", '');
-  copyAssert(!$('lan-options').disabled, 'a lost copy status turned off the LAN form');
+  copyAssert(!$('lan-options').disabled && browseOff(false), 'a lost copy status turned off the LAN form or Browse');
   // The controls too: on this network the header line is the last known
   // state.
   api = async () => {
@@ -400,7 +402,7 @@ async function checkLostLine(st) {
   };
   await poll();
   everyTab('controls lost on this network', lostCopy, '');
-  copyAssert($('lan-options').disabled && $('notice').hidden, 'the LAN form stayed on, or the notice repeated the loss');
+  copyAssert($('lan-options').disabled && $('notice').hidden && browseOff(true), 'the LAN form or Browse stayed on, or the notice repeated the loss');
   // Through the account, the last known state is the connection's.
   render({...st.unlocked, active: true, ready: true, status: 'Connected to your Seestar', settings: {...st.unlocked.settings, route: 'account'}});
   everyTab('controls lost through the account', lostCopy, 'Last known state: Connected to your Seestar');

@@ -646,6 +646,41 @@ test('Browse follows a change of route', async ({ page, startApp }) => {
   await expect(browseStatus(page)).toHaveText(rootStatus);
 });
 
+// While the controls are lost, Browse keeps its loaded view but takes no
+// click, key or focus, its folders and Save links included, until a poll
+// succeeds.
+test('a stale Browse takes no input until the controls come back', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  await openApp(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const browse = page.locator('#b-frame');
+  const myWorks = frame(page).getByRole('link', { name: 'MyWorks/', exact: true });
+  // Focus is in Browse when the controls go.
+  await myWorks.focus();
+  let asked = 0;
+  page.on('request', (r) => { if (r.url().includes('/browse/api/')) asked++; });
+  await page.route('**/api/status', (route) => route.abort());
+  await expect(page.locator('#lost')).toBeVisible();
+  await expect(browse).toHaveAttribute('data-stale', '');
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const box = await myWorks.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(500);
+  expect(asked).toBe(0);
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('b-frame');
+  }
+  await page.unroute('**/api/status');
+  await expect(page.locator('#lost')).toBeHidden();
+  await myWorks.click();
+  await expect(frame(page).locator('#crumbs a[aria-current="page"]')).toHaveText('MyWorks');
+});
+
 // The frame is named for assistive technology without a title, which
 // would show as a tooltip over the list.
 test("Browse's frame is named The telescope's files, with no title", async ({ page, startApp }) => {
