@@ -476,8 +476,9 @@ func TestFindUsage(t *testing.T) {
 		{[]string{"find", "--endpoint", "h:445", "--dest="}, "--dest", "must not be empty; omit it to list without a status"},
 		{[]string{"find", "--endpoint", "h:445", "--dest", "d", "--history-dir="}, "--history-dir", "must not be empty; omit it for the default"},
 		{[]string{"find", "--endpoint", "h:445", "--history-dir", "s"}, "--history-dir", "give --dest with it; find reads a state file only for a destination"},
-		{[]string{"find", "--endpoint", "h:445", "--include", "a/"}, "--include", "omit the trailing /; a pattern matches files and folders"},
-		{[]string{"find", "--endpoint", "h:445", "--exclude", "[a]"}, "--exclude", `[ and \ are not supported; use * and ?, and / between folders`},
+		{[]string{"find", "--endpoint", "h:445", "--include", "a/ "}, "--include", `trailing spaces are ignored in .gitignore syntax; remove them, or write \ (a backslash, then a space) to match one`},
+		{[]string{"find", "--endpoint", "h:445", "--exclude", "!a"}, "--exclude", "a leading ! is not supported; excludes always win, so give the files to keep with --include"},
+		{[]string{"find", "--endpoint", "h:445", "--include", `MyWorks\/M31`}, "--include", "a / can't be escaped; write a plain / between folders"},
 		{[]string{"find", "--endpoint", "h:445", "--once"}, "--once", "unknown flag"},
 		{[]string{"find", "--endpoint", "h:445", "x"}, "arguments", "positional arguments are not allowed"},
 	} {

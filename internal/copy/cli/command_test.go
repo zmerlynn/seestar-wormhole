@@ -52,23 +52,34 @@ func TestEndpoint(t *testing.T) {
 // echoed.
 func TestPatternUsageErrors(t *testing.T) {
 	const (
-		parts   = `rule="use a name, or a path from the share root, with no empty, . or .. parts"`
-		slash   = `rule="omit the trailing /; a pattern matches files and folders"`
-		class   = `rule="[ and \\ are not supported; use * and ?, and / between folders"`
-		globstr = `rule="** is not supported; * matches within one name"`
+		parts  = `rule="use a name, or a path from the share root, with no empty, . or .. parts"`
+		hash   = `rule="a leading # makes a comment in .gitignore syntax; write \\# to match a name that starts with #"`
+		space  = `rule="trailing spaces are ignored in .gitignore syntax; remove them, or write \\ (a backslash, then a space) to match one"`
+		escape = `rule="a trailing \\ has nothing to escape; write \\\\ to match a \\"`
+		class  = `rule="close each [ class with ], and name only POSIX classes such as [:digit:]; write \\[ to match a ["`
+		neg    = `rule="a leading ! is not supported; `
+		slash  = `rule="a / can't be escaped; write a plain / between folders"`
 	)
 	dev := newDevice()
 	dev.use(t)
 	for _, tc := range []struct{ pattern, want string }{
-		{"", parts}, {"/", parts}, {"//", slash}, {"//x", parts}, {"a//b", parts}, {"./a", parts}, {"a/.", parts},
-		{"..", parts}, {"/../log", parts}, {".", parts}, {"log/", slash}, {"/log/", slash},
-		{"M[42]", class}, {`MyWorks\x`, class}, {"**", globstr}, {"MyWorks/**/x", globstr}, {"a**", globstr},
+		{"", parts}, {"/", parts}, {"//", parts}, {"//x", parts}, {"a//b", parts}, {"./a", parts}, {"a/.", parts},
+		{"..", parts}, {"/../log", parts}, {".", parts}, {"x//", parts},
+		{"#notes", hash}, {"log ", space}, {`MyWorks\`, escape}, {"M[42", class}, {"[[:foo:]]", class},
+		{"!x", neg}, {"!/MyWorks/M 31", neg},
+		{`MyWorks\/M31`, slash}, {`a\\\/b`, slash}, {"[a/]", class}, {"MyWorks/[M/]31", class},
 	} {
 		for _, flag := range []string{"--exclude", "--include"} {
 			for _, extra := range [][]string{nil, {"--no-default-excludes"}} {
 				args := slices.Concat([]string{"sync", "--endpoint", "h:445"}, scratch(t), extra, []string{flag, "ok", flag, tc.pattern})
 				code, _, stderr := invoke(t, args...)
-				if want := "option=" + flag + " " + tc.want; code != exitUsage || !strings.Contains(stderr, want) {
+				want := "option=" + flag + " " + tc.want
+				if tc.want == neg && flag == "--exclude" {
+					want += `excludes always win, so give the files to keep with --include"`
+				} else if tc.want == neg {
+					want += `give the files to leave out with --exclude"`
+				}
+				if code != exitUsage || !strings.Contains(stderr, want) {
 					t.Errorf("%s %q %q: code=%d stderr=%q, want 2 with %q", flag, tc.pattern, extra, code, stderr, want)
 				}
 				if len(tc.pattern) > 2 && strings.Contains(stderr, tc.pattern) {

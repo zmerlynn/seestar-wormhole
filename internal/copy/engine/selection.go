@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/git-pkgs/gitignore"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
@@ -86,7 +87,7 @@ func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(fol
 			out.keptParents[path.Dir(p)] = true
 			return true
 		}
-		if e, ok := s.excluder(p); ok {
+		if e, ok := s.excluder(p, dir); ok {
 			out.Skipped = append(out.Skipped, Skipped{p, e.flag})
 			out.keptParents[path.Dir(p)] = true
 			return true
@@ -127,14 +128,14 @@ func (s Selector) LeavesOut(p string, dir bool) bool {
 
 // skips reports whether a walk that reached p would leave it out.
 func (s Selector) skips(p string, dir bool) bool {
-	_, excluded := s.excluder(p)
+	_, excluded := s.excluder(p, dir)
 	return excluded || !s.included(p, dir)
 }
 
-// excluder returns the first exclude that matches p.
-func (s Selector) excluder(p string) (Pattern, bool) {
+// excluder returns the first exclude that matches p, a file if not dir.
+func (s Selector) excluder(p string, dir bool) (Pattern, bool) {
 	for _, e := range s.Excludes {
-		if e.match(p) {
+		if e.match(p, dir) {
 			return e, true
 		}
 	}
@@ -149,7 +150,7 @@ func (s Selector) included(p string, dir bool) bool {
 		return true
 	}
 	for _, m := range s.Includes {
-		if dir && m.mayMatchBelow(p) || !dir && m.matchWithin(p) {
+		if dir && m.mayMatchBelow(p) || !dir && m.match(p, false) {
 			return true
 		}
 	}
@@ -160,72 +161,155 @@ func (s Selector) included(p string, dir bool) bool {
 type Pattern struct {
 	// flag is the pattern as given, for logs.
 	flag string
-	// pattern is lowercased and has no leading slash. If anchored, it is
-	// matched against the whole share path; otherwise against the last name.
-	pattern  string
-	anchored bool
+	// m matches the lowercased pattern in .gitignore syntax.
+	m *gitignore.Matcher
+	// prefixes[k-1] matches a folder whose first k names match the
+	// pattern's first k parts, for each k up to the pattern's first **
+	// part, its last part, or maxPrefixes. It is empty for a pattern that
+	// can match at any depth.
+	prefixes []*gitignore.Matcher
 }
 
-// ParsePattern checks a selection pattern. A pattern with no slash matches
-// a name at any depth; one with a slash anywhere is a path from the share
-// root, with one leading slash allowed. Only literal characters, * and ?
-// are allowed, so path.Match never sees a class, an escape or a bad
-// pattern. Nothing is cleaned: a pattern that would need it is refused. The
-// error says which rule the pattern broke.
+// String returns the pattern as given.
+func (m Pattern) String() string { return m.flag }
+
+// ErrNegated is the error for a pattern that starts with !, which in a
+// .gitignore file brings back what an earlier pattern left out. Here
+// excludes always win, so a caller says which list to use instead.
+var ErrNegated = errors.New("a leading ! is not supported")
+
+// ParsePattern checks a selection pattern, in .gitignore syntax, and
+// compiles it. A pattern with no slash, or only a trailing one, matches a
+// name at any depth; one with a slash at the start or in the middle is a
+// path from the share root. Case is ignored by lowercasing the pattern
+// here and each path in match. Unlike a .gitignore line, a pattern can't
+// start with ! or #, end in an unescaped space or \, hold a line break, or
+// have an empty, . or .. part, since none of those would select anything
+// as written. Nor can it escape a /: the library always takes a / to
+// separate names, so \/ would match nothing, where git reads it as a
+// plain /.
+// The error says which rule the pattern broke and never repeats the
+// pattern.
 func ParsePattern(s string) (Pattern, error) {
 	bad := func(rule string) (Pattern, error) { return Pattern{}, errors.New(rule) }
 	switch {
-	case strings.ContainsAny(s, `[\`):
-		return bad(`[ and \ are not supported; use * and ?, and / between folders`)
-	case strings.Contains(s, "**"):
-		return bad("** is not supported; * matches within one name")
-	case len(s) > 1 && strings.HasSuffix(s, "/"):
-		return bad("omit the trailing /; a pattern matches files and folders")
+	case strings.ContainsAny(s, "\n\r"):
+		return bad("a pattern is one line, with no line breaks")
+	case strings.HasPrefix(s, "!"):
+		return Pattern{}, ErrNegated
+	case strings.HasPrefix(s, "#"):
+		return bad(`a leading # makes a comment in .gitignore syntax; write \# to match a name that starts with #`)
+	case strings.HasSuffix(s, " ") && !escaped(s[:len(s)-1]):
+		return bad(`trailing spaces are ignored in .gitignore syntax; remove them, or write \ (a backslash, then a space) to match one`)
+	case escaped(s):
+		return bad(`a trailing \ has nothing to escape; write \\ to match a \`)
+	case escapesSlash(s):
+		return bad(`a / can't be escaped; write a plain / between folders`)
 	}
-	p := strings.TrimPrefix(s, "/")
-	for elem := range strings.SplitSeq(p, "/") {
-		if elem == "" || elem == "." || elem == ".." {
+	body := s
+	if len(body) > 1 {
+		body = strings.TrimSuffix(body, "/")
+	}
+	body = strings.TrimPrefix(body, "/")
+	parts := strings.Split(body, "/")
+	for _, part := range parts {
+		if part == "" || part == "." || part == ".." {
 			return bad("use a name, or a path from the share root, with no empty, . or .. parts")
 		}
 	}
-	return Pattern{flag: s, pattern: strings.ToLower(p), anchored: strings.Contains(s, "/")}, nil
+	lower := strings.ToLower(s)
+	m, err := compile(lower)
+	if err != nil {
+		return Pattern{}, err
+	}
+	p := Pattern{flag: s, m: m}
+	if len(parts) == 1 && !strings.HasPrefix(s, "/") {
+		return p, nil
+	}
+	// Anchored: a folder can hold a match only if its leading names match
+	// the pattern's leading parts, up to a ** part, which may stand for any
+	// number of names, and at most maxPrefixes of them. Each prefix is
+	// itself an anchored folder pattern, compiled by the same library. It
+	// ends in /, so that a space before a / in the pattern is not taken for
+	// a trailing space and dropped.
+	lowerParts := strings.Split(strings.TrimPrefix(strings.TrimSuffix(lower, "/"), "/"), "/")
+	for k := range lowerParts {
+		if doubleStar(lowerParts[k]) || k == maxPrefixes {
+			break
+		}
+		prefix, err := compile("/" + strings.Join(lowerParts[:k+1], "/") + "/")
+		if err != nil {
+			return Pattern{}, err
+		}
+		p.prefixes = append(p.prefixes, prefix)
+	}
+	return p, nil
 }
 
-// match reports whether the share path p matches, ignoring case by
-// lowercasing both sides; there is no Unicode normalization.
-func (m Pattern) match(p string) bool {
-	if !m.anchored {
-		p = path.Base(p)
+// maxPrefixes bounds the prefixes kept for a pattern, each of which holds
+// all the parts before it, so that a pattern of many parts costs memory in
+// proportion to its length, not its square. Below that many names, a walk
+// lists every folder, as below a ** part; whether a file is kept is still
+// decided by the whole pattern.
+const maxPrefixes = 32
+
+// compile compiles one lowercased .gitignore pattern.
+func compile(pattern string) (*gitignore.Matcher, error) {
+	m := gitignore.New("")
+	m.AddPatterns([]byte(pattern), "")
+	if len(m.Errors()) > 0 {
+		// An unclosed [ or an unknown [:class:]; the library's message
+		// repeats part of the pattern, so it is not passed on.
+		return nil, errors.New(`close each [ class with ], and name only POSIX classes such as [:digit:]; write \[ to match a [`)
 	}
-	ok, _ := path.Match(m.pattern, strings.ToLower(p))
-	return ok
+	return m, nil
 }
 
-// matchWithin reports whether p, or a folder above it, matches.
-func (m Pattern) matchWithin(p string) bool {
-	for {
-		if m.match(p) {
-			return true
+// escaped reports whether s ends in an unescaped backslash: an odd number
+// of them.
+func escaped(s string) bool {
+	n := len(s) - len(strings.TrimRight(s, `\`))
+	return n%2 == 1
+}
+
+// escapesSlash reports whether s has a / with an unescaped backslash
+// before it. In a\\/b the backslash before the / is itself escaped, so
+// the / separates names.
+func escapesSlash(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' {
+			i++
+			if i < len(s) && s[i] == '/' {
+				return true
+			}
 		}
-		i := strings.LastIndexByte(p, '/')
-		if i < 0 {
-			return false
-		}
-		p = p[:i]
 	}
+	return false
+}
+
+// doubleStar reports whether a pattern part is ** (or more stars), which
+// matches any number of names.
+func doubleStar(part string) bool {
+	return len(part) >= 2 && strings.Trim(part, "*") == ""
+}
+
+// match reports whether the share path p, a file if not dir, or a folder
+// above it matches, ignoring case by lowercasing both sides; there is no
+// Unicode normalization.
+func (m Pattern) match(p string, dir bool) bool {
+	return m.m.MatchPath(strings.ToLower(p), dir)
 }
 
 // mayMatchBelow reports whether the folder dir, or something below it,
-// could match: that is, whether dir matches as many leading names of an
-// anchored pattern as it has, or as the pattern has, since * and ? never
-// cross a /. A name-only pattern could match at any depth.
+// could match: whether dir's leading names match the pattern's leading
+// parts, as many as dir has or as come before a ** part, up to
+// maxPrefixes. A pattern that can
+// match at any depth could match below any folder.
 func (m Pattern) mayMatchBelow(dir string) bool {
-	if !m.anchored {
+	if len(m.prefixes) == 0 {
 		return true
 	}
-	pat := strings.Split(m.pattern, "/")
 	names := strings.Split(strings.ToLower(dir), "/")
-	n := min(len(pat), len(names))
-	ok, _ := path.Match(strings.Join(pat[:n], "/"), strings.Join(names[:n], "/"))
-	return ok
+	k := min(len(names), len(m.prefixes))
+	return m.prefixes[k-1].MatchPath(strings.Join(names[:k], "/"), true)
 }

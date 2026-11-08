@@ -250,9 +250,13 @@ func TestSaveFieldErrors(t *testing.T) {
 		want  map[string]string
 	}{
 		{"empty", `{}`, map[string]string{"files_at_once": filesError, "folder": folderError, "interval": intervalError}},
-		{"bad patterns", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"4","excludes":["Video","","[Pp]review"],"includes":["  ","a/"]}`, map[string]string{
-			"excludes": `Line 3: [ and \ are not supported; use * and ?, and / between folders. Correct this pattern and save again.`,
-			"includes": "Line 2: omit the trailing /; a pattern matches files and folders. Correct this pattern and save again.",
+		{"bad patterns", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"4","excludes":["Video","","[Pp]review","!Video"],"includes":["  ","a/ "]}`, map[string]string{
+			"excludes": "Line 4: a leading ! is not supported; excludes always win, so put the files to keep in Only copy. Correct this pattern and save again.",
+			"includes": `Line 2: trailing spaces are ignored in .gitignore syntax; remove them, or write \ (a backslash, then a space) to match one. Correct this pattern and save again.`,
+		}},
+		{"slash patterns", `{"folder":` + quote(abs("/x")) + `,"interval":"5","files_at_once":"4","excludes":["MyWorks\\/M31"],"includes":["MyWorks/[M/]31"]}`, map[string]string{
+			"excludes": "Line 1: a / can't be escaped; write a plain / between folders. Correct this pattern and save again.",
+			"includes": `Line 1: close each [ class with ], and name only POSIX classes such as [:digit:]; write \[ to match a [. Correct this pattern and save again.`,
 		}},
 		{"interval 0", `{"folder":` + quote(abs("/x")) + `,"interval":"0","files_at_once":"4"}`, map[string]string{"interval": intervalError}},
 		{"interval 1441", `{"folder":` + quote(abs("/x")) + `,"interval":"1441","files_at_once":"4"}`, map[string]string{"interval": intervalError}},

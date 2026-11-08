@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
@@ -293,7 +294,7 @@ func TestDefaultsEqualLiteralFlags(t *testing.T) {
 		values = append(values, literalDefaultFlags[i])
 	}
 	literal, err := selectionFlags{excludes: values, noDefaultExcludes: true}.parse()
-	if err != nil || !slices.Equal(builtIn.Excludes, literal.Excludes) {
+	if err != nil || !slices.EqualFunc(builtIn.Excludes, literal.Excludes, func(a, b engine.Pattern) bool { return a.String() == b.String() }) {
 		t.Errorf("literal flags parse to %+v, %v; want the built-in %+v", literal, err, builtIn)
 	}
 
@@ -400,4 +401,16 @@ func TestSyncInclude(t *testing.T) {
 	}
 	checkLines(t, stderr, "would skip", notVideo(selectionSkips(`"would skip"`)))
 	checkLines(t, stderr, "no copied files recorded", []string{`msg="no copied files recorded under this top-level folder" folder=MyWorks`})
+}
+
+// Patterns that .gitignore syntax allows, and that were usage errors
+// before, are accepted by both flags.
+func TestGitignorePatternsAccepted(t *testing.T) {
+	for _, p := range []string{"**", "MyWorks/**/*.fit", "**/Stacked", "log/", "/MyWorks/", "[Pp]review", `\!x`, `\#x`, `x\ `, `a\*b`} {
+		for _, f := range []selectionFlags{{excludes: []string{p}}, {includes: []string{p}}} {
+			if _, err := f.parse(); err != nil {
+				t.Errorf("%q: %v", p, err)
+			}
+		}
+	}
 }

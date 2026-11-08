@@ -3,6 +3,7 @@ module github.com/zmerlynn/seestar-wormhole
 go 1.27.0
 
 require (
+	github.com/git-pkgs/gitignore v1.3.0
 	github.com/hirochachacha/go-smb2/v2 v2.0.0-20261011164520-7f69f6587832
 	github.com/pion/dtls/v3 v3.1.15
 	github.com/pion/logging v0.2.4

@@ -606,11 +606,11 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		if err != nil || days < 0 || days > maxDays {
 			errs["days"] = "Enter a whole number of days, 0 or more."
 		}
-		excludes, msg := checkPatterns(in.FreeExcludes, "preview")
+		excludes, msg := checkPatterns(in.FreeExcludes, "preview", "excludes always win, so put the files to free up in Only free up")
 		if msg != "" {
 			errs["free_excludes"] = msg
 		}
-		includes, msg := checkPatterns(in.FreeIncludes, "preview")
+		includes, msg := checkPatterns(in.FreeIncludes, "preview", "put the files to keep in Keep on the telescope")
 		if msg != "" {
 			errs["free_includes"] = msg
 		}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -494,5 +495,70 @@ func TestFreePatterns(t *testing.T) {
 		if e.has(p) != want {
 			t.Errorf("%s on the share: %v, want %v", p, !want, want)
 		}
+	}
+}
+
+// A ** pattern in Keep on the telescope keeps every file it matches, at any
+// depth, and one in Only free up limits what is deleted to its matches.
+func TestFreeDoubleStarPatterns(t *testing.T) {
+	for _, c := range []struct {
+		name               string
+		excludes, includes []string
+		deleted            []string
+	}{
+		{"keep", []string{"MyWorks/**/*.mp4", "**/M 42/"}, nil, []string{"MyWorks/M 31/x/b.jpg", "Other/d.jpg"}},
+		{"only", nil, []string{"/MyWorks/**/*.JPG"}, []string{"MyWorks/M 31/x/b.jpg", "MyWorks/M 42/a.jpg"}},
+	} {
+		files := []string{"MyWorks/M 42/a.jpg", "MyWorks/M 31/x/b.jpg", "MyWorks/M 31/c.mp4", "Other/d.jpg"}
+		e := newFreeEnv(t, files...)
+		e.copy()
+		e.set.FreeExcludes, e.set.FreeIncludes = c.excludes, c.includes
+		v := e.preview()
+		var listed, folders []string
+		for _, g := range v.Groups {
+			folders = append(folders, g.Folder)
+			for _, f := range g.Files {
+				listed = append(listed, f.Path)
+			}
+		}
+		slices.Sort(listed)
+		if !slices.Equal(listed, c.deleted) {
+			t.Errorf("%s: preview lists %q, want %q", c.name, listed, c.deleted)
+		}
+		if err := e.f.confirm(v.ID, folders, Target{Endpoint: e.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		if d := e.wait(frDone, frStopped, frFailed); d.State != frDone {
+			t.Errorf("%s: done: %+v", c.name, d)
+		}
+		for _, p := range files {
+			if e.has(p) == slices.Contains(c.deleted, p) {
+				t.Errorf("%s: %s on the share: %v", c.name, p, e.has(p))
+			}
+		}
+	}
+}
+
+// A saved Keep on the telescope or Only free up pattern that escapes a /
+// is refused before the share is read: it never reaches a deletion, and
+// the file it was meant to keep stays.
+func TestFreeEscapedSlashRefused(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/M31/a.fit")
+	e.copy()
+	for _, c := range []struct{ excludes, includes []string }{
+		{[]string{`MyWorks\/M31`}, nil},
+		{nil, []string{`MyWorks\/M31`}},
+	} {
+		e.set.FreeExcludes, e.set.FreeIncludes = c.excludes, c.includes
+		err := e.f.find(e.set, Target{Endpoint: e.set.Address})
+		if err == nil || !strings.Contains(err.Error(), "write a plain / between folders") {
+			t.Errorf("%q %q: find: %v", c.excludes, c.includes, err)
+		}
+		if v := e.f.view(); v.State != frStart {
+			t.Errorf("%q %q: state %q, want %q", c.excludes, c.includes, v.State, frStart)
+		}
+	}
+	if !e.has("MyWorks/M31/a.fit") {
+		t.Error("the file was deleted")
 	}
 }

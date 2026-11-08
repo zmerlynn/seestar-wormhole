@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+
 	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
@@ -48,10 +50,15 @@ func (f selectionFlags) parse() (engine.Selector, error) {
 }
 
 // parsePattern checks the value of option, a pattern flag, and reports a
-// broken rule as a usage error.
+// broken rule as a usage error. A leading ! is pointed to the other flag.
 func parsePattern(option, flag string) (engine.Pattern, error) {
 	p, err := engine.ParsePattern(flag)
-	if err != nil {
+	switch {
+	case errors.Is(err, engine.ErrNegated) && option == "--exclude":
+		return engine.Pattern{}, &diagnostic.OptionError{Option: option, Rule: err.Error() + "; excludes always win, so give the files to keep with --include"}
+	case errors.Is(err, engine.ErrNegated):
+		return engine.Pattern{}, &diagnostic.OptionError{Option: option, Rule: err.Error() + "; give the files to leave out with --exclude"}
+	case err != nil:
 		return engine.Pattern{}, &diagnostic.OptionError{Option: option, Rule: err.Error()}
 	}
 	return p, nil
