@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"github.com/zalando/go-keyring"
+	"net"
 	"os"
 	"path/filepath"
 	"sync"
@@ -33,7 +34,7 @@ func newGUITestRunner() *guiTestRunner {
 	return &guiTestRunner{steps: make(chan session.Event), entered: make(chan struct{}, 8), releasing: make(chan struct{}, 8), released: make(chan struct{}, 8)}
 }
 
-func (f *guiTestRunner) run(ctx context.Context, settings Settings, _ cloud.Credentials, status *proxy.Status) error {
+func (f *guiTestRunner) run(ctx context.Context, settings Settings, _ cloud.Credentials, status *proxy.Status, attach func(proxy.Dialer) (func(), bool)) error {
 	f.entered <- struct{}{}
 	switch f.scenario {
 	case "bind-error":
@@ -55,6 +56,13 @@ func (f *guiTestRunner) run(ctx context.Context, settings Settings, _ cloud.Cred
 	if f.scenario == "details" {
 		status.RecordCatalog(cloudhttp.Catalog{Pairs: []cloudhttp.CatalogPair{{Model: "S30", Serial: "synthetic-details"}}, Count: 1, Complete: true})
 	}
+	// Attach before arming, as runProxy does. These scenarios' file tools
+	// never dial through the run.
+	detach, ok := attach(guiTestDialer{})
+	if !ok {
+		return ctx.Err()
+	}
+	defer detach()
 	status.MarkArmed()
 	before := session.Snapshot{State: session.Dialing}
 	var result error
@@ -135,4 +143,11 @@ func (f *guiTestKeychain) Delete(string, string) error {
 		return keyring.ErrNotFound
 	}
 	return err
+}
+
+// guiTestDialer is the runner's session dialer, which has no channels.
+type guiTestDialer struct{}
+
+func (guiTestDialer) DialPort(context.Context, uint16) (net.Conn, error) {
+	return nil, errors.New("the GUI test runner has no session channels")
 }

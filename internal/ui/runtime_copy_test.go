@@ -87,8 +87,8 @@ func newRuntimeEnv(t *testing.T, startCopying bool) *runtimeEnv {
 	if err := (&copyStore{storage: st}).save(set); err != nil {
 		t.Fatal(err)
 	}
-	savedDial, savedText := copyDial, runText
-	t.Cleanup(func() { copyDial, runText = savedDial, savedText })
+	savedDial, savedText, savedHook := copyDial, runText, copyTargetHook
+	t.Cleanup(func() { copyDial, runText, copyTargetHook = savedDial, savedText, savedHook })
 	copyDial = func(context.Context, copyapp.Target) (remote.Session, error) {
 		f := remote.NewFake(e.files)
 		f.Faults = map[string]remote.Fault{"MyWorks/held.fit": {After: 1 << 10, Stall: func() { e.heldOnce.Do(func() { close(e.held) }) }}}
@@ -98,7 +98,8 @@ func newRuntimeEnv(t *testing.T, startCopying bool) *runtimeEnv {
 		e.mu.Unlock()
 		return s, nil
 	}
-	runText = func(*proxy.Status) string {
+	runText = func(*proxy.Status) string { return "Ready" }
+	copyTargetHook = func() {
 		if gate := e.gate.Load(); gate != nil {
 			select {
 			case e.entered <- struct{}{}:
@@ -106,7 +107,6 @@ func newRuntimeEnv(t *testing.T, startCopying bool) *runtimeEnv {
 			}
 			<-*gate
 		}
-		return "Ready"
 	}
 	return e
 }
@@ -145,9 +145,13 @@ func (e *runtimeEnv) record(event string, err error) {
 	e.mu.Unlock()
 }
 
-// run is the fake proxy: it runs until its context ends, then records
-// what was still running.
-func (e *runtimeEnv) run(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+// run is the fake proxy: it attaches and arms as runProxy does, runs
+// until its context ends, then records what was still running.
+func (e *runtimeEnv) run(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, attach func(proxy.Dialer) (func(), bool)) error {
+	if detach, ok := attach(noDialer{}); ok {
+		defer detach()
+		status.MarkArmed()
+	}
 	<-ctx.Done()
 	e.record("proxy stopped", e.stopped())
 	return nil

@@ -82,7 +82,7 @@ func TestCopyUnlocksOnSaveAfterTest(t *testing.T) {
 			}
 		}},
 		{"Connect that never connected", func(e *routeEnv) {
-			e.s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+			e.s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
 				return errors.New("synthetic sign-in failure")
 			}
 			if code, body := e.start(testSettings()); code != 200 {
@@ -182,7 +182,7 @@ func TestRouteEstablishedSurvivesRelaunch(t *testing.T) {
 	connect := func(e *routeEnv) {
 		e.t.Helper()
 		e.account()
-		e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+		e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 			status.MarkArmed()
 			<-ctx.Done()
 			return nil

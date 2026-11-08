@@ -39,11 +39,11 @@ func runUICommand(ctx context.Context, o options, out, logs io.Writer) error {
 
 // newUIRunner is the adapter used by the UI controller. Its I/O boundaries can
 // be replaced without opening a browser, consulting a keychain or signing in.
-func newUIRunner(root string, logs io.Writer, newSession func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error), listen func(string, string) (net.Listener, error), checkTCPState func(context.Context) error) func(context.Context, ui.Settings, cloud.Credentials, *proxy.Status) error {
+func newUIRunner(root string, logs io.Writer, newSession func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error), listen func(string, string) (net.Listener, error), checkTCPState func(context.Context) error) func(context.Context, ui.Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
 	return newUIRunnerWithDiscovery(root, logs, newSession, listen, listenCommandDiscovery, checkTCPState)
 }
-func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error), listen func(string, string) (net.Listener, error), discovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) func(context.Context, ui.Settings, cloud.Credentials, *proxy.Status) error {
-	return func(ctx context.Context, s ui.Settings, credentials cloud.Credentials, status *proxy.Status) error {
+func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error), listen func(string, string) (net.Listener, error), discovery func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error), checkTCPState func(context.Context) error) func(context.Context, ui.Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+	return func(ctx context.Context, s ui.Settings, credentials cloud.Credentials, status *proxy.Status, attach func(proxy.Dialer) (func(), bool)) error {
 		if strings.TrimSpace(s.Bind) == "" {
 			return &ui.ActionError{Code: "bind_empty", Field: "bind"}
 		}
@@ -51,7 +51,7 @@ func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(conte
 		if err != nil {
 			return err
 		}
-		runOptions := options{command: commandUI, bind: s.Bind, lanDiscovery: s.Discovery, uiStatus: status, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater}
+		runOptions := options{command: commandUI, bind: s.Bind, lanDiscovery: s.Discovery, uiStatus: status, uiAttach: attach, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater}
 		runOptions.ports = append(mappings(nil), s.Ports...)
 		if err := validateOptions(&runOptions); err != nil {
 			return err

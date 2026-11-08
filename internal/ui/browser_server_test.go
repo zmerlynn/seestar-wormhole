@@ -24,7 +24,7 @@ func TestBrowserServer(t *testing.T) {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	run := func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	run := func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}

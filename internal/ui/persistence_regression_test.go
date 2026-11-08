@@ -15,7 +15,7 @@ func TestNewSaveSupersedesRunRetry(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := testServer(t)
 		s.controller.save = s.saveSettings
-		s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+		s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 			status.MarkArmed()
 			<-ctx.Done()
 			return ctx.Err()
@@ -63,7 +63,7 @@ func TestNewSaveSupersedesRunRetry(t *testing.T) {
 
 func TestStorageWriteDoesNotBlockStopOrStatus(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		c := testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+		c := testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 			status.MarkArmed()
 			<-ctx.Done()
 			return ctx.Err()

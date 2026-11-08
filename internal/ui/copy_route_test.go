@@ -242,7 +242,7 @@ func (e *routeEnv) locked() bool {
 // connect starts a run through the account that lasts until the test
 // ends or it is stopped.
 func (e *routeEnv) connect() (int, string) {
-	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		<-ctx.Done()
 		return nil
 	}
@@ -269,24 +269,45 @@ func (e *routeEnv) account() *account {
 		}
 		return st.Text()
 	}
-	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		<-ctx.Done()
 		return nil
 	}
 	return a
 }
 
-// markReady selects the telescope with serial in the current run and
-// makes the run read Ready, as a proxy session selects before it is.
+// markReady selects the telescope with serial in the current run, arms
+// it and makes it read Ready, as a proxy session selects before it is.
 func (a *account) markReady(serial string) {
-	c := a.e.s.controller
-	c.mu.Lock()
-	st := c.status
-	c.mu.Unlock()
-	st.SetSelectedDevice(cloudhttp.Device{Serial: serial, Model: "Seestar S50"})
+	st := a.arm(serial)
 	a.mu.Lock()
 	a.ready = st
 	a.mu.Unlock()
+}
+
+// arm selects the telescope with serial in the current run, attaches the
+// run and arms it, as runProxy does once its session is open, dormant or
+// not. The run doesn't read Ready.
+func (a *account) arm(serial string) *proxy.Status {
+	a.e.t.Helper()
+	c := a.e.s.controller
+	c.mu.Lock()
+	st, id := c.status, c.runs
+	c.mu.Unlock()
+	st.SetSelectedDevice(cloudhttp.Device{Serial: serial, Model: "Seestar S50"})
+	if _, ok := c.files.attach(id, noDialer{}); !ok {
+		a.e.t.Fatalf("run %d refused its attach", id)
+	}
+	st.MarkArmed()
+	return st
+}
+
+// noDialer is a session dialer for tests whose file tools never dial
+// through the run.
+type noDialer struct{}
+
+func (noDialer) DialPort(context.Context, uint16) (net.Conn, error) {
+	return nil, errors.New("this test's session has no channels")
 }
 
 // stop stops the run and waits for it to end.
@@ -647,7 +668,7 @@ func TestAccountEndpoint(t *testing.T) {
 	a := e.account()
 	// A run ends once stopped and released, or once the test has.
 	release := make(chan struct{})
-	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		<-ctx.Done()
 		select {
 		case <-release:
@@ -1038,9 +1059,10 @@ func TestRouteReload(t *testing.T) {
 	}
 }
 
-// The status says ready only while the run is connected now, as copying
-// has it: not while connecting, not once the run moves off Ready, and not
-// while it stops.
+// The status says ready only while the session is ready now, and the
+// file tools have the run as soon as it is armed and attached, whether
+// or not its session is ready: a dormant on-demand session opens on
+// their dial. Neither holds while connecting or stopping.
 func TestStatusReady(t *testing.T) {
 	e := newRouteEnv(t)
 	a := e.account()
@@ -1048,39 +1070,30 @@ func TestStatusReady(t *testing.T) {
 		t.Fatalf("Connect = %d %s", code, body)
 	}
 	c := e.s.controller
-	ready := func() bool {
+	check := func(what string, wantReady, wantConnected bool) {
+		t.Helper()
 		_, _, _, connected := c.connected()
-		v := c.view()
-		if v.Ready != connected {
-			t.Errorf("ready %v, connected %v", v.Ready, connected)
+		if v := c.view(); v.Ready != wantReady || connected != wantConnected {
+			t.Errorf("%s: ready %v, connected %v; want %v, %v", what, v.Ready, connected, wantReady, wantConnected)
 		}
-		return v.Ready
 	}
-	if ready() {
-		t.Error("ready while connecting")
-	}
+	check("while connecting", false, false)
+	a.arm("synthetic-device-a")
+	check("armed, the session dormant", false, true)
 	a.markReady("synthetic-device-a")
-	if !ready() {
-		t.Error("not ready once Ready")
-	}
+	check("once Ready", true, true)
 	a.mu.Lock()
 	a.ready = nil
 	a.mu.Unlock()
-	if ready() {
-		t.Error("ready after the run moved off Ready")
-	}
+	check("after the session moved off Ready", false, true)
 	a.markReady("synthetic-device-a")
 	c.mu.Lock()
 	c.stopping = true
 	c.mu.Unlock()
-	if ready() {
-		t.Error("ready while stopping")
-	}
+	check("while stopping", false, false)
 	c.mu.Lock()
 	c.stopping = false
 	c.mu.Unlock()
 	a.stop()
-	if ready() {
-		t.Error("ready after Stop")
-	}
+	check("after Stop", false, false)
 }

@@ -413,6 +413,9 @@ func (s *server) settingsFiles() settingsFiles {
 // selected and the run's number, and only while the proxy is connected:
 // the copier never starts or holds the device session itself.
 func (s *server) copyTarget() (copyapp.Target, error) {
+	if copyTargetHook != nil {
+		copyTargetHook()
+	}
 	s.mu.Lock()
 	settings := s.settings
 	s.mu.Unlock()

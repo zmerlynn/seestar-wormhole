@@ -153,10 +153,14 @@ type windowFunc func(context.Context, string, func(), <-chan struct{}) error
 // telescope.
 var copyDial func(ctx context.Context, t copyapp.Target) (remote.Session, error)
 
-// runText reads a run's status text for the copier's target; nil is its
+// runText reads a run's status text for the status's Ready; nil is its
 // Text. Only tests set it, since only a proxy session makes a status
 // Ready.
 var runText func(*proxy.Status) string
+
+// copyTargetHook, if set, runs at the start of each copy target lookup.
+// Only tests set it, to hold a lookup.
+var copyTargetHook func()
 
 func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native *copyapp.Native) (result error) {
 	st, err := openStorage(root)

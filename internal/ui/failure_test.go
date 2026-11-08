@@ -56,7 +56,7 @@ func TestControllerFailureEventReachesStatus(t *testing.T) {
 	s := testServer(t)
 	s.controller.log = &eventLog{storage: s.storage}
 	release := make(chan struct{})
-	s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+	s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
 		<-release
 		return diagnostic.Wrap("rdt", "timeout", errors.New("PRIVATE_DEPENDENCY_TEXT"))
 	}

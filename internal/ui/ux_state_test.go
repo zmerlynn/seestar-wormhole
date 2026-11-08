@@ -104,7 +104,7 @@ func TestSettingsSaveBoundarySnapshotAndRetry(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				armed := make(chan struct{})
 				release := make(chan struct{})
-				c := testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+				c := testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 					<-armed
 					status.MarkArmed()
 					<-release

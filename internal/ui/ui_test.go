@@ -26,7 +26,7 @@ func TestControllerLifetimes(t *testing.T) {
 	entered := make(chan struct{}, 2)
 	cleanup := make(chan struct{}, 2)
 	release := make(chan struct{})
-	c := testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	c := testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		entered <- struct{}{}
 		<-ctx.Done()
 		cleanup <- struct{}{}
@@ -67,7 +67,7 @@ func TestControllerLifetimes(t *testing.T) {
 }
 func TestControllerStopStartDuringStartup(t *testing.T) {
 	entered := make(chan struct{}, 2)
-	c := testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	c := testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		entered <- struct{}{}
 		<-ctx.Done()
 		return nil
@@ -90,7 +90,7 @@ func TestControllerStopStartDuringStartup(t *testing.T) {
 }
 func testServer(t *testing.T) *server {
 	t.Helper()
-	s := &server{host: "127.0.0.1:12345", token: strings.Repeat("a", 64), storage: testStorage(t), controller: testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+	s := &server{host: "127.0.0.1:12345", token: strings.Repeat("a", 64), storage: testStorage(t), controller: testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
 		return errors.New(testPassword)
 	}), settings: testSettings(), quit: make(chan struct{})}
 	s.controller.save = s.saveSettings
@@ -229,7 +229,10 @@ func TestDoubleLaunchAndStaleRecord(t *testing.T) {
 	urls := make(chan string, 4)
 	opener := func(url string) error { urls <- url; return nil }
 	var runs int
-	run := func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { runs++; return nil }
+	run := func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+		runs++
+		return nil
+	}
 	done := make(chan error, 1)
 	go func() {
 		done <- runUIPresented(ctx, root, io.Discard, io.Discard, run, opener, &fakeKeychain{}, nil, nil)
@@ -290,7 +293,7 @@ func TestTerminalRejectionCancelsAndJoins(t *testing.T) {
 func TestHTTPQuitJoinsCleanup(t *testing.T) {
 	s := testServer(t)
 	entered, cleanup, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-	s.controller = testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	s.controller = testController(func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		close(entered)
 		<-ctx.Done()
 		close(cleanup)
@@ -328,7 +331,7 @@ func TestControllerFinalCleanupError(t *testing.T) {
 				outcome = errors.Join(context.Canceled, outcome)
 			}
 			complete := make(chan struct{})
-			c := testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+			c := testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
 				<-complete
 				return outcome
 			})

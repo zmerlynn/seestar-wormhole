@@ -73,7 +73,7 @@ func TestSettingsFutureMembersSurviveConnect(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+		s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 			status.MarkArmed()
 			<-ctx.Done()
 			return ctx.Err()

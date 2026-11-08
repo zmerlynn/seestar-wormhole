@@ -61,7 +61,7 @@ func TestPickerSettingsSaveBoundary(t *testing.T) {
 					}
 				}
 				arm := make(chan struct{})
-				s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+				s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 					<-arm
 					status.MarkArmed()
 					<-ctx.Done()

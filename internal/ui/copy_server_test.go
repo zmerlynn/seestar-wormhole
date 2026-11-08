@@ -286,7 +286,7 @@ func TestCopyEndpoint(t *testing.T) {
 func TestCopyWaitsForTheConnection(t *testing.T) {
 	s, _ := copyServer(t)
 	release := make(chan struct{})
-	s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		select {
 		case <-ctx.Done():
 		case <-release:
@@ -392,7 +392,7 @@ func TestRouteSave(t *testing.T) {
 func TestRouteLocked(t *testing.T) {
 	s, _ := copyServer(t)
 	release := make(chan struct{})
-	s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		select {
 		case <-ctx.Done():
 		case <-release:
@@ -504,7 +504,7 @@ func TestQuitOrder(t *testing.T) {
 	}
 	stopped := make(chan atStop, 1)
 	running := make(chan struct{})
-	s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		close(running)
 		<-ctx.Done()
 		ended := false

@@ -82,7 +82,9 @@ func TestSavedPairAccountAssociation(t *testing.T) {
 					want.Serial, want.Model = first.Serial, first.Model
 				}
 				if route == "start" {
-					s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { return cloud.ErrUnauthorized }
+					s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+						return cloud.ErrUnauthorized
+					}
 					if w := doPost(s, "/api/start", string(body)); w.Code != 200 {
 						t.Fatal(w.Body.String())
 					}
