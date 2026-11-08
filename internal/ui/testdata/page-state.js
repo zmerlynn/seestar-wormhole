@@ -282,7 +282,14 @@
       assert(rows[1].cells[0].textContent === '80' && rows[9].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
       assert($('phone-steps').querySelector('p').textContent === "On your phone, open the Seestar app and select your Seestar from the LAN tab.", 'phone instructions omit the LAN tab');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
-      assert(!$('copy-steps').hidden && $('copy-port').textContent === '1234' && $('copy-steps').querySelector('h2').textContent === 'Copying files' && $('copy-steps').querySelector('a').href.endsWith('/docs/copying.md#copy-with-a-graphical-app') && $('phone-steps').compareDocumentPosition($('copy-steps')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'copying help missing, wrong port or misplaced');
+      assert(!$('copy-steps').hidden && $('copy-port').textContent === '1234' && $('copy-steps').querySelector('h2').textContent === 'Copying files' && $('phone-steps').compareDocumentPosition($('copy-steps')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'copying help missing, wrong port or misplaced');
+      // Copy and Browse lead, with Go to Copy once the tabs are open; another
+      // SMB app's port and the guide follow.
+      const [lead, other] = $('copy-steps').querySelectorAll('p'), guide = $('copy-steps').querySelector('a');
+      assert(lead.textContent.startsWith('Use the Copy tab') && lead.contains($('copy-steps-go')) && $('copy-steps-go').hidden, 'copying help does not lead with Copy, or offers Go to Copy while the tabs are locked');
+      assert(other.textContent.startsWith('Another file-sharing (SMB) app') && other.contains($('copy-port')) && other.contains(guide) && guide.href.endsWith('/docs/copying.md#copy-with-a-graphical-app') && $('copy-steps-go').compareDocumentPosition($('copy-port')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-port').compareDocumentPosition(guide) & Node.DOCUMENT_POSITION_FOLLOWING, 'SMB port or guide missing or out of order');
+      render({...status(), copy_unlocked: true, effective: {...status().effective, listen: 'all_networks', ports: {80:80,445:1234}}, active: true});
+      assert(!$('copy-steps-go').hidden && $('copy-steps-go').textContent === 'Go to Copy', 'Go to Copy missing once the tabs are open');
       render({...status(), active: true, effective: {...status().effective, listen: 'this_computer', idle: {mode: 'on_demand'}, ports: {80:8080}}});
       assert($('run-summary').textContent === 'Listening on this computer only · Seestar app discovery off · Connect when an app needs Seestar' && $('phone-steps').hidden && $('copy-steps').hidden, 'computer/idle summary inaccurate');
       render({...status(), active: true, effective: {...status().effective, listen: 'other'}});

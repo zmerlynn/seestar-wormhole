@@ -27,7 +27,7 @@ async function checkCopyUnlock(st) {
   copyAssert($('copy-reach').hidden, 'a ready route showed the reach notice');
   // Each reach state words the notice, and its link opens what it names.
   for (const [reach, wording, link, focus] of [
-    ['not_connected', 'Not connected. Copying resumes when the connection is ready.', 'Go to Connection', 'start'],
+    ['not_connected', 'Not connected.', 'Go to Connection', 'start'],
     ['smb_off', 'SMB is off. Turn on its port in Connection > Advanced.', 'Open Advanced', 'ports'],
     ['no_lan_address', "Save the telescope's address on the Connection tab first.", 'Go to Connection', 'lan-address']
   ]) {
@@ -40,6 +40,19 @@ async function checkCopyUnlock(st) {
     copyAssert(document.activeElement === $(focus) || document.activeElement === $('tab-connection'), reach + ' link focused ' + JSON.stringify(document.activeElement?.attributes));
     copyAssert(($('advanced').open === true) === (reach === 'smb_off'), reach + ' Advanced');
     if (reach === 'no_lan_address') copyAssert(routeChoice === 'lan', 'the LAN link did not choose On this network');
+  }
+  // Only a repeating copy, and only on Copy, says it resumes.
+  render({...st.unlocked, copy_reach: 'not_connected'});
+  for (const [copy, settings, tab, wording] of [
+    [st.after.copy, st.after.settings, 'copy', 'Not connected.'],
+    [{...st.after.copy, on: true}, st.after.settings, 'copy', 'Not connected. Copying resumes at the next check after you connect.'],
+    [{...st.after.copy, on: true}, st.after.settings, 'browse', 'Not connected.'],
+    [{...st.after.copy, on: true}, st.after.settings, 'free', 'Not connected.'],
+    [{...st.after.copy, on: true}, {...st.after.settings, once: true}, 'copy', 'Not connected.']
+  ]) {
+    copyRender({...st.after, copy, settings});
+    selectTab(tab);
+    copyAssert(!$('copy-reach').hidden && $('copy-reach-text').textContent === wording, tab + (copy.on ? ' on' : ' off') + (settings.once ? ' once' : '') + ': ' + $('copy-reach-text').textContent);
   }
   // Losing the route while on a copy tab falls back to Connection.
   render(st.unlocked);
@@ -127,7 +140,7 @@ async function checkActivityMerge(st) {
   render({...st.unlocked, events, log_path: 'synthetic-log'});
   copyRender({...st.after, activity, activity_seq: 2});
   const want = [['delete', 'Deleted 2 files (6 B).'], ['connection', 'Connected to your Seestar'], ['copy', "Couldn't copy 1 file."], ['connection', 'Account telescopes: S30 synthetic']];
-  const names = {connection: 'Connection', copy: 'Copy', delete: 'Delete'};
+  const names = {connection: 'Connection', copy: 'Copy', delete: 'Free up space'};
   const rows = $('events').children;
   copyAssert(rows.length === want.length, 'merged ' + rows.length + ' rows');
   want.forEach(([source, message], i) => {
@@ -226,4 +239,126 @@ async function checkBrowseSetup(st) {
   copyRender(st.after);
   selectTab('browse');
   copyAssert($('b-setup').hidden && !$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse did not show after setup');
+}
+
+// The connected page's copying step leads with Copy and Browse, its Go to
+// Copy opens the tab, and other SMB apps come second.
+async function checkCopySteps(st) {
+  copyFixture(st, st.unlocked);
+  const connected = {...st.unlocked, active: true, effective: {...st.unlocked.effective, ports: {...st.unlocked.effective.ports, 445: 1234}}};
+  render(connected);
+  const steps = $('copy-steps').textContent, lead = steps.indexOf("Use the Copy tab to save your images to a folder on this computer, or Browse to view the telescope's files. Go to Copy"), other = steps.indexOf('Another file-sharing (SMB) app can also connect to this computer on port');
+  let holder = $('copy-steps-go').parentElement;
+  while (holder && holder !== $('copy-steps')) holder = holder.parentElement;
+  copyAssert(!$('copy-steps').hidden && !$('copy-steps-go').hidden && holder, 'the copying step lacks Go to Copy');
+  copyAssert(lead > 0 && other > lead && String($('copy-port').textContent) === '1234', 'the copying step does not lead with Copy: ' + steps);
+  copyRender(st.before);
+  $('copy-steps-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && !$('panel-copy').hidden && document.activeElement === $('f-folder'), 'Go to Copy did not open the folder field');
+  // Saved, with the form closed, it opens at the tab.
+  selectTab('connection');
+  copyFormOpen = false;
+  copyRender(st.after);
+  $('copy-steps-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'Go to Copy after setup focused ' + JSON.stringify(document.activeElement?.attributes));
+  render({...connected, copy_unlocked: false});
+  copyAssert($('copy-steps-go').hidden, 'Go to Copy shows while Copy is locked');
+}
+
+// Free up space before Copy's folder is saved says where to set it, as
+// Browse does.
+async function checkFreeSetup(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.before);
+  selectTab('free');
+  copyAssert(!$('x-setup').hidden && $('x-main').hidden, 'Free up space offers its form before setup');
+  copyAssert($('x-setup').textContent.startsWith('Choose the folder for your images on the Copy tab before freeing up space.'), 'setup wording: ' + $('x-setup').textContent);
+  $('x-setup-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && document.activeElement === $('f-folder'), 'Go to Copy did not open the folder field');
+  copyFormOpen = false;
+  copyRender(st.after);
+  selectTab('free');
+  copyAssert($('x-setup').hidden && !$('x-main').hidden && !$('x-options').hidden, 'Free up space hides its form after setup');
+}
+
+// Free up space names the saved folder whose copies, or copy history, its
+// check uses, and links to Copy.
+async function checkFreeFolder(st) {
+  copyFixture(st, st.unlocked);
+  copyFormOpen = false;
+  copyRender(st.after);
+  selectTab('free');
+  const folder = st.after.settings.folder;
+  copyAssert($('x-folder-text').textContent === 'Copies in: ' + folder, 'proof folder: ' + $('x-folder-text').textContent);
+  $('x-trust').checked = true;
+  $('x-trust').dispatchEvent({type: 'change'});
+  copyAssert($('x-folder-text').textContent === 'Copy history for: ' + folder, 'record folder: ' + $('x-folder-text').textContent);
+  $('x-trust').checked = false;
+  $('x-trust').dispatchEvent({type: 'change'});
+  $('x-folder-go').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'the folder link did not open Copy');
+}
+
+// With the check for new files off, the interval is disabled, keeps its
+// last valid value, and doesn't block Save.
+async function checkCopyOnceInterval(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.before);
+  copyAssert($('f-repeat').checked && !$('f-int').disabled && $('f-int').value === '5', 'repeat starts on with its interval');
+  $('f-int').value = '12';
+  $('f-int').dispatchEvent({type: 'input'});
+  $('f-int').value = '';
+  $('f-int').dispatchEvent({type: 'input'});
+  showErrors({interval: 'Enter a whole number of minutes from 1 to 1440.'});
+  $('f-repeat').checked = false;
+  $('f-repeat').dispatchEvent({type: 'change'});
+  copyAssert($('f-int').disabled && $('f-int').value === '12', 'copy once left the interval at ' + JSON.stringify($('f-int').value) + (($('f-int').disabled) ? '' : ', enabled'));
+  copyAssert($('f-int-err').hidden && $('f-int').getAttribute('aria-invalid') === null, 'copy once kept the interval error');
+  let sent = null;
+  api = async (action, body) => {
+    if (action === 'settings') {
+      sent = body;
+      return {...st.saved, settings: {...st.saved.settings, once: true, interval_minutes: 12}};
+    }
+    return st.after;
+  };
+  $('f-folder').value = st.saved.settings.folder;
+  await copySave();
+  copyAssert(sent && sent.once === true && sent.interval === '12', 'Save sent ' + JSON.stringify(sent));
+  $('f-repeat').checked = true;
+  $('f-repeat').dispatchEvent({type: 'change'});
+  copyAssert(!$('f-int').disabled && $('f-int').value === '12', 'repeating again lost the interval');
+  // A whole number in another spelling is kept in the digits the server
+  // reads.
+  for (const [spelling, want] of [['12.0', '12'], ['1e1', '10'], ['+12', '12']]) {
+    $('f-repeat').checked = true;
+    $('f-repeat').dispatchEvent({type: 'change'});
+    $('f-int').value = spelling;
+    $('f-int').dispatchEvent({type: 'input'});
+    $('f-repeat').checked = false;
+    $('f-repeat').dispatchEvent({type: 'change'});
+    copyAssert($('f-int').value === want, spelling + ' was kept as ' + JSON.stringify($('f-int').value));
+    sent = null;
+    await copySave();
+    copyAssert(sent && sent.interval === want, spelling + ' was sent as ' + JSON.stringify(sent && sent.interval));
+  }
+}
+
+// Copy's and Free up space's action errors are alerts, written only when
+// they change, so a poll doesn't announce one again.
+async function checkActionAlerts(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.after);
+  for (const [id, act] of [['c-err', () => copyAction('start')], ['x-err', () => freeAction({action: 'find'})]]) {
+    copyAssert($(id).getAttribute('role') === 'alert', id + ' is not an alert');
+    let writes = 0, shown = '';
+    Object.defineProperty($(id), 'textContent', {get: () => shown, set: value => {writes++; shown = value;}, configurable: true});
+    api = async () => {throw {error: "Couldn't preview: synthetic."};};
+    await act();
+    await act();
+    copyAssert(shown === "Couldn't preview: synthetic." && writes === 1, id + ' wrote ' + writes + ' times: ' + shown);
+    api = async () => st.after[id === 'c-err' ? 'copy' : 'free'];
+    await act();
+    copyAssert(shown === '' && writes === 2, id + ' was not cleared');
+  }
 }

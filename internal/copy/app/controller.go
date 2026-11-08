@@ -48,8 +48,14 @@ const (
 	stDone        = "done"      // a copy once ended after its check
 )
 
-// checkReach is what to check when the telescope can't be reached.
-const checkReach = "Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."
+// checkReach is what to check when the telescope can't be reached: on
+// this network, the telescope; through Telescope Network, the connection.
+func checkReach(lan bool) string {
+	if lan {
+		return "Check that the telescope is on and on this computer's network."
+	}
+	return "Check the connection and telescope status on the Connection tab."
+}
 
 // errBusy is a start while copying is on or stopping, or the app quitting.
 var errBusy = errors.New("copying is already on")
@@ -641,7 +647,7 @@ func (c *controller) view(now time.Time) copyView {
 		v.Text = "No files were copied. Trying again at " + at(st.next) + "."
 	case stUnreachable:
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."
-		v.Text = "Trying again at " + at(st.next) + ". " + checkReach + " Copying stays on and keeps trying."
+		v.Text = "Trying again at " + at(st.next) + ". " + checkReach(c.bound.onLAN()) + " Copying stays on and keeps trying."
 		if c.bound.onLAN() {
 			v.Text += LocalNetworkHint(hostOS, st.reachErr)
 		}
@@ -650,7 +656,7 @@ func (c *controller) view(now time.Time) copyView {
 		switch st.outcome {
 		case stUnreachable:
 			v.Title = "Can't reach the telescope at " + st.endpoint + "." + once
-			v.Text = checkReach
+			v.Text = checkReach(c.bound.onLAN())
 			if c.bound.onLAN() {
 				v.Text += LocalNetworkHint(hostOS, st.reachErr)
 			}

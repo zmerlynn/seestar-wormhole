@@ -413,6 +413,21 @@ test('the padlock keeps its body under forced colors', async ({ page, startApp }
   }
 });
 
+// Forced colors give the selects their native arrow back: the drawn one
+// is dropped (Chromium) or keeps the page's color (WebKit). A browser
+// that can't emulate forced colors skips this.
+test('the selects are native under forced colors', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  const style = (...props) => page.locator('#mode').evaluate((e, props) => props.map((p) => getComputedStyle(e)[p]), props);
+  expect(await style('appearance')).toEqual(['none']);
+  await page.emulateMedia({ forcedColors: 'active' });
+  test.skip(!(await page.evaluate(() => matchMedia('(forced-colors: active)').matches)), 'no forced colors emulation');
+  const [appearance, image] = await style('appearance', 'backgroundImage');
+  expect(appearance).toBe('auto');
+  expect(image).not.toContain('gradient');
+});
+
 // The tabs are light: the selected one is underlined, not bold, so no tab
 // changes width; a keyboard focus ring sits inside the tab, clear of the
 // underline, and a click shows none; and every panel's first heading has
@@ -642,6 +657,37 @@ test("Browse's frame is named The telescope's files, with no title", async ({ pa
   await expect(page.getByRole('tabpanel', { name: 'Browse' }).locator('iframe[title]')).toHaveCount(0);
 });
 
+// Browse is one of the app's tabs, not a second app in a frame: the
+// app's type, page, text, links, focus ring and buttons, light and dark.
+test("Browse takes the app's look", async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const browse = frame(page);
+  expect(await browse.locator('html').evaluate(() => document.title)).toBe('Browse — seestar-wormhole');
+  const look = (loc, ...props) => loc.evaluate((e, props) => props.map((p) => getComputedStyle(e)[p]), props);
+  const type = ['fontFamily', 'fontSize', 'lineHeight', 'color'];
+  const button = ['color', 'backgroundColor', 'borderTopColor', 'borderTopWidth', 'borderTopLeftRadius', 'paddingTop', 'paddingLeft'];
+  for (const colorScheme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme });
+    expect(await look(browse.locator('body'), ...type), colorScheme).toEqual(await look(page.locator('main'), ...type));
+    expect(await look(browse.locator('body'), 'backgroundColor'), colorScheme).toEqual(await look(page.locator('html'), 'backgroundColor'));
+    expect(await look(browse.getByRole('link', { name: 'MyWorks/' }), 'color'), colorScheme)
+      .toEqual(await look(page.locator('footer a').first(), 'color'));
+    expect(await look(browse.locator('#vclose'), ...button), colorScheme).toEqual(await look(page.locator('#quit'), ...button));
+  }
+  // The keyboard's focus ring, as the app draws it: 3 px in its focus
+  // color, 3 px out.
+  await browse.getByRole('link', { name: 'MyWorks/' }).focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  const focused = browse.locator(':focus');
+  expect(await focused.evaluate((e) => e.matches(':focus-visible'))).toBe(true);
+  expect(await look(focused, 'outlineStyle', 'outlineWidth', 'outlineOffset', 'outlineColor'))
+    .toEqual(['solid', '3px', '3px', (await look(page.locator('footer a').first(), 'color'))[0]]);
+});
+
 test('Browse marks what Leave out leaves out, with a key', async ({ page, startApp }) => {
   const app = await startApp(setUp('/nowhere'));
   await openCopy(page, app.url);
@@ -820,19 +866,22 @@ for (const colorScheme of ['light', 'dark']) {
 }
 
 // The layouts DESIGN asks the app to survive: twice the text size, the
-// wider text spacing of WCAG 1.4.12, and a 480 px wide window.
+// wider text spacing of WCAG 1.4.12, a 480 px wide window, and both of
+// the first and last together.
 const layouts = {
   'text-200': { width: 1280 },
   'text-spacing': { width: 1280 },
   'narrow-480': { width: 480 },
+  'narrow-480-text-200': { width: 480 },
 };
 
 // restyle applies a layout's text changes to one document, through the
-// CSSOM, which the pages' style policy allows.
+// CSSOM, which the pages' style policy allows. It doubles what is there,
+// so it runs once per load.
 async function restyle(target, layout) {
   await target.evaluate((layout) => {
     const all = [document.documentElement, ...document.querySelectorAll('*')];
-    if (layout === 'text-200') {
+    if (layout.endsWith('text-200')) {
       const sizes = all.map((el) => parseFloat(getComputedStyle(el).fontSize));
       all.forEach((el, i) => el.style.setProperty('font-size', sizes[i] * 2 + 'px', 'important'));
     }
@@ -906,6 +955,15 @@ for (const [layout, { width }] of Object.entries(layouts)) {
     await tabsWrap(page);
     await shot('first-run');
 
+    // The remote route's Advanced, with the Services table, which scrolls
+    // in its own box.
+    await page.getByLabel('Remotely through Telescope Network').check();
+    await page.locator('#advanced summary').click();
+    await expect(page.locator('#ports input').first()).toBeVisible();
+    await fits(page);
+    expect(await page.locator('#ports').evaluate((el) => getComputedStyle(el).overflowX)).toBe('auto');
+    await shot('advanced');
+
     const first = await startApp({ 'config.json': lan() });
     await openCopy(page, first.url);
     await restyle(page, layout);
@@ -925,7 +983,7 @@ for (const [layout, { width }] of Object.entries(layouts)) {
     await tab(page, 'Browse').click();
     await expect(browseStatus(page)).toHaveText(rootStatus);
     const browse = await (await page.locator('#b-frame').elementHandle()).contentFrame();
-    await restyle(page, layout);
+    // The page has its layout from Copy; Browse's frame is its own document.
     await restyle(browse, layout);
     await fits(page);
     await tabsWrap(page);

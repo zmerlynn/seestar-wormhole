@@ -22,6 +22,7 @@ const (
 	commandLicenses
 	commandDiscoveryOnly
 	commandUI
+	commandHelpTopic
 )
 
 type commandOutcome uint8
@@ -68,6 +69,19 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 		if cmd == root {
 			fmt.Fprintln(cmd.OutOrStdout(), "Third-party license information: "+programName+" licenses")
 		}
+	})
+	root.SetHelpCommand(&cobra.Command{
+		Use:   "help [command]",
+		Short: "Help about any command",
+		Long:  "Help prints the help of any command, such as " + programName + " help proxy.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			topic, rest, err := root.Find(args)
+			if err != nil || len(rest) != 0 {
+				return &argumentError{Option: "help", Rule: "unknown help topic; give a command name, such as proxy"}
+			}
+			topic.InitDefaultHelpFlag() // list -h in the topic's help, as "topic --help" does
+			return topic.Help()
+		},
 	})
 	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return flagParseError(err) })
 	root.Flags().BoolVar(&o.version, "version", false, "print version, revision and platform")
@@ -122,9 +136,27 @@ func noArguments(_ *cobra.Command, args []string) error {
 	return nil
 }
 
+// checkedWriter keeps the first write error, since Cobra's help callbacks
+// cannot return one.
+type checkedWriter struct {
+	io.Writer
+	err error
+}
+
+func (w *checkedWriter) Write(p []byte) (int, error) {
+	n, err := w.Writer.Write(p)
+	if w.err == nil {
+		w.err = err
+	}
+	return n, err
+}
+
+// parse returns errHelp once help is written, or the write's error if it
+// could not be.
 func parse(args []string, out io.Writer) (options, error) {
 	var o options
-	command := newCommand(&o, out)
+	output := &checkedWriter{Writer: out}
+	command := newCommand(&o, output)
 	// An explicit empty invocation must not fall back to the process arguments.
 	command.SetArgs(append([]string{}, args...))
 	executed, err := command.ExecuteC()
@@ -139,6 +171,8 @@ func parse(args []string, out io.Writer) (options, error) {
 		o.command = commandLicenses
 	case "discovery":
 		o.command = commandDiscoveryOnly
+	case "help":
+		o.command = commandHelpTopic
 	}
 	if err != nil {
 		return o, flagParseError(err)
@@ -153,6 +187,9 @@ func parse(args []string, out io.Writer) (options, error) {
 		o.outcome = commandVersion
 	case executed == command && guiEnabled:
 		o.command = commandUI
+	}
+	if o.outcome == commandHelp && output.err != nil {
+		return o, output.err
 	}
 	if o.outcome == commandHelp || o.outcome == commandCompletion {
 		return o, errHelp

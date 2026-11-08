@@ -66,7 +66,7 @@ func errorCopy(code string) string {
 	case "email":
 		return "Enter your Seestar account email."
 	case "password":
-		return "Enter a password or use a saved password."
+		return "Enter a password of 8 to 32 characters, or use a saved password."
 	case "idle":
 		return "Enter a wait time greater than zero."
 	case "ports":

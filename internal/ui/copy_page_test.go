@@ -60,3 +60,28 @@ func TestCopyChoosePage(t *testing.T) {
 func TestBrowseSetupPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkBrowseSetup("+copyPageStatuses(t)+")")
 }
+
+// The connected page's copying step leads with the Copy tab.
+func TestCopyStepsPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkCopySteps("+copyPageStatuses(t)+")")
+}
+
+// Free up space waits for Copy's folder.
+func TestFreeSetupPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkFreeSetup("+copyPageStatuses(t)+")")
+}
+
+// Free up space names the folder its check uses.
+func TestFreeFolderPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkFreeFolder("+copyPageStatuses(t)+")")
+}
+
+// Copy once disables the interval and saves without it.
+func TestCopyOnceIntervalPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkCopyOnceInterval("+copyPageStatuses(t)+")")
+}
+
+// Copy's and Free up space's action errors are announced once.
+func TestActionAlertsPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkActionAlerts("+copyPageStatuses(t)+")")
+}

@@ -148,3 +148,46 @@ func TestUsageExitAcrossCommands(t *testing.T) {
 		}
 	}
 }
+
+// failedOutput refuses every write, as a full disk or closed pipe does.
+type failedOutput struct{}
+
+func (failedOutput) Write([]byte) (int, error) { return 0, syscall.EIO }
+
+// Help that cannot be written exits 1, as a failed version write does, and
+// an unknown help topic is a usage error, as in seestar-copy-cli.
+func TestHelpOutcomes(t *testing.T) {
+	bootstrap := func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} }
+	for _, args := range [][]string{{"--help"}, {"help"}, {"help", "proxy"}, {"proxy", "--help"}, {"--version"}} {
+		for _, windows := range []bool{false, true} {
+			var logs bytes.Buffer
+			code := mainExitCodeWithPlatform(args, failedOutput{}, &logs, bootstrap,
+				func() (io.Writer, func()) { return &logs, func() {} }, windows)
+			if code != 1 {
+				t.Errorf("%q to a failed output, windows=%t: exit %d, want 1", args, windows, code)
+			}
+		}
+	}
+	for _, args := range [][]string{{"help", "proxy"}, {"help", "licenses"}} {
+		var out, logs bytes.Buffer
+		code := mainExitCodeWithPlatform(args, &out, &logs, bootstrap, func() (io.Writer, func()) { return &logs, func() {} }, false)
+		if code != 0 || !strings.Contains(out.String(), programName+" "+args[1]) || !strings.Contains(out.String(), "-h, --help") || logs.Len() != 0 {
+			t.Errorf("%q: exit %d out=%q logs=%q", args, code, &out, &logs)
+		}
+	}
+	for _, args := range [][]string{{"help", "nonesuch"}, {"help", "proxy", "nonesuch"}} {
+		for _, windows := range []bool{false, true} {
+			var out, logs bytes.Buffer
+			code := mainExitCodeWithPlatform(args, &out, &logs, bootstrap,
+				func() (io.Writer, func()) { return &logs, func() {} }, windows)
+			var record struct{ Msg, Phase, Reason, Option, Rule, Help string }
+			if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
+				t.Fatalf("%q: want one JSON diagnostic, got %q: %v", args, &logs, err)
+			}
+			if code != 2 || out.Len() != 0 || record.Msg != "help failed" || record.Phase != "arguments" || record.Reason != "invalid_option" ||
+				record.Option != "help" || record.Rule != "unknown help topic; give a command name, such as proxy" || record.Help != programName+" help --help" {
+				t.Errorf("%q windows=%t: exit %d out=%q diagnostic=%+v", args, windows, code, &out, record)
+			}
+		}
+	}
+}

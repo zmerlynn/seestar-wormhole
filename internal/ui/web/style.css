@@ -60,10 +60,12 @@ h2 {
 #feedback:empty {
   display:none
 }
+/* A fieldset's min-content width would otherwise widen a narrow window. */
 fieldset {
   border:0;
   padding:0;
-  margin:1.5rem 0
+  margin:1.5rem 0;
+  min-inline-size:0
 }
 legend {
   padding:0;
@@ -203,6 +205,10 @@ select {
 #ports input {
   min-width:5rem;
 }
+/* The Services table scrolls in its own box rather than the page. */
+#ports {
+  overflow-x:auto;
+}
 
 #events {
   list-style:none;
@@ -306,6 +312,13 @@ header {
   }
   [role=tab][aria-selected=true] {
     border-bottom-color:Highlight
+  }
+  /* The drawn arrow is dropped or keeps the page's color; the native
+     one follows the system's. */
+  select {
+    appearance:auto;
+    background-image:none;
+    padding-right:.55rem
   }
 }
 /* Each panel starts as far below the tabs: its padding, with the first
@@ -520,6 +533,10 @@ button.small {
 }
 .check.strong {
   font-weight:600
+}
+/* The repeat row carries the interval, so it wraps at a narrow width. */
+.check.wrap {
+  flex-wrap:wrap
 }
 .actions {
   align-items:center

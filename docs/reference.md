@@ -201,7 +201,8 @@ exits 1. See [NOTICE](../NOTICE) for attribution.
 Bare `seestar-wormhole` opens [the UI](ui.md) and stays running until you quit or press Ctrl+C.
 Bare `seestar-wormhole-cli` prints help and exits 0 without opening a UI or browser.
 Use `help [command]` or
-`--help`/`-h` for help. Root `--version` prints
+`--help`/`-h` for help. An unknown help topic is a usage error (exit 2,
+`help failed`), and help that cannot be written exits 1. Root `--version` prints
 `<program> <version> (<revision>, <os>/<arch>)` (`<program>` is
 `seestar-wormhole` or `seestar-wormhole-cli`); unset build metadata is
 `development`. Help/version require no credentials or network. Version still

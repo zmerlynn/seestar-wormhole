@@ -328,6 +328,14 @@ func TestSaveCallsSave(t *testing.T) {
 	if saves := e.saves(); len(saves) != 2 || !saves[1].Once {
 		t.Errorf("saved %+v, want copy once", saves)
 	}
+	// Copy once doesn't use the interval, so one that isn't valid doesn't
+	// block the save: the default is kept for a later return to repeating.
+	if w := e.post("/copy/api/settings", `{"once":true,`+strings.Replace(goodInput[1:], `"interval":"5"`, `"interval":""`, 1)); w.Code != 200 {
+		t.Fatalf("copy once without an interval: code %d %q", w.Code, w.Body.String())
+	}
+	if saves := e.saves(); len(saves) != 3 || !saves[2].Once || saves[2].IntervalMinutes != 5 {
+		t.Errorf("saved %+v, want copy once every 5 minutes", saves)
+	}
 }
 
 func TestSaveFailure(t *testing.T) {
@@ -373,14 +381,14 @@ func TestTestMessages(t *testing.T) {
 		{dirs("MyWorks", "Autorun", "log", "a", "b"), nil, "Connected. The telescope's share has MyWorks, Autorun and 3 more folders."},
 		{nil, fmt.Errorf("connect to x: dial: %w", &net.DNSError{Err: "no such host", Name: "seestar.local", IsNotFound: true}), "Can't find seestar.local. Try the telescope's IP address."},
 		{nil, fmt.Errorf("connect to x: dial: %w", &net.OpError{Op: "dial", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}), "seestar.local answered but refused port 4445. Is this the telescope's address?"},
-		{nil, fmt.Errorf("connect to x: %w", context.DeadlineExceeded), "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."},
-		{nil, &net.DNSError{Err: "server misbehaving", Name: "seestar.local", IsTemporary: true}, "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."},
+		{nil, fmt.Errorf("connect to x: %w", context.DeadlineExceeded), "Can't reach seestar.local:4445. Check that the telescope is on and on this computer's network."},
+		{nil, &net.DNSError{Err: "server misbehaving", Name: "seestar.local", IsTemporary: true}, "Can't reach seestar.local:4445. Check that the telescope is on and on this computer's network."},
 		// Mount's error, as remote and engine wrap it.
 		{nil, fmt.Errorf("connect to x: mount \"EMMC Images\" on x: %w", &fs.PathError{Op: "mount", Path: `\\x\EMMC Images`, Err: smbStatus(0xC00000CC)}),
 			`Connected, but this isn't a Seestar: it has no "EMMC Images" share.`},
 		// Wrong credentials, or a share it may not use: not this case.
-		{nil, fmt.Errorf("connect to x: dial x: %w", smbStatus(0xC000006D)), "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."},
-		{nil, fmt.Errorf("connect to x: mount \"EMMC Images\" on x: %w", &fs.PathError{Op: "mount", Path: `\\x\EMMC Images`, Err: smbStatus(0xC0000022)}), "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running."},
+		{nil, fmt.Errorf("connect to x: dial x: %w", smbStatus(0xC000006D)), "Can't reach seestar.local:4445. Check that the telescope is on and on this computer's network."},
+		{nil, fmt.Errorf("connect to x: mount \"EMMC Images\" on x: %w", &fs.PathError{Op: "mount", Path: `\\x\EMMC Images`, Err: smbStatus(0xC0000022)}), "Can't reach seestar.local:4445. Check that the telescope is on and on this computer's network."},
 	}
 	for _, tt := range tests {
 		if got := testMessage("linux", "seestar.local:4445", tt.entries, tt.err); got != tt.want {
@@ -456,7 +464,7 @@ func TestLocalNetworkHint(t *testing.T) {
 			t.Errorf("%s: LocalNetworkHint(%s, %v) = %q, want %q", tt.name, tt.goos, tt.err, got, tt.want)
 		}
 	}
-	want := "Can't reach seestar.local:4445. Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + lanHint
+	want := "Can't reach seestar.local:4445. Check that the telescope is on and on this computer's network." + lanHint
 	if got := testMessage("darwin", "seestar.local:4445", nil, deadline); got != want {
 		t.Errorf("Test on macOS = %q\nwant %q", got, want)
 	}

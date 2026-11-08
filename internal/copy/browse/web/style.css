@@ -1,17 +1,29 @@
 [hidden] { display: none !important; }
-:root { color-scheme: light dark; }
-body { font: 14px/1.4 system-ui, sans-serif; margin: 0 1rem 2rem; color: #1b1b1b; background: #fff; }
+:root {
+  color-scheme: light dark;
+  --bg: #fff; --surface: #fff; --text: #1b1b1b; --muted: #555; --link: #0b57d0;
+  --rule: #eee; --rule-head: #ccc; --tint: #f5f6f8; --tint-border: #ccc;
+  --btn: #f0f0f0; --btn-border: #767676; --copied: #146c2e; --changed: #8a4b00;
+}
+/* In the app, Browse takes the app's look (internal/ui/web/style.css). */
+:root.in-app {
+  --text: #18202b; --muted: #485362; --link: #075bb5; --rule: #d5d9de;
+  --rule-head: #68717c; --tint: #f3f5f8; --tint-border: #68717c; --btn: #fff; --btn-border: #68717c;
+}
+body { font: 14px/1.4 system-ui, sans-serif; margin: 0 1rem 2rem; color: var(--text); background: var(--bg); }
+.in-app body { font: 1rem/1.5 system-ui, sans-serif; }
 .in-app header { display: none; }
 header { display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: baseline; padding: 0.75rem 0; border-bottom: 1px solid #ddd; }
 h1 { font-size: 1.1rem; margin: 0; }
 #endpoint { font-family: ui-monospace, monospace; }
-.note { color: #555; }
+.note { color: var(--muted); }
 nav { margin: 0.75rem 0; overflow-wrap: anywhere; }
-a { color: #0b57d0; }
-.scroll { max-width: 100%; overflow-x: auto; }
+a { color: var(--link); }
+/* Positioned, so hidden headers can't widen the page. */
+.scroll { max-width: 100%; overflow-x: auto; position: relative; }
 table { border-collapse: collapse; width: 100%; }
-th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid #eee; vertical-align: middle; }
-th { font-weight: 600; border-bottom-color: #ccc; }
+th, td { text-align: left; padding: 0.25rem 0.5rem; border-bottom: 1px solid var(--rule); vertical-align: middle; }
+th { font-weight: 600; border-bottom-color: var(--rule-head); }
 .num { text-align: right; white-space: nowrap; }
 td.name { overflow-wrap: anywhere; }
 td.thumb { width: 48px; padding: 2px; }
@@ -19,36 +31,35 @@ td.thumb img { width: 48px; height: 48px; object-fit: cover; display: block; }
 td.thumb img.open { cursor: pointer; }
 table:not(.statuses) .st { display: none; }
 .badge { padding: 0 0.4rem; border-radius: 0.6rem; border: 1px solid; font-size: 0.85em; }
-.badge.copied { color: #146c2e; }
-.badge.changed { color: #8a4b00; }
-.badge.new { color: #0b57d0; }
-.badge.left-out { color: #555; border-style: dashed; }
-/* The key: a tinted box of its own, set apart from the table. Each
-   status's badge, as the list shows it, then its meaning; one per line,
-   or a grid where there is room. A styled-out list keeps its role only
-   with role=list. */
-#key { margin: 1.5rem 0 0; padding: 0.5rem 0.75rem 0.6rem; border: 1px solid #ccc; border-radius: 0.4rem; background: #f5f6f8; }
+.badge.copied { color: var(--copied); }
+.badge.changed { color: var(--changed); }
+.badge.new { color: var(--link); }
+.badge.left-out { color: var(--muted); border-style: dashed; }
+/* A styled-out list keeps its role only with role=list. */
+#key { margin: 1.5rem 0 0; padding: 0.5rem 0.75rem 0.6rem; border: 1px solid var(--tint-border); border-radius: 0.4rem; background: var(--tint); }
 #key h2 { font-size: 1em; font-weight: 600; margin: 0 0 0.35rem; }
-#key ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(16rem, 100%), 1fr)); gap: 0.25rem 1rem; }
+#key ul { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(20em, 100%), 1fr)); gap: 0.25rem 1rem; }
 .hide { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-dialog { max-width: 95vw; max-height: 95vh; padding: 0; }
+dialog { max-width: 95vw; max-height: 95vh; padding: 0; color: inherit; background: var(--surface); }
 #vbody { padding: 0.5rem; }
 dialog img { display: block; max-width: calc(95vw - 2rem); max-height: calc(95vh - 5rem); margin: auto; }
 dialog pre { max-width: calc(95vw - 2rem); max-height: calc(95vh - 6rem); overflow: auto; margin: 0; font-family: ui-monospace, monospace; }
 #vnote:empty { display: none; }
 dialog p { margin: 0.5rem 0 0; display: flex; gap: 1rem; align-items: center; }
 #vname { flex: 1; overflow-wrap: anywhere; }
-.btn { font: inherit; color: inherit; text-decoration: none; padding: 0.2em 0.8em; border: 1px solid #767676; border-radius: 0.3rem; background: #f0f0f0; cursor: pointer; }
-.btn:focus-visible { outline: 2px solid #0b57d0; outline-offset: 2px; }
+.btn { font: inherit; color: inherit; text-decoration: none; padding: 0.2em 0.8em; border: 1px solid var(--btn-border); border-radius: 0.3rem; background: var(--btn); cursor: pointer; }
+.btn:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.in-app .btn { padding: 0.55rem 0.85rem; }
+.in-app :focus-visible { outline: 3px solid var(--link); outline-offset: 3px; }
 @media (prefers-color-scheme: dark) {
-  body { color: #e6e6e6; background: #161616; }
-  .note, .badge.left-out { color: #aaa; }
-  a, .badge.new { color: #8ab4f8; }
-  th, td { border-bottom-color: #333; }
-  #key { background: #1f2124; border-color: #555; }
-  .badge.copied { color: #7fd18b; }
-  .badge.changed { color: #f2b45a; }
-  dialog { color: inherit; background: #222; }
-  .btn { background: #333; border-color: #888; }
-  .btn:focus-visible { outline-color: #8ab4f8; }
+  :root {
+    --bg: #161616; --surface: #222; --text: #e6e6e6; --muted: #aaa; --link: #8ab4f8;
+    --rule: #333; --rule-head: #333; --tint: #1f2124; --tint-border: #555;
+    --btn: #333; --btn-border: #888; --copied: #7fd18b; --changed: #f2b45a;
+  }
+  :root.in-app {
+    --bg: #121b29; --surface: #192638; --text: #eef4ff; --muted: #c0ccdc; --link: #83c7ff;
+    --rule: #2c3a4f; --rule-head: #93a2b8; --tint: #192638; --tint-border: #93a2b8;
+    --btn: #192638; --btn-border: #93a2b8;
+  }
 }

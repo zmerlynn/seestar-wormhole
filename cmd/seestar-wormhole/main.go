@@ -126,7 +126,7 @@ func runWithSession(ctx context.Context, args []string, out io.Writer, logOutput
 func runWithListener(ctx context.Context, args []string, out io.Writer, logOutput io.Writer, newSession func(context.Context, proxy.Config) (commandSession, error), listen func(string, string) (net.Listener, error)) error {
 	o, err := parse(args, out)
 	if err != nil {
-		if !errors.Is(err, errHelp) {
+		if !errors.Is(err, errHelp) && o.outcome != commandHelp {
 			logCommandArgumentError(o, logOutput, err)
 		}
 		return err
@@ -353,6 +353,10 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	if errors.Is(err, errHelp) {
 		return 0
 	}
+	// Help that could not be written fails as a failed version write does.
+	if err != nil && o.outcome == commandHelp {
+		return commandExitCode(o, err)
+	}
 	if err == nil && o.outcome == commandVersion {
 		_, err = fmt.Fprintln(out, versionString())
 		return commandExitCode(o, err)
@@ -425,6 +429,8 @@ func logCommandArgumentError(o options, out io.Writer, err error) {
 		logConfigurationError(out, "licenses", err)
 	case commandDiscoveryOnly:
 		logConfigurationError(out, "discovery", err)
+	case commandHelpTopic:
+		logConfigurationError(out, "help", err)
 	default:
 		logArgumentError(out, err)
 	}

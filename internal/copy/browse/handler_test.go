@@ -379,6 +379,12 @@ func TestInApp(t *testing.T) {
 	if page := cli.serve("GET", "/").Body.String(); strings.Contains(page, "in-app") {
 		t.Error("outside the app, index.html has the in-app class")
 	}
+	if page := app.serve("GET", "/").Body.String(); !strings.Contains(page, "<title>Browse — seestar-wormhole</title>") || strings.Count(page, "<title>") != 1 {
+		t.Error("in app, index.html is not titled Browse — seestar-wormhole")
+	}
+	if page := cli.serve("GET", "/").Body.String(); !strings.Contains(page, "<title>Browse telescope files</title>") || strings.Contains(page, "seestar-copy") {
+		t.Error("outside the app, index.html is not titled Browse telescope files, or names seestar-copy")
+	}
 	for _, f := range []string{"web/index.html", "web/style.css", "web/app.js"} {
 		b, _ := assets.ReadFile(f)
 		if f == "web/index.html" && !strings.Contains(string(b), `<html lang="en">`) {
@@ -431,7 +437,7 @@ func TestStatic(t *testing.T) {
 		}
 	}
 	if size > 15000 {
-		t.Errorf("the page is %d bytes, over 15 KB", size)
+		t.Errorf("Browse source assets total %d bytes, over the 15 KB budget", size)
 	}
 	if e.d.dials() != 0 {
 		t.Errorf("the page made %d dials", e.d.dials())

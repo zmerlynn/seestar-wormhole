@@ -24,7 +24,7 @@ let routeChoice = 'account', lanPending = '', lanReach = null, currentTab = 'con
 const tabNames = ['connection', 'copy', 'browse', 'free', 'activity'];
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const fieldCopy = {
-  email: 'Enter your Seestar account email.', password: 'Enter a password or use a saved password.',
+  email: 'Enter your Seestar account email.', password: 'Enter a password of 8 to 32 characters, or use a saved password.',
   idle: 'Enter a wait time greater than zero.'
 };
 async function api(action, body, base = '/api/') {
@@ -198,7 +198,9 @@ function validate() {
     fieldError('email',fieldCopy.email,'email',true);
     return false;
   }
-  if (!$('password').value && !usingSaved() && !passwordState().memory) {
+  // A string's length counts UTF-16 units, as the account's rule does.
+  const typed = $('password').value.length;
+  if (!usingSaved() && (typed ? typed < 8 || typed > 32 : !passwordState().memory)) {
     actionError = 'password';
     fieldError('password',fieldCopy.password,'password',true);
     return false;
@@ -453,7 +455,7 @@ function tabKey(event) {
 // target, a notice says why and links to Connection.
 const copyTabNames = ['copy', 'browse', 'free'];
 const reachCopy = {
-  not_connected: ['Not connected. Copying resumes when the connection is ready.', 'Go to Connection'],
+  not_connected: ['Not connected.', 'Go to Connection'],
   smb_off: ['SMB is off. Turn on its port in Connection > Advanced.', 'Open Advanced'],
   no_lan_address: ["Save the telescope's address on the Connection tab first.", 'Go to Connection']
 };
@@ -470,14 +472,17 @@ function copyTabs(s) {
     else button.setAttribute('aria-describedby', 'tabs-note');
   }
   $('tabs-note').hidden = open;
+  $('copy-steps-go').hidden = !open;
   if (!open && copyTabNames.includes(currentTab)) selectTab('connection');
   copyNotice();
 }
+// Only Copy, while copying repeats, says copying will go on.
 function copyNotice() {
   const reach = reachCopy[state?.copy_reach];
   $('copy-reach').hidden = !reach || !copyTabNames.includes(currentTab);
   if (!reach) return;
-  text('copy-reach-text', reach[0]);
+  const repeating = currentTab === 'copy' && state.copy_reach === 'not_connected' && copyStatus?.copy.on && !copySaved?.once;
+  text('copy-reach-text', repeating ? 'Not connected. Copying resumes at the next check after you connect.' : reach[0]);
   text('copy-reach-go', reach[1]);
 }
 // The notice's link opens what it names: Advanced's ports for SMB, the
@@ -507,9 +512,10 @@ function browseFrame() {
   browseView = view;
   $('b-frame').src = '/browse/';
 }
+// goSetup opens Copy at its folder while the form shows, else at its tab.
 function goSetup() {
   selectTab('copy');
-  if (!$('f-folder').disabled) $('f-folder').focus();
+  (copyFormOpen && !$('f-set').disabled ? $('f-folder') : $('tab-copy')).focus();
 }
 function put(id, value) {
   text(id, value || '');
@@ -555,17 +561,37 @@ const copyFields = {folder: 'f-folder', interval: 'f-int', files_at_once: 'f-fil
 const lines = value => value === '' ? [] : value.split('\n');
 function copyFill(s) {
   $('f-folder').value = s.folder;
-  $('f-int').value = String(s.interval_minutes);
+  $('f-int').value = copyInterval = String(s.interval_minutes);
   $('f-repeat').checked = !s.once;
+  repeatChange();
   $('f-files').value = String(s.files_at_once);
   $('f-ex').value = s.excludes.join('\n');
   $('f-in').value = s.includes.join('\n');
   $('f-skip').checked = s.skip_built_in;
   $('f-start').checked = s.start_copying;
 }
+// The interval counts only while copying repeats. Copy once disables it,
+// showing and sending its last valid value, kept for a later return to
+// repeating, and drops an error it had. The value is kept in the digits
+// the server reads, since the field also takes 12.0 or 1e1.
+let copyInterval = '5';
+function intervalInput() {
+  const value = $('f-int').value.trim(), n = Number(value);
+  if (value && Number.isInteger(n) && n >= 1 && n <= 1440) copyInterval = String(n);
+}
+function repeatChange() {
+  const repeat = $('f-repeat').checked;
+  if (!repeat) {
+    $('f-int').value = copyInterval;
+    put('f-int-err', '');
+    $('f-int-err').hidden = true;
+    $('f-int').removeAttribute('aria-invalid');
+  }
+  $('f-int').disabled = !repeat;
+}
 function copyInput() {
   return {
-    folder: $('f-folder').value, interval: $('f-int').value, files_at_once: $('f-files').value,
+    folder: $('f-folder').value, interval: $('f-repeat').checked ? $('f-int').value : copyInterval, files_at_once: $('f-files').value,
     excludes: lines($('f-ex').value), includes: lines($('f-in').value),
     skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked
   };
@@ -856,10 +882,13 @@ function freeFill(s) {
   $('x-in').value = s.free_includes.join('\n');
   freeIntro();
 }
-// freeIntro words the Start text for the options as set.
+// freeIntro words the Start text for the options as set, and names the
+// saved folder whose copies, or copy history, the check uses.
 function freeIntro() {
-  put('x-intro', $('x-trust').checked ? "Free up space uses this app's saved copy records. Your copies will not be checked."
+  const trust = $('x-trust').checked;
+  put('x-intro', trust ? "Free up space uses this app's saved copy records. Your copies will not be checked."
     : 'Free up space deletes files from the telescope only after they have been copied here, and checks that your copy still matches.');
+  put('x-folder-text', copySaved && (trust ? 'Copy history for: ' : 'Copies in: ') + copySaved.folder);
   $('x-restack').hidden = !(Number($('x-days').value) > 0);
 }
 // freeErrors puts each message under its option, as showErrors does for
@@ -900,8 +929,13 @@ function activityChip(id, label, stage) {
   chipShown[id] = stage;
 }
 const chipTabs = {'copy-chip': 'copy', 'preview-chip': 'copy', 'free-chip': 'free'};
+// Free up space, like Browse, waits for Copy's folder; until it is saved,
+// its notice says where to set it.
 function renderFree(v) {
   const st = v.state;
+  $('x-setup').hidden = !!copySaved;
+  $('x-main').hidden = !copySaved;
+  freeIntro();
   activityChip('free-chip', v.chip, st + (v.recheck ? '-recheck' : ''));
   put('x-title', v.title);
   put('x-text', v.text);
@@ -1077,6 +1111,7 @@ function copyRender(c) {
   renderCopy(c.copy);
   renderFree(c.free);
   browseFrame();
+  copyNotice();
   text('copy-settings', JSON.stringify(c.settings, null, 2));
   renderEvents();
 }
@@ -1089,8 +1124,9 @@ async function copyRefresh() {
   }
 }
 // Activity: one list, newest first, of the connection's events and copy's
-// and Free up space's activity, each row tagged with its source.
-const sourceNames = {connection: 'Connection', copy: 'Copy', delete: 'Delete'};
+// and Free up space's activity, each row tagged with its source. The
+// source "delete" is Free up space's, named as its tab is.
+const sourceNames = {connection: 'Connection', copy: 'Copy', delete: 'Free up space'};
 function activityRows() {
   const rows = (state?.events || []).map(event => ({...event, source: 'connection'})).reverse();
   for (const e of copyStatus?.activity || []) rows.push({time: e.at, source: e.source, message: e.text, ...(e.warn ? {warn: true} : {})});
@@ -1466,8 +1502,13 @@ $('copy-form').addEventListener('submit', e => {
 $('s-change').addEventListener('click', openCopyForm);
 $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);
+$('f-int').addEventListener('input', intervalInput);
+$('f-repeat').addEventListener('change', repeatChange);
 $('f-choose').addEventListener('click', copyChoose);
 $('b-setup-go').addEventListener('click', goSetup);
+$('copy-steps-go').addEventListener('click', goSetup);
+$('x-setup-go').addEventListener('click', goSetup);
+$('x-folder-go').addEventListener('click', goSetup);
 $('c-start').addEventListener('click', e => press(e, 'start'));
 $('c-check').addEventListener('click', e => press(e, 'check'));
 $('c-stop').addEventListener('click', e => press(e, 'stop'));

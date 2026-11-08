@@ -62,8 +62,14 @@ func checkInput(in input) (Settings, map[string]string) {
 	if !filepath.IsAbs(set.Folder) {
 		errs["folder"] = folderError
 	}
+	// Copy once never waits between checks: its interval, kept for a later
+	// return to repeating, is the default when it isn't one.
 	n, err := strconv.Atoi(strings.TrimSpace(in.Interval))
-	if err != nil || n < 1 || n > 1440 {
+	switch {
+	case err == nil && n >= 1 && n <= 1440:
+	case in.Once:
+		n = DefaultSettings().IntervalMinutes
+	default:
 		errs["interval"] = intervalError
 	}
 	set.IntervalMinutes = n
@@ -259,7 +265,7 @@ func testMessage(goos, endpoint string, entries []remote.Entry, err error) strin
 	case isNoShare(err):
 		return `Connected, but this isn't a Seestar: it has no "EMMC Images" share.`
 	default:
-		return "Can't reach " + endpoint + ". Check that the telescope is on and on the same network as this computer, or that seestar-wormhole is running." + LocalNetworkHint(goos, err)
+		return "Can't reach " + endpoint + ". " + checkReach(true) + LocalNetworkHint(goos, err)
 	}
 }
 

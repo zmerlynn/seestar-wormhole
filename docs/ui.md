@@ -68,8 +68,10 @@ Under **Use with**, choose who can connect:
 - **Custom** uses your own settings under **Advanced**. Changing any of them
   selects **Custom**; picking another setup replaces them.
 
-Enter your Seestar account email and password. Nothing connects until you
-choose **Connect**, and next time your choices are already filled in.
+Enter your Seestar account email and password. A Seestar account password
+has 8 to 32 characters, and the field says so if yours doesn't. Nothing
+connects until you choose **Connect**, and next time your choices are already
+filled in.
 
 Your password stays in memory until you quit. To skip typing it next time,
 choose **Save password to keychain**; the field then shows **Saved in
@@ -113,8 +115,9 @@ and **Purpose** names the service. You can't edit them while connected.
 
 When discovery is on, **Using the Seestar app** tells you to pick your
 telescope from the **LAN** tab of the Seestar app. If it doesn't appear, see
-the [phone app guide](phone-app.md). **Copying files** shows
-the local SMB port; see [copying images](copying.md).
+the [phone app guide](phone-app.md). **Copying files** points you to the
+**Copy** tab, with **Go to Copy**, and to **Browse**; below that, it shows the
+local SMB port for [another file-sharing app](copying.md#copy-with-a-graphical-app).
 
 Keep seestar-wormhole open while you use the telescope.
 
@@ -131,7 +134,7 @@ If they can't reach the share, each says why and links to the fix:
 
 | Notice | Fix |
 |---|---|
-| **Not connected. Copying resumes when the connection is ready.** | **Go to Connection** and connect. Scheduled checks wait for the connection; they don't start it. |
+| **Not connected.** | **Go to Connection** and connect. On Copy, while copying repeats, the notice adds **Copying resumes at the next check after you connect.** Scheduled checks wait for the connection; they don't start it. |
 | **SMB is off. Turn on its port in Connection > Advanced.** | **Open Advanced** and forward a local port to Seestar port 445. |
 | **Save the telescope's address on the Connection tab first.** | **Go to Connection**, choose **On this network**, and save the address. |
 
@@ -153,7 +156,9 @@ can't change while copying runs:
 - **Check for new files every** N minutes, 5 by default. Its checkbox, on by
   default, turns the repeating check off to copy once: **Start copying** then
   checks once, copies what is new and stops, and Copy says **Checked once;
-  copying is off.** The summary then says "once each time you start".
+  copying is off.** The summary then says "once each time you start". With
+  the checkbox off, the minutes are disabled and keep their last valid
+  value for when you turn it back on; they never block **Save**.
 - **Files at once**: how many files copying runs at once, 1 to 4, 4 by
   default. Through Telescope Network, copying shares the connection with
   the Seestar app and seestar_alp; if they are slow to respond while copying,
@@ -200,13 +205,17 @@ window, a file's **Save** asks where to save it; in a browser, it downloads.
 
 ### Free up space
 
-**Preview what to delete** lists, per folder, the files that are copied and
+Until Copy's folder is saved, Free up space says to choose it, with **Go to
+Copy**, as Browse does. **Preview what to delete** lists, per folder, the files that are copied and
 safe to delete, as `delete` [proves it](copy-reference.md#proof-modes), and
 nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent
 sessions on the telescope, and **My copies have moved or the drive is
 offline** checks only the app's record of each copy, as `--trust-state`
-does. **Keep on the telescope** and **Only free up** take one pattern per
+does. Above the options, **Copies in:** names Copy's saved folder, whose
+copies the check proves; with that option on, **Copy history for:** names the
+folder whose history it uses instead. **Go to Copy** beside it is where to
+change the folder. **Keep on the telescope** and **Only free up** take one pattern per
 line, as `delete`'s [`--exclude` and `--include`](copy-reference.md#selection):
 a file that matches Keep on the telescope is never deleted, and when Only free
 up is not empty, only files that match it are. They are separate from Copy's
@@ -315,7 +324,7 @@ setup uses local port 8080 instead. SMB uses local port 4445 for Seestar port
 
 The **Activity** tab lists the connection's recent events and copying's and
 deleting's activity in one list, newest first, each tagged **Connection**,
-**Copy** or **Delete**. **Details and logs** holds your connection and copy
+**Copy** or **Free up space**. **Details and logs** holds your connection and copy
 settings as JSON, error codes, and the paths of the private log and the
 settings files, `config.json` and `copy.json`.
 
