@@ -22,7 +22,7 @@ func TestGUITestRunner(t *testing.T) {
 		status := proxy.NewStatus()
 		done := make(chan error, 1)
 		go func() {
-			done <- runObserved(cancel, status.Rejected(), func() error { return f.run(ctx, Settings{}, cloud.Credentials{}, status) })
+			done <- runObserved(cancel, status.Rejected(), func() error { return f.run(ctx, Settings{}, cloud.Credentials{}, status, nil) })
 		}()
 		for _, step := range []struct {
 			event session.Event
@@ -66,7 +66,7 @@ func TestGUITestConnectingCancellation(t *testing.T) {
 		f := newGUITestRunner()
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- f.run(ctx, Settings{}, cloud.Credentials{}, proxy.NewStatus()) }()
+		go func() { done <- f.run(ctx, Settings{}, cloud.Credentials{}, proxy.NewStatus(), nil) }()
 		cancel()
 		<-f.releasing
 		select {
