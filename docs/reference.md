@@ -579,6 +579,28 @@ timeout. A timeout does not identify the faulty component. The hint remains duri
 the connection succeeds, the UI returns to waiting for an app, the run stops, or a different failure
 replaces it. CLI logs keep their classified phase and reason rather than this UI message.
 
+The UI's private `gui.log` holds one JSON object per line, up to 64 KiB per file
+with one rotation (`gui.log.1`). Each line has `time`, `source`, `message`,
+`code`, `phase` and `reason`:
+
+- `source` is `connection` for connection and account-catalog lines, or the
+  file tool a line is about: `copy`, `browse` or `delete` (Free up space).
+- File-tool lines add `op`, the operation (for example `pass`, `preview`,
+  `connect`, `read` or `delete`), and `count` when failed files were counted.
+  Their `code` is `<source>_<op>_failed` or `<source>_<op>_recovered`.
+- A file-tool operation writes a line when it first fails, when its failure
+  changes `phase` or `reason`, and when it next succeeds. Repeats of the same
+  failure stay in memory, in the UI's status `failures` and the copied summary.
+- File-tool lines carry a fixed message and the classified `phase` and
+  `reason`. They leave out paths, file and folder names, endpoints and error
+  text. Connection lines keep their telescope text, including the selected
+  telescope's full serial, and catalog lines list the account's serials.
+
+```json
+{"time":"2026-11-07T03:12:41.502Z","source":"browse","op":"connect","message":"Browse couldn't reach the telescope.","code":"browse_connect_failed","phase":"connect","reason":"timeout"}
+{"time":"2026-11-07T03:20:00.910Z","source":"browse","op":"connect","message":"Browse reached the telescope again.","code":"browse_connect_recovered","phase":"","reason":""}
+```
+
 | Record | Level | Meaning and useful fields |
 |---|---|---|
 | `proxy_started` | INFO | Revision, listener count, lazy flag, pause threshold; process serving, not necessarily remote ready |
