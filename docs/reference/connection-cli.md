@@ -48,7 +48,7 @@ loopback or a trusted network behind a firewall.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--config` | `false` | Read the [UI's saved settings](../ui.md#where-settings-live) and share its state root and installation identity. Flags and environment credentials override saved choices. |
+| `--config` | `false` | Read the [UI's saved settings](app-settings.md#where-settings-live) and share its state root and installation identity. Flags and environment credentials override saved choices. |
 | `--bind` | `127.0.0.1` | TCP bind address, resolved by the OS. Discovery requires a literal LAN IPv4 address or `0.0.0.0`. |
 | `--port local:device`, `-p` | See mappings below | Repeat to replace one device port's listener or add a device port. Local `0` disables that device listener. |
 | `--idle` | `0` | Nonnegative Go duration. Zero connects eagerly and holds the session. Positive values connect on demand and release after the last client has been absent this long. |
@@ -62,7 +62,7 @@ See also [identity and logging flags](#identity-and-logging-flags).
 
 After a successful connection or explicit password save in the UI, run
 `seestar-wormhole-cli proxy --config` (add `--state-dir PATH` for a custom
-UI state root). It reads the same [version 1 `config.json`](../ui.md#configjson-version-1)
+UI state root). It reads the same [version 1 `config.json`](app-settings.md#configjson-version-1)
 without rewriting it and shares the installation identity. It ignores the
 copier's `route`, `lan_address` and `route_established` members.
 Explicit flags override saved choices, including discovery; each `-p` replaces the saved override for
@@ -548,7 +548,7 @@ must be regular with mode exactly `0600`; new directories use `0700`.
 The identity file refuses symlinks. First creation/empty-file repair is locked
 with a one-second acquisition bound. Existing nonempty valid identifiers are
 retained. On Windows, protected owner/SYSTEM ACLs and reparse checks apply.
-Supply trusted parent directories. The [UI](../ui.md#where-settings-live) uses its persistent state root
+Supply trusted parent directories. The [UI](app-settings.md#where-settings-live) uses its persistent state root
 by default and shares this exact identity format.
 
 ## Logs

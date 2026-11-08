@@ -126,7 +126,7 @@ newer version of the app may have written, or which was edited by hand. The
 connection and the proxy work as usual. seestar-wormhole doesn't change the
 file. Fix or remove it, then reopen seestar-wormhole: without the file, Copy
 starts from its default settings, which you then save again. See
-[copy.json](ui.md#copyjson-version-1) for what it may hold.
+[copy.json](reference/app-settings.md#copyjson-version-1) for what it may hold.
 
 ## Another copy or delete is using this folder
 

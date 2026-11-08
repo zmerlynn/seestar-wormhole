@@ -85,8 +85,8 @@ only; see [a failed pass](#a-failed-pass).
 ### Use the app's saved settings
 
 `--profile default` fills each flag not given from what the app saved: its
-Copy settings, [`copy.json`](../ui.md#copyjson-version-1), and its connection,
-[`config.json`](../ui.md#configjson-version-1), in the app's state folder
+Copy settings, [`copy.json`](app-settings.md#copyjson-version-1), and its connection,
+[`config.json`](app-settings.md#configjson-version-1), in the app's state folder
 without `--state-dir`. It is on `sync`, `find`, `browse` and `delete`, and
 `default` is the only profile; any other name exits 2 before any file is
 read. An app run with `ui --state-dir PATH` keeps its settings outside the

@@ -9,3 +9,6 @@ file format or log line. To get something done, start from the
   codes, logs, device selection, release checks, containers and Windows.
 - [File command reference](files-cli.md): `seestar-wormhole-cli sync`, `find`,
   `browse` and `delete`, with their flags, logs and exit codes.
+- [App settings and internals](app-settings.md): where the app keeps its
+  settings, the `config.json` and `copy.json` formats, file permissions, the
+  control page and the window engine's data.
