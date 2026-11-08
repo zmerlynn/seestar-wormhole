@@ -1,7 +1,6 @@
 package app
 
 import (
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -25,12 +24,14 @@ func TestClearHistoryNumberedWhereItEnds(t *testing.T) {
 	}
 	defer st.Close()
 
+	// The first draw after arming blocks until release; later draws pass
+	// straight through (a sync.Once would hold them too).
 	var armed atomic.Bool
-	var once sync.Once
 	entered, release := make(chan struct{}), make(chan struct{})
 	s.rep.drawing = func() {
-		if armed.Load() {
-			once.Do(func() { close(entered); <-release })
+		if armed.CompareAndSwap(true, false) {
+			close(entered)
+			<-release
 		}
 	}
 	armed.Store(true)
