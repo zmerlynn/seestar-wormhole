@@ -105,14 +105,16 @@ If a setting is wrong, its field shows what to fix.
 Your settings are saved once a connection succeeds. If saving fails, the
 connection keeps running and **Retry saving settings** appears.
 
-If the window loses the controls, a warning above the tabs says so on every
-tab and on either route, with the last known state through the account, and
-says the proxy may still be running. Reopen seestar-wormhole to reconnect. If
-only the status of Copy and Free up space can't be read, the warning says
-that instead. Until the status can be read again, Copy, Free up space and
-Browse are dimmed to show they may be out of date, and their buttons that act
-on the controls are disabled. What you've typed is kept, and everything comes
-back once the status can be read again.
+If the window loses the controls, a warning above the tab contents says so on
+every tab and on either route, with the last known state through the account,
+and says the proxy may still be running. Reopen seestar-wormhole to reconnect.
+Copy, Free up space and Browse are dimmed to show they may be out of date:
+Copy's and Free up space's buttons that act on the controls are disabled, and
+Browse takes no clicks or keys. If only the status of Copy and Free up space
+can't be read, the warning says that instead, and only those two are dimmed.
+What you've typed is kept. Connection and Browse come back as soon as the
+controls answer; Copy and Free up space come back once their status has been
+read again.
 
 ## While connected
 

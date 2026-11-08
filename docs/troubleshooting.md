@@ -16,16 +16,18 @@ network; the app needs it for the Seestar app to find this computer and to
 reach a telescope on this network. If the request was denied, enable
 seestar-wormhole in System Settings → Privacy & Security → Local Network, then
 **Test** again. While the request is open, the first connection after the app
-starts, from any tab, waits up to 5 seconds for your answer. On a Mac, a
-**Test**, copy, Preview, Browse or Free up space on this network that nothing
-answered says so.
+starts, from any tab, waits up to 5 seconds for your answer. On a Mac, if
+nothing answers a connection attempt from **Test**, Copy, Preview, Browse or
+Free up space, the error includes instructions for allowing Local Network
+access.
 
 **The window says "Connection to the controls was lost."** The window can't
-reach the app behind it; the proxy may still be running. The tabs keep their
-last known state, dimmed, and their actions are disabled. Reopen
-seestar-wormhole to reconnect. If it says it couldn't read the status of Copy
-and Free up space instead, the controls are still there; the warning clears
-by itself once that status can be read again.
+reach the app behind it; the proxy may still be running. Copy, Free up
+space and Browse keep their last known state, dimmed, and take no action
+until the controls answer again. Reopen seestar-wormhole to reconnect. If it
+says it couldn't read the status of Copy and Free up space instead, the
+controls are still there; the warning clears by itself once that status can
+be read again.
 
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
 `device_offline` means the cloud or connection service reports the telescope offline or asleep.
