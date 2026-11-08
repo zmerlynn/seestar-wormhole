@@ -83,7 +83,7 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 			return topic.Help()
 		},
 	})
-	root.SetFlagErrorFunc(func(_ *cobra.Command, err error) error { return flagParseError(err) })
+	root.SetFlagErrorFunc(flagParseError)
 	root.Flags().BoolVar(&o.version, "version", false, "print version, revision and platform")
 	addUICommand(root, o)
 	proxyCommand := &cobra.Command{
@@ -175,7 +175,7 @@ func parse(args []string, out io.Writer) (options, error) {
 		o.command = commandHelpTopic
 	}
 	if err != nil {
-		return o, flagParseError(err)
+		return o, flagParseError(nil, err)
 	}
 	help, _ := executed.Flags().GetBool("help")
 	switch {

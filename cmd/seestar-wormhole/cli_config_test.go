@@ -41,6 +41,9 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 	if command == "proxy" || command == "discovery" {
 		want["cleanup_reason"] = "none"
 	}
+	if command == programName { // a root usage error is the program's own
+		want["help"] = programName + " --help"
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("diagnostic=%v want=%v", got, want)
 	}
@@ -144,9 +147,6 @@ func TestCLIParserRules(t *testing.T) {
 					t.Fatalf("exit=%d stdout=%s", commandExitCode(options{command: commandProxy}, err), &out)
 				}
 				name := cmd.Name()
-				if cmd == root {
-					name = "proxy"
-				}
 				assertConfigRecord(t, logs.Bytes(), name, "--"+flag.Name, rule)
 				assertNoSensitiveErrorDetails(t, err, "PRIVATE_VALUE")
 			})

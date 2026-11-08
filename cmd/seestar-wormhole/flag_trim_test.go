@@ -79,6 +79,6 @@ func TestNewOptionsAndRetiredFlags(t *testing.T) {
 	for _, name := range []string{"--app-ports", "--lan-template"} {
 		var out, logs bytes.Buffer
 		err := run(context.Background(), append([]string{"proxy"}, []string{name + "=PRIVATE_SENTINEL"}...), &out, &logs)
-		assertStartupOptionFailure(t, err, &out, &logs, "arguments", "use only supported options", "PRIVATE_SENTINEL", name)
+		assertStartupOptionFailure(t, err, &out, &logs, "arguments", "unknown flag", "PRIVATE_SENTINEL", name)
 	}
 }

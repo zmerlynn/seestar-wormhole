@@ -49,7 +49,7 @@ func TestArgumentRulesAndRedaction(t *testing.T) {
 		{"discovery bind", "--bind", "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0", []string{"--lan-discovery", "--bind", "private-host"}, []string{"private-host"}},
 		{"boolean", "--lan-discovery", "use a boolean value", []string{"--lan-discovery=secret-boolean"}, []string{"secret-boolean"}},
 		{"missing value", "--serial", "requires a value", []string{"--serial"}, nil},
-		{"unknown option", "arguments", "use only supported options", []string{"--private-secret=/private/path"}, []string{"private-secret", "/private/path"}},
+		{"unknown option", "arguments", "unknown flag", []string{"--private-secret=/private/path"}, []string{"private-secret", "/private/path"}},
 		{"positional", "arguments", "positional arguments are not allowed", []string{"private-password"}, []string{"private-password"}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

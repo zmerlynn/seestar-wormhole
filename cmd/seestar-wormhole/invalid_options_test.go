@@ -16,9 +16,9 @@ func TestInvalidOptions(t *testing.T) {
 		args, secrets      []string
 	}
 	tests := []test{
-		{"unknown-name", "arguments", "use only supported options", []string{"--credential_PRIVATE_MARKER=/private/SECRET_MARKER"}, []string{"PRIVATE_MARKER", "SECRET_MARKER"}},
+		{"unknown-name", "arguments", "unknown flag", []string{"--credential_PRIVATE_MARKER=/private/SECRET_MARKER"}, []string{"PRIVATE_MARKER", "SECRET_MARKER"}},
 		{"invalid-syntax", "arguments", "use only supported options", []string{"---credential_PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}},
-		{"malformed-name", "arguments", "use only supported options", []string{"-=credential_PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}},
+		{"malformed-name", "arguments", "unknown flag", []string{"-=credential_PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}},
 		{"positional-after-dash", "arguments", "positional arguments are not allowed", []string{"--", "credential_PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}},
 		{"bool-next-token", "arguments", "positional arguments are not allowed", []string{"--lan-discovery", "PRIVATE_MARKER"}, []string{"PRIVATE_MARKER"}},
 		{"duplicate", "--port", "local ports must be unique", []string{"--port=12347:13459", "--port=12347:14561"}, []string{"12347", "13459", "14561"}},

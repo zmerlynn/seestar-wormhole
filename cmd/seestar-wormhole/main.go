@@ -431,8 +431,10 @@ func logCommandArgumentError(o options, out io.Writer, err error) {
 		logConfigurationError(out, "discovery", err)
 	case commandHelpTopic:
 		logConfigurationError(out, "help", err)
+	case commandRoot:
+		logRootError(out, err)
 	default:
-		logArgumentError(out, err)
+		logConfigurationError(out, "proxy", err)
 	}
 }
 
