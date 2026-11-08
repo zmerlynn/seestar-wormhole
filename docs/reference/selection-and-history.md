@@ -87,6 +87,9 @@ except:
   keep as an include instead. To match a name that starts with `!`, write `\!`.
 - An include selects everything in a folder that it matches. See
   [Include](#include).
+- A `\` before a `/` is a usage error, though git reads `\/` as a plain `/`:
+  write a plain `/`. A class that holds a `/`, such as `[a/]`, is a usage
+  error too.
 
 In short:
 
@@ -99,12 +102,18 @@ In short:
   `Stacked`, not a file.
 - `*` matches any run of characters, `?` any one byte and `[...]` one byte
   from a class such as `[0-9]` or `[!a]`, all within one name; none of them
-  matches `/`. A letter outside ASCII is more than one byte, so `M?` does not
-  match `M星`; use `*` there.
+  matches `/`. A letter outside ASCII is more than one byte: `星` is three.
+  Before v0.7.0, `?` matched one letter, so a pattern written for that now
+  selects differently, both ways. An exclude `M?` no longer matches
+  `MyWorks/M星`, so it no longer keeps that folder from being copied or
+  deleted. An include `M???` now matches `MyWorks/M星`, so it now selects that
+  folder. After upgrading, run the preview again before deleting: `delete`
+  without `--force`, or Preview in Free up space.
 - `**` as a whole name matches any number of folders: `**/Stacked` matches
   `Stacked` at any depth, `MyWorks/**/*.fit` matches FITS files anywhere under
   `MyWorks`, and `MyWorks/**` everything in `MyWorks`.
-- `\` makes the next character literal: `\*`, `\[`, `\#` or `\!`.
+- `\` makes the next character literal: `\*`, `\[`, `\#` or `\!`. It can't
+  escape a `/`.
 - Spaces at the start or in the middle of a pattern are part of it: `M 31`.
 
 A pattern is a usage error, rather than one that silently matches nothing,
@@ -113,11 +122,14 @@ if it:
 - is empty or `/` alone, or has an empty, `.` or `..` part, such as `a//b`;
 - starts with `!` or `#`, which in a `.gitignore` file mean a negation and a
   comment;
-- ends in a space or `\` with no `\` before it, since `.gitignore` drops
-  trailing spaces: write `\ ` for a space you want to match;
+- ends in an unescaped space or backslash: write `\ ` for a literal trailing
+  space and `\\` for a literal backslash;
+- has an unescaped `\` before a `/`, such as `MyWorks\/M31`: write a plain
+  `/`. In `a\\/b` the backslash is escaped, so the `/` separates names and the
+  pattern is valid;
 - holds a line break;
 - has a `[` with no closing `]`, or names a class other than the POSIX ones
-  such as `[:digit:]`.
+  such as `[:digit:]`. A class can't hold a `/`: `[a/]` is a usage error.
 
 ### Include
 
