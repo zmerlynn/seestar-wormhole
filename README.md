@@ -189,18 +189,9 @@ is subject to its terms.
 
 ## More
 
-See [internal package boundary](docs/development/README.md).
+The [documentation](docs/README.md) lists every guide and reference by task.
 
-- [Phone app guide](docs/phone-app.md)
-- [Always-on guide](docs/always-on.md)
-- [Copy images](docs/copying.md)
-- [seestar_alp and other clients](docs/clients.md)
-- [Connection command reference](docs/reference/connection-cli.md): every flag, exit code and log message
-- [File command reference](docs/reference/files-cli.md): the file commands' flags and formats
-- [How the proxy speaks the protocol](docs/protocol.md)
-- [Troubleshooting](docs/troubleshooting.md)
-- [Known issues and accepted limits](docs/known-issues.md)
-- [How it works and how to hack on it](https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md) (in the source repository)
+- [How it works and how to hack on it](https://github.com/zmerlynn/seestar-wormhole/blob/main/docs/development/README.md) (in the source repository); see also the [internal package boundary](docs/development/README.md)
 - [Contributing](CONTRIBUTING.md)
 - [License](LICENSE) and [third-party notices](NOTICE)
 
