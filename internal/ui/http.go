@@ -46,6 +46,9 @@ type server struct {
 	// has connected, or an address on this network passed Test and was
 	// saved. It is guarded by mu and never goes back.
 	routeSaved bool
+	// copyRefused is set when copy.json was refused at startup, so this
+	// run has no copy; the page then says to fix or remove the file.
+	copyRefused bool
 }
 type input struct {
 	Settings Settings `json:"settings"`
@@ -172,9 +175,10 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			LogFailed    bool            `json:"log_failed"`
 			CopyUnlocked bool            `json:"copy_unlocked"`
 			CopyReach    string          `json:"copy_reach"`
+			CopyRefused  bool            `json:"copy_refused"`
 			Files        settingsFiles   `json:"files"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed,
-			unlocked, reach, s.settingsFiles()})
+			unlocked, reach, s.copyRefused, s.settingsFiles()})
 		return
 	}
 	if r.Method != "POST" {

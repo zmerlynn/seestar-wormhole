@@ -474,16 +474,19 @@ const reachCopy = {
 // The last copy status, the saved copy settings (null until saved), the
 // saved folder's history file, and whether Change… has the form open.
 let copyStatus = null, copySaved = null, copyHistory = '', copyFormOpen = false, copyFilled = false;
+// A refused copy.json keeps them off for the run, and its note, naming
+// the file, replaces the usual one.
 function copyTabs(s) {
-  const open = !!s.copy_unlocked;
+  const open = !!s.copy_unlocked, refused = !!s.copy_refused, note = refused ? 'copy-refused' : 'tabs-note';
   for (const tab of copyTabNames) {
     const button = $('tab-' + tab);
-    if (button.disabled !== open) continue;
     button.disabled = !open;
     if (open) button.removeAttribute('aria-describedby');
-    else button.setAttribute('aria-describedby', 'tabs-note');
+    else if (button.getAttribute('aria-describedby') !== note) button.setAttribute('aria-describedby', note);
   }
-  $('tabs-note').hidden = open;
+  $('tabs-note').hidden = open || refused;
+  $('copy-refused').hidden = !refused;
+  if (refused) text('copy-refused-path', s.files?.copy || '');
   $('copy-steps-go').hidden = !open;
   if (!open && copyTabNames.includes(currentTab)) selectTab('connection');
   copyNotice();

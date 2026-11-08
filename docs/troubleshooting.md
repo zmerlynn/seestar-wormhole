@@ -112,6 +112,19 @@ seestar-wormhole leaves the file untouched. Default locations are:
   `~/.config/seestar-wormhole/config.json` when that variable is unset.
 - Windows: `%AppData%\seestar-wormhole\config.json`
 
+This covers `config.json`. A refused `copy.json` doesn't stop the app; see
+the next section.
+
+## Copy is off and names copy.json
+
+**Copy, Browse and Free up space are off: the saved Copy settings couldn't be
+loaded safely.** The note under the tabs names the refused `copy.json`, which a
+newer version of the app may have written, or which was edited by hand. The
+connection and the proxy work as usual. seestar-wormhole doesn't change the
+file. Fix or remove it, then reopen seestar-wormhole: without the file, Copy
+starts from its default settings, which you then save again. See
+[copy.json](ui.md#copyjson-version-1) for what it may hold.
+
 ## The OS keychain is unavailable
 
 A locked keychain, missing desktop session, or unavailable Secret Service can

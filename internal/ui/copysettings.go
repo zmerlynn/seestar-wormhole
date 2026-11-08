@@ -26,7 +26,8 @@ type copyStore struct {
 
 // loadCopySettings reads copy.json without writing it. A missing file is
 // nil settings, which the Copy tab asks for; a file that doesn't parse or
-// has another version or none is an error, and the app doesn't start.
+// has another version or none is an error, and the app opens with Copy,
+// Browse and Free up space off.
 func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 	c := &copyStore{storage: st}
 	// Absent members take their defaults, except the version, which the
@@ -60,5 +61,8 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 // save writes set to copy.json atomically, with the members this version
 // doesn't know as they were loaded.
 func (c *copyStore) save(set copyapp.Settings) error {
-	return c.storage.write(copyName, copyFile{Settings: set, Unknown: c.unknown})
+	return writeCopySettings(c.storage, copyFile{Settings: set, Unknown: c.unknown})
 }
+
+// writeCopySettings is copy.json's one writer; tests replace it.
+var writeCopySettings = func(st *storage, f copyFile) error { return st.write(copyName, f) }

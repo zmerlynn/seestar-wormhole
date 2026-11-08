@@ -455,12 +455,21 @@ options, never on load.
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
 | `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
 | `start_copying` | `false` |
-| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range stops the app at startup. |
+| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range refuses the file. |
 | `older_than_days` | `7` |
 | `trust_state` | `false` |
 | `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
 
 The telescope's address is not in it; it comes from the route in `config.json`.
+
+A copy.json this version can't read, such as one with another version, a
+member of the wrong type or `files_at_once` out of range, doesn't stop the app.
+The Connection tab and the proxy work, but **Copy**, **Browse** and **Free up
+space** stay off for that run, a note under the tabs names the file, and
+Activity records **Copy settings couldn't be loaded safely; Copy, Browse and
+Free up space are off.** The app never writes the file while it is refused. Fix
+or remove it, then reopen the app; a removed file brings back the default Copy
+settings. A refused `config.json` still stops the app.
 
 ### File permissions
 

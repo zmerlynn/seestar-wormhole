@@ -219,6 +219,20 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 	return o
 }
 
+// newMount is the app's one Mount call, at startup; tests count it.
+var newMount = copyapp.NewMount
+
+// copyRefusedEvent is Activity's line for a copy.json this version
+// refused: one fixed text, with no path and no error.
+const copyRefusedEvent = "Copy settings couldn't be loaded safely; Copy, Browse and Free up space are off."
+
+// quitCopy stops and joins the copier, if this run mounted one.
+func quitCopy(handler *server) {
+	if handler.copy != nil {
+		handler.copy.Quit()
+	}
+}
+
 // runText reads a run's status text for the status's Ready; nil is its
 // Text. Only tests set it, since only a proxy session makes a status
 // Ready.
@@ -267,10 +281,11 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	} else if err != nil {
 		return unsafeSettings("config.json")
 	}
+	// A copy.json this version can't read leaves Copy, Browse and Free
+	// up space off for this run and is never written; the proxy needs
+	// none of it.
 	copyFile, copySaved, err := loadCopySettings(st)
-	if err != nil {
-		return unsafeSettings(copyName)
-	}
+	copyRefused := err != nil
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return errors.New("Could not start the local controls.")
@@ -296,21 +311,26 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	handler := &server{version: version, host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
 	handler.native = native != nil
 	handler.routeSaved = routeSaved
+	handler.copyRefused = copyRefused
 	c.save = handler.saveSettings
 	c.lastSaved = settings
 	c.log = eventHistory
 	// The copier shares the file commands' default history folder, so the
 	// two share one history and lock per folder. Its warnings and errors go
 	// to the command's bounded log sink, as the proxy's do.
-	copyState, _ := state.DefaultDir()
-	listening := listener.Addr().(*net.TCPAddr).AddrPort()
-	handler.copy = copyapp.NewMount(appCtx, copyMountOptions(handler, copyapp.MountOptions{
-		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
-		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Settings: copySaved, Save: copyFile.save, Native: native,
-	}))
+	if copyRefused {
+		eventHistory.add(copyRefusedEvent)
+	} else {
+		copyState, _ := state.DefaultDir()
+		listening := listener.Addr().(*net.TCPAddr).AddrPort()
+		handler.copy = newMount(appCtx, copyMountOptions(handler, copyapp.MountOptions{
+			Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
+			Log: diagnostic.Logger("json", logs, slog.LevelWarn), Settings: copySaved, Save: copyFile.save, Native: native,
+		}))
+	}
 	// Every return stops the copier and joins it before ui.lock is
 	// released; the cleanup below has usually done so already.
-	defer handler.copy.Quit()
+	defer quitCopy(handler)
 	activate := make(chan struct{}, 1)
 	if window != nil {
 		handler.activate = func() {
@@ -328,7 +348,9 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	defer os.Remove(filepath.Join(root, "ui-runtime.json"))
 	defer os.Remove(filepath.Join(root, bootstrapName))
 	// Copying may start as the app opens only once it is published.
-	handler.copy.Start()
+	if handler.copy != nil {
+		handler.copy.Start()
+	}
 	done := make(chan error, 1)
 	go func() { done <- httpServer.Serve(listener) }()
 	windowCtx, windowDone := context.WithCancel(context.WithValue(context.Background(), versionKey{}, version))
@@ -343,7 +365,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		}
 		// Browse's sessions and the copier stop before the proxy they
 		// may be reaching the telescope through.
-		handler.copy.Quit()
+		quitCopy(handler)
 		c.quit()
 		shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()

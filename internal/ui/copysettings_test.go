@@ -9,9 +9,13 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
 // A copy.json from before Files at once loads as 4.
@@ -181,34 +185,164 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 	}
 }
 
-// A copy.json this version can't read stops the app at startup, and is
-// left as it was.
-func TestCopySettingsRefusedStopsStartup(t *testing.T) {
-	for _, body := range []string{`{"version":2,"future":{"keep":[1,2]}}`, `{"version":1,"interval_minutes":"5"}`, `[1]`, `{"version":1`,
-		`{}`, `{"folder":"/synthetic/Seestar"}`, `null`,
-		`{"version":1,"files_at_once":0}`, `{"version":1,"files_at_once":5}`, `{"version":1,"files_at_once":-1}`, `{"version":1,"files_at_once":2.5}`} {
+// refusedBodies are copy.json bodies this version refuses.
+var refusedBodies = []string{`{"version":2,"future":{"keep":[1,2]}}`, `{"version":1,"interval_minutes":"5"}`, `[1]`, `{"version":1`,
+	`{}`, `{"folder":"/synthetic/Seestar"}`, `null`,
+	`{"version":1,"files_at_once":0}`, `{"version":1,"files_at_once":5}`, `{"version":1,"files_at_once":-1}`, `{"version":1,"files_at_once":2.5}`}
+
+// testStorageWith is a state dir whose copy.json is body.
+func testStorageWith(t *testing.T, body string) *storage {
+	st := testStorage(t)
+	if err := st.writeBytes(copyName, []byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	return st
+}
+
+// refusedStart runs the UI over a state dir whose copy.json is body, with
+// drive as its window, which gets a client, the window's quit and the
+// state dir, and returns the state dir once the UI has stopped. It checks
+// the UI opened and copy.json was left as it was.
+func refusedStart(t *testing.T, ctx context.Context, body string, drive func(c *runtimeClient, quit func(), root string)) string {
+	t.Helper()
+	root := filepath.Join(t.TempDir(), "state")
+	st, err := openStorage(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = st.writeBytes(copyName, []byte(body))
+	st.directory.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened := false
+	window := func(ctx context.Context, page string, quit func(), _ <-chan struct{}) error {
+		opened = true
+		drive(newRuntimeClient(t, page), quit, root)
+		<-ctx.Done()
+		return nil
+	}
+	finished := make(chan error, 1)
+	go func() {
+		finished <- runUIPresented(ctx, root, io.Discard, io.Discard, func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
+			<-ctx.Done()
+			return nil
+		}, func(string) error {
+			t.Error("opened a browser")
+			return nil
+		}, &fakeKeychain{}, window, &copyapp.Native{})
+	}()
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Errorf("runUIPresented = %v", err)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("the UI didn't stop")
+	}
+	if !opened {
+		t.Error("the UI didn't open")
+	}
+	after, err := os.ReadFile(filepath.Join(root, copyName))
+	if err != nil || string(after) != body {
+		t.Errorf("refused file changed: %s, %v", after, err)
+	}
+	return root
+}
+
+// A copy.json this version can't read leaves the app opening, with Copy,
+// Browse and Free up space off, the page told so and where the file is,
+// Activity given its fixed line, and the file left as it was.
+func TestCopySettingsRefusedOpensWithoutCopy(t *testing.T) {
+	for _, body := range refusedBodies {
 		t.Run(body, func(t *testing.T) {
-			s := testServer(t)
-			if err := s.storage.writeBytes(copyName, []byte(body)); err != nil {
-				t.Fatal(err)
-			}
-			if _, _, err := loadCopySettings(s.storage); err == nil {
+			if _, _, err := loadCopySettings(testStorageWith(t, body)); err == nil {
 				t.Fatal("load accepted it")
 			}
-			ctx, cancel := context.WithCancel(t.Context())
-			cancel()
-			t.Chdir(filepath.Dir(s.storage.root))
-			err := runUIPresented(ctx, filepath.Base(s.storage.root), io.Discard, io.Discard, nil, func(string) error {
-				t.Error("opened UI for refused copy settings")
-				return nil
-			}, &fakeKeychain{}, nil, nil)
-			if err == nil || err.Error() != "Could not load saved settings safely.\n\n"+filepath.Join(s.storage.root, copyName)+"\n\nCheck this file, then reopen seestar-wormhole." {
-				t.Errorf("startup did not explain refusal: %v", err)
-			}
-			after, err := os.ReadFile(filepath.Join(s.storage.root, copyName))
-			if err != nil || string(after) != body {
-				t.Fatalf("refused file changed: %s, %v", after, err)
-			}
+			refusedStart(t, t.Context(), body, func(c *runtimeClient, quit func(), root string) {
+				defer quit()
+				code, reply := c.do("GET", "/api/status", "")
+				var status struct {
+					CopyRefused  *bool `json:"copy_refused"`
+					CopyUnlocked bool  `json:"copy_unlocked"`
+					Files        struct {
+						Copy string `json:"copy"`
+					} `json:"files"`
+					Events []struct {
+						Message string `json:"message"`
+					} `json:"events"`
+				}
+				if err := json.Unmarshal([]byte(reply), &status); code != 200 || err != nil {
+					t.Fatalf("status = %d %s: %v", code, reply, err)
+				}
+				if status.CopyRefused == nil || !*status.CopyRefused || status.CopyUnlocked {
+					t.Errorf("status = %s; want copy_refused true and copy_unlocked false", reply)
+				}
+				if abs, _ := filepath.Abs(filepath.Join(root, copyName)); status.Files.Copy != abs {
+					t.Errorf("files.copy = %q; want %q", status.Files.Copy, abs)
+				}
+				found := false
+				for _, e := range status.Events {
+					found = found || e.Message == copyRefusedEvent
+				}
+				if !found {
+					t.Errorf("events = %s; want %q", reply, copyRefusedEvent)
+				}
+				for _, path := range []string{"/copy/api/status", "/browse/", "/browse/api/list?path=MyWorks"} {
+					if code, _ := c.do("GET", path, ""); code != 404 {
+						t.Errorf("GET %s = %d; want 404", path, code)
+					}
+				}
+			})
 		})
 	}
+}
+
+// A refused copy.json is never written, by any request, and no Mount is
+// made for the run.
+func TestCopySettingsRefusedNeverWrites(t *testing.T) {
+	saved, savedMount := writeCopySettings, newMount
+	t.Cleanup(func() { writeCopySettings, newMount = saved, savedMount })
+	writeCopySettings = func(*storage, copyFile) error {
+		t.Error("copy.json was written")
+		return errStorage
+	}
+	var mounts atomic.Int32
+	newMount = func(ctx context.Context, o copyapp.MountOptions) *copyapp.Mount {
+		mounts.Add(1)
+		return savedMount(ctx, o)
+	}
+	refusedStart(t, t.Context(), `{"version":2,"folder":"/synthetic/Seestar"}`, func(c *runtimeClient, _ func(), _ string) {
+		body := `{"settings":{"route":"lan","lan_address":"192.0.2.10:445"}}`
+		if code, reply := c.do("POST", "/api/route", body); code != 200 {
+			t.Errorf("Connection Save = %d %s", code, reply)
+		}
+		for _, post := range []struct{ path, body string }{
+			{"/copy/api/settings", `{"folder":"/synthetic/Other"}`},
+			{"/copy/api/delete", `{"action":"find","days":"0"}`},
+		} {
+			if code, _ := c.do("POST", post.path, post.body); code != 404 {
+				t.Errorf("POST %s = %d; want 404", post.path, code)
+			}
+		}
+		if code, reply := c.do("POST", "/api/quit", "{}"); code != 200 {
+			t.Errorf("quit = %d %s", code, reply)
+		}
+	})
+	if n := mounts.Load(); n != 0 {
+		t.Errorf("Mount was made %d times for a refused copy.json", n)
+	}
+}
+
+// A refused start quits cleanly by the window and by the end of its
+// context, with no copier to stop.
+func TestCopySettingsRefusedQuits(t *testing.T) {
+	t.Run("window", func(t *testing.T) {
+		refusedStart(t, t.Context(), `{"version":2}`, func(_ *runtimeClient, quit func(), _ string) { quit() })
+	})
+	t.Run("context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		refusedStart(t, ctx, `{"version":2}`, func(*runtimeClient, func(), string) { cancel() })
+	})
 }
