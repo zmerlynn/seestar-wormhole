@@ -49,8 +49,8 @@ firmware behind it change without notice, as above.
    `proxy` reads no config or credential file (a systemd EnvironmentFile is the service manager's, not ours). With
    `--config`, it reads the UI's saved `config.json` without rewriting it, and takes the password from the OS keychain
    when `SEESTAR_PASSWORD` is unset; explicit flags and the variables override saved choices. See
-   [use saved settings headless](reference.md#use-saved-settings-headless). The file commands read no configuration
-   file and no environment variables of their own; every setting is a flag. With `--profile default`, the file
+   [use saved settings headless](reference.md#use-saved-settings-headless). Without `--profile`, the file commands
+   read no configuration file. They read no environment variables of their own. With `--profile default`, the file
    commands read `copy.json` and `config.json` from the app's state folder without rewriting them; explicit flags win;
    delete takes only its destination, history and endpoint from them. See
    [use the app's saved settings](copy-reference.md#use-the-apps-saved-settings). The default `--history-dir` comes from the operating system's per-user config folder, as in
