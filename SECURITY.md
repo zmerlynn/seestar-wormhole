@@ -31,11 +31,11 @@ Out of scope:
 
 - problems in the telescope, its firmware, the phone app or the vendor's cloud services; report those to the vendor;
 - the documented lack of authentication on the proxy's local listeners. Anyone who can reach them can control the
-  telescope, so bind them only to a network you trust; see [local network trust](docs/reference.md#proxy);
+  telescope, so bind them only to a network you trust; see [local network trust](docs/reference/connection-cli.md#proxy);
 - the telescope share's guest login. The share takes guest logins with no password, so anyone who can reach it can
   read it; that is the device's design, and copying uses the same login.
 
 ## Verifying a release
 
 Release checksums and build provenance verification are described in the
-[command reference](docs/reference.md#verifying-a-release).
+[connection command reference](docs/reference/connection-cli.md#verifying-a-release).

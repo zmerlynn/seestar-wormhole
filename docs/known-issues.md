@@ -8,21 +8,21 @@ without new evidence will be closed with a link to this page.
 
 - A transport-failed login can retry indefinitely, with the existing equal-jitter
   backoff capped at 15–30 seconds. Each request has a deadline; see [availability
-  and retry behavior](reference.md#availability-and-busy-devices).
+  and retry behavior](reference/connection-cli.md#availability-and-busy-devices).
 - Site and admission warnings are emitted per event, and startup retry details
   can remain buffered until startup resolves. Per-connection logs and the
   unauthenticated listener trust boundary are documented in [local network
-  trust](reference.md#proxy) and [SECURITY.md](../SECURITY.md#scope).
+  trust](reference/connection-cli.md#proxy) and [SECURITY.md](../SECURITY.md#scope).
 - The shared 128 client slots have no active-stream idle timeout, and rapid
   connection churn can temporarily exhaust channel IDs within their five-minute
-  retention period. See [flow control](reference.md#flow-control) for the
+  retention period. See [flow control](reference/connection-cli.md#flow-control) for the
   limits and operator guidance.
 
 ## Robustness
 
 - HTTP 429, 502, 503 and 504 use the existing capped backoff; `Retry-After` is
   ignored. Allocation and stop retain their ownership safeguards; see
-  [availability and retry behavior](reference.md#availability-and-busy-devices).
+  [availability and retry behavior](reference/connection-cli.md#availability-and-busy-devices).
 - License override selection sorts names and uses the first ten, rather than
   preserving document order. This compatibility choice is described in
   [protocol deviations](protocol.md#deliberate-deviations).
@@ -52,7 +52,7 @@ without new evidence will be closed with a link to this page.
   land in x/net. Its Windows successful-send-count workaround goes once the
   minimum supported Go version includes the fix. Its CI runs Windows amd64 and
   386; there has been no native Windows arm64 run. See [Windows
-  discovery](reference.md#windows).
+  discovery](reference/connection-cli.md#windows).
 
 ## Platforms and testing
 

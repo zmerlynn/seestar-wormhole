@@ -23,7 +23,7 @@ seestar_alp's live view asks for RTSP over UDP by default (`rtsp_udp = true`
 under `[network]`). The proxy forwards TCP only, so set `rtsp_udp = false`.
 Video through the proxy has not been tested.
 
-The proxy forwards ordinary client traffic and inspects selected control requests for site protection; see [the protocol boundary](reference.md#proxy).
+The proxy forwards ordinary client traffic and inspects selected control requests for site protection; see [the protocol boundary](reference/connection-cli.md#proxy).
 
 Not every seestar_alp feature has been tested this way. If something
 doesn't work through the proxy that works on the local network, please file
@@ -44,7 +44,7 @@ has been tested with NINA.
 ## Your own scripts
 
 [The control port speaks the telescope's line-based JSON-RPC](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/session-handshake.md), exactly as it
-does on the local network. The example uses the [default proxy listener](reference.md#proxy-flags).
+does on the local network. The example uses the [default proxy listener](reference/connection-cli.md#proxy-flags).
 
 See [pi_get_time](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#reading-the-time-pi_get_time) for the wire rules.
 
@@ -52,12 +52,12 @@ See [pi_get_time](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/
 printf '%s\r\n' '{"id":1,"method":"pi_get_time"}' | nc -w 2 127.0.0.1 4700
 ```
 
-The proxy removes site and time changes from the inspected JSON requests; see [the inspected request rules](reference.md#site-protection).
+The proxy removes site and time changes from the inspected JSON requests; see [the inspected request rules](reference/connection-cli.md#site-protection).
 
 ## Ports
 
-Map each client port with `-p local:device`; the default mappings include the control and imaging ports. See [port mappings](reference.md#port-mappings).
+Map each client port with `-p local:device`; the default mappings include the control and imaging ports. See [port mappings](reference/connection-cli.md#port-mappings).
 
 ## Things to know
 
-The proxy holds one shared session, so stop it before returning to the app’s remote mode; downloads can slow status replies. See [handover](reference.md#availability-and-busy-devices) and [download responsiveness](copying.md). Video transport coverage is listed [here](status.md#phone-app). Keep it on a [trusted network](reference.md#proxy).
+The proxy holds one shared session, so stop it before returning to the app’s remote mode; downloads can slow status replies. See [handover](reference/connection-cli.md#availability-and-busy-devices) and [download responsiveness](copying.md). Video transport coverage is listed [here](status.md#phone-app). Keep it on a [trusted network](reference/connection-cli.md#proxy).

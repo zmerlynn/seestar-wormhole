@@ -21,7 +21,7 @@ machine. `NewFromEnvironment` accepts:
   bounds concurrent creation/empty-file repair to one second. Unsafe modes,
   symlinks and oversized files fail closed with an attributed `--state-dir` error.
 
-See [catalog selection mechanics](../../docs/reference.md#device-selection). Even a known refusal code retains a usable identity for correlation, independently of missing or malformed status and SSID. A refusal without a usable identity keeps its existing classification.
+See [catalog selection mechanics](../../docs/reference/connection-cli.md#device-selection). Even a known refusal code retains a usable identity for correlation, independently of missing or malformed status and SSID. A refusal without a usable identity keeps its existing classification.
 
 `Config.AccountBaseURL` overrides the account origin for testing; `BaseURL` is
 still the separate remote origin. Both require HTTPS without user info, query,
@@ -90,14 +90,14 @@ stays with `Acquire` until ownership transfers. Duplicate lease closes share one
 stop attempt. The session owner serializes attempts per device; the HTTP edge
 performs no allocation retries of its own.
 
-See [HTTP limits](../../docs/reference.md#protocol-resource-policies) and [JSON input policy](../../docs/reference.md#json-file-compatibility).
+See [HTTP limits](../../docs/reference/connection-cli.md#protocol-resource-policies) and [JSON input policy](../../docs/reference/connection-cli.md#json-file-compatibility).
 
 [Online-link returns the decoded identifier for cleanup](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#allocation-online-link) even if other fields or
 response classification fail. Invalid, truncated or oversized JSON yields no
 cleanup identifier; the cloud API provides no lookup or idempotency contract to recover
 an allocation whose response cannot be decoded. Cleanup has an independent deadline.
 
-See [http work limits](../../docs/reference.md#protocol-resource-policies). Injected transports
+See [http work limits](../../docs/reference/connection-cli.md#protocol-resource-policies). Injected transports
 must obey deadlines, single-exchange semantics and Request.Close, and must not log
 request/response material. Each request requires connection closure, and the owned
 transport also disables keep-alives, avoiding net/http's HTTP/1 idle diagnostics
@@ -126,9 +126,9 @@ authorization failure is local policy, without assuming vendor token expiry.
 
 Documented refusal codes [300403 (service busy) and 300404 (occupied)](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#cloud-and-workflow-error-codes) return
 ErrBusy without HTTP-edge retry, subject to the detail identity correlation above.
-See [busy retry policy](../../docs/reference.md#availability-and-busy-devices).
+See [busy retry policy](../../docs/reference/connection-cli.md#availability-and-busy-devices).
 
-See [cloud diagnostic records](../../docs/reference.md#logs).
+See [cloud diagnostic records](../../docs/reference/connection-cli.md#logs).
 
 Response validation follows program consumption:
 

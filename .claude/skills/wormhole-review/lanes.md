@@ -106,7 +106,7 @@ Do the tests pin the changed behavior?
 
 1. Map each added or altered behavior to the test that would fail without
    it, and list behaviors that have no test. A contract in
-   `docs/reference.md` that the change touches needs a test.
+   `docs/reference/connection-cli.md` that the change touches needs a test.
 2. Mutation. Apply at least five mutations to the changed non-test lines on
    a scratch copy, then run only the affected packages. Useful mutations:
    - flip a condition;
@@ -135,8 +135,8 @@ Do the tests pin the changed behavior?
    (`remote.Fake`): short reads, an error mid-file, cancel mid-file, a rename
    over an existing file, names Windows cannot store, and several passes end
    to end. Copy state fixtures include a torn final line and a bad middle
-   line, and a contract in `docs/copy-reference.md` needs a test as one in
-   `docs/reference.md` does.
+   line, and a contract in `docs/reference/files-cli.md` needs a test as one in
+   `docs/reference/connection-cli.md` does.
 6. Any weakened assertion needs a stated reason.
 
 Must fix: a surviving mutant on a correctness-relevant line, a changed
@@ -240,13 +240,13 @@ disagrees with the code, or anything that looks copied or captured.
 
 ## cli-contract
 
-`docs/reference.md`, and `docs/copy-reference.md` for the file commands, are
+`docs/reference/connection-cli.md`, and `docs/reference/files-cli.md` for the file commands, are
 the contract for scripts and careful users; help text is the contract for
 people at a terminal. For the file commands, that includes the per-file lines
 and the per-pass summary line, a state file for another destination or one
 already in use, and a relative `--dest`.
 
-1. Build the head binary and compare help, `docs/reference.md` and behavior
+1. Build the head binary and compare help, `docs/reference/connection-cli.md` and behavior
    for everything the change adds or alters:
    - flags, arguments and defaults;
    - exit codes;
@@ -400,9 +400,11 @@ messages a user reads.
 The readers:
 - `README.md` is for Seestar owners who are not developers;
 - each `docs/` guide is for the same readers doing one task;
-- `docs/reference.md` owns the mechanics: flags, defaults, exit codes and
-  formats; `docs/copy-reference.md` owns them for the file commands and the
-  copy state file;
+- `docs/reference/connection-cli.md` owns the mechanics: flags, defaults, exit codes and
+  formats; `docs/reference/files-cli.md` owns them for the file commands;
+  `docs/reference/selection-and-history.md` owns the selection, the copy
+  state file and its locks; `docs/reference/app-settings.md` owns the app's
+  settings files;
 - `DESIGN.md` and `docs/development/` are for contributors.
 
 1. Accuracy. Every claim in the changed text is true at HEAD. Build the

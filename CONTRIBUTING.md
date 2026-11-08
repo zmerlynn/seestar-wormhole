@@ -2,7 +2,7 @@
 
 ## Reporting a bug
 
-Open an issue with the seestar-wormhole version (`seestar-wormhole-cli --version`), your OS, device model and firmware version, the command line with secrets removed, and relevant log records reduced to only the fields that matter. See [Troubleshooting](docs/troubleshooting.md) and the [command and log reference](docs/reference.md) for existing guidance; the [copy reference](docs/copy-reference.md) covers `sync`, `find`, `browse` and `delete`.
+Open an issue with the seestar-wormhole version (`seestar-wormhole-cli --version`), your OS, device model and firmware version, the command line with secrets removed, and relevant log records reduced to only the fields that matter. See [Troubleshooting](docs/troubleshooting.md) and the [connection command reference](docs/reference/connection-cli.md) for existing guidance; the [file command reference](docs/reference/files-cli.md) covers `sync`, `find`, `browse` and `delete`.
 
 ## What never goes in
 

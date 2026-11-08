@@ -19,28 +19,28 @@ tag scheme join the contract from that release, with the image tagged by the bin
 
 ## The contract
 
-The [command and log reference](reference.md) has the detail of the proxy's items, and the
-[copy command reference](copy-reference.md) the detail of the file commands' items (`sync`, `find`, `browse` and
+The [connection command reference](reference/connection-cli.md) has the detail of the proxy's items, and the
+[file command reference](reference/files-cli.md) the detail of the file commands' items (`sync`, `find`, `browse` and
 `delete`). The app's Copy, Browse and Free up space tabs use the same code as the file commands. The share and the
 firmware behind it change without notice, as above.
 
 1. **Commands and flags.** `proxy`, `discovery`, `sync`, `find`, `browse`, `delete`, `licenses`, `help`, the top-level
    `--version`, and GUI-only `ui`; flag names, meanings and grammar; defaults that change what is written or sent; and
    the rules about which combinations are refused. For the file commands that includes the defaults of every `sync`,
-   `find` and `delete` flag, as in [flags](copy-reference.md#flags), [find flags](copy-reference.md#find-flags) and
-   [delete flags](copy-reference.md#delete-flags), including delete's `--older-than` default of `7d`, and the rules
+   `find` and `delete` flag, as in [flags](reference/files-cli.md#flags), [find flags](reference/files-cli.md#find-flags) and
+   [delete flags](reference/files-cli.md#delete-flags), including delete's `--older-than` default of `7d`, and the rules
    about which values are refused. `--older-than` takes a Go duration or a whole number of days such as `7d`, not both,
    for find and delete alike. For delete: `--trust-state` and `--ignore-state` cannot be combined; `--ignore-state`
    needs at least one `--include` and refuses `--dest` and `--history-dir`; without `--force`, delete only previews, as
    `--dry-run` does, and `--force` with `--dry-run` is refused. `--force` only means "act": it never skips or weakens
    the proof, and `--trust-state` and `--ignore-state` are the only ways to ask for less. A new flag whose default
-   keeps the old behavior is additive. The [selection](copy-reference.md#selection), the same for sync and find: the
+   keeps the old behavior is additive. The [selection](reference/selection-and-history.md#selection), the same for sync and find: the
    whole share except what an exclude pattern matches; the built-in patterns are exactly the listed `--exclude` flags,
    and adding, removing or changing one is breaking; `--exclude` adds to them and `--no-default-excludes` removes them
    all; with one or more `--include` patterns, only files that an include matches, or that are in a folder an include
    matches, are selected; excludes always win over includes, whatever the order; one pattern grammar for both flags,
    that an excluded folder is not listed, and that case is ignored by lowercasing with no Unicode normalization. For
-   browse, as in [browse flags](copy-reference.md#browse-flags): `--endpoint`, `--listen` with its default
+   browse, as in [browse flags](reference/files-cli.md#browse-flags): `--endpoint`, `--listen` with its default
    `127.0.0.1:0`, `--open`, off by default, `--dest` and `--history-dir`; `--listen` takes an IP address and a port,
    never a host name; and browse shows the whole share, with the selection flags, only with `--dest`, choosing only
    what shows as left out. `--log-format` defaults to `json` for `proxy` and `discovery` and to `text` for the file
@@ -49,19 +49,19 @@ firmware behind it change without notice, as above.
    `proxy` reads no config or credential file (a systemd EnvironmentFile is the service manager's, not ours). With
    `--config`, it reads the UI's saved `config.json` without rewriting it, and takes the password from the OS keychain
    when `SEESTAR_PASSWORD` is unset; explicit flags and the variables override saved choices. See
-   [use saved settings headless](reference.md#use-saved-settings-headless). Without `--profile`, the file commands
+   [use saved settings headless](reference/connection-cli.md#use-saved-settings-headless). Without `--profile`, the file commands
    read no configuration file. They read no environment variables of their own. With `--profile default`, the file
    commands read `copy.json` and `config.json` from the app's state folder without rewriting them; explicit flags win;
    delete takes only its destination, history and endpoint from them. See
-   [use the app's saved settings](copy-reference.md#use-the-apps-saved-settings). The default `--history-dir` comes from the operating system's per-user config folder, as in
-   [location](copy-reference.md#location). Adding opt-in configuration later is additive and must not override
+   [use the app's saved settings](reference/files-cli.md#use-the-apps-saved-settings). The default `--history-dir` comes from the operating system's per-user config folder, as in
+   [location](reference/selection-and-history.md#location). Adding opt-in configuration later is additive and must not override
    explicit flags.
 3. **Installation identity.** Memory-only without `proxy --config` or `proxy --state-dir`. With `--state-dir`, the
    identity at `<state-dir>/InterProcessKV/device_uuid` is kept, or migrated compatibly; `--config` alone uses the UI's
    state root and shares its identity.
-4. **Exit codes.** 0, 1, 2 and 3, with 3 for `proxy` only, as in docs/reference.md "Exit codes" and the copy
-   reference's [exit codes](copy-reference.md#exit-codes), [find exit codes](copy-reference.md#find-exit-codes),
-   [delete exit codes](copy-reference.md#delete-exit-codes) and [browse exit codes](copy-reference.md#browse-exit-codes),
+4. **Exit codes.** 0, 1, 2 and 3, with 3 for `proxy` only, as in the connection reference's [exit codes](reference/connection-cli.md#exit-codes) and the files
+   reference's [exit codes](reference/files-cli.md#exit-codes), [find exit codes](reference/files-cli.md#find-exit-codes),
+   [delete exit codes](reference/files-cli.md#delete-exit-codes) and [browse exit codes](reference/files-cli.md#browse-exit-codes),
    and which outcome maps to which code. For delete, kept files never change the exit code.
 5. **Reasons.** One authoritative table of every `reason` and `cleanup_reason` value with its mapping to exit
    codes. Readers must treat an unknown reason as an unspecified failure and use the process exit code. A new reason for a new
@@ -101,27 +101,27 @@ firmware behind it change without notice, as above.
     A release in which `sync`, `find` or `browse` changes the device, or in which `delete` does more than this, is
     breaking.
 
-    The [proof modes](copy-reference.md#proof-modes): by default a file is removed only when the copy history records
+    The [proof modes](reference/files-cli.md#proof-modes): by default a file is removed only when the copy history records
     its path with the size and mtime the device lists and the local copy's SHA-256 is the recorded one; with
     `--trust-state` the record is enough; with `--ignore-state` every selected file is. In every mode the file must be
     at least `--older-than` old and unchanged on the device just before removal, and a path the share would not
-    receive exactly, or a [name clash](copy-reference.md#name-clashes), keeps it. Without `--force`, delete changes
+    receive exactly, or a [name clash](reference/files-cli.md#name-clashes), keeps it. Without `--force`, delete changes
     nothing. A folder is removed only when it held entries before the run and the run removed every one of them, as in
-    [emptied folders](copy-reference.md#emptied-folders).
-12. **The destination.** The [layout](copy-reference.md#destination-layout): files mirror the share's tree under
+    [emptied folders](reference/files-cli.md#emptied-folders).
+12. **The destination.** The [layout](reference/files-cli.md#destination-layout): files mirror the share's tree under
     `--dest` with names kept byte for byte; downloaded files get the device's mtime, adopted files keep their own,
     which is within the adoption tolerance in the decision rules; and folders' mtimes are not set. The
-    [decision rules](copy-reference.md#how-a-pass-decides): a file recorded with the same size and mtime is never
+    [decision rules](reference/files-cli.md#how-a-pass-decides): a file recorded with the same size and mtime is never
     copied again, whether or not it is still in the destination; a changed one is downloaded again; a matching local
     file is adopted; any other local file at that path is overwritten. Sync deletes nothing in the destination except
     its own temporary files. A top-level share entry named `.seestar-wormhole.lock`, in any letter case, is never
     copied, and nor is anything under a folder of that name.
 13. **Temporary files.** A download is written to `.seestar-copy-<hash>.tmp` in the folder of its final file, where
     `<hash>` is 64 lowercase hex digits; it never ends in `.fit`. Leftover files with exactly that form of name are
-    removed at the start of each pass. See [temporary files](copy-reference.md#temporary-files).
+    removed at the start of each pass. See [temporary files](reference/files-cli.md#temporary-files).
 14. **The copy history.** Its location, `<history-dir>/sync/<sha256>.jsonl`, where `<sha256>` is the lowercase hex
     SHA-256 of the absolute, cleaned `--dest`, and the default history folder, which is the one earlier releases'
-    `seestar-copy-cli` used. Its [format](copy-reference.md#format): JSON Lines, append-only; a header
+    `seestar-copy-cli` used. Its [format](reference/selection-and-history.md#format): JSON Lines, append-only; a header
     `{"v":1,"dest":"<absolute dest>"}`; then one record per line with the members `path` (share-relative, forward
     slashes), `size` (bytes), `mtime` (the device's, RFC 3339), `sha256` (lowercase hex), `at` (RFC 3339) and `how`
     (`copied`, `replaced` or `adopted`); the last record for a path wins; a record is written only after its file is
@@ -134,10 +134,10 @@ firmware behind it change without notice, as above.
     without it. The lock files' names are not promised. delete never writes the history file, and takes no history
     lock.
 15. **find's output.** The listing goes to stdout, one line per entry, in listing order, and lists the folders the
-    selection reads and the files it selects, as in [what find lists](copy-reference.md#what-find-lists). The
-    [text format](copy-reference.md#text-format): its fields, their order and syntax, and when and how a path is quoted.
-    The [JSONL format](copy-reference.md#jsonl-format): the member names, their types and meanings. The three
-    [statuses](copy-reference.md#statuses) `copied`, `changed` and `new` and the rule for each. Find writes nothing on
+    selection reads and the files it selects, as in [what find lists](reference/files-cli.md#what-find-lists). The
+    [text format](reference/files-cli.md#text-format): its fields, their order and syntax, and when and how a path is quoted.
+    The [JSONL format](reference/files-cli.md#jsonl-format): the member names, their types and meanings. The three
+    [statuses](reference/files-cli.md#statuses) `copied`, `changed` and `new` and the rule for each. Find writes nothing on
     disk and never creates `--dest` or the copy history. Adding a JSONL member is additive; removing or renaming one,
     adding or changing a text field, adding a status or changing what one means is breaking.
 16. **browse's output.** Once it is listening, browse prints exactly one line to stdout, a URL that opens the page,
@@ -153,7 +153,7 @@ firmware behind it change without notice, as above.
   ownership and bounded cleanup) are not timing and stay protected.
 - Wire details towards the vendor. A vendor handshake can change in a patch if items 1-16 hold.
 - For the file commands: log text, messages, keys, levels and their order (the copy reference's
-  [logs](copy-reference.md#logs) table documents what a release logs, and the notes say when it changes); error wording
+  [logs](reference/files-cli.md#logs) table documents what a release logs, and the notes say when it changes); error wording
   and the formatting of `licenses`; pass duration, the order files are copied in, and how reads are split on the wire
   (the meaning of `--interval`, `--ready-age` and `--first-pass-age` is in the contract); which SMB dialect and
   features are negotiated with the device; and browse's page and server: its URLs and routes, the exact form of the

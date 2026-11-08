@@ -3,7 +3,7 @@
 seestar-wormhole connects apps on your computer and phone to your remote Seestar.
 They share one connection to the telescope.
 
-![Choose who can connect, then enter your Seestar account details](images/gui-setup.png)
+![Choose Telescope Network or On this network on the Connection tab.](images/gui-setup.png)
 
 ## Tabs
 
@@ -136,18 +136,15 @@ Keep seestar-wormhole open while you use the telescope.
 
 **Copy**, **Browse** and **Free up space** copy your images from the
 telescope's file share to a folder on this computer, show what is on the
-share, and delete what is safely copied. They use the same rules and the same
-copy history as `seestar-wormhole-cli`'s [`sync`, `browse` and
-`delete`](copy-reference.md). The app keeps its copy settings in its own state
-directory, as [`copy.json`](#copyjson-version-1), which the CLI's file commands
+share, and delete what is safely copied. They select files, keep the copy
+history and take the folder's locks as `seestar-wormhole-cli`'s [`sync`,
+`browse` and `delete`](reference/files-cli.md) do; see
+[selection and copy history](reference/selection-and-history.md), which
+also says [what each does when the other holds a lock](reference/selection-and-history.md#when-the-other-side-holds-a-lock).
+The app keeps its copy settings in its own state
+directory, as [`copy.json`](reference/app-settings.md#copyjson-version-1), which the CLI's file commands
 read only when given `--profile default`, such as `seestar-wormhole-cli sync --profile default`
-(see [use the app's saved settings](copy-reference.md#use-the-apps-saved-settings)), and its copy history in the default
-[history location](copy-reference.md#location), whatever its `--state-dir`
-says, unless **Copy history folder** names another. While copying is on, the app holds the folder's history lock, as `sync`
-does, so a `sync` for the same folder exits with its usual error, and the app
-says the folder is in use while a `sync` holds it. Copy, Free up space and a
-Browse save into the folder also take its
-[folder lock](copy-reference.md#the-folder-lock), as `sync` and `delete` do. Through Telescope Network
+(see [use the app's saved settings](reference/files-cli.md#use-the-apps-saved-settings)). Through Telescope Network
 they reach the share through the connection itself, so they work with the SMB
 port off, and their errors name **Seestar (account connection)**. With
 **Connect when an app needs Seestar**, they count as an app: they start the
@@ -177,8 +174,9 @@ can't change while copying runs:
 - **Folder for your images.** Images are copied there in the same folders as
   on the telescope. Each folder has its own copy history.
 - **Copy history folder**, empty by default. Empty is the default
-  [history location](copy-reference.md#location), the one
-  `seestar-wormhole-cli sync` uses without `--history-dir`; the field shows
+  [history location](reference/selection-and-history.md#location), the one
+  `seestar-wormhole-cli sync` uses without `--history-dir`, so the app and
+  `sync` share one history for the folder; the field shows
   that path as its placeholder. Otherwise type a full path to a folder
   outside the folder for your images, or use **Choose…** in the app's window;
   **Save** refuses a relative path or one inside the images folder with
@@ -202,31 +200,32 @@ can't change while copying runs:
   the Seestar app and seestar_alp; if they are slow to respond while copying,
   lower it to 1 or 2.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
-  [`--exclude` and `--include`](copy-reference.md#selection).
-- **Skip the telescope's logs, scratch and system files**, on by default.
+  `--exclude` and `--include`; see [selection](reference/selection-and-history.md#selection).
+- **Skip the telescope's logs, scratch and system files**, on by default: the
+  [built-in patterns](reference/selection-and-history.md#built-in-patterns).
 - **Start copying when the app opens**, off by default. Through Telescope
   Network, copying then starts once the connection is ready; pressing
   **Start copying** before then takes its place. With the check for new
   files off, it copies once each time the app opens.
 
 While copying is off, **Preview** shows what **Start copying** would do, from
-one [dry run](copy-reference.md#dry-run) with the saved settings: how many
+one [dry run](reference/files-cli.md#dry-run) with the saved settings: how many
 files it would copy and their size, with a row per folder, and how many are
 already copied, still being written, or left out. Nothing is copied.
 **Cancel** stops a preview that is running; starting, a Save that changes the
 folder, the copy history folder or the selection, and Clear history discard
 it.
 
-While copying is on, the app holds the folder's history lock for as long as
-copying is on, and its [folder lock](copy-reference.md#the-folder-lock)
-during each check, as `sync` does: a `sync` for the same folder exits with
-its usual error. Copy says **Another copy or delete is using this folder.**
-while a `sync`, a `delete --force`, or another copy of the app holds either
-lock: when you start copying, copying stays off; at a later check, that
-check is skipped, nothing is copied, and Copy tries again at the next one.
+While copying is on, Copy holds the folder's
+[locks](reference/selection-and-history.md#locks) as `sync` does. If a
+`sync`, a `delete --force` or another copy of the app holds one, Copy says
+**Another copy or delete is using this folder.**: when you start copying,
+copying stays off, so stop the other one first; at a later check, that check
+is skipped and Copy tries again at the next one. See
+[when the other side holds a lock](reference/selection-and-history.md#when-the-other-side-holds-a-lock).
 
 **Copy history**, collapsed under the settings, shows the path of the saved
-folder's [state file](copy-reference.md#the-state-file) in the saved copy
+folder's [state file](reference/selection-and-history.md#copy-history) in the saved copy
 history folder, which `sync` uses too with the same `--history-dir`. While
 the folder field or the copy history folder field holds one not yet saved,
 it says to save first. **Clear history…** deletes that state file after a confirmation, so the
@@ -238,8 +237,8 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 ### Browse
 
 Browse is `seestar-wormhole-cli browse`'s page for the share, with the saved
-folder's [statuses](copy-reference.md#statuses). What the settings leave out
-shows as [`left out`](copy-reference.md#left-out-in-browse). After a Save
+folder's [statuses](reference/files-cli.md#statuses). What the settings leave out
+shows as [`left out`](reference/files-cli.md#left-out-in-browse). After a Save
 that changes the folder or the selection, or a change of how the telescope
 is reached, Browse loads again at the share's top when it is next shown, so
 an error from before goes without a retry. Browse opens once a route is
@@ -247,7 +246,7 @@ saved: until Copy's folder is saved it lists the telescope's files without
 statuses, and the first Save loads it again with them. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
 A save into Copy's saved folder, or a folder inside it, takes the folder's
-[folder lock](copy-reference.md#the-folder-lock) until the file is in place:
+[folder lock](reference/selection-and-history.md#the-folder-lock) until the file is in place:
 while a check or a delete holds it, the save says **Another copy or delete
 is using this folder. Try saving it again.** and saves nothing. A file named
 `.seestar-wormhole.lock`, in any letter case, can't be saved at the top of
@@ -258,7 +257,7 @@ folder.** A save anywhere else takes no lock.
 
 Until Copy's folder is saved, Free up space says to choose it, with **Go to
 Copy**. **Preview what to delete** lists, per folder, the files that are copied and
-safe to delete, as `delete` [proves it](copy-reference.md#proof-modes), and
+safe to delete, as `delete` [proves it](reference/files-cli.md#proof-modes), and
 nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent
 sessions on the telescope, and **My copies have moved or the drive is
@@ -267,22 +266,20 @@ does. Above the options, **Copies in:** names Copy's saved folder, whose
 copies the check proves; with that option on, **Copy history for:** names the
 folder whose history it uses instead. **Go to Copy** beside it is where to
 change the folder. **Keep on the telescope** and **Only free up** take one pattern per
-line, as `delete`'s [`--exclude` and `--include`](copy-reference.md#selection):
+line, as `delete`'s `--exclude` and `--include`; see [selection](reference/selection-and-history.md#selection):
 a file that matches Keep on the telescope is never deleted, and when Only free
 up is not empty, only files that match it are. They are separate from Copy's
 **Leave out** and **Only copy**, which don't change what is deleted.
-**Always kept**, beside them, lists what is never deleted, as `delete` leaves
-it out by default: the telescope's log and scratch folders (`/log`,
-`/tmp_stitch`, `/batch_stack_tmp`), names starting with a dot, unfinished
-`.tmp` files, and Windows system files (`Thumbs.db`, `desktop.ini`,
-`$RECYCLE.BIN`, `System Volume Information`). A Copy Save that changes the folder discards a
+**Always kept**, beside them, lists what is never deleted: the
+[built-in patterns](reference/selection-and-history.md#built-in-patterns),
+which `delete` leaves out by default too. A Copy Save that changes the folder discards a
 preview, and so does a change of how the telescope is reached, which also
 clears a check that couldn't finish. **Delete N files…** asks once more. The delete then lists the checked
 folders again, and only those, saying **Checking N files again before
 deleting…**, and proves each file again just before it removes it: a file
 that changed or went away since the preview is kept. **Stop** ends a delete
 that is running. The delete holds the folder's
-[folder lock](copy-reference.md#the-folder-lock) from before it lists the
+[folder lock](reference/selection-and-history.md#the-folder-lock) from before it lists the
 folders until its last removal, and runs between Copy's checks: while a
 check, a `sync` or another delete holds the lock, it stops at once with
 **Another copy or delete is using this folder.** and deletes nothing. A
@@ -323,7 +320,7 @@ the picker focused without another account request. Outside this step, including
 a changed account, it reverts to **Find on my account**. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
 The selection-step help replaces that line; only one picker help line appears at a time.
 
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This bound also applies to saved settings and received picker choices. An invalid saved serial refuses loading without rewriting the file. See the [command reference](reference.md#device-selection) for selection rules.
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This bound also applies to saved settings and received picker choices. An invalid saved serial refuses loading without rewriting the file. See the [connection command reference](reference/connection-cli.md#device-selection) for selection rules.
 
 **Enter manually…** reveals **Serial number** and **Model (optional)** below
 the picker for manual entry. Connect follows the revealed fields in visual and
@@ -344,7 +341,7 @@ summary carry the same status text.
 Stop is the only action below the running status. To switch telescopes, choose
 Stop, choose **Find on my account** or another picker entry, then Connect.
 Several telescopes still enter the existing selection step. See
-[device selection](reference.md#device-selection).
+[device selection](reference/connection-cli.md#device-selection).
 
 ## Advanced
 
@@ -366,7 +363,7 @@ network address**.
 
 **Let the Seestar app find your Seestar** answers discovery requests on your
 network. It needs **All networks** or a local network IPv4 address. See
-[LAN discovery](reference.md#lan-discovery) for network requirements and limits.
+[LAN discovery](reference/connection-cli.md#lan-discovery) for network requirements and limits.
 
 ### Services and ports
 
@@ -377,7 +374,7 @@ setup uses local port 8080 instead. **File sharing for other apps (SMB)** uses
 local port 4445 for Seestar port 445. It is for Finder, rclone, other SMB apps
 and `seestar-wormhole-cli`'s file commands, including their `--profile default`
 endpoint through the account: Copy, Browse and Free up space don't need it. For other mappings, use the
-[command line](reference.md#port-mappings).
+[command line](reference/connection-cli.md#port-mappings).
 
 ## Activity
 
@@ -403,7 +400,7 @@ catalog also records its telescope list, even for a single telescope:
 `Account telescopes (list may be incomplete): {telescope}, …`; empty lists
 read `Account telescopes: none`. Long lists end with `… and N more`.
 The private log includes an INFO `device_catalog` record with the pairs, count,
-and completeness; see the [log reference](reference.md#logs).
+and completeness; see the [log reference](reference/connection-cli.md#logs).
 
 Unchanged status polls preserve the text and nodes in Details and the service
 tables so selected text stays selected. Changed content updates on the next poll.
@@ -417,159 +414,19 @@ the error says when you need the WebView2 Runtime.
 ## Running without the window
 
 Once the UI has saved your settings, `seestar-wormhole-cli proxy --config` can
-use them without a window. See [Use saved settings headless](reference.md#use-saved-settings-headless)
+use them without a window. See [Use saved settings headless](reference/connection-cli.md#use-saved-settings-headless)
 for password sources, overrides, and service setup.
 
 ## Details for admins
 
-### Where settings live
+Where the app keeps its settings, the formats of `config.json` and
+`copy.json`, file permissions, the control page and the window engine's data
+are in [App settings and internals](reference/app-settings.md):
 
-The default state directory is:
-
-| System | Directory |
-|---|---|
-| Linux | `$XDG_CONFIG_HOME/seestar-wormhole`, or `$HOME/.config/seestar-wormhole` |
-| macOS | `$HOME/Library/Application Support/seestar-wormhole` |
-| Windows | `%APPDATA%\seestar-wormhole` |
-
-To use another existing installation root, run
-`seestar-wormhole ui --state-dir PATH`. This doesn't move or copy its identity.
-
-| File | Purpose |
-|---|---|
-| `config.json` | Settings except the password; see [the format](#configjson-version-1). |
-| `copy.json` | Copy settings; see [the format](#copyjson-version-1). |
-| `InterProcessKV/device_uuid` | Your [installation identity](reference.md#installation-identity), shared with `proxy --state-dir PATH`. |
-| `gui.log`, `gui.log.1` | UI events as JSON lines, up to 64 KiB each, with one rotation. |
-| `ui.lock` | Keeps one UI running per state directory. |
-| `ui-runtime.json` | Private control port and token; removed on normal exit. |
-| `webview-<random>/` | Windows only: a fresh private engine profile for each launch; see [engine data](#engine-data). |
-| `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
-
-The copy history and its locks are not in the state directory. By default they
-are in the file commands' default [history location](copy-reference.md#location),
-`seestar-copy` beside `seestar-wormhole` in the same system folder, whatever
-`--state-dir` says, so the app and `seestar-wormhole-cli sync` share them.
-**Copy history folder** in Copy settings, saved as `history_dir`, puts the
-app's elsewhere. Whichever history each uses, the
-[folder lock](copy-reference.md#the-folder-lock) in the folder for your images
-keeps the app and `sync` from copying into one folder at once.
-
-### config.json version 1
-
-`version` is required and must be `1`. Missing members take these defaults:
-
-| Member | Default and meaning |
-|---|---|
-| `bind` | IPv4 loopback, for this computer only. |
-| `discovery` | `false` |
-| `idle` | `"0"`; a nonnegative Go duration string, such as `"2m"`. |
-| `serial`, `model`, `email` | Empty strings. |
-| `ports` | `[]`, using the standard service mappings. |
-| `remember_password` | `false` |
-| `route` | Empty, meaning **Remotely through Telescope Network**. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means Telescope Network. |
-| `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
-| `route_established` | `false`. `true` once a connection through Telescope Network is ready or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
-
-These defaults differ from the UI's first-run phone setup.
-
-Each `ports` override has lowercase numeric `local` and `device` members, from
-0 to 65535. A `local` of 0 turns the service off; `device` must name a standard
-service.
-
-Unknown members survive a save. Reads are limited to 64 KiB and never rewrite
-the file. A missing or unsupported version, including a newer one, is refused
-and left untouched. A failed load never overwrites existing state.
-
-### copy.json version 1
-
-`version` is required and must be `1`. Missing members take these defaults,
-and members this version doesn't know are kept when it saves. The file is
-written when you save Copy settings or preview Free up space with changed
-options, never on load.
-
-| Member | Default and meaning |
-|---|---|
-| `folder` | `Seestar` in your home folder. |
-| `history_dir` | `""`: the default [history location](copy-reference.md#location), as `--history-dir`'s default. Otherwise **Copy history folder**, an absolute path outside `folder`. A relative path or a value that isn't a string refuses the file. |
-| `interval_minutes` | `5` |
-| `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
-| `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
-| `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
-| `start_copying` | `false` |
-| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range refuses the file. |
-| `older_than_days` | `7` |
-| `trust_state` | `false` |
-| `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
-
-Older versions keep `history_dir` when saving but use the default history
-folder. After a downgrade, files moved out of the images folder can be copied
-again, and Free up space cannot use the chosen folder's history to prove those
-copies safe.
-
-The telescope's address is not in it; it comes from the route in `config.json`.
-
-A copy.json this version can't read, such as one with another version, a
-member of the wrong type or `files_at_once` out of range, doesn't stop the app.
-The Connection tab and the proxy work, but **Copy**, **Browse** and **Free up
-space** stay off for that run, a note under the tabs names the file, and
-Activity records **Copy settings couldn't be loaded safely; Copy, Browse and
-Free up space are off.** The app never writes the file while it is refused. Fix
-or remove it, then reopen the app; a removed file brings back the default Copy
-settings. A refused `config.json` still stops the app.
-
-### File permissions
-
-Saves are atomic. On Unix, the directory must be `0700` and its files `0600`;
-unsafe permissions or links are refused. Windows uses the same protected current-user/SYSTEM ACLs as the
-[installation identity](reference.md#windows). Use trusted parent
-directories.
-
-The CLI keeps its default identity in memory only. To share the UI's identity,
-pass the same state root explicitly, or use `proxy --config`.
-
-### The control page
-
-The controls use a separate loopback listener on an automatic port, even when forwarding listens on other networks. Access takes a random
-256-bit token: it starts in the URL fragment and goes in a header with every API
-request. Treat that private URL as access to the controls.
-
-To keep other websites out, the page uses exact Host checks, Origin checks on
-JSON POST writes, request limits, framing by the same page only, a restrictive
-content policy, and no-store/no-referrer headers. The copy API under
-`/copy/api/` takes the same token and checks; Browse, under `/browse/`, is
-served for a frame on the page. Other programs running as your user
-are still trusted.
-
-A browser opener gets only the path to `ui-open.html`, which redirects to the
-controls, so the token stays out of its arguments. If opening fails,
-seestar-wormhole prints the private URL; keep that output private. A crash can
-leave `ui-open.html` behind; the next browser launch replaces it.
-
-### Window limits
-
-Dropping a file or link onto the window can replace the controls with another
-page, and an engine popup can open another view or browser window. A page from
-another origin can't read the control token or make authenticated control
-requests, and the Wails command bridge is blocked, but nothing stops the
-navigation or popups themselves. Reopen seestar-wormhole to bring the controls
-back in the existing window. Right-click menus are the engine's defaults.
-
-For Linux prerequisites, see [Linux native window](troubleshooting.md#linux-native-window).
-
-### Engine data
-
-On Windows, each launch gets a new `webview-<random>/` profile. After the
-window closes, seestar-wormhole waits up to two seconds to remove it. If files
-are still locked, it prints a warning but exits normally. Later launches try
-again, including for the older `webview/` directory, and locked profiles don't
-block startup. Leftover cache and session files stay in the private state directory until
-they unlock or you remove them after exit. Profiles with unsafe permissions or
-links are left for you to remove by hand.
-
-On macOS (WKWebView) and Linux (WebKitGTK), the engines use their default
-persistent stores outside the state directory. These aren't cleared on exit.
-The page uses sessionStorage to authorize reloads and sets no cookies or
-localStorage. No-store headers don't guarantee that an engine writes no session
-or cache data, and what each engine keeps on disk hasn't been checked on every
-platform.
+- <a id="where-settings-live"></a>[Where settings live](reference/app-settings.md#where-settings-live)
+- <a id="configjson-version-1"></a>[config.json version 1](reference/app-settings.md#configjson-version-1)
+- <a id="copyjson-version-1"></a>[copy.json version 1](reference/app-settings.md#copyjson-version-1)
+- <a id="file-permissions"></a>[File permissions](reference/app-settings.md#file-permissions)
+- <a id="the-control-page"></a>[The control page](reference/app-settings.md#the-control-page)
+- <a id="window-limits"></a>[Window limits](reference/app-settings.md#window-limits)
+- <a id="engine-data"></a>[Engine data](reference/app-settings.md#engine-data)

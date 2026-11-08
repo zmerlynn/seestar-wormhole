@@ -7,7 +7,7 @@ import (
 )
 
 func TestCatalogModeReferenceUncertainty(t *testing.T) {
-	data, err := os.ReadFile("../../../docs/reference.md")
+	data, err := os.ReadFile("../../../docs/reference/connection-cli.md")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -30,7 +30,7 @@ func TestCatalogModeReferenceUncertainty(t *testing.T) {
 }
 
 func TestDeviceSelectionRefusedReference(t *testing.T) {
-	data, err := os.ReadFile("../../../docs/reference.md")
+	data, err := os.ReadFile("../../../docs/reference/connection-cli.md")
 	if err != nil {
 		t.Fatal(err)
 	}

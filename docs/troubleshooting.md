@@ -2,7 +2,7 @@
 
 ## The proxy
 
-When the proxy exits with failure, inspect the final `proxy failed` record and its `reason`; see [failure diagnosis](reference.md#proxy-final-failure).
+When the proxy exits with failure, inspect the final `proxy failed` record and its `reason`; see [failure diagnosis](reference/connection-cli.md#proxy-final-failure).
 
 **macOS won't run it.** A notarized download opens after macOS's one-time
 "downloaded from the Internet" prompt. If a copy still refuses to run (for
@@ -52,31 +52,31 @@ telescope marked busy for a minute or more. A reason like `release_failed` or
 `ownership_uncertain` is different: the proxy couldn't confirm it let go of
 the telescope. After cleanup finishes, it waits 60 seconds and tries a
 fresh allocation automatically. In lazy mode, it waits for client demand.
-Later busy answers keep retrying under the [availability policy](reference.md#availability-and-busy-devices).
+Later busy answers keep retrying under the [availability policy](reference/connection-cli.md#availability-and-busy-devices).
 The reminder keeps the original reason until recovery succeeds; look for
 `session_state` transitions through `backoff` and `dialing`. File an issue if
 it keeps happening.
 
-A `site_protected` event means the proxy dropped a site or time setter; see [site protection](reference.md#site-protection).
+A `site_protected` event means the proxy dropped a site or time setter; see [site protection](reference/connection-cli.md#site-protection).
 
-A `cloud_license_missing` event means allocation returned no SDK license key; retries stop. See [the log reference](reference.md#logs).
+A `cloud_license_missing` event means allocation returned no SDK license key; retries stop. See [the log reference](reference/connection-cli.md#logs).
 
-For `iotc_rid_history_exhausted`, stop the process normally, wait for session release and exit, then restart it; retries in the same process cannot restore the budget. See [logs](reference.md#logs).
+For `iotc_rid_history_exhausted`, stop the process normally, wait for session release and exit, then restart it; retries in the same process cannot restore the budget. See [logs](reference/connection-cli.md#logs).
 
 **The phone app can't find the telescope.** See
 [the phone app guide](phone-app.md#if-the-telescope-doesnt-show-up). Most of
 the time it's the firewall or a Wi-Fi network that keeps devices apart.
 
-A `lan_discovery_delivery_failed` record with a `reply_*` rule means one discovery reply couldn't be sent, usually because the proxy's LAN address just changed. Discovery keeps running. If it repeats, check that the bind address is still on the interface, or restart the proxy to pick up a new address. See [LAN discovery](reference.md#lan-discovery).
+A `lan_discovery_delivery_failed` record with a `reply_*` rule means one discovery reply couldn't be sent, usually because the proxy's LAN address just changed. Discovery keeps running. If it repeats, check that the bind address is still on the interface, or restart the proxy to pick up a new address. See [LAN discovery](reference/connection-cli.md#lan-discovery).
 
-If the album is empty, start the proxy with `-p 80:80`; see [HTTP port mappings](reference.md#port-mappings).
+If the album is empty, start the proxy with `-p 80:80`; see [HTTP port mappings](reference/connection-cli.md#port-mappings).
 
-To correct the stored site, connect the app directly to the device and set it there; see [site protection](reference.md#site-protection).
+To correct the stored site, connect the app directly to the device and set it there; see [site protection](reference/connection-cli.md#site-protection).
 
 **Status replies are slow.** A large download is probably sharing the
 connection. See [downloading while you observe](copying.md).
 
-A `local_closed` poller event is often a client that closed after one reply; device-side failures still warrant investigation. See [logs](reference.md#logs).
+A `local_closed` poller event is often a client that closed after one reply; device-side failures still warrant investigation. See [logs](reference/connection-cli.md#logs).
 
 **Sign-in fails.** Check `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` by signing in
 to the phone app with the same values. Type them at the `read` prompt from the
@@ -126,7 +126,7 @@ newer version of the app may have written, or which was edited by hand. The
 connection and the proxy work as usual. seestar-wormhole doesn't change the
 file. Fix or remove it, then reopen seestar-wormhole: without the file, Copy
 starts from its default settings, which you then save again. See
-[copy.json](ui.md#copyjson-version-1) for what it may hold.
+[copy.json](reference/app-settings.md#copyjson-version-1) for what it may hold.
 
 ## Another copy or delete is using this folder
 
@@ -140,7 +140,7 @@ Copy check that is running. Let it finish or stop it, then try again. A
 running `sync` or Copy only skips a check while the lock is held (`pass
 skipped` with `reason=folder_busy`) and tries again at the next one. The
 file itself is empty and harmless; don't remove it. See
-[the folder lock](copy-reference.md#the-folder-lock).
+[the folder lock](reference/selection-and-history.md#the-folder-lock).
 
 **`pass failed` with `reason=destination_missing`.** The folder `sync`
 opened was removed while it ran. Restart `sync` with the folder you want;

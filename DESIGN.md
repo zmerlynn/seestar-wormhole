@@ -634,11 +634,11 @@ noncompliant adapter. The command's nonblocking stderr descriptor drops log line
 when a pipe is full, so logging cannot hold up ownership release. No secret values,
 raw transport errors or protocol action structures are logged.
 
-See [site protection](docs/reference.md#site-protection), [port mappings](docs/reference.md#port-mappings), and [container arguments](docs/reference.md#containers).
+See [site protection](docs/reference/connection-cli.md#site-protection), [port mappings](docs/reference/connection-cli.md#port-mappings), and [container arguments](docs/reference/connection-cli.md#containers).
 
-See [device selection](docs/reference.md#device-selection) and [installation identity](docs/reference.md#installation-identity).
+See [device selection](docs/reference/connection-cli.md#device-selection) and [installation identity](docs/reference/connection-cli.md#installation-identity).
 
-See [port mapping syntax and defaults](docs/reference.md#port-mappings).
+See [port mapping syntax and defaults](docs/reference/connection-cli.md#port-mappings).
 
 Account lifecycle invariants (replacement safety policy):
 
@@ -763,7 +763,7 @@ failure CLOSE, as well as slow consumers, transport failures and redial. Seeded
 operations and virtual-time delays do not exhaust arbitrary Go interleavings;
 focused race repetitions and deterministic ownership gates cover those boundaries.
 
-See [lifecycle diagnostics](docs/reference.md#logs).
+See [lifecycle diagnostics](docs/reference/connection-cli.md#logs).
 
 Build scratch images on the current arm64 builder (use the native builder
 platform for BUILDPLATFORM on another host):
@@ -773,7 +773,7 @@ podman build --platform linux/arm64 --build-arg BUILDPLATFORM=linux/arm64 --buil
 podman build --platform linux/amd64 --build-arg BUILDPLATFORM=linux/arm64 --build-arg TARGETARCH=amd64 -t seestar-proxy:amd64 .
 ```
 
-See [container runtime contract](docs/reference.md#containers). The platform smoke test uses network isolation and synthetic environment strings; no cloud or device contact is needed.
+See [container runtime contract](docs/reference/connection-cli.md#containers). The platform smoke test uses network isolation and synthetic environment strings; no cloud or device contact is needed.
 
 ## LAN discovery edge
 
@@ -782,7 +782,7 @@ on every OS. Admission consumes the actual destination and ingress interface;
 replies specify both the selected local source and that interface. Truncated
 input is refused before admission and leaves the receive loop available for the
 next datagram. The source, live-prefix and ambiguity policies are described in
-[LAN discovery](docs/reference.md#lan-discovery).
+[LAN discovery](docs/reference/connection-cli.md#lan-discovery).
 The Windows library dependency is recorded in [Vendoring](docs/development/README.md#vendoring).
 
 ## Not implemented
