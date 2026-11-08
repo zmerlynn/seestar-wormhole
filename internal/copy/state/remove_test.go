@@ -1,6 +1,8 @@
 package state
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"maps"
 	"os"
@@ -70,12 +72,23 @@ func treeOf(t *testing.T, root string) map[string]string {
 
 // removeRefused checks that Remove refuses stateDir as inside dest, and
 // changes nothing in dest: no lock file is made and the state file there
-// stays.
+// stays. The state file is placed where Path would put it, without Path,
+// which on Windows already refuses a case alias because filepath.Rel
+// ignores case there.
 func removeRefused(t *testing.T, stateDir, dest string) {
 	t.Helper()
-	path, err := Path(stateDir, dest)
+	absDest, err := filepath.Abs(dest)
 	if err != nil {
 		t.Fatal(err)
+	}
+	absState, err := filepath.Abs(stateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256([]byte(absDest))
+	path := filepath.Join(absState, "sync", hex.EncodeToString(sum[:])+".jsonl")
+	if p, err := Path(stateDir, dest); err == nil && p != path {
+		t.Fatalf("Path = %s, the test placed the state file at %s", p, path)
 	}
 	mkdir(t, filepath.Dir(path))
 	if err := os.WriteFile(path, []byte("synthetic\n"), 0o600); err != nil {
