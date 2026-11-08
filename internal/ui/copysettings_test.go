@@ -429,9 +429,16 @@ func TestLoadCopySettings(t *testing.T) {
 		t.Error("copy.json was written")
 		return errStorage
 	}
-	st := testStorageWith(t, `{"version":1,"folder":"/synthetic/Seestar","history_dir":"/synthetic/history","future":true}`)
+	// The history folder must be absolute on this system: on Windows a
+	// path needs its drive.
+	history := filepath.Join(t.TempDir(), "history")
+	quoted, err := json.Marshal(history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := testStorageWith(t, `{"version":1,"folder":"/synthetic/Seestar","history_dir":`+string(quoted)+`,"future":true}`)
 	set, err := LoadCopySettings(st.root)
-	if err != nil || set.Folder != "/synthetic/Seestar" || set.HistoryDir != "/synthetic/history" || set.FilesAtOnce != copyapp.MaxFilesAtOnce || !set.SkipBuiltIn {
+	if err != nil || set.Folder != "/synthetic/Seestar" || set.HistoryDir != history || set.FilesAtOnce != copyapp.MaxFilesAtOnce || !set.SkipBuiltIn {
 		t.Errorf("= %+v, %v", set, err)
 	}
 	for _, body := range refusedBodies {

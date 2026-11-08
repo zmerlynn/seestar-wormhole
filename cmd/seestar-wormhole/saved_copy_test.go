@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"maps"
@@ -60,22 +61,33 @@ func profileFiles(t *testing.T, root string) map[string]string {
 	return got
 }
 
-// A copy.json with every member set: the Copy members fill what they
-// name, Free up space's never.
-const fullCopyJSON = `{"version":1,"folder":"/synthetic/Seestar","history_dir":"/synthetic/history","interval_minutes":9,
+// fullCopyJSON is a copy.json with every member set, and its history
+// folder: the Copy members fill what they name, Free up space's never. The
+// history folder is absolute on this system, as the loader requires; on
+// Windows that needs a drive.
+func fullCopyJSON(t *testing.T) (body, history string) {
+	t.Helper()
+	history = filepath.Join(t.TempDir(), "history")
+	quoted, err := json.Marshal(history)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return `{"version":1,"folder":"/synthetic/Seestar","history_dir":` + string(quoted) + `,"interval_minutes":9,
 "excludes":["copy-exclude"],"includes":["copy-include"],"skip_built_in":false,"start_copying":true,"files_at_once":3,"once":true,
-"older_than_days":1,"trust_state":true,"free_excludes":["free-exclude"],"free_includes":["free-include"]}`
+"older_than_days":1,"trust_state":true,"free_excludes":["free-exclude"],"free_includes":["free-include"]}`, history
+}
 
 // The default profile is copy.json's Copy members and config.json's
 // endpoint, read without a write.
 func TestDefaultProfileLoad(t *testing.T) {
 	root := savedConfigRoot(t)
-	writeSavedCopy(t, root, fullCopyJSON)
+	body, history := fullCopyJSON(t)
+	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
 	before := profileFiles(t, root)
 	got, err := loadDefaultProfile()
 	want := cli.Saved{
-		Dest: "/synthetic/Seestar", HistoryDir: "/synthetic/history", Endpoint: "127.0.0.2:1445",
+		Dest: "/synthetic/Seestar", HistoryDir: history, Endpoint: "127.0.0.2:1445",
 		Excludes: []string{"copy-exclude"}, Includes: []string{"copy-include"}, NoDefaultExcludes: true,
 		Interval: 9 * time.Minute, Once: true, Workers: 3,
 	}
@@ -168,7 +180,8 @@ func TestNoProfileReadsNothing(t *testing.T) {
 // With a saved profile, a file command parses with no flag but --profile.
 func TestDefaultProfileFillsFlags(t *testing.T) {
 	root := savedConfigRoot(t)
-	writeSavedCopy(t, root, fullCopyJSON)
+	body, _ := fullCopyJSON(t)
+	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
 	for _, cmd := range fileCommandNames {
 		if o, err := parse([]string{cmd, "--profile", "default"}, io.Discard); err != nil || o.file == nil {
