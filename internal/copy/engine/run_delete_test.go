@@ -621,3 +621,50 @@ func TestDeleteDoubleStarPatterns(t *testing.T) {
 		}
 	}
 }
+
+// ? and [...] match one byte, as in git, and 星 is three: an exclude M?
+// no longer keeps MyWorks/M星 from being deleted, and an include M???
+// now selects it for deletion. Before .gitignore syntax, ? matched one
+// character, and both kept the file.
+func TestDeleteByteWiseWildcards(t *testing.T) {
+	files := map[string]string{
+		"MyWorks/M星/a.fit":   "a",
+		"MyWorks/M1/b.fit":   "bb",
+		"MyWorks/M101/c.fit": "ccc",
+	}
+	for _, tc := range []struct {
+		excludes, includes []string
+		deleted            []string
+	}{
+		{excludes: []string{"M?"}, includes: []string{"/MyWorks"}, deleted: []string{"MyWorks/M101/c.fit", "MyWorks/M星/a.fit"}},
+		{includes: []string{"M???"}, deleted: []string{"MyWorks/M101/c.fit", "MyWorks/M星/a.fit"}},
+	} {
+		s := newShare(t)
+		for p, data := range files {
+			put(t, s.dir, p, data)
+			put(t, s.dest, p, data)
+		}
+		s.record(t, files)
+		o := s.options()
+		o.Selector = selector(t, tc.excludes, tc.includes)
+		r, err := RunDelete(t.Context(), o, discard)
+		if err != nil {
+			t.Fatalf("%q %q: %v", tc.excludes, tc.includes, err)
+		}
+		var deleted []string
+		for _, f := range r.Files {
+			if f.Outcome == FileDeleted {
+				deleted = append(deleted, f.Path)
+			}
+		}
+		slices.Sort(deleted)
+		if !slices.Equal(deleted, tc.deleted) {
+			t.Errorf("%q %q: deleted %q, want %q", tc.excludes, tc.includes, deleted, tc.deleted)
+		}
+		for p := range files {
+			if gone := !s.has(t, p); gone != slices.Contains(tc.deleted, p) {
+				t.Errorf("%q %q: %s on the share: %t", tc.excludes, tc.includes, p, !gone)
+			}
+		}
+	}
+}
