@@ -276,8 +276,7 @@ func tempFiles(dir string) []string {
 // session, Stop's detach returns; once the barrier opens, the file fails
 // and leaves no temporary file; the pass's next look after a reconnect
 // to the same telescope copies it over the new run; and the history
-// stays locked until copying ends. The folder lock's part of this order
-// comes with settings-handoff.md.
+// stays locked until copying ends.
 func TestCombinedRestartLockOrder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newViaEnv(t, nil)
