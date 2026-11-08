@@ -522,7 +522,8 @@ its `--history-dir`. A pass holds it from before it removes leftover
 temporary files are removed, and releases it before waiting for the next
 pass, so a delete can run between passes. A delete holds it from before it
 lists the share until its last removal. The app's Copy and Free up space take
-it as sync and delete do. The file is created empty with mode 0600, less the
+it as sync and delete do, and the app's Browse takes it while it saves a
+file into the folder. The file is created empty with mode 0600, less the
 umask, and is never removed.
 
 If another sync, delete or the app holds it, sync's first pass exits 1, a

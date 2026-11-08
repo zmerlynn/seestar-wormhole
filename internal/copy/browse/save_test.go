@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -101,8 +102,40 @@ func TestSaveFailures(t *testing.T) {
 				t.Errorf("Save = %v", err)
 			}
 			onlyFile(t, dir, []byte("old"))
+			root, err := os.OpenRoot(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			if err := SaveIn(ctx, e.p, tt.path, root, "X.fit"); err == nil || !tt.want(err) {
+				t.Errorf("SaveIn = %v", err)
+			}
+			onlyFile(t, dir, []byte("old"))
 		})
 	}
+}
+
+// SaveIn writes and renames through its root, so a save lands in the
+// folder the root is open on even after that folder was renamed.
+func TestSaveIn(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows refuses to rename an open folder")
+	}
+	e, dir := saveEnv(t, nil)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	moved := dir + ".moved"
+	if err := os.Rename(dir, moved); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(moved) })
+	if err := SaveIn(t.Context(), e.p, fitPath, root, "X.fit"); err != nil {
+		t.Fatal(err)
+	}
+	onlyFile(t, moved, fitData)
 }
 
 // TestSaveCanceledMidFile cancels during the first read; the copy stops

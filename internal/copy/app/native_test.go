@@ -5,8 +5,12 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // fakeNative records the dialogs shown and answers them as set.
@@ -194,5 +198,70 @@ func TestSaveFileRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(f.answer); err == nil {
 		t.Error("a refused request saved a file")
+	}
+}
+
+// A save into the images folder, under any spelling, takes the folder's
+// lock, so it waits for no pass and lands in none: while another writer
+// holds it the save is refused and writes nothing. A save elsewhere takes
+// no lock, and the lock's own name in the folder is refused.
+func TestSaveFileInImagesFolder(t *testing.T) {
+	folder := t.TempDir()
+	e := newAppEnv(t, savedAt(folder))
+	f := &fakeNative{}
+	e.s.native = f.native()
+	sub := filepath.Join(folder, "MyWorks")
+	if err := os.Mkdir(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	save := func(to, wantAlert string) {
+		t.Helper()
+		f.answer, f.alerts = to, nil
+		if w := e.serve("GET", xURL, ""); w.Code != http.StatusNoContent {
+			t.Errorf("save to %s = %d", to, w.Code)
+		}
+		var want []string
+		if wantAlert != "" {
+			want = []string{wantAlert}
+		}
+		if !slices.Equal(f.alerts, want) {
+			t.Errorf("save to %s: alerts %q, want %q", to, f.alerts, want)
+		}
+		b, err := os.ReadFile(to)
+		if wantAlert == "" && string(b) != "x" {
+			t.Errorf("save to %s: saved %q, %v", to, b, err)
+		}
+	}
+	const busy = "Another copy or delete is using this folder. Try saving it again."
+
+	root, err := os.OpenRoot(folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	held, err := state.LockFolder(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	save(filepath.Join(sub, "busy.txt"), busy)
+	if names, _ := os.ReadDir(sub); len(names) != 0 {
+		t.Errorf("a refused save left %v", names)
+	}
+	if link := filepath.Join(t.TempDir(), "link"); os.Symlink(folder, link) == nil {
+		save(filepath.Join(link, "MyWorks", "linked.txt"), busy)
+	}
+	save(filepath.Join(t.TempDir(), "outside.txt"), "")
+	held.Close()
+
+	save(filepath.Join(sub, "saved.txt"), "")
+	again, err := state.LockFolder(root)
+	if err != nil {
+		t.Errorf("after a save the folder lock is %v, want it free", err)
+	} else {
+		again.Close()
+	}
+	save(filepath.Join(folder, ".Seestar-Wormhole.LOCK"), "That name is kept for the copy lock. Choose another name or folder.")
+	if b, err := os.ReadFile(filepath.Join(folder, plan.LockName)); err != nil || len(b) != 0 {
+		t.Errorf("the lock file: %q, %v, want it empty", b, err)
 	}
 }

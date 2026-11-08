@@ -127,7 +127,8 @@ starts from its default settings, which you then save again. See
 
 ## Another copy or delete is using this folder
 
-Copy, Free up space, `sync` and `delete --force` each take the folder's lock file,
+Copy, Free up space, a Browse save into the images folder, `sync` and
+`delete --force` each take the folder's lock file,
 `.seestar-wormhole.lock`, while they write there, so two of them can't write
 into one folder at once. The message, or a `sync failed` or `delete failed`
 line naming that file, means something else holds it: another

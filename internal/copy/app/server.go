@@ -20,6 +20,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/browse"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
@@ -717,19 +718,87 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
 	name := path.Base(p)
 	dst, err := s.native.SaveFile(name)
+	var alert string
 	if err == nil && dst != "" {
-		err = browse.Save(r.Context(), sessions, p, dst)
+		alert, err = s.saveTo(r.Context(), sessions, p, dst)
 		if err == nil {
 			s.log.Info("file saved", "path", p, "to", dst)
 		}
 	}
 	if err != nil && r.Context().Err() == nil {
 		s.log.Warn("save failed", "path", p, "to", dst, "err", err)
+		if alert == "" {
+			alert = "Couldn't save " + name + ": " + reason(err) + ". Try saving it again."
+		}
 		if s.native.Alert != nil {
-			s.native.Alert("Couldn't save " + name + ": " + reason(err) + ". Try saving it again.")
+			s.native.Alert(alert)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// errReservedName is a save to the folder lock's name in the images folder.
+var errReservedName = errors.New("the name is kept for the copy lock")
+
+// saveTo saves the device's file p to dst, as [browse.Save] does. A save
+// into the saved images folder holds the folder's lock, so it never lands
+// during a pass of copying or a delete, and writes through the folder's
+// root; it refuses the folder lock's own name. A failure the window words
+// itself comes with the alert to show.
+func (s *server) saveTo(ctx context.Context, sessions *browse.Sessions, p, dst string) (alert string, err error) {
+	s.mu.Lock()
+	folder := s.file.settings.Folder
+	s.mu.Unlock()
+	top, rel, inside := within(folder, dst)
+	if !inside {
+		return "", browse.Save(ctx, sessions, p, dst)
+	}
+	if plan.Reserved(filepath.ToSlash(rel)) {
+		return "That name is kept for the copy lock. Choose another name or folder.", errReservedName
+	}
+	root, err := os.OpenRoot(top)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	lock, err := state.LockFolder(root)
+	if errors.Is(err, state.ErrFolderLocked) {
+		return "Another copy or delete is using this folder. Try saving it again.", err
+	}
+	if err != nil {
+		return "", err
+	}
+	defer lock.Close()
+	return "", browse.SaveIn(ctx, sessions, p, root, rel)
+}
+
+// within reports whether the file dst is inside folder, after resolving
+// the symbolic links in dst's folder, and returns the folder that is
+// folder by [os.SameFile] (another spelling, a link or another case) and
+// dst relative to it.
+func within(folder, dst string) (top, rel string, ok bool) {
+	if !filepath.IsAbs(folder) {
+		return "", "", false
+	}
+	want, err := os.Stat(folder)
+	if err != nil {
+		return "", "", false
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Dir(dst))
+	if err != nil {
+		return "", "", false
+	}
+	for d := dir; ; {
+		if fi, err := os.Stat(d); err == nil && os.SameFile(want, fi) {
+			rel, err := filepath.Rel(d, filepath.Join(dir, filepath.Base(dst)))
+			return d, rel, err == nil
+		}
+		up := filepath.Dir(d)
+		if up == d {
+			return "", "", false
+		}
+		d = up
+	}
 }
 
 // maxDays caps Only files older than N days: 100 years.

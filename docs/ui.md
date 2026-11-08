@@ -144,9 +144,9 @@ never read, and its copy history in the default
 [history location](copy-reference.md#location), whatever its `--state-dir`
 says. While copying is on, the app holds the folder's history lock, as `sync`
 does, so a `sync` for the same folder exits with its usual error, and the app
-says the folder is in use while a `sync` holds it. Copy and Free up space
-also take its [folder lock](copy-reference.md#the-folder-lock), as `sync`
-and `delete` do. Through Telescope Network
+says the folder is in use while a `sync` holds it. Copy, Free up space and a
+Browse save into the folder also take its
+[folder lock](copy-reference.md#the-folder-lock), as `sync` and `delete` do. Through Telescope Network
 they reach the share through the connection itself, so they work with the SMB
 port off, and their errors name **Seestar (account connection)**. With
 **Connect when an app needs Seestar**, they count as an app: they start the
@@ -228,6 +228,13 @@ an error from before goes without a retry. Browse opens once a route is
 saved: until Copy's folder is saved it lists the telescope's files without
 statuses, and the first Save loads it again with them. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
+A save into Copy's saved folder, or a folder inside it, takes the folder's
+[folder lock](copy-reference.md#the-folder-lock) until the file is in place:
+while a check or a delete holds it, the save says **Another copy or delete
+is using this folder. Try saving it again.** and saves nothing. A file named
+`.seestar-wormhole.lock`, in any letter case, can't be saved at the top of
+that folder: **That name is kept for the copy lock. Choose another name or
+folder.** A save anywhere else takes no lock.
 
 ### Free up space
 
