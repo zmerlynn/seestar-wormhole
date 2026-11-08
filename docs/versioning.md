@@ -34,7 +34,7 @@ firmware behind it change without notice, as above.
    needs at least one `--include` and refuses `--dest` and `--history-dir`; without `--force`, delete only previews, as
    `--dry-run` does, and `--force` with `--dry-run` is refused. `--force` only means "act": it never skips or weakens
    the proof, and `--trust-state` and `--ignore-state` are the only ways to ask for less. A new flag whose default
-   keeps the old behavior is additive. The [selection](reference/files-cli.md#selection), the same for sync and find: the
+   keeps the old behavior is additive. The [selection](reference/selection-and-history.md#selection), the same for sync and find: the
    whole share except what an exclude pattern matches; the built-in patterns are exactly the listed `--exclude` flags,
    and adding, removing or changing one is breaking; `--exclude` adds to them and `--no-default-excludes` removes them
    all; with one or more `--include` patterns, only files that an include matches, or that are in a folder an include
@@ -54,7 +54,7 @@ firmware behind it change without notice, as above.
    commands read `copy.json` and `config.json` from the app's state folder without rewriting them; explicit flags win;
    delete takes only its destination, history and endpoint from them. See
    [use the app's saved settings](reference/files-cli.md#use-the-apps-saved-settings). The default `--history-dir` comes from the operating system's per-user config folder, as in
-   [location](reference/files-cli.md#location). Adding opt-in configuration later is additive and must not override
+   [location](reference/selection-and-history.md#location). Adding opt-in configuration later is additive and must not override
    explicit flags.
 3. **Installation identity.** Memory-only without `proxy --config` or `proxy --state-dir`. With `--state-dir`, the
    identity at `<state-dir>/InterProcessKV/device_uuid` is kept, or migrated compatibly; `--config` alone uses the UI's
@@ -121,7 +121,7 @@ firmware behind it change without notice, as above.
     removed at the start of each pass. See [temporary files](reference/files-cli.md#temporary-files).
 14. **The copy history.** Its location, `<history-dir>/sync/<sha256>.jsonl`, where `<sha256>` is the lowercase hex
     SHA-256 of the absolute, cleaned `--dest`, and the default history folder, which is the one earlier releases'
-    `seestar-copy-cli` used. Its [format](reference/files-cli.md#format): JSON Lines, append-only; a header
+    `seestar-copy-cli` used. Its [format](reference/selection-and-history.md#format): JSON Lines, append-only; a header
     `{"v":1,"dest":"<absolute dest>"}`; then one record per line with the members `path` (share-relative, forward
     slashes), `size` (bytes), `mtime` (the device's, RFC 3339), `sha256` (lowercase hex), `at` (RFC 3339) and `how`
     (`copied`, `replaced` or `adopted`); the last record for a path wins; a record is written only after its file is

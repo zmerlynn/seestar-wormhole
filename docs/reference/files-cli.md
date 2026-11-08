@@ -56,7 +56,7 @@ deletes anything in the destination either, except its own
 | `--ready-age` | `2m` | A file is copied only once its device mtime is at least this old. Zero or more. |
 | `--first-pass-age` | `10m` | On the first pass, a file counts as finished only if its device mtime is at least this old. Zero or more. See [readiness](#readiness). |
 | `--workers` | `4` | Files copied at once, `1` to `64`. All of them share one SMB session. |
-| `--history-dir` | the per-user config folder's `seestar-copy` | The copy history folder, which holds the state file. See [location](#location). It must not be empty when given. Earlier releases called it `--state-dir`, which is now refused. |
+| `--history-dir` | the per-user config folder's `seestar-copy` | The copy history folder, which holds the state file. See [location](selection-and-history.md#location). It must not be empty when given. Earlier releases called it `--state-dir`, which is now refused. |
 | `--profile` | none: no saved settings are read | `default` fills the flags not given from the app's saved settings. Only `default` exists. See [use the app's saved settings](#use-the-apps-saved-settings). |
 | `--log-format` | `text` | `text` or `json` log lines on stderr. See [logs](#logs). |
 | `--log-level` | `info` | The lowest level logged: `debug`, `info`, `warn` or `error`. |
@@ -191,7 +191,7 @@ Only regular files are copied. Symbolic links and other special entries on
 the share are listed but neither followed nor copied.
 
 Sync and delete keep one file of their own at the top of `--dest`: the
-[folder lock](#the-folder-lock), `.seestar-wormhole.lock`, which is empty
+[folder lock](selection-and-history.md#the-folder-lock), `.seestar-wormhole.lock`, which is empty
 and stays there. A share entry at the top of the share with that name, in
 any letter case that the [name clash](#name-clashes) rules treat as the
 same, is never copied, adopted or recorded, and neither is anything under a
@@ -202,103 +202,20 @@ and `browse` still list them.
 ### Selection
 
 Sync copies the whole share, except files and folders that an exclude pattern
-matches; with `--include`, it copies only what an include selects, as
-[below](#include). An excluded folder is skipped with everything in it and is never
-listed. Excluded files are not copied, adopted or recorded. Files already
-recorded in the state stay recorded. Each pass logs a `skipped` line for each
-excluded file or folder, with the pattern that matched, and counts them in its
-summary; a folder has one line, and what is in it has none. A pass whose
-listing fails still logs and counts what it skipped before the failure.
+matches; with `--include`, it copies only what an include selects.
+`--exclude`, `--include` and `--no-default-excludes` follow the shared
+[selection rules](selection-and-history.md#selection), which list the
+[built-in patterns](selection-and-history.md#built-in-patterns) and the
+[pattern rules](selection-and-history.md#pattern-rules).
 
-Unless `--no-default-excludes` is given, sync leaves out what these flags
-would:
-
-```sh
---exclude '.*'
---exclude '*.tmp'
---exclude 'Thumbs.db'
---exclude 'desktop.ini'
---exclude '$RECYCLE.BIN'
---exclude 'System Volume Information'
---exclude '/log'
---exclude '/tmp_stitch'
---exclude '/batch_stack_tmp'
-```
-
-These are dot names such as `.DS_Store`, files the telescope is still writing
-such as `*.mp4.tmp`, Windows system files, and the telescope's logs and scratch
-folders. They are a fixed list, not a judgment of each file: a folder whose
-name starts with a dot is skipped even if it holds images. The public
-[Seestar share layout](https://github.com/zmerlynn/seestar-spec/blob/HEAD/spec/media/smb.md#image-store-layout-firmware-975)
-for firmware 9.75 describes the root folders such as `log` and `tmp_stitch`,
-what writes them, and the `.mp4.tmp` name a video has while it is written.
-
-Each `--exclude` adds a pattern to the built-in ones. To change the built-in
-list, give `--no-default-excludes` and repeat the `--exclude` flags you want to
-keep. For example, to also leave out videos and the `Preview` folder:
-
-```sh
-seestar-wormhole-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar \
-  --exclude 'Video' --exclude '/Preview'
-```
-
-Quote patterns so that the shell does not expand them. Exclude and include
-patterns follow these rules:
-
-- A pattern with no `/` matches a file or folder name at any depth: `Thumbs.db`
-  matches `Thumbs.db` and `MyWorks/M 31/Thumbs.db`.
-- A pattern with a `/` anywhere is a path from the share root, and must match
-  the whole path: `/log` and `log/x` are anchored, `MyWorks/*/Stacked` matches
-  `MyWorks/M 31/Stacked` only. One leading `/` is optional.
-- `*` matches any run of characters and `?` any one character, both within one
-  name; neither matches `/`.
-- Case is ignored: both sides are lowercased before they are compared. There is
-  no Unicode normalization, so a name spelled with a combining accent does not
-  match a pattern spelled with a precomposed one.
-- Spaces are part of the pattern.
-
-A pattern that is empty or `/` alone, ends in `/`, contains `[`, `\` or `**`,
-or has an empty, `.` or `..` part is a usage error.
-
-#### Include
-
-With one or more `--include` patterns, sync copies only the files that at
-least one of them selects, and that no exclude matches. Other files are not
-copied, adopted or recorded; files already recorded stay recorded. An
-include selects a file if it matches the file's path or the path of any
-folder above it:
-
-```sh
---include '/MyWorks'        # everything in the MyWorks folder at the share root
---include '/MyWorks/M 31'   # one target's folder
---include '*.jpg'           # JPEG files in any folder
---include 'Stacked'         # everything in any folder named Stacked
-```
-
-Excludes always win, whatever the order of the flags. An include never
-brings back a file or folder that an exclude matches, built-in or given:
-`--include x --exclude x` selects nothing, and `--include '/log'` selects
-nothing unless `--no-default-excludes` is given. This is unlike rsync, where
-the first rule that matches decides.
-
-A folder is listed only if an include could select it or something in it.
-With anchored patterns such as `/MyWorks`, sync reads just the folders on
-the way to them. A pattern without a `/` can match at any depth, so with one
-of those every folder that is not excluded is listed. Files and folders that
-no include selects have no line of their own; each pass counts them as
-`unmatched` in its summary, a folder that is not listed once, without what
-is in it, also when the listing then fails. An entry that an exclude matches is logged and counted as
-`skipped` instead, whether or not an include would select it.
-
-#### Changing the selection
-
-The first pass after an exclude or an include is removed, or after upgrading
-to a release whose selection covers new folders, finds files that were never
-recorded.
-They are copied or adopted as usual, once they are old enough under the
-[readiness](#readiness) rules: with the defaults, files at least 10 minutes old
-go in that first pass. Run a [dry run](#dry-run) first to see what that would
-be.
+Each pass logs a `skipped` line for each excluded file or folder, with the
+pattern that matched, and counts them in its summary; a folder has one line,
+and what is in it has none. Files and folders that no include selects have no
+line of their own; each pass counts them as `unmatched` in its summary, a
+folder that is not listed once, without what is in it. An entry that an
+exclude matches is logged and counted as `skipped` instead, whether or not an
+include would select it. A pass whose listing fails still logs and counts
+what it skipped, and what it found unmatched, before the failure.
 
 ### Dry run
 
@@ -314,7 +231,7 @@ files recorded under it, so new folders stand out before a real pass.
 `--once` may be given with it; `--interval` may not.
 
 A dry run creates nothing, not even a missing destination or state folder.
-It takes no [lock](#lock), removes no [temporary files](#temporary-files),
+It takes no [lock](selection-and-history.md#locks), removes no [temporary files](#temporary-files),
 and leaves a torn final line in the state file in place; it logs that line
 and ignores it. It works on a read-only destination and state, and may run
 while another sync uses the same destination. Like any pass, it only reads
@@ -406,7 +323,7 @@ otherwise it tries another pass after `--interval`.
 A file that fails is logged and left for the next pass; the other files go on.
 There is one attempt per file per pass, and no retry loop within a pass.
 
-A pass after the first that finds the [folder lock](#the-folder-lock) held
+A pass after the first that finds the [folder lock](selection-and-history.md#the-folder-lock) held
 by another sync or a delete is skipped: it logs `pass skipped` with
 `reason=folder_busy`, connects to nothing, and sync tries again after
 `--interval`. If `--dest` is removed while sync runs, each later pass fails
@@ -447,7 +364,7 @@ and the name never ends in `.fit`, so a `*.fit` pattern never matches a
 partial file.
 
 A failed or stopped download removes its temporary file. At the start of
-each pass, after taking the [folder lock](#the-folder-lock), sync removes
+each pass, after taking the [folder lock](selection-and-history.md#the-folder-lock), sync removes
 every leftover temporary file anywhere under the destination: only regular
 files with exactly that form of name, and never through a symbolic link. It
 does not resume partial downloads. A folder under the destination that sync
@@ -457,170 +374,16 @@ pass.
 
 ## The state file
 
-The state file is how sync remembers what it has copied. It belongs to sync;
-don't edit it while sync is running.
+The state file is how sync remembers what it has copied, one per
+destination, in the [copy history](selection-and-history.md#copy-history).
+Its [location](selection-and-history.md#location) and
+[format](selection-and-history.md#format) are shared with the app's Copy. It
+belongs to sync; don't edit it while sync is running.
 
-### Location
-
-```text
-<history-dir>/sync/<sha256>.jsonl
-```
-
-`<sha256>` is the lowercase hex SHA-256 of the absolute, cleaned `--dest`
-(a trailing separator is dropped, and a relative path is made absolute). The
-path is derived from that string alone: symbolic links are not resolved and
-case is not folded. Each destination has its own state file, which is never
-kept inside the destination; a `--history-dir` inside the destination is
-refused.
-
-The default `--history-dir` is the `seestar-copy` folder in the per-user config
-folder, the one earlier releases' `seestar-copy-cli` used, so an upgrade keeps
-its history:
-
-| Platform | Default state folder |
-| --- | --- |
-| Linux | `$XDG_CONFIG_HOME/seestar-copy`, or `~/.config/seestar-copy` |
-| macOS | `~/Library/Application Support/seestar-copy` |
-| Windows | `%AppData%\seestar-copy` |
-
-The app's Copy uses the same default, unless its **Copy history folder**
-names another; see [copying images](../ui.md#copy).
-
-If there is no per-user config folder, sync exits 1 and asks for
-`--history-dir`. Keep the state on a local disk: shared and network folders are
-not supported.
-
-Sync creates the `sync` folder, and any missing folders above it, with mode
-0700 less the umask, so only you can read them. A new state file is set to
-exactly 0600, whatever the umask. The lock files are created 0600, less the
-umask. Existing folders and lock files keep their permissions. An existing
-nonempty state file keeps its permissions; an empty state file is replaced
-with a new 0600 file. On Windows the mode bits do not apply, and privacy
-comes from the ACLs the folder inherits.
-
-The state is keyed by destination only. With a second telescope, use a second
-destination.
-
-### One spelling per destination
-
-Always give the same destination the same way, such as `--dest ~/Seestar`
-every time. Another spelling of the same folder, such as through a symbolic
-link, or in another case on a case-insensitive disk, gives a different state
-file. At startup sync compares the destination with those named by the other
-state files in the same `sync` folder, and refuses to start if one is the same
-folder under another spelling:
-
-```text
-destination /mnt/b is the same folder as /mnt/a, which already has the state file .../sync/<sha256>.jsonl; use one spelling per destination
-```
-
-This check is best effort. It cannot compare a destination that is gone or
-unreadable, and it does not look in another `--history-dir`.
-
-### Format
-
-JSON Lines, append-only. The first line is a header with the format version
-and the absolute destination:
-
-```json
-{"v":1,"dest":"/home/user/Seestar"}
-```
-
-Every later line records one file that is complete in the destination:
-
-```json
-{"path":"MyWorks/M 31/light_001.fit","size":16000000,"mtime":"2026-10-29T03:31:19Z","sha256":"<64 hex digits>","at":"2026-11-02T01:02:03.456789Z","how":"copied"}
-```
-
-| Member | Meaning |
-| --- | --- |
-| `path` | The file's path on the share, with forward slashes. |
-| `size` | Its size in bytes, as listed by the device. |
-| `mtime` | The device's mtime, in RFC 3339 UTC. |
-| `sha256` | The lowercase hex SHA-256 of the local file's contents. |
-| `at` | When the line was written, in RFC 3339 UTC. |
-| `how` | `copied`, `replaced` or `adopted`; see [how a pass decides](#how-a-pass-decides). |
-
-When a path has several lines, the last one counts. A line is written and
-fsynced only after its file is complete under its final name.
-
-Reading is permissive: unknown members are ignored, and times may carry any
-RFC 3339 offset. Some damage is repaired, and the rest stops sync:
-
-- A final line without a newline, or one that is not a valid record, is what
-  a crash leaves. It is dropped with a warning, and the file is cut back to
-  the last good line. A [dry run](#dry-run) ignores it and leaves the file
-  as it is.
-- Any other bad line, a line longer than 1 MiB, a header with another version,
-  or a header that names another destination stops sync with exit 1. The file
-  is left unchanged.
-
-Deleting a destination's state file (while sync is not running for it) makes
-sync forget that destination. The next pass adopts the files still in the
-destination and copies again everything that is not, including files you had
-moved away.
-
-### Lock
-
-Sync takes two exclusive OS locks: the history lock for the whole run, and
-the folder lock during each pass. A lock is released when its process
-exits, however it exits. The lock files stay on disk; that is expected.
-
-#### The history lock
-
-Only one sync at a time may use a state file. Sync holds a lock on
-`<sha256>.lock`, next to the state file, while it runs. A second sync for the
-same destination, spelled the same way and with the same `--history-dir`,
-exits 1:
-
-```text
-destination /home/user/Seestar: another sync is using this destination (lock file .../sync/<sha256>.lock)
-```
-
-`registry.lock`, in the same folder, stays on disk too.
-
-#### The folder lock
-
-Every sync pass, and every `delete --force` that has a destination, takes a
-lock on `.seestar-wormhole.lock` at the top of the destination, whatever
-its `--history-dir`. A pass holds it from before it removes leftover
-[temporary files](#temporary-files) until its downloads have ended and their
-temporary files are removed, and releases it before waiting for the next
-pass, so a delete can run between passes. A delete holds it from before it
-lists the share until its last removal. The app's Copy and Free up space take
-it as sync and delete do, and the app's Browse takes it while it saves a
-file into the folder. The file is created empty with mode 0600, less the
-umask, and is never removed.
-
-If another sync, delete or the app holds it, sync's first pass exits 1, a
-later pass is [skipped](#a-failed-pass), and delete exits 1 before it lists
-the share:
-
-```text
-destination /home/user/Seestar: another copy or delete is using this folder (lock file /home/user/Seestar/.seestar-wormhole.lock)
-```
-
-The lock is in the folder, so every way of naming the folder reaches the same
-lock: a relative path, a symbolic link, a bind mount, another letter case on
-a case-insensitive volume, or a new name after the folder is renamed. It does
-not cover a destination inside another one (`A` and `A/sub`), a folder on a
-network file system whose locks don't reach other machines, a read-only view
-of a folder that is written through another path, or `seestar-copy-cli` and
-older releases of seestar-wormhole, which don't take it. Stop those before
-upgrading.
-
-A dry run, a delete preview, `delete --ignore-state` (which has no
-destination), `find` and `browse` take no folder lock. Nor does a delete
-whose destination is missing: with `--trust-state` it goes on, since it
-doesn't read the folder, and in `hash` mode it stops at its
-missing-destination error. On a read-only file system, where the lock file
-can't be created, sync exits 1, and delete goes on without the lock, with a
-`deleting without the folder lock` warning. Such a delete isn't kept apart
-from a sync that writes the same folder through a writable path, so its
-hash proof may read a file that sync is replacing. Any other error creating
-or locking the file, such as permission denied or a file system without
-locks, stops sync and delete with exit 1, naming the lock file, before
-anything is listed.
+Sync holds the [history lock](selection-and-history.md#the-history-lock) for
+the whole run and the [folder lock](selection-and-history.md#the-folder-lock)
+during each pass. If another copy or a delete holds one,
+[the first pass exits 1 and a later pass is skipped](selection-and-history.md#when-the-other-side-holds-a-lock).
 
 ## Stopping
 
@@ -675,7 +438,7 @@ in both formats:
 - `reason`: the class of the failure, such as `connection_refused`,
   `timeout`, `permission_denied`, `not_found` or `operation_failed`.
 
-A destination whose history or [folder lock](#the-folder-lock) another sync
+A destination whose history or [folder lock](selection-and-history.md#the-folder-lock) another sync
 or a delete holds reads `phase=open reason=busy`, as it does in the app.
 
 `error` may name paths, hosts and files, while `phase` and `reason` never do.
@@ -695,7 +458,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | INFO | `pass done` | see below | A pass finished. |
 | ERROR | `pass failed` | `source`, `op`, `phase`, `reason`, see below, and `error` | The connection or a listing failed. |
 | WARN | `pass failed` | `reason=destination_missing`, `dest` | `--dest` was removed while sync runs; see [a failed pass](#a-failed-pass). |
-| WARN | `pass skipped` | `reason=folder_busy`, `dest`, `error` | Another sync or a delete holds the [folder lock](#the-folder-lock) at a pass after the first. |
+| WARN | `pass skipped` | `reason=folder_busy`, `dest`, `error` | Another sync or a delete holds the [folder lock](selection-and-history.md#the-folder-lock) at a pass after the first. |
 | WARN | `reserved name` | `path`, the first such entry; `entries`, how many; `reason` | Top-level share entries named `.seestar-wormhole.lock` were left out; see [destination layout](#destination-layout). |
 | INFO | `pass stopped` | see below | A signal stopped the pass. |
 | INFO | `would copy` | `path`, `size`, and `overwrite=true` when it would replace a different local file | Dry run: the file would be downloaded and recorded as `copied`. |
@@ -707,7 +470,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | INFO | `dry run done` | `copy`, `replace`, `adopt`, `waiting`, `failed`, `skipped`, `unmatched`, `bytes`, `elapsed` | A dry run finished. Counts other than `unmatched` are of the lines above and of `file failed` lines. `unmatched` counts entries left out by includes, without a line of their own; `bytes` is what it would download. |
 | ERROR | `dry run failed` | `source`, `op`, `phase`, `reason`, as `dry run done`, and `error` | The connection or a listing failed in a dry run. |
 | INFO | `dry run stopped` | as `dry run done` | A signal stopped a dry run. |
-| WARN | `dropped the torn final line of the state file` | `file`, `line`, `reason` | See [format](#format). |
+| WARN | `dropped the torn final line of the state file` | `file`, `line`, `reason` | See [format](selection-and-history.md#format). |
 | WARN | `ignored the torn final line of the state file` | `file`, `line`, `reason` | The same, in a [dry run](#dry-run), which leaves the file as it is. |
 | WARN | `skipped a folder that cannot be read while removing leftover temporary files` | `folder`, `reason` | See [temporary files](#temporary-files). |
 | WARN | `skipped a malformed state file while checking for another spelling of the destination` | `file`, `reason` | Another state file in the `sync` folder cannot be read. |
@@ -758,7 +521,7 @@ counted, in a `diagnostics_lost` line when stderr recovers.
 | Code | Meaning |
 | --- | --- |
 | 0 | Stopped by a signal; a `--once` or `--dry-run` pass with no failed files; or help printed. |
-| 1 | A runtime failure: the destination or state could not be opened or locked (including another copy or delete holding the [folder lock](#the-folder-lock) at the first pass), leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), output could not be written, or log lines were lost (`diagnostics_lost`). |
+| 1 | A runtime failure: the destination or state could not be opened or locked (including another copy or delete holding the [folder lock](selection-and-history.md#the-folder-lock) at the first pass), leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), output could not be written, or log lines were lost (`diagnostics_lost`). |
 | 2 | A usage error: an unknown or invalid flag, including `--state-dir` and `--version`, a missing `--endpoint` or `--dest`, an empty `--history-dir`, `--dry-run` with `--interval`, a positional argument, or a refused `--profile`. |
 
 Without `--once` or `--dry-run`, failed passes and failed files do not end
@@ -831,7 +594,7 @@ are still copied byte for byte; the folded form is used only to compare.
   system crash, a file whose state line was written may be missing, or left
   under its temporary name (which the next start removes). Its state line says
   it is done, so sync does not copy it again.
-  [Deleting the state file](#format) makes sync copy every missing file again.
+  [Deleting the state file](selection-and-history.md#format) makes sync copy every missing file again.
 - **Rename over an open file.** Replacing or overwriting a local file fails
   if another program, such as an image viewer, has it open without allowing
   deletion. That file fails for the pass and is tried again on the next.
@@ -864,7 +627,7 @@ seestar-wormhole-cli find --endpoint 127.0.0.1:4445 --format jsonl > share.jsonl
 | `--older-than` | no limit | List only files whose device mtime is at least this old. See below. |
 | `--format` | `text` | `text` or `jsonl`. See [text format](#text-format) and [JSONL format](#jsonl-format). |
 | `--dest` | none | A destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
-| `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](#location). Only with `--dest`, and it must not be empty when given. |
+| `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](selection-and-history.md#location). Only with `--dest`, and it must not be empty when given. |
 | `--profile` | none | As for sync: `default` fills the destination, history, endpoint and selection not given. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 
@@ -969,7 +732,7 @@ does:
 destination: a file moved out of it is still `copied`. Records whose files
 are no longer on the share are not listed. Folders have no status.
 
-Find takes no [lock](#lock), so it may run while a sync uses the same
+Find takes no [lock](selection-and-history.md#locks), so it may run while a sync uses the same
 destination. A missing or empty state file makes every file `new`. If the
 destination does not exist, find still uses any existing state. It creates
 neither the destination nor the state folder. A torn final line in the state
@@ -1108,7 +871,7 @@ on the share, through the browser's own download.
 
 Each listing reads the folder from the telescope again, and with `--dest`
 reads the state again whenever the state file's size or modification time
-has changed, so the statuses follow a sync running at the same time. Browse takes no [lock](#lock). A file still being written can be shown
+has changed, so the statuses follow a sync running at the same time. Browse takes no [lock](selection-and-history.md#locks). A file still being written can be shown
 or saved torn; open it again once it has stopped changing.
 
 A failed request never stops browse. A telescope that cannot be reached, a
@@ -1231,7 +994,7 @@ seestar-wormhole-cli delete --endpoint 127.0.0.1:4445 --ignore-state --include '
 | --- | --- | --- |
 | `--endpoint` | none; required | As for sync. See [endpoint](#endpoint). |
 | `--dest` | none; required, except with `--ignore-state`, which refuses it | The destination whose [state](#the-state-file), and by default whose local copies, prove that a file was copied. It is never created. It must be the destination of **this** telescope; see [what the proof does not show](#what-the-proof-does-not-show). |
-| `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](#location). Refused with `--ignore-state`, and it must not be empty when given. |
+| `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](selection-and-history.md#location). Refused with `--ignore-state`, and it must not be empty when given. |
 | `--profile` | none | As for sync, but `default` fills only the destination and history, not with `--ignore-state`, and the endpoint; never the selection, proof or age. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--trust-state` | off | Prove a file by its state record alone, without reading the local copy. Use it when the copies were moved out of `--dest` or the drive is offline. |
@@ -1332,9 +1095,9 @@ stay cleared.
 
 ### delete and sync
 
-Delete never takes the [history lock](#the-history-lock) and never writes
+Delete never takes the [history lock](selection-and-history.md#the-history-lock) and never writes
 the state file, so it can run while a sync uses the same destination. With
-`--force` it takes the [folder lock](#the-folder-lock), which a sync holds
+`--force` it takes the [folder lock](selection-and-history.md#the-folder-lock), which a sync holds
 only during a pass: it runs between passes, and exits 1 if a pass, another
 delete or the app holds it. It reads the state as a sync
 [dry run](#dry-run) does: a torn final line is logged and ignored. A file
@@ -1378,7 +1141,7 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | Message | Meaning |
 | --- | --- |
 | `deletion starting` | The proof mode, the age limit and whether this is a preview (`dry_run`). |
-| `deleting without the folder lock` | A WARN, with `dest` and `reason`: the destination is on a read-only file system, so the run goes on without the [folder lock](#the-folder-lock). |
+| `deleting without the folder lock` | A WARN, with `dest` and `reason`: the destination is on a read-only file system, so the run goes on without the [folder lock](selection-and-history.md#the-folder-lock). |
 | `file deleted`, `folder removed` | Removed from the device. |
 | `file kept`, `folder kept` | Not removed, with the reason; see [how delete decides](#how-delete-decides). |
 | `file failed`, `folder failed` | A failure, with the reason. |
@@ -1402,7 +1165,7 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | Code | Meaning |
 | --- | --- |
 | 0 | The run or preview finished with no failed file, however many it kept; or a signal stopped it. |
-| 1 | The state could not be read; `--dest` is missing in `hash` mode; with `--force`, the [folder lock](#the-folder-lock) is held or can't be taken; the connection or listing failed (`connect to ...` or `list the share: ...`); a removal failed on the device, which ends the run (`deletion failed`); or a local copy could not be read (`failed files: N`). A rerun lists the share again and carries on. |
+| 1 | The state could not be read; `--dest` is missing in `hash` mode; with `--force`, the [folder lock](selection-and-history.md#the-folder-lock) is held or can't be taken; the connection or listing failed (`connect to ...` or `list the share: ...`); a removal failed on the device, which ends the run (`deletion failed`); or a local copy could not be read (`failed files: N`). A rerun lists the share again and carries on. |
 | 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, `--dest` missing without `--ignore-state`, `--trust-state` with `--ignore-state`, `--ignore-state` without `--include` or with `--dest` or `--history-dir`, `--force` with `--dry-run`, a bad `--older-than`, an empty `--history-dir`, a positional argument, or a refused `--profile`. |
 
 > **Warning.** With `--ignore-state`, delete removes whatever is selected,

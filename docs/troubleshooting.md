@@ -140,7 +140,7 @@ Copy check that is running. Let it finish or stop it, then try again. A
 running `sync` or Copy only skips a check while the lock is held (`pass
 skipped` with `reason=folder_busy`) and tries again at the next one. The
 file itself is empty and harmless; don't remove it. See
-[the folder lock](reference/files-cli.md#the-folder-lock).
+[the folder lock](reference/selection-and-history.md#the-folder-lock).
 
 **`pass failed` with `reason=destination_missing`.** The folder `sync`
 opened was removed while it ran. Restart `sync` with the folder you want;

@@ -29,13 +29,10 @@ To use another existing installation root, run
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
 
 The copy history and its locks are not in the state directory. By default they
-are in the file commands' default [history location](files-cli.md#location),
+are in the file commands' default [history location](selection-and-history.md#location),
 `seestar-copy` beside `seestar-wormhole` in the same system folder, whatever
-`--state-dir` says, so the app and `seestar-wormhole-cli sync` share them.
-**Copy history folder** in Copy settings, saved as `history_dir`, puts the
-app's elsewhere. Whichever history each uses, the
-[folder lock](files-cli.md#the-folder-lock) in the folder for your images
-keeps the app and `sync` from copying into one folder at once.
+`--state-dir` says. See [selection and copy history](selection-and-history.md)
+for how the app and `seestar-wormhole-cli` share them.
 
 ## config.json version 1
 
@@ -73,7 +70,7 @@ options, never on load.
 | Member | Default and meaning |
 |---|---|
 | `folder` | `Seestar` in your home folder. |
-| `history_dir` | `""`: the default [history location](files-cli.md#location), as `--history-dir`'s default. Otherwise **Copy history folder**, an absolute path outside `folder`. A relative path or a value that isn't a string refuses the file. |
+| `history_dir` | `""`: the default [history location](selection-and-history.md#location), as `--history-dir`'s default. Otherwise **Copy history folder**, an absolute path outside `folder`. A relative path or a value that isn't a string refuses the file. |
 | `interval_minutes` | `5` |
 | `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |

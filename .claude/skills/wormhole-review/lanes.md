@@ -401,8 +401,10 @@ The readers:
 - `README.md` is for Seestar owners who are not developers;
 - each `docs/` guide is for the same readers doing one task;
 - `docs/reference/connection-cli.md` owns the mechanics: flags, defaults, exit codes and
-  formats; `docs/reference/files-cli.md` owns them for the file commands and the
-  copy state file;
+  formats; `docs/reference/files-cli.md` owns them for the file commands;
+  `docs/reference/selection-and-history.md` owns the selection, the copy
+  state file and its locks; `docs/reference/app-settings.md` owns the app's
+  settings files;
 - `DESIGN.md` and `docs/development/` are for contributors.
 
 1. Accuracy. Every claim in the changed text is true at HEAD. Build the

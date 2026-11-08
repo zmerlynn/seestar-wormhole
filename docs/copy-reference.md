@@ -32,11 +32,11 @@ Moved to [Selection](reference/files-cli.md#selection).
 
 ### Include
 
-Moved to [Include](reference/files-cli.md#include).
+Moved to [Include](reference/selection-and-history.md#include).
 
 ### Changing the selection
 
-Moved to [Changing the selection](reference/files-cli.md#changing-the-selection).
+Moved to [Changing the selection](reference/selection-and-history.md#changing-the-selection).
 
 ### Dry run
 
@@ -72,27 +72,27 @@ Moved to [The state file](reference/files-cli.md#the-state-file).
 
 ### Location
 
-Moved to [Location](reference/files-cli.md#location).
+Moved to [Location](reference/selection-and-history.md#location).
 
 ### One spelling per destination
 
-Moved to [One spelling per destination](reference/files-cli.md#one-spelling-per-destination).
+Moved to [One spelling per destination](reference/selection-and-history.md#one-spelling-per-destination).
 
 ### Format
 
-Moved to [Format](reference/files-cli.md#format).
+Moved to [Format](reference/selection-and-history.md#format).
 
 ### Lock
 
-Moved to [Lock](reference/files-cli.md#lock).
+Moved to [Lock](reference/selection-and-history.md#locks).
 
 ### The history lock
 
-Moved to [The history lock](reference/files-cli.md#the-history-lock).
+Moved to [The history lock](reference/selection-and-history.md#the-history-lock).
 
 ### The folder lock
 
-Moved to [The folder lock](reference/files-cli.md#the-folder-lock).
+Moved to [The folder lock](reference/selection-and-history.md#the-folder-lock).
 
 ## Stopping
 

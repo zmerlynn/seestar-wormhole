@@ -136,18 +136,15 @@ Keep seestar-wormhole open while you use the telescope.
 
 **Copy**, **Browse** and **Free up space** copy your images from the
 telescope's file share to a folder on this computer, show what is on the
-share, and delete what is safely copied. They use the same rules and the same
-copy history as `seestar-wormhole-cli`'s [`sync`, `browse` and
-`delete`](reference/files-cli.md). The app keeps its copy settings in its own state
+share, and delete what is safely copied. They select files, keep the copy
+history and take the folder's locks as `seestar-wormhole-cli`'s [`sync`,
+`browse` and `delete`](reference/files-cli.md) do; see
+[selection and copy history](reference/selection-and-history.md), which
+also says [what each does when the other holds a lock](reference/selection-and-history.md#when-the-other-side-holds-a-lock).
+The app keeps its copy settings in its own state
 directory, as [`copy.json`](reference/app-settings.md#copyjson-version-1), which the CLI's file commands
 read only when given `--profile default`, such as `seestar-wormhole-cli sync --profile default`
-(see [use the app's saved settings](reference/files-cli.md#use-the-apps-saved-settings)), and its copy history in the default
-[history location](reference/files-cli.md#location), whatever its `--state-dir`
-says, unless **Copy history folder** names another. While copying is on, the app holds the folder's history lock, as `sync`
-does, so a `sync` for the same folder exits with its usual error, and the app
-says the folder is in use while a `sync` holds it. Copy, Free up space and a
-Browse save into the folder also take its
-[folder lock](reference/files-cli.md#the-folder-lock), as `sync` and `delete` do. Through Telescope Network
+(see [use the app's saved settings](reference/files-cli.md#use-the-apps-saved-settings)). Through Telescope Network
 they reach the share through the connection itself, so they work with the SMB
 port off, and their errors name **Seestar (account connection)**. With
 **Connect when an app needs Seestar**, they count as an app: they start the
@@ -177,8 +174,9 @@ can't change while copying runs:
 - **Folder for your images.** Images are copied there in the same folders as
   on the telescope. Each folder has its own copy history.
 - **Copy history folder**, empty by default. Empty is the default
-  [history location](reference/files-cli.md#location), the one
-  `seestar-wormhole-cli sync` uses without `--history-dir`; the field shows
+  [history location](reference/selection-and-history.md#location), the one
+  `seestar-wormhole-cli sync` uses without `--history-dir`, so the app and
+  `sync` share one history for the folder; the field shows
   that path as its placeholder. Otherwise type a full path to a folder
   outside the folder for your images, or use **Choose…** in the app's window;
   **Save** refuses a relative path or one inside the images folder with
@@ -202,8 +200,9 @@ can't change while copying runs:
   the Seestar app and seestar_alp; if they are slow to respond while copying,
   lower it to 1 or 2.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
-  [`--exclude` and `--include`](reference/files-cli.md#selection).
-- **Skip the telescope's logs, scratch and system files**, on by default.
+  `--exclude` and `--include`; see [selection](reference/selection-and-history.md#selection).
+- **Skip the telescope's logs, scratch and system files**, on by default: the
+  [built-in patterns](reference/selection-and-history.md#built-in-patterns).
 - **Start copying when the app opens**, off by default. Through Telescope
   Network, copying then starts once the connection is ready; pressing
   **Start copying** before then takes its place. With the check for new
@@ -217,16 +216,16 @@ already copied, still being written, or left out. Nothing is copied.
 folder, the copy history folder or the selection, and Clear history discard
 it.
 
-While copying is on, the app holds the folder's history lock for as long as
-copying is on, and its [folder lock](reference/files-cli.md#the-folder-lock)
-during each check, as `sync` does: a `sync` for the same folder exits with
-its usual error. Copy says **Another copy or delete is using this folder.**
-while a `sync`, a `delete --force`, or another copy of the app holds either
-lock: when you start copying, copying stays off; at a later check, that
-check is skipped, nothing is copied, and Copy tries again at the next one.
+While copying is on, Copy holds the folder's
+[locks](reference/selection-and-history.md#locks) as `sync` does. If a
+`sync`, a `delete --force` or another copy of the app holds one, Copy says
+**Another copy or delete is using this folder.**: when you start copying,
+copying stays off, so stop the other one first; at a later check, that check
+is skipped and Copy tries again at the next one. See
+[when the other side holds a lock](reference/selection-and-history.md#when-the-other-side-holds-a-lock).
 
 **Copy history**, collapsed under the settings, shows the path of the saved
-folder's [state file](reference/files-cli.md#the-state-file) in the saved copy
+folder's [state file](reference/selection-and-history.md#copy-history) in the saved copy
 history folder, which `sync` uses too with the same `--history-dir`. While
 the folder field or the copy history folder field holds one not yet saved,
 it says to save first. **Clear history…** deletes that state file after a confirmation, so the
@@ -247,7 +246,7 @@ saved: until Copy's folder is saved it lists the telescope's files without
 statuses, and the first Save loads it again with them. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
 A save into Copy's saved folder, or a folder inside it, takes the folder's
-[folder lock](reference/files-cli.md#the-folder-lock) until the file is in place:
+[folder lock](reference/selection-and-history.md#the-folder-lock) until the file is in place:
 while a check or a delete holds it, the save says **Another copy or delete
 is using this folder. Try saving it again.** and saves nothing. A file named
 `.seestar-wormhole.lock`, in any letter case, can't be saved at the top of
@@ -267,22 +266,20 @@ does. Above the options, **Copies in:** names Copy's saved folder, whose
 copies the check proves; with that option on, **Copy history for:** names the
 folder whose history it uses instead. **Go to Copy** beside it is where to
 change the folder. **Keep on the telescope** and **Only free up** take one pattern per
-line, as `delete`'s [`--exclude` and `--include`](reference/files-cli.md#selection):
+line, as `delete`'s `--exclude` and `--include`; see [selection](reference/selection-and-history.md#selection):
 a file that matches Keep on the telescope is never deleted, and when Only free
 up is not empty, only files that match it are. They are separate from Copy's
 **Leave out** and **Only copy**, which don't change what is deleted.
-**Always kept**, beside them, lists what is never deleted, as `delete` leaves
-it out by default: the telescope's log and scratch folders (`/log`,
-`/tmp_stitch`, `/batch_stack_tmp`), names starting with a dot, unfinished
-`.tmp` files, and Windows system files (`Thumbs.db`, `desktop.ini`,
-`$RECYCLE.BIN`, `System Volume Information`). A Copy Save that changes the folder discards a
+**Always kept**, beside them, lists what is never deleted: the
+[built-in patterns](reference/selection-and-history.md#built-in-patterns),
+which `delete` leaves out by default too. A Copy Save that changes the folder discards a
 preview, and so does a change of how the telescope is reached, which also
 clears a check that couldn't finish. **Delete N files…** asks once more. The delete then lists the checked
 folders again, and only those, saying **Checking N files again before
 deleting…**, and proves each file again just before it removes it: a file
 that changed or went away since the preview is kept. **Stop** ends a delete
 that is running. The delete holds the folder's
-[folder lock](reference/files-cli.md#the-folder-lock) from before it lists the
+[folder lock](reference/selection-and-history.md#the-folder-lock) from before it lists the
 folders until its last removal, and runs between Copy's checks: while a
 check, a `sync` or another delete holds the lock, it stops at once with
 **Another copy or delete is using this folder.** and deletes nothing. A
