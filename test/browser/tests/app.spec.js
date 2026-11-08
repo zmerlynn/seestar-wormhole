@@ -910,6 +910,10 @@ test('Copy history folder is empty for the default, refuses a relative path, and
   // The help names no folder of its own: the default differs by system.
   await expect(page.locator('#f-hist-help')).toContainText('Leave empty to use the default folder shown in this field, which seestar-wormhole-cli sync uses too.');
   await expect(page.locator('#f-hchoose')).toBeHidden();
+  // Each Choose… names its field for a screen reader's list of buttons.
+  for (const [name, id] of [['Choose folder for your images', 'f-choose'], ['Choose copy history folder', 'f-hchoose']]) {
+    await expect(page.getByRole('button', { name, exact: true, includeHidden: true })).toHaveAttribute('id', id);
+  }
 
   await hist.fill('history');
   await expect(page.locator('#h-unsaved')).toBeVisible();
