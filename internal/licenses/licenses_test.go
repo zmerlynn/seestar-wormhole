@@ -13,11 +13,13 @@ import (
 
 // Inspect each real cgo-free executable's module metadata and run the same
 // notice writer used by `licenses`. Foreign executables are not executed.
+// The CLI links the proxy's and the file commands' modules, each printed
+// once, mousetrap only on Windows, and no window library.
 func TestTargetNotices(t *testing.T) {
 	for _, goos := range []string{"linux", "darwin", "windows"} {
 		for _, arch := range []string{"amd64", "arm64"} {
 			t.Run(goos+"/"+arch, func(t *testing.T) {
-				binary := filepath.Join(t.TempDir(), "seestar-wormhole")
+				binary := filepath.Join(t.TempDir(), "seestar-wormhole-cli")
 				cmd := exec.Command("go", "build", "-mod=vendor", "-p", "2", "-trimpath", "-buildvcs=false", "-ldflags=-s -w", "-o", binary, "./cmd/seestar-wormhole")
 				cmd.Dir = "../.."
 				cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+goos, "GOARCH="+arch)
@@ -33,9 +35,25 @@ func TestTargetNotices(t *testing.T) {
 					t.Fatal(err)
 				}
 				text := out.String()
-				for _, want := range []string{"Module: github.com/zalando/go-keyring\nSPDX: MIT AND Apache-2.0\n", "Copyright 2013 Google Inc. All Rights Reserved.", "Apache License"} {
+				for _, want := range []string{"Module: github.com/zalando/go-keyring\nSPDX: MIT AND Apache-2.0\n", "Copyright 2013 Google Inc. All Rights Reserved.", "Apache License",
+					"\nModule: github.com/pion/dtls/v3\n",
+					"\nModule: github.com/spf13/cobra\nSPDX: Apache-2.0\n\n--- vendor/github.com/spf13/cobra/LICENSE.txt ---\n",
+					"\nModule: github.com/hirochachacha/go-smb2/v2\nSPDX: BSD-2-Clause\n\n--- vendor/github.com/hirochachacha/go-smb2/v2/LICENSE ---\n",
+				} {
 					if !strings.Contains(text, want) {
 						t.Fatalf("missing %q", want)
+					}
+				}
+				mousetrap := strings.Contains(text, "\nModule: github.com/inconshreveable/mousetrap\n")
+				if mousetrap != (goos == "windows") {
+					t.Errorf("mousetrap notice present=%t, want it on Windows only", mousetrap)
+				}
+				if strings.Contains(text, "\nModule: github.com/wailsapp/wails/v3\n") {
+					t.Error("notice for Wails, which the CLI does not link")
+				}
+				for _, dep := range info.Deps {
+					if n := strings.Count(text, "\nModule: "+dep.Path+"\n"); n != 1 {
+						t.Errorf("module %s printed %d times, want once", dep.Path, n)
 					}
 				}
 				if goos == "linux" && !strings.Contains(text, "Module: github.com/godbus/dbus/v5\nSPDX: BSD-2-Clause\n") {
@@ -90,55 +108,6 @@ func TestLinuxGUINativeNotices(t *testing.T) {
 			if !bytes.Equal(out.Bytes(), common) {
 				t.Fatal("native supplement changed an unrelated build's output")
 			}
-		}
-	}
-}
-
-// seestar-copy-cli shares the catalog: each cgo-free target prints its own
-// modules once each, mousetrap only on Windows, and none of the wormhole's.
-func TestCopyCLITargetNotices(t *testing.T) {
-	for _, goos := range []string{"linux", "darwin", "windows"} {
-		for _, arch := range []string{"amd64", "arm64"} {
-			t.Run(goos+"/"+arch, func(t *testing.T) {
-				binary := filepath.Join(t.TempDir(), "seestar-copy-cli")
-				cmd := exec.Command("go", "build", "-mod=vendor", "-p", "2", "-trimpath", "-buildvcs=false", "-ldflags=-s -w", "-o", binary, "./cmd/seestar-copy-cli")
-				cmd.Dir = "../.."
-				cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOOS="+goos, "GOARCH="+arch)
-				if b, err := cmd.CombinedOutput(); err != nil {
-					t.Fatalf("build: %v\n%s", err, b)
-				}
-				info, err := buildinfo.ReadFile(binary)
-				if err != nil {
-					t.Fatal(err)
-				}
-				var out bytes.Buffer
-				if err := writeForBuild(&out, info); err != nil {
-					t.Fatal(err)
-				}
-				text := out.String()
-				for _, want := range []string{
-					"\nModule: github.com/spf13/cobra\nSPDX: Apache-2.0\n\n--- vendor/github.com/spf13/cobra/LICENSE.txt ---\n",
-					"\nModule: github.com/hirochachacha/go-smb2/v2\nSPDX: BSD-2-Clause\n\n--- vendor/github.com/hirochachacha/go-smb2/v2/LICENSE ---\n",
-				} {
-					if !strings.Contains(text, want) {
-						t.Errorf("missing %q", want)
-					}
-				}
-				mousetrap := strings.Contains(text, "\nModule: github.com/inconshreveable/mousetrap\n")
-				if mousetrap != (goos == "windows") {
-					t.Errorf("mousetrap notice present=%t, want it on Windows only", mousetrap)
-				}
-				for _, path := range []string{"github.com/zalando/go-keyring", "github.com/pion/dtls/v3", "github.com/wailsapp/wails/v3"} {
-					if strings.Contains(text, "\nModule: "+path+"\n") {
-						t.Errorf("notice for %s, which seestar-copy-cli does not link", path)
-					}
-				}
-				for _, dep := range info.Deps {
-					if n := strings.Count(text, "\nModule: "+dep.Path+"\n"); n != 1 {
-						t.Errorf("module %s printed %d times, want once", dep.Path, n)
-					}
-				}
-			})
 		}
 	}
 }

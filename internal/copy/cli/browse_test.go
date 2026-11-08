@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -134,7 +134,7 @@ func TestBrowseStatuses(t *testing.T) {
 	statusDevice(t)
 	dest, stateDir := filepath.Join(t.TempDir(), "dest"), filepath.Join(t.TempDir(), "state")
 	writeFindState(t, dest, stateDir)
-	b := startBrowse(t, "--dest", dest, "--state-dir", stateDir)
+	b := startBrowse(t, "--dest", dest, "--history-dir", stateDir)
 	code, body := b.get(t, "api/list?path=MyWorks")
 	for _, want := range []string{`"statuses":true`, `"path":"MyWorks/a.fit","type":"file","size":3,"mtime":"2026-11-01T05:04:05.1234567Z","status":"copied"`,
 		`"path":"MyWorks/d.fit","type":"file","size":3,"mtime":"2026-11-01T05:04:05.1234567Z","status":"new"`} {
@@ -195,7 +195,7 @@ func TestBrowseLeftOut(t *testing.T) {
 		{[]string{"--include", "*.fit"}, "MyWorks", []string{`"MyWorks/a.fit","type":"file","size":3,` + fileMT + `,"status":"copied"`,
 			`"MyWorks/a.jpg","type":"file","size":3,` + fileMT + `,"status":"left out"`, `"MyWorks/skip","type":"dir",` + dirMT + `}`}},
 	} {
-		b := startBrowse(t, append([]string{"--dest", dest, "--state-dir", stateDir}, tc.args...)...)
+		b := startBrowse(t, append([]string{"--dest", dest, "--history-dir", stateDir}, tc.args...)...)
 		code, body := b.get(t, "api/list?path="+url.QueryEscape(tc.path))
 		for _, want := range tc.want {
 			if code != 200 || !strings.Contains(body, want) {
@@ -280,7 +280,7 @@ func TestBrowseFails(t *testing.T) {
 		t.Fatal(err)
 	}
 	addr := freePort(t)
-	code, stdout, stderr = invoke(t, "browse", "--endpoint", "h:445", "--listen", addr, "--dest", dest, "--state-dir", stateDir)
+	code, stdout, stderr = invoke(t, "browse", "--endpoint", "h:445", "--listen", addr, "--dest", dest, "--history-dir", stateDir)
 	if code != exitFailure || stdout != "" || !strings.Contains(stderr, `msg="browse failed"`) || strings.Contains(stderr, "listening") {
 		t.Errorf("bad state: exit %d, stdout %q\n%s", code, stdout, stderr)
 	}
@@ -326,13 +326,13 @@ func TestBrowseUsage(t *testing.T) {
 		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--exclude", "[x]"}, "--exclude", `[ and \ are not supported; use * and ?, and / between folders`},
 		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--include", "a/"}, "--include", "omit the trailing /; a pattern matches files and folders"},
 		{[]string{"browse", "--endpoint", "h:445", "--dest="}, "--dest", "must not be empty; omit it to browse without a status"},
-		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--state-dir="}, "--state-dir", "must not be empty; omit it for the default"},
-		{[]string{"browse", "--endpoint", "h:445", "--state-dir", "s"}, "--state-dir", "give --dest with it; browse reads a state file only for a destination"},
+		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--history-dir="}, "--history-dir", "must not be empty; omit it for the default"},
+		{[]string{"browse", "--endpoint", "h:445", "--history-dir", "s"}, "--history-dir", "give --dest with it; browse reads a state file only for a destination"},
 		{[]string{"browse", "--endpoint", "h:445", "x"}, "arguments", "positional arguments are not allowed"},
 	} {
 		t.Cleanup(readonly.Reset)
 		code, stdout, stderr := invoke(t, tc.args...)
-		want := `level=ERROR msg="invalid arguments" option=` + tc.option + ` rule=` + strconv.Quote(tc.rule) + ` help="seestar-copy-cli browse --help"` + "\n"
+		want := `level=ERROR msg="invalid arguments" option=` + tc.option + ` rule=` + strconv.Quote(tc.rule) + ` help="seestar-wormhole-cli browse --help"` + "\n"
 		if code != exitUsage || stdout != "" || !strings.HasSuffix(stderr, want) || strings.Count(stderr, "\n") != 1 {
 			t.Errorf("%q: exit %d, stdout %q, stderr %q; want 2 and %q", tc.args, code, stdout, stderr, want)
 		}

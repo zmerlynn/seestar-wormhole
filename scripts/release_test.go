@@ -39,7 +39,7 @@ func TestReleaseAssetNames(t *testing.T) {
 	if got := archiveName("v0.5.0-rc.1", "windows", "arm64"); got != "seestar-wormhole_v0.5.0-rc.1_windows_arm64.zip" {
 		t.Fatal(got)
 	}
-	if got := assetName("v0.5.0", "windows", "arm64", copyProgram); got != "seestar-copy-cli_v0.5.0_windows_arm64.exe" {
+	if got := assetName("v0.5.0", "windows", "arm64", cliProgram); got != "seestar-wormhole-cli_v0.5.0_windows_arm64.exe" {
 		t.Fatal(got)
 	}
 }
@@ -59,9 +59,8 @@ func TestBuildBinaryCommands(t *testing.T) {
 	t.Setenv("RECORD", record)
 	flags := "-s -w -X main.version=v0.5.0 -X main.revision=revision"
 	for program, want := range map[string][]string{
-		appProgram:  {"build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-tags=gui,production", "-ldflags", flags + " -H windowsgui", "-o", "out", "./cmd/seestar-wormhole"},
-		cliProgram:  {"build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-ldflags", flags, "-o", "out", "./cmd/seestar-wormhole"},
-		copyProgram: {"build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-ldflags", flags, "-o", "out", "./cmd/seestar-copy-cli"},
+		appProgram: {"build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-tags=gui,production", "-ldflags", flags + " -H windowsgui", "-o", "out", "./cmd/seestar-wormhole"},
+		cliProgram: {"build", "-mod=vendor", "-trimpath", "-buildvcs=false", "-ldflags", flags, "-o", "out", "./cmd/seestar-wormhole"},
 	} {
 		if err := buildBinary("v0.5.0", "revision", "windows", "amd64", program, "out"); err != nil {
 			t.Fatal(err)
@@ -76,9 +75,10 @@ func TestBuildBinaryCommands(t *testing.T) {
 	}
 }
 
-// The DMG carries both CLIs, each built universal, signed like the app and
-// placed in the window. The Mac scripts run only on macOS, so this reads them.
-func TestMacPackageCarriesBothCLIs(t *testing.T) {
+// The DMG carries the CLI, built universal, signed like the app and placed
+// in the window, and no other program. The Mac scripts run only on macOS, so
+// this reads them.
+func TestMacPackageCarriesTheCLI(t *testing.T) {
 	if _, err := os.Stat("scripts/release.sh"); os.IsNotExist(err) {
 		t.Chdir("..")
 	}
@@ -94,20 +94,19 @@ func TestMacPackageCarriesBothCLIs(t *testing.T) {
 	}
 	build, pack, settings := read("scripts/build-gui-mac.sh"), read("scripts/package-gui-mac.sh"), read("scripts/dmg-settings.py")
 	for _, want := range []string{
-		"for task_cli in seestar-wormhole-cli:seestar-wormhole seestar-copy-cli:seestar-copy-cli; do",
-		"for task_cli in seestar-wormhole-cli seestar-copy-cli; do",
-		`lipo "$1/universal/$task_cli" -verify_arch arm64 x86_64`,
+		`-o "$1/cli/seestar-wormhole-cli_${task_version}_darwin_${task_arch}" ./cmd/seestar-wormhole`,
+		`lipo "$1/universal/seestar-wormhole-cli" -verify_arch arm64 x86_64`,
 	} {
 		if !hasLine(build, want) {
 			t.Errorf("build-gui-mac.sh lacks %q", want)
 		}
 	}
 	for _, want := range []string{
-		`task_copy_cli="$(dirname "$task_app")/seestar-copy-cli"`,
-		`for task_program in "$task_app" "$task_cli" "$task_copy_cli"; do`,
-		`codesign --force --sign - "$task_copy_cli"`,
-		`codesign --verify --strict --verbose=2 "$task_copy_cli"`,
-		`cp "$task_cli" "$task_copy_cli" "$task_temp/image/"`,
+		`task_cli="$(dirname "$task_app")/seestar-wormhole-cli"`,
+		`for task_program in "$task_app" "$task_cli"; do`,
+		`codesign --force --sign - "$task_cli"`,
+		`codesign --verify --strict --verbose=2 "$task_cli"`,
+		`cp "$task_cli" "$task_temp/image/"`,
 	} {
 		if !hasLine(pack, want) {
 			t.Errorf("package-gui-mac.sh lacks %q", want)
@@ -116,6 +115,11 @@ func TestMacPackageCarriesBothCLIs(t *testing.T) {
 	for _, program := range cliPrograms {
 		if strings.Count(settings, `"`+program+`"`) != 2 {
 			t.Errorf("dmg-settings.py must list and place %s", program)
+		}
+	}
+	for name, text := range map[string]string{"build-gui-mac.sh": build, "package-gui-mac.sh": pack, "dmg-settings.py": settings} {
+		if strings.Contains(text, "seestar-copy-cli") {
+			t.Errorf("%s still names seestar-copy-cli", name)
 		}
 	}
 }
@@ -206,10 +210,10 @@ func TestReleaseArchivesAndChecksums(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	// Both CLIs on every platform, and the cgo-free Windows app.
+	// The CLI on every platform, and the cgo-free Windows app.
 	var wantBuilds []string
 	for _, platform := range platforms {
-		wantBuilds = append(wantBuilds, "seestar-wormhole-cli "+platform, "seestar-copy-cli "+platform)
+		wantBuilds = append(wantBuilds, "seestar-wormhole-cli "+platform)
 		if strings.HasPrefix(platform, "windows/") {
 			wantBuilds = append(wantBuilds, "seestar-wormhole "+platform)
 		}
@@ -281,7 +285,7 @@ func TestArchiveContentsModesAndDeterminism(t *testing.T) {
 	}
 	for _, goos := range []string{"linux", "windows"} {
 		for _, arch := range []string{"amd64", "arm64"} {
-			programs := []string{appProgram, cliProgram, copyProgram}
+			programs := []string{appProgram, cliProgram}
 			for _, program := range programs {
 				if err := fakeBuild("v0.5.0", "revision", goos, arch, program, filepath.Join("parts", assetName("v0.5.0", goos, arch, program))); err != nil {
 					t.Fatal(err)
@@ -320,9 +324,9 @@ func TestArchiveContentsModesAndDeterminism(t *testing.T) {
 			if goos == "windows" {
 				ext = ".exe"
 			}
-			wantNames := []string{"LICENSE", "NOTICE", "seestar-copy-cli", "seestar-wormhole", "seestar-wormhole-cli"}
+			wantNames := []string{"LICENSE", "NOTICE", "seestar-wormhole", "seestar-wormhole-cli"}
 			if goos == "windows" {
-				wantNames = []string{"LICENSE", "NOTICE", "seestar-copy-cli.exe", "seestar-wormhole-cli.exe", "seestar-wormhole.exe"}
+				wantNames = []string{"LICENSE", "NOTICE", "seestar-wormhole-cli.exe", "seestar-wormhole.exe"}
 			}
 			var names []string
 			check := func(name string, mode os.FileMode, stamp time.Time, data []byte) {
@@ -456,7 +460,7 @@ func TestFinalAssemblyFailureKeepsParts(t *testing.T) {
 	if _, err := os.Stat("dist/SHA256SUMS"); !os.IsNotExist(err) {
 		t.Fatal("failed assembly published checksums")
 	}
-	for _, part := range []string{"seestar-wormhole-cli_v0.5.0_linux_amd64", "seestar-copy-cli_v0.5.0_linux_amd64"} {
+	for _, part := range []string{"seestar-wormhole-cli_v0.5.0_linux_amd64"} {
 		if _, err := os.Stat(filepath.Join("dist/parts", part)); err != nil {
 			t.Fatal("failed assembly lost parts")
 		}
@@ -776,13 +780,12 @@ func TestWorkflowChecksShippedLicenses(t *testing.T) {
 	}
 	for _, tc := range []struct{ job, build, restore, check string }{
 		{"portable", `./scripts/release.sh "$RELEASE_VERSION"`, "",
-			`go run ./scripts/checklicenses "dist/parts/seestar-wormhole-cli_${RELEASE_VERSION}_linux_amd64" "dist/parts/seestar-copy-cli_${RELEASE_VERSION}_linux_amd64"`},
+			`go run ./scripts/checklicenses "dist/parts/seestar-wormhole-cli_${RELEASE_VERSION}_linux_amd64"`},
 		{"linux-ui", "./cmd/seestar-wormhole", "",
 			`go run ./scripts/checklicenses "dist/seestar-wormhole_${RELEASE_VERSION}_linux_${GOARCH}"`},
 		{"macos-ui", "./scripts/build-gui-mac.sh", `chmod 0755 "$RUNNER_TEMP"/mac-ui/cli/*_darwin_*`,
 			`go run ./scripts/checklicenses "$RUNNER_TEMP/mac-ui/arm64/seestar-wormhole.app/Contents/MacOS/seestar-wormhole" \` + "\n" +
-				`  "$RUNNER_TEMP/mac-ui/cli/seestar-wormhole-cli_${RELEASE_VERSION}_darwin_arm64" \` + "\n" +
-				`  "$RUNNER_TEMP/mac-ui/cli/seestar-copy-cli_${RELEASE_VERSION}_darwin_arm64"`},
+				`  "$RUNNER_TEMP/mac-ui/cli/seestar-wormhole-cli_${RELEASE_VERSION}_darwin_arm64"`},
 	} {
 		built, downloaded, restored, checked := false, false, false, false
 		for _, step := range workflow.Jobs[tc.job].Steps {
@@ -825,7 +828,7 @@ var verifyLines = []string{
 	"go run ./scripts/checklicenses",
 	"go test -race -count=2 -timeout 20m ./...",
 	"./scripts/test-check.sh",
-	"CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/...",
+	"CGO_ENABLED=0 GOOS=${target%/*} GOARCH=${target#*/} go vet -p 2 ./cmd/seestar-wormhole ./internal/copy/...",
 	"go vet -p 2 -tags smbintegration ./internal/copy/remote ./internal/copy/app",
 }
 
@@ -1140,7 +1143,7 @@ func TestWorkflowPageTests(t *testing.T) {
 // browserTestLines are the commands copy-browser must run so the app's
 // Playwright tests have the page's server and the CLI.
 var browserTestLines = []string{
-	`echo "CLI_BIN=$RUNNER_TEMP/seestar-copy-cli" >> "$GITHUB_ENV"`,
+	`echo "CLI_BIN=$RUNNER_TEMP/seestar-wormhole-cli" >> "$GITHUB_ENV"`,
 	`go test -c -o "$RUNNER_TEMP/ui.test" ./internal/ui`,
 	`echo "UI_TEST_BIN=$RUNNER_TEMP/ui.test" >> "$GITHUB_ENV"`,
 }

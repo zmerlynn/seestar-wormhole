@@ -50,17 +50,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build twelve CLI and two Windows UI executables
+      - name: Build six CLI and two Windows UI executables
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           ./scripts/release.sh "$RELEASE_VERSION"
           # Windows Authenticode signing would go here.
-      - name: Check the Linux CLIs list every linked module's license
+      - name: Check the Linux CLI lists every linked module's license
         env:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
-        run: go run ./scripts/checklicenses "dist/parts/seestar-wormhole-cli_${RELEASE_VERSION}_linux_amd64" "dist/parts/seestar-copy-cli_${RELEASE_VERSION}_linux_amd64"
+        run: go run ./scripts/checklicenses "dist/parts/seestar-wormhole-cli_${RELEASE_VERSION}_linux_amd64"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-part-portable
@@ -162,8 +162,7 @@ jobs:
           RELEASE_VERSION: ${{ needs.validate.outputs.version }}
         run: |
           go run ./scripts/checklicenses "$RUNNER_TEMP/mac-ui/arm64/seestar-wormhole.app/Contents/MacOS/seestar-wormhole" \
-            "$RUNNER_TEMP/mac-ui/cli/seestar-wormhole-cli_${RELEASE_VERSION}_darwin_arm64" \
-            "$RUNNER_TEMP/mac-ui/cli/seestar-copy-cli_${RELEASE_VERSION}_darwin_arm64"
+            "$RUNNER_TEMP/mac-ui/cli/seestar-wormhole-cli_${RELEASE_VERSION}_darwin_arm64"
       - name: Delete temporary signing keychain
         if: always()
         run: |

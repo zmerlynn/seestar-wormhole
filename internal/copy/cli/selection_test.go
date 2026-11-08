@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"fmt"
@@ -80,7 +80,7 @@ func localFiles(t *testing.T, dest string) []string {
 func TestSyncSelection(t *testing.T) {
 	dev := selectionDevice(t)
 	dest, stateDir := t.TempDir(), t.TempDir()
-	code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once")
+	code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once")
 	if code != exitOK {
 		t.Fatalf("exit %d\n%s", code, stderr)
 	}
@@ -97,7 +97,7 @@ func TestSyncSelection(t *testing.T) {
 
 	// --exclude adds to the defaults.
 	dest = t.TempDir()
-	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", t.TempDir(), "--once",
+	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", t.TempDir(), "--once",
 		"--exclude", "/Autorun/Bias", "--exclude", "*.PNG")
 	want := slices.DeleteFunc(slices.Clone(selectionCopied), func(p string) bool { return p == "Autorun/Bias/b.fit" || p == "diag.png" })
 	if got := localFiles(t, dest); code != exitOK || !slices.Equal(got, want) {
@@ -105,7 +105,7 @@ func TestSyncSelection(t *testing.T) {
 	}
 
 	dest = t.TempDir()
-	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", t.TempDir(), "--once", "--no-default-excludes")
+	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", t.TempDir(), "--once", "--no-default-excludes")
 	if want := `error="list the share: readdir batch_stack_tmp: permission denied"`; code != exitFailure || !strings.Contains(stderr, want) {
 		t.Errorf("without the defaults: exit %d, log lacks %q:\n%s", code, want, stderr)
 	}
@@ -139,7 +139,7 @@ func TestSyncSelection(t *testing.T) {
 	dev.set("Autorun/Light/five.fit", "abc", time.Now().Add(-5*time.Minute))
 	dev.set("Autorun/Light/one.fit", "abc", time.Now().Add(-time.Minute))
 	place(t, dest, "diag.png", "abc", old)
-	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once")
+	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once")
 	if want := "copied=8 replaced=0 adopted=1 waiting=2 failed=0 skipped=11 "; code != exitOK || !strings.Contains(stderr, want) {
 		t.Errorf("upgrade: exit %d, log lacks %q:\n%s", code, want, stderr)
 	}
@@ -164,7 +164,7 @@ func TestSyncSelection(t *testing.T) {
 func TestDryRunReportsSelection(t *testing.T) {
 	dev := selectionDevice(t)
 	dest, stateDir := t.TempDir(), t.TempDir()
-	code, _, stderr := dryRun(t, "--dest", dest, "--state-dir", stateDir)
+	code, _, stderr := dryRun(t, "--dest", dest, "--history-dir", stateDir)
 	if code != exitOK {
 		t.Fatalf("exit %d\n%s", code, stderr)
 	}
@@ -185,14 +185,14 @@ func TestDryRunReportsSelection(t *testing.T) {
 	// After a real pass only a new folder has nothing recorded. Autorun
 	// counts as recorded once any file under it is.
 	readonly.Reset()
-	if code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once", "--exclude", "/Autorun/Bias"); code != exitOK {
+	if code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once", "--exclude", "/Autorun/Bias"); code != exitOK {
 		t.Fatalf("real pass exit %d\n%s", code, stderr)
 	}
 	dev.set("Plan/x.json", "abc", time.Now().Add(-time.Hour))
 	if err := os.Remove(filepath.Join(dest, "Preview", "p.jpg")); err != nil {
 		t.Fatal(err)
 	}
-	code, _, stderr = dryRun(t, "--dest", dest, "--state-dir", stateDir)
+	code, _, stderr = dryRun(t, "--dest", dest, "--history-dir", stateDir)
 	if code != exitOK {
 		t.Fatalf("exit %d\n%s", code, stderr)
 	}
@@ -225,7 +225,7 @@ func TestSkipsBeforeListingFailure(t *testing.T) {
 			dev.unreadable = []string{"zbad"}
 			dev.use(t)
 			dest := t.TempDir()
-			code, _, stderr := invoke(t, slices.Concat([]string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", t.TempDir(), tc.flag}, tc.include)...)
+			code, _, stderr := invoke(t, slices.Concat([]string{"sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", t.TempDir(), tc.flag}, tc.include)...)
 			if code != exitFailure {
 				t.Fatalf("exit %d, want %d\n%s", code, exitFailure, stderr)
 			}
@@ -300,7 +300,7 @@ func TestDefaultsEqualLiteralFlags(t *testing.T) {
 	pass := func(dry bool, flags ...string) (string, []string) {
 		t.Helper()
 		dest, stateDir := t.TempDir(), t.TempDir()
-		args := slices.Concat([]string{"--dest", dest, "--state-dir", stateDir, "--once"}, flags)
+		args := slices.Concat([]string{"--dest", dest, "--history-dir", stateDir, "--once"}, flags)
 		var code int
 		var stderr string
 		if dry {
@@ -343,7 +343,7 @@ func TestSyncInclude(t *testing.T) {
 		t.Helper()
 		readonly.Reset()
 		dest := t.TempDir()
-		code, _, stderr := invoke(t, slices.Concat([]string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", t.TempDir(), "--once"}, flags)...)
+		code, _, stderr := invoke(t, slices.Concat([]string{"sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", t.TempDir(), "--once"}, flags)...)
 		return code, stderr, localFiles(t, dest)
 	}
 	for _, tc := range []struct {
@@ -392,7 +392,7 @@ func TestSyncInclude(t *testing.T) {
 		}
 	}
 
-	code, _, stderr = dryRun(t, "--dest", t.TempDir(), "--state-dir", t.TempDir(), "--include", "/MyWorks")
+	code, _, stderr = dryRun(t, "--dest", t.TempDir(), "--history-dir", t.TempDir(), "--include", "/MyWorks")
 	if want := "copy=2 replace=0 adopt=0 waiting=0 failed=0 skipped=9 unmatched=4 "; code != exitOK || !strings.Contains(stderr, want) {
 		t.Errorf("dry run: exit %d, log lacks %q:\n%s", code, want, stderr)
 	}

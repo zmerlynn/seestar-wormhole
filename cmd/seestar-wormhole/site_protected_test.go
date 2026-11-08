@@ -16,7 +16,7 @@ import (
 func TestSiteProtectionRetiredFlags(t *testing.T) {
 	for _, name := range []string{"site-location", "site-timezone", "app-overrides-site"} {
 		_, err := parse([]string{"proxy", "--" + name + "=value"}, io.Discard)
-		if err == nil || !strings.Contains(err.Error(), "supported options") {
+		if err == nil || !strings.Contains(err.Error(), "unknown flag") {
 			t.Fatalf("flag %s: got %v, want unknown flag", name, err)
 		}
 	}

@@ -25,35 +25,35 @@ Windows downloads are not code-signed, so Windows may show
 "Windows protected your PC". Choose **More info**, then
 **Run anyway**.
 
-Every download has one app and two command-line tools:
+Every download has the app and a command-line tool:
 
 - `seestar-wormhole` is the app. It connects, and copies, browses and frees
   up space on the telescope.
-- `seestar-wormhole-cli` runs the proxy from terminals, scripts and services.
-- `seestar-copy-cli` copies images from the telescope for terminals, scripts
-  and services.
+- `seestar-wormhole-cli` runs the proxy, and copies, browses and frees up
+  space on the telescope, from terminals, scripts and services.
 
 On Linux the app needs GTK 4, WebKitGTK 6.0 and bubblewrap, and permission to
 create the user namespaces WebKit's sandbox uses; see
 [Linux native window](docs/troubleshooting.md#linux-native-window). On Windows
-it needs the Microsoft Edge WebView2 Runtime. The command-line tools need
+it needs the Microsoft Edge WebView2 Runtime. The command-line tool needs
 nothing extra.
 
-On macOS, the command-line tools sit beside the app on the disk image, and
-dragging the app doesn't install them. To use them, copy
-`seestar-wormhole-cli` and `seestar-copy-cli` from the disk image to a folder
-of your own, such as `~/bin`, before you eject it.
+On macOS, the command-line tool sits beside the app on the disk image, and
+dragging the app doesn't install it. To use it, copy `seestar-wormhole-cli`
+from the disk image to a folder of your own, such as `~/bin`, before you eject
+it.
 
-Check the command-line tools from the folder that holds them:
+Check the command-line tool from the folder that holds it:
 
 ```sh
 ./seestar-wormhole-cli --version
-./seestar-copy-cli --version
 ```
 
-These examples, and the copy guide's, run the tools from that folder. In
-PowerShell, write `.\seestar-copy-cli.exe` for `./seestar-copy-cli`, and
-likewise for `seestar-wormhole-cli`.
+These examples, and the copy guide's, run the tool from that folder. In
+PowerShell, write `.\seestar-wormhole-cli.exe` for `./seestar-wormhole-cli`.
+
+Earlier releases also shipped a separate `seestar-copy-cli`; its commands are
+now `seestar-wormhole-cli sync`, `find`, `browse` and `delete`.
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
 Saving the password needs an available OS keychain.
@@ -141,16 +141,16 @@ container, and on Windows.
 
 ### Copy images while you keep observing
 
-`seestar-copy-cli` copies images through the proxy's SMB listener while
-control clients share the session:
+`seestar-wormhole-cli sync` copies images through the proxy's SMB listener
+while control clients share the session:
 
 ```sh
-./seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar
+./seestar-wormhole-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar
 ```
 
 It also works directly with a telescope on your network. rclone and other SMB
 apps work too. See [Copy images](docs/copying.md) and the
-[seestar-copy-cli reference](docs/copy-reference.md).
+[copy command reference](docs/copy-reference.md).
 
 ## Keep it on your own network
 
@@ -196,7 +196,7 @@ See [internal package boundary](docs/development/README.md).
 - [Copy images](docs/copying.md)
 - [seestar_alp and other clients](docs/clients.md)
 - [Command reference](docs/reference.md): every flag, exit code and log message
-- [seestar-copy-cli reference](docs/copy-reference.md): its commands, flags and formats
+- [Copy command reference](docs/copy-reference.md): the file commands' flags and formats
 - [How the proxy speaks the protocol](docs/protocol.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Known issues and accepted limits](docs/known-issues.md)

@@ -228,7 +228,7 @@ func TestSessionStaysReadOnly(t *testing.T) {
 // the copy app's Free up space tab. It stops accidental use; it does not prove
 // what code can reach.
 func TestOnlyDeleteDialsRemover(t *testing.T) {
-	const allowed = "cmd/seestar-copy-cli/delete.go or internal/copy/app/freespace.go"
+	const allowed = "internal/copy/cli/delete.go or internal/copy/app/freespace.go"
 	fset := token.NewFileSet()
 	for _, top := range []string{"internal", "cmd"} {
 		err := filepath.WalkDir(filepath.Join("..", "..", "..", top), func(p string, d fs.DirEntry, err error) error {
@@ -236,7 +236,7 @@ func TestOnlyDeleteDialsRemover(t *testing.T) {
 				return err
 			}
 			rel := filepath.ToSlash(strings.TrimPrefix(p, filepath.Join("..", "..", "..")+string(filepath.Separator)))
-			if rel == "cmd/seestar-copy-cli/delete.go" || rel == "internal/copy/app/freespace.go" {
+			if rel == "internal/copy/cli/delete.go" || rel == "internal/copy/app/freespace.go" {
 				return nil
 			}
 			f, err := parser.ParseFile(fset, p, nil, parser.SkipObjectResolution)

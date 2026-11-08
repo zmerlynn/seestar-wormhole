@@ -54,8 +54,8 @@ func TestDiscoveryInvalidOptions(t *testing.T) {
 		{"invalid model UTF-8", "arguments", append(discoveryArgs(), "--advertise-model=\xff")},
 		{"format", "--log-format", append(discoveryArgs(), "--log-format=PRIVATE_FORMAT")},
 		{"level", "--log-level", append(discoveryArgs(), "--log-level=PRIVATE_LEVEL")},
-		{"catalog serial", "arguments", append(discoveryArgs(), "--serial=PRIVATE_SERIAL")},
-		{"TCP port", "arguments", append(discoveryArgs(), "--port=80:80")},
+		{"catalog serial", "--serial", append(discoveryArgs(), "--serial=PRIVATE_SERIAL")},
+		{"TCP port", "--port", append(discoveryArgs(), "--port=80:80")},
 		{"positional", "arguments", append(discoveryArgs(), "PRIVATE_ARGUMENT")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

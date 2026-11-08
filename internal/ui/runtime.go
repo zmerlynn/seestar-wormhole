@@ -21,6 +21,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
@@ -228,13 +229,10 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	c.save = handler.saveSettings
 	c.lastSaved = settings
 	c.log = eventHistory
-	// The copier shares seestar-copy-cli's state folder, so the two share
-	// one history and lock per folder. Its warnings and errors go to the
-	// command's bounded log sink, as the proxy's do.
-	var copyState string
-	if base, err := os.UserConfigDir(); err == nil {
-		copyState = filepath.Join(base, "seestar-copy")
-	}
+	// The copier shares the file commands' default history folder, so the
+	// two share one history and lock per folder. Its warnings and errors go
+	// to the command's bounded log sink, as the proxy's do.
+	copyState, _ := state.DefaultDir()
 	listening := listener.Addr().(*net.TCPAddr).AddrPort()
 	handler.copy = copyapp.NewMount(appCtx, copyapp.MountOptions{
 		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,

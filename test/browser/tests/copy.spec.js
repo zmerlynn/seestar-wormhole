@@ -12,7 +12,7 @@ const copiedAll = /^Copied 7 files \(\d.* in .*\.$/;
 const upToDate = /^Up to date\. Next check at \d\d:\d\d\.$/;
 const off = 'Copying is off.';
 const inUse = 'Another copy is already using this folder.';
-const inUseText = "It's in another seestar-wormhole window or seestar-copy-cli. Stop that copy, then start copying here.";
+const inUseText = "It's in another seestar-wormhole window or seestar-wormhole-cli sync. Stop that copy, then start copying here.";
 
 // copying is a saved route to the fixture, at address, and copy settings
 // that copy to the app's folder.

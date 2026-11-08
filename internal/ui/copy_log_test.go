@@ -84,7 +84,7 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 	}
 }
 
-// The app's copier keeps its history in seestar-copy-cli's state folder,
+// The app's copier keeps its history in the file commands' history folder,
 // under the user's config folder, so the two share one history and lock
 // per destination. Saving settings dials nothing.
 func TestCopyStateIsShared(t *testing.T) {

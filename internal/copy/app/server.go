@@ -662,7 +662,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	s.mu.Unlock()
 	switch {
 	case errors.Is(err, state.ErrLocked):
-		conflict("Couldn't clear the history: another copy is using this folder, in another seestar-wormhole window or seestar-copy-cli. Stop that copy, then try again.")
+		conflict("Couldn't clear the history: another copy is using this folder, in another seestar-wormhole window or seestar-wormhole-cli sync. Stop that copy, then try again.")
 	case err != nil:
 		s.log.Warn("clear history", "dest", folder, "err", err)
 		conflict("Couldn't clear the history: " + reason(err) + ".")

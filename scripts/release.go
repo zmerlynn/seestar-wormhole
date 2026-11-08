@@ -1,7 +1,7 @@
 //go:build release
 
 // Release builds executable parts and deterministic archives of the app and
-// both CLIs.
+// the CLI.
 // Invoke through release.sh from any directory.
 package main
 
@@ -54,15 +54,15 @@ func releaseCode(args []string, stderr io.Writer) int {
 	return 0
 }
 
-// The app is seestar-wormhole; the two CLIs are command-line programs.
+// The app is seestar-wormhole; the CLI is its command-line program, which
+// also holds the file commands.
 const (
-	appProgram  = "seestar-wormhole"
-	cliProgram  = "seestar-wormhole-cli"
-	copyProgram = "seestar-copy-cli"
+	appProgram = "seestar-wormhole"
+	cliProgram = "seestar-wormhole-cli"
 )
 
 // cliPrograms are built for every platform; the app only where it is cgo-free.
-var cliPrograms = []string{cliProgram, copyProgram}
+var cliPrograms = []string{cliProgram}
 
 func assetName(version, goos, arch, program string) string {
 	ext := ""
@@ -105,11 +105,7 @@ func buildBinary(version, revision, goos, arch, program, path string) error {
 		args = append(args, "-tags=gui,production")
 		flags += " -H windowsgui"
 	}
-	source := "./cmd/seestar-wormhole"
-	if program == copyProgram {
-		source = "./cmd/seestar-copy-cli"
-	}
-	args = append(args, "-ldflags", flags, "-o", path, source)
+	args = append(args, "-ldflags", flags, "-o", path, "./cmd/seestar-wormhole")
 	cmd := exec.Command("go", args...)
 	cmd.Env = append(os.Environ(), "GOOS="+goos, "GOARCH="+arch, "CGO_ENABLED=0")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
@@ -174,7 +170,7 @@ func writeArchive(dir, parts, version, goos, arch string, mtime time.Time) (err 
 	if goos == "windows" {
 		ext = ".exe"
 	}
-	members := []string{"LICENSE", "NOTICE", appProgram + ext, cliProgram + ext, copyProgram + ext}
+	members := []string{"LICENSE", "NOTICE", appProgram + ext, cliProgram + ext}
 	slices.Sort(members)
 	f, err := os.Create(filepath.Join(dir, archiveName(version, goos, arch)))
 	if err != nil {

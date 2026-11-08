@@ -210,7 +210,7 @@ func generate(check bool) error {
 	// Let Go resolve the actual target's dependencies, including build tags.
 	// Store all vendored notices so the catalog also supports cross-builds;
 	// the executable selects its linked modules from debug.ReadBuildInfo.
-	cmd := exec.Command("go", "list", "-mod=vendor", "-deps", "-json", "./cmd/seestar-wormhole", "./cmd/seestar-copy-cli")
+	cmd := exec.Command("go", "list", "-mod=vendor", "-deps", "-json", "./cmd/seestar-wormhole")
 	cmd.Stderr = os.Stderr
 	deps, err := cmd.Output()
 	if err != nil {

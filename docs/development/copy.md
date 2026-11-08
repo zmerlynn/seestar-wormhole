@@ -1,8 +1,8 @@
 # The copy packages
 
 The copier, which came from seestar-copy, copies the files from a ZWO
-Seestar's SMB share to a local folder. Its command-line tool,
-`seestar-copy-cli`, has one main command, `sync`. It reads the telescope's
+Seestar's SMB share to a local folder. Its main command-line form is
+`seestar-wormhole-cli sync`, beside `find`, `browse` and `delete`. It reads the telescope's
 share read-only, mirrors the files under a destination folder, and keeps a
 state file of what it has copied, so a file moved out of the destination is
 not copied again. It repeats passes until it is stopped.
@@ -17,7 +17,8 @@ not copied again. It repeats passes until it is stopped.
 
 | Path | What it does |
 | --- | --- |
-| `cmd/seestar-copy-cli` | The command tree (built with [cobra](https://github.com/spf13/cobra)), flag checks, exit codes and logging, the read-only guard before a dry run, `find`'s listing, and `browse`'s listener and `--open`. |
+| `internal/copy/cli` | The file commands (built with [cobra](https://github.com/spf13/cobra)): their flags and checks, the copy history folder, `find`'s listing, and `browse`'s listener and `--open`. |
+| `cmd/seestar-wormhole` | Mounts the file commands under `seestar-wormhole-cli` and the app's executable (`files.go`), and gives them the shared `--log-format` and `--log-level`, the stderr logger, usage errors, exit codes, and the read-only guard before a dry run. |
 | `internal/copy/app` | The Copy, Browse and Free up space tabs' server, which seestar-wormhole's app (`internal/ui`) mounts under `/copy/api/` and `/browse/`: the copy, preview and free-space controllers, Settings validation, Test, the activity log, and the Browse tab, which is `internal/copy/browse` in its in-app mode. The app keeps the settings in its `copy.json` and tells the mount where the telescope is. |
 | `internal/copy/engine` | The work the commands share: the `--exclude` and `--include` selection and its walk of the share, the `sync` pass loop (dial, list, plan, copy, log off, sleep) and its dry run, and `delete`'s run. It never turns the read-only guard on. |
 | `internal/copy/remote` | The read-only view of the telescope's share through [go-smb2](https://github.com/hirochachacha/go-smb2): guest login, recursive listing, read-only opens. `Remover`, which only `delete` dials, adds removing a regular file or an empty folder after rechecking it. `NewFake` serves an `io/fs` tree with injected faults for tests, and `NewFakeDir` a local folder that is also a `Remover`. |
@@ -30,25 +31,27 @@ not copied again. It repeats passes until it is stopped.
 | `internal/licenses` | Shared with seestar-wormhole: the `licenses` command's output, the project's `NOTICE`, then the license texts of each module linked into the running build. |
 | `scripts/generate-licenses.go` | Writes the license catalog that `internal/licenses` embeds. |
 
-The command keeps one rule from the start: a usage error is reported before
+The commands keep one rule from the start: a usage error is reported before
 anything touches the network or the disk.
 
-- Help, `--version` and `licenses` write to stdout.
-- Logs and errors are `log/slog` text lines with UTC timestamps on stderr.
-- A usage error is one line naming the option, the rule it broke, and the help
-  command to run. It exits 2. Any other failure exits 1.
+- Help, the root's `--version` and `licenses` write to stdout.
+- Logs and errors are `log/slog` lines with UTC timestamps on stderr: text by
+  default, JSON with `--log-format json`. Lines lost to a stalled or failed
+  stderr are counted and make the command exit 1; they never go to stdout.
+- A usage error is one text line naming the option, the rule it broke, and
+  the help command to run, whatever `--log-format` says. It exits 2. Any
+  other failure exits 1.
 
-`--version` prints `seestar-copy-cli <version> (<revision>, <os>/<arch>)`.
-Release builds set the version and a 12-character revision with
-`-ldflags "-X main.version=... -X main.revision=..."`. Without them, the
-revision comes from Go's VCS build stamp, or is `development`.
+The file commands take no `--version`; `seestar-wormhole-cli --version`
+reports the build, with the version and revision that release builds set with
+`-ldflags "-X main.version=... -X main.revision=..."`.
 
 ### License catalog
 
 The license catalog is seestar-wormhole's: `internal/licenses` and
 `scripts/generate-licenses.go`, described in the
 [development guide](README.md). The generator checks
-that every module `seestar-wormhole` and `seestar-copy-cli` link has a
+that every module `seestar-wormhole` and `seestar-wormhole-cli` link has a
 license in the catalog and a row in `NOTICE`. Run from the repository root:
 
 ```sh
@@ -85,8 +88,8 @@ breadcrumb focus, thumbnails, the image, text and FITS viewers, Save,
 closing the viewer, a missing folder, a long name in a narrow window, and
 the favicon. `app.spec.js`, `copy.spec.js` and `free.spec.js` cover the
 app's Connection on this network, Copy with real passes, Browse, Free up
-space, the tabs, the token, and a folder in use by `seestar-copy-cli` or a
-second app. They start the page without a window from `internal/ui`'s test
+space, the tabs, the token, and a folder in use by `seestar-wormhole-cli sync`
+or a second app. They start the page without a window from `internal/ui`'s test
 binary: its `TestBrowserServer` serves the real page and runtime from the
 state folder `SEESTAR_WORMHOLE_BROWSER_STATE` names, with no account and no
 proxy, and prints the page's URL. The tests also save screenshots in light
@@ -97,9 +100,9 @@ them locally, with Node.js and Podman:
 ```sh
 podman build --target browse -t seestar-copy-samba-browse internal/copy/remote/testdata/samba
 podman run -d --rm --name seestar-copy-samba-browse -p 127.0.0.1:14450:14450 seestar-copy-samba-browse
-go build -mod=vendor ./cmd/seestar-copy-cli
+go build -mod=vendor -o seestar-wormhole-cli ./cmd/seestar-wormhole
 go test -mod=vendor -c -o bin/ui.test ./internal/ui
-./seestar-copy-cli browse --endpoint 127.0.0.1:14450
+./seestar-wormhole-cli browse --endpoint 127.0.0.1:14450
 ```
 
 browse prints its URL. In another terminal:
@@ -107,23 +110,24 @@ browse prints its URL. In another terminal:
 ```sh
 cd test/browser
 npm ci && npx playwright install chromium webkit
-BROWSE_URL=http://127.0.0.1:PORT/ UI_TEST_BIN=$PWD/../../bin/ui.test CLI_BIN=$PWD/../../seestar-copy-cli npx playwright test
+BROWSE_URL=http://127.0.0.1:PORT/ UI_TEST_BIN=$PWD/../../bin/ui.test CLI_BIN=$PWD/../../seestar-wormhole-cli npx playwright test
 ```
 
 Use the URL browse printed for `BROWSE_URL`. Screenshots go to
 `test/browser/screenshots`. Stop the fixture with
 `podman stop seestar-copy-samba-browse`.
 
-To build the command:
+To build the commands:
 
 ```sh
-go build -mod=vendor ./cmd/seestar-copy-cli
+go build -mod=vendor -o seestar-wormhole-cli ./cmd/seestar-wormhole
 ```
 
 ## Releasing
 
-`seestar-copy-cli` ships in every seestar-wormhole archive and in the DMG; see
-[releasing](releasing.md).
+The file commands ship in `seestar-wormhole-cli`, in every seestar-wormhole
+archive and in the DMG; see [releasing](releasing.md). Releases before 0.7.0
+shipped them as a separate `seestar-copy-cli`.
 
 ## Project rules
 
@@ -167,7 +171,7 @@ These apply to every change, whoever writes it.
   older release cannot read, and such a one-way change needs the
   maintainer's approval before it is written.
 - **Every public flag, format and exit code is a promise**, as
-  [versioning](../versioning.md#the-seestar-copy-cli-contract) lists. Add one, or a log line, only for a
+  [versioning](../versioning.md#the-contract) lists. Add one, or a log line, only for a
   current need, and document it in the reference in the same change.
 - **Dependencies are few, vendored and Unlicense-compatible.** The project
   is under the Unlicense. A dependency must allow distributing one static

@@ -78,8 +78,8 @@ pasting them into a command line.
 
 ## Filing an issue
 
-Include the version (`./seestar-wormhole-cli --version` or
-`./seestar-copy-cli --version`, run from the tools' folder; in PowerShell,
+Include the version (`./seestar-wormhole-cli --version`,
+run from the tool's folder; in PowerShell,
 `.\seestar-wormhole-cli.exe --version`), your platform, the telescope model
 and firmware, and the log lines around the problem. In the app, **Copy
 diagnostic summary** on the [Activity](ui.md#activity) tab copies the version,

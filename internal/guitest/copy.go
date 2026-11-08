@@ -45,7 +45,7 @@ func UserConfig(dir string) (restore func(), err error) {
 	}, nil
 }
 
-// copyState is the copier's state folder, which seestar-copy-cli shares.
+// copyState is the copier's state folder, which the CLI's file commands share.
 func copyState() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {

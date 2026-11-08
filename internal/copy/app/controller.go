@@ -692,7 +692,7 @@ func (c *controller) view(now time.Time) copyView {
 		v.Text = strings.Join(parts, " ")
 	case stInUse:
 		v.Title = "Another copy is already using this folder."
-		v.Text = "It's in another seestar-wormhole window or seestar-copy-cli. Stop that copy, then start copying here."
+		v.Text = "It's in another seestar-wormhole window or seestar-wormhole-cli sync. Stop that copy, then start copying here."
 	case stCantWrite:
 		// Only a refused write in the folder names it as the cause.
 		switch {

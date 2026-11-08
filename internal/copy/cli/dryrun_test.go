@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"crypto/sha256"
@@ -68,7 +68,7 @@ func TestDryRunCreatesNothing(t *testing.T) {
 	dev.set("MyWorks/a.fit", "abc", old)
 	dev.set("MyWorks/M 31/b.fit", "abcd", old)
 	dev.use(t)
-	code, stdout, stderr := dryRun(t, "--dest", dest, "--state-dir", stateDir, "--once")
+	code, stdout, stderr := dryRun(t, "--dest", dest, "--history-dir", stateDir, "--once")
 	if code != exitOK || stdout != "" {
 		t.Errorf("code=%d stdout=%q, want 0 and no stdout\n%s", code, stdout, stderr)
 	}
@@ -113,7 +113,7 @@ func populated(t *testing.T) (dest, stateDir string) {
 	dev.set("MyWorks/b.fit", "bbb", old)
 	dev.set("MyWorks/gone.fit", "ggg", old)
 	dev.use(t)
-	if code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once"); code != exitOK {
+	if code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once"); code != exitOK {
 		t.Fatalf("first pass exit %d\n%s", code, stderr)
 	}
 	if err := os.Remove(filepath.Join(dest, "MyWorks", "gone.fit")); err != nil {
@@ -148,7 +148,7 @@ func populated(t *testing.T) (dest, stateDir string) {
 func TestDryRunChangesNothingAndPredicts(t *testing.T) {
 	dest, stateDir := populated(t)
 	destBefore, stateBefore := snapshot(t, dest), snapshot(t, stateDir)
-	code, stdout, stderr := dryRun(t, "--dest", dest, "--state-dir", stateDir)
+	code, stdout, stderr := dryRun(t, "--dest", dest, "--history-dir", stateDir)
 	if code != exitOK || stdout != "" {
 		t.Errorf("code=%d stdout=%q, want 0 and no stdout\n%s", code, stdout, stderr)
 	}
@@ -177,7 +177,7 @@ func TestDryRunChangesNothingAndPredicts(t *testing.T) {
 	}
 
 	readonly.Reset()
-	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once")
+	code, _, stderr = invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once")
 	if want := `msg="pass done" copied=1 replaced=1 adopted=1 waiting=1 failed=0 skipped=0 unmatched=0 bytes=9 `; code != exitOK || !strings.Contains(stderr, want) {
 		t.Errorf("real pass after the dry run: exit %d, log lacks %q:\n%s", code, want, stderr)
 	}
@@ -195,7 +195,7 @@ func TestDryRunReadOnlyDirs(t *testing.T) {
 		t.Cleanup(func() { chmodTree(t, root, 0o755, 0o644) })
 	}
 	destBefore, stateBefore := snapshot(t, dest), snapshot(t, stateDir)
-	code, _, stderr := dryRun(t, "--dest", dest, "--state-dir", stateDir)
+	code, _, stderr := dryRun(t, "--dest", dest, "--history-dir", stateDir)
 	if want := `msg="dry run done" copy=1 replace=1 adopt=1 waiting=1 failed=0 skipped=0 unmatched=0 bytes=9 `; code != exitOK || !strings.Contains(stderr, want) {
 		t.Errorf("exit %d, log lacks %q:\n%s", code, want, stderr)
 	}
@@ -255,7 +255,7 @@ func TestDryRunFailures(t *testing.T) {
 			}
 			dev.unreadable = tc.unreadable
 			dev.use(t)
-			code, _, stderr := dryRun(t, "--dest", dest, "--state-dir", stateDir)
+			code, _, stderr := dryRun(t, "--dest", dest, "--history-dir", stateDir)
 			if code != exitFailure {
 				t.Errorf("exit %d, want 1\n%s", code, stderr)
 			}

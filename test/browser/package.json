@@ -1,7 +1,7 @@
 {
   "name": "seestar-copy-browser-tests",
   "private": true,
-  "description": "Browser tests of the page seestar-copy-cli browse serves",
+  "description": "Browser tests of the page seestar-wormhole-cli browse serves",
   "license": "Unlicense",
   "scripts": {
     "test": "playwright test"

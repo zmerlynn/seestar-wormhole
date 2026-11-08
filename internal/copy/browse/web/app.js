@@ -17,7 +17,7 @@ let loading = null;
 let viewing = null; // the AbortController of the text being read
 
 // URLs are relative, so the page works wherever it is served: at / by
-// seestar-copy-cli, and at /browse/ in the app.
+// seestar-wormhole-cli browse, and at /browse/ in the app.
 const pageURL = (p) => (p ? '?path=' + encodeURIComponent(p) : './');
 const fileURL = (p, save) => 'file?path=' + encodeURIComponent(p) + (save ? '&download=1' : '');
 const baseName = (p) => p.slice(p.lastIndexOf('/') + 1);

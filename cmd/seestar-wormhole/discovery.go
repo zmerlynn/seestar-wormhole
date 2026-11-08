@@ -14,6 +14,7 @@ import (
 )
 
 func newDiscoveryCommand(o *options) *cobra.Command {
+	var logs logOptions
 	cmd := &cobra.Command{
 		Use:   "discovery",
 		Short: "Answer LAN discovery scans with a supplied identity",
@@ -24,6 +25,7 @@ Stop with Ctrl+C. Logs and errors go to stderr; help and version go to stdout.
 Exit 0 on orderly shutdown, 2 on usage/configuration errors, or 1 on runtime errors.`,
 		Args: noArguments,
 		RunE: func(*cobra.Command, []string) error {
+			logs.use(o)
 			return validateDiscoveryOptions(o)
 		},
 	}
@@ -33,7 +35,8 @@ Exit 0 on orderly shutdown, 2 on usage/configuration errors, or 1 on runtime err
 	f.StringVar(&o.model, "advertise-model", "", "required model label to include in discovery replies (no catalog lookup)")
 	f.StringVar(&o.name, "advertise-name", "", "display name in discovery replies (empty uses the model label)")
 	f.BoolVar(&o.lanDiscoveryAllInterfaces, "lan-discovery-all-interfaces", false, "include VPN and virtual adapters in discovery; all other admission checks still apply")
-	registerLoggingOptions(f, o)
+	registerLoggingOptions(f, &logs, "json")
+	registerVersionOption(f, o)
 	return cmd
 }
 

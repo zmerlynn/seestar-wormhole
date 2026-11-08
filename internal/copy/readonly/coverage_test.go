@@ -34,9 +34,9 @@ var writeNames = map[string]bool{
 var allowed = map[string]string{}
 
 // TestWritesAreGuarded checks, without type information, the rule this
-// package rests on: every function in seestar-copy's code (internal/copy/
-// and cmd/seestar-copy-cli/) whose body
-// (including function literals in it) refers to a name in writeNames, or
+// package rests on: every function in the copy code (internal/copy/, with
+// the file commands in internal/copy/cli) whose body (including function
+// literals in it) refers to a name in writeNames, or
 // calls a package-level variable initialized with one (a test seam such as
 // syncFile = (*os.File).Sync), starts with a call to readonly.Check. It also
 // checks that only tests call Reset, and only commands call Enable: a
@@ -44,7 +44,7 @@ var allowed = map[string]string{}
 // turns the guard on for them.
 func TestWritesAreGuarded(t *testing.T) {
 	var guarded []string
-	for _, top := range []string{"internal/copy", "cmd/seestar-copy-cli"} {
+	for _, top := range []string{"internal/copy"} {
 		dirs := map[string][]*ast.File{}
 		fset := token.NewFileSet()
 		err := filepath.WalkDir(filepath.Join("..", "..", "..", filepath.FromSlash(top)), func(p string, de fs.DirEntry, err error) error {

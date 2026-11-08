@@ -40,6 +40,7 @@ func TestLicensesBinary(t *testing.T) {
 	for _, want := range []string{
 		"seestar-wormhole NOTICE\n",
 		"Module: github.com/pion/dtls/v3\nSPDX: MIT\n",
+		"Module: github.com/hirochachacha/go-smb2/v2\n", // the file commands' SMB client
 	} {
 		if !strings.Contains(text, want) {
 			t.Errorf("licenses output missing %q", want)
@@ -49,6 +50,7 @@ func TestLicensesBinary(t *testing.T) {
 		"NOTICE",
 		"vendor/github.com/pion/dtls/v3/LICENSE",
 		"vendor/github.com/spf13/cobra/LICENSE.txt",
+		"vendor/github.com/hirochachacha/go-smb2/v2/LICENSE",
 	} {
 		want, err := os.ReadFile(filepath.Join("../..", path))
 		if err != nil {

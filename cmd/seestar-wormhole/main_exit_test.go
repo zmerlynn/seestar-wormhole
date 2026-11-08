@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"io"
 	"os"
 	"runtime"
@@ -149,16 +150,120 @@ func TestUsageExitAcrossCommands(t *testing.T) {
 	}
 }
 
+// failingWriter accepts the first limit bytes, then fails every write.
+type failingWriter struct{ limit int }
+
+func (w *failingWriter) Write(p []byte) (int, error) {
+	if len(p) > w.limit {
+		n := w.limit
+		w.limit = 0
+		return n, errors.New("output unavailable")
+	}
+	w.limit -= len(p)
+	return len(p), nil
+}
+
+// outputFailureRecord is the one stderr line that help, version or licenses
+// output that could not be written must end with: text for a file command,
+// JSON for the others.
+func outputFailureRecord(command, failure string) string {
+	if fileCommand(command) {
+		return `level=ERROR msg="` + command + ` failed" error="` + failure + `"` + "\n"
+	}
+	return `"level":"ERROR","msg":"` + command + ` failed","error":"` + failure + `"}` + "\n"
+}
+
+func runToOutput(args []string, out io.Writer, windows bool) (int, string) {
+	bootstrap := func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} }
+	var logs bytes.Buffer
+	code := mainExitCodeWithPlatform(args, out, io.Discard, bootstrap,
+		func() (io.Writer, func()) { return &logs, func() {} }, windows)
+	return code, logs.String()
+}
+
+// Output that could not be written exits 1 with one "<cmd> failed" record
+// carrying the write error, through the log sink on every platform.
+func TestHelpOutputFailure(t *testing.T) {
+	var help bytes.Buffer
+	if code, _ := runToOutput([]string{"--help"}, &help, false); code != 0 {
+		t.Fatalf("--help: exit %d", code)
+	}
+	pointer := strings.LastIndex(help.String(), "Third-party license information")
+	for _, tc := range []struct {
+		args    []string
+		command string
+		limit   int
+	}{
+		{nil, programName, 0},
+		{[]string{"--help"}, programName, 0},
+		{[]string{"-h"}, programName, 0},
+		{[]string{"--version"}, programName, 0},
+		{[]string{"help"}, "help", 0},
+		{[]string{"help", "sync"}, "help", 0},
+		{[]string{"sync", "--help"}, "sync", 0},
+		{[]string{"find", "--help"}, "find", 0},
+		{[]string{"browse", "-h"}, "browse", 0},
+		{[]string{"delete", "--help"}, "delete", 0},
+		{[]string{"proxy", "--help"}, "proxy", 0},
+		{[]string{"proxy", "--version"}, "proxy", 0},
+		{[]string{"discovery", "--help"}, "discovery", 0},
+		{[]string{"licenses", "--help"}, "licenses", 0},
+		{[]string{"licenses"}, "licenses", 0},
+		// Only the license pointer, written after Cobra's help, fails.
+		{nil, programName, pointer},
+		{[]string{"help"}, "help", pointer},
+	} {
+		for _, windows := range []bool{false, true} {
+			code, logs := runToOutput(tc.args, &failingWriter{limit: tc.limit}, windows)
+			want := outputFailureRecord(tc.command, "output unavailable")
+			if code != 1 || !strings.HasSuffix(logs, want) || strings.Count(logs, "\n") != 1 {
+				t.Errorf("%q, limit %d, windows=%t: exit %d stderr=%q, want 1 and one line ending %q", tc.args, tc.limit, windows, code, logs, want)
+			}
+		}
+	}
+}
+
+// recoveringWriter fails its first write, then accepts every write.
+type recoveringWriter struct{ failed bool }
+
+func (w *recoveringWriter) Write(p []byte) (int, error) {
+	if !w.failed {
+		w.failed = true
+		return 0, errors.New("first write failed")
+	}
+	return len(p), nil
+}
+
+// Later successful writes must not erase the first error: the help is
+// still truncated.
+func TestHelpKeepsFirstOutputError(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		command string
+	}{
+		{nil, programName},
+		{[]string{"--help"}, programName},
+		{[]string{"help"}, "help"},
+		{[]string{"sync", "--help"}, "sync"},
+	} {
+		code, logs := runToOutput(tc.args, &recoveringWriter{}, false)
+		want := outputFailureRecord(tc.command, "first write failed")
+		if code != 1 || !strings.HasSuffix(logs, want) || strings.Count(logs, "\n") != 1 {
+			t.Errorf("%q: exit %d stderr=%q, want 1 and one line ending %q", tc.args, code, logs, want)
+		}
+	}
+}
+
 // failedOutput refuses every write, as a full disk or closed pipe does.
 type failedOutput struct{}
 
 func (failedOutput) Write([]byte) (int, error) { return 0, syscall.EIO }
 
 // Help that cannot be written exits 1, as a failed version write does, and
-// an unknown help topic is a usage error, as in seestar-copy-cli.
+// an unknown help topic is a usage error.
 func TestHelpOutcomes(t *testing.T) {
 	bootstrap := func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} }
-	for _, args := range [][]string{{"--help"}, {"help"}, {"help", "proxy"}, {"proxy", "--help"}, {"--version"}} {
+	for _, args := range [][]string{{"--help"}, {"help"}, {"help", "proxy"}, {"proxy", "--help"}, {"help", "sync"}, {"sync", "--help"}, {"--version"}} {
 		for _, windows := range []bool{false, true} {
 			var logs bytes.Buffer
 			code := mainExitCodeWithPlatform(args, failedOutput{}, &logs, bootstrap,
@@ -168,11 +273,12 @@ func TestHelpOutcomes(t *testing.T) {
 			}
 		}
 	}
-	for _, args := range [][]string{{"help", "proxy"}, {"help", "licenses"}} {
-		var out, logs bytes.Buffer
-		code := mainExitCodeWithPlatform(args, &out, &logs, bootstrap, func() (io.Writer, func()) { return &logs, func() {} }, false)
-		if code != 0 || !strings.Contains(out.String(), programName+" "+args[1]) || !strings.Contains(out.String(), "-h, --help") || logs.Len() != 0 {
-			t.Errorf("%q: exit %d out=%q logs=%q", args, code, &out, &logs)
+	for _, topic := range []string{"proxy", "licenses", "sync", "find", "browse", "delete"} {
+		var out, logs, want bytes.Buffer
+		code := mainExitCodeWithPlatform([]string{"help", topic}, &out, &logs, bootstrap, func() (io.Writer, func()) { return &logs, func() {} }, false)
+		mainExitCodeWithPlatform([]string{topic, "--help"}, &want, io.Discard, bootstrap, func() (io.Writer, func()) { return io.Discard, func() {} }, false)
+		if code != 0 || !strings.Contains(out.String(), programName+" "+topic) || !strings.Contains(out.String(), "-h, --help") || logs.Len() != 0 || out.String() != want.String() {
+			t.Errorf("help %s: exit %d out=%q logs=%q, want the output of %s --help", topic, code, &out, &logs, topic)
 		}
 	}
 	for _, args := range [][]string{{"help", "nonesuch"}, {"help", "proxy", "nonesuch"}} {
@@ -185,7 +291,7 @@ func TestHelpOutcomes(t *testing.T) {
 				t.Fatalf("%q: want one JSON diagnostic, got %q: %v", args, &logs, err)
 			}
 			if code != 2 || out.Len() != 0 || record.Msg != "help failed" || record.Phase != "arguments" || record.Reason != "invalid_option" ||
-				record.Option != "help" || record.Rule != "unknown help topic; give a command name, such as proxy" || record.Help != programName+" help --help" {
+				record.Option != "help" || record.Rule != "unknown help topic; give a command name, such as sync" || record.Help != programName+" help --help" {
 				t.Errorf("%q windows=%t: exit %d out=%q diagnostic=%+v", args, windows, code, &out, record)
 			}
 		}
