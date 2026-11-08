@@ -9,6 +9,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
@@ -407,7 +408,7 @@ func (c *controller) view() runView {
 // persistRoute saves the route onto the last saved settings, as Remove
 // does, never onto a form draft. It is refused while a run is active,
 // whose save at its ready boundary would carry the old route.
-func (c *controller) persistRoute(route, address string) error {
+func (c *controller) persistRoute(route, address, serial string) error {
 	c.saveMu.Lock()
 	defer c.saveMu.Unlock()
 	c.mu.Lock()
@@ -423,9 +424,28 @@ func (c *controller) persistRoute(route, address string) error {
 	s.Route = route
 	if route == routeLAN {
 		// The caller has tested the address.
-		s.LANAddress, s.RouteEstablished = address, true
+		s.LANAddress, s.LANSerial, s.RouteEstablished = address, serial, true
 	}
 	return c.persistLocked(s)
+}
+
+// persistMoved saves address as this network's address after a scan found
+// the telescope with serial there, when it was saved at from. It saves
+// nothing when the saved settings changed meanwhile or a run is active,
+// and reports whether it saved.
+func (c *controller) persistMoved(from, address, serial string) bool {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	c.mu.Lock()
+	running := c.done != nil
+	s := c.lastSaved
+	c.mu.Unlock()
+	saved, ok := copyapp.NormalizeAddress(s.LANAddress)
+	if running || !ok || s.Route != routeLAN || s.LANSerial != serial || saved != from {
+		return false
+	}
+	s.LANAddress = address
+	return c.persistLocked(s) == nil
 }
 
 // connected returns the run's settings, the telescope it selected and

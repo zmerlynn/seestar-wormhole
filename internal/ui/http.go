@@ -49,10 +49,19 @@ type server struct {
 	// copyRefused is set when copy.json was refused at startup, so this
 	// run has no copy; the page then says to fix or remove the file.
 	copyRefused bool
+	// lan is the scans' state: what they saw, and the dials looking for
+	// a telescope that moved.
+	lan lanState
 }
 type input struct {
 	Settings Settings `json:"settings"`
 	Password string   `json:"password"`
+}
+
+// scanInput is /api/scan's body: a typed address, or none to scan this
+// network.
+type scanInput struct {
+	Address string `json:"address"`
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +230,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return s.settings.Route == routeLAN
 		}, func() error {
 			s.mu.Lock()
-			in.Settings.Route, in.Settings.LANAddress = routeAccount, s.settings.LANAddress
+			in.Settings.Route, in.Settings.LANAddress, in.Settings.LANSerial = routeAccount, s.settings.LANAddress, s.settings.LANSerial
 			s.mu.Unlock()
 			if err := s.controller.start(in.Settings, in.Password); err != nil {
 				return err
@@ -239,7 +248,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case "/api/password/save":
 		s.mu.Lock()
-		in.Settings.Route, in.Settings.LANAddress = s.settings.Route, s.settings.LANAddress
+		in.Settings.Route, in.Settings.LANAddress, in.Settings.LANSerial = s.settings.Route, s.settings.LANAddress, s.settings.LANSerial
 		s.mu.Unlock()
 		if _, _, err = in.Settings.validate(); err == nil {
 			generation := s.controller.credentials.nextGeneration()
@@ -268,6 +277,17 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.saveRoute(r.Context(), in.Settings.Route, in.Settings.LANAddress)
+	case "/api/scan":
+		var scan scanInput
+		if json.Unmarshal(b, &scan) != nil {
+			fail(http.StatusBadRequest)
+			return
+		}
+		var found scanView
+		if found, err = s.scan(r.Context(), scan.Address); err == nil {
+			localhttp.Respond(w, http.StatusOK, found)
+			return
+		}
 	case "/api/retry-storage":
 		err = s.controller.retrySave()
 	case "/api/quit":
@@ -339,7 +359,8 @@ func (s *server) saveRoute(ctx context.Context, route, address string) error {
 			}
 		}
 	}
-	return s.changeRoute(func() bool { return true }, func() error { return s.controller.persistRoute(route, address) })
+	serial := s.serialFor(route, address)
+	return s.changeRoute(func() bool { return true }, func() error { return s.controller.persistRoute(route, address, serial) })
 }
 
 // changeRoute commits a change of how the copier reaches the telescope
@@ -431,7 +452,7 @@ func (s *server) copyTarget() (copyapp.Target, error) {
 	s.mu.Unlock()
 	if settings.Route == routeLAN {
 		endpoint, err := lanEndpoint(settings)
-		return copyapp.Target{Endpoint: endpoint}, err
+		return copyapp.Target{Endpoint: endpoint, Serial: settings.LANSerial}, err
 	}
 	_, device, id, ok := s.controller.connected()
 	if !ok {
@@ -533,6 +554,8 @@ type pageSettings struct {
 }
 
 func pageSettingsFor(s Settings) pageSettings {
+	// The page has no use for the telescope's serial on this network.
+	s.LANSerial = ""
 	d, _ := time.ParseDuration(s.Idle)
 	return pageSettings{s, d.Minutes(), (cloudhttp.Device{Serial: s.Serial, Model: s.Model}).ChoiceLabel()}
 }

@@ -74,6 +74,9 @@ type Target struct {
 	Endpoint string
 	Device   string // "" on this network
 	Run      uint64 // 0 on this network
+	// Serial is the serial number a scan saw at Endpoint on this network,
+	// or "". It is compared only, never shown or logged.
+	Serial string
 }
 
 // String is the endpoint only.
@@ -85,12 +88,18 @@ func (t Target) onLAN() bool { return t.Device == "" && t.Run == 0 }
 // sameTelescope reports whether u reaches the telescope t does: through
 // the account the same device, in any run and at any endpoint; with no
 // device on either, the same address in the same run, which on this
-// network is always 0.
+// network is always 0, or on this network the same serial at any address.
 func (t Target) sameTelescope(u Target) bool {
 	if t.Device == "" && u.Device == "" {
-		return t.Endpoint == u.Endpoint && t.Run == u.Run
+		return t.Endpoint == u.Endpoint && t.Run == u.Run || t.moved(u)
 	}
 	return t.Device == u.Device
+}
+
+// moved reports whether u is t's telescope on this network at another
+// address: both carry the same serial.
+func (t Target) moved(u Target) bool {
+	return t.onLAN() && u.onLAN() && t.Serial != "" && t.Serial == u.Serial
 }
 
 // Mount is the app's API and Browse inside another app's server, which

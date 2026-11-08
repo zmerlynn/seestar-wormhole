@@ -20,36 +20,44 @@ type Resolved struct {
 
 // Redial connects to a telescope saved as endpoint (host:port) and serial.
 // It tries endpoint first. When that connect gets no answer or is refused
-// and a serial is saved, it scans for the serial and tries each address
-// the telescope answered from, on the saved port. When nothing better is
+// and a serial is saved, it calls [Relocate]. When nothing better is
 // found it returns the first failure.
 func Redial[T any](ctx context.Context, s *Scanner, endpoint, serial string, dial func(context.Context, string) (T, error)) (T, Resolved, error) {
 	session, err := dial(ctx, endpoint)
 	if err == nil || serial == "" || s == nil || ctx.Err() != nil || !Unreached(err) {
 		return session, Resolved{Endpoint: endpoint}, err
 	}
+	return Relocate(ctx, s, endpoint, serial, err, dial)
+}
+
+// Relocate is Redial after the connect to endpoint failed with failed: it
+// scans for serial and tries each address the telescope answered from,
+// other than endpoint's, on endpoint's port. When none connects it returns
+// failed.
+func Relocate[T any](ctx context.Context, s *Scanner, endpoint, serial string, failed error, dial func(context.Context, string) (T, error)) (T, Resolved, error) {
+	var zero T
 	host, port, splitErr := net.SplitHostPort(endpoint)
-	if splitErr != nil {
-		return session, Resolved{Endpoint: endpoint}, err
+	if splitErr != nil || serial == "" || s == nil {
+		return zero, Resolved{Endpoint: endpoint}, failed
 	}
 	result, scanErr := s.Find(ctx, serial)
 	telescope, ok := result.Find(serial)
 	if scanErr != nil || !ok {
-		return session, Resolved{Endpoint: endpoint, Replies: result.Replies}, err
+		return zero, Resolved{Endpoint: endpoint, Replies: result.Replies}, failed
 	}
 	for _, address := range telescope.Addresses {
 		if saved, parseErr := netip.ParseAddr(host); parseErr == nil && saved.Unmap() == address {
 			continue
 		}
 		moved := net.JoinHostPort(address.String(), port)
-		if next, nextErr := dial(ctx, moved); nextErr == nil {
+		if next, err := dial(ctx, moved); err == nil {
 			return next, Resolved{Endpoint: moved, Moved: true, Seen: &telescope, Replies: result.Replies}, nil
 		}
 		if ctx.Err() != nil {
 			break
 		}
 	}
-	return session, Resolved{Endpoint: endpoint, Seen: &telescope, Replies: result.Replies}, err
+	return zero, Resolved{Endpoint: endpoint, Seen: &telescope, Replies: result.Replies}, failed
 }
 
 // Unreached reports whether err is a connect that never reached a server:

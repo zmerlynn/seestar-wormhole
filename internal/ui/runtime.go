@@ -191,7 +191,8 @@ var (
 // with the host's target and dial hooks: it is the one builder of the
 // app's MountOptions. The hooks choose the route by the target's Run,
 // never by its endpoint's text: Run 0 dials the endpoint over TCP, and
-// any other run dials device port 445 through that run's session. They
+// any other run dials device port 445 through that run's session. On this
+// network a saved serial lets them find a telescope that moved. They
 // look the run up on each dial, so one Mount reaches whichever run is
 // current. Every file-tool outcome goes to the app's event trail.
 func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOptions {
@@ -207,13 +208,17 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 		case copyDial != nil:
 			return copyDial(ctx, t)
 		case t.Run == 0:
-			return tcpDial(ctx, t.Endpoint, log)
+			return lanRedial(ctx, handler, t, func(ctx context.Context, endpoint string) (remote.Session, error) {
+				return tcpDial(ctx, endpoint, log)
+			})
 		}
 		return dialVia(ctx, t.Endpoint, via(t.Run), log)
 	}
 	o.Remover = func(ctx context.Context, t copyapp.Target) (remote.Remover, error) {
 		if t.Run == 0 {
-			return tcpRemover(ctx, t.Endpoint, log)
+			return lanRedial(ctx, handler, t, func(ctx context.Context, endpoint string) (remote.Remover, error) {
+				return tcpRemover(ctx, endpoint, log)
+			})
 		}
 		return removerVia(ctx, t.Endpoint, via(t.Run), log)
 	}

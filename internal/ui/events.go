@@ -85,19 +85,54 @@ func (l *eventLog) addFailure(text string, err error) {
 	l.write(entry)
 }
 
+// addScan records a line about a scan of this network under code, one of
+// the scan codes. Its text names at most the telescope's model label and
+// a reply count, never an address, a name or a serial.
+func (l *eventLog) addScan(code, text string) {
+	if l == nil {
+		return
+	}
+	l.diskMu.Lock()
+	defer l.diskMu.Unlock()
+	l.mu.Lock()
+	entry := l.publishCodedLocked(text, nil, code, false)
+	l.mu.Unlock()
+	l.write(entry)
+}
+
+// The scan codes: a scan of the page's, a typed address asked, a scan that
+// couldn't run, and the copier's scans for a saved telescope that stopped
+// answering: found and saved, found but not saved, found but not
+// answering at its new address, and not found.
+const (
+	scanListed     = "scan_listed"
+	scanProbed     = "scan_probed"
+	scanFailedCode = "scan_failed"
+	scanMoved      = "scan_moved"
+	scanUnsaved    = "scan_moved_unsaved"
+	scanUnreached  = "scan_unreached"
+	scanNotFound   = "scan_not_found"
+)
+
 // publishLocked records an immutable event in memory, without disk I/O.
 func (l *eventLog) publishLocked(text string, err error, telescope string, catalogs ...cloudhttp.Catalog) *event {
 	code := eventCode(text, telescope, catalogs...)
 	if code == "" {
 		return nil
 	}
+	return l.publishCodedLocked(text, err, code, len(catalogs) == 0)
+}
+
+// publishCodedLocked is publishLocked with its code chosen. collapse drops
+// a repeat of the last connection line.
+func (l *eventLog) publishCodedLocked(text string, err error, code string, collapse bool) *event {
 	entry := event{Time: time.Now().UTC(), Source: diagnostic.SourceConnection, Message: text, Code: code}
 	if err != nil {
 		entry.Phase, entry.Reason = diagnostic.Fields(err, "connect")
 	}
 	// A repeat collapses into the last connection line, whatever file-tool
 	// lines came between.
-	if len(catalogs) == 0 && l.hasConnection {
+	if collapse && l.hasConnection {
 		last := l.lastConnection
 		if last.Message == entry.Message && last.Phase == entry.Phase && last.Reason == entry.Reason {
 			return nil
