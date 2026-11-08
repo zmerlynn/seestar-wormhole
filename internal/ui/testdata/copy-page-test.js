@@ -147,9 +147,9 @@ async function checkActivityMerge(st) {
   });
   copyAssert(rows[2].getAttribute('data-warn') === 'true' && rows[0].getAttribute('data-warn') === null, 'the warning row is not marked');
   const copied = JSON.parse(diagnostic);
-  copyAssert(Object.keys(copied).join() === 'app,version,error_code,settings,copy_settings,events,log_path', 'diagnostic keys ' + Object.keys(copied));
+  copyAssert(Object.keys(copied).join() === 'app,version,error_code,settings,copy_settings,failures,events,log_path', 'diagnostic keys ' + Object.keys(copied));
   copyAssert(JSON.stringify(copied.copy_settings) === JSON.stringify(st.after.settings) && JSON.stringify(copied.settings) === JSON.stringify(st.unlocked.effective), 'diagnostic settings');
-  copyAssert(copied.log_path === 'synthetic-log' && copied.events.map(e => e.source + ':' + e.message).join('|') === want.map(w => w.join(':')).join('|'), 'diagnostic events or log path');
+  copyAssert(copied.log_path === 'synthetic-log' && copied.events.map(e => e.source + ':' + e.message).join('|') === want.filter(w => w[0] === 'connection').map(w => w.join(':')).join('|'), 'diagnostic events or log path');
   copyAssert($('copy-settings').textContent === JSON.stringify(st.after.settings, null, 2), 'Copy settings in Details');
   copyAssert($('config-file').textContent.startsWith('Connection settings: ') && $('copy-file').textContent.startsWith('Copy settings: '), 'Files lacks the settings files');
   // An unchanged poll writes nothing.

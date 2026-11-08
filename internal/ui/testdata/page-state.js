@@ -369,7 +369,7 @@
       assert(detailsObserver.takeRecords().length === 0, 'unchanged poll mutated Details or ports');
       detailsObserver.disconnect();
       const copied = JSON.parse(diagnostic);
-      assert(Object.keys(copied).join() === 'app,version,error_code,settings,copy_settings,events,log_path' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && copied.events[0].message === event.message && copied.events[0].source === 'connection' && copied.log_path === 'synthetic-private-path' && JSON.stringify(copied.copy_settings) === JSON.stringify(liveCopy?.settings ?? null) && !diagnostic.includes('synthetic@example.invalid') && !$('mappings'), 'copied object schema/privacy');
+      assert(Object.keys(copied).join() === 'app,version,error_code,settings,copy_settings,failures,events,log_path' && copied.app === 'seestar-wormhole' && copied.version === 'synthetic-version' && copied.events[0].time === event.time && copied.events[0].message === event.message && copied.events[0].source === 'connection' && copied.log_path === 'synthetic-private-path' && JSON.stringify(copied.copy_settings) === JSON.stringify(liveCopy?.settings ?? null) && !diagnostic.includes('synthetic@example.invalid') && !$('mappings'), 'copied object schema/privacy');
       const descriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
       let clipboard = '';
       Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText: async value => {clipboard = value;}}});
@@ -383,6 +383,14 @@
         if (descriptor) Object.defineProperty(navigator, 'clipboard', descriptor);
         else delete navigator.clipboard;
       }
+    });
+    await check('Activity shows only the Browse trail lines', async () => {
+      const line = (source, message) => ({time: '2026-01-01T19:17:00Z', source, message, code: source + '_synthetic', phase: '', reason: ''});
+      render({...status(), events: [line('connection', 'Synthetic connection line'), line('copy', 'Synthetic copy trail line'), line('delete', 'Synthetic delete trail line'), line('browse', 'Synthetic browse trail line')]});
+      const texts = [...$('events').children].map(li => li.dataset.source + ':' + li.textContent);
+      assert(texts.some(t => t.startsWith('browse:') && t.endsWith('  Browse  Synthetic browse trail line')) && texts.some(t => t.startsWith('connection:') && t.includes('Synthetic connection line')), 'a Browse or connection trail line is missing from Activity');
+      assert(!texts.some(t => t.includes('Synthetic copy trail line') || t.includes('Synthetic delete trail line')), 'Copy\'s or Free up space\'s trail line repeats the ring in Activity');
+      render({...status()});
     });
     await check('Account legend computed alignment', async () => {
       const legend = document.querySelector('#account legend'), style = getComputedStyle(legend);
