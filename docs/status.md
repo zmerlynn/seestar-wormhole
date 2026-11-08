@@ -40,6 +40,14 @@ The October 20, 2026 run, on a build of commit a3a85c9, checked:
 - Site protection on the device: the app's clock and location setters were
   dropped on every connection.
 
+The November 8, 2026 run, on a development build of 0.7.0 (commit 1e980dd9),
+checked:
+
+- The app's [file tools](#the-copy-browse-and-free-up-space-tabs-and-the-file-commands)
+  on macOS, through Telescope Network and on this network: Copy, Browse and
+  Free up space.
+- The proxy, with an iPhone's Seestar app connecting through it.
+
 Always-on idle release/redial over days has not been tested on 9.75.
 Camera-info reads worked on 9.31; they weren't part of the 9.75 runs.
 
@@ -47,7 +55,8 @@ Camera-info reads worked on 9.31; they weren't part of the 9.75 runs.
 
 - **iOS** works over the LAN from a Mac on firmware 9.31: discovery, control,
   live preview, the album, plans and video. On 9.75, discovery, control and
-  the album have been checked.
+  the album have been checked, and in the November 8, 2026 run the app
+  connected through the proxy.
 - **Android** hasn't been run. Its protocol has been studied, but nobody has
   tried it with a real phone.
 - **[Discovery at home with an SSH chain](phone-app.md#discovery-at-home-with-a-primary-on-another-lan)**
@@ -90,14 +99,19 @@ test the command's version and help output.
 
 ### The Copy, Browse and Free up space tabs and the file commands
 
-The app's Copy, Browse and Free up space tabs, new in 0.7.0, haven't been run
-against a telescope yet, on either route. Their copier came from seestar-copy
-0.4.0, which before the merge was tried on a telescope only on macOS, through
-the proxy. Its Free up space wasn't tried on a telescope, and neither was the
-**On this network** route. In 0.7.0 its commands moved from
-`seestar-copy-cli` into `seestar-wormhole-cli` (`sync`, `find`, `browse` and
-`delete`) with the copy engine unchanged; the merged commands haven't been run
-against a telescope either.
+On November 8, 2026, the maintainer ran a development build of 0.7.0 (commit
+1e980dd9) on macOS (Apple Silicon) against a Seestar S50 Pro on firmware 9.75,
+both remotely through Telescope Network and on this network. On both routes,
+Copy copied images, Browse listed the telescope, and Free up space deleted
+copied files, not only in its preview. The app hasn't been run against a
+telescope on Windows or Linux.
+
+The same day, `seestar-wormhole-cli` built from an earlier 0.7.0 commit
+(17b25471) for Linux arm64 ran read-only against the same telescope, through
+a running proxy's SMB port. `find`, `sync --dry-run` and `sync --once` into a
+scratch folder all exited 0 with no warnings or errors. `delete` and `browse`
+haven't been run from the command line against a telescope, and the file
+commands haven't been run against one on macOS or Windows.
 
 Two 0.7.0 additions are tested only in CI. The Mac app's Info.plist carries
 the Local Network usage text, and a **Test**, **Save**, copy pass or Preview on
