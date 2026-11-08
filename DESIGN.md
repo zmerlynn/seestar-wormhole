@@ -101,8 +101,9 @@ internal/ui server (page, token, config.json, gui.log)
   history lives in the per-user config folder's `seestar-copy`, or the history folder `copy.json` names. The app,
   `sync`, `delete`, `find` and `browse` share it by default, so they share one history and one history lock per
   images folder. `--profile default` reads `copy.json` and `config.json` to fill a command's flags, and writes or
-  locks nothing. Every writer into an images folder also holds the folder lock, `.seestar-wormhole.lock` at its top:
-  a pass of `sync` or of the app's copying, a `delete` that removes files, and Browse's Save into that folder.
+  locks nothing. Each copying pass (`sync` or the app's) and Browse's Save into the images folder hold its folder
+  lock, `.seestar-wormhole.lock` at its top. A real `delete` takes it too, except when the folder is missing or on a
+  read-only file system; a dry run or an `--ignore-state` delete takes none.
 - **Shutdown.** On quit the app first stops the Mount: it closes Browse's pool, then stops and joins copying, the
   preview and Free up space. Only then does it stop the run, whose detach closes and joins every channel the file
   tools still hold before the proxy session is closed and released. The file tools reach the telescope through that
