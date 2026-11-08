@@ -34,6 +34,9 @@ func (o Outcome) Failed() bool { return !o.Canceled && (o.Err != nil || o.Count 
 type reporter struct {
 	report func(Outcome)
 	seq    atomic.Uint64
+	// drawing, set only by tests before any outcome, runs as each number
+	// is about to be drawn.
+	drawing func()
 }
 
 // next is the next sequence number. The caller holds the lock that orders
@@ -41,6 +44,9 @@ type reporter struct {
 func (r *reporter) next() uint64 {
 	if r == nil {
 		return 0
+	}
+	if r.drawing != nil {
+		r.drawing()
 	}
 	return r.seq.Add(1)
 }

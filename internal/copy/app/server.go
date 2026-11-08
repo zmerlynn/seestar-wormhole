@@ -741,8 +741,11 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 		err = state.Remove(history, folder)
 		s.preview.discard()
 	}
+	// The outcome is numbered under s.mu, which orders clears, and
+	// reported once it is released.
+	seq := s.rep.next()
 	s.mu.Unlock()
-	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpClearHistory, Err: classified(err), Seq: s.rep.next()})
+	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpClearHistory, Err: classified(err), Seq: seq})
 	switch {
 	case errors.Is(err, state.ErrLocked):
 		conflict("Couldn't clear the history: another copy is using this folder, in another seestar-wormhole window or seestar-wormhole-cli sync. Stop that copy, then try again.")
