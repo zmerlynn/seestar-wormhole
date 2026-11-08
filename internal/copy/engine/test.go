@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // dial opens [Test]'s session. Tests replace it with the io/fs fake.
@@ -19,7 +20,7 @@ var dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.
 func Test(ctx context.Context, endpoint string, log *slog.Logger) ([]remote.Entry, error) {
 	sess, err := dial(ctx, endpoint, log)
 	if err != nil {
-		return nil, fmt.Errorf("connect to %s: %w", endpoint, err)
+		return nil, diagnostic.At("connect", fmt.Errorf("connect to %s: %w", endpoint, err))
 	}
 	defer sess.Close()
 	entries, err := sess.ReadDir(ctx, ".")

@@ -191,6 +191,9 @@ func TestDeleteResultFailed(t *testing.T) {
 	if r.Files[0].Reason != err.Error() {
 		t.Errorf("got reason %q, want the run's error %q", r.Files[0].Reason, err)
 	}
+	if r.Stopped {
+		t.Error("a failed run that Stop did not end: Stopped is true, want false")
+	}
 }
 
 // A local copy that can't be read fails its file, and the run goes on to
@@ -279,6 +282,9 @@ func TestDeleteStop(t *testing.T) {
 	r, err := RunDelete(t.Context(), o, slog.New(slog.NewTextHandler(&logs, nil)))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if !r.Stopped {
+		t.Error("a run Stop ended: Stopped is false, want true")
 	}
 	want := []string{"MyWorks/c.jpg", "MyWorks/b.jpg"}
 	if !slices.Equal(deleted, want) {

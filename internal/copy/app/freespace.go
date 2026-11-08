@@ -12,6 +12,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // The refusals of a Free up space action.
@@ -39,6 +40,8 @@ type freer struct {
 	prepared func()
 	// record, if set, logs each run's outcome to Activity as "delete".
 	record *slog.Logger
+	// rep, if set, reports each run's outcome: a [Mount]'s.
+	rep *reporter
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when nothing runs
@@ -112,8 +115,14 @@ func (f *freer) run(st freeStatus, o engine.DeleteOptions, stop chan struct{}, i
 			r, err = engine.RunDelete(ctx, o, f.log)
 			return err
 		})
-		canceled = ctx.Err() != nil
+		// A run Stop ended returns no error, so the engine says so;
+		// canceled is taken here, before the deferred cancel.
+		canceled = ctx.Err() != nil || r.Stopped
+		f.mu.Lock()
+		stale, seq := f.st.stale, f.rep.next()
+		f.mu.Unlock()
 		f.outcome(o.DryRun, r, err, canceled)
+		f.report(o.DryRun, r, err, canceled || o.DryRun && stale, seq)
 	}()
 	return nil
 }
@@ -147,6 +156,28 @@ func (f *freer) outcome(dry bool, r engine.DeleteResult, err error, canceled boo
 	default:
 		f.record.Info("free up space "+verb, "files", n, "size", size(float64(bytes)))
 	}
+}
+
+// report sends a run's outcome, numbered seq, without f.mu held: a
+// preview that ended with failed files is done, and a delete that did
+// reports their count. A canceled run, a preview discarded included,
+// reports nothing that counts.
+func (f *freer) report(dry bool, r engine.DeleteResult, err error, canceled bool, seq uint64) {
+	o := Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpDelete, Canceled: canceled, Seq: seq}
+	if dry {
+		o.Op = diagnostic.OpPreview
+	}
+	switch {
+	case err != nil && !errors.Is(err, engine.ErrFailedFiles):
+		o.Err = classified(err)
+	case !dry:
+		for _, d := range r.Files {
+			if d.Outcome == engine.FileFailed {
+				o.Count++
+			}
+		}
+	}
+	f.rep.send(o)
 }
 
 // find starts a preview with set at t, which it keeps.
