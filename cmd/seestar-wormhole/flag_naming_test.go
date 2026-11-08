@@ -12,7 +12,8 @@ import (
 
 type usageRecord struct{ Msg, Phase, Reason, Option, Rule, Help string }
 
-// usageExit runs args through the main exit path and decodes its one JSON record.
+// usageExit runs args through the main exit path and decodes its one record:
+// text for a file command, JSON for any other.
 func usageExit(t *testing.T, args ...string) (int, usageRecord, string) {
 	t.Helper()
 	var out, logs bytes.Buffer
@@ -23,7 +24,14 @@ func usageExit(t *testing.T, args ...string) (int, usageRecord, string) {
 		t.Errorf("%q: stdout %q", args, &out)
 	}
 	var record usageRecord
-	if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if len(args) > 0 && fileCommand(args[0]) {
+		fields, err := textRecord(logs.String())
+		if err != nil || strings.Count(logs.String(), "\n") != 1 {
+			t.Fatalf("%q: want one text record, got %q: %v", args, &logs, err)
+		}
+		get := func(k string) string { s, _ := fields[k].(string); return s }
+		record = usageRecord{get("msg"), get("phase"), get("reason"), get("option"), get("rule"), get("help")}
+	} else if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatalf("%q: want one JSON record, got %q: %v", args, &logs, err)
 	}
 	return code, record, logs.String()
@@ -41,7 +49,15 @@ func TestFlagNaming(t *testing.T) {
 		{[]string{"proxy", "-z"}, "proxy failed", "arguments", "unknown flag", "proxy", ""},
 		{[]string{"licenses", "--idle=PRIVATE_VALUE"}, "licenses failed", "--idle", "not a flag of licenses; see " + programName + " proxy --help", "licenses", ""},
 		{[]string{"discovery", "-p", "1:1"}, "discovery failed", "-p", "not a flag of discovery; see " + programName + " proxy --help", "discovery", ""},
-		{[]string{"discovery", "--state-dir"}, "discovery failed", "--state-dir", "not a flag of discovery; see " + programName + " proxy --help", "discovery", ""},
+		{[]string{"discovery", "--serial"}, "discovery failed", "--serial", "not a flag of discovery; see " + programName + " proxy --help", "discovery", ""},
+		{[]string{"proxy", "--dest", "PRIVATE_VALUE"}, "proxy failed", "--dest", "not a flag of proxy; see " + programName + " sync --help", "proxy", ""},
+		{[]string{"proxy", "--older-than=PRIVATE_VALUE"}, "proxy failed", "--older-than", "not a flag of proxy; see " + programName + " find --help", "proxy", ""},
+		{[]string{"sync", "--bind", "PRIVATE_VALUE"}, "sync failed", "--bind", "not a flag of sync; see " + programName + " proxy --help", "sync", ""},
+		{[]string{"sync", "--zzz-secret=PRIVATE_VALUE"}, "sync failed", "arguments", "unknown flag", "sync", "zzz-secret"},
+		{[]string{"sync", "--source", "PRIVATE_VALUE"}, "sync failed", "--source", "removed; sync copies the whole share, so leave folders out with --exclude", "sync", ""},
+		{[]string{"find", "--source"}, "find failed", "arguments", "unknown flag", "find", ""},
+		{[]string{"sync", "--version"}, "sync failed", "--version", "not a flag of sync; use " + programName + " --version", "sync", ""},
+		{[]string{"delete", "--version"}, "delete failed", "--version", "not a flag of delete; use " + programName + " --version", "delete", ""},
 		{[]string{"proxy", "--advertise-serial", "PRIVATE_VALUE"}, "proxy failed", "--advertise-serial", "not a flag of proxy; see " + programName + " discovery --help", "proxy", ""},
 		{[]string{"licenses", "--version"}, "licenses failed", "--version", "not a flag of licenses; use " + programName + " --version", "licenses", ""},
 		{[]string{"--idle", "2m"}, programName + " failed", "--idle", "not a flag of " + programName + "; see " + programName + " proxy --help", "", ""},

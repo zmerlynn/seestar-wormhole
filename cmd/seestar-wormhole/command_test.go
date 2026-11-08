@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -55,22 +56,30 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	var o options
 	root := newCommand(&o, io.Discard)
 	commands := root.Commands()
-	wantCount := 3
+	want := []string{"browse", "delete", "discovery", "find", "licenses", "proxy", "sync"}
 	if guiEnabled {
-		wantCount++
+		want = append(want, "ui")
 	}
-	if len(commands) != wantCount || commands[0].Name() != "discovery" || commands[1].Name() != "licenses" || commands[2].Name() != "proxy" || len(commands[2].Aliases) != 0 || (guiEnabled && commands[3].Name() != "ui") {
-		t.Fatalf("commands = %v, want discovery, licenses and proxy with no aliases", commands)
+	var names []string
+	for _, c := range commands {
+		names = append(names, c.Name())
+		if len(c.Aliases) != 0 {
+			t.Errorf("%s has aliases %v", c.Name(), c.Aliases)
+		}
 	}
+	if !slices.Equal(names, want) {
+		t.Fatalf("commands = %v, want %v", names, want)
+	}
+	proxyCommand, _, _ := root.Find([]string{"proxy"})
 	if root.Flags().Lookup("version") == nil || root.PersistentFlags().NFlag() != 0 {
 		t.Fatal("root version or flag scope changed")
 	}
 	for _, name := range []string{"bind", "port", "serial", "state-dir", "idle", "pause-threshold", "log-format", "log-level", "lan-discovery", "lan-discovery-all-interfaces"} {
-		if root.Flags().Lookup(name) != nil || root.PersistentFlags().Lookup(name) != nil || commands[2].Flags().Lookup(name) == nil {
+		if root.Flags().Lookup(name) != nil || root.PersistentFlags().Lookup(name) != nil || proxyCommand.Flags().Lookup(name) == nil {
 			t.Errorf("%s must be proxy-local", name)
 		}
 	}
-	commands[2].Flags().VisitAll(func(f *pflag.Flag) {
+	proxyCommand.Flags().VisitAll(func(f *pflag.Flag) {
 		if f.Shorthand != "" && (f.Name != "port" || f.Shorthand != "p") {
 			t.Errorf("unexpected shorthand %q for %s", f.Shorthand, f.Name)
 		}

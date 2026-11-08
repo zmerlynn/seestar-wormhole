@@ -15,6 +15,7 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
@@ -30,7 +31,12 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 		}
 	}
 	var got map[string]any
-	if err := json.Unmarshal(lines[len(lines)-1], &got, json.MatchCaseInsensitiveNames(true)); err != nil {
+	if fileCommand(command) { // a file command's record is text
+		var err error
+		if got, err = textRecord(string(lines[len(lines)-1])); err != nil || len(lines) != 1 {
+			t.Fatalf("want exactly one text diagnostic: %s: %v", logs, err)
+		}
+	} else if err := json.Unmarshal(lines[len(lines)-1], &got, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatalf("want exactly one JSON diagnostic: %s: %v", logs, err)
 	}
 	if _, ok := got["time"].(string); !ok {
@@ -124,20 +130,25 @@ func TestCLIParserRules(t *testing.T) {
 					}
 				})
 			}
-			rule := ""
-			switch flag.Value.Type() {
-			case "bool":
-				rule = "use a boolean value"
-			case "duration":
-				rule = "use a duration such as 2m or 0"
-			case "int":
-				rule = "use an integer byte count"
-			case "local:device":
-				rule = "use local:device ports"
-			case "string", "stringArray":
+			rule, fileRule := cli.ValueRule(flag.Value.Type())
+			switch typ := flag.Value.Type(); {
+			case typ == "string" || typ == "stringArray":
 				return
+			case fileCommand(cmd.Name()):
+				// A file command's values have the copy rules.
+				if !fileRule {
+					t.Fatalf("uncovered registered type %s for %s %s", typ, cmd.Name(), flag.Name)
+				}
+			case typ == "bool":
+				rule = "use a boolean value"
+			case typ == "duration":
+				rule = "use a duration such as 2m or 0"
+			case typ == "int":
+				rule = "use an integer byte count"
+			case typ == "local:device":
+				rule = "use local:device ports"
 			default:
-				t.Fatalf("uncovered registered type %s for %s", flag.Value.Type(), flag.Name)
+				t.Fatalf("uncovered registered type %s for %s", typ, flag.Name)
 			}
 			t.Run(cmd.Name()+"/"+flag.Name+"/invalid", func(t *testing.T) {
 				args := append(append([]string{}, prefix...), "--"+flag.Name+"=PRIVATE_VALUE")

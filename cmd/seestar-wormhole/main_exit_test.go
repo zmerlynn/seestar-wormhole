@@ -185,7 +185,7 @@ func TestHelpOutcomes(t *testing.T) {
 				t.Fatalf("%q: want one JSON diagnostic, got %q: %v", args, &logs, err)
 			}
 			if code != 2 || out.Len() != 0 || record.Msg != "help failed" || record.Phase != "arguments" || record.Reason != "invalid_option" ||
-				record.Option != "help" || record.Rule != "unknown help topic; give a command name, such as proxy" || record.Help != programName+" help --help" {
+				record.Option != "help" || record.Rule != "unknown help topic; give a command name, such as sync" || record.Help != programName+" help --help" {
 				t.Errorf("%q windows=%t: exit %d out=%q diagnostic=%+v", args, windows, code, &out, record)
 			}
 		}

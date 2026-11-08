@@ -6,18 +6,32 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-func registerSharedOptions(f *pflag.FlagSet, o *options) {
+func registerSharedOptions(f *pflag.FlagSet, o *options, l *logOptions) {
 	f.StringVar(&o.serial, "serial", "", "optional device serial: 1-64 printable ASCII bytes (0x21-0x7E; no spaces); required for accounts with several devices")
 	f.StringVar(&o.model, "model", "", "device model; required when a serial has several catalog models")
 	f.StringVar(&o.stateDir, "state-dir", "", "private installation UUID storage directory (default: memory only; UI state root with --config)")
-	registerLoggingOptions(f, o)
+	registerLoggingOptions(f, l, "json")
+	registerVersionOption(f, o)
 }
 
-func registerLoggingOptions(f *pflag.FlagSet, o *options) {
-	f.StringVar(&o.format, "log-format", "json", "stderr log format: json or text")
-	f.StringVar(&o.level, "log-level", "info", "stderr log level: debug, info, warn or error")
+// logOptions holds one command's --log-format and --log-level. Each command
+// has its own: pflag writes a flag's default into its variable when the flag
+// is registered, so commands sharing a variable would share the last default.
+type logOptions struct{ format, level string }
+
+// registerLoggingOptions registers --log-format, with the command's default
+// format, and --log-level.
+func registerLoggingOptions(f *pflag.FlagSet, l *logOptions, format string) {
+	f.StringVar(&l.format, "log-format", format, "stderr log format: json or text")
+	f.StringVar(&l.level, "log-level", "info", "stderr log level: debug, info, warn or error")
+}
+
+func registerVersionOption(f *pflag.FlagSet, o *options) {
 	f.BoolVar(&o.version, "version", false, "print version, revision and platform")
 }
+
+// use makes l the logging options of the run.
+func (l *logOptions) use(o *options) { o.format, o.level = l.format, l.level }
 
 func validateSharedOptions(o *options) error {
 	if err := validateLoggingOptions(o); err != nil {

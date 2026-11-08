@@ -2,6 +2,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -21,6 +22,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/licenses"
@@ -66,6 +68,10 @@ type options struct {
 	config                    bool
 	savedEmail                string
 	name                      string
+	// fileName is the file command parsed, and file that command once it
+	// validated.
+	fileName string
+	file     *cli.Command
 }
 
 func validateOptions(o *options) error {
@@ -172,6 +178,9 @@ func runParsedWithConfigRuntime(ctx context.Context, o options, out, logs io.Wri
 	}
 	if o.command == commandDiscoveryOnly {
 		return runDiscovery(ctx, o, logs, listenDiscovery)
+	}
+	if o.command == commandFiles {
+		return runFiles(ctx, o, out, logs)
 	}
 	if o.config {
 		credentials, err := savedCredentials(ctx, o.savedEmail, os.LookupEnv, config.keychainPassword)
@@ -386,8 +395,12 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	defer stop()
 	// Acquire stdout first so Darwin restores shared stdout/stderr flags in
 	// reverse acquisition order, including launches using 2>&1.
+	// A file command's stdout is its output, such as find's listing, so its
+	// lost diagnostics have no fallback there.
 	var fallback io.Writer = out
-	if out == os.Stdout {
+	if o.command == commandFiles {
+		fallback = nil
+	} else if out == os.Stdout {
 		var closeFallback func()
 		fallback, closeFallback = logWriterFD(1)
 		defer closeFallback()
@@ -400,6 +413,9 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 		w = &logLossWriter{output: sink}
 	}
 	w.fallback = fallback
+	if o.command == commandFiles {
+		w.format = cmp.Or(o.format, "text") // empty when parsing failed
+	}
 	if q, ok := w.output.(interface{ setLogReporter(*logLossWriter) }); ok {
 		q.setLogReporter(w)
 	}
@@ -411,9 +427,16 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	if err != nil && o.command == commandUI {
 		reportUIError(err)
 	}
+	if w.fallback == nil && w.Err() != nil {
+		// With no fallback, the summary goes through the sink, which drops it
+		// if stderr is still blocked.
+		w.summarize(w.output)
+	}
 	closeLog()
 	if loss := w.Err(); loss != nil {
-		newLogger("json", w.fallback).Warn("diagnostics_lost", "rule", "log_sink_loss", "count", w.Dropped(), "bytes", w.bytes.Load())
+		if w.fallback != nil {
+			w.summarize(w.fallback)
+		}
 		if err == nil {
 			return 1
 		}
@@ -431,6 +454,8 @@ func logCommandArgumentError(o options, out io.Writer, err error) {
 		logConfigurationError(out, "discovery", err)
 	case commandHelpTopic:
 		logConfigurationError(out, "help", err)
+	case commandFiles:
+		logConfigurationError(out, o.fileName, err)
 	case commandRoot:
 		logRootError(out, err)
 	default:

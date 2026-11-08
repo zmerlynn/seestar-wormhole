@@ -19,6 +19,8 @@ func newLogger(format string, w io.Writer) *slog.Logger {
 type logLossWriter struct {
 	output   io.Writer
 	fallback io.Writer
+	// format is the log format of the loss notices; empty means json.
+	format   string
 	dropped  atomic.Uint64
 	bytes    atomic.Uint64
 	reported atomic.Uint64
@@ -80,13 +82,27 @@ func (w *logLossWriter) report(sink io.Writer) {
 	r.Add("rule", "log_sink_loss", "count", count, "bytes", w.bytes.Load())
 	// This temporary receipt checks short writes without recursively reporting to
 	// the failed sink. The original loss remains retained if both outputs fail.
-	err := newLogger("json", logReceiptWriter{sink}).Handler().Handle(context.Background(), r)
+	err := w.logger(logReceiptWriter{sink}).Handler().Handle(context.Background(), r)
 	if err != nil && w.fallback != nil {
-		err = newLogger("json", logReceiptWriter{w.fallback}).Handler().Handle(context.Background(), r)
+		err = w.logger(logReceiptWriter{w.fallback}).Handler().Handle(context.Background(), r)
 	}
 	if err == nil {
 		w.reported.Store(count)
 	}
+}
+
+// logger returns a logger in the loss notices' format.
+func (w *logLossWriter) logger(out io.Writer) *slog.Logger {
+	if w.format == "" {
+		return newLogger("json", out)
+	}
+	return newLogger(w.format, out)
+}
+
+// summarize writes the final account of the lost diagnostics to sink. A
+// sink that fails drops it; the loss is already counted.
+func (w *logLossWriter) summarize(sink io.Writer) {
+	w.logger(logReceiptWriter{sink}).Warn("diagnostics_lost", "rule", "log_sink_loss", "count", w.Dropped(), "bytes", w.bytes.Load())
 }
 
 // slog handlers inspect the error but do not detect a short write themselves.

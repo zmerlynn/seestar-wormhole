@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
@@ -32,6 +33,12 @@ func flagParseError(cmd *cobra.Command, err error) error {
 	var invalid *pflag.InvalidValueError
 	if errors.As(err, &invalid) {
 		rule := "use a supported value"
+		if cmd != nil && fileCommand(cmd.Name()) {
+			if r, ok := cli.ValueRule(invalid.GetFlag().Value.Type()); ok {
+				rule = r
+			}
+			return &argumentError{Option: "--" + invalid.GetFlag().Name, Rule: rule}
+		}
 		switch invalid.GetFlag().Value.Type() {
 		case "duration":
 			rule = "use a duration such as 2m or 0"
@@ -54,7 +61,7 @@ var retiredFlags = map[string]map[string]string{
 
 // flagHomeOrder lists the commands searched first for an unknown flag's home;
 // the rest of the tree follows in its own order.
-var flagHomeOrder = []string{"sync", "find", "browse", "delete"}
+var flagHomeOrder = []string{"sync", "find", "browse", "delete", "proxy"}
 
 // unknownFlagError names a flag only when this program defines that name
 // somewhere in its tree, or once did. Any other name may be a typed secret,
@@ -112,6 +119,12 @@ func logConfigurationError(out io.Writer, command string, err error) {
 	var detail *argumentError
 	if errors.As(err, &detail) {
 		logger := configurationLogger(out, command, detail)
+		if fileCommand(command) {
+			// A file command's default format is text, and the record keeps it
+			// whatever --log-format says, since that may be the flag at fault.
+			logger = newLogger("text", out).With("option", detail.Option, "rule", detail.Rule,
+				"help", programName+" "+command+" --help")
+		}
 		if command == "proxy" || command == "discovery" {
 			logger.Error(command+" failed", "phase", "arguments", "reason", "invalid_option", "cleanup_reason", "none")
 		} else {

@@ -23,6 +23,7 @@ const (
 	commandDiscoveryOnly
 	commandUI
 	commandHelpTopic
+	commandFiles
 )
 
 type commandOutcome uint8
@@ -77,7 +78,7 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			topic, rest, err := root.Find(args)
 			if err != nil || len(rest) != 0 {
-				return &argumentError{Option: "help", Rule: "unknown help topic; give a command name, such as proxy"}
+				return &argumentError{Option: "help", Rule: "unknown help topic; give a command name, such as sync"}
 			}
 			topic.InitDefaultHelpFlag() // list -h in the topic's help, as "topic --help" does
 			return topic.Help()
@@ -86,6 +87,7 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 	root.SetFlagErrorFunc(flagParseError)
 	root.Flags().BoolVar(&o.version, "version", false, "print version, revision and platform")
 	addUICommand(root, o)
+	var proxyLogs logOptions
 	proxyCommand := &cobra.Command{
 		Use:   "proxy",
 		Short: "Forward local TCP ports through one shared Seestar session",
@@ -103,6 +105,7 @@ or 1 on other runtime errors including failed release.`,
 		Example: "  " + programName + " proxy --idle 2m --state-dir /private/seestar",
 		Args:    noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			proxyLogs.use(o)
 			if o.config {
 				if err := loadProxySettings(o, cmd.Flags()); err != nil {
 					return err
@@ -113,7 +116,7 @@ or 1 on other runtime errors including failed release.`,
 	}
 	f := proxyCommand.Flags()
 	f.BoolVar(&o.config, "config", false, "read saved UI settings and share its installation identity; environment password or OS keychain")
-	registerSharedOptions(f, o)
+	registerSharedOptions(f, o, &proxyLogs)
 	f.StringVar(&o.bind, "bind", defaultBind, "local bind address (use 0.0.0.0 for a container)")
 	f.VarP(&o.ports, "port", "p", "override a device listener with local:device; local 0 disables; repeatable (defaults 4700:4700, SMB 4445:445, HTTP 8080:80; 4350:4350,4554:4554,4555:4555,4801:4801,4800:4800,4804:4804,4361:4361)")
 	f.IntVar(&o.pauseThreshold, "pause-threshold", p2ptunnel.DefaultConfig().HighWater, "per-channel PAUSE pressure in bytes (2..8388608; RESUME below 80%)")
@@ -126,6 +129,7 @@ or 1 on other runtime errors including failed release.`,
 		Args:  noArguments,
 		RunE:  func(*cobra.Command, []string) error { return nil },
 	})
+	addFileCommands(root, o)
 	return root
 }
 
@@ -173,6 +177,10 @@ func parse(args []string, out io.Writer) (options, error) {
 		o.command = commandDiscoveryOnly
 	case "help":
 		o.command = commandHelpTopic
+	default:
+		if fileCommand(executed.Name()) {
+			o.command, o.fileName = commandFiles, executed.Name()
+		}
 	}
 	if err != nil {
 		return o, flagParseError(nil, err)
