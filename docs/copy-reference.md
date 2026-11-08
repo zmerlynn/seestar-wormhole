@@ -697,7 +697,9 @@ changes them says so in its notes.
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
 | WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
-Every pass ends with one summary line, whose keys are:
+Each pass that runs ends with one summary line, whose keys are below. A later
+check skipped for `folder_busy` or ended by `destination_missing` emits only the
+WARN record listed above, without summary counts.
 
 | Key | Meaning |
 | --- | --- |
