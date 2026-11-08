@@ -154,8 +154,10 @@ func (p *previewer) start(set Settings, t Target) error {
 			result.state, result.endpoint = pvDone, st.endpoint
 			*st = *result
 		default:
+			// A telescope that moved under the preview is no failure:
+			// it is to be previewed again.
 			st.state, st.err = pvFailed, err
-			o.Err = classified(err)
+			o.Err, o.Canceled = classified(err), errors.Is(err, errMoved)
 		}
 		p.cancel, p.done = nil, nil
 		p.mu.Unlock()

@@ -163,7 +163,9 @@ func (f *freer) outcome(dry bool, r engine.DeleteResult, err error, canceled boo
 // reports their count. A canceled run, a preview discarded included,
 // reports nothing that counts.
 func (f *freer) report(dry bool, r engine.DeleteResult, err error, canceled bool, seq uint64) {
-	o := Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpDelete, Canceled: canceled, Seq: seq}
+	// A telescope that moved under the run is no failure: it is to be
+	// previewed again.
+	o := Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpDelete, Canceled: canceled || errors.Is(err, errMoved), Seq: seq}
 	if dry {
 		o.Op = diagnostic.OpPreview
 	}

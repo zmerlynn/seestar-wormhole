@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // The two telescopes of a change of endpoint.
@@ -36,6 +37,12 @@ type changeEnv struct {
 	route    sync.Mutex
 	endpoint string
 	run      uint64
+	// moveOnce, if set, moves the endpoint to B once the next target has
+	// been answered.
+	moveOnce bool
+
+	reported sync.Mutex
+	outcomes []Outcome
 }
 
 func newChangeEnv(t *testing.T) *changeEnv {
@@ -67,7 +74,16 @@ func newChangeEnv(t *testing.T) *changeEnv {
 		Target: func() (Target, error) {
 			e.route.Lock()
 			defer e.route.Unlock()
-			return Target{Endpoint: e.endpoint, Run: e.run}, nil
+			tg := Target{Endpoint: e.endpoint, Run: e.run}
+			if e.moveOnce {
+				e.endpoint, e.moveOnce = atB, false
+			}
+			return tg, nil
+		},
+		Report: func(o Outcome) {
+			e.reported.Lock()
+			defer e.reported.Unlock()
+			e.outcomes = append(e.outcomes, o)
 		},
 		Dial: func(ctx context.Context, tg Target) (remote.Session, error) {
 			endpoint := tg.Endpoint
@@ -97,6 +113,25 @@ func (e *changeEnv) move(endpoint string) {
 	e.route.Lock()
 	defer e.route.Unlock()
 	e.endpoint = endpoint
+}
+
+// outcome returns the last outcome reported for source's op, waiting for
+// one.
+func (e *changeEnv) outcome(source, op string) Outcome {
+	e.t.Helper()
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		e.reported.Lock()
+		for i := len(e.outcomes) - 1; i >= 0; i-- {
+			if o := e.outcomes[i]; o.Source == source && o.Op == op {
+				e.reported.Unlock()
+				return o
+			}
+		}
+		e.reported.Unlock()
+		if time.Now().After(deadline) {
+			e.t.Fatalf("no %s outcome reported", op)
+		}
+	}
 }
 
 // reconnect starts another run at the same endpoint.
@@ -192,6 +227,10 @@ func TestDeleteStaysAtItsEndpoint(t *testing.T) {
 		if got.State != frFailed || !e.keptB() || !e.has("MyWorks/a.jpg") {
 			t.Errorf("a delete followed the endpoint: %+v, B kept %v", got, e.keptB())
 		}
+		// The move is no failure of Free up space: the delete is canceled.
+		if o := e.outcome(diagnostic.SourceDelete, diagnostic.OpDelete); !o.Canceled || o.Failed() {
+			t.Errorf("delete outcome after a move: %+v", o)
+		}
 	})
 	t.Run("reconnected at the dial", func(t *testing.T) {
 		e := newChangeEnv(t)
@@ -205,6 +244,22 @@ func TestDeleteStaysAtItsEndpoint(t *testing.T) {
 			t.Errorf("a delete followed the run: %+v, B kept %v", got, e.keptB())
 		}
 	})
+}
+
+// A copy preview whose telescope moved before its dial fails, and its
+// outcome is canceled rather than a failure of the preview.
+func TestPreviewMovedIsCanceled(t *testing.T) {
+	e := newChangeEnv(t)
+	e.route.Lock()
+	e.moveOnce = true
+	e.route.Unlock()
+	if w := e.post("/copy/api/copy", `{"action":"preview"}`); w.Code != 200 {
+		t.Fatalf("preview = %d %s", w.Code, w.Body)
+	}
+	o := e.outcome(diagnostic.SourceCopy, diagnostic.OpPreview)
+	if !errors.Is(o.Err, errMoved) || !o.Canceled || o.Failed() {
+		t.Errorf("preview outcome after a move: %+v", o)
+	}
 }
 
 // A change refuses while a Free up space check, a preview or a pass of
