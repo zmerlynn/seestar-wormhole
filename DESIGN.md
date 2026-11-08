@@ -5,8 +5,11 @@ specification](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/00-overview
 describes its sources and their limitations. The composed proxy implements the cloud-to-tunnel
 runtime and [internal stream interface](#internal-stream-interface).
 Tested devices, phones and platforms are listed in [status](docs/status.md);
-they do not establish complete interoperability. External downloads use standard SMB clients over a proxy listener;
-the app's own file tools run an SMB client over a session channel to port 445. The proxy does not interpret SMB.
+they do not establish complete interoperability. Files come off the telescope's SMB share by two routes: a
+standard SMB client through a proxy listener, or the built-in copier. The copier runs its own SMB client: in the app,
+over a session channel to device port 445 or over TCP on this network; in `seestar-wormhole-cli`'s file commands, at
+the endpoint they are given. The forwarding layer carries SMB bytes without interpreting them. See
+[application composition](#application-composition).
 
 ## Layering and ownership
 
@@ -50,6 +53,63 @@ workers, replaces timers and joins cleanup before replacement. `SecureDTLS`
 owns the maintained library's handshake deadline and authenticated
 profile check. Independent crypto/interop and loss/MTU tests exercise that edge.
 [No fallback to plaintext is permitted.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/rdt/session.md#secure-channel)
+
+## Application composition
+
+The app is `internal/ui`: one process per state folder, holding `ui.lock`, serving the page and its token on a
+loopback HTTP server. It owns the account run and the copy `Mount` (`internal/copy/app`), which serves the Copy,
+Browse and Free up space tabs under `/copy/api/` and `/browse/`. The copy engine is described in the
+[copy packages guide](docs/development/copy.md#architecture).
+
+```text
+internal/ui server (page, token, config.json, gui.log)
+ |- controller: Connect/Stop, one numbered run --> proxy.Session (cloud, tunnel)
+ |    '- attachments: the run's channels to device port 445 <-- attach/detach
+ |- copyTarget: saved route -> Target{Endpoint, Device, Run}
+ '- copy Mount (copy.json), admit lock
+      |- Copy: copying loop, one SMB session per pass; preview
+      |- Free up space: check, then delete
+      '- Browse: session pool, one shared SMB session
+           every dial: Run 0 -> TCP to the saved address
+                       Run n -> DialPort(445) through run n
+```
+
+- **Targets.** The host resolves where the telescope is, and the Mount asks again at each start and each dial
+  (`server.copyTarget`). On this network the target is the saved address from `config.json`. Through the account it
+  is the current run's number and the telescope that run selected, and only while the run is armed and attached; the
+  copier never starts or holds a cloud session itself. The dial hooks choose the transport from the target's `Run`,
+  never from its endpoint text.
+- **Runs and SMB sessions.** A run lasts from Connect to the end of that run; each Connect numbers a new one. The
+  proxy may release an idle session and open it again inside one run; a file tool's dial is what opens a dormant
+  one. Each dial opens one connection, a tunnel channel through the account, and one SMB session on it: a pass of
+  copying, a preview, a Free up space check and a delete each dial their own, and Browse shares one pooled session,
+  closed after 30 seconds unused or after a connection failure. Copying follows its telescope from run to run and stops once the target is another
+  telescope. A preview, a check and a delete stay pinned to the exact target they started at, so a reconnect fails
+  them and a delete never reaches a telescope it did not check.
+- **Route changes.** Connect and saving the route on the Connection tab go through `Mount.Change`, under the Mount's
+  admission lock. It refuses while a pass of copying, a preview, or a Free up space check or delete runs, and, for a
+  change that moves the copier to another route, while copying is on, even between passes. Saving the route is also
+  refused while an account run is active, connecting or connected. Browse never blocks a change.
+- **Invalidation.** Every committed change, even one that failed partway, sends the Copy and Free up space previews
+  back to Start and replaces Browse's pool, closing the old one. Saving Copy settings does the same for what they
+  feed: a new images folder or history folder clears both previews and Browse's pool, and a new selection clears the
+  Copy preview and the pool. Starting copying and clearing the history discard the Copy preview.
+- **Stores.** The app's state folder (the per-user config folder's `seestar-wormhole`) holds `config.json`
+  (connection and route), `copy.json` (Copy settings, which the Mount saves through the host) and `gui.log` (the
+  app's event history). A `copy.json`
+  this version cannot read turns Copy, Browse and Free up space off for the run and is never written. The copy
+  history lives in the per-user config folder's `seestar-copy`, or the history folder `copy.json` names. The app,
+  `sync`, `delete`, `find` and `browse` share it by default, so they share one history and one history lock per
+  images folder. `--profile default` reads `copy.json` and `config.json` to fill a command's flags, and writes or
+  locks nothing. Each copying pass (`sync` or the app's) and Browse's Save into the images folder hold its folder
+  lock, `.seestar-wormhole.lock` at its top. A real `delete` takes it too, except when the folder is missing or on a
+  read-only file system; a dry run or an `--ignore-state` delete takes none.
+- **Shutdown.** On quit the app first stops the Mount: it closes Browse's pool, then stops and joins copying, the
+  preview and Free up space. Only then does it stop the run, whose detach closes and joins every channel the file
+  tools still hold before the proxy session is closed and released. The file tools reach the telescope through that
+  session, so joining them first means none holds or opens a channel on a session being released. The app's
+  context is detached from the signal context for the same reason: a signal reaches the proxy only through this
+  order.
 
 ## Tunnel contract
 
