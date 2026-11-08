@@ -907,6 +907,8 @@ test('Copy history folder is empty for the default, refuses a relative path, and
   // The placeholder is the default folder, the one the history file is in.
   await expect(hist).toHaveAttribute('placeholder', first.replace(/[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/, ''));
   await expect(page.locator('#f-hist-help')).toContainText('A different folder starts a fresh history');
+  // The help names no folder of its own: the default differs by system.
+  await expect(page.locator('#f-hist-help')).toContainText('Leave empty to use the default folder shown in this field, which seestar-wormhole-cli sync uses too.');
   await expect(page.locator('#f-hchoose')).toBeHidden();
 
   await hist.fill('history');
