@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // oldMTime is the device mtime of the test files: old enough to copy.
@@ -374,6 +376,11 @@ func TestRecreate(t *testing.T) {
 				t.Helper()
 				if !errors.Is(s.Err, errDestMissing) || s.Copied != 0 || s.Waiting != 0 || len(s.Failed) != 0 {
 					t.Fatalf("%s pass: got %+v, want a destination-missing pass with nothing copied, waiting or failed", pass, s)
+				}
+				// The cause stays in the chain, so the failure is classed
+				// as not_found rather than unknown.
+				if !errors.Is(s.Err, fs.ErrNotExist) || diagnostic.Class(s.Err) != "not_found" {
+					t.Fatalf("%s pass: got %v (class %q), want fs.ErrNotExist classed not_found", pass, s.Err, diagnostic.Class(s.Err))
 				}
 			}
 			press()

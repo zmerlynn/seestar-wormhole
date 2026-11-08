@@ -170,7 +170,7 @@ func (s *syncer) lockedPass(ctx context.Context, first bool) (Summary, error) {
 		s.log.Warn("pass skipped", "reason", "folder_busy", "dest", s.opts.Dest, "error", err)
 		return s.notRun(err), nil
 	case errors.Is(err, fs.ErrNotExist):
-		err = fmt.Errorf("%w: %s", errDestMissing, s.opts.Dest)
+		err = fmt.Errorf("%w: %s: %w", errDestMissing, s.opts.Dest, err)
 		s.log.Warn("pass failed", "reason", "destination_missing", "dest", s.opts.Dest)
 		return s.notRun(err), nil
 	default:
