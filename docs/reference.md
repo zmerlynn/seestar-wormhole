@@ -580,11 +580,16 @@ the connection succeeds, the UI returns to waiting for an app, the run stops, or
 replaces it. CLI logs keep their classified phase and reason rather than this UI message.
 
 The UI's private `gui.log` holds one JSON object per line, up to 64 KiB per file
-with one rotation (`gui.log.1`). Each line has `time`, `source`, `message`,
-`code`, `phase` and `reason`:
+with one rotation (`gui.log.1`). Trail entries have `time`, `source`,
+`message`, `code`, `phase` and `reason`. Each account-catalog fetch also
+writes a structured `device_catalog` record with `time`, `level`, `msg`,
+`devices`, `count`, `complete` and `omitted`.
 
-- `source` is `connection` for connection and account-catalog lines, or the
-  file tool a line is about: `copy`, `browse` or `delete` (Free up space).
+In trail entries:
+
+- `source` is `connection` for connection and account-catalog trail entries,
+  or the file tool a line is about: `copy`, `browse` or `delete` (Free up
+  space).
 - File-tool lines add `op`, the operation (for example `pass`, `preview`,
   `connect`, `read` or `delete`), and `count` when failed files were counted.
   Their `code` is `<source>_<op>_failed` or `<source>_<op>_recovered`.
