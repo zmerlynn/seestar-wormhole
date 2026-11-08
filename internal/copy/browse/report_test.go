@@ -1,10 +1,12 @@
 package browse
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -62,10 +64,25 @@ func (r *reports) list() []string {
 	return out
 }
 
+// wantReports waits for r to hold as many outcomes as want, then compares
+// them in number order. A dial's outcome is sent after its waiters wake, so
+// it can arrive after a read it numbered before; outcomes of one number keep
+// the order they were sent in.
 func wantReports(t *testing.T, r *reports, want ...string) {
 	t.Helper()
-	if got := r.list(); strings.Join(got, " ") != strings.Join(want, " ") {
-		t.Errorf("reported %q, want %q", got, want)
+	for deadline := time.Now().Add(5 * time.Second); len(r.list()) < len(want) && time.Now().Before(deadline); {
+		time.Sleep(time.Millisecond)
+	}
+	r.mu.Lock()
+	got := slices.Clone(r.got)
+	r.mu.Unlock()
+	slices.SortStableFunc(got, func(a, b reported) int { return cmp.Compare(a.seq, b.seq) })
+	var list []string
+	for _, g := range got {
+		list = append(list, g.String())
+	}
+	if strings.Join(list, " ") != strings.Join(want, " ") {
+		t.Errorf("reported %q, want %q", list, want)
 	}
 }
 

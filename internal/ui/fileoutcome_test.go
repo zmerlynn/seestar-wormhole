@@ -863,6 +863,9 @@ func TestRepeatsAreKeyed(t *testing.T) {
 	e.fail(stepDial, nil)
 	e.fail(stepReadDir, errSynthetic)
 	e.browse()
+	// The connect's outcome is sent after its waiters wake, so it can
+	// trail the read's; wait for it to keep the lines in a known order.
+	e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 51)
 	e.fail(stepReadDir, nil)
 	if code := e.browse(); code != 200 {
 		t.Fatalf("listing = %d", code)
