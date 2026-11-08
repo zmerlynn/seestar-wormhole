@@ -139,9 +139,10 @@ skipped` with `reason=folder_busy`) and tries again at the next one. The
 file itself is empty and harmless; don't remove it. See
 [the folder lock](copy-reference.md#the-folder-lock).
 
-**`pass failed` with `reason=destination_missing`.** The folder `sync` was
-copying into was removed or renamed while it ran. Nothing is copied until
-you restart `sync` with the folder you want.
+**`pass failed` with `reason=destination_missing`.** The folder `sync`
+opened was removed while it ran. Restart `sync` with the folder you want;
+creating a replacement at the same path does not reconnect the running
+sync. Renaming the folder keeps copying into it under its new name.
 
 ## The OS keychain is unavailable
 
