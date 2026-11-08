@@ -1035,3 +1035,50 @@ func TestRouteReload(t *testing.T) {
 		}
 	}
 }
+
+// The status says ready only while the run is connected now, as copying
+// has it: not while connecting, not once the run moves off Ready, and not
+// while it stops.
+func TestStatusReady(t *testing.T) {
+	e := newRouteEnv(t)
+	a := e.account()
+	if code, body := e.start(testSettings()); code != 200 {
+		t.Fatalf("Connect = %d %s", code, body)
+	}
+	c := e.s.controller
+	ready := func() bool {
+		_, _, _, connected := c.connected()
+		v := c.view()
+		if v.Ready != connected {
+			t.Errorf("ready %v, connected %v", v.Ready, connected)
+		}
+		return v.Ready
+	}
+	if ready() {
+		t.Error("ready while connecting")
+	}
+	a.markReady("synthetic-device-a")
+	if !ready() {
+		t.Error("not ready once Ready")
+	}
+	a.mu.Lock()
+	a.ready = nil
+	a.mu.Unlock()
+	if ready() {
+		t.Error("ready after the run moved off Ready")
+	}
+	a.markReady("synthetic-device-a")
+	c.mu.Lock()
+	c.stopping = true
+	c.mu.Unlock()
+	if ready() {
+		t.Error("ready while stopping")
+	}
+	c.mu.Lock()
+	c.stopping = false
+	c.mu.Unlock()
+	a.stop()
+	if ready() {
+		t.Error("ready after Stop")
+	}
+}

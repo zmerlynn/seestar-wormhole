@@ -102,8 +102,14 @@ async function checkRouteChoice(statuses, scenario) {
     render({...statuses.account, active: true, cancel: true, status: 'Connecting to your Seestar…'});
     tabAssert($('route-choice').disabled && !$('route-help').hidden && shown('account') && $('lan-options').disabled, 'the choice is open while the account route runs');
     tabAssert($('connection-text').textContent === 'Connecting to your Seestar…' && $('connection-dot').getAttribute('data-tone') === 'busy', 'header line while connecting');
-    render({...statuses.account, active: true, status: 'Connected to your Seestar'});
+    render({...statuses.account, active: true, ready: true, status: 'Connected to your Seestar'});
     tabAssert($('connection-text').textContent === 'Connected to your Seestar' && $('connection-dot').getAttribute('data-tone') === 'on', 'header line when connected');
+    // Once a run has been ready, a retry, a busy telescope or an idle
+    // release is busy, not green.
+    for (const status of ['Connection to your Seestar interrupted. Retrying automatically.', 'Your Seestar is occupied. Retrying automatically.', 'Releasing idle session with your Seestar…']) {
+      render({...statuses.account, active: true, cancel: false, ready: false, status});
+      tabAssert($('connection-text').textContent === status && $('connection-dot').getAttribute('data-tone') === 'busy' && $('start').textContent === 'Stop', 'header line for ' + status + ': ' + $('connection-dot').getAttribute('data-tone'));
+    }
     render(statuses.account);
     tabAssert(!$('route-choice').disabled && $('route-help').hidden, 'the choice stays locked after Stop');
     break;

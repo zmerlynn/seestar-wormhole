@@ -22,7 +22,7 @@
   const status = () => ({
     settings: setup,
     port_defaults: live.port_defaults, version: 'synthetic-version', effective: live.effective,
-    status: 'Not connected', active: false, stopping: false, cancel: false,
+    status: 'Not connected', active: false, stopping: false, cancel: false, ready: false,
     password: {saved: false, memory: false, busy: false, code: '', notice: ''},
     native: true, events: [], log_path: '', save_failed: false
   });

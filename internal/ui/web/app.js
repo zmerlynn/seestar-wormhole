@@ -313,7 +313,9 @@ function routeControls(blocked) {
   connectionLine();
 }
 // The header's line and dot: the proxy's status on the Telescope Network route, and
-// the saved address and its last Test on this network.
+// the saved address and its last Test on this network. The dot is green
+// only while connected now; a retry, a busy telescope or an idle release is
+// busy.
 function connectionLine() {
   let line = 'Loading…', tone = 'off';
   const saved = state?.settings?.route === 'lan' ? state.settings.lan_address || '' : '';
@@ -323,7 +325,7 @@ function connectionLine() {
     tone = !tested ? 'off' : lanReach.ok ? 'on' : 'error';
   } else if (state) {
     line = active ? state.status : 'Not connected';
-    tone = !active ? 'off' : state.cancel || state.stopping ? 'busy' : 'on';
+    tone = !active ? 'off' : state.ready ? 'on' : 'busy';
   }
   text('connection-text', line);
   if ($('connection-dot').getAttribute('data-tone') !== tone) $('connection-dot').setAttribute('data-tone', tone);

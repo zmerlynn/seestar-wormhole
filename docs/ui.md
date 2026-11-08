@@ -8,7 +8,9 @@ They share one connection to the telescope.
 ## Tabs
 
 The header shows a dot and a line with the connection's state: **Not
-connected**, the status while connecting, or **Connected to** your Seestar. On
+connected**, the status while connecting, or **Connected to** your Seestar. The
+dot is green only while connected; while connecting, reconnecting, waiting for
+a busy telescope or releasing an idle session it shows busy. On
 this network it shows the saved address, then **On this network: reachable**
 or **Can't reach** the address once **Test** has run. While copying is on, a
 chip after the line says how it stands: **Copying**, **Up to date**, how many
