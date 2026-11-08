@@ -970,6 +970,11 @@ func TestFailuresPerOp(t *testing.T) {
 	if code := e.browse(); code != 200 {
 		t.Fatalf("listing = %d", code)
 	}
+	// The connect's outcome is sent after its waiters wake, so the
+	// listing can answer before the trail has it.
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2); o.Failed() {
+		t.Fatalf("connect = %+v", o)
+	}
 	if got, want := e.failing(), []string{"browse/save_file"}; !slices.Equal(got, want) {
 		t.Errorf("failing = %v, want %v", got, want)
 	}
@@ -1238,6 +1243,10 @@ func TestTrailPrivacySentinels(t *testing.T) {
 	e.fail(stepDial, sentinel)
 	e.lan("192.0.2.11")
 	e.browse()
+	// The connect's outcome can reach the trail after the listing answers.
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2); !o.Failed() {
+		t.Fatalf("connect = %+v", o)
+	}
 	e.s.controller.log.addCatalog(cloudhttp.Catalog{Pairs: []cloudhttp.CatalogPair{{Model: "S30", Serial: "SERIAL-SENTINEL"}}, Count: 1, Complete: true})
 
 	if got := len(e.status().Failures); got < 7 {
