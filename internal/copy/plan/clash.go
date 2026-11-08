@@ -2,6 +2,7 @@ package plan
 
 import (
 	"fmt"
+	"strings"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
@@ -165,4 +166,19 @@ func (ns *namespace) reason(p string, shared map[string]string) string {
 		return r
 	}
 	return ""
+}
+
+// LockName is the folder lock file at the top of a destination, which
+// state.LockFolder takes. Sync reserves the name: see [Reserved].
+const LockName = ".seestar-wormhole.lock"
+
+// Reserved reports whether the share path p is, or is under, a top-level
+// name that is the same as [LockName] by the clash key: NFC, Unicode case
+// folding, then NFC again. A pass never copies, adopts or records such a
+// path, since on a case-insensitive or normalizing file system its copy
+// would be renamed over the lock file.
+func Reserved(p string) bool {
+	top, _, _ := strings.Cut(p, "/")
+	ns := namespace{fold: cases.Fold()}
+	return ns.key(top) == LockName
 }

@@ -13,6 +13,12 @@
 // destination, in this process or another, fails with [ErrLocked] until the
 // first is closed or its process exits. The lock file is never removed.
 //
+// [LockFolder] takes the other lock, the folder lock: the same kind of lock
+// on a file named [plan.LockName] at the top of the destination itself, so
+// it does not depend on the state directory or the destination's spelling.
+// Every writer into the destination holds it while it writes: a sync pass,
+// a delete that removes files, and the app's save into the folder.
+//
 // The state is keyed by the exact spelling of the destination. So that a
 // symbolic link or another spelling of the same folder cannot start a second
 // history with a second lock, Open compares the destination with those named

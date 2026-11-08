@@ -552,3 +552,24 @@ func showDecisions(ds []Decision) string {
 	}
 	return s
 }
+
+// The lock file's name is reserved at the top of the share in every
+// spelling the clash key folds together, and so is everything under a
+// folder of that name; elsewhere it is an ordinary name.
+func TestReserved(t *testing.T) {
+	for p, want := range map[string]bool{
+		LockName:                       true,
+		".Seestar-Wormhole.LOCK":       true,
+		".ſeestar-wormhole.locK":       true,
+		".SEESTAR-WORMHOLE.lock/a.fit": true,
+		".seestar-wormhole.lock/x/y":   true,
+		"MyWorks/" + LockName:          false,
+		".seestar-wormhole.lock2":      false,
+		"seestar-wormhole.lock":        false,
+		".seestar-wormhole":            false,
+	} {
+		if got := Reserved(p); got != want {
+			t.Errorf("Reserved(%q) = %v, want %v", p, got, want)
+		}
+	}
+}
