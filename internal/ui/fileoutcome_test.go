@@ -115,6 +115,9 @@ func newTrailEnv(t *testing.T) *trailEnv {
 		Save: func(copyapp.Settings) error { return e.step(context.Background(), stepSave) },
 	})
 	inner := o.Report
+	if inner == nil {
+		t.Fatal("copyMountOptions set no Report")
+	}
 	o.Report = func(out copyapp.Outcome) {
 		e.fmu.Lock()
 		hold := e.holdReport
@@ -998,7 +1001,8 @@ func within(t *testing.T, what string, f func()) {
 
 // A Report that blocks holds up only its own operation: while a pass's,
 // a Browse connect's, a settings save's or a Free up space find's report
-// is held, status, Stop, a pass start and a route change all return, and
+// is held, status, Stop, a pass start, a Browse listing and a route change
+// all return, and
 // Quit returns once it is released.
 func TestBlockedReportDoesNotBlock(t *testing.T) {
 	for _, tc := range []struct {
@@ -1041,6 +1045,7 @@ func TestBlockedReportDoesNotBlock(t *testing.T) {
 			within(t, "/copy/api/status", func() { e.get("/copy/api/status") })
 			within(t, "Stop", func() { e.post("/copy/api/copy", `{"action":"stop"}`) })
 			within(t, "a pass start", func() { e.post("/copy/api/copy", `{"action":"start"}`) })
+			within(t, "a Browse listing", func() { e.browse() })
 			within(t, "a route change", func() {
 				e.post("/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.11"}}`)
 			})
