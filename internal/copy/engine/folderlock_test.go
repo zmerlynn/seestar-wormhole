@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"maps"
 	"os"
@@ -33,6 +34,13 @@ import (
 // share with MyWorks/a.jpg. Once the file go exists in lockHelperCtlEnv,
 // the share also has MyWorks/b.jpg, whose download stalls after its first
 // byte, leaving its temporary file, until the process is killed.
+//
+// The stalled read blocks reading the helper's standard input, a pipe the
+// test holds open. Blocked on a channel instead, the helper would have no
+// goroutine that can wake it, and the runtime would end it with "all
+// goroutines are asleep", releasing the folder lock mid-test. A cgo
+// build's extra thread hides that from the runtime, so it showed only
+// where cgo is off, as on the Windows and macOS runners.
 const (
 	lockHelperDestEnv  = "SEESTAR_COPY_FOLDER_LOCK_DEST"
 	lockHelperStateEnv = "SEESTAR_COPY_FOLDER_LOCK_STATE"
@@ -53,7 +61,7 @@ func TestFolderLockHelper(t *testing.T) {
 			f := remote.NewFake(files)
 			if _, err := os.Stat(filepath.Join(ctl, "go")); err == nil {
 				files["MyWorks/b.jpg"] = file("bbbb")
-				f.Faults = map[string]remote.Fault{"MyWorks/b.jpg": {After: 1, Stall: func() {}}}
+				f.Faults = map[string]remote.Fault{"MyWorks/b.jpg": {After: 1, Stall: stallOnStdin}}
 			}
 			return f, nil
 		},
@@ -62,24 +70,51 @@ func TestFolderLockHelper(t *testing.T) {
 	t.Fatalf("the helper's sync returned: %v", err)
 }
 
+// stallOnStdin blocks until the helper's standard input ends, which is
+// when the test that started it has gone, and then exits.
+func stallOnStdin() {
+	io.Copy(io.Discard, os.Stdin)
+	os.Exit(1)
+}
+
 // startLockHelper starts the helper process on dest with its history in
-// stateDir, controlled by ctl, and kills it when the test ends.
-func startLockHelper(t *testing.T, dest, stateDir, ctl string) {
+// stateDir, controlled by ctl, and kills it when the test ends. The
+// returned channel is closed if the helper exits first.
+func startLockHelper(t *testing.T, dest, stateDir, ctl string) <-chan struct{} {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "-test.run=^TestFolderLockHelper$", "-test.count=1")
 	cmd.Env = append(os.Environ(), lockHelperDestEnv+"="+dest, lockHelperStateEnv+"="+stateDir, lockHelperCtlEnv+"="+ctl)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
+	exited := make(chan struct{})
+	go func() { cmd.Wait(); close(exited) }()
 	t.Cleanup(func() {
 		cmd.Process.Kill()
-		cmd.Wait()
+		stdin.Close()
+		<-exited
 		if t.Failed() {
 			t.Logf("helper output:\n%s", out.String())
 		}
 	})
+	return exited
+}
+
+// helperAlive fails the test if the helper has exited, which would have
+// released its folder lock.
+func helperAlive(t *testing.T, exited <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-exited:
+		t.Fatal("the helper process exited while it should hold the folder lock")
+	default:
+	}
 }
 
 // waitFor polls until ok reports true, failing the test after 30s.
@@ -106,9 +141,12 @@ func helperTemp(dest string) string {
 
 // refusedSecondSync runs one sync pass into dest, with another history
 // folder, and checks that the folder lock refuses it before it dials, that
-// tmp survives, and that its history lock was released again.
-func refusedSecondSync(t *testing.T, dest, tmp string) {
+// tmp survives, and that its history lock was released again. The helper
+// must still be running before and after.
+func refusedSecondSync(t *testing.T, dest, tmp string, helper <-chan struct{}) {
 	t.Helper()
+	helperAlive(t, helper)
+	defer helperAlive(t, helper)
 	o := syncOptions(t, fstest.MapFS{"MyWorks/a.jpg": file("abc")}, nil)
 	o.Dest = dest
 	dials := 0
@@ -150,10 +188,10 @@ func TestFolderLockAcrossHistoryRoots(t *testing.T) {
 					t.Skipf("no symbolic links here: %v", err)
 				}
 			}
-			startLockHelper(t, dest, filepath.Join(base, "r1"), ctl)
+			helper := startLockHelper(t, dest, filepath.Join(base, "r1"), ctl)
 			tmp := helperTemp(dest)
 			waitFor(t, "the helper's temporary file", func() bool { return exists(tmp) })
-			refusedSecondSync(t, second, tmp)
+			refusedSecondSync(t, second, tmp, helper)
 		})
 	}
 }
@@ -171,7 +209,7 @@ func TestFolderLockFollowsRename(t *testing.T) {
 	if err := os.Mkdir(ctl, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	startLockHelper(t, dest, filepath.Join(base, "r1"), ctl)
+	helper := startLockHelper(t, dest, filepath.Join(base, "r1"), ctl)
 	waitFor(t, "the helper's first copy", func() bool { return exists(filepath.Join(dest, "MyWorks", "a.jpg")) })
 	if err := os.Rename(dest, moved); err != nil {
 		t.Fatal(err)
@@ -184,7 +222,7 @@ func TestFolderLockFollowsRename(t *testing.T) {
 	}
 	tmp := helperTemp(moved)
 	waitFor(t, "the helper's temporary file in the renamed folder", func() bool { return exists(tmp) })
-	refusedSecondSync(t, moved, tmp)
+	refusedSecondSync(t, moved, tmp, helper)
 	if ents, err := os.ReadDir(dest); err != nil || len(ents) != 0 {
 		t.Errorf("the new folder at the old path: %v, %v, want it empty", ents, err)
 	}
