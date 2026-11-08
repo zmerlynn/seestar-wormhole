@@ -21,7 +21,6 @@ import (
 // programs are the cgo-free executables in every release archive.
 var programs = []struct{ name, pkg string }{
 	{"seestar-wormhole-cli", "./cmd/seestar-wormhole"},
-	{"seestar-copy-cli", "./cmd/seestar-copy-cli"},
 }
 
 func build(dir string) ([]string, error) {

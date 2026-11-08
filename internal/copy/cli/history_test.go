@@ -13,9 +13,9 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
-// Without --history-dir, sync uses the folder seestar-copy-cli used, so an
-// upgrade keeps its history and its lock. The expected folder is written
-// out here, not taken from state.DefaultDir.
+// Without --history-dir, sync uses the folder the old seestar-copy-cli
+// used, so an upgrade keeps its history and its lock. The expected folder is
+// written out here, not taken from state.DefaultDir.
 func TestLegacyHistoryRoot(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)

@@ -332,7 +332,7 @@ func TestBrowseUsage(t *testing.T) {
 	} {
 		t.Cleanup(readonly.Reset)
 		code, stdout, stderr := invoke(t, tc.args...)
-		want := `level=ERROR msg="invalid arguments" option=` + tc.option + ` rule=` + strconv.Quote(tc.rule) + ` help="seestar-copy-cli browse --help"` + "\n"
+		want := `level=ERROR msg="invalid arguments" option=` + tc.option + ` rule=` + strconv.Quote(tc.rule) + ` help="seestar-wormhole-cli browse --help"` + "\n"
 		if code != exitUsage || stdout != "" || !strings.HasSuffix(stderr, want) || strings.Count(stderr, "\n") != 1 {
 			t.Errorf("%q: exit %d, stdout %q, stderr %q; want 2 and %q", tc.args, code, stdout, stderr, want)
 		}

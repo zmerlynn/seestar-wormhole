@@ -17,7 +17,7 @@ import (
 )
 
 // programName is the program the tests mount the commands in.
-const programName = "seestar-copy-cli"
+const programName = "seestar-wormhole-cli"
 
 // Exit codes of run.
 const (

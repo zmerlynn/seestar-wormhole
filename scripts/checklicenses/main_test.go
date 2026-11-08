@@ -29,15 +29,15 @@ func TestCompare(t *testing.T) {
 	}
 }
 
-// Both shipped CLIs pass when built the way a release builds them.
+// The shipped CLI passes when built the way a release builds it.
 func TestShippedPrograms(t *testing.T) {
 	t.Chdir("../..")
 	paths, err := build(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(paths) != 2 {
-		t.Fatalf("built %v, want both CLIs", paths)
+	if len(paths) != 1 || strings.TrimSuffix(filepath.Base(paths[0]), ".exe") != "seestar-wormhole-cli" {
+		t.Fatalf("built %v, want only seestar-wormhole-cli", paths)
 	}
 	if err := run(paths); err != nil {
 		t.Fatal(err)

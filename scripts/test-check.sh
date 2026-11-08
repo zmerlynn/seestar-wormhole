@@ -35,7 +35,7 @@ fi
 if ! grep -Fq "go run ./scripts/checklicenses &&" "$CHECK_ARGS"; then
  echo "missing linked-module license check" >&2; exit 1
 fi
-if ! grep -Fq "GOOS=\${target%/*} GOARCH=\${target#*/} go vet -p 2 ./cmd/seestar-copy-cli ./internal/copy/..." "$CHECK_ARGS" || ! grep -Fq "windows/arm64" "$CHECK_ARGS"; then
+if ! grep -Fq "GOOS=\${target%/*} GOARCH=\${target#*/} go vet -p 2 ./cmd/seestar-wormhole ./internal/copy/..." "$CHECK_ARGS" || ! grep -Fq "windows/arm64" "$CHECK_ARGS"; then
  echo "missing copy cross-build check" >&2; exit 1
 fi
 if ! grep -Fq "go vet -p 2 -tags smbintegration ./internal/copy/remote ./internal/copy/app" "$CHECK_ARGS"; then

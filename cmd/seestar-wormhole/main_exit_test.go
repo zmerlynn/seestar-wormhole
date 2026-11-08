@@ -155,10 +155,10 @@ type failedOutput struct{}
 func (failedOutput) Write([]byte) (int, error) { return 0, syscall.EIO }
 
 // Help that cannot be written exits 1, as a failed version write does, and
-// an unknown help topic is a usage error, as in seestar-copy-cli.
+// an unknown help topic is a usage error.
 func TestHelpOutcomes(t *testing.T) {
 	bootstrap := func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} }
-	for _, args := range [][]string{{"--help"}, {"help"}, {"help", "proxy"}, {"proxy", "--help"}, {"--version"}} {
+	for _, args := range [][]string{{"--help"}, {"help"}, {"help", "proxy"}, {"proxy", "--help"}, {"help", "sync"}, {"sync", "--help"}, {"--version"}} {
 		for _, windows := range []bool{false, true} {
 			var logs bytes.Buffer
 			code := mainExitCodeWithPlatform(args, failedOutput{}, &logs, bootstrap,
@@ -168,11 +168,12 @@ func TestHelpOutcomes(t *testing.T) {
 			}
 		}
 	}
-	for _, args := range [][]string{{"help", "proxy"}, {"help", "licenses"}} {
-		var out, logs bytes.Buffer
-		code := mainExitCodeWithPlatform(args, &out, &logs, bootstrap, func() (io.Writer, func()) { return &logs, func() {} }, false)
-		if code != 0 || !strings.Contains(out.String(), programName+" "+args[1]) || !strings.Contains(out.String(), "-h, --help") || logs.Len() != 0 {
-			t.Errorf("%q: exit %d out=%q logs=%q", args, code, &out, &logs)
+	for _, topic := range []string{"proxy", "licenses", "sync", "find", "browse", "delete"} {
+		var out, logs, want bytes.Buffer
+		code := mainExitCodeWithPlatform([]string{"help", topic}, &out, &logs, bootstrap, func() (io.Writer, func()) { return &logs, func() {} }, false)
+		mainExitCodeWithPlatform([]string{topic, "--help"}, &want, io.Discard, bootstrap, func() (io.Writer, func()) { return io.Discard, func() {} }, false)
+		if code != 0 || !strings.Contains(out.String(), programName+" "+topic) || !strings.Contains(out.String(), "-h, --help") || logs.Len() != 0 || out.String() != want.String() {
+			t.Errorf("help %s: exit %d out=%q logs=%q, want the output of %s --help", topic, code, &out, &logs, topic)
 		}
 	}
 	for _, args := range [][]string{{"help", "nonesuch"}, {"help", "proxy", "nonesuch"}} {
