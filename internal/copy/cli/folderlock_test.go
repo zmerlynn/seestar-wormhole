@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -38,7 +39,9 @@ func TestFolderBusy(t *testing.T) {
 	}
 	holdFolder(t, dest)
 	s.last = nil
-	want := `error="destination ` + dest + `: another copy or delete is using this folder (lock file ` + filepath.Join(dest, plan.LockName) + `)"`
+	// The text handler quotes the value, doubling a Windows path's
+	// backslashes.
+	want := `error=` + strconv.Quote("destination "+dest+": another copy or delete is using this folder (lock file "+filepath.Join(dest, plan.LockName)+")")
 	code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once")
 	if code != exitFailure || !strings.Contains(stderr, `level=ERROR msg="sync failed" `+want) || s.last != nil {
 		t.Errorf("sync: code=%d, dialed %v:\n%s\nwant exit 1 with %s and no dial", code, s.last != nil, stderr, want)
