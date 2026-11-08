@@ -128,9 +128,11 @@ func open(ctx context.Context, name, server string, dialer *smb2.Dialer, share s
 // stream is open, or with ctx's error if ctx ends first.
 type Conn func(context.Context) (net.Conn, error)
 
-// viaServer is the server name DialVia gives go-smb2. go-smb2 needs one; it
-// names the server in the NTLM exchange and takes the share path's host from
-// it. A fixed loopback name carries nothing about the user's settings.
+// viaServer is the server name DialVia gives go-smb2. Nothing is dialed at
+// it: the supplied stream carries the session. go-smb2 names the server in
+// the NTLM exchange from it as is, cifs/127.0.0.1:445, and takes the share
+// path's host from it with the port removed, \\127.0.0.1\<share>. A fixed
+// loopback name carries nothing about the user's settings.
 const viaServer = "127.0.0.1:445"
 
 // DialVia is Dial over a stream conn opens, in place of a TCP connection
