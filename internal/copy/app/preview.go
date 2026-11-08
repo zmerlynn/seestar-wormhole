@@ -35,7 +35,7 @@ type previewer struct {
 	stateDir string
 	log      *slog.Logger
 	// dial opens the preview's session; tests replace it.
-	dial func(ctx context.Context, endpoint string) (remote.Session, error)
+	dial func(ctx context.Context, t Target) (remote.Session, error)
 	// at, if set, fails the dial once the telescope is no longer at the
 	// target the preview started at: a [Mount]'s.
 	at func(t Target) error
@@ -70,7 +70,7 @@ type previewStatus struct {
 	failed  int
 }
 
-func newPreviewer(parent context.Context, stateDir string, log *slog.Logger, dial func(context.Context, string) (remote.Session, error)) *previewer {
+func newPreviewer(parent context.Context, stateDir string, log *slog.Logger, dial func(context.Context, Target) (remote.Session, error)) *previewer {
 	return &previewer{parent: parent, stateDir: stateDir, log: log, dial: dial}
 }
 
@@ -98,14 +98,14 @@ func (p *previewer) start(set Settings, t Target) error {
 	o := engine.SyncOptions{
 		Endpoint: set.Address, Dest: set.Folder, StateDir: p.stateDir, Selector: sel, DryRun: true,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
-		Dial: func(ctx context.Context, endpoint string) (sess remote.Session, err error) {
+		Dial: func(ctx context.Context, _ string) (sess remote.Session, err error) {
 			sess, err = establish(ctx, t, func(ctx context.Context) (remote.Session, error) {
 				if p.at != nil {
 					if err := p.at(t); err != nil {
 						return nil, err
 					}
 				}
-				return p.dial(ctx, endpoint)
+				return p.dial(ctx, t)
 			})
 			p.mu.Lock()
 			defer p.mu.Unlock()

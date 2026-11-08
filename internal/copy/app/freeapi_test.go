@@ -124,7 +124,7 @@ func TestFreeInProcess(t *testing.T) {
 		}
 	}
 	e.d.dir = share
-	e.s.free.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) { return remote.NewFakeDir(share) }
+	e.s.free.remover = func(ctx context.Context, _ Target) (remote.Remover, error) { return remote.NewFakeDir(share) }
 	free := func(body string) freeView {
 		t.Helper()
 		w := e.post("/copy/api/delete", body)
@@ -263,9 +263,9 @@ func TestFreeFindPatternsGuard(t *testing.T) {
 			files.copy()
 			e := newAppEnv(t, &files.set)
 			e.s.free.stateDir = files.stateDir
-			e.s.free.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) { return files.share() }
+			e.s.free.remover = func(ctx context.Context, _ Target) (remote.Remover, error) { return files.share() }
 			release := make(chan struct{})
-			e.s.free.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+			e.s.free.dial = func(ctx context.Context, _ Target) (remote.Session, error) {
 				select {
 				case <-release:
 				case <-ctx.Done():

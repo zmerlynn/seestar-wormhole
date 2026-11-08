@@ -32,8 +32,8 @@ func TestSMBCopyPass(t *testing.T) {
 	set.Address = endpoint
 	set.Folder = filepath.Join(t.TempDir(), "Seestar")
 	set.Includes = []string{"/MyWorks/M 31"}
-	dial := func(ctx context.Context, endpoint string) (remote.Session, error) {
-		return remote.Dial(ctx, endpoint, nil)
+	dial := func(ctx context.Context, tg Target) (remote.Session, error) {
+		return remote.Dial(ctx, tg.Endpoint, nil)
 	}
 	c := newController(t.Context(), t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)), dial)
 	t.Cleanup(c.quit)
@@ -107,8 +107,8 @@ func TestSMBFreeUpSpace(t *testing.T) {
 	set.Includes = []string{"/app-free"}
 	stateDir := t.TempDir()
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	dial := func(ctx context.Context, endpoint string) (remote.Session, error) {
-		return remote.DialScratch(ctx, endpoint)
+	dial := func(ctx context.Context, tg Target) (remote.Session, error) {
+		return remote.DialScratch(ctx, tg.Endpoint)
 	}
 
 	// pass runs one copy pass, which must copy what summary begins with.
@@ -135,8 +135,8 @@ func TestSMBFreeUpSpace(t *testing.T) {
 	pass("Copied 5 files (")
 
 	f := newFreer(ctx, stateDir, log, dial)
-	f.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
-		return remote.DialScratch(ctx, endpoint)
+	f.remover = func(ctx context.Context, tg Target) (remote.Remover, error) {
+		return remote.DialScratch(ctx, tg.Endpoint)
 	}
 	t.Cleanup(f.quit)
 	wait := func(states ...string) freeView {

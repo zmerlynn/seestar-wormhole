@@ -14,7 +14,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
-func panicDial(context.Context, string) (remote.Session, error) { panic("boom") }
+func panicDial(context.Context, Target) (remote.Session, error) { panic("boom") }
 
 // A panic in the copy loop ends the loop with an error instead of the
 // process, and copying can start again.

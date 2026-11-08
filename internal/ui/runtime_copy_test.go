@@ -89,7 +89,7 @@ func newRuntimeEnv(t *testing.T, startCopying bool) *runtimeEnv {
 	}
 	savedDial, savedText := copyDial, runText
 	t.Cleanup(func() { copyDial, runText = savedDial, savedText })
-	copyDial = func(context.Context, string) (remote.Session, error) {
+	copyDial = func(context.Context, copyapp.Target) (remote.Session, error) {
 		f := remote.NewFake(e.files)
 		f.Faults = map[string]remote.Fault{"MyWorks/held.fit": {After: 1 << 10, Stall: func() { e.heldOnce.Do(func() { close(e.held) }) }}}
 		s := &runtimeSession{Session: f}

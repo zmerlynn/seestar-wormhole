@@ -29,8 +29,8 @@ type freer struct {
 	log      *slog.Logger
 	// dial opens a preview's session and remover a delete's; tests
 	// replace them.
-	dial    func(ctx context.Context, endpoint string) (remote.Session, error)
-	remover func(ctx context.Context, endpoint string) (remote.Remover, error)
+	dial    func(ctx context.Context, t Target) (remote.Session, error)
+	remover func(ctx context.Context, t Target) (remote.Remover, error)
 	// at, if set, fails each dial and remover once the telescope is no
 	// longer at the target the run started at: a [Mount]'s.
 	at func(t Target) error
@@ -49,11 +49,11 @@ type freer struct {
 	st       freeStatus
 }
 
-func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial func(context.Context, string) (remote.Session, error)) *freer {
+func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial func(context.Context, Target) (remote.Session, error)) *freer {
 	return &freer{
 		parent: parent, stateDir: stateDir, log: log, dial: dial,
-		remover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
-			return remote.DialRemover(ctx, endpoint, log)
+		remover: func(ctx context.Context, t Target) (remote.Remover, error) {
+			return remote.DialRemover(ctx, t.Endpoint, log)
 		},
 		st: freeStatus{state: frStart},
 	}
@@ -156,12 +156,12 @@ func (f *freer) find(set Settings, t Target) error {
 		return err
 	}
 	o.DryRun, o.Hooks = true, f.hooks(nil)
-	o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+	o.Dial = func(ctx context.Context, _ string) (remote.Session, error) {
 		return establish(ctx, t, func(ctx context.Context) (remote.Session, error) {
 			if err := f.still(t); err != nil {
 				return nil, err
 			}
-			return f.dial(ctx, endpoint)
+			return f.dial(ctx, t)
 		})
 	}
 	return f.run(freeStatus{state: frChecking, set: set, target: t}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
@@ -208,12 +208,12 @@ func (f *freer) confirm(id int, folders []string, now Target) error {
 	o.Only, o.Hooks = only, f.hooks(checked)
 	// Only opening the session is tried again; nothing is deleted until it
 	// is open.
-	o.OpenRemover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+	o.OpenRemover = func(ctx context.Context, _ string) (remote.Remover, error) {
 		return establish(ctx, st.target, func(ctx context.Context) (remote.Remover, error) {
 			if err := f.still(st.target); err != nil {
 				return nil, err
 			}
-			return f.remover(ctx, endpoint)
+			return f.remover(ctx, st.target)
 		})
 	}
 	if f.prepared != nil {

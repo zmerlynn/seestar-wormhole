@@ -44,7 +44,7 @@ func copyServerWith(t *testing.T, native *copyapp.Native) (*server, *[]string) {
 		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Target: s.copyTarget, Native: native,
-		Dial: func(context.Context, string) (remote.Session, error) {
+		Dial: func(context.Context, copyapp.Target) (remote.Session, error) {
 			return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), nil
 		},
 		Test: func(_ context.Context, endpoint string) ([]remote.Entry, error) {
@@ -486,7 +486,7 @@ func TestQuitOrder(t *testing.T) {
 		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Target: s.copyTarget,
-		Dial: func(context.Context, string) (remote.Session, error) {
+		Dial: func(context.Context, copyapp.Target) (remote.Session, error) {
 			open.Add(1)
 			return closeSession{remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), &open}, nil
 		},

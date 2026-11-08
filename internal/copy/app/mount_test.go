@@ -272,7 +272,7 @@ func TestMountStartGivesWayToPage(t *testing.T) {
 				}
 				return Target{Endpoint: testEndpoint, Device: "synthetic", Run: 1}, nil
 			},
-			Dial: func(context.Context, string) (remote.Session, error) {
+			Dial: func(context.Context, Target) (remote.Session, error) {
 				dialed.Add(1)
 				return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": image("abc")}), nil
 			},

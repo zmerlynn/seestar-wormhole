@@ -23,14 +23,17 @@ type MountOptions struct {
 	// each dial. Its error says why there is no target now, and the start
 	// or dial fails with it. It must not wait on [Mount.Change].
 	Target func() (Target, error)
-	// Dial opens a session to an endpoint; nil is remote.Dial. Test is
-	// Test's check; nil is engine.Test. Reach is [Mount.Reach]'s; nil is
-	// remote.Reach. Remover opens a delete's remover; nil is
-	// remote.DialRemover. Tests replace them.
-	Dial    func(ctx context.Context, endpoint string) (remote.Session, error)
+	// Dial opens a session at a target; nil is remote.Dial to its
+	// endpoint. Remover opens a delete's remover there; nil is
+	// remote.DialRemover to its endpoint. The host chooses the route from
+	// the target's Run, never from its endpoint's text. Test is Test's
+	// check; nil is engine.Test. Reach is [Mount.Reach]'s; nil is
+	// remote.Reach. Both check an address on this network. Tests replace
+	// them.
+	Dial    func(ctx context.Context, t Target) (remote.Session, error)
 	Test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	Reach   func(ctx context.Context, endpoint string) error
-	Remover func(ctx context.Context, endpoint string) (remote.Remover, error)
+	Remover func(ctx context.Context, t Target) (remote.Remover, error)
 	// Settings are the copy settings saved before, or nil for none yet.
 	// Save keeps new ones, and they take effect only if it succeeds; nil
 	// keeps them in memory only. It is called with the Mount's locks
@@ -58,9 +61,10 @@ type Native struct {
 }
 
 // Target is where copying, a preview or a delete reaches the telescope:
-// its endpoint, host:port, and through the account, the telescope the
-// connection selected and that connection's run, which a reconnect
-// changes. Device is only compared, never shown or logged.
+// on this network its endpoint, host:port; through the account, a label
+// for display only, the telescope the connection selected and that
+// connection's run, which a reconnect changes. Device is only compared,
+// never shown or logged.
 type Target struct {
 	Endpoint string
 	Device   string // "" on this network

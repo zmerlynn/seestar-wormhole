@@ -75,7 +75,8 @@ func newRouteEnv(t *testing.T) *routeEnv {
 		Addr: netip.MustParseAddrPort(e.s.host), StateDir: filepath.Join(base, "state"), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Target: e.s.copyTarget,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
+		Dial: func(ctx context.Context, tg copyapp.Target) (remote.Session, error) {
+			endpoint := tg.Endpoint
 			if err := e.wait(ctx, &e.holdDial, nil); err != nil {
 				return nil, err
 			}
@@ -92,7 +93,8 @@ func newRouteEnv(t *testing.T) *routeEnv {
 		},
 		Test:  test,
 		Reach: reachBy(test),
-		Remover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
+		Remover: func(ctx context.Context, tg copyapp.Target) (remote.Remover, error) {
+			endpoint := tg.Endpoint
 			if err := e.wait(ctx, &e.holdRemove, &e.removing); err != nil {
 				return nil, err
 			}
@@ -805,7 +807,7 @@ func TestAccountPassDuringConnect(t *testing.T) {
 			e.s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
 				Addr: netip.MustParseAddrPort(e.s.host), StateDir: t.TempDir(), Target: e.s.copyTarget,
 				Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-				Dial: func(ctx context.Context, _ string) (remote.Session, error) {
+				Dial: func(ctx context.Context, _ copyapp.Target) (remote.Session, error) {
 					mu.Lock()
 					dials++
 					first, held := dials == 1, armed

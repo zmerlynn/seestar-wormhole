@@ -151,7 +151,7 @@ type windowFunc func(context.Context, string, func(), <-chan struct{}) error
 // copyDial is how the copier reaches the telescope; nil is remote.Dial.
 // Only the native check's guitest build and tests set it, to a fake
 // telescope.
-var copyDial func(ctx context.Context, endpoint string) (remote.Session, error)
+var copyDial func(ctx context.Context, t copyapp.Target) (remote.Session, error)
 
 // runText reads a run's status text for the copier's target; nil is its
 // Text. Only tests set it, since only a proxy session makes a status
