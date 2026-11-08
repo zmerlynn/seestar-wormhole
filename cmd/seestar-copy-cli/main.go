@@ -12,6 +12,9 @@ import (
 	"syscall"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
@@ -41,9 +44,12 @@ func main() {
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	logger := diagnostic.Logger("text", stderr, slog.LevelInfo)
 	output := &checkedWriter{Writer: stdout}
-	root := newCommand(output, logger)
+	root, files := newCommand(output)
 	root.SetArgs(append([]string{}, args...))
 	executed, err := root.ExecuteContextC(ctx)
+	if err == nil {
+		err = runFile(ctx, files, output, logger)
+	}
 	if err == nil {
 		err = output.err
 	}
@@ -57,6 +63,29 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	}
 	logger.Error(executed.Name()+" failed", "error", err)
 	return exitFailure
+}
+
+// dial and dialRemover are set by binary_test.go, which predates the move of
+// the file commands to internal/copy/cli. The commands dial through that
+// package's own seams, and no in-process test here gets as far as a session.
+var (
+	dial        func(context.Context, string, *slog.Logger) (remote.Session, error)
+	dialRemover func(context.Context, string, *slog.Logger) (remote.Remover, error)
+)
+
+// runFile runs the file command that validated, if any. A read-only one
+// runs with the read-only guard on: from then on, any function that changes
+// the local filesystem or the device panics.
+func runFile(ctx context.Context, files []*cli.Command, stdout io.Writer, log *slog.Logger) error {
+	for _, c := range files {
+		if c.Run != nil {
+			if c.ReadOnly {
+				readonly.Enable()
+			}
+			return c.Run(ctx, stdout, log)
+		}
+	}
+	return nil
 }
 
 // checkedWriter keeps the first write error, since Cobra's help callbacks

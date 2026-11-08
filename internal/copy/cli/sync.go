@@ -1,8 +1,9 @@
-package main
+package cli
 
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"os"
@@ -13,8 +14,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
-	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // maxWorkers bounds --workers; every worker shares the one SMB session.
@@ -37,9 +38,11 @@ type syncOptions struct {
 	stateDirSet  bool
 }
 
-func newSyncCommand(log *slog.Logger) *cobra.Command {
+// NewSync returns the sync command of program.
+func NewSync(program string) *Command {
 	var o syncOptions
-	cmd := &cobra.Command{
+	c := &Command{}
+	c.Command = &cobra.Command{
 		Use:   "sync --endpoint HOST:PORT --dest DIR",
 		Short: "Mirror the telescope's images into a local folder",
 		Long: `Mirror the telescope's images into a local folder.
@@ -64,7 +67,7 @@ Durations use Go units, such as 30s, 5m or 1h30m.
 Logs and errors go to stderr; help goes to stdout.
 Exit 0 when stopped or after a clean --once or --dry-run pass, 1 on a runtime
 failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
-		Example: "  " + programName + " sync --endpoint 127.0.0.1:4445 --dest ~/Seestar",
+		Example: "  " + program + " sync --endpoint 127.0.0.1:4445 --dest ~/Seestar",
 		Args:    noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			o.stateDirSet = cmd.Flags().Changed("state-dir")
@@ -72,10 +75,11 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 			if err := o.validate(); err != nil {
 				return err
 			}
-			return runSync(cmd.Context(), o, log)
+			c.store(o.dryRun, func(ctx context.Context, _ io.Writer, log *slog.Logger) error { return runSync(ctx, o, log) })
+			return nil
 		},
 	}
-	f := cmd.Flags()
+	f := c.Flags()
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder, created if missing (required)")
 	o.selection.register(f)
@@ -86,19 +90,19 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 	f.DurationVar(&o.firstPassAge, "first-pass-age", 10*time.Minute, "on the first pass, files at least this old count as finished")
 	f.IntVar(&o.workers, "workers", 4, "files copied at once (1-64)")
 	f.StringVar(&o.stateDir, "state-dir", "", "folder for the state file (default: the per-user config folder's seestar-copy)")
-	return cmd
+	return c
 }
 
 // validate checks the flags without touching the network or the disk.
 func (o *syncOptions) validate() error {
 	if o.endpoint == "" {
-		return &usageError{Option: "--endpoint", Rule: "required; give the SMB host:port"}
+		return &diagnostic.OptionError{Option: "--endpoint", Rule: "required; give the SMB host:port"}
 	}
 	if err := validateEndpoint(o.endpoint); err != nil {
 		return err
 	}
 	if o.dest == "" {
-		return &usageError{Option: "--dest", Rule: "required; give the local mirror folder"}
+		return &diagnostic.OptionError{Option: "--dest", Rule: "required; give the local mirror folder"}
 	}
 	sel, err := o.selection.parse()
 	if err != nil {
@@ -106,22 +110,22 @@ func (o *syncOptions) validate() error {
 	}
 	o.selector = sel
 	if o.interval <= 0 {
-		return &usageError{Option: "--interval", Rule: "must be more than zero"}
+		return &diagnostic.OptionError{Option: "--interval", Rule: "must be more than zero"}
 	}
 	if o.dryRun && o.intervalSet {
-		return &usageError{Option: "--dry-run", Rule: "runs one pass; do not give --interval with it"}
+		return &diagnostic.OptionError{Option: "--dry-run", Rule: "runs one pass; do not give --interval with it"}
 	}
 	if o.readyAge < 0 {
-		return &usageError{Option: "--ready-age", Rule: "must not be negative"}
+		return &diagnostic.OptionError{Option: "--ready-age", Rule: "must not be negative"}
 	}
 	if o.firstPassAge < 0 {
-		return &usageError{Option: "--first-pass-age", Rule: "must not be negative"}
+		return &diagnostic.OptionError{Option: "--first-pass-age", Rule: "must not be negative"}
 	}
 	if o.workers < 1 || o.workers > maxWorkers {
-		return &usageError{Option: "--workers", Rule: "must be 1 to 64"}
+		return &diagnostic.OptionError{Option: "--workers", Rule: "must be 1 to 64"}
 	}
 	if o.stateDirSet && o.stateDir == "" {
-		return &usageError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
+		return &diagnostic.OptionError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
 	}
 	return nil
 }
@@ -130,10 +134,10 @@ func validateEndpoint(endpoint string) error {
 	const rule = "use host:port, such as 127.0.0.1:4445"
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil || host == "" {
-		return &usageError{Option: "--endpoint", Rule: rule}
+		return &diagnostic.OptionError{Option: "--endpoint", Rule: rule}
 	}
 	if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
-		return &usageError{Option: "--endpoint", Rule: rule}
+		return &diagnostic.OptionError{Option: "--endpoint", Rule: rule}
 	}
 	return nil
 }
@@ -168,14 +172,9 @@ var dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.
 	return remote.Dial(ctx, endpoint, log)
 }
 
-// runSync resolves the state folder and runs the sync. A dry run turns
-// the read-only guard on first.
+// runSync resolves the state folder and runs the sync. A dry run is
+// read-only: the program turns the guard on before it calls this.
 func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
-	if o.dryRun {
-		// Before anything touches the disk: from here on, any function
-		// that changes the local filesystem panics.
-		readonly.Enable()
-	}
 	stateDir, err := resolveStateDir(o.stateDir, o.stateDirSet)
 	if err != nil {
 		return err

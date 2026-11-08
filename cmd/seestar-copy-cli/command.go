@@ -4,21 +4,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log/slog"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/licenses"
 )
 
 // usageError names an option and the rule it broke. It maps to exit code 2.
-type usageError struct{ Option, Rule string }
+type usageError = diagnostic.OptionError
 
-func (e *usageError) Error() string { return e.Option + ": " + e.Rule }
-
-// newCommand builds the command tree. Parsing and validation errors come back
-// as *usageError; nothing touches the network or the disk before validation.
-func newCommand(stdout io.Writer, log *slog.Logger) *cobra.Command {
+// newCommand builds the command tree, with the file commands from
+// internal/copy/cli. Parsing and validation errors come back as
+// *usageError; nothing touches the network or the disk before validation.
+func newCommand(stdout io.Writer) (*cobra.Command, []*cli.Command) {
 	var showVersion bool
 	root := &cobra.Command{
 		Use:                programName,
@@ -60,7 +60,11 @@ func newCommand(stdout io.Writer, log *slog.Logger) *cobra.Command {
 	})
 	root.SetFlagErrorFunc(flagError)
 	root.Flags().BoolVar(&showVersion, "version", false, "print version, revision and platform")
-	root.AddCommand(newSyncCommand(log), newFindCommand(log), newBrowseCommand(log), newDeleteCommand(log), &cobra.Command{
+	files := cli.Commands(programName)
+	for _, c := range files {
+		root.AddCommand(c.Command)
+	}
+	root.AddCommand(&cobra.Command{
 		Use:   "licenses",
 		Short: "Print the license of this program and of the libraries in this build",
 		Args:  noArguments,
@@ -68,7 +72,7 @@ func newCommand(stdout io.Writer, log *slog.Logger) *cobra.Command {
 			return licenses.Write(cmd.OutOrStdout())
 		},
 	})
-	return root
+	return root, files
 }
 
 func noArguments(_ *cobra.Command, args []string) error {
@@ -96,16 +100,9 @@ func flagError(cmd *cobra.Command, err error) error {
 		return &usageError{Option: "--" + missing.GetFlag().Name, Rule: "requires a value"}
 	}
 	if invalid, ok := errors.AsType[*pflag.InvalidValueError](err); ok {
-		rule := "use a supported value"
-		switch invalid.GetFlag().Value.Type() {
-		case "duration":
-			rule = "use a duration such as 30s, 5m or 1h"
-		case "age":
-			rule = "use a duration such as 36h, or whole days such as 7d"
-		case "int":
-			rule = "use a whole number"
-		case "bool":
-			rule = "use true or false"
+		rule, ok := cli.ValueRule(invalid.GetFlag().Value.Type())
+		if !ok {
+			rule = "use a supported value"
 		}
 		return &usageError{Option: "--" + invalid.GetFlag().Name, Rule: rule}
 	}

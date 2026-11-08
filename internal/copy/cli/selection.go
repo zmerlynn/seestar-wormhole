@@ -1,8 +1,9 @@
-package main
+package cli
 
 import (
 	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // selectionFlags are the flags that choose which part of the share a
@@ -51,7 +52,7 @@ func (f selectionFlags) parse() (engine.Selector, error) {
 func parsePattern(option, flag string) (engine.Pattern, error) {
 	p, err := engine.ParsePattern(flag)
 	if err != nil {
-		return engine.Pattern{}, &usageError{Option: option, Rule: err.Error()}
+		return engine.Pattern{}, &diagnostic.OptionError{Option: option, Rule: err.Error()}
 	}
 	return p, nil
 }

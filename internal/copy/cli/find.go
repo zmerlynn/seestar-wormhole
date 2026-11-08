@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bufio"
@@ -16,9 +16,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
-	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 type findOptions struct {
@@ -34,15 +34,17 @@ type findOptions struct {
 	stateDirSet bool
 }
 
-func newFindCommand(log *slog.Logger) *cobra.Command {
+// NewFind returns the find command of program. It is read-only.
+func NewFind(program string) *Command {
 	var o findOptions
-	cmd := &cobra.Command{
+	c := &Command{}
+	c.Command = &cobra.Command{
 		Use:   "find --endpoint HOST:PORT [flags]",
 		Short: "List the files and folders on the telescope's share",
 		Long: `List the files and folders on the telescope's share.
 find lists the share once, leaving out what sync would: --exclude,
 --no-default-excludes and --include select exactly as for sync (see
-` + programName + ` help sync). With --older-than, it lists only files whose
+` + program + ` help sync). With --older-than, it lists only files whose
 device mtime is at least that old. Folders are always listed.
 Each entry is one line on stdout, in listing order. --format text, the
 default, writes the type (d for a folder, - for a file), the size in bytes,
@@ -59,8 +61,8 @@ Durations use Go units, such as 36h or 90m, or whole days, such as 7d.
 Logs and errors go to stderr.
 Exit 0 when the listing is complete, 1 when it fails or is stopped, 2 on a
 usage error.`,
-		Example: "  " + programName + " find --endpoint 127.0.0.1:4445 --include /MyWorks\n" +
-			"  " + programName + " find --endpoint 127.0.0.1:4445 --dest ~/Seestar --format jsonl",
+		Example: "  " + program + " find --endpoint 127.0.0.1:4445 --include /MyWorks\n" +
+			"  " + program + " find --endpoint 127.0.0.1:4445 --dest ~/Seestar --format jsonl",
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			o.destSet = cmd.Flags().Changed("dest")
@@ -68,23 +70,24 @@ usage error.`,
 			if err := o.validate(); err != nil {
 				return err
 			}
-			return runFind(cmd.Context(), o, cmd.OutOrStdout(), log)
+			c.store(true, func(ctx context.Context, out io.Writer, log *slog.Logger) error { return runFind(ctx, o, out, log) })
+			return nil
 		},
 	}
-	f := cmd.Flags()
+	f := c.Flags()
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	o.selection.register(f)
 	f.Var((*ageValue)(&o.olderThan), "older-than", "list only files whose device time is at least this old (default: no limit)")
 	f.StringVar(&o.format, "format", "text", "output format: text or jsonl")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state gives each file a status; never created")
 	f.StringVar(&o.stateDir, "state-dir", "", "folder for the state file of --dest (default: the per-user config folder's seestar-copy)")
-	return cmd
+	return c
 }
 
 // validate checks the flags without touching the network or the disk.
 func (o *findOptions) validate() error {
 	if o.endpoint == "" {
-		return &usageError{Option: "--endpoint", Rule: "required; give the SMB host:port"}
+		return &diagnostic.OptionError{Option: "--endpoint", Rule: "required; give the SMB host:port"}
 	}
 	if err := validateEndpoint(o.endpoint); err != nil {
 		return err
@@ -95,28 +98,27 @@ func (o *findOptions) validate() error {
 	}
 	o.selector = sel
 	if o.olderThan < 0 {
-		return &usageError{Option: "--older-than", Rule: "must not be negative"}
+		return &diagnostic.OptionError{Option: "--older-than", Rule: "must not be negative"}
 	}
 	if o.format != "text" && o.format != "jsonl" {
-		return &usageError{Option: "--format", Rule: "use text or jsonl"}
+		return &diagnostic.OptionError{Option: "--format", Rule: "use text or jsonl"}
 	}
 	if o.destSet && o.dest == "" {
-		return &usageError{Option: "--dest", Rule: "must not be empty; omit it to list without a status"}
+		return &diagnostic.OptionError{Option: "--dest", Rule: "must not be empty; omit it to list without a status"}
 	}
 	if o.stateDirSet && o.stateDir == "" {
-		return &usageError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
+		return &diagnostic.OptionError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
 	}
 	if o.stateDirSet && !o.destSet {
-		return &usageError{Option: "--state-dir", Rule: "give --dest with it; find reads a state file only for a destination"}
+		return &diagnostic.OptionError{Option: "--state-dir", Rule: "give --dest with it; find reads a state file only for a destination"}
 	}
 	return nil
 }
 
 // runFind lists the share to out. It never writes to the disk: the
-// read-only guard is on from the start, and with --dest the state is read
-// as a dry run reads it, without the lock.
+// program turns the read-only guard on before it calls this, and with
+// --dest the state is read as a dry run reads it, without the lock.
 func runFind(ctx context.Context, o findOptions, out io.Writer, log *slog.Logger) error {
-	readonly.Enable()
 	var records map[string]state.Record
 	if o.destSet {
 		stateDir, err := resolveStateDir(o.stateDir, o.stateDirSet)

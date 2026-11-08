@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"context"
@@ -13,9 +13,9 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/browse"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
-	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 type browseOptions struct {
@@ -32,9 +32,11 @@ type browseOptions struct {
 	stateDirSet bool
 }
 
-func newBrowseCommand(log *slog.Logger) *cobra.Command {
+// NewBrowse returns the browse command of program. It is read-only.
+func NewBrowse(program string) *Command {
 	var o browseOptions
-	cmd := &cobra.Command{
+	c := &Command{}
+	c.Command = &cobra.Command{
 		Use:   "browse --endpoint HOST:PORT [flags]",
 		Short: "Serve a read-only web page for looking through the telescope's share",
 		Long: `Serve a read-only web page for looking through the telescope's share.
@@ -60,8 +62,8 @@ browse never writes: not to the telescope, not to --dest, not to the state.
 Logs and errors go to stderr.
 Exit 0 when stopped by Ctrl+C, 1 when it cannot start or keep serving, 2 on
 a usage error.`,
-		Example: "  " + programName + " browse --endpoint 127.0.0.1:4445 --open\n" +
-			"  " + programName + " browse --endpoint 127.0.0.1:4445 --dest ~/Seestar",
+		Example: "  " + program + " browse --endpoint 127.0.0.1:4445 --open\n" +
+			"  " + program + " browse --endpoint 127.0.0.1:4445 --dest ~/Seestar",
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			o.destSet = cmd.Flags().Changed("dest")
@@ -71,26 +73,27 @@ a usage error.`,
 			}
 			for _, name := range []string{"exclude", "no-default-excludes", "include"} {
 				if !o.destSet && cmd.Flags().Changed(name) {
-					return &usageError{Option: "--" + name, Rule: "give --dest with it; browse shows what the selection leaves out only with statuses"}
+					return &diagnostic.OptionError{Option: "--" + name, Rule: "give --dest with it; browse shows what the selection leaves out only with statuses"}
 				}
 			}
-			return runBrowse(cmd.Context(), o, cmd.OutOrStdout(), log)
+			c.store(true, func(ctx context.Context, out io.Writer, log *slog.Logger) error { return runBrowse(ctx, o, out, log) })
+			return nil
 		},
 	}
-	f := cmd.Flags()
+	f := c.Flags()
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.listen, "listen", "127.0.0.1:0", "IP address and port to serve the page on; port 0 picks a free one")
 	f.BoolVar(&o.open, "open", false, "also open the page in the default browser")
 	o.selection.register(f)
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state gives each file a status; never created")
 	f.StringVar(&o.stateDir, "state-dir", "", "folder for the state file of --dest (default: the per-user config folder's seestar-copy)")
-	return cmd
+	return c
 }
 
 // validate checks the flags without touching the network or the disk.
 func (o *browseOptions) validate() error {
 	if o.endpoint == "" {
-		return &usageError{Option: "--endpoint", Rule: "required; give the SMB host:port"}
+		return &diagnostic.OptionError{Option: "--endpoint", Rule: "required; give the SMB host:port"}
 	}
 	if err := validateEndpoint(o.endpoint); err != nil {
 		return err
@@ -101,13 +104,13 @@ func (o *browseOptions) validate() error {
 	}
 	o.addr = addr
 	if o.destSet && o.dest == "" {
-		return &usageError{Option: "--dest", Rule: "must not be empty; omit it to browse without a status"}
+		return &diagnostic.OptionError{Option: "--dest", Rule: "must not be empty; omit it to browse without a status"}
 	}
 	if o.stateDirSet && o.stateDir == "" {
-		return &usageError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
+		return &diagnostic.OptionError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
 	}
 	if o.stateDirSet && !o.destSet {
-		return &usageError{Option: "--state-dir", Rule: "give --dest with it; browse reads a state file only for a destination"}
+		return &diagnostic.OptionError{Option: "--state-dir", Rule: "give --dest with it; browse reads a state file only for a destination"}
 	}
 	sel, err := o.selection.parse()
 	if err != nil {
@@ -124,7 +127,7 @@ func (o *browseOptions) validate() error {
 func parseListen(s string) (netip.AddrPort, error) {
 	ap, err := netip.ParseAddrPort(s)
 	if err != nil || ap.Addr().Is4In6() || ap.Addr().Zone() != "" {
-		return netip.AddrPort{}, &usageError{Option: "--listen", Rule: "give an IP address and port, such as 127.0.0.1:0"}
+		return netip.AddrPort{}, &diagnostic.OptionError{Option: "--listen", Rule: "give an IP address and port, such as 127.0.0.1:0"}
 	}
 	return ap, nil
 }
@@ -155,8 +158,8 @@ func warnOpen(log *slog.Logger, err error) {
 }
 
 // runBrowse serves the page until ctx is done. A stop by ctx returns nil.
+// The program turns the read-only guard on before it calls this.
 func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Logger) error {
-	readonly.Enable()
 	var records func() (map[string]state.Record, error)
 	if o.destSet {
 		stateDir, err := resolveStateDir(o.stateDir, o.stateDirSet)

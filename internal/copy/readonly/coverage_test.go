@@ -34,8 +34,8 @@ var writeNames = map[string]bool{
 var allowed = map[string]string{}
 
 // TestWritesAreGuarded checks, without type information, the rule this
-// package rests on: every function in seestar-copy's code (internal/copy/
-// and cmd/seestar-copy-cli/) whose body
+// package rests on: every function in the copy code (internal/copy/, with
+// the file commands in internal/copy/cli, and cmd/seestar-copy-cli/) whose body
 // (including function literals in it) refers to a name in writeNames, or
 // calls a package-level variable initialized with one (a test seam such as
 // syncFile = (*os.File).Sync), starts with a call to readonly.Check. It also
