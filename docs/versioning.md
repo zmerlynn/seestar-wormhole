@@ -184,6 +184,17 @@ Notes by release:
 
 - v0.7.0 merged `seestar-copy-cli` into `seestar-wormhole-cli` (breaking): its commands became commands of
   `seestar-wormhole-cli`, and `--state-dir` on them became `--history-dir`.
+- v0.7.0 changed selection patterns to .gitignore syntax (breaking), for `--exclude` and `--include` and for the
+  pattern fields in the app's Copy and Free up space tabs; see [pattern rules](reference/selection-and-history.md#pattern-rules).
+  Case is still ignored, excludes still win, and an include still selects everything in a folder it matches. A leading
+  `!` is a usage error: use the other list, or write `\!` to match a name that starts with `!`. Write `\#` for a
+  leading `#`, and `\ ` for each trailing space to match. A `\` before a `/` is a usage error: write a plain `/`. `?`
+  and `[...]` now match one byte, not one letter, which changes what an existing pattern selects in both directions:
+  an exclude `M?` no longer keeps `MyWorks/M星`, and an include `M???` now selects it. After upgrading, run the
+  preview again before deleting. A saved pattern that is now a usage error stops that copy, preview or command from
+  starting until it is corrected. Patterns in the new syntax stay in copy.json: an older release loads the file but
+  can't use them, so replace them with patterns it supports before downgrading, or restore a settings backup.
+  Reading the settings doesn't rewrite them.
 
 A security or safety fix ships on the latest line at whatever bump its contract impact requires; the label does not
 waive the break notes.
