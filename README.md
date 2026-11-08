@@ -95,7 +95,7 @@ under **Reach the telescope**, choose how to reach your Seestar:
   [address](docs/copying.md#find-the-telescopes-address) and choose **Save**.
   No account is needed, and the proxy doesn't start.
 
-![seestar-wormhole connected to a Seestar, with the phone-app and copying steps](docs/images/gui-connected.png)
+![seestar-wormhole connected to a Seestar, with the Copy, Browse and Free up space tabs](docs/images/gui-connected.png)
 
 Settings other than the password are saved after a successful connection;
 **Save password to keychain** is optional. **Stop** releases the telescope so
