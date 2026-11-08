@@ -180,8 +180,9 @@ give its address as `--endpoint`. The same `loginctl enable-linger "$USER"`
 as above keeps this service running after you log out.
 
 `systemctl --user stop seestar-wormhole-sync` sends SIGTERM, which `sync`
-treats as Ctrl+C: it discards the files in progress, logs `pass stopped`
-and exits 0. A file it was copying is copied again on the next start; see
+treats as Ctrl+C, and it exits 0. During a pass it discards the files in
+progress and logs `pass stopped`; between passes it exits without another
+pass record. A file it was copying is copied again on the next start; see
 [stopping](reference/files-cli.md#stopping). Exit 2 is a usage error, so
 the service isn't restarted after one. After exit 1, for example when the
 app was copying into the same folder at startup, systemd starts it again a
