@@ -470,6 +470,54 @@ func TestIncluded(t *testing.T) {
 	}
 }
 
+// A space before a / is part of the name, also where the walk decides
+// which folders could hold a match: a walk with the include lists the
+// selected file, and leaves out the folder without the space unread.
+func TestIncludeSpaceBeforeSlash(t *testing.T) {
+	file := &fstest.MapFile{Data: []byte("x")}
+	share := remote.NewFake(fstest.MapFS{
+		"folder /file.fit":   file,
+		"folder/file.fit":    file,
+		"a/folder /file.fit": file,
+		"a/folder/file.fit":  file,
+	})
+	for _, tc := range []struct {
+		include string
+		want    []string
+	}{
+		{"/folder /file.fit", []string{"folder /file.fit"}},
+		{"folder /file.fit", []string{"folder /file.fit"}},
+		{"/folder /**/file.fit", []string{"folder /file.fit"}},
+		{"/a/folder /file.fit", []string{"a/folder /file.fit"}},
+		{"/folder /", []string{"folder /file.fit"}},
+	} {
+		s := selector(t, nil, []string{tc.include})
+		kept, _, err := s.Walk(t.Context(), share)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var files, dirs []string
+		for _, e := range kept {
+			if e.Kind == remote.Dir {
+				dirs = append(dirs, e.Path)
+			} else {
+				files = append(files, e.Path)
+			}
+		}
+		if !slices.Equal(files, tc.want) {
+			t.Errorf("%q: walk kept files %q, want %q", tc.include, files, tc.want)
+		}
+		if slices.Contains(dirs, "folder") || slices.Contains(dirs, "a/folder") {
+			t.Errorf("%q: walk listed a folder without the space: %q", tc.include, dirs)
+		}
+		for _, p := range tc.want {
+			if s.LeavesOut(p, false) {
+				t.Errorf("%q: LeavesOut(%q) = true", tc.include, p)
+			}
+		}
+	}
+}
+
 // TestWalkKeptParents checks that the walk records the parent of every
 // entry it left out, whether an exclude or an include left it out, so that
 // delete keeps a folder with something unlisted in it.

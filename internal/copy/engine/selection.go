@@ -223,14 +223,15 @@ func ParsePattern(s string) (Pattern, error) {
 	}
 	// Anchored: a folder can hold a match only if its leading names match
 	// the pattern's leading parts, up to a ** part, which may stand for any
-	// number of names. Each prefix is itself an anchored pattern with no
-	// trailing /, compiled by the same library.
+	// number of names. Each prefix is itself an anchored folder pattern,
+	// compiled by the same library. It ends in /, so that a space before a
+	// / in the pattern is not taken for a trailing space and dropped.
 	lowerParts := strings.Split(strings.TrimPrefix(strings.TrimSuffix(lower, "/"), "/"), "/")
 	for k := range lowerParts {
 		if doubleStar(lowerParts[k]) {
 			break
 		}
-		prefix, err := compile("/" + strings.Join(lowerParts[:k+1], "/"))
+		prefix, err := compile("/" + strings.Join(lowerParts[:k+1], "/") + "/")
 		if err != nil {
 			return Pattern{}, err
 		}
