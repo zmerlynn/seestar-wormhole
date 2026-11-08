@@ -400,8 +400,8 @@ func TestStartupMountUsesTheBuilder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	savedTCP, savedRemover := tcpDial, tcpRemover
-	t.Cleanup(func() { tcpDial, tcpRemover = savedTCP, savedRemover })
+	savedTCP, savedRemover, savedDial := tcpDial, tcpRemover, copyDial
+	t.Cleanup(func() { tcpDial, tcpRemover, copyDial = savedTCP, savedRemover, savedDial })
 	copyDial = nil
 	var mu sync.Mutex
 	var dialed []string

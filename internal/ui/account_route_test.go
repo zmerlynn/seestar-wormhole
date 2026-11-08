@@ -207,13 +207,17 @@ func newViaEnv(t *testing.T, settings *copyapp.Settings) *viaEnv {
 	e := &viaEnv{routeEnv: newRouteEnv(t), shareDir: filepath.Join(t.TempDir(), "share")}
 	e.s.copy.Quit()
 	e.file("MyWorks/a.jpg", "AAA")
-	saved := [...]any{dialVia, removerVia, tcpDial, tcpRemover}
+	saved := [...]any{dialVia, removerVia, tcpDial, tcpRemover, copyDial}
 	t.Cleanup(func() {
 		dialVia = saved[0].(func(context.Context, string, remote.Conn, *slog.Logger) (remote.Session, error))
 		removerVia = saved[1].(func(context.Context, string, remote.Conn, *slog.Logger) (remote.Remover, error))
 		tcpDial = saved[2].(func(context.Context, string, *slog.Logger) (remote.Session, error))
 		tcpRemover = saved[3].(func(context.Context, string, *slog.Logger) (remote.Remover, error))
+		copyDial = saved[4].(func(context.Context, copyapp.Target) (remote.Session, error))
 	})
+	// The routes under test are the transports below copyDial, which the
+	// native check's guitest build sets to its fake telescope.
+	copyDial = nil
 	open := func(ctx context.Context, name string, conn remote.Conn) (*channelSession, error) {
 		c, err := conn(ctx)
 		if err != nil {
