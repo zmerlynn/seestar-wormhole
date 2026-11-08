@@ -36,7 +36,9 @@ type Hooks struct {
 	// replaces or adopts, or fails to, as it finishes. Calls never overlap.
 	Done func(copier.Result)
 	// PassDone is called with the summary of every sync pass, however it
-	// ended, after its pass line is logged.
+	// ended, after its pass line is logged and its folder lock released.
+	// A later pass skipped for a busy folder, or failed for a removed one,
+	// has only Err set.
 	PassDone func(Summary)
 	// Checked is called once in a delete run, after the listing, with the
 	// number of listed files it will decide on.

@@ -144,7 +144,9 @@ never read, and its copy history in the default
 [history location](copy-reference.md#location), whatever its `--state-dir`
 says. While copying is on, the app holds the folder's history lock, as `sync`
 does, so a `sync` for the same folder exits with its usual error, and the app
-says the folder is in use while a `sync` holds it. Through Telescope Network
+says the folder is in use while a `sync` holds it. Copy and Free up space
+also take its [folder lock](copy-reference.md#the-folder-lock), as `sync`
+and `delete` do. Through Telescope Network
 they reach the share through the connection itself, so they work with the SMB
 port off, and their errors name **Seestar (account connection)**. With
 **Connect when an app needs Seestar**, they count as an app: they start the
@@ -198,10 +200,13 @@ already copied, still being written, or left out. Nothing is copied.
 **Cancel** stops a preview that is running; starting, a Save that changes the
 folder or the selection, and Clear history discard it.
 
-While copying is on, the app holds the folder's lock, as `sync` does: a `sync`
-for the same folder exits with its usual error, and Copy says **Another copy
-is already using this folder.** while a `sync`, or another copy of the app with
-another state directory, holds it.
+While copying is on, the app holds the folder's history lock for as long as
+copying is on, and its [folder lock](copy-reference.md#the-folder-lock)
+during each check, as `sync` does: a `sync` for the same folder exits with
+its usual error. Copy says **Another copy or delete is using this folder.**
+while a `sync`, a `delete --force`, or another copy of the app holds either
+lock: when you start copying, copying stays off; at a later check, that
+check is skipped, nothing is copied, and Copy tries again at the next one.
 
 **Copy history**, collapsed under the settings, shows the path of the saved
 folder's [state file](copy-reference.md#the-state-file), which `sync` uses
@@ -251,7 +256,12 @@ clears a check that couldn't finish. **Delete N files…** asks once more. The d
 folders again, and only those, saying **Checking N files again before
 deleting…**, and proves each file again just before it removes it: a file
 that changed or went away since the preview is kept. **Stop** ends a delete
-that is running.
+that is running. The delete holds the folder's
+[folder lock](copy-reference.md#the-folder-lock) from before it lists the
+folders until its last removal, and runs between Copy's checks: while a
+check, a `sync` or another delete holds the lock, it stops at once with
+**Another copy or delete is using this folder.** and deletes nothing. A
+preview takes no lock.
 
 ## Stopping and quitting
 

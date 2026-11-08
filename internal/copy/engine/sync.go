@@ -9,6 +9,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/copier"
@@ -49,7 +50,8 @@ type SyncOptions struct {
 	CheckNow <-chan struct{}
 	// Recreate, before each pass after the first, creates Dest again if
 	// it is missing and reopens it there, while the state stays open (and
-	// locked). Without it, a removed Dest fails each later download.
+	// locked). Without it, a removed Dest fails each later pass before it
+	// dials.
 	Recreate bool
 }
 
@@ -68,7 +70,9 @@ type Summary struct {
 	// cut off or not started.
 	Failed []Failure
 	// Err is why the pass ended before copying anything: the session or
-	// the listing failed.
+	// the listing failed, or, at a pass after the first, the folder lock
+	// was held (wrapping state.ErrFolderLocked) or the destination was
+	// removed.
 	Err error
 }
 
@@ -80,6 +84,15 @@ type Failure struct {
 // RunSync opens the state and the destination, then runs passes until ctx is
 // done, or runs one with Once. A stop by ctx returns nil. A dry run is
 // [dryRun].
+//
+// Each pass holds the destination's folder lock ([state.LockFolder]) from
+// before its sweep of leftover temporary files until its workers are joined
+// and their temporary files removed; the state, and so the history lock, is
+// held for the whole run and released last. A folder lock held by another
+// writer at the first pass ends the run with an error wrapping
+// [state.ErrFolderLocked], with the state closed again; at a later pass it
+// skips that pass. A destination removed under a run without Recreate fails
+// each later pass without dialing, and the run goes on.
 func RunSync(ctx context.Context, o SyncOptions, log *slog.Logger) error {
 	if o.DryRun {
 		return dryRun(ctx, o, log)
@@ -89,7 +102,7 @@ func RunSync(ctx context.Context, o SyncOptions, log *slog.Logger) error {
 		return err
 	}
 	defer st.Close()
-	cp, err := copier.New(o.Dest, st, log)
+	cp, err := copier.Open(o.Dest, st, log)
 	if err != nil {
 		return err
 	}
@@ -104,7 +117,10 @@ func RunSync(ctx context.Context, o SyncOptions, log *slog.Logger) error {
 			cp.Copying = o.Hooks.Copying
 			s.stat, s.copier = cp.Stat, cp
 		}
-		sum := s.pass(ctx)
+		sum, err := s.lockedPass(ctx, first)
+		if err != nil {
+			return err
+		}
 		failed, err := len(sum.Failed), sum.Err
 		switch {
 		case ctx.Err() != nil:
@@ -125,9 +141,76 @@ func RunSync(ctx context.Context, o SyncOptions, log *slog.Logger) error {
 	}
 }
 
+// Seams for tests: lockFolder takes a pass's or a delete's folder lock,
+// and sweep removes a pass's leftover temporary files.
+var (
+	lockFolder = state.LockFolder
+	sweep      = (*copier.Copier).Sweep
+)
+
+// errDestMissing is a later pass's error when the destination it writes
+// through was removed.
+var errDestMissing = errors.New("destination missing")
+
+// lockedPass takes the folder lock through the pass's copier, sweeps, runs
+// the pass and unlocks once it has ended. At the first pass every lock or
+// sweep error is returned, and ends the run. At a later pass a held lock
+// skips the pass and a removed destination fails it, without dialing,
+// sweeping or writing: both return a summary with Err set and a nil error.
+// Any other lock error still ends the run; a later sweep error fails the
+// pass.
+func (s *syncer) lockedPass(ctx context.Context, first bool) (Summary, error) {
+	readonly.Check("engine.lockedPass")
+	lock, err := s.copier.Lock(lockFolder)
+	switch {
+	case err == nil:
+	case first:
+		return Summary{}, err
+	case errors.Is(err, state.ErrFolderLocked):
+		s.log.Warn("pass skipped", "reason", "folder_busy", "dest", s.opts.Dest, "error", err)
+		return s.notRun(err), nil
+	case errors.Is(err, fs.ErrNotExist):
+		err = fmt.Errorf("%w: %s", errDestMissing, s.opts.Dest)
+		s.log.Warn("pass failed", "reason", "destination_missing", "dest", s.opts.Dest)
+		return s.notRun(err), nil
+	default:
+		return Summary{}, err
+	}
+	unlock := sync.OnceFunc(func() { lock.Close() })
+	defer unlock()
+	if err := sweep(s.copier); err != nil {
+		unlock()
+		if first {
+			return Summary{}, err
+		}
+		sum := Summary{Err: err}
+		s.logPass(ctx, sum)
+		return s.notRun(sum.Err), nil
+	}
+	sum := s.pass(ctx)
+	// The pass has joined its workers, which removed their temporary
+	// files: only now may another writer sweep the folder.
+	unlock()
+	s.logPass(ctx, sum)
+	if h := s.opts.Hooks.PassDone; h != nil {
+		h(sum)
+	}
+	return sum, nil
+}
+
+// notRun is the summary of a later pass that ended before it dialed, which
+// [syncer.lockedPass] has logged, for the PassDone hook.
+func (s *syncer) notRun(err error) Summary {
+	sum := Summary{Err: err}
+	if h := s.opts.Hooks.PassDone; h != nil {
+		h(sum)
+	}
+	return sum
+}
+
 // reopen returns cp, or, if dest is missing, a new copier on dest created
-// again, with cp closed. The new copier's sweep for temporary files then
-// runs over an empty folder.
+// again, with cp closed. The pass then locks and sweeps the new, empty
+// folder.
 func reopen(cp *copier.Copier, dest string, st *state.State, log *slog.Logger) (*copier.Copier, error) {
 	readonly.Check("engine.reopen")
 	if _, err := os.Stat(dest); !errors.Is(err, fs.ErrNotExist) {
@@ -137,7 +220,7 @@ func reopen(cp *copier.Copier, dest string, st *state.State, log *slog.Logger) (
 	if err := os.MkdirAll(dest, 0o777); err != nil {
 		return cp, fmt.Errorf("create destination: %w", err)
 	}
-	next, err := copier.New(dest, st, log)
+	next, err := copier.Open(dest, st, log)
 	if err != nil {
 		return cp, err
 	}
@@ -188,19 +271,14 @@ type syncer struct {
 	firstPass bool
 }
 
-// pass runs one pass, logs a line for each entry an exclude skipped and a
-// summary, which also counts what the includes left out, calls the hooks,
-// and returns the summary. If the session or a listing fails, nothing is
-// copied.
+// pass runs one pass, logs a line for each entry an exclude skipped, calls
+// the hooks but PassDone, and returns the summary, which also counts what
+// the includes left out, once every worker is joined. The caller logs the
+// summary and calls PassDone. If the session or a listing fails, nothing
+// is copied.
 func (s *syncer) pass(ctx context.Context) (sum Summary) {
 	start := time.Now()
-	defer func() {
-		sum.Elapsed = time.Since(start)
-		s.logPass(ctx, sum)
-		if h := s.opts.Hooks.PassDone; h != nil {
-			h(sum)
-		}
-	}()
+	defer func() { sum.Elapsed = time.Since(start) }()
 	// The session lives as long as ctx, not just this call: a stop then
 	// ends a call the server does not answer.
 	sess, err := s.opts.Dial(ctx, s.opts.Endpoint)
@@ -355,6 +433,9 @@ func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 // before the failure.
 func (s *syncer) decide(ctx context.Context, sess remote.Session) ([]plan.Decision, plan.Counts, selection, error) {
 	listing, sel, err := s.list(ctx, sess)
+	if n := len(sel.reserved); n > 0 {
+		s.log.Warn("reserved name", "path", sel.reserved[0], "entries", n, "reason", plan.LockName+" is kept for the folder lock; not copied")
+	}
 	if err != nil {
 		return nil, plan.Counts{}, sel, err
 	}
@@ -383,7 +464,10 @@ func (s *syncer) input(listing []plan.Entry, now time.Time) plan.Input {
 		Windows:      runtime.GOOS == "windows",
 	}
 	for p, rec := range s.records() {
-		in.State[p] = plan.Recorded{Size: rec.Size, ModTime: rec.MTime}
+		// This version never records a reserved path; ignore one that is.
+		if !plan.Reserved(p) {
+			in.State[p] = plan.Recorded{Size: rec.Size, ModTime: rec.MTime}
+		}
 	}
 	for _, p := range plan.NeedLocal(in) {
 		in.Local[p] = s.stat(p)
@@ -443,7 +527,7 @@ func (s *syncer) list(ctx context.Context, sess remote.Session) ([]plan.Entry, s
 	if h := s.opts.Hooks.ToCopy; h != nil {
 		kept = s.toCopy(h)
 	}
-	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed, kept, nil)
+	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed, kept, nil, true)
 	sel := selection{LeftOut: out}
 	if err != nil {
 		return nil, sel, fmt.Errorf("list the share: %w", err)

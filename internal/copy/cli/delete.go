@@ -57,6 +57,9 @@ Only files whose device mtime is at least --older-than old are deleted.
 the run left empty is removed too; the share root never is.
 A file the telescope rewrites between delete's check and its removal is
 lost, so avoid running delete while the telescope is busy.
+With --force and a --dest that exists, delete holds the lock file
+.seestar-wormhole.lock in --dest from before it lists the share until its
+last removal, and exits 1 if a sync pass or another delete holds it.
 Durations use Go units, such as 36h, or whole days, such as 7d.
 Logs and errors go to stderr.
 Exit 0 when the run finishes, however many files it kept, or is stopped;

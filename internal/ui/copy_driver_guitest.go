@@ -205,7 +205,7 @@ func (d *guiTestDriver) copyRelaunch() error {
 // copyInUse checks that Copy shows the folder in use, and still does
 // after Start copying is pressed.
 func (d *guiTestDriver) copyInUse() error {
-	const shown = `el('c-title').textContent==='Another copy is already using this folder.' && !el('c-start').hidden`
+	const shown = `el('c-title').textContent==='Another copy or delete is using this folder.' && !el('c-start').hidden`
 	if err := d.probe(`check(` + shown + `,{title:el('c-title').textContent,start:!el('c-start').hidden})`); err != nil {
 		return fmt.Errorf("Copy didn't show the folder in use: %w", err)
 	}

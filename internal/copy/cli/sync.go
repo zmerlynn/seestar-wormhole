@@ -48,6 +48,9 @@ Each pass lists the whole share, except what an --exclude pattern matches,
 copies files that are new or changed on the device, and records them in a
 copy history under --history-dir, so a file moved out of --dest is not copied
 again. Passes repeat every --interval until Ctrl+C, or run once with --once.
+Each pass holds the lock file .seestar-wormhole.lock in --dest, which stays
+there: if another sync or a delete holds it, the first pass exits 1 and a
+later pass is skipped. A top-level share entry of that name is not copied.
 The telescope is never written to. --dry-run runs one pass that only logs
 what it would copy, replace, adopt or skip, and changes nothing on disk.
 An --exclude pattern with no / matches a file or folder name at any depth;

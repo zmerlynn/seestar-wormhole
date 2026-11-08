@@ -136,6 +136,13 @@ var ErrNoDest = errors.New("destination not found; give --trust-state if the cop
 // RunDelete loads the state, lists the share and deletes what is proven,
 // or in a dry run (a preview) reports what it would delete, and returns
 // what it did. A stop by ctx or Stop returns a nil error.
+//
+// A real run with a destination holds its folder lock ([state.LockFolder])
+// from before it lists the share until its last removal, so it never reads
+// a copy while a sync pass or a save writes the folder. A held lock fails
+// the run with an error wrapping [state.ErrFolderLocked] before anything
+// is listed. A destination that is missing, or on a read-only file system,
+// takes no lock; IgnoreState and a dry run never take one.
 func RunDelete(ctx context.Context, o DeleteOptions, log *slog.Logger) (DeleteResult, error) {
 	d := &deleter{opts: o, log: log}
 	if !o.IgnoreState {
@@ -143,16 +150,29 @@ func RunDelete(ctx context.Context, o DeleteOptions, log *slog.Logger) (DeleteRe
 		if d.records, err = state.Load(o.StateDir, o.Dest, log); err != nil {
 			return DeleteResult{}, err
 		}
-		if o.proof() == proofHash {
+		if o.proof() == proofHash || !o.DryRun {
 			root, err := os.OpenRoot(o.Dest)
 			switch {
-			case errors.Is(err, fs.ErrNotExist):
+			case errors.Is(err, fs.ErrNotExist) && o.proof() == proofHash:
 				return DeleteResult{}, ErrNoDest
+			case errors.Is(err, fs.ErrNotExist):
+				// The record proves the files, and there is no
+				// folder to guard.
 			case err != nil:
 				return DeleteResult{}, fmt.Errorf("open destination: %w", err)
+			default:
+				defer root.Close()
+				if o.proof() == proofHash {
+					d.dest = root
+				}
+				if !o.DryRun {
+					unlock, err := lockForDelete(root, log)
+					if err != nil {
+						return DeleteResult{}, err
+					}
+					defer unlock()
+				}
 			}
-			defer root.Close()
-			d.dest = root
 		}
 	}
 	log.Info("deletion starting", "proof", o.proof(), "older_than", FormatAge(o.OlderThan), "dry_run", o.DryRun)
@@ -172,6 +192,22 @@ func RunDelete(ctx context.Context, o DeleteOptions, log *slog.Logger) (DeleteRe
 		return d.result, fmt.Errorf("%w: %d", ErrFailedFiles, failed)
 	}
 	return d.result, nil
+}
+
+// lockForDelete takes the folder lock of the destination open as root for
+// a real delete run, and returns its release. On a read-only file system
+// the run goes on without it.
+func lockForDelete(root *os.Root, log *slog.Logger) (unlock func(), err error) {
+	readonly.Check("engine.lockForDelete")
+	lock, err := lockFolder(root)
+	switch {
+	case errors.Is(err, state.ErrReadOnlyFS):
+		log.Warn("deleting without the folder lock", "dest", root.Name(), "reason", "read-only file system")
+		return func() {}, nil
+	case err != nil:
+		return nil, err
+	}
+	return func() { lock.Close() }, nil
 }
 
 // deleter is one delete run.
@@ -231,7 +267,7 @@ func (d *deleter) run(ctx context.Context) (failed int, err error) {
 		return 0, fmt.Errorf("connect to %s: %w", d.opts.Endpoint, err)
 	}
 	defer sess.Close()
-	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed, nil, d.within())
+	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed, nil, d.within(), false)
 	skip := "skipped"
 	if d.opts.DryRun {
 		skip = "would skip"

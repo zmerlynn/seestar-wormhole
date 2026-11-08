@@ -112,10 +112,11 @@ firmware behind it change without notice, as above.
     [decision rules](copy-reference.md#how-a-pass-decides): a file recorded with the same size and mtime is never
     copied again, whether or not it is still in the destination; a changed one is downloaded again; a matching local
     file is adopted; any other local file at that path is overwritten. Sync deletes nothing in the destination except
-    its own temporary files.
+    its own temporary files. A top-level share entry named `.seestar-wormhole.lock`, in any letter case, is never
+    copied, and nor is anything under a folder of that name.
 13. **Temporary files.** A download is written to `.seestar-copy-<hash>.tmp` in the folder of its final file, where
     `<hash>` is 64 lowercase hex digits; it never ends in `.fit`. Leftover files with exactly that form of name are
-    removed at startup. See [temporary files](copy-reference.md#temporary-files).
+    removed at the start of each pass. See [temporary files](copy-reference.md#temporary-files).
 14. **The copy history.** Its location, `<history-dir>/sync/<sha256>.jsonl`, where `<sha256>` is the lowercase hex
     SHA-256 of the absolute, cleaned `--dest`, and the default history folder, which is the one earlier releases'
     `seestar-copy-cli` used. Its [format](copy-reference.md#format): JSON Lines, append-only; a header
@@ -125,8 +126,11 @@ firmware behind it change without notice, as above.
     complete under its final name. A history file written by a newer release on the same major version loads in an
     older one: a new member is optional, older releases ignore it, and readers treat an unknown `how` as unknown. A
     format that an older release cannot read gets a new `v`, and is breaking. Only one sync using the same
-    destination spelling and history folder runs at a time; use the same values for every invocation. The lock
-    files' names are not promised. delete never writes the history file, and takes no lock.
+    destination spelling and history folder runs at a time; use the same values for every invocation. Every sync
+    pass, and every delete with `--force` that has a destination, takes a lock in the destination folder. A second
+    writer fails with exit 1, or, at a later sync pass, skips that pass. A delete on a read-only destination proceeds
+    without it. The lock files' names are not promised. delete never writes the history file, and takes no history
+    lock.
 15. **find's output.** The listing goes to stdout, one line per entry, in listing order, and lists the folders the
     selection reads and the files it selects, as in [what find lists](copy-reference.md#what-find-lists). The
     [text format](copy-reference.md#text-format): its fields, their order and syntax, and when and how a path is quoted.

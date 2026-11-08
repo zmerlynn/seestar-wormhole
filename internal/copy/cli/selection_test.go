@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
@@ -55,12 +56,13 @@ var selectionCopied = []string{
 	"MyWorks/M 31/z.fit", "Preview/p.jpg", "Video/y.mp4", "diag.png",
 }
 
-// localFiles lists the regular files under dest, slash-separated.
+// localFiles lists the regular files under dest, slash-separated, leaving
+// out the folder lock file that a sync leaves there.
 func localFiles(t *testing.T, dest string) []string {
 	t.Helper()
 	var got []string
 	for p, desc := range snapshot(t, dest) {
-		if !strings.HasPrefix(desc, "d") {
+		if !strings.HasPrefix(desc, "d") && p != filepath.Join(dest, plan.LockName) {
 			rel, err := filepath.Rel(dest, p)
 			if err != nil {
 				t.Fatal(err)

@@ -39,7 +39,7 @@ const (
 	stCopying     = "copying"
 	stUpToDate    = "uptodate"    // waiting after a pass with no failures
 	stFailures    = "failures"    // waiting after a pass with failed files
-	stListFail    = "listfail"    // waiting after a listing failed
+	stListFail    = "listfail"    // waiting after a listing failed, or a pass skipped for a busy folder
 	stUnreachable = "unreachable" // waiting after the connection failed
 	stStopping    = "stopping"
 	stStopped     = "stopped" // stopped during a pass's downloads
@@ -255,7 +255,7 @@ func (c *controller) finish(err error) {
 		err = c.ended
 	}
 	switch {
-	case errors.Is(err, state.ErrLocked):
+	case errors.Is(err, state.ErrLocked), errors.Is(err, state.ErrFolderLocked):
 		st.state = stInUse
 	case st.state == stDone && !c.stopping:
 		// A copy once's check ended the loop; the state words how,
@@ -477,6 +477,8 @@ func (c *controller) hooks(ctx context.Context) engine.Hooks {
 			st.next = time.Now().Add(st.interval)
 			st.passErr = sum.Err
 			switch {
+			case errors.Is(sum.Err, state.ErrFolderLocked):
+				st.state = stListFail
 			case sum.Err != nil && st.unreachable:
 				st.state = stUnreachable
 			case sum.Err != nil:
@@ -645,6 +647,10 @@ func (c *controller) view(now time.Time) copyView {
 		}
 	case stListFail:
 		v.Title = "Couldn't read " + unread(st.passErr) + "."
+		if errors.Is(st.passErr, state.ErrFolderLocked) {
+			// A pass after the first was skipped.
+			v.Title = "Another copy or delete is using this folder."
+		}
 		v.Text = "No files were copied. Trying again at " + at(st.next) + "."
 	case stUnreachable:
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."
@@ -692,8 +698,8 @@ func (c *controller) view(now time.Time) copyView {
 		}
 		v.Text = strings.Join(parts, " ")
 	case stInUse:
-		v.Title = "Another copy is already using this folder."
-		v.Text = "It's in another seestar-wormhole window or seestar-wormhole-cli sync. Stop that copy, then start copying here."
+		v.Title = "Another copy or delete is using this folder."
+		v.Text = "It's in another seestar-wormhole window, or a seestar-wormhole-cli sync or delete. Stop it, then start copying here."
 	case stCantWrite:
 		// Only a refused write in the folder names it as the cause.
 		switch {

@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"io/fs"
+	"log/slog"
 	"net"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
@@ -276,7 +278,8 @@ func tempFiles(dir string) []string {
 // session, Stop's detach returns; once the barrier opens, the file fails
 // and leaves no temporary file; the pass's next look after a reconnect
 // to the same telescope copies it over the new run; and the history
-// stays locked until copying ends.
+// stays locked until copying ends. While the barrier holds the pass, a
+// sync with another history folder is refused by the folder lock.
 func TestCombinedRestartLockOrder(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		e := newViaEnv(t, nil)
@@ -336,6 +339,23 @@ func TestCombinedRestartLockOrder(t *testing.T) {
 		}
 		if !e.s.copy.Busy() {
 			t.Error("the held pass ended before the barrier opened")
+		}
+		// A sync with another history folder is refused by the folder
+		// lock while the held pass still has its temporary file.
+		dials := 0
+		err := engine.RunSync(t.Context(), engine.SyncOptions{
+			Endpoint: "device:445", Dest: e.folder, StateDir: filepath.Join(t.TempDir(), "other"),
+			Interval: time.Hour, Once: true, Workers: 1,
+			Dial: func(context.Context, string) (remote.Session, error) {
+				dials++
+				return nil, errors.New("dialed")
+			},
+		}, slog.New(slog.DiscardHandler))
+		if !errors.Is(err, state.ErrFolderLocked) || dials != 0 {
+			t.Errorf("a second sync during the held pass: %v after %d dials, want the folder-lock error", err, dials)
+		}
+		if len(tempFiles(e.folder)) == 0 {
+			t.Error("the held download's temporary file is gone before the barrier opened")
 		}
 		close(barrier)
 		e.until("the held file to fail", func() bool { state, _ := e.copying(); return state != "copying" })

@@ -127,6 +127,15 @@ folder.
 Only regular files are copied. Symbolic links and other special entries on
 the share are listed but neither followed nor copied.
 
+Sync and delete keep one file of their own at the top of `--dest`: the
+[folder lock](#the-folder-lock), `.seestar-wormhole.lock`, which is empty
+and stays there. A share entry at the top of the share with that name, in
+any letter case that the [name clash](#name-clashes) rules treat as the
+same, is never copied, adopted or recorded, and neither is anything under a
+folder of that name, whatever the selection says. Each pass logs one
+`reserved name` warning for them, and they don't count as failed. `find`
+and `browse` still list them.
+
 ### Selection
 
 Sync copies the whole share, except files and folders that an exclude pattern
@@ -334,6 +343,14 @@ otherwise it tries another pass after `--interval`.
 A file that fails is logged and left for the next pass; the other files go on.
 There is one attempt per file per pass, and no retry loop within a pass.
 
+A pass after the first that finds the [folder lock](#the-folder-lock) held
+by another sync or a delete is skipped: it logs `pass skipped` with
+`reason=folder_busy`, connects to nothing, and sync tries again after
+`--interval`. If `--dest` is removed while sync runs, each later pass fails
+before it connects, logging `pass failed` with
+`reason=destination_missing`, and sync goes on without creating the folder
+again. Restart sync to copy into a folder created again at that path.
+
 ## Copying a file
 
 Up to `--workers` files are copied at once, over the pass's one session. Each
@@ -366,12 +383,14 @@ file's path on the share. The leading dot hides it from most file browsers,
 and the name never ends in `.fit`, so a `*.fit` pattern never matches a
 partial file.
 
-A failed or stopped download removes its temporary file. At startup, after
-taking the [lock](#lock), sync removes every leftover temporary file anywhere
-under the destination: only regular files with exactly that form of name, and
-never through a symbolic link. It does not resume partial downloads. A folder
-under the destination that sync is not allowed to read is skipped with a
-warning; any other error reading the destination stops sync with exit 1.
+A failed or stopped download removes its temporary file. At the start of
+each pass, after taking the [folder lock](#the-folder-lock), sync removes
+every leftover temporary file anywhere under the destination: only regular
+files with exactly that form of name, and never through a symbolic link. It
+does not resume partial downloads. A folder under the destination that sync
+is not allowed to read is skipped with a warning; any other error reading
+the destination stops sync with exit 1 at the first pass, and fails a later
+pass.
 
 ## The state file
 
@@ -477,17 +496,64 @@ moved away.
 
 ### Lock
 
-Only one sync at a time may use a destination. Sync holds an exclusive OS
-lock on `<sha256>.lock`, next to the state file, while it runs. A second sync
-for the same destination, spelled the same way and with the same
-`--history-dir`, exits 1:
+Sync takes two exclusive OS locks: the history lock for the whole run, and
+the folder lock during each pass. A lock is released when its process
+exits, however it exits. The lock files stay on disk; that is expected.
+
+#### The history lock
+
+Only one sync at a time may use a state file. Sync holds a lock on
+`<sha256>.lock`, next to the state file, while it runs. A second sync for the
+same destination, spelled the same way and with the same `--history-dir`,
+exits 1:
 
 ```text
 destination /home/user/Seestar: another sync is using this destination (lock file .../sync/<sha256>.lock)
 ```
 
-The lock is released when the process exits, however it exits. The lock files,
-and `registry.lock` in the same folder, stay on disk; that is expected.
+`registry.lock`, in the same folder, stays on disk too.
+
+#### The folder lock
+
+Every sync pass, and every `delete --force` that has a destination, takes a
+lock on `.seestar-wormhole.lock` at the top of the destination, whatever
+its `--history-dir`. A pass holds it from before it removes leftover
+[temporary files](#temporary-files) until its downloads have ended and their
+temporary files are removed, and releases it before waiting for the next
+pass, so a delete can run between passes. A delete holds it from before it
+lists the share until its last removal. The app's Copy and Free up space take
+it as sync and delete do. The file is created empty with mode 0600, less the
+umask, and is never removed.
+
+If another sync, delete or the app holds it, sync's first pass exits 1, a
+later pass is [skipped](#a-failed-pass), and delete exits 1 before it lists
+the share:
+
+```text
+destination /home/user/Seestar: another copy or delete is using this folder (lock file /home/user/Seestar/.seestar-wormhole.lock)
+```
+
+The lock is in the folder, so every way of naming the folder reaches the same
+lock: a relative path, a symbolic link, a bind mount, another letter case on
+a case-insensitive volume, or a new name after the folder is renamed. It does
+not cover a destination inside another one (`A` and `A/sub`), a folder on a
+network file system whose locks don't reach other machines, a read-only view
+of a folder that is written through another path, or `seestar-copy-cli` and
+older releases of seestar-wormhole, which don't take it. Stop those before
+upgrading.
+
+A dry run, a delete preview, `delete --ignore-state` (which has no
+destination), `find` and `browse` take no folder lock. Nor does a delete
+whose destination is missing: with `--trust-state` it goes on, since it
+doesn't read the folder, and in `hash` mode it stops at its
+missing-destination error. On a read-only file system, where the lock file
+can't be created, sync exits 1, and delete goes on without the lock, with a
+`deleting without the folder lock` warning. Such a delete isn't kept apart
+from a sync that writes the same folder through a writable path, so its
+hash proof may read a file that sync is replacing. Any other error creating
+or locking the file, such as permission denied or a file system without
+locks, stops sync and delete with exit 1, naming the lock file, before
+anything is listed.
 
 ## Stopping
 
@@ -539,6 +605,9 @@ changes them says so in its notes.
 | INFO | `skipped` | `path`, `exclude` | The file or folder matches the pattern `exclude`, the first one that matched, and is left out, by a pass or by `find`. A folder has one line; what is in it is not listed. See [selection](#selection). |
 | INFO | `pass done` | see below | A pass finished. |
 | ERROR | `pass failed` | see below, and `error` | The connection or a listing failed. |
+| WARN | `pass failed` | `reason=destination_missing`, `dest` | `--dest` was removed while sync runs; see [a failed pass](#a-failed-pass). |
+| WARN | `pass skipped` | `reason=folder_busy`, `dest`, `error` | Another sync or a delete holds the [folder lock](#the-folder-lock) at a pass after the first. |
+| WARN | `reserved name` | `path`, the first such entry; `entries`, how many; `reason` | Top-level share entries named `.seestar-wormhole.lock` were left out; see [destination layout](#destination-layout). |
 | INFO | `pass stopped` | see below | A signal stopped the pass. |
 | INFO | `would copy` | `path`, `size`, and `overwrite=true` when it would replace a different local file | Dry run: the file would be downloaded and recorded as `copied`. |
 | INFO | `would replace` | `path`, `size` | Dry run: the file changed on the device and would be downloaded again. |
@@ -597,7 +666,7 @@ counted, in a `diagnostics_lost` line when stderr recovers.
 | Code | Meaning |
 | --- | --- |
 | 0 | Stopped by a signal; a `--once` or `--dry-run` pass with no failed files; or help printed. |
-| 1 | A runtime failure: the destination or state could not be opened or locked, leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), output could not be written, or log lines were lost (`diagnostics_lost`). |
+| 1 | A runtime failure: the destination or state could not be opened or locked (including another copy or delete holding the [folder lock](#the-folder-lock) at the first pass), leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), output could not be written, or log lines were lost (`diagnostics_lost`). |
 | 2 | A usage error: an unknown or invalid flag, including `--state-dir` and `--version`, a missing `--endpoint` or `--dest`, an empty `--history-dir`, `--dry-run` with `--interval`, or a positional argument. |
 
 Without `--once` or `--dry-run`, failed passes and failed files do not end
@@ -1168,8 +1237,11 @@ stay cleared.
 
 ### delete and sync
 
-Delete takes no [lock](#lock) and never writes the state file, so it can run
-while a sync uses the same destination. It reads the state as a sync
+Delete never takes the [history lock](#the-history-lock) and never writes
+the state file, so it can run while a sync uses the same destination. With
+`--force` it takes the [folder lock](#the-folder-lock), which a sync holds
+only during a pass: it runs between passes, and exits 1 if a pass, another
+delete or the app holds it. It reads the state as a sync
 [dry run](#dry-run) does: a torn final line is logged and ignored. A file
 deleted from the device stays recorded, so the next pass neither copies nor
 fails it. A new file the telescope later writes at that path has a new mtime,
@@ -1211,6 +1283,7 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | Message | Meaning |
 | --- | --- |
 | `deletion starting` | The proof mode, the age limit and whether this is a preview (`dry_run`). |
+| `deleting without the folder lock` | A WARN, with `dest` and `reason`: the destination is on a read-only file system, so the run goes on without the [folder lock](#the-folder-lock). |
 | `file deleted`, `folder removed` | Removed from the device. |
 | `file kept`, `folder kept` | Not removed, with the reason; see [how delete decides](#how-delete-decides). |
 | `file failed`, `folder failed` | A failure, with the reason. |
@@ -1233,7 +1306,7 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | Code | Meaning |
 | --- | --- |
 | 0 | The run or preview finished with no failed file, however many it kept; or a signal stopped it. |
-| 1 | The state could not be read; `--dest` is missing in `hash` mode; the connection or listing failed (`connect to ...` or `list the share: ...`); a removal failed on the device, which ends the run (`deletion failed`); or a local copy could not be read (`failed files: N`). A rerun lists the share again and carries on. |
+| 1 | The state could not be read; `--dest` is missing in `hash` mode; with `--force`, the [folder lock](#the-folder-lock) is held or can't be taken; the connection or listing failed (`connect to ...` or `list the share: ...`); a removal failed on the device, which ends the run (`deletion failed`); or a local copy could not be read (`failed files: N`). A rerun lists the share again and carries on. |
 | 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, `--dest` missing without `--ignore-state`, `--trust-state` with `--ignore-state`, `--ignore-state` without `--include` or with `--dest` or `--history-dir`, `--force` with `--dry-run`, a bad `--older-than`, an empty `--history-dir`, or a positional argument. |
 
 > **Warning.** With `--ignore-state`, delete removes whatever is selected,

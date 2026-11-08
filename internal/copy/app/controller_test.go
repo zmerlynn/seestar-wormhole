@@ -363,29 +363,101 @@ func TestCopyStopMidFile(t *testing.T) {
 	}
 }
 
-// A destination another copy holds is Folder in use, and copying is off.
+// Copying refuses to start, without dialing, while another copy holds
+// the folder's history lock or, with another history folder, its folder
+// lock, and starts once it is released.
 func TestCopyFolderInUse(t *testing.T) {
-	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
-	other, err := state.Open(e.stateDir, e.set.Folder, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for _, held := range []string{"history lock", "folder lock"} {
+		t.Run(held, func(t *testing.T) {
+			e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+			var other io.Closer
+			if held == "history lock" {
+				st, err := state.Open(e.stateDir, e.set.Folder, slog.New(slog.NewTextHandler(io.Discard, nil)))
+				if err != nil {
+					t.Fatal(err)
+				}
+				other = st
+			} else {
+				other = holdFolder(t, e.set.Folder)
+			}
+			if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+				t.Fatal(err)
+			}
+			e.waitOff()
+			v := e.wait(stInUse)
+			if v.On || v.Title != "Another copy or delete is using this folder." ||
+				v.Text != "It's in another seestar-wormhole window, or a seestar-wormhole-cli sync or delete. Stop it, then start copying here." || v.Chip != "" {
+				t.Errorf("in use: %+v", v)
+			}
+			if e.dials != 0 {
+				t.Errorf("dialed %d times while in use", e.dials)
+			}
+			other.Close()
+			if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+				t.Fatal(err)
+			}
+			e.wait(stUpToDate)
+		})
+	}
+}
+
+// holdFolder creates folder and takes its folder lock, as another writer
+// with another history folder would.
+func holdFolder(t *testing.T, folder string) *os.File {
+	t.Helper()
+	if err := os.MkdirAll(folder, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	root, err := os.OpenRoot(folder)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+	defer root.Close()
+	lock, err := state.LockFolder(root)
+	if err != nil {
 		t.Fatal(err)
 	}
-	e.waitOff()
-	v := e.wait(stInUse)
-	if v.On || !strings.HasPrefix(v.Title, "Another copy is already using this folder") || v.Chip != "" {
-		t.Errorf("in use: %+v", v)
-	}
-	if e.dials != 0 {
-		t.Errorf("dialed %d times while in use", e.dials)
-	}
-	other.Close()
+	t.Cleanup(func() { lock.Close() })
+	return lock
+}
+
+// A pass after the first that finds the folder lock held is skipped
+// without dialing: copying stays on, says the folder is in use and when it
+// tries again, and the passes after the release copy again.
+func TestCopyFolderBusyBetweenPasses(t *testing.T) {
+	e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
 	if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}
 	e.wait(stUpToDate)
+	lock := holdFolder(t, e.set.Folder)
+	e.files["MyWorks/b.jpg"] = image("b")
+	dials := e.dialCount()
+	deadline := time.Now().Add(10 * time.Second)
+	var v copyView
+	for {
+		e.c.check()
+		time.Sleep(5 * time.Millisecond)
+		if v = e.c.view(time.Now()); v.State == stListFail || time.Now().After(deadline) {
+			break
+		}
+	}
+	if v.State != stListFail || !v.On || v.Title != "Another copy or delete is using this folder." ||
+		!strings.HasPrefix(v.Text, "No files were copied. Trying again at ") || v.Chip != "Copying is on" {
+		t.Fatalf("a pass with the folder busy: %+v", v)
+	}
+	if n := e.dialCount(); n != dials {
+		t.Errorf("dialed %d times with the folder busy", n-dials)
+	}
+	lock.Close()
+	// b.jpg is new: the first pass after the release sees it waiting.
+	if v := e.next(); v.State != stUpToDate || v.Settling == "" {
+		t.Errorf("the pass after the release: %+v", v)
+	}
+	e.next()
+	if _, err := os.Stat(filepath.Join(e.set.Folder, "MyWorks", "b.jpg")); err != nil {
+		t.Errorf("b.jpg after the release: %v", err)
+	}
 }
 
 // A startup error turns copying off and names its cause; only a refused

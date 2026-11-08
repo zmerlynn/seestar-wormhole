@@ -15,8 +15,8 @@
 // no record or a complete file with its mtime under its final name, and the
 // next pass adopts a file whose record was lost. Go cannot fsync a folder
 // on Windows, so there the folder is not fsynced, and a crash may lose a
-// recorded file's rename. A failure removes the temporary file; [New]
-// removes whatever a crash left behind.
+// recorded file's rename. A failure removes the temporary file;
+// [Copier.Sweep] removes whatever a crash left behind.
 //
 // An adoption only reads the local file, and then records it.
 //
@@ -58,15 +58,11 @@ type Copier struct {
 	now   func() time.Time // the time recorded in a record's at
 }
 
-// New opens dest, whose state st the caller holds open (and so locked), and
-// removes every temporary file a crash or a failed cleanup left anywhere
-// under it. Opening the state first matters: the lock is what keeps a
-// second sync from removing the first one's temporary files. A folder below
-// dest that New is not allowed to read is skipped with a warning to log (a
-// nil log means slog.Default()); any other folder that cannot be read fails
-// New, since it may hold a leftover.
-func New(dest string, st *state.State, log *slog.Logger) (*Copier, error) {
-	readonly.Check("copier.New")
+// Open opens dest, whose state st the caller holds open (and so locked),
+// for a [Copier]. It changes nothing: [Copier.Sweep] removes what a crash
+// left behind, once the caller holds the folder lock ([Copier.Lock]). A nil
+// log means slog.Default().
+func Open(dest string, st *state.State, log *slog.Logger) (*Copier, error) {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -74,11 +70,29 @@ func New(dest string, st *state.State, log *slog.Logger) (*Copier, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open destination: %w", err)
 	}
-	if err := removeTemps(root, log); err != nil {
-		root.Close()
-		return nil, fmt.Errorf("remove leftover temporary files in %s: %w", dest, err)
-	}
 	return &Copier{root: root, state: st, log: log, now: time.Now}, nil
+}
+
+// Lock takes the destination's folder lock through the copier's root with
+// take, which is state.LockFolder outside tests, so the lock guards the
+// folder this copier writes, wherever it now is. The lock lasts until the
+// returned file is closed.
+func (c *Copier) Lock(take func(*os.Root) (*os.File, error)) (*os.File, error) {
+	return take(c.root)
+}
+
+// Sweep removes every temporary file a crash or a failed cleanup left
+// anywhere under the destination. The caller must hold the folder lock:
+// it is what keeps a second writer from removing a running pass's
+// temporary files. A folder below the destination that Sweep is not
+// allowed to read is skipped with a warning; any other folder that cannot
+// be read fails Sweep, since it may hold a leftover.
+func (c *Copier) Sweep() error {
+	readonly.Check("copier.Sweep")
+	if err := removeTemps(c.root, c.log); err != nil {
+		return fmt.Errorf("remove leftover temporary files in %s: %w", c.root.Name(), err)
+	}
+	return nil
 }
 
 // removeTemps removes each regular file under root whose name
@@ -107,7 +121,7 @@ func removeTemps(root *os.Root, log *slog.Logger) error {
 	})
 }
 
-// rootFS returns the file system that [New] walks. Tests replace it to fail
+// rootFS returns the file system that [Copier.Sweep] walks. Tests replace it to fail
 // reading a folder.
 var rootFS = (*os.Root).FS
 

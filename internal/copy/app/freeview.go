@@ -11,6 +11,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // The Free up space tab's states, as the page names them. Confirm is the
@@ -190,6 +191,8 @@ func (st *freeStatus) view() freeView {
 			v.Title = "Stopped: the telescope refused to delete " + files[n-1].Path + " (" + reason(st.err) + ")."
 		} else if errors.Is(st.err, engine.ErrNoDest) {
 			v.Title = "Stopped: " + st.set.Folder + " isn't there."
+		} else if errors.Is(st.err, state.ErrFolderLocked) {
+			v.Title = "Another copy or delete is using this folder."
 		} else {
 			v.Title = "Stopped: " + st.err.Error() + "."
 		}

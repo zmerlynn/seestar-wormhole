@@ -21,6 +21,7 @@ func TestSyncHelp(t *testing.T) {
 			"  --exclude '/tmp_stitch'\n  --exclude '/batch_stack_tmp'\n",
 		"--interval duration", "(default 5m0s)", "--once", "--dry-run", "(default 2m0s)", "(default 10m0s)",
 		"files copied at once (1-64) (default 4)", "--history-dir string",
+		"Each pass holds the lock file .seestar-wormhole.lock in --dest",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("sync help lacks %q:\n%s", want, stdout)

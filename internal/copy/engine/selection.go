@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
@@ -47,6 +48,10 @@ type LeftOut struct {
 	// outside are the folders a walk limited to some folders did not
 	// read, in listing order.
 	outside []string
+	// reserved are the entries a sync walk left out, before the
+	// selection, for their reserved top-level name ([plan.Reserved]), in
+	// listing order. A folder is not read.
+	reserved []string
 }
 
 // Skipped is a listed entry that an exclude matched.
@@ -61,18 +66,26 @@ type Skipped struct {
 // read. Any listing failure, of the root or of a folder that is kept, fails
 // the walk; what was left out before it is still returned.
 func (s Selector) Walk(ctx context.Context, sess remote.Session) ([]remote.Entry, LeftOut, error) {
-	return s.walk(ctx, sess, nil, nil, nil)
+	return s.walk(ctx, sess, nil, nil, nil, false)
 }
 
 // walk is [Selector.Walk] that also calls listed, if not nil, with each
 // folder kept and the number kept so far, before it is read, and passes
 // kept to [remote.Session.Walk]. If within is not nil, a folder the
 // selection keeps is read only if within reports true for it; any other is
-// left out unread and noted in outside.
-func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folder string, folders int), kept func(remote.Entry), within func(dir string) bool) ([]remote.Entry, LeftOut, error) {
+// left out unread and noted in outside. With reserve, as in a sync pass,
+// an entry under a reserved top-level name is left out before the
+// selection is consulted, so no include can keep it, and noted in
+// reserved.
+func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folder string, folders int), kept func(remote.Entry), within func(dir string) bool, reserve bool) ([]remote.Entry, LeftOut, error) {
 	out := LeftOut{keptParents: map[string]bool{}}
 	folders := 0
 	entries, err := sess.Walk(ctx, func(p string, dir bool) bool {
+		if reserve && plan.Reserved(p) {
+			out.reserved = append(out.reserved, p)
+			out.keptParents[path.Dir(p)] = true
+			return true
+		}
 		if e, ok := s.excluder(p); ok {
 			out.Skipped = append(out.Skipped, Skipped{p, e.flag})
 			out.keptParents[path.Dir(p)] = true

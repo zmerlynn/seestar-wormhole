@@ -125,6 +125,23 @@ file. Fix or remove it, then reopen seestar-wormhole: without the file, Copy
 starts from its default settings, which you then save again. See
 [copy.json](ui.md#copyjson-version-1) for what it may hold.
 
+## Another copy or delete is using this folder
+
+Copy, Free up space, `sync` and `delete --force` each take the folder's lock file,
+`.seestar-wormhole.lock`, while they write there, so two of them can't write
+into one folder at once. The message, or a `sync failed` or `delete failed`
+line naming that file, means something else holds it: another
+seestar-wormhole window, a `seestar-wormhole-cli sync` or `delete`, or a
+Copy check that is running. Let it finish or stop it, then try again. A
+running `sync` or Copy only skips a check while the lock is held (`pass
+skipped` with `reason=folder_busy`) and tries again at the next one. The
+file itself is empty and harmless; don't remove it. See
+[the folder lock](copy-reference.md#the-folder-lock).
+
+**`pass failed` with `reason=destination_missing`.** The folder `sync` was
+copying into was removed or renamed while it ran. Nothing is copied until
+you restart `sync` with the folder you want.
+
 ## The OS keychain is unavailable
 
 A locked keychain, missing desktop session, or unavailable Secret Service can
