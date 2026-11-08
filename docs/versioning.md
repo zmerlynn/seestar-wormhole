@@ -39,7 +39,8 @@ firmware behind it change without notice, as above.
    and adding, removing or changing one is breaking; `--exclude` adds to them and `--no-default-excludes` removes them
    all; with one or more `--include` patterns, only files that an include matches, or that are in a folder an include
    matches, are selected; excludes always win over includes, whatever the order; one pattern grammar for both flags,
-   that an excluded folder is not listed, and that case is ignored by lowercasing with no Unicode normalization. For
+   .gitignore syntax with the exceptions in [pattern rules](reference/selection-and-history.md#pattern-rules); that
+   an excluded folder is not listed, and that case is ignored by lowercasing with no Unicode normalization. For
    browse, as in [browse flags](reference/files-cli.md#browse-flags): `--endpoint`, `--listen` with its default
    `127.0.0.1:0`, `--open`, off by default, `--dest` and `--history-dir`; `--listen` takes an IP address and a port,
    never a host name; and browse shows the whole share, with the selection flags, only with `--dest`, choosing only

@@ -54,10 +54,11 @@ there: if another sync or a delete holds it, the first pass exits 1 and a
 later pass is skipped. A top-level share entry of that name is not copied.
 The telescope is never written to. --dry-run runs one pass that only logs
 what it would copy, replace, adopt or skip, and changes nothing on disk.
-An --exclude pattern with no / matches a file or folder name at any depth;
-one with a / is a path from the share root, and a leading / is optional.
-* and ? match within one name; case is ignored. A matched folder is skipped
-with everything in it. Unless --no-default-excludes is given, sync also
+Patterns use .gitignore syntax, but case is ignored and a leading ! is a
+usage error. An --exclude pattern with no / matches a file or folder name
+at any depth; one with a / at the start or in the middle is a path from the
+share root; a trailing / matches folders only; ** matches any number of
+folders. A matched folder is skipped with everything in it. Unless --no-default-excludes is given, sync also
 skips what these flags would:
 ` + defaultExcludeFlags() + `
 With --include, sync copies only files that an --include pattern matches, or

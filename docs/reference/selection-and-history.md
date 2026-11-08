@@ -75,23 +75,49 @@ seestar-wormhole-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar \
 ### Pattern rules
 
 Quote patterns on the command line so that the shell does not expand them.
-In the app, put one pattern on each line. Exclude and include patterns follow
-these rules:
+In the app, put one pattern on each line. Exclude and include patterns use
+[.gitignore syntax](https://git-scm.com/docs/gitignore#_pattern_format),
+except:
 
-- A pattern with no `/` matches a file or folder name at any depth: `Thumbs.db`
-  matches `Thumbs.db` and `MyWorks/M 31/Thumbs.db`.
-- A pattern with a `/` anywhere is a path from the share root, and must match
-  the whole path: `/log` and `log/x` are anchored, `MyWorks/*/Stacked` matches
-  `MyWorks/M 31/Stacked` only. One leading `/` is optional.
-- `*` matches any run of characters and `?` any one character, both within one
-  name; neither matches `/`.
 - Case is ignored: both sides are lowercased before they are compared. There is
   no Unicode normalization, so a name spelled with a combining accent does not
-  match a pattern spelled with a precomposed one.
-- Spaces are part of the pattern.
+  match a pattern spelled with a precomposed one. Since patterns are
+  lowercased, `[[:upper:]]` matches nothing.
+- A leading `!` is a usage error. Excludes always win, so give the files to
+  keep as an include instead. To match a name that starts with `!`, write `\!`.
+- An include selects everything in a folder that it matches. See
+  [Include](#include).
 
-A pattern that is empty or `/` alone, ends in `/`, contains `[`, `\` or `**`,
-or has an empty, `.` or `..` part is a usage error.
+In short:
+
+- A pattern with no `/`, or only a trailing one, matches a file or folder name
+  at any depth: `Thumbs.db` matches `Thumbs.db` and `MyWorks/M 31/Thumbs.db`.
+- A pattern with a `/` at the start or in the middle is a path from the share
+  root, and must match the whole path: `/log` and `log/x` are anchored,
+  `MyWorks/*/Stacked` matches `MyWorks/M 31/Stacked` only.
+- A trailing `/` matches folders only: `Stacked/` matches a folder named
+  `Stacked`, not a file.
+- `*` matches any run of characters, `?` any one byte and `[...]` one byte
+  from a class such as `[0-9]` or `[!a]`, all within one name; none of them
+  matches `/`. A letter outside ASCII is more than one byte, so `M?` does not
+  match `M星`; use `*` there.
+- `**` as a whole name matches any number of folders: `**/Stacked` matches
+  `Stacked` at any depth, `MyWorks/**/*.fit` matches FITS files anywhere under
+  `MyWorks`, and `MyWorks/**` everything in `MyWorks`.
+- `\` makes the next character literal: `\*`, `\[`, `\#` or `\!`.
+- Spaces at the start or in the middle of a pattern are part of it: `M 31`.
+
+A pattern is a usage error, rather than one that silently matches nothing,
+if it:
+
+- is empty or `/` alone, or has an empty, `.` or `..` part, such as `a//b`;
+- starts with `!` or `#`, which in a `.gitignore` file mean a negation and a
+  comment;
+- ends in a space or `\` with no `\` before it, since `.gitignore` drops
+  trailing spaces: write `\ ` for a space you want to match;
+- holds a line break;
+- has a `[` with no closing `]`, or names a class other than the POSIX ones
+  such as `[:digit:]`.
 
 ### Include
 
@@ -105,6 +131,7 @@ a file if it matches the file's path or the path of any folder above it:
 --include '/MyWorks/M 31'   # one target's folder
 --include '*.jpg'           # JPEG files in any folder
 --include 'Stacked'         # everything in any folder named Stacked
+--include 'MyWorks/**/*.fit' # FITS files anywhere in MyWorks
 ```
 
 Excludes always win, whatever the order of the flags. An include never
@@ -115,7 +142,9 @@ the first rule that matches decides.
 
 A folder is listed only if an include could select it or something in it.
 With anchored patterns such as `/MyWorks`, just the folders on the way to
-them are read. A pattern without a `/` can match at any depth, so with one of
+them are read. With `/MyWorks/**/*.fit`, every folder in `MyWorks` is read,
+since `**` can stand for any of them. A pattern that can match at any depth,
+such as `*.jpg` or `**/Stacked`, could match in any folder, so with one of
 those every folder that is not excluded is listed.
 
 ### Changing the selection
