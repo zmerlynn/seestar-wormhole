@@ -864,14 +864,31 @@ func TestRepeatsAreKeyed(t *testing.T) {
 	e.fail(stepReadDir, errSynthetic)
 	e.browse()
 	// The connect's outcome is sent after its waiters wake, so it can
-	// trail the read's; wait for it to keep the lines in a known order.
+	// trail the read's: the two keys' lines may interleave either way.
+	// Waiting for it here only makes it reach the trail before the end.
 	e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 51)
 	e.fail(stepReadDir, nil)
 	if code := e.browse(); code != 200 {
 		t.Fatalf("listing = %d", code)
 	}
-	if got, want := e.fileCodes()[2:], []string{"browse_connect_recovered", "browse_read_failed", "browse_read_recovered"}; !slices.Equal(got, want) {
-		t.Errorf("codes = %v, want %v", got, want)
+	got := e.fileCodes()
+	if len(got) != 5 {
+		t.Errorf("codes = %v, want five", got)
+	}
+	for prefix, want := range map[string][]string{
+		"browse_connect_": {"browse_connect_failed", "browse_connect_recovered"},
+		"browse_read_":    {"browse_read_failed", "browse_read_recovered"},
+		"copy_pass_":      {"copy_pass_failed"},
+	} {
+		var own []string
+		for _, c := range got {
+			if strings.HasPrefix(c, prefix) {
+				own = append(own, c)
+			}
+		}
+		if !slices.Equal(own, want) {
+			t.Errorf("%s codes = %v, want %v, in %v", prefix, own, want, got)
+		}
 	}
 	if f := e.status().Failures; len(f) != 1 || f[0].Op != diagnostic.OpPass || f[0].Failures != 50 {
 		t.Errorf("failures = %+v", f)
