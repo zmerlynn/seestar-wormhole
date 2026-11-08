@@ -1,4 +1,4 @@
-# Copy command reference (moved)
+# Copy command reference
 
 This page is now the [file command reference](reference/files-cli.md). The [references index](reference/README.md) lists every reference page. Each section below links to its new place.
 

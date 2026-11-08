@@ -1,4 +1,4 @@
-# Command reference (moved)
+# Command reference
 
 This page is now the [connection command reference](reference/connection-cli.md). The [references index](reference/README.md) lists every reference page. Each section below links to its new place.
 
