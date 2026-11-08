@@ -147,6 +147,9 @@ network, give its address directly; no proxy or account is needed.
 
 3. Run it without `--once` to keep copying. Press Ctrl+C to stop it.
 
+To keep copying without a terminal open, run `sync` as a service; see
+[keep copying without the app](always-on.md#keep-copying-without-the-app).
+
 To look through the telescope's files in your web browser:
 
 ```sh
