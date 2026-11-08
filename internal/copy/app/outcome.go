@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"sync/atomic"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
@@ -65,10 +64,7 @@ func (r *reporter) send(outcomes ...Outcome) {
 // classified is err for the trail: a history or folder lock held elsewhere
 // reads as busy.
 func classified(err error) error {
-	if errors.Is(err, state.ErrLocked) || errors.Is(err, state.ErrFolderLocked) {
-		return diagnostic.Wrap("open", "busy", err)
-	}
-	return err
+	return state.Classified(err)
 }
 
 // passOutcomes are a pass's: its own, and the start, open and other

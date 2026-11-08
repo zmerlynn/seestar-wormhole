@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
@@ -59,8 +60,11 @@ func runFiles(ctx context.Context, o options, out, logs io.Writer) error {
 	if detail, ok := errors.AsType[*argumentError](err); ok {
 		logConfigurationError(logs, o.file.Name(), detail)
 	} else {
+		// The keys read a lock held elsewhere as busy, as the app's trail
+		// does; error keeps the original text and the returned error is
+		// unchanged.
 		name := o.file.Name()
-		log.Error(name+" failed", append(diagnostic.OpKeys(fileSources[name], diagnostic.OpRun, err), "error", err)...)
+		log.Error(name+" failed", append(diagnostic.OpKeys(fileSources[name], diagnostic.OpRun, state.Classified(err)), "error", err)...)
 	}
 	return err
 }

@@ -675,6 +675,9 @@ in both formats:
 - `reason`: the class of the failure, such as `connection_refused`,
   `timeout`, `permission_denied`, `not_found` or `operation_failed`.
 
+A destination whose history or [folder lock](#the-folder-lock) another sync
+or a delete holds reads `phase=open reason=busy`, as it does in the app.
+
 `error` may name paths, hosts and files, while `phase` and `reason` never do.
 For example:
 
