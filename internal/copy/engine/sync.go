@@ -353,7 +353,7 @@ func (s *syncer) logPass(ctx context.Context, sum Summary) {
 	case ctx.Err() != nil:
 		s.log.Info("pass stopped", args...)
 	case sum.Err != nil:
-		s.log.Error("pass failed", append(args, "error", sum.Err)...)
+		s.log.Error("pass failed", append(append(diagnostic.OpKeys(diagnostic.SourceCopy, diagnostic.OpPass, sum.Err), args...), "error", sum.Err)...)
 	default:
 		s.log.Info("pass done", args...)
 	}
@@ -375,7 +375,7 @@ func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 		case ctx.Err() != nil:
 			s.log.Info("dry run stopped", args...)
 		case err != nil:
-			s.log.Error("dry run failed", append(args, "error", err)...)
+			s.log.Error("dry run failed", append(append(diagnostic.OpKeys(diagnostic.SourceCopy, diagnostic.OpPreview, err), args...), "error", err)...)
 		default:
 			s.log.Info("dry run done", args...)
 		}

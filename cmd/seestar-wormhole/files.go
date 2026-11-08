@@ -15,6 +15,13 @@ import (
 // fileCommandNames are the commands mounted from internal/copy/cli.
 var fileCommandNames = []string{"sync", "find", "browse", "delete"}
 
+// fileSources are the diagnostic sources of the file commands, named on
+// their failure records.
+var fileSources = map[string]string{
+	"sync": diagnostic.SourceCopy, "find": diagnostic.SourceFind,
+	"browse": diagnostic.SourceBrowse, "delete": diagnostic.SourceDelete,
+}
+
 func fileCommand(name string) bool { return slices.Contains(fileCommandNames, name) }
 
 // addFileCommands mounts the file commands. Each has its own logging
@@ -52,7 +59,8 @@ func runFiles(ctx context.Context, o options, out, logs io.Writer) error {
 	if detail, ok := errors.AsType[*argumentError](err); ok {
 		logConfigurationError(logs, o.file.Name(), detail)
 	} else {
-		log.Error(o.file.Name()+" failed", "error", err)
+		name := o.file.Name()
+		log.Error(name+" failed", append(diagnostic.OpKeys(fileSources[name], diagnostic.OpRun, err), "error", err)...)
 	}
 	return err
 }

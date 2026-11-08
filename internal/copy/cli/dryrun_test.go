@@ -268,7 +268,7 @@ func TestDryRunFailures(t *testing.T) {
 			}},
 		{name: "listing fails", files: []string{"MyWorks/sub/a.fit", "Autorun/Dark/a.fit"}, unreadable: []string{"MyWorks/sub"},
 			log: []string{
-				`level=ERROR msg="dry run failed" copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=`,
+				`level=ERROR msg="dry run failed" source=copy op=preview phase=preview reason=permission_denied copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=`,
 				`level=ERROR msg="sync failed" error="list the share: readdir MyWorks/sub: permission denied"`,
 			}},
 	} {
