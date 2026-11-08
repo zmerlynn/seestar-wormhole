@@ -165,8 +165,8 @@ type Pattern struct {
 	m *gitignore.Matcher
 	// prefixes[k-1] matches a folder whose first k names match the
 	// pattern's first k parts, for each k up to the pattern's first **
-	// part, or its last part. It is empty for a pattern that can match at
-	// any depth.
+	// part, its last part, or maxPrefixes. It is empty for a pattern that
+	// can match at any depth.
 	prefixes []*gitignore.Matcher
 }
 
@@ -228,12 +228,13 @@ func ParsePattern(s string) (Pattern, error) {
 	}
 	// Anchored: a folder can hold a match only if its leading names match
 	// the pattern's leading parts, up to a ** part, which may stand for any
-	// number of names. Each prefix is itself an anchored folder pattern,
-	// compiled by the same library. It ends in /, so that a space before a
-	// / in the pattern is not taken for a trailing space and dropped.
+	// number of names, and at most maxPrefixes of them. Each prefix is
+	// itself an anchored folder pattern, compiled by the same library. It
+	// ends in /, so that a space before a / in the pattern is not taken for
+	// a trailing space and dropped.
 	lowerParts := strings.Split(strings.TrimPrefix(strings.TrimSuffix(lower, "/"), "/"), "/")
 	for k := range lowerParts {
-		if doubleStar(lowerParts[k]) {
+		if doubleStar(lowerParts[k]) || k == maxPrefixes {
 			break
 		}
 		prefix, err := compile("/" + strings.Join(lowerParts[:k+1], "/") + "/")
@@ -244,6 +245,13 @@ func ParsePattern(s string) (Pattern, error) {
 	}
 	return p, nil
 }
+
+// maxPrefixes bounds the prefixes kept for a pattern, each of which holds
+// all the parts before it, so that a pattern of many parts costs memory in
+// proportion to its length, not its square. Below that many names, a walk
+// lists every folder, as below a ** part; whether a file is kept is still
+// decided by the whole pattern.
+const maxPrefixes = 32
 
 // compile compiles one lowercased .gitignore pattern.
 func compile(pattern string) (*gitignore.Matcher, error) {
@@ -294,7 +302,8 @@ func (m Pattern) match(p string, dir bool) bool {
 
 // mayMatchBelow reports whether the folder dir, or something below it,
 // could match: whether dir's leading names match the pattern's leading
-// parts, as many as dir has or as come before a ** part. A pattern that can
+// parts, as many as dir has or as come before a ** part, up to
+// maxPrefixes. A pattern that can
 // match at any depth could match below any folder.
 func (m Pattern) mayMatchBelow(dir string) bool {
 	if len(m.prefixes) == 0 {

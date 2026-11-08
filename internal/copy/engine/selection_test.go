@@ -623,3 +623,51 @@ func TestLeavesOut(t *testing.T) {
 		}
 	}
 }
+
+// A pattern of many parts keeps at most maxPrefixes prefixes, so parsing
+// it costs memory in proportion to its length.
+func TestPrefixBudget(t *testing.T) {
+	p, err := ParsePattern("/" + strings.Repeat("a/", 1023) + "a")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p.prefixes) != maxPrefixes {
+		t.Errorf("%d prefixes, want %d", len(p.prefixes), maxPrefixes)
+	}
+}
+
+// Past maxPrefixes names a walk lists every folder, and still keeps only
+// the files the whole pattern selects; a folder that differs within the
+// budget is still left out unread.
+func TestIncludeBeyondPrefixBudget(t *testing.T) {
+	deep := strings.Repeat("d/", maxPrefixes+3)
+	file := &fstest.MapFile{Data: []byte("x")}
+	share := remote.NewFake(fstest.MapFS{
+		deep + "a.fit": file,
+		deep + "b.fit": file,
+		strings.Repeat("d/", maxPrefixes+1) + "x/a.fit": file,
+		"d/e/" + deep + "a.fit":                         file,
+	})
+	s := selector(t, nil, []string{"/" + deep + "a.fit"})
+	kept, _, err := s.Walk(t.Context(), share)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var files, dirs []string
+	for _, e := range kept {
+		if e.Kind == remote.Dir {
+			dirs = append(dirs, e.Path)
+		} else {
+			files = append(files, e.Path)
+		}
+	}
+	if want := []string{deep + "a.fit"}; !slices.Equal(files, want) {
+		t.Errorf("walk kept files %q, want %q", files, want)
+	}
+	if !slices.Contains(dirs, strings.Repeat("d/", maxPrefixes+1)+"x") {
+		t.Errorf("a folder past the budget was not listed: %q", dirs)
+	}
+	if slices.Contains(dirs, "d/e") {
+		t.Errorf("a folder that differs within the budget was listed: %q", dirs)
+	}
+}
