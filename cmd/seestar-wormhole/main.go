@@ -362,16 +362,23 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	if errors.Is(err, errHelp) {
 		return 0
 	}
-	// Help that could not be written fails as a failed version write does.
-	if err != nil && o.outcome == commandHelp {
-		return commandExitCode(o, err)
-	}
-	if err == nil && o.outcome == commandVersion {
-		_, err = fmt.Fprintln(out, versionString())
-		return commandExitCode(o, err)
-	}
-	if err == nil && o.command == commandLicenses {
-		return commandExitCode(o, licenses.Write(out))
+	// Help, version or licenses that could not be written exits 1, with a
+	// "<cmd> failed" record through the bounded log sink below; the output
+	// itself is written before any signal or log handle is acquired.
+	var outputErr error
+	switch {
+	case err != nil && o.outcome == commandHelp:
+		outputErr, err = err, nil
+	case err == nil && o.outcome == commandVersion:
+		_, outputErr = fmt.Fprintln(out, versionString())
+		if outputErr == nil {
+			return 0
+		}
+	case err == nil && o.command == commandLicenses:
+		outputErr = licenses.Write(out)
+		if outputErr == nil {
+			return 0
+		}
 	}
 	// Windows refuses invalid options before acquiring signal or log handles.
 	// Unix keeps nonblocking log setup for argument errors on stalled stderr,
@@ -421,12 +428,16 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	if q, ok := w.output.(interface{ setLogReporter(*logLossWriter) }); ok {
 		q.setLogReporter(w)
 	}
-	if err != nil {
+	switch {
+	case outputErr != nil:
+		logOutputError(o, w, outputErr)
+		err = outputErr
+	case err != nil:
 		logCommandArgumentError(o, w, err)
-	} else {
+	default:
 		err = execute(ctx, o, out, w)
 	}
-	if err != nil && o.command == commandUI {
+	if err != nil && outputErr == nil && o.command == commandUI {
 		reportUIError(err)
 	}
 	if w.fallback == nil && w.Err() != nil {
@@ -463,6 +474,27 @@ func logCommandArgumentError(o options, out io.Writer, err error) {
 	default:
 		logConfigurationError(out, "proxy", err)
 	}
+}
+
+// logOutputError records help, version or licenses output that could not be
+// written, under the command that was asked for and in its default format.
+func logOutputError(o options, out io.Writer, err error) {
+	name, format := programName, "json"
+	switch o.command {
+	case commandUI:
+		name = "ui"
+	case commandProxy:
+		name = "proxy"
+	case commandLicenses:
+		name = "licenses"
+	case commandDiscoveryOnly:
+		name = "discovery"
+	case commandHelpTopic:
+		name = "help"
+	case commandFiles:
+		name, format = o.fileName, "text"
+	}
+	newLogger(format, out).Error(name+" failed", "error", err.Error())
 }
 
 func commandExitCode(o options, err error) int {

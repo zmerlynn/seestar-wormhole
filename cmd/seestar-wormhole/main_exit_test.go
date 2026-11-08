@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"io"
 	"os"
 	"runtime"
@@ -145,6 +146,110 @@ func TestUsageExitAcrossCommands(t *testing.T) {
 			if code != want {
 				t.Errorf("%q windows=%t: exit %d want %d; logs=%s", args, windows, code, want, &logs)
 			}
+		}
+	}
+}
+
+// failingWriter accepts the first limit bytes, then fails every write.
+type failingWriter struct{ limit int }
+
+func (w *failingWriter) Write(p []byte) (int, error) {
+	if len(p) > w.limit {
+		n := w.limit
+		w.limit = 0
+		return n, errors.New("output unavailable")
+	}
+	w.limit -= len(p)
+	return len(p), nil
+}
+
+// outputFailureRecord is the one stderr line that help, version or licenses
+// output that could not be written must end with: text for a file command,
+// JSON for the others.
+func outputFailureRecord(command, failure string) string {
+	if fileCommand(command) {
+		return `level=ERROR msg="` + command + ` failed" error="` + failure + `"` + "\n"
+	}
+	return `"level":"ERROR","msg":"` + command + ` failed","error":"` + failure + `"}` + "\n"
+}
+
+func runToOutput(args []string, out io.Writer, windows bool) (int, string) {
+	bootstrap := func(ctx context.Context, _ ...os.Signal) (context.Context, context.CancelFunc) { return ctx, func() {} }
+	var logs bytes.Buffer
+	code := mainExitCodeWithPlatform(args, out, io.Discard, bootstrap,
+		func() (io.Writer, func()) { return &logs, func() {} }, windows)
+	return code, logs.String()
+}
+
+// Output that could not be written exits 1 with one "<cmd> failed" record
+// carrying the write error, through the log sink on every platform.
+func TestHelpOutputFailure(t *testing.T) {
+	var help bytes.Buffer
+	if code, _ := runToOutput([]string{"--help"}, &help, false); code != 0 {
+		t.Fatalf("--help: exit %d", code)
+	}
+	pointer := strings.LastIndex(help.String(), "Third-party license information")
+	for _, tc := range []struct {
+		args    []string
+		command string
+		limit   int
+	}{
+		{nil, programName, 0},
+		{[]string{"--help"}, programName, 0},
+		{[]string{"-h"}, programName, 0},
+		{[]string{"--version"}, programName, 0},
+		{[]string{"help"}, "help", 0},
+		{[]string{"help", "sync"}, "help", 0},
+		{[]string{"sync", "--help"}, "sync", 0},
+		{[]string{"find", "--help"}, "find", 0},
+		{[]string{"browse", "-h"}, "browse", 0},
+		{[]string{"delete", "--help"}, "delete", 0},
+		{[]string{"proxy", "--help"}, "proxy", 0},
+		{[]string{"proxy", "--version"}, "proxy", 0},
+		{[]string{"discovery", "--help"}, "discovery", 0},
+		{[]string{"licenses", "--help"}, "licenses", 0},
+		{[]string{"licenses"}, "licenses", 0},
+		// Only the license pointer, written after Cobra's help, fails.
+		{nil, programName, pointer},
+		{[]string{"help"}, "help", pointer},
+	} {
+		for _, windows := range []bool{false, true} {
+			code, logs := runToOutput(tc.args, &failingWriter{limit: tc.limit}, windows)
+			want := outputFailureRecord(tc.command, "output unavailable")
+			if code != 1 || !strings.HasSuffix(logs, want) || strings.Count(logs, "\n") != 1 {
+				t.Errorf("%q, limit %d, windows=%t: exit %d stderr=%q, want 1 and one line ending %q", tc.args, tc.limit, windows, code, logs, want)
+			}
+		}
+	}
+}
+
+// recoveringWriter fails its first write, then accepts every write.
+type recoveringWriter struct{ failed bool }
+
+func (w *recoveringWriter) Write(p []byte) (int, error) {
+	if !w.failed {
+		w.failed = true
+		return 0, errors.New("first write failed")
+	}
+	return len(p), nil
+}
+
+// Later successful writes must not erase the first error: the help is
+// still truncated.
+func TestHelpKeepsFirstOutputError(t *testing.T) {
+	for _, tc := range []struct {
+		args    []string
+		command string
+	}{
+		{nil, programName},
+		{[]string{"--help"}, programName},
+		{[]string{"help"}, "help"},
+		{[]string{"sync", "--help"}, "sync"},
+	} {
+		code, logs := runToOutput(tc.args, &recoveringWriter{}, false)
+		want := outputFailureRecord(tc.command, "first write failed")
+		if code != 1 || !strings.HasSuffix(logs, want) || strings.Count(logs, "\n") != 1 {
+			t.Errorf("%q: exit %d stderr=%q, want 1 and one line ending %q", tc.args, code, logs, want)
 		}
 	}
 }

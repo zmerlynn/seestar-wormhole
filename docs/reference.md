@@ -225,7 +225,9 @@ Bare `seestar-wormhole` opens [the UI](ui.md) and stays running until you quit o
 Bare `seestar-wormhole-cli` prints help and exits 0 without opening a UI or browser.
 Use `help [command]` or
 `--help`/`-h` for help. An unknown help topic is a usage error (exit 2,
-`help failed`), and help that cannot be written exits 1. Root `--version` prints
+`help failed`). Help, version or license text that cannot be written exits 1
+with a `<command> failed` record on stderr carrying the write error, such as
+`sync failed` for `sync --help`. Root `--version` prints
 `<program> <version> (<revision>, <os>/<arch>)` (`<program>` is
 `seestar-wormhole` or `seestar-wormhole-cli`); unset build metadata is
 `development`. Help/version require no credentials or network. Version still
