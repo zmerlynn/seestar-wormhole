@@ -330,7 +330,7 @@ func TestSyncOnce(t *testing.T) {
 			}},
 		{name: "listing fails", files: []string{"MyWorks/sub/a.fit", "Autorun/Dark/a.fit"}, unreadable: []string{"MyWorks/sub"}, code: exitFailure,
 			log: []string{
-				`level=ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=`,
+				`level=ERROR msg="pass failed" source=copy op=pass phase=pass reason=permission_denied copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=`,
 				` error="list the share: readdir MyWorks/sub: permission denied"` + "\n",
 				`level=ERROR msg="sync failed" error="list the share: readdir MyWorks/sub: permission denied"`,
 			}},
@@ -413,7 +413,7 @@ func TestSyncRetriesFailedPass(t *testing.T) {
 			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--interval", "1m"}, io.Discard, logs)
 		}()
 		synctest.Wait()
-		if got, want := logs.Take(), logLines(t0, `ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
+		if got, want := logs.Take(), logLines(t0, `ERROR msg="pass failed" source=copy op=pass phase=connect reason=operation_failed copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
 			t.Fatalf("first pass log %q, want %q", got, want)
 		}
 		time.Sleep(time.Minute)

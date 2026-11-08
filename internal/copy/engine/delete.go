@@ -19,6 +19,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // DeleteOptions are the checked options of a delete run.
@@ -71,6 +72,9 @@ type DeleteResult struct {
 	Files []DeleteFile
 	// Folders is how many emptied folders were removed, or would be.
 	Folders int
+	// Stopped is a run that Stop ended: its error is nil, whatever it
+	// reached, so it neither failed nor finished.
+	Stopped bool
 }
 
 // DeleteFile is the outcome of one listed file.
@@ -180,6 +184,7 @@ func RunDelete(ctx context.Context, o DeleteOptions, log *slog.Logger) (DeleteRe
 	d.result.Folders = d.folders
 	switch {
 	case ctx.Err() != nil || d.stopped:
+		d.result.Stopped = d.stopped
 		return d.result, nil
 	case err != nil:
 		return d.result, err
@@ -240,10 +245,10 @@ func (d *deleter) run(ctx context.Context) (failed int, err error) {
 	var left LeftOut
 	defer func() {
 		names := []string{"deleted", "bytes", "folders"}
-		msg := "deletion"
+		msg, op := "deletion", diagnostic.OpDelete
 		if d.opts.DryRun {
 			names = []string{"delete", "bytes", "remove_folders"}
-			msg = "dry run"
+			msg, op = "dry run", diagnostic.OpPreview
 		}
 		args := []any{names[0], d.deleted, names[1], d.bytes, names[2], d.folders, "kept", d.kept, "recent", d.recent,
 			"failed", d.failed, "skipped", len(left.Skipped), "unmatched", left.Unmatched, "elapsed", time.Since(start).Round(time.Millisecond)}
@@ -251,7 +256,7 @@ func (d *deleter) run(ctx context.Context) (failed int, err error) {
 		case ctx.Err() != nil || d.stopped:
 			d.log.Info(msg+" stopped", args...)
 		case err != nil:
-			d.log.Error(msg+" failed", append(args, "error", err)...)
+			d.log.Error(msg+" failed", append(append(diagnostic.OpKeys(diagnostic.SourceDelete, op, err), args...), "error", err)...)
 		default:
 			d.log.Info(msg+" done", args...)
 		}
@@ -264,7 +269,7 @@ func (d *deleter) run(ctx context.Context) (failed int, err error) {
 		sess = d.rm
 	}
 	if err != nil {
-		return 0, fmt.Errorf("connect to %s: %w", d.opts.Endpoint, err)
+		return 0, diagnostic.At("connect", fmt.Errorf("connect to %s: %w", d.opts.Endpoint, err))
 	}
 	defer sess.Close()
 	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed, nil, d.within(), false)

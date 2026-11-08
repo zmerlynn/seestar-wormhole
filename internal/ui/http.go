@@ -159,7 +159,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		ports, _, _ := effective.validate()
 		defaults, _ := proxyrun.MergePorts(nil)
-		events, path, logFailed := s.controller.log.snapshot()
+		events, failures, path, logFailed := s.controller.log.trail()
 		unlocked, reach := s.copyState()
 		localhttp.Respond(w, http.StatusOK, struct {
 			CopyBusy  bool               `json:"copy_busy"`
@@ -171,13 +171,14 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Password     passwordInfo    `json:"password"`
 			Native       bool            `json:"native"`
 			Events       []event         `json:"events"`
+			Failures     []opFailure     `json:"failures"`
 			LogPath      string          `json:"log_path"`
 			LogFailed    bool            `json:"log_failed"`
 			CopyUnlocked bool            `json:"copy_unlocked"`
 			CopyReach    string          `json:"copy_reach"`
 			CopyRefused  bool            `json:"copy_refused"`
 			Files        settingsFiles   `json:"files"`
-		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, path, logFailed,
+		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, failures, path, logFailed,
 			unlocked, reach, s.copyRefused, s.settingsFiles()})
 		return
 	}

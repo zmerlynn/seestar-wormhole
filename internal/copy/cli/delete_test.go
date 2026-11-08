@@ -479,7 +479,7 @@ func TestDeleteRemoteFailure(t *testing.T) {
 	for _, want := range []string{
 		`msg="file deleted" path=MyWorks/c.fit`,
 		`level=WARN msg="file failed" path=MyWorks/b.fit`,
-		`level=ERROR msg="deletion failed" deleted=1 bytes=1 folders=0 kept=0 recent=0 failed=1 `,
+		`level=ERROR msg="deletion failed" source=delete op=delete phase=delete reason=operation_failed deleted=1 bytes=1 folders=0 kept=0 recent=0 failed=1 `,
 	} {
 		if !strings.Contains(stderr, want) {
 			t.Errorf("log lacks %q:\n%s", want, stderr)

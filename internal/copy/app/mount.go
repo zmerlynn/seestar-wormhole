@@ -43,6 +43,11 @@ type MountOptions struct {
 	// Native is the host window's dialogs; nil, or a nil dialog, without
 	// a window.
 	Native *Native
+	// Report, if set, gets the outcome of each Copy, Browse and Free up
+	// space operation as it ends, numbered in the order they ended. It is
+	// called with none of the Mount's locks held, from the goroutine the
+	// operation ended on, so a slow Report delays only that operation.
+	Report func(Outcome)
 }
 
 // Native is a window's own dialogs. Each may be called from any goroutine
@@ -149,12 +154,16 @@ func (s *server) startWhenReady(ctx context.Context, every time.Duration) {
 		if !want {
 			return
 		}
-		err := s.startCopying(true)
-		if err == nil || errors.Is(err, errStarted) {
+		seq, err := s.startCopyingSeq(true)
+		if errors.Is(err, errStarted) {
 			return
 		}
-		if !errors.As(err, new(noTarget)) {
-			s.log.Error("start copying", "err", err)
+		// A start that waits for its target reports nothing yet.
+		if err == nil || !errors.As(err, new(noTarget)) {
+			if err != nil {
+				s.log.Error("start copying", "err", err)
+			}
+			s.rep.send(startOutcome(err, seq))
 			return
 		}
 		select {

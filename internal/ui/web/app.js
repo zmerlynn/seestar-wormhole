@@ -1180,12 +1180,16 @@ async function copyRefresh() {
   }
   lostLine();
 }
-// Activity: one list, newest first, of the connection's events and copy's
-// and Free up space's activity, each row tagged with its source. The
-// source "delete" is Free up space's, named as its tab is.
-const sourceNames = {connection: 'Connection', copy: 'Copy', delete: 'Free up space'};
+// Activity: one list, newest first, of the connection's events, Browse's
+// trail lines, and copy's and Free up space's activity, each row tagged
+// with its source. Copy's ring has the detail of Copy and Free up space,
+// so of their trail lines only Browse's, which the ring lacks, are shown.
+// A line with no source is the connection's. The source "delete" is Free
+// up space's, named as its tab is.
+const sourceNames = {connection: 'Connection', copy: 'Copy', browse: 'Browse', delete: 'Free up space'};
 function activityRows() {
-  const rows = (state?.events || []).map(event => ({...event, source: 'connection'})).reverse();
+  const rows = (state?.events || []).map(event => ({...event, source: event.source || 'connection'}))
+    .filter(event => event.source === 'connection' || event.source === 'browse').reverse();
   for (const e of copyStatus?.activity || []) rows.push({time: e.at, source: e.source, message: e.text, ...(e.warn ? {warn: true} : {})});
   // A stable sort keeps each source's own order within a timestamp.
   return rows.sort((a, b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0));
@@ -1210,12 +1214,22 @@ function renderEvents() {
   copyDiagnostic();
 }
 // The diagnostic summary is one paste: the version, the error code, both
-// settings documents, the merged events and the log path.
+// settings documents, the failing operations, the trail newest first and
+// the log path. Without a connection error, the error code is the newest
+// failure's.
 let shownErrorCode = '';
+// trailNewestFirst is the trail, newest first; a stable sort keeps the
+// newer of two lines with one timestamp first.
+function trailNewestFirst() {
+  return (state?.events || []).map(event => ({...event, source: event.source || 'connection'})).reverse()
+    .sort((a, b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0));
+}
 function copyDiagnostic() {
+  const failures = state?.failures || [];
+  const newest = failures.reduce((a, b) => !a || (Date.parse(b.last) || 0) >= (Date.parse(a.last) || 0) ? b : a, null);
   diagnostic = JSON.stringify({
-    app: 'seestar-wormhole', version: state?.version || '', error_code: shownErrorCode, settings: state?.effective || null,
-    copy_settings: copyStatus?.settings || null, events: activityShown, log_path: state?.log_path || ''
+    app: 'seestar-wormhole', version: state?.version || '', error_code: shownErrorCode || newest?.code || '', settings: state?.effective || null,
+    copy_settings: copyStatus?.settings || null, failures, events: trailNewestFirst(), log_path: state?.log_path || ''
   }, null, 2);
 }
 let pickerKey = '', receivedDevices = [], savedDevice = null;

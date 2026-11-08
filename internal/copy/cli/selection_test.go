@@ -210,11 +210,11 @@ func TestSkipsBeforeListingFailure(t *testing.T) {
 		name, flag, skip, summary string
 		include                   []string
 	}{
-		{"pass", "--once", `msg=skipped path=.hidden exclude=.*`, `msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=1 unmatched=0 `, nil},
-		{"dry run", "--dry-run", `msg="would skip" path=.hidden exclude=.*`, `msg="dry run failed" copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=1 unmatched=0 `, nil},
+		{"pass", "--once", `msg=skipped path=.hidden exclude=.*`, `msg="pass failed" source=copy op=pass phase=pass reason=permission_denied copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=1 unmatched=0 `, nil},
+		{"dry run", "--dry-run", `msg="would skip" path=.hidden exclude=.*`, `msg="dry run failed" source=copy op=preview phase=preview reason=permission_denied copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=1 unmatched=0 `, nil},
 		// What the include left out before the failure is counted too.
-		{"pass with include", "--once", `msg=skipped path=.hidden exclude=.*`, `msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=1 unmatched=1 `, []string{"--include", "/zbad"}},
-		{"dry run with include", "--dry-run", `msg="would skip" path=.hidden exclude=.*`, `msg="dry run failed" copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=1 unmatched=1 `, []string{"--include", "/zbad"}},
+		{"pass with include", "--once", `msg=skipped path=.hidden exclude=.*`, `msg="pass failed" source=copy op=pass phase=pass reason=permission_denied copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=1 unmatched=1 `, []string{"--include", "/zbad"}},
+		{"dry run with include", "--dry-run", `msg="would skip" path=.hidden exclude=.*`, `msg="dry run failed" source=copy op=preview phase=preview reason=permission_denied copy=0 replace=0 adopt=0 waiting=0 failed=0 skipped=1 unmatched=1 `, []string{"--include", "/zbad"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			readonly.Reset()

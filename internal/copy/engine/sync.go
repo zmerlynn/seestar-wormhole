@@ -17,6 +17,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // SyncOptions are the checked options of a sync.
@@ -283,7 +284,7 @@ func (s *syncer) pass(ctx context.Context) (sum Summary) {
 	// ends a call the server does not answer.
 	sess, err := s.opts.Dial(ctx, s.opts.Endpoint)
 	if err != nil {
-		sum.Err = fmt.Errorf("connect to %s: %w", s.opts.Endpoint, err)
+		sum.Err = diagnostic.At("connect", fmt.Errorf("connect to %s: %w", s.opts.Endpoint, err))
 		return sum
 	}
 	defer sess.Close()
@@ -352,7 +353,7 @@ func (s *syncer) logPass(ctx context.Context, sum Summary) {
 	case ctx.Err() != nil:
 		s.log.Info("pass stopped", args...)
 	case sum.Err != nil:
-		s.log.Error("pass failed", append(args, "error", sum.Err)...)
+		s.log.Error("pass failed", append(append(diagnostic.OpKeys(diagnostic.SourceCopy, diagnostic.OpPass, sum.Err), args...), "error", sum.Err)...)
 	default:
 		s.log.Info("pass done", args...)
 	}
@@ -374,14 +375,14 @@ func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 		case ctx.Err() != nil:
 			s.log.Info("dry run stopped", args...)
 		case err != nil:
-			s.log.Error("dry run failed", append(args, "error", err)...)
+			s.log.Error("dry run failed", append(append(diagnostic.OpKeys(diagnostic.SourceCopy, diagnostic.OpPreview, err), args...), "error", err)...)
 		default:
 			s.log.Info("dry run done", args...)
 		}
 	}()
 	sess, err := s.opts.Dial(ctx, s.opts.Endpoint)
 	if err != nil {
-		return 0, fmt.Errorf("connect to %s: %w", s.opts.Endpoint, err)
+		return 0, diagnostic.At("connect", fmt.Errorf("connect to %s: %w", s.opts.Endpoint, err))
 	}
 	defer sess.Close()
 	var decisions []plan.Decision

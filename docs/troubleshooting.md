@@ -90,10 +90,13 @@ run from the tool's folder; in PowerShell,
 `.\seestar-wormhole-cli.exe --version`), your platform, the telescope model
 and firmware, and the log lines around the problem. In the app, **Copy
 diagnostic summary** on the [Activity](ui.md#activity) tab copies the version,
-settings and recent events at once. Logs and diagnostics leave out your credentials,
-but they can include the telescope's serial number, network addresses, your
-local folders, selection patterns and file names. Read them over and remove
-anything you'd rather keep before posting.
+settings, recent events and any failing Copy, Browse or Free up space
+operations at once. Logs and diagnostics leave out your credentials, but they
+can include the telescope's serial number, network addresses, your local
+folders, selection patterns and file names: the summary keeps your telescopes'
+serials, your folders and patterns, and the CLI's `error` text names hosts,
+paths and files. Read them over and remove anything you'd rather keep before
+posting.
 
 ## The native window didn't open
 

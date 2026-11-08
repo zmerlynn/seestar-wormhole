@@ -194,7 +194,7 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 	addr := netip.AddrPortFrom(o.addr.Addr(), uint16(ln.Addr().(*net.TCPAddr).Port))
 	sessions := browse.NewSessions(ctx, func(ctx context.Context) (remote.Session, error) {
 		return dial(ctx, o.endpoint, log)
-	}, log.With("endpoint", o.endpoint))
+	}, log.With("endpoint", o.endpoint), browse.Reporter{})
 	srv := &http.Server{
 		Handler: browse.NewHandler(browse.Config{
 			Addr: addr, Endpoint: o.endpoint, Sessions: sessions, Records: records, Selector: o.selector, Log: log,

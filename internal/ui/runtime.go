@@ -193,7 +193,7 @@ var (
 // never by its endpoint's text: Run 0 dials the endpoint over TCP, and
 // any other run dials device port 445 through that run's session. They
 // look the run up on each dial, so one Mount reaches whichever run is
-// current.
+// current. Every file-tool outcome goes to the app's event trail.
 func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOptions {
 	files := &handler.controller.files
 	via := func(run uint64) remote.Conn {
@@ -201,6 +201,7 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 	}
 	log := o.Log
 	o.Target = handler.copyTarget
+	o.Report = handler.controller.log.addOutcome
 	o.Dial = func(ctx context.Context, t copyapp.Target) (remote.Session, error) {
 		switch {
 		case copyDial != nil:

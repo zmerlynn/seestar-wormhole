@@ -663,6 +663,28 @@ The messages and keys below are what this release logs. They are not part of
 the [versioning contract](versioning.md#not-in-the-contract); a release that
 changes them says so in its notes.
 
+A failure record that ends a pass, a dry run, a listing, a deletion, a
+browse login or request, or a command also carries four classified keys,
+in both formats:
+
+- `source`: the tool, `copy` (sync), `find`, `browse` or `delete`.
+- `op`: what failed: `pass`, `preview` (a dry run), `list`, `connect`,
+  `records` (browse reading the state), `read`, `delete`, or `run` for
+  the command's own `<command> failed` record.
+- `phase`: the step that failed, such as `connect`, `list` or `open`.
+- `reason`: the class of the failure, such as `connection_refused`,
+  `timeout`, `permission_denied`, `not_found` or `operation_failed`.
+
+A destination whose history or [folder lock](#the-folder-lock) another sync
+or a delete holds reads `phase=open reason=busy`, as it does in the app.
+
+`error` may name paths, hosts and files, while `phase` and `reason` never do.
+For example:
+
+```text
+time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass phase=connect reason=connection_refused copied=0 ... error="connect to 127.0.0.1:1: ..."
+```
+
 | Level | Message | Keys | When |
 | --- | --- | --- | --- |
 | INFO | `file copied` | `path`, `size`, `overwrote=true` when it replaced a different local file, and `elapsed`, the file's download time | A file was downloaded and recorded. |
@@ -671,7 +693,7 @@ changes them says so in its notes.
 | WARN | `file failed` | `path`, `reason` | A file failed this pass; it is tried again next pass. |
 | INFO | `skipped` | `path`, `exclude` | The file or folder matches the pattern `exclude`, the first one that matched, and is left out, by a pass or by `find`. A folder has one line; what is in it is not listed. See [selection](#selection). |
 | INFO | `pass done` | see below | A pass finished. |
-| ERROR | `pass failed` | see below, and `error` | The connection or a listing failed. |
+| ERROR | `pass failed` | `source`, `op`, `phase`, `reason`, see below, and `error` | The connection or a listing failed. |
 | WARN | `pass failed` | `reason=destination_missing`, `dest` | `--dest` was removed while sync runs; see [a failed pass](#a-failed-pass). |
 | WARN | `pass skipped` | `reason=folder_busy`, `dest`, `error` | Another sync or a delete holds the [folder lock](#the-folder-lock) at a pass after the first. |
 | WARN | `reserved name` | `path`, the first such entry; `entries`, how many; `reason` | Top-level share entries named `.seestar-wormhole.lock` were left out; see [destination layout](#destination-layout). |
@@ -683,17 +705,17 @@ changes them says so in its notes.
 | INFO | `would skip` | `path`, `exclude` | Dry run: the same as `skipped`. |
 | INFO | `no copied files recorded under this top-level folder` | `folder` | Dry run: the state has no file under this folder at the share root, such as a folder a new release now covers. |
 | INFO | `dry run done` | `copy`, `replace`, `adopt`, `waiting`, `failed`, `skipped`, `unmatched`, `bytes`, `elapsed` | A dry run finished. Counts other than `unmatched` are of the lines above and of `file failed` lines. `unmatched` counts entries left out by includes, without a line of their own; `bytes` is what it would download. |
-| ERROR | `dry run failed` | as `dry run done`, and `error` | The connection or a listing failed in a dry run. |
+| ERROR | `dry run failed` | `source`, `op`, `phase`, `reason`, as `dry run done`, and `error` | The connection or a listing failed in a dry run. |
 | INFO | `dry run stopped` | as `dry run done` | A signal stopped a dry run. |
 | WARN | `dropped the torn final line of the state file` | `file`, `line`, `reason` | See [format](#format). |
 | WARN | `ignored the torn final line of the state file` | `file`, `line`, `reason` | The same, in a [dry run](#dry-run), which leaves the file as it is. |
 | WARN | `skipped a folder that cannot be read while removing leftover temporary files` | `folder`, `reason` | See [temporary files](#temporary-files). |
 | WARN | `skipped a malformed state file while checking for another spelling of the destination` | `file`, `reason` | Another state file in the `sync` folder cannot be read. |
-| ERROR | `sync failed` | `error` | Sync is exiting 1. |
+| ERROR | `sync failed` | `source`, `op=run`, `phase`, `reason`, `error` | Sync is exiting 1. |
 | INFO | `listing done` | see [find logs](#find-logs) | A `find` listing finished. |
-| ERROR | `listing failed` | as `listing done`, and `error` | The connection or a listing failed in `find`. |
-| ERROR | `find failed` | `error` | Find is exiting 1. |
-| ERROR | `sync failed`, `find failed`, `browse failed` or `delete failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. |
+| ERROR | `listing failed` | `source`, `op`, `phase`, `reason`, as `listing done`, and `error` | The connection or a listing failed in `find`. |
+| ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
+| ERROR | `sync failed`, `find failed`, `browse failed` or `delete failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
 | WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
@@ -1164,12 +1186,12 @@ time=2026-11-09T09:01:12.950Z level=INFO msg="session closed" endpoint=127.0.0.1
 | WARN | `serving the share unauthenticated to the network` | `addr` | At start, when `--listen` is not a loopback address. |
 | INFO | `session opened` | `endpoint` | The login to the share succeeded. |
 | INFO | `session closed` | `endpoint`, `reason` | The session logged off. `reason` is `idle` after 30 seconds unused, `failed` after an SMB error, `stuck` when a call outlived its request by 5 seconds, or `stopped` when browse stopped. |
-| WARN | `connect failed` | `endpoint`, `error` | The login failed or took longer than 30 seconds. The requests waiting on it are answered with the error. |
-| WARN | `request failed` | `path`, `error` | A listing or file read failed on the device, the state could not be read, or a download broke after it started. Not for a refused request, a path that does not exist, or a browser that went away. |
+| WARN | `connect failed` | `source`, `op`, `phase`, `reason`, `endpoint`, `error` | The login failed or took longer than 30 seconds. The requests waiting on it are answered with the error. |
+| WARN | `request failed` | `source`, `op`, `phase`, `reason`, `path`, `error` | A listing or file read failed on the device, the state could not be read, or a download broke after it started. Not for a refused request, a path that does not exist, or a browser that went away. |
 | WARN | `could not open a browser` | `error` | `--open` failed. Browse keeps serving; open the printed URL yourself. |
 | WARN | `ignored the torn final line of the state file` | `file`, `line`, `reason` | As in find. |
 | INFO | `browse stopped` | | A signal stopped browse. |
-| ERROR | `browse failed` | `error` | Browse is exiting 1. |
+| ERROR | `browse failed` | `source`, `op=run`, `phase`, `reason`, `error` | Browse is exiting 1. |
 
 ### browse exit codes
 
@@ -1361,7 +1383,8 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | `file kept`, `folder kept` | Not removed, with the reason; see [how delete decides](#how-delete-decides). |
 | `file failed`, `folder failed` | A failure, with the reason. |
 | `skipped` | As in a pass: an excluded file or folder. |
-| `deletion done`, `deletion stopped`, `deletion failed` | The summary. A preview's is `dry run done`, `dry run stopped` or `dry run failed`. |
+| `deletion done`, `deletion stopped`, `deletion failed` | The summary. A preview's is `dry run done`, `dry run stopped` or `dry run failed`. A failed one carries `source`, `op`, `phase`, `reason` and `error`. |
+| `delete failed` | Delete is exiting 1, with `source`, `op=run`, `phase`, `reason` and `error`. |
 
 | Summary key | Meaning |
 | --- | --- |

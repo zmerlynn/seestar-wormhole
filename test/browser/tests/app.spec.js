@@ -649,6 +649,40 @@ test('Browse follows a change of route', async ({ page, startApp }) => {
   await expect(browseStatus(page)).toHaveText(rootStatus);
 });
 
+// A Browse connect that fails is in Activity as a Browse row, and the
+// copied diagnostic summary holds it in failures, gives the trail newest
+// first, and names no address or file.
+test('the diagnostic summary holds a failing Browse connect', async ({ page, startApp }) => {
+  const app = await startApp({ ...setUp('/nowhere'), 'config.json': lan(refused) });
+  await page.addInitScript(() => {
+    window.copied = [];
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (t) => { window.copied.push(t); } } });
+  });
+  await openCopy(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toContainText('Select Share or a parent folder above', { timeout: 30000 });
+  await tab(page, 'Activity').click();
+  await expect(page.locator('#events li[data-source="browse"]').first()).toContainText("Browse  Browse couldn't reach the telescope.");
+  await page.locator('#copy').click();
+  await expect.poll(() => page.evaluate(() => window.copied.length)).toBe(1);
+  const text = await page.evaluate(() => window.copied[0]);
+  const summary = JSON.parse(text);
+  expect(summary.failures.map((f) => f.source + '/' + f.op)).toContain('browse/connect');
+  expect(summary.failures.find((f) => f.op === 'connect')).toMatchObject({ code: 'browse_connect_failed', phase: 'connect' });
+  expect(summary.error_code).not.toBe('');
+  const times = summary.events.map((e) => Date.parse(e.time));
+  expect(times.length).toBeGreaterThan(1);
+  expect(times[0]).toBeGreaterThanOrEqual(times[times.length - 1]);
+  const failedAt = summary.events.findIndex((e) => e.code === 'browse_connect_failed');
+  const openedAt = summary.events.findIndex((e) => e.message === 'App opened.');
+  expect(failedAt).toBeGreaterThanOrEqual(0);
+  expect(openedAt).toBeGreaterThan(failedAt);
+  for (const e of summary.events) {
+    if (e.source && e.source !== 'connection') expect(JSON.stringify(e)).not.toMatch(/127\.0\.0\.1|MyWorks|\.fit/);
+  }
+  expect(JSON.stringify(summary.failures)).not.toMatch(/127\.0\.0\.1|MyWorks|\.fit/);
+});
+
 // While the controls are lost, Browse keeps its loaded view but takes no
 // click, key or focus, its folders and Save links included, until a poll
 // succeeds.

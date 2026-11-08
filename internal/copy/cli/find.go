@@ -172,14 +172,14 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		}
 		args = append(args, "elapsed", time.Since(start).Round(time.Millisecond))
 		if err != nil {
-			log.Error("listing failed", append(args, "error", err)...)
+			log.Error("listing failed", append(append(diagnostic.OpKeys(diagnostic.SourceFind, diagnostic.OpList, err), args...), "error", err)...)
 			return
 		}
 		log.Info("listing done", args...)
 	}()
 	sess, err := dial(ctx, o.endpoint, log)
 	if err != nil {
-		return fmt.Errorf("connect to %s: %w", o.endpoint, err)
+		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.endpoint, err))
 	}
 	defer sess.Close()
 	entries, left, err := o.selector.Walk(ctx, sess)

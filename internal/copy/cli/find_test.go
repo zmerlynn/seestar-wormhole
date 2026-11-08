@@ -367,7 +367,7 @@ func TestFindFails(t *testing.T) {
 	}
 	for _, want := range []string{
 		"level=INFO msg=skipped path=.DS_Store exclude=.*\n",
-		`level=ERROR msg="listing failed" files=0 folders=0 bytes=0 recent=0 skipped=2 unmatched=0 elapsed=`,
+		`level=ERROR msg="listing failed" source=find op=list phase=list reason=permission_denied files=0 folders=0 bytes=0 recent=0 skipped=2 unmatched=0 elapsed=`,
 		`level=ERROR msg="find failed" error="list the share: `,
 	} {
 		if !strings.Contains(stderr, want) {

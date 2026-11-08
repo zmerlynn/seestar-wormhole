@@ -24,6 +24,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 )
 
@@ -54,6 +55,9 @@ type server struct {
 	copy    *controller
 	preview *previewer
 	free    *freer
+	// rep reports each operation's outcome to the host, numbered from
+	// one sequence that the controllers and Browse share.
+	rep *reporter
 
 	// admit is held by each change of where the telescope is or what is
 	// saved, and by each start of copying, a pass of copying, a preview,
@@ -83,6 +87,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	}
 	s := &server{
 		ctx: ctx, addr: o.Addr, version: o.Version, stateDir: o.StateDir, target: o.Target, file: file, log: log,
+		rep: &reporter{report: o.Report},
 		test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 			return engine.Test(ctx, endpoint, log)
 		},
@@ -121,7 +126,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	// Each pass of copying follows its telescope to where it is now, and
 	// copying stops once the target is another telescope.
 	s.copy = newController(ctx, o.StateDir, log, dial)
-	s.copy.admit, s.copy.target = &s.admit, s.target
+	s.copy.admit, s.copy.target, s.copy.rep = &s.admit, s.target, s.rep
 	// A preview's and a delete's dials go only to the target they were
 	// started at, and fail once that changed, even by a reconnect: a
 	// delete must not remove files on a telescope it never checked.
@@ -133,9 +138,9 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 		return err
 	}
 	s.preview = newPreviewer(ctx, o.StateDir, log, dial)
-	s.preview.at = at
+	s.preview.at, s.preview.rep = at, s.rep
 	s.free = newFreer(ctx, o.StateDir, log, dial)
-	s.free.at = at
+	s.free.at, s.free.rep = at, s.rep
 	// Free up space's outcomes join copy's in Activity, tagged "delete".
 	s.free.record = slog.New(newTee(slog.DiscardHandler, s.copy.activity, "delete"))
 	if o.Remover != nil {
@@ -166,7 +171,16 @@ func (s *server) resolve(set Settings) (Settings, Target, error) {
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	s.view++
 	folder, log := set.Folder, s.log
-	sessions := browse.NewSessions(s.ctx, s.dial, log)
+	// Every pool, old or new, numbers its outcomes from the Mount's one
+	// sequence, so an old pool's late failure can't reopen what a new
+	// one's success cleared.
+	rep := browse.Reporter{
+		Report: func(op string, err error, canceled bool, seq uint64) {
+			s.rep.send(Outcome{Source: diagnostic.SourceBrowse, Op: op, Err: classified(err), Canceled: canceled, Seq: seq})
+		},
+		Seq: s.rep.next,
+	}
+	sessions := browse.NewSessions(s.ctx, s.dial, log, rep)
 	var records func() (map[string]state.Record, error)
 	var sel engine.Selector
 	if s.setUp() {
@@ -181,7 +195,7 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 		}
 	}
 	h := browse.NewHandler(browse.Config{
-		Addr: s.addr, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true,
+		Addr: s.addr, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true, Reporter: rep,
 	})
 	return h, sessions
 }
@@ -202,47 +216,62 @@ func (e noTarget) Unwrap() error { return e.err }
 // opening, is refused once copying has started, even if it has since
 // stopped, as a pass of copying once does by itself.
 func (s *server) startCopying(opening bool) error {
+	_, err := s.startCopyingSeq(opening)
+	return err
+}
+
+// startCopyingSeq is startCopying, with the sequence number of its
+// outcome, drawn under s.admit.
+func (s *server) startCopyingSeq(opening bool) (seq uint64, err error) {
 	s.admit.Lock()
 	defer s.admit.Unlock()
+	defer func() { seq = s.rep.next() }()
 	if opening && s.started {
-		return errStarted
+		return 0, errStarted
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if !s.setUp() {
-		return errNotSetUp
+		return 0, errNotSetUp
 	}
 	set, t, err := s.resolve(s.file.settings)
 	if err != nil {
-		return noTarget{err}
+		return 0, noTarget{err}
 	}
 	if err := s.copy.start(set, t); err != nil {
-		return err
+		return 0, err
 	}
 	s.started = true
 	s.preview.discard()
-	return nil
+	return 0, nil
+}
+
+// startOutcome is a start's outcome.
+func startOutcome(err error, seq uint64) Outcome {
+	return Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpStart, Err: classified(err), Seq: seq}
 }
 
 // startPreview runs a preview with the saved settings while copying is
 // off. Holding s.admit keeps a Save, a Start or a change of endpoint from
 // landing between the checks and the start.
-func (s *server) startPreview() error {
+// It returns the sequence number of a refusal, drawn under s.admit.
+func (s *server) startPreview() (seq uint64, err error) {
 	s.admit.Lock()
 	defer s.admit.Unlock()
+	defer func() { seq = s.rep.next() }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	switch {
 	case !s.setUp():
-		return errNotSetUp
+		return 0, errNotSetUp
 	case s.copy.on():
-		return errors.New("copying is on")
+		return 0, errors.New("copying is on")
 	}
 	set, t, err := s.resolve(s.file.settings)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	return s.preview.start(set, t)
+	return 0, s.preview.start(set, t)
 }
 
 // copyView is the Copy tab with its preview.
@@ -430,6 +459,7 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 	} else {
 		s.log.Info("test passed", "endpoint", endpoint)
 	}
+	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpTest, Err: err, Canceled: ctx.Err() != nil && err != nil, Seq: s.rep.next()})
 	localhttp.Respond(w, http.StatusOK, struct {
 		OK      bool   `json:"ok"`
 		Address string `json:"address"`
@@ -465,11 +495,12 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		localhttp.Respond(w, http.StatusBadRequest, fieldErrors{errs})
 		return
 	}
+	// s.admit is released before reporting and answering, on every path.
 	s.admit.Lock()
-	defer s.admit.Unlock()
 	s.mu.Lock()
 	if s.copy.on() {
 		s.mu.Unlock()
+		s.admit.Unlock()
 		localhttp.Respond(w, http.StatusConflict, struct {
 			Error string `json:"error"`
 		}{"Stop copying to change settings."})
@@ -481,7 +512,10 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	set.FreeExcludes, set.FreeIncludes = old.FreeExcludes, old.FreeIncludes
 	if err := s.file.save(set); err != nil {
 		s.mu.Unlock()
+		seq := s.rep.next()
+		s.admit.Unlock()
 		s.log.Error("save settings", "err", err)
+		s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpSaveSettings, Err: err, Seq: seq})
 		// The page shows the reason without the temp file's name.
 		localhttp.Respond(w, http.StatusInternalServerError, struct {
 			Error string `json:"error"`
@@ -505,7 +539,10 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		s.browse, s.sessions = s.newBrowse(set)
 	}
 	s.mu.Unlock()
+	seq := s.rep.next()
+	s.admit.Unlock()
 	s.log.Info("settings saved")
+	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpSaveSettings, Seq: seq})
 	// A request still on the old pool fails; the page reloads the frame.
 	if oldSessions != nil {
 		oldSessions.Close()
@@ -523,13 +560,22 @@ func (s *server) copyAction(w http.ResponseWriter, action string) {
 	verb := "start copying"
 	switch action {
 	case "start":
-		err = s.startCopying(false)
+		// Both report with nothing held: they release s.admit and s.mu
+		// as they return.
+		var seq uint64
+		seq, err = s.startCopyingSeq(false)
+		s.rep.send(startOutcome(err, seq))
 	case "stop":
 		s.copy.stop()
 	case "check":
 		s.copy.check()
 	case "preview":
-		err, verb = s.startPreview(), "preview"
+		var seq uint64
+		seq, err = s.startPreview()
+		verb = "preview"
+		if err != nil {
+			s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpPreview, Err: err, Seq: seq})
+		}
 	case "cancel":
 		s.preview.discard()
 	default:
@@ -573,46 +619,65 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			return
 		}
 		// Holding s.admit keeps a Save or a change of endpoint from
-		// landing between the read and the start; s.mu is released
-		// before logging or answering.
+		// landing between the read and the start; s.mu and s.admit are
+		// released before reporting, logging or answering.
 		s.admit.Lock()
-		defer s.admit.Unlock()
 		s.mu.Lock()
-		if !s.setUp() {
+		// refused ends a Find that didn't start: it reports err as the
+		// preview's outcome, after any save of the options.
+		refused := func(err error, saved bool) {
 			s.mu.Unlock()
-			conflict("Couldn't preview: " + errNotSetUp.Error() + ".")
+			seq := s.rep.next()
+			s.admit.Unlock()
+			if saved {
+				s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpSaveOptions, Seq: seq})
+			}
+			s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpPreview, Err: err, Seq: seq})
+			conflict("Couldn't preview: " + err.Error() + ".")
+		}
+		if !s.setUp() {
+			refused(errNotSetUp, false)
 			return
 		}
 		// A Find refused as busy saves nothing: the running check keeps
 		// the options it started with.
 		if s.free.running() {
-			s.mu.Unlock()
-			conflict("Couldn't preview: " + errFreeBusy.Error() + ".")
+			refused(errFreeBusy, false)
 			return
 		}
 		set, old := s.file.settings, s.file.settings
 		set.OlderThanDays, set.TrustState = days, in.Trust
 		set.FreeExcludes, set.FreeIncludes = excludes, includes
+		saved := false
 		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState ||
 			!slices.Equal(set.FreeExcludes, old.FreeExcludes) || !slices.Equal(set.FreeIncludes, old.FreeIncludes) {
 			if err := s.file.save(set); err != nil {
 				s.mu.Unlock()
+				seq := s.rep.next()
+				s.admit.Unlock()
 				s.log.Error("save settings", "err", err)
+				s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpSaveOptions, Err: err, Seq: seq})
 				conflict("Couldn't save the options: " + reason(err) + ". Try again.")
 				return
 			}
 			// The preview shown was checked with the old options, so it
 			// goes before the new check starts, even if that fails.
 			s.free.clear()
+			saved = true
 		}
 		var t Target
 		if set, t, err = s.resolve(set); err == nil {
 			err = s.free.find(set, t)
 		}
-		s.mu.Unlock()
 		if err != nil {
-			conflict("Couldn't preview: " + err.Error() + ".")
+			refused(err, saved)
 			return
+		}
+		s.mu.Unlock()
+		seq := s.rep.next()
+		s.admit.Unlock()
+		if saved {
+			s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpSaveOptions, Seq: seq})
 		}
 	case "cancel":
 		s.free.cancelCheck()
@@ -620,18 +685,22 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		// The delete goes to the target its preview was checked at, and
 		// only while that is still where the telescope is: holding
 		// s.admit keeps a change of target from landing in between.
+		// s.admit is released before reporting or answering. A stale
+		// preview is canceled: the deletion neither failed nor ran.
 		s.admit.Lock()
-		defer s.admit.Unlock()
 		s.mu.Lock()
 		_, now, err := s.resolve(s.file.settings)
 		s.mu.Unlock()
 		if err == nil {
 			err = s.free.confirm(in.ID, in.Folders, now)
 		}
+		seq := s.rep.next()
+		s.admit.Unlock()
 		if errors.Is(err, errStale) {
 			conflict("Preview again before deleting.")
 			return
 		} else if err != nil {
+			s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpDelete, Err: classified(err), Seq: seq})
 			conflict("Couldn't delete: " + err.Error() + ".")
 			return
 		}
@@ -672,7 +741,11 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 		err = state.Remove(history, folder)
 		s.preview.discard()
 	}
+	// The outcome is numbered under s.mu, which orders clears, and
+	// reported once it is released.
+	seq := s.rep.next()
 	s.mu.Unlock()
+	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpClearHistory, Err: classified(err), Seq: seq})
 	switch {
 	case errors.Is(err, state.ErrLocked):
 		conflict("Couldn't clear the history: another copy is using this folder, in another seestar-wormhole window or seestar-wormhole-cli sync. Stop that copy, then try again.")
@@ -705,6 +778,8 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 		dir = ""
 	}
 	chosen, err := s.native.ChooseFolder(dir)
+	// A Cancel, which answers "", is neither a failure nor a success.
+	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpChooseFolder, Err: err, Canceled: err == nil && chosen == "", Seq: s.rep.next()})
 	if err != nil {
 		s.log.Error("folder picker", "err", err)
 		localhttp.Respond(w, http.StatusInternalServerError, struct {
@@ -730,6 +805,12 @@ func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *brow
 			s.log.Info("file saved", "path", p, "to", dst)
 		}
 	}
+	// A Cancel, which answers "", and a request gone away are neither a
+	// failure nor a success.
+	s.rep.send(Outcome{
+		Source: diagnostic.SourceBrowse, Op: diagnostic.OpSaveFile, Err: classified(err),
+		Canceled: err == nil && dst == "" || err != nil && r.Context().Err() != nil, Seq: s.rep.next(),
+	})
 	if err != nil && r.Context().Err() == nil {
 		s.log.Warn("save failed", "path", p, "to", dst, "err", err)
 		if alert == "" {

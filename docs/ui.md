@@ -381,18 +381,21 @@ endpoint through the account: Copy, Browse and Free up space don't need it. For 
 
 ## Activity
 
-The **Activity** tab lists the connection's recent events and copying's and
-deleting's activity in one list, newest first, each tagged **Connection**,
-**Copy** or **Free up space**. **Details and logs** holds your connection and copy
+The **Activity** tab lists the connection's recent events, copying's and
+deleting's activity, and Browse's failures and recoveries in one list, newest
+first, each tagged **Connection**, **Copy**, **Browse** or **Free up space**.
+**Details and logs** holds your connection and copy
 settings as JSON, error codes, and the paths of the private log and the
 settings files, `config.json` and `copy.json`.
 
 **Copy diagnostic summary** copies one JSON object with the program name,
-version, error code, connection and copy settings, the listed events, and the
-log's path. The connection settings and events leave out addresses, paths,
-credentials, tokens, account identifiers, and payloads. The copy settings
-include your folder and patterns, and copy and delete activity names the
-files it is about; check the summary before you share it.
+version, error code, connection and copy settings, the events, the current
+failures, and the log's path. The connection settings, and the failure and
+file-tool events, leave out addresses, paths, file names, credentials and
+tokens. The summary still includes your telescopes' full serial numbers (in
+connection and account-catalog events), your copy folder and history folder,
+your patterns, and the private log's path. Remove what you don't want to
+share before you post it.
 Lifecycle events include the selected telescope model and full serial with the
 same representation and model display cap as status. Each Connect that reads the account
 catalog also records its telescope list, even for a single telescope:

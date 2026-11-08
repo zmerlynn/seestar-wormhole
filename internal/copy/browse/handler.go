@@ -17,6 +17,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 )
@@ -37,6 +38,11 @@ type Config struct {
 	// framed by that origin only, hides its header, and its error hint
 	// does not say to reload a page the user cannot see.
 	InApp bool
+	// Reporter gets each request's outcome: a records or read failure, a
+	// listing answered, which clears both, or a file served. A request
+	// whose session couldn't be had reports nothing; the pool reports
+	// its dial. Sessions should be built with the same one.
+	Reporter
 }
 
 // static are the page's files, by route.
@@ -192,21 +198,22 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, shown, dir string
 	if h.cfg.Records != nil {
 		var err error
 		if records, err = h.cfg.Records(); err != nil {
-			h.cfg.Log.Warn("request failed", "path", shown, "error", err)
+			h.cfg.Log.Warn("request failed", h.keys(diagnostic.OpRecords, err, "path", shown)...)
+			h.cfg.send(diagnostic.OpRecords, err, r.Context().Err() != nil, h.cfg.seq())
 			h.listError(w, http.StatusInternalServerError, "state", err.Error())
 			return
 		}
 	}
 	lease, err := h.cfg.Sessions.Get(r.Context())
 	if err != nil {
-		h.deviceError(w, r, shown, err, h.listError)
+		h.deviceError(w, r, shown, err, h.listError, false)
 		return
 	}
 	defer lease.Release()
 	entries, err := lease.Session().ReadDir(lease.Context(), dir)
 	if err != nil {
 		lease.Fail(err)
-		h.deviceError(w, r, shown, err, h.listError)
+		h.deviceError(w, r, shown, err, h.listError, true)
 		return
 	}
 	if r.Context().Err() != nil {
@@ -244,27 +251,31 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, shown, dir string
 		}
 		out.Entries = append(out.Entries, it)
 	}
+	// A listing answered reads both the telescope and the history.
+	seq := h.cfg.seq()
+	h.cfg.send(diagnostic.OpRead, nil, false, seq)
+	h.cfg.send(diagnostic.OpRecords, nil, false, seq)
 	localhttp.Respond(w, http.StatusOK, out)
 }
 
 func (h *Handler) file(w http.ResponseWriter, r *http.Request, p string, download bool) {
 	lease, err := h.cfg.Sessions.Get(r.Context())
 	if err != nil {
-		h.deviceError(w, r, p, err, h.fileError)
+		h.deviceError(w, r, p, err, h.fileError, false)
 		return
 	}
 	defer lease.Release()
 	f, err := lease.Session().Open(lease.Context(), p)
 	if err != nil {
 		lease.Fail(err)
-		h.deviceError(w, r, p, err, h.fileError)
+		h.deviceError(w, r, p, err, h.fileError, true)
 		return
 	}
 	defer f.Close()
 	info, err := f.Stat()
 	if err != nil {
 		lease.Fail(err)
-		h.deviceError(w, r, p, err, h.fileError)
+		h.deviceError(w, r, p, err, h.fileError, true)
 		return
 	}
 	if info.IsDir() {
@@ -278,16 +289,25 @@ func (h *Handler) file(w http.ResponseWriter, r *http.Request, p string, downloa
 	http.ServeContent(w, r, "", info.ModTime(), rs)
 	// A multipart response's producer may still be in a Read. Wait for it
 	// before the file closes and the lease, with its grace, is released.
-	if failed := rs.stop(); failed != nil && r.Context().Err() == nil {
-		h.cfg.Log.Warn("request failed", "path", p, "error", failed)
+	failed := rs.stop()
+	if failed != nil && r.Context().Err() == nil {
+		h.cfg.Log.Warn("request failed", h.keys(diagnostic.OpRead, failed, "path", p)...)
 	}
+	h.cfg.send(diagnostic.OpRead, failed, failed != nil && r.Context().Err() != nil, h.cfg.seq())
+}
+
+// keys are a request failed line's: the classified source, op, phase and
+// reason, then the rest, then the error.
+func (h *Handler) keys(op string, err error, rest ...any) []any {
+	return append(append(diagnostic.OpKeys(diagnostic.SourceBrowse, op, err), rest...), "error", err)
 }
 
 // deviceError answers a failed Get or SMB call: 404 for a missing path, 400
 // for a path of the wrong kind, and 502 for anything else, which is logged
-// unless the client has gone away.
+// unless the client has gone away. A failed SMB call, read, also reports
+// a read failure; a failed Get's dial is the pool's to report.
 func (h *Handler) deviceError(w http.ResponseWriter, r *http.Request, p string, err error,
-	fail func(http.ResponseWriter, int, string, string)) {
+	fail func(http.ResponseWriter, int, string, string), read bool) {
 	switch {
 	case r.Context().Err() != nil:
 		return
@@ -296,7 +316,10 @@ func (h *Handler) deviceError(w http.ResponseWriter, r *http.Request, p string, 
 	case errors.Is(err, remote.ErrNotDir):
 		fail(w, http.StatusBadRequest, "not_a_folder", "The path is not a folder.")
 	default:
-		h.cfg.Log.Warn("request failed", "path", p, "error", err)
+		h.cfg.Log.Warn("request failed", h.keys(diagnostic.OpRead, err, "path", p)...)
+		if read {
+			h.cfg.send(diagnostic.OpRead, err, false, h.cfg.seq())
+		}
 		fail(w, http.StatusBadGateway, "device", err.Error())
 	}
 }

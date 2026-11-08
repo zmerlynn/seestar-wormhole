@@ -19,6 +19,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // The copy loop's options that Settings doesn't hold are the CLI's
@@ -85,6 +86,8 @@ type controller struct {
 	// hold a change of target there.
 	admitting func()
 	checkNow  chan struct{}
+	// rep, if set, reports each pass and how the loop ended: a [Mount]'s.
+	rep *reporter
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when no loop runs
@@ -268,7 +271,20 @@ func (c *controller) finish(err error) {
 	default:
 		st.state = stOff
 	}
+	// A loop that ended with an error, other than by Stop or the app
+	// quitting, couldn't open its folder or history, or found another
+	// telescope. Its outcome is numbered here and reported once c.mu is
+	// released.
+	var ended []Outcome
+	if err != nil && !c.stopping && c.parent.Err() == nil {
+		o := Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpOpen, Err: classified(err), Seq: c.rep.next()}
+		if errors.Is(err, errOtherTelescope) {
+			o.Op, o.Err = diagnostic.OpOtherTelescope, err
+		}
+		ended = append(ended, o)
+	}
 	c.mu.Unlock()
+	c.rep.send(ended...)
 	if err != nil {
 		c.log.Error("copying stopped", "err", err)
 	} else {
@@ -467,11 +483,12 @@ func (c *controller) hooks(ctx context.Context) engine.Hooks {
 		},
 		PassDone: func(sum engine.Summary) {
 			c.mu.Lock()
-			defer c.mu.Unlock()
 			st := &c.st
 			st.flight, c.pass = nil, false
 			if ctx.Err() != nil {
+				// A stopped pass neither fails nor clears.
 				st.stopCopied = sum.Copied + sum.Replaced
+				c.mu.Unlock()
 				return
 			}
 			st.next = time.Now().Add(st.interval)
@@ -491,6 +508,11 @@ func (c *controller) hooks(ctx context.Context) engine.Hooks {
 			if st.once {
 				st.outcome, st.state = st.state, stDone
 			}
+			// The outcome is numbered here and reported once c.mu is
+			// released.
+			seq := c.rep.next()
+			c.mu.Unlock()
+			c.rep.send(passOutcomes(sum, seq)...)
 		},
 	}
 }

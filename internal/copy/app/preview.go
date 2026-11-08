@@ -12,6 +12,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // The Copy tab's preview states, as the page names them. Idle shows no
@@ -39,6 +40,8 @@ type previewer struct {
 	// at, if set, fails the dial once the telescope is no longer at the
 	// target the preview started at: a [Mount]'s.
 	at func(t Target) error
+	// rep, if set, reports how each preview ended: a [Mount]'s.
+	rep *reporter
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when no preview runs
@@ -140,20 +143,28 @@ func (p *previewer) start(set Settings, t Target) error {
 		canceled := ctx.Err() != nil
 		cancel()
 		p.mu.Lock()
-		defer p.mu.Unlock()
 		st := &p.st
+		o := Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpPreview, Seq: p.rep.next()}
 		switch {
 		case canceled || st.state != pvRunning:
 			// Canceled, or discarded after the run returned.
 			*st = previewStatus{}
+			o.Canceled = true
 		case result != nil:
 			result.state, result.endpoint = pvDone, st.endpoint
 			*st = *result
 		default:
+			// A telescope that moved under the preview is no failure:
+			// it is to be previewed again.
 			st.state, st.err = pvFailed, err
+			o.Err, o.Canceled = classified(err), errors.Is(err, errMoved)
 		}
 		p.cancel, p.done = nil, nil
-		close(done)
+		p.mu.Unlock()
+		// The outcome is reported once p.mu is released. The next
+		// preview may start meanwhile; its outcome is numbered after.
+		defer close(done)
+		p.rep.send(o)
 	}()
 	return nil
 }
