@@ -7,12 +7,16 @@ import (
 	"context"
 	"errors"
 	"net"
+	"reflect"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
+	smb2 "github.com/hirochachacha/go-smb2/v2"
+	"github.com/hirochachacha/go-smb2/v2/auth"
 	"github.com/hirochachacha/go-smb2/v2/x/wire"
 )
 
@@ -203,6 +207,75 @@ func TestDialViaPeerErrorClosesConn(t *testing.T) {
 		synctest.Wait()
 		if n := spy.closes.Load(); n != 1 {
 			t.Errorf("stream closed %d times, want 1", n)
+		}
+	})
+}
+
+// spnSpy builds the production NTLM initiator for the server name go-smb2
+// asks for and keeps its service name, then answers the peer with the test
+// credentials, since the peer has no NTLM.
+type spnSpy struct {
+	t    *testing.T
+	real smb2.Credentials
+
+	mu  sync.Mutex
+	spn []string
+}
+
+func (c *spnSpy) NewInitiator(ctx context.Context, server string) (auth.Initiator, error) {
+	i, err := c.real.NewInitiator(ctx, server)
+	if err != nil {
+		return nil, err
+	}
+	f := reflect.ValueOf(i).Elem().FieldByName("TargetSPN")
+	if !f.IsValid() || f.Kind() != reflect.String {
+		c.t.Errorf("NTLM initiator %T has no TargetSPN string", i)
+	}
+	c.mu.Lock()
+	if f.IsValid() && f.Kind() == reflect.String {
+		c.spn = append(c.spn, f.String())
+	}
+	c.mu.Unlock()
+	return testCredentials{}.NewInitiator(ctx, server)
+}
+
+// TestDialViaNTLMServiceName checks the service name DialVia's own NTLM
+// credentials put in the login, and the share path it mounts.
+func TestDialViaNTLMServiceName(t *testing.T) {
+	const wantSPN = "cifs/127.0.0.1:445"
+	wantPath := `\\127.0.0.1\` + ShareName
+	synctest.Test(t, func(t *testing.T) {
+		p := startPeer(t, &peer{file: `MyWorks\a.fit`, data: []byte("frame")})
+		defer p.stop()
+		conn, _, _ := p.viaConn()
+		d := newDialer()
+		spy := &spnSpy{t: t, real: d.Credentials}
+		d.Credentials = spy
+		done := make(chan error, 1)
+		var s *SMB
+		go func() {
+			var err error
+			s, err = dialVia(t.Context(), viaName, conn, d, p.log)
+			done <- err
+		}()
+		if err := await(t, done, time.Second, "DialVia"); err != nil {
+			t.Fatalf("DialVia: %v", err)
+		}
+		defer s.Close()
+		spy.mu.Lock()
+		spns := spy.spn
+		spy.mu.Unlock()
+		if len(spns) != 1 || spns[0] != wantSPN {
+			t.Errorf("NTLM service names = %q, want [%q]", spns, wantSPN)
+		}
+		var path string
+		for _, req := range p.seen() {
+			if req.Command() == wire.SMB2_TREE_CONNECT {
+				path = wire.TreeConnectRequestDecoder(req.Body()).Path()
+			}
+		}
+		if path != wantPath {
+			t.Errorf("TREE_CONNECT path = %q, want %q", path, wantPath)
 		}
 	})
 }
