@@ -51,6 +51,21 @@ func logWriterFD(descriptor int) (io.Writer, func()) {
 			}
 		}
 	}
+	if st.Mode&unix.S_IFMT == unix.S_IFREG {
+		// A regular file never blocks. Share its open file description, so
+		// 2>>log keeps appending and 2>log keeps the shell's offset instead of
+		// writing again from the start of the file.
+		fd, err := unix.FcntlInt(uintptr(descriptor), unix.F_DUPFD_CLOEXEC, 0)
+		if err != nil {
+			return failedLog{err}, func() {}
+		}
+		w := &logLossWriter{output: rawLog(fd)}
+		return w, func() {
+			if unix.Close(fd) != nil {
+				w.lose(0)
+			}
+		}
+	}
 	fd, err := unix.Open("/proc/self/fd/"+strconv.Itoa(descriptor), unix.O_WRONLY|unix.O_NONBLOCK|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return failedLog{err}, func() {}

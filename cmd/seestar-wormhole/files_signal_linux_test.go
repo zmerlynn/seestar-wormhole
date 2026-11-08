@@ -6,6 +6,8 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -71,5 +73,38 @@ func TestBinarySyncStopsWithStalledStderr(t *testing.T) {
 		cmd.Process.Kill()
 		<-done
 		t.Fatal("sync did not stop on Ctrl+C with stderr stalled")
+	}
+}
+
+// Logs to a regular file opened for append, as 2>>log opens it, are added at
+// its end: an existing line and an earlier run's record stay intact.
+func TestBinaryLogAppendsToRedirectedFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "existing.log")
+	const prefix = "an earlier line\n"
+	if err := os.WriteFile(path, []byte(prefix), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"sync", "--state-dir=PRIVATE_VALUE"}, {"proxy", "--bogus"}} {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(binaryPath(t), args...)
+		cmd.Dir = t.TempDir()
+		cmd.Stderr = f
+		err = cmd.Run()
+		f.Close()
+		if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 2 {
+			t.Fatalf("%q: %v, want exit 2", args, err)
+		}
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.SplitAfter(string(data), "\n")
+	if len(lines) != 4 || lines[0] != prefix || !strings.Contains(lines[1], `msg="sync failed" option=--state-dir`) ||
+		!strings.Contains(lines[2], `"msg":"proxy failed"`) || lines[3] != "" {
+		t.Errorf("log file %q, want the earlier line, then the sync record, then the proxy record", data)
 	}
 }
