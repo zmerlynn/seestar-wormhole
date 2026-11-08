@@ -423,8 +423,24 @@ header {
 #lan-result[data-tone=ok] {
   color:var(--ok)
 }
-#lan-result[data-tone=error] {
+#lan-result[data-tone=error],#lan-scan-result[data-tone=error] {
   color:var(--error)
+}
+ul.lan-found {
+  list-style:none;
+  padding:0;
+  margin:.5rem 0
+}
+ul.lan-found:empty {
+  display:none
+}
+ul.lan-found li {
+  padding:.3rem 0;
+  border-bottom:1px solid var(--border);
+  overflow-wrap:anywhere
+}
+ul.lan-found button {
+  margin:.2rem .4rem 0 0
 }
 /* Copy, Browse and Free up space, from seestar-copy's page. A chip is a
    button that opens its run's tab. */

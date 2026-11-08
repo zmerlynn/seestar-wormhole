@@ -77,8 +77,12 @@
 <div id="lan-route" hidden>
 <form id="lan-form" novalidate>
 <fieldset id="lan-options" disabled>
+<h2 id="lan-found-title">Telescopes on this network</h2>
+<ul id="lan-found" class="lan-found" aria-labelledby="lan-found-title"></ul>
+<p id="lan-scan-result" role="status" aria-live="polite"></p>
+<div class="actions"><button id="lan-scan" type="button">Scan</button></div>
 <label for="lan-address">Telescope address</label><input id="lan-address" type="text" spellcheck="false" autocomplete="off" maxlength="4096" aria-describedby="lan-address-help lan-address-error">
-<p id="lan-address-help" class="help">Your Seestar's address on this network, with an optional port. Port 445 is the default. Copy, Browse and Free up space read the telescope's files at this address.</p><p id="lan-address-error" class="error" role="alert" hidden></p>
+<p id="lan-address-help" class="help">Pick a telescope above, or type its address on this network, with an optional port. Port 445 is the default. Copy, Browse and Free up space read the telescope's files at this address.</p><p id="lan-address-error" class="error" role="alert" hidden></p>
 <div class="actions"><button id="lan-test" type="button">Test</button><button id="lan-save" type="submit">Save</button></div>
 <p id="lan-result" role="status" aria-live="polite"></p>
 </fieldset>
