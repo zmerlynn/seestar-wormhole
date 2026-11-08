@@ -499,6 +499,11 @@ options, never on load.
 | `trust_state` | `false` |
 | `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
 
+Older versions keep `history_dir` when saving but use the default history
+folder. After a downgrade, files moved out of the images folder can be copied
+again, and Free up space cannot use the chosen folder's history to prove those
+copies safe.
+
 The telescope's address is not in it; it comes from the route in `config.json`.
 
 A copy.json this version can't read, such as one with another version, a
