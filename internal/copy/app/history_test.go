@@ -28,7 +28,7 @@ func TestClearHistory(t *testing.T) {
 		t.Fatal(err)
 	}
 	file, _ := state.Path(e.s.stateDir, folder)
-	if code, body := clear(e); code != 409 || !strings.Contains(body, "another copy is using this folder") {
+	if code, body := clear(e); code != 409 || !strings.Contains(body, "another copy is using this folder, in another seestar-wormhole window or seestar-wormhole-cli sync.") {
 		t.Errorf("while another copy holds the lock: %d %s", code, body)
 	}
 	st.Close()
