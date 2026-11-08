@@ -44,10 +44,10 @@ For the CLI, start with discovery enabled:
 ./seestar-wormhole-cli proxy --bind 0.0.0.0 --lan-discovery -p 80:80
 ```
 
-The command enables LAN discovery and maps local port 80 to the device’s HTTP port; see [discovery and HTTP mappings](reference.md#port-mappings).
+The command enables LAN discovery and maps local port 80 to the device’s HTTP port; see [discovery and HTTP mappings](reference/connection-cli.md#port-mappings).
 
 Leave it running. If your account has more than one telescope, add
-`--serial <serial>`; see [the reference](reference.md#device-selection).
+`--serial <serial>`; see [the reference](reference/connection-cli.md#device-selection).
 
 ## Connect the app
 
@@ -57,7 +57,7 @@ Leave it running. If your account has more than one telescope, add
    appear under its usual name.
 3. Pick it. From here on it behaves like any local connection.
 
-Stop the proxy and wait for it to exit before switching the phone app to remote mode; see [handing the session back](reference.md#availability-and-busy-devices).
+Stop the proxy and wait for it to exit before switching the phone app to remote mode; see [handing the session back](reference/connection-cli.md#availability-and-busy-devices).
 
 ## If the telescope doesn't show up
 
@@ -72,8 +72,8 @@ Stop the proxy and wait for it to exit before switching the phone app to remote 
   before the app can use it. Look for a `session_phase_complete` line with
   `"phase":"ready"` in its output. (With `--idle`, it only connects once the
   app picks it, so this doesn't apply.)
-Discovery replies use the proxy’s current local address; after an address change, restart the proxy and reconnect the app. See [LAN discovery](reference.md#lan-discovery).
-For discovery over VPN or virtual adapters, see `--lan-discovery-all-interfaces` in the [reference](reference.md#lan-discovery).
+Discovery replies use the proxy’s current local address; after an address change, restart the proxy and reconnect the app. See [LAN discovery](reference/connection-cli.md#lan-discovery).
+For discovery over VPN or virtual adapters, see `--lan-discovery-all-interfaces` in the [reference](reference/connection-cli.md#lan-discovery).
 - **It's running in a container or VM.** It needs to see the phone's broadcast
   packets directly, so use host networking or run the binary natively.
 
@@ -98,11 +98,11 @@ error. On Linux, use `sudo` or the `cap_net_bind_service` capability. Plain
 `sudo` drops exported credentials;
 `sudo --preserve-env=SEESTAR_EMAIL,SEESTAR_PASSWORD` keeps them.
 
-Anyone who can reach the listener can use it, so keep the proxy on a trusted network; see [network trust](reference.md#proxy).
+Anyone who can reach the listener can use it, so keep the proxy on a trusted network; see [network trust](reference/connection-cli.md#proxy).
 
 ## Connect only when needed
 
-Add `--idle 2m` to allocate only when a client connects and release after two idle minutes; see [lazy connection behavior](reference.md#availability-and-busy-devices).
+Add `--idle 2m` to allocate only when a client connects and release after two idle minutes; see [lazy connection behavior](reference/connection-cli.md#availability-and-busy-devices).
 
 ## Discovery at home with a primary on another LAN
 
@@ -169,7 +169,7 @@ app's device list provides the display name; omitting `--advertise-name`
 uses the model instead. There is no existing CLI export of all three
 values for an automatically selected device. Logs escape serials and escape and cap model labels, so they are not a provisioning source; obtain a verified configuration before using
 this recipe. Values in flags are visible in shell history and process
-arguments. See [discovery flags and validation](reference.md#discovery).
+arguments. See [discovery flags and validation](reference/connection-cli.md#discovery).
 
 Allow home UDP 4720 and only the selected TCP forwards from the trusted
 phone LAN. SSH protects home-to-primary traffic; phone-to-home traffic
@@ -268,4 +268,4 @@ After an address or identity change, restart the target and select a fresh LAN r
 See [phone coverage](status.md#phone-app) and [platform coverage](status.md#platforms).
 
 Details on how discovery answers, what it reports, and its rate limits are in
-[the reference](reference.md#lan-discovery).
+[the reference](reference/connection-cli.md#lan-discovery).

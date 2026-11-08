@@ -69,7 +69,7 @@ authorize a path or refresh liveness. [Alert triggering types](https://github.co
 Receive routes remain opaque except for the knock refusal bit; send builders retain canonical bytes under the
 [legacy-header policy](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/framing.md#revision-and-flag-bits-on-receive).
 
-See [JSON input policy](../../docs/reference.md#json-file-compatibility).
+See [JSON input policy](../../docs/reference/connection-cli.md#json-file-compatibility).
 
 ## Scope and local policy
 

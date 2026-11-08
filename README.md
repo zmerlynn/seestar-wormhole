@@ -76,7 +76,7 @@ room. From a few thousand miles away, that matters: the wrong site makes the
 telescope compute the wrong sky, miss targets, and fail to plate solve. A plan
 in the wrong time zone starts at the wrong hour, too.
 
-Before using the proxy, make sure the telescope has the right site. To change it, connect the app directly to the device; the device keeps its own clock. See [site protection](docs/reference.md#site-protection).
+Before using the proxy, make sure the telescope has the right site. To change it, connect the app directly to the device; the device keeps its own clock. See [site protection](docs/reference/connection-cli.md#site-protection).
 
 ## Use the UI
 
@@ -134,7 +134,7 @@ Then open the Seestar app and select the telescope from its **LAN** tab, not Rem
 
 ### Keep it running
 
-By default the proxy connects at startup and holds the session until stopped; stop it and wait for it to exit before switching to the app’s remote mode. Add `--idle 2m` to connect only when a client arrives. See [session availability and handover](docs/reference.md#availability-and-busy-devices).
+By default the proxy connects at startup and holds the session until stopped; stop it and wait for it to exit before switching to the app’s remote mode. Add `--idle 2m` to connect only when a client arrives. See [session availability and handover](docs/reference/connection-cli.md#availability-and-busy-devices).
 
 The [always-on guide](docs/always-on.md) covers running it as a service, in a
 container, and on Windows.
@@ -150,11 +150,11 @@ while control clients share the session:
 
 It also works directly with a telescope on your network. rclone and other SMB
 apps work too. See [Copy images](docs/copying.md) and the
-[copy command reference](docs/copy-reference.md).
+[file command reference](docs/reference/files-cli.md).
 
 ## Keep it on your own network
 
-The proxy listens on local interfaces and has no authentication; use it only on a network you trust. See [local network trust](docs/reference.md#proxy).
+The proxy listens on local interfaces and has no authentication; use it only on a network you trust. See [local network trust](docs/reference/connection-cli.md#proxy).
 
 ## Status
 
@@ -182,7 +182,7 @@ official app uses.
 It's provided as is, without warranty of any kind (see [LICENSE](LICENSE)). It
 has been tested only on the devices and firmware listed in
 [tested coverage](docs/status.md); others may differ. Using it is at your own
-risk: apart from [site protection](docs/reference.md#site-protection), the
+risk: apart from [site protection](docs/reference/connection-cli.md#site-protection), the
 proxy forwards what your app or client sends, including commands that move the
 mount, change settings or delete files, and use of the vendor's cloud service
 is subject to its terms.
@@ -195,8 +195,8 @@ See [internal package boundary](docs/development/README.md).
 - [Always-on guide](docs/always-on.md)
 - [Copy images](docs/copying.md)
 - [seestar_alp and other clients](docs/clients.md)
-- [Command reference](docs/reference.md): every flag, exit code and log message
-- [Copy command reference](docs/copy-reference.md): the file commands' flags and formats
+- [Connection command reference](docs/reference/connection-cli.md): every flag, exit code and log message
+- [File command reference](docs/reference/files-cli.md): the file commands' flags and formats
 - [How the proxy speaks the protocol](docs/protocol.md)
 - [Troubleshooting](docs/troubleshooting.md)
 - [Known issues and accepted limits](docs/known-issues.md)

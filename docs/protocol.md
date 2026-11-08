@@ -6,33 +6,33 @@ stack; the linked sections carry the layouts and method details. The spec
 distinguishes
 [READ, OBSERVED, INFERRED and unresolved claims](https://github.com/zmerlynn/seestar-spec/blob/v1/CONVENTIONS.md).
 Local limits below are choices made here, not device promises. Tested coverage
-is in [status](status.md); command mechanics are in the [reference](reference.md).
+is in [status](status.md); command mechanics are in the [reference](reference/connection-cli.md).
 
 ## Layer by layer
 
-See [architecture and ownership](../DESIGN.md#layering-and-ownership), [port mappings](reference.md#port-mappings), [site protection](reference.md#site-protection), and [discovery](reference.md#lan-discovery).
+See [architecture and ownership](../DESIGN.md#layering-and-ownership), [port mappings](reference/connection-cli.md#port-mappings), [site protection](reference/connection-cli.md#site-protection), and [discovery](reference/connection-cli.md#lan-discovery).
 
 ## Local policy where the spec is silent or unresolved
 
 These include choices permitted by INFERRED guidance and boundaries the spec
 leaves unresolved. Permissions already stated in v1 are not open questions.
-The [reference](reference.md#protocol-resource-policies) owns the numerical
+The [reference](reference/connection-cli.md#protocol-resource-policies) owns the numerical
 limits, deadlines and admission mechanics.
 
 | Area and spec boundary | Local choice and reason |
 |---|---|
-| [Cloud HTTP bounds](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#host-transport-and-headers) | [Local choice](reference.md#protocol-resource-policies). |
+| [Cloud HTTP bounds](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#host-transport-and-headers) | [Local choice](reference/connection-cli.md#protocol-resource-policies). |
 | [Cloud JSON](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#response-envelope) | V1 describes the plain Gson converter but specifies no duplicate-member rule for HTTP responses. Duplicate names anywhere are rejected as local fail-closed policy. Operators see the existing invalid-response validation failure (account failures retain HTTP status); ambiguous data is never installed. |
 | [License JSON](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/sdk-licence.md#licence-json) | V1 specifies first-position/last-value duplicates in standalone overrides. All duplicate names are rejected as local fail-closed policy. License installation fails through the existing invalid-license path, before session establishment. |
-| [Discovery requests](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#device-side-responder) | Duplicate names and invalid UTF-8 stay unanswered and are counted in [refusal summaries](reference.md#logs). Decoded names match the specified case exactly; case variants remain unknown members. |
-| [Catalog selection](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#device-selection) | [Local choice](reference.md#device-selection). |
+| [Discovery requests](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#device-side-responder) | Duplicate names and invalid UTF-8 stay unanswered and are counted in [refusal summaries](reference/connection-cli.md#logs). Decoded names match the specified case exactly; case variants remain unknown members. |
+| [Catalog selection](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#device-selection) | [Local choice](reference/connection-cli.md#device-selection). |
 | [Login input](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/login.md#input-preparation) | R19 permits sending explicit credentials without app UI trimming. |
 | [Credential storage](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#storage-startup-and-source-identifier) | Credentials are retained in memory, and only the installation UUID is persisted when requested. |
 | [Profile and failed renewal](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/login.md#installation-and-profile-fetch) | R27 requires a usability decision: tokens are kept after pure profile I/O failure and authorization is blocked after malformed or denied outcomes. |
 | [Old-token expiry](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#remote-client-token-expired-event) | Matching current token bytes are retired on remote 401; server-wide expiry scope remains unresolved. |
 | [Stop and uncertain ownership](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/http-api.md#reports-and-stop) | [Local choice](../DESIGN.md#session-ownership-implementation). |
-| [Busy and recovery](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/state-timers.md#timers) | See [Local choice](reference.md#availability-and-busy-devices). Service limits remain unknown, distinct from the observed retry guidance. |
-| [Installation identity](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#storage-startup-and-source-identifier) | [Local choice](reference.md#installation-identity). |
+| [Busy and recovery](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/state-timers.md#timers) | See [Local choice](reference/connection-cli.md#availability-and-busy-devices). Service limits remain unknown, distinct from the observed retry guidance. |
+| [Installation identity](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/lifecycle.md#storage-startup-and-source-identifier) | [Local choice](reference/connection-cli.md#installation-identity). |
 | [Hello correlation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/framing.md#receive-catalogue) | See [Local choice](../DESIGN.md#iotc-path-ownership-invariant). Trailing bytes are tolerated. An echo match is required; whether servers send short replies remains open. |
 | [Alternate-source NAT observations](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#nat-classification) | [Local choice](../internal/iotc/README.md#scope-and-local-policy). |
 | [Attempt identity](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#attempt-and-cache-lifetimes) | [Local choice](../internal/iotc/README.md#scope-and-local-policy). |
@@ -51,7 +51,7 @@ limits, deadlines and admission mechanics.
 | [Port re-verification](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/framing.md#agent-behaviour) | [Local choice](../DESIGN.md#end-to-end-composition-invariants). |
 | [Tunnel pressure and scheduling](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#pause-resume-and-wake) | See [Local choice](../DESIGN.md#tunnel-contract). V1 does not guarantee equivalence to native shared charging and failed-write bookkeeping. |
 | [Tunnel backlog and reclamation](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#backlog-after-pause) | [Local choice](../DESIGN.md#tunnel-contract). |
-| [Discovery synthesis](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#stand-in-responders) | [Local choice](reference.md#lan-discovery). |
+| [Discovery synthesis](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/lan-discovery/app-scan.md#stand-in-responders) | [Local choice](reference/connection-cli.md#lan-discovery). |
 | [Runtime admission and reservations](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/seestar-profile.md#minimal-outbound-proxy-profile) | [Local choice](../DESIGN.md#composed-runtime-and-daemon). |
 | [Tunnel channel reuse](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/p2p-tunnel/channels.md#channel-allocation-and-reuse) | [Local choice](../DESIGN.md#tunnel-contract). |
 | [Opaque alert metadata](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/relay.md#server-alerts) | Complete alerts and matching SID/nonce are required; unfamiliar triggering record types are diagnostic and do not prevent a recognized alert from changing endpoint state. The alert protocol-version byte remains opaque. |
@@ -60,7 +60,7 @@ See [IOTC scope](../internal/iotc/README.md#scope-and-local-policy) and [unimple
 
 ## Deliberate deviations
 
-See [site protection](reference.md#site-protection) and [discovery](reference.md#lan-discovery).
+See [site protection](reference/connection-cli.md#site-protection) and [discovery](reference/connection-cli.md#lan-discovery).
 
 The current parser sorts standalone names before selecting ten.
 [V1 specifies document order](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/cloud-auth/sdk-licence.md#licence-json);
@@ -78,5 +78,5 @@ JSON decoding uses case-sensitive field names from the linked cloud, license,
 and discovery schemas. Unknown members remain allowed. Invalid UTF-8 and
 invalid Unicode escapes are rejected as local fail-closed policy. For site
 inspection they receive the same `-32700` answer as malformed JSON; opaque
-device replies are unaffected. See [site protection](reference.md#site-protection)
+device replies are unaffected. See [site protection](reference/connection-cli.md#site-protection)
 for forwarding and local-answer rules.

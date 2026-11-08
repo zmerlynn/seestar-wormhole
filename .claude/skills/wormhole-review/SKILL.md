@@ -39,7 +39,7 @@ judgment call; the table is a starting point.
 | simplicity | any non-test Go, or a new flag, option or file format |
 | operability-security | logging, secrets, crypto, file writes, paths from the device, budgets; `internal/cloud/`, `internal/edge/`, `internal/proxy/`, `internal/copy/remote/`, `internal/copy/copier/`, `internal/copy/state/`, diagnostics, protocol packages |
 | provenance | protocol packages (`internal/core/`, `internal/iotc/`, `internal/rdt/`, `internal/p2ptunnel/`, `internal/dtls/`, `internal/session/`), `internal/edge/`, `internal/cloud/` |
-| cli-contract | `cmd/`, `docs/reference.md`, `docs/copy-reference.md`, help text, exit codes, log records |
+| cli-contract | `cmd/`, `docs/reference/connection-cli.md`, `docs/reference/files-cli.md`, help text, exit codes, log records |
 | upgrade | a file on disk (settings, `copy.json`, the copy state and its lock, identity, manifests), its version, its defaults or its reader and writer; a change of default behavior an existing user would notice |
 | licensing | `go.mod`, `go.sum`, `vendor/`, `LICENSE`, `NOTICE`, `internal/licenses/`, new imports, new data files, copied code |
 | build-release | `scripts/`, `Containerfile`, `.github/`, build tags, `GOOS`-specific code |

@@ -6,10 +6,10 @@ goes through it. This page covers setting that up.
 
 ## How it behaves on its own
 
-For unattended use, the proxy retries eligible busy responses and releases its session when stopped; see [recovery and release](reference.md#availability-and-busy-devices).
+For unattended use, the proxy retries eligible busy responses and releases its session when stopped; see [recovery and release](reference/connection-cli.md#availability-and-busy-devices).
 
 Alert on persistent `session_unavailable` or blocking failure records in the
-[logs](reference.md#logs), since the process can stay running while unable to serve clients.
+[logs](reference/connection-cli.md#logs), since the process can stay running while unable to serve clients.
 
 ## Credentials for a service
 
@@ -42,7 +42,7 @@ Once the UI has saved your settings (it does when it connects, or when you
 choose Save password to keychain), run `seestar-wormhole-cli proxy --config`, with `--state-dir PATH` for a custom UI root.
 Flags override saved settings, `SEESTAR_EMAIL` overrides the saved email, and
 `SEESTAR_PASSWORD` takes precedence over a read-only OS keychain lookup;
-see [Use saved settings headless](reference.md#use-saved-settings-headless).
+see [Use saved settings headless](reference/connection-cli.md#use-saved-settings-headless).
 
 A macOS launchd user agent can use the keychain in the user's login session;
 it may prompt once to allow access (choose Always Allow for later reads).
@@ -99,7 +99,7 @@ journalctl --user -u seestar-wormhole -f
 User services normally stop when you log out. `enable-linger` keeps yours
 running, which is the point.
 
-After a [credential-rejection exit (3)](reference.md#exit-codes), correct the
+After a [credential-rejection exit (3)](reference/connection-cli.md#exit-codes), correct the
 password in the environment file (or resolve the account's authorization
 restriction), then run `systemctl --user restart seestar-wormhole`.
 
@@ -108,7 +108,7 @@ A few choices in there:
 - `--bind 127.0.0.1` keeps it to this machine. Use your LAN address if other
   computers need it. For the phone, see the [phone app guide](phone-app.md):
   it also needs `--lan-discovery` and `-p 80:80`.
-- `--state-dir` stores the installation identity across restarts; see [installation identity](reference.md#installation-identity).
+- `--state-dir` stores the installation identity across restarts; see [installation identity](reference/connection-cli.md#installation-identity).
 - `--log-level warn` keeps the logs quiet. At the default `info` level, every
   client connection gets a line, which adds up on an SD card.
 - `KillSignal=SIGINT` and the 150-second stop timeout allow the defensive
@@ -139,7 +139,7 @@ Enter your credentials first with the prompt from the
 [README](../README.md#sign-in); `--env`
 with just a name passes that variable through. (Podman's `--env-file` reads
 quotes literally, so the systemd file above isn't safe to reuse for a
-password with quotes in it.) The image starts the proxy with a wildcard bind and state directory; explicit flags override those defaults. See [container settings](reference.md#containers).
+password with quotes in it.) The image starts the proxy with a wildcard bind and state directory; explicit flags override those defaults. See [container settings](reference/connection-cli.md#containers).
 
 For the phone, add `--lan-discovery -p 80:80` to the end, and give the
 container permission to use port 80. Host networking is what lets it hear the
@@ -153,7 +153,7 @@ Use `seestar-wormhole-cli.exe` for scripts, services, and scheduled tasks. The
 Windows UI executable has GUI subsystem behavior: the shell does not wait for it,
 and exit codes do not reach scripts.
 
-See [Windows coverage](status.md#platforms) and [requirements](reference.md#windows). In PowerShell:
+See [Windows coverage](status.md#platforms) and [requirements](reference/connection-cli.md#windows). In PowerShell:
 
 ```powershell
 $env:SEESTAR_EMAIL = Read-Host "Seestar email"
@@ -164,11 +164,11 @@ $env:SEESTAR_PASSWORD = [System.Net.NetworkCredential]::new("", $password).Passw
 
 Afterwards, clear the credentials with `Remove-Item Env:SEESTAR_EMAIL, Env:SEESTAR_PASSWORD`.
 
-Stop the Windows process with Ctrl+C and use a separate SMB client for downloads; see [Windows shutdown](reference.md#windows) and [image copying](copying.md#windows).
+Stop the Windows process with Ctrl+C and use a separate SMB client for downloads; see [Windows shutdown](reference/connection-cli.md#windows) and [image copying](copying.md#windows).
 
 ## Keep it private
 
-Keep the proxy on a trusted network because its local listeners do not authenticate clients; see [network trust](reference.md#proxy).
+Keep the proxy on a trusted network because its local listeners do not authenticate clients; see [network trust](reference/connection-cli.md#proxy).
 
 The details of busy handling, release and the installation ID are in
-[the reference](reference.md#availability-and-busy-devices).
+[the reference](reference/connection-cli.md#availability-and-busy-devices).

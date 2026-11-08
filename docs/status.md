@@ -19,7 +19,7 @@ appears in v0.6.0. They connected to it and used it through the proxy with
 seestar_alp; see [seestar_alp and other clients](clients.md#seestar_alp).
 v0.6.0 added both `isContainShared=3` to the list request and
 `onlyQueryOwner=false` to the detail request; which one was needed hasn't been
-tested separately. See [device selection](reference.md#device-selection).
+tested separately. See [device selection](reference/connection-cli.md#device-selection).
 
 ### Firmware 9.75
 
@@ -75,7 +75,7 @@ test the command's version and help output.
   tests. The loopback broadcast socket fixture runs only on Linux.
 - **Windows** has native CI coverage of DTLS interop and loopback TCP
   admission, including resets with full staging and byte preservation after FIN.
-  See the [Windows requirements](reference.md#windows). Native Windows is CI-only:
+  See the [Windows requirements](reference/connection-cli.md#windows). Native Windows is CI-only:
   it has not been run against a real telescope or on a real LAN, so console
   handling and file permissions are untested in practice. Discovery's native
   loopback behavior is tested in CI:

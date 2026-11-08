@@ -2,7 +2,7 @@
 
 seestar-wormhole turns one cloud-connected telescope session into local TCP
 connections. The phone app, control clients, and SMB downloads share that
-session. Start with the [command reference](../reference.md) if you want to run
+session. Start with the [connection command reference](../reference/connection-cli.md) if you want to run
 it; this page is for changing it.
 
 All application packages live under `internal/`. They support the command and
@@ -54,7 +54,7 @@ CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 go build -mod=vendor -p 2 -o seestar-worm
 CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -mod=vendor -p 2 -o seestar-wormhole-cli.exe ./cmd/seestar-wormhole
 ```
 
-See [runtime site rules](../reference.md#site-protection).
+See [runtime site rules](../reference/connection-cli.md#site-protection).
 
 `main` changes only through a pull request. The optional pre-push hook
 rejects pushes to `main`. It is enabled once per clone with:
@@ -177,7 +177,7 @@ Build from the checked-in vendor tree with `-mod=vendor`. The vendor tree is
 exactly what `go mod tidy` and `go mod vendor` produce; CI regenerates it and
 fails on any difference, so vendored files are never edited by hand.
 
-[Windows discovery](../reference.md#lan-discovery) uses
+[Windows discovery](../reference/connection-cli.md#lan-discovery) uses
 [github.com/zmerlynn/pktinfo](https://github.com/zmerlynn/pktinfo), a small
 BSD-licensed module that adds Windows packet information controls to x/net's
 `ipv4.PacketConn` until x/net supports them. It is an ordinary requirement, with
@@ -197,7 +197,7 @@ These apply to every change, whoever writes it.
   interpretation. Merely unexpected input is tolerated: unknown JSON fields,
   unknown enum values (carried as unknown), nonzero reserved bytes, unknown
   records skipped by length, missing optional fields. Receive diagnostics follow
-  the [log contract](../reference.md#logs).
+  the [log contract](../reference/connection-cli.md#logs).
 - **Standard formats use standard libraries.** Don't hand-write a parser,
   walker or tokenizer for a format that has a well-known library: JSON, HTTP,
   SMB, TLS and DTLS, Markdown. JSON goes through the standard library’s
@@ -221,7 +221,7 @@ These apply to every change, whoever writes it.
   one-way change needs the maintainer's approval before it is written.
 - **Every public flag, format, exit code and log record is a promise.** Add
   one only for a current need, and document it in the
-  [reference](../reference.md) in the same change.
+  [reference](../reference/connection-cli.md) in the same change.
 - **Keep work product out of the tree.** Captures, logs and
   review notes stay outside the checkout; `.gitignore` blocks the common
   names.

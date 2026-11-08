@@ -54,7 +54,7 @@ it may delete, with the same patterns as Copy's; they are separate from Copy's
 **Leave out** and **Only copy**. Uncheck a folder to keep it. Nothing is deleted until you
 choose **Delete N files…** and confirm. Avoid it while the telescope is busy.
 See [Free up space](ui.md#free-up-space) and the
-[proof modes](copy-reference.md#proof-modes).
+[proof modes](reference/files-cli.md#proof-modes).
 
 Settings saved by seestar-copy 0.4.0's own app aren't imported. Choose the
 folder and settings again in Copy.
@@ -68,7 +68,7 @@ names another.
 - **Moving files out is fine.** The copy history is kept outside your folder,
   so a file you move or delete is not copied again, unless it changes on the
   telescope or you choose another copy history folder, which starts a fresh
-  history. See [the state file](copy-reference.md#the-state-file).
+  history. See [the state file](reference/files-cli.md#the-state-file).
 - **An existing copy is reused.** A file already in your folder with the same
   size and modification time, to within 2 seconds, is recorded without
   downloading it again. A different file at the same path is overwritten with
@@ -86,7 +86,7 @@ names another.
   again next time.
 - **Some names fail.** A name Windows can't store fails on Windows, and two
   names that differ only in upper and lower case fail everywhere. They are
-  never renamed. See [names that fail](copy-reference.md#names-that-fail).
+  never renamed. See [names that fail](reference/files-cli.md#names-that-fail).
 - **On a Mac, allow Local Network access.** The app asks macOS for Local
   Network access the first time it reaches an address on this network; allow
   it. If it is blocked, **Test**, Copy, Preview, Browse and Free up space
@@ -159,7 +159,7 @@ then preview with
 only reports what it would delete. When the preview looks right, add
 `--force`.
 
-The [copy command reference](copy-reference.md) has every command, flag,
+The [file command reference](reference/files-cli.md) has every command, flag,
 log line and exit code; `find` lists the share for scripts.
 
 ## With rclone
@@ -168,7 +168,7 @@ Recipe verified 2026-10-18 through the v0.1.0 proxy; the device did
 not report its firmware version during the run (last observed: 9.75).
 
 [rclone](https://rclone.org/) connects to the proxy's SMB listener and shares
-the proxy's existing telescope session. The [proxy setup](reference.md#proxy)
+the proxy's existing telescope session. The [proxy setup](reference/connection-cli.md#proxy)
 provides the listener; the default mapping is local port 4445 to device port
 445.
 
