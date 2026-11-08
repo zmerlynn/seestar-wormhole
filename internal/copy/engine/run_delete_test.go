@@ -553,3 +553,71 @@ func TestDeleteOnlyKeepsUnreadParent(t *testing.T) {
 		}
 	}
 }
+
+// A ** exclude keeps every file it matches from being deleted, and a **
+// include limits deletion to the files it matches, at any depth below the
+// names before it.
+func TestDeleteDoubleStarPatterns(t *testing.T) {
+	files := map[string]string{
+		"MyWorks/M 31/a.fit":         "a",
+		"MyWorks/M 31/sub/b.fit":     "bb",
+		"MyWorks/M 31/sub/c.jpg":     "ccc",
+		"MyWorks/M 42/d.fit":         "dddd",
+		"MyWorks/M 42/Stacked/e.jpg": "eeeee",
+		"Autorun/Light/f.fit":        "ffffff",
+	}
+	for _, tc := range []struct {
+		excludes, includes []string
+		deleted            []string
+	}{
+		{
+			excludes: []string{"MyWorks/**/*.fit"},
+			deleted:  []string{"Autorun/Light/f.fit", "MyWorks/M 31/sub/c.jpg", "MyWorks/M 42/Stacked/e.jpg"},
+		},
+		{
+			excludes: []string{"**/Stacked/"},
+			deleted:  []string{"Autorun/Light/f.fit", "MyWorks/M 31/a.fit", "MyWorks/M 31/sub/b.fit", "MyWorks/M 31/sub/c.jpg", "MyWorks/M 42/d.fit"},
+		},
+		{
+			includes: []string{"/MyWorks/**/*.FIT"},
+			deleted:  []string{"MyWorks/M 31/a.fit", "MyWorks/M 31/sub/b.fit", "MyWorks/M 42/d.fit"},
+		},
+		{
+			includes: []string{"MyWorks/**/sub"},
+			deleted:  []string{"MyWorks/M 31/sub/b.fit", "MyWorks/M 31/sub/c.jpg"},
+		},
+		{
+			excludes: []string{"*.jpg"},
+			includes: []string{"/MyWorks/**"},
+			deleted:  []string{"MyWorks/M 31/a.fit", "MyWorks/M 31/sub/b.fit", "MyWorks/M 42/d.fit"},
+		},
+	} {
+		s := newShare(t)
+		for p, data := range files {
+			put(t, s.dir, p, data)
+			put(t, s.dest, p, data)
+		}
+		s.record(t, files)
+		o := s.options()
+		o.Selector = selector(t, tc.excludes, tc.includes)
+		r, err := RunDelete(t.Context(), o, discard)
+		if err != nil {
+			t.Fatalf("%q %q: %v", tc.excludes, tc.includes, err)
+		}
+		var deleted []string
+		for _, f := range r.Files {
+			if f.Outcome == FileDeleted {
+				deleted = append(deleted, f.Path)
+			}
+		}
+		slices.Sort(deleted)
+		if !slices.Equal(deleted, tc.deleted) {
+			t.Errorf("%q %q: deleted %q, want %q", tc.excludes, tc.includes, deleted, tc.deleted)
+		}
+		for p := range files {
+			if gone := !s.has(t, p); gone != slices.Contains(tc.deleted, p) {
+				t.Errorf("%q %q: %s on the share: %t", tc.excludes, tc.includes, p, !gone)
+			}
+		}
+	}
+}

@@ -91,8 +91,15 @@ func checkInput(in input) (Settings, map[string]string) {
 		errs["files_at_once"] = filesError
 	}
 	set.FilesAtOnce = n
-	for field, lines := range map[string][]string{"excludes": in.Excludes, "includes": in.Includes} {
-		patterns, msg := checkPatterns(lines, "save")
+	for _, box := range []struct {
+		field, negated string
+		lines          []string
+	}{
+		{"excludes", "excludes always win, so put the files to keep in Only copy", in.Excludes},
+		{"includes", "put the files to leave out in Leave out", in.Includes},
+	} {
+		field := box.field
+		patterns, msg := checkPatterns(box.lines, "save", box.negated)
 		if msg != "" {
 			errs[field] = msg
 		}
@@ -109,15 +116,17 @@ func checkInput(in input) (Settings, map[string]string) {
 // lines are skipped but counted, so the line number in a message is the
 // one the user sees. It returns the patterns, or a message for the first
 // line in error, which says to correct it and then press the button verb
-// names.
-func checkPatterns(lines []string, verb string) ([]string, string) {
+// names. A leading ! is followed by negated, which names the other box.
+func checkPatterns(lines []string, verb, negated string) ([]string, string) {
 	patterns := []string{}
 	for i, line := range lines {
 		line = strings.TrimSuffix(line, "\r")
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if _, err := engine.ParsePattern(line); err != nil {
+		if _, err := engine.ParsePattern(line); errors.Is(err, engine.ErrNegated) {
+			return nil, fmt.Sprintf("Line %d: %s; %s. Correct this pattern and %s again.", i+1, err, negated, verb)
+		} else if err != nil {
 			return nil, fmt.Sprintf("Line %d: %s. Correct this pattern and %s again.", i+1, err, verb)
 		}
 		patterns = append(patterns, line)

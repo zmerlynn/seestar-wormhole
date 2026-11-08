@@ -496,3 +496,44 @@ func TestFreePatterns(t *testing.T) {
 		}
 	}
 }
+
+// A ** pattern in Keep on the telescope keeps every file it matches, at any
+// depth, and one in Only free up limits what is deleted to its matches.
+func TestFreeDoubleStarPatterns(t *testing.T) {
+	for _, c := range []struct {
+		name               string
+		excludes, includes []string
+		deleted            []string
+	}{
+		{"keep", []string{"MyWorks/**/*.mp4", "**/M 42/"}, nil, []string{"MyWorks/M 31/x/b.jpg", "Other/d.jpg"}},
+		{"only", nil, []string{"/MyWorks/**/*.JPG"}, []string{"MyWorks/M 31/x/b.jpg", "MyWorks/M 42/a.jpg"}},
+	} {
+		files := []string{"MyWorks/M 42/a.jpg", "MyWorks/M 31/x/b.jpg", "MyWorks/M 31/c.mp4", "Other/d.jpg"}
+		e := newFreeEnv(t, files...)
+		e.copy()
+		e.set.FreeExcludes, e.set.FreeIncludes = c.excludes, c.includes
+		v := e.preview()
+		var listed, folders []string
+		for _, g := range v.Groups {
+			folders = append(folders, g.Folder)
+			for _, f := range g.Files {
+				listed = append(listed, f.Path)
+			}
+		}
+		slices.Sort(listed)
+		if !slices.Equal(listed, c.deleted) {
+			t.Errorf("%s: preview lists %q, want %q", c.name, listed, c.deleted)
+		}
+		if err := e.f.confirm(v.ID, folders, Target{Endpoint: e.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		if d := e.wait(frDone, frStopped, frFailed); d.State != frDone {
+			t.Errorf("%s: done: %+v", c.name, d)
+		}
+		for _, p := range files {
+			if e.has(p) == slices.Contains(c.deleted, p) {
+				t.Errorf("%s: %s on the share: %v", c.name, p, e.has(p))
+			}
+		}
+	}
+}

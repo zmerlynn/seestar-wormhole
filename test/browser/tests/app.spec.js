@@ -562,20 +562,20 @@ test('Copy settings field errors show under each field and nothing is saved', as
   await openCopy(page, app.url);
   await page.getByRole('button', { name: 'Change…' }).click();
   await page.locator('#f-int').fill('0');
-  await field(page, 'Leave out').fill('Video\n\n[Pp]review');
-  await field(page, 'Only copy').fill('MyWorks/');
+  await field(page, 'Leave out').fill('Video\n\n[Pp]review\n!Video');
+  await field(page, 'Only copy').fill('MyWorks/ ');
   await copySave(page).click();
 
   await expect(page.locator('#f-int-err')).toHaveText('Enter a whole number of minutes from 1 to 1440.');
-  await expect(page.locator('#f-ex-err')).toHaveText('Line 3: [ and \\ are not supported; use * and ?, and / between folders. Correct this pattern and save again.');
-  await expect(page.locator('#f-in-err')).toHaveText('Line 1: omit the trailing /; a pattern matches files and folders. Correct this pattern and save again.');
+  await expect(page.locator('#f-ex-err')).toHaveText('Line 4: a leading ! is not supported; excludes always win, so put the files to keep in Only copy. Correct this pattern and save again.');
+  await expect(page.locator('#f-in-err')).toHaveText('Line 1: trailing spaces are ignored in .gitignore syntax; remove them, or write \\ (a backslash, then a space) to match one. Correct this pattern and save again.');
   await expect(page.locator('#f-int')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.locator('#f-int')).toBeFocused();
   await expect(page.locator('#f-saved')).toHaveText('');
   expect(readJSON(app.copyFile)).toEqual(files['copy.json']);
 
   await page.locator('#f-int').fill('10');
-  await field(page, 'Leave out').fill('Video\n\n*review');
+  await field(page, 'Leave out').fill('Video\n\n[Pp]review\nMyWorks/**/*.mp4');
   await copySave(page).click();
   await expect(field(page, 'Only copy')).toBeFocused();
   await expect(page.locator('#f-int-err')).toBeHidden();
@@ -997,7 +997,7 @@ for (const colorScheme of ['light', 'dark']) {
     await shot('browse');
     await tab(page, 'Copy').click();
     await page.getByRole('button', { name: 'Change…' }).click();
-    await field(page, 'Leave out').fill('Video\n[Pp]review');
+    await field(page, 'Leave out').fill('Video\n!Preview');
     await copySave(page).click();
     await expect(page.locator('#f-ex-err')).toBeVisible();
     await shot('copy-settings');

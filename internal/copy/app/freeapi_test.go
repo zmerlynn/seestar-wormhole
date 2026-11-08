@@ -68,12 +68,12 @@ func TestFreeAPI(t *testing.T) {
 		}
 	}
 	idle()
-	w = e.post("/copy/api/delete", `{"action":"find","days":"x","free_excludes":["ok","[x"],"free_includes":["","**/"]}`)
+	w = e.post("/copy/api/delete", `{"action":"find","days":"x","free_excludes":["ok","[x"],"free_includes":["","!x"]}`)
 	got := decode[fieldErrors](t, w)
 	want := map[string]string{
 		"days":          "Enter a whole number of days, 0 or more.",
 		"free_excludes": "Line 2: " + patternErr(t, "[x") + ". Correct this pattern and preview again.",
-		"free_includes": "Line 2: " + patternErr(t, "**/") + ". Correct this pattern and preview again.",
+		"free_includes": "Line 2: a leading ! is not supported; put the files to keep in Keep on the telescope. Correct this pattern and preview again.",
 	}
 	if w.Code != 400 || !maps.Equal(got.Fields, want) {
 		t.Errorf("bad patterns: %d %+v", w.Code, got)
