@@ -184,7 +184,8 @@ can't change while copying runs:
   **Save** refuses a relative path or one inside the images folder with
   **Use a full path to a folder outside the folder for your images, or leave
   it empty for the default.** A folder that leads inside the images folder
-  through a symbolic link is saved, and copying then refuses to start. Nothing
+  through a symbolic link is saved, and copying and Clear history then refuse it
+  without changing anything in the images folder. Nothing
   moves the old history: a different folder starts a fresh one, so files
   still in your images folder are checked and recorded again, files you moved
   out of it are copied again, and Free up space can't use the old history to

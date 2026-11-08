@@ -1,6 +1,7 @@
 package app
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -286,4 +287,56 @@ func TestCopyHistoryDirFresh(t *testing.T) {
 	if got := e.freeFind(false); !slices.Contains(got, "MyWorks/B") {
 		t.Errorf("hash preview after the pass = %q; want MyWorks/B", got)
 	}
+}
+
+// Clear history refuses a saved history folder that leads inside the
+// images folder through a link, as copying does, and changes nothing
+// there: the file at its state path stays and no lock file is made.
+func TestClearHistoryDirInsideRefused(t *testing.T) {
+	folder := filepath.Join(t.TempDir(), "Seestar")
+	inside := filepath.Join(folder, "inside")
+	if err := os.MkdirAll(filepath.Join(inside, "sync"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "history")
+	if err := os.Symlink(inside, link); err != nil {
+		t.Skipf("no symlinks: %v", err)
+	}
+	e := newAppEnv(t, nil)
+	if w := e.post("/copy/api/settings", historySave(folder, link)); w.Code != 200 {
+		t.Fatalf("save: %d %s", w.Code, w.Body)
+	}
+	victim, err := state.Path(link, folder)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(victim, []byte("synthetic\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	before := folderTree(t, folder)
+	w := e.post("/copy/api/clear", `{}`)
+	if w.Code != 409 || !strings.Contains(w.Body.String(), "inside the destination") {
+		t.Errorf("clear = %d %s; want 409, inside the destination", w.Code, w.Body)
+	}
+	if after := folderTree(t, folder); !maps.Equal(after, before) {
+		t.Errorf("clear changed the images folder: %v, was %v", after, before)
+	}
+}
+
+// folderTree is each path under root, with a file's contents.
+func folderTree(t *testing.T, root string) map[string]string {
+	t.Helper()
+	got := map[string]string{}
+	err := filepath.WalkDir(root, func(p string, d os.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		b, err := os.ReadFile(p)
+		got[p] = string(b)
+		return err
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return got
 }
