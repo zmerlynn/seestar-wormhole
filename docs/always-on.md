@@ -225,14 +225,17 @@ folder through its [folder lock](reference/selection-and-history.md#the-folder-l
 `.seestar-wormhole.lock`, and, when they share the default copy history,
 through its [history lock](reference/selection-and-history.md#the-history-lock):
 
-- While the service runs, starting Copy in the app for that folder says
-  **Another copy or delete is using this folder.** and copying stays off. A
-  Copy that is already on skips a check while a pass holds the folder lock
-  and tries again at the next check.
-- While the app's Copy is on, the service exits 1 at its first pass, and
-  with the unit above systemd tries again a minute later. A later pass that
-  finds the folder lock held is skipped: it logs `pass skipped` with
-  `reason=folder_busy` and tries again after `--interval`.
+- Starting Copy in the app for that folder while the service runs says
+  **Another copy or delete is using this folder.** and copying stays off.
+  With the shared default copy history that happens whenever the service
+  runs; with another copy history, only while a pass is copying. A Copy that
+  is already on skips a check while a pass holds the folder lock and tries
+  again at the next check.
+- The service exits 1 if it starts while the app's Copy is on (with another
+  copy history, only while the app is copying), and with the unit above
+  systemd tries again a minute later. A later pass that finds the folder
+  lock held is skipped: it logs `pass skipped` with `reason=folder_busy` and
+  tries again after `--interval`.
 
 Free up space and `delete --force` still run between passes. See
 [when the other side holds a lock](reference/selection-and-history.md#when-the-other-side-holds-a-lock).
