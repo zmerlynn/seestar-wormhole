@@ -159,6 +159,32 @@ func TestProfileDeleteTakesNoSelection(t *testing.T) {
 	}
 }
 
+// A saved pattern that is now a usage error stops sync, find and browse
+// as the same flag given would, before anything is dialed.
+func TestProfileRejectedPatterns(t *testing.T) {
+	dev := newDevice()
+	dev.use(t)
+	t.Cleanup(readonly.Reset)
+	const rule = `rule="a / can't be escaped; write a plain / between folders"`
+	for _, saved := range []Saved{{Excludes: []string{"ok", `MyWorks\/M31`}}, {Includes: []string{`MyWorks\/M31`}}} {
+		saved.Dest, saved.HistoryDir, saved.Endpoint = t.TempDir(), t.TempDir(), "h:445"
+		useProfile(t, saved)
+		option := "--exclude"
+		if saved.Includes != nil {
+			option = "--include"
+		}
+		for _, cmd := range []string{"sync", "find", "browse"} {
+			code, stdout, stderr := invoke(t, cmd, "--profile", "default")
+			if want := "option=" + option + " " + rule; code != exitUsage || stdout != "" || !strings.Contains(stderr, want) {
+				t.Errorf("%s with saved %s: exit %d:\n%s\nwant 2 with %s", cmd, option, code, stderr, want)
+			}
+		}
+	}
+	if dials, _ := dev.counts(); dials != 0 {
+		t.Errorf("dialed %d times on saved usage errors", dials)
+	}
+}
+
 // With --ignore-state, delete takes no local folder from a profile, so the
 // rule against --dest with it doesn't fire.
 func TestProfileDeleteIgnoreState(t *testing.T) {

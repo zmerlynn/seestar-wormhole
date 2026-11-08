@@ -185,8 +185,11 @@ var ErrNegated = errors.New("a leading ! is not supported")
 // here and each path in match. Unlike a .gitignore line, a pattern can't
 // start with ! or #, end in an unescaped space or \, hold a line break, or
 // have an empty, . or .. part, since none of those would select anything
-// as written. The error says which rule the pattern broke and never
-// repeats the pattern.
+// as written. Nor can it escape a /: the library always takes a / to
+// separate names, so \/ would match nothing, where git reads it as a
+// plain /.
+// The error says which rule the pattern broke and never repeats the
+// pattern.
 func ParsePattern(s string) (Pattern, error) {
 	bad := func(rule string) (Pattern, error) { return Pattern{}, errors.New(rule) }
 	switch {
@@ -200,6 +203,8 @@ func ParsePattern(s string) (Pattern, error) {
 		return bad(`trailing spaces are ignored in .gitignore syntax; remove them, or write \ (a backslash, then a space) to match one`)
 	case escaped(s):
 		return bad(`a trailing \ has nothing to escape; write \\ to match a \`)
+	case escapesSlash(s):
+		return bad(`a / can't be escaped; write a plain / between folders`)
 	}
 	body := s
 	if len(body) > 1 {
@@ -257,6 +262,21 @@ func compile(pattern string) (*gitignore.Matcher, error) {
 func escaped(s string) bool {
 	n := len(s) - len(strings.TrimRight(s, `\`))
 	return n%2 == 1
+}
+
+// escapesSlash reports whether s has a / with an unescaped backslash
+// before it. In a\\/b the backslash before the / is itself escaped, so
+// the / separates names.
+func escapesSlash(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' {
+			i++
+			if i < len(s) && s[i] == '/' {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // doubleStar reports whether a pattern part is ** (or more stars), which

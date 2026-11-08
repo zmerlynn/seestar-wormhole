@@ -305,6 +305,10 @@ func TestDeleteUsage(t *testing.T) {
 		{[]string{"--endpoint", "h:445", "--dest", dest, "--older-than", "-1h"}, "must not be negative"},
 		{[]string{"--endpoint", "h:445", "--dest", dest, "--older-than", "1d12h"}, "--older-than"},
 		{[]string{"--endpoint", "h:445", "--dest", dest, "--include", ""}, "--include"},
+		// A rejected pattern never reaches a deletion: nothing is dialed.
+		{[]string{"--endpoint", "h:445", "--dest", dest, "--force", "--exclude", `MyWorks\/M31`}, "option=--exclude rule=\"a / can't be escaped; write a plain / between folders"},
+		{[]string{"--endpoint", "h:445", "--ignore-state", "--force", "--include", `MyWorks\/M31`}, "option=--include rule=\"a / can't be escaped; write a plain / between folders"},
+		{[]string{"--endpoint", "h:445", "--dest", dest, "--force", "--exclude", "MyWorks/[M/]31"}, "option=--exclude rule=\"close each [ class with ]"},
 		{[]string{"--endpoint", "h:445", "--dest", dest, "extra"}, "positional arguments are not allowed"},
 	} {
 		s := newWritableShare(t)

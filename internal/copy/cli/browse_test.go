@@ -331,6 +331,7 @@ func TestBrowseUsage(t *testing.T) {
 		{[]string{"browse", "--endpoint", "h:445", "--no-default-excludes"}, "--no-default-excludes", selRule},
 		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--exclude", "[x"}, "--exclude", `close each [ class with ], and name only POSIX classes such as [:digit:]; write \[ to match a [`},
 		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--include", "!a"}, "--include", "a leading ! is not supported; give the files to leave out with --exclude"},
+		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--exclude", `MyWorks\/M31`}, "--exclude", "a / can't be escaped; write a plain / between folders"},
 		{[]string{"browse", "--endpoint", "h:445", "--dest="}, "--dest", "must not be empty; omit it to browse without a status"},
 		{[]string{"browse", "--endpoint", "h:445", "--dest", "d", "--history-dir="}, "--history-dir", "must not be empty; omit it for the default"},
 		{[]string{"browse", "--endpoint", "h:445", "--history-dir", "s"}, "--history-dir", "give --dest with it; browse reads a state file only for a destination"},

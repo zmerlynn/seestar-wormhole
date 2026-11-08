@@ -58,6 +58,7 @@ func TestPatternUsageErrors(t *testing.T) {
 		escape = `rule="a trailing \\ has nothing to escape; write \\\\ to match a \\"`
 		class  = `rule="close each [ class with ], and name only POSIX classes such as [:digit:]; write \\[ to match a ["`
 		neg    = `rule="a leading ! is not supported; `
+		slash  = `rule="a / can't be escaped; write a plain / between folders"`
 	)
 	dev := newDevice()
 	dev.use(t)
@@ -66,6 +67,7 @@ func TestPatternUsageErrors(t *testing.T) {
 		{"..", parts}, {"/../log", parts}, {".", parts}, {"x//", parts},
 		{"#notes", hash}, {"log ", space}, {`MyWorks\`, escape}, {"M[42", class}, {"[[:foo:]]", class},
 		{"!x", neg}, {"!/MyWorks/M 31", neg},
+		{`MyWorks\/M31`, slash}, {`a\\\/b`, slash}, {"[a/]", class}, {"MyWorks/[M/]31", class},
 	} {
 		for _, flag := range []string{"--exclude", "--include"} {
 			for _, extra := range [][]string{nil, {"--no-default-excludes"}} {

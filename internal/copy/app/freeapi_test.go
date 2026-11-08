@@ -78,6 +78,15 @@ func TestFreeAPI(t *testing.T) {
 	if w.Code != 400 || !maps.Equal(got.Fields, want) {
 		t.Errorf("bad patterns: %d %+v", w.Code, got)
 	}
+	w = e.post("/copy/api/delete", `{"action":"find","days":"0","free_excludes":["MyWorks\\/M31"],"free_includes":["/[a/]"]}`)
+	got = decode[fieldErrors](t, w)
+	want = map[string]string{
+		"free_excludes": "Line 1: a / can't be escaped; write a plain / between folders. Correct this pattern and preview again.",
+		"free_includes": "Line 1: " + patternErr(t, "[a/]") + ". Correct this pattern and preview again.",
+	}
+	if w.Code != 400 || !maps.Equal(got.Fields, want) || e.s.free.running() {
+		t.Errorf("slash patterns: %d %+v", w.Code, got)
+	}
 	w = e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true,"free_excludes":["/MyWorks/M 31",""],"free_includes":["/MyWorks"]}`)
 	if w.Code != 200 {
 		t.Errorf("find: %d %s", w.Code, w.Body)

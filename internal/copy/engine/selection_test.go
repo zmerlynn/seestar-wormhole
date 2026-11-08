@@ -344,6 +344,17 @@ func TestExcludeParseErrors(t *testing.T) {
 		{"[", "close each [ class"},
 		{"M[42", "close each [ class"},
 		{"[[:foo:]]", "close each [ class"},
+		// The library splits on every /, so an escaped / is refused, and
+		// a class holding a / is left unclosed.
+		{`MyWorks\/M31`, "write a plain / between folders"},
+		{`\/log`, "write a plain / between folders"},
+		{`log\/`, "write a plain / between folders"},
+		{`a\\\/b`, "write a plain / between folders"},
+		{`[\/]`, "write a plain / between folders"},
+		{"[a/]", "close each [ class"},
+		{"/[a/]", "close each [ class"},
+		{"MyWorks/[M/]31", "close each [ class"},
+		{"a/[!/]", "close each [ class"},
 	} {
 		e, err := ParsePattern(tc.pattern)
 		if err == nil {
@@ -361,11 +372,15 @@ func TestExcludeParseErrors(t *testing.T) {
 	}
 	for _, p := range []string{
 		"log/", "/log/", "M[42]", "**", "a**", "/**", "MyWorks/**/x", `MyWorks\x`, `\\`, `log\\`,
-		`\!x`, `\#x`, `x\ `, " log", "M 31", "a#b", "a!b",
+		`\!x`, `\#x`, `x\ `, " log", "M 31", "a#b", "a!b", `a\\/b`,
 	} {
 		if _, err := ParsePattern(p); err != nil {
 			t.Errorf("%q: %v", p, err)
 		}
+	}
+	// In a\\/b the backslash is escaped, and the / separates names.
+	if e, err := ParsePattern(`a\\/b`); err != nil || !e.match(`a\/b/c.fit`, false) || e.match("a/b", false) {
+		t.Errorf(`a\\/b: %v; want it to match the folder b in the folder a\`, err)
 	}
 }
 

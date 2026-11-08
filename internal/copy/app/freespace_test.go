@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -535,5 +536,29 @@ func TestFreeDoubleStarPatterns(t *testing.T) {
 				t.Errorf("%s: %s on the share: %v", c.name, p, e.has(p))
 			}
 		}
+	}
+}
+
+// A saved Keep on the telescope or Only free up pattern that escapes a /
+// is refused before the share is read: it never reaches a deletion, and
+// the file it was meant to keep stays.
+func TestFreeEscapedSlashRefused(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/M31/a.fit")
+	e.copy()
+	for _, c := range []struct{ excludes, includes []string }{
+		{[]string{`MyWorks\/M31`}, nil},
+		{nil, []string{`MyWorks\/M31`}},
+	} {
+		e.set.FreeExcludes, e.set.FreeIncludes = c.excludes, c.includes
+		err := e.f.find(e.set, Target{Endpoint: e.set.Address})
+		if err == nil || !strings.Contains(err.Error(), "write a plain / between folders") {
+			t.Errorf("%q %q: find: %v", c.excludes, c.includes, err)
+		}
+		if v := e.f.view(); v.State != frStart {
+			t.Errorf("%q %q: state %q, want %q", c.excludes, c.includes, v.State, frStart)
+		}
+	}
+	if !e.has("MyWorks/M31/a.fit") {
+		t.Error("the file was deleted")
 	}
 }
