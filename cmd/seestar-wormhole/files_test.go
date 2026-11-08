@@ -9,7 +9,9 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 // fileArgs returns valid arguments for each file command. Nothing here is
@@ -265,5 +267,49 @@ func TestProxyDiagnosticsFallback(t *testing.T) {
 		})
 	if code != 1 || !strings.Contains(out.String(), `"rule":"log_sink_loss"`) {
 		t.Errorf("exit %d stdout %q", code, &out)
+	}
+}
+
+// heldWriter blocks every write until released, as a stderr pipe that
+// nobody reads does.
+type heldWriter struct {
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (w *heldWriter) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.entered) })
+	<-w.release
+	return len(p), nil
+}
+
+// On Windows too, a file command's usage error goes through the bounded log
+// sink, not raw stderr, so a stalled stderr cannot hold up the refusal.
+func TestWindowsFileUsageUsesBoundedSink(t *testing.T) {
+	for _, command := range fileCommandNames {
+		t.Run(command, func(t *testing.T) {
+			raw := &heldWriter{entered: make(chan struct{}), release: make(chan struct{})}
+			defer close(raw.release)
+			var logs bytes.Buffer
+			done := make(chan int, 1)
+			go func() {
+				done <- mainExitCodeWithRunner([]string{command, "--state-dir=PRIVATE_VALUE"}, io.Discard, raw, noSignals,
+					func() (io.Writer, func()) { return &logLossWriter{output: &logs}, func() {} }, true,
+					func(context.Context, options, io.Writer, io.Writer) error {
+						t.Error("ran a refused command")
+						return nil
+					})
+			}()
+			select {
+			case code := <-done:
+				if code != 2 || !strings.Contains(logs.String(), `msg="`+command+` failed" option=--state-dir`) {
+					t.Errorf("exit %d, sink %q; want 2 and the refusal in the sink", code, &logs)
+				}
+			case <-raw.entered:
+				t.Error("the refusal was written to raw stderr")
+			case <-time.After(5 * time.Second):
+				t.Fatal("the refusal did not finish")
+			}
+		})
 	}
 }

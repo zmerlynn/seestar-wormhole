@@ -374,8 +374,10 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 		return commandExitCode(o, licenses.Write(out))
 	}
 	// Windows refuses invalid options before acquiring signal or log handles.
-	// Unix keeps nonblocking log setup for argument errors on stalled stderr.
-	if err != nil && windows {
+	// Unix keeps nonblocking log setup for argument errors on stalled stderr,
+	// and so do the file commands everywhere: their refusals go through the
+	// bounded log sink, never straight to a stderr that may block.
+	if err != nil && windows && o.command != commandFiles {
 		if o.command == commandUI {
 			reportUIError(err)
 		}
