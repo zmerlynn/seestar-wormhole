@@ -171,7 +171,16 @@ func (s *server) resolve(set Settings) (Settings, Target, error) {
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	s.view++
 	folder, log := set.Folder, s.log
-	sessions := browse.NewSessions(s.ctx, s.dial, log)
+	// Every pool, old or new, numbers its outcomes from the Mount's one
+	// sequence, so an old pool's late failure can't reopen what a new
+	// one's success cleared.
+	rep := browse.Reporter{
+		Report: func(op string, err error, canceled bool, seq uint64) {
+			s.rep.send(Outcome{Source: diagnostic.SourceBrowse, Op: op, Err: classified(err), Canceled: canceled, Seq: seq})
+		},
+		Seq: s.rep.next,
+	}
+	sessions := browse.NewSessions(s.ctx, s.dial, log, rep)
 	var records func() (map[string]state.Record, error)
 	var sel engine.Selector
 	if s.setUp() {
@@ -186,7 +195,7 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 		}
 	}
 	h := browse.NewHandler(browse.Config{
-		Addr: s.addr, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true,
+		Addr: s.addr, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true, Reporter: rep,
 	})
 	return h, sessions
 }

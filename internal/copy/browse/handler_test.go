@@ -76,6 +76,7 @@ type envOptions struct {
 	extra      fstest.MapFS // added to the fixture
 	inApp      bool
 	selector   engine.Selector
+	reports    *reports // records the pool's and the handler's outcomes
 }
 
 func newEnv(t *testing.T, o envOptions) *env {
@@ -87,9 +88,13 @@ func newEnv(t *testing.T, o envOptions) *env {
 	fsys := fixture()
 	maps.Copy(fsys, o.extra)
 	e := &env{d: &dialer{fsys: fsys, err: o.dialErr, setup: o.setup}, addr: netip.MustParseAddrPort(o.addr), logs: logs}
-	e.p = NewSessions(context.Background(), e.d.dial, log)
+	var rep Reporter
+	if o.reports != nil {
+		rep = o.reports.reporter()
+	}
+	e.p = NewSessions(context.Background(), e.d.dial, log, rep)
 	t.Cleanup(e.p.Close)
-	cfg := Config{Addr: e.addr, Endpoint: "127.0.0.1:4445", Sessions: e.p, Log: log, InApp: o.inApp, Selector: o.selector}
+	cfg := Config{Addr: e.addr, Endpoint: "127.0.0.1:4445", Sessions: e.p, Log: log, InApp: o.inApp, Selector: o.selector, Reporter: rep}
 	if o.dest {
 		cfg.Records = func() (map[string]state.Record, error) {
 			e.loads.Add(1)

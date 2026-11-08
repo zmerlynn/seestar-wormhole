@@ -17,7 +17,7 @@ import (
 
 func newPool(d *dialer) (*Sessions, *logBuffer) {
 	log, buf := newLog()
-	return NewSessions(context.Background(), d.dial, log), buf
+	return NewSessions(context.Background(), d.dial, log, Reporter{}), buf
 }
 
 func TestGetSharesOneDial(t *testing.T) {
@@ -180,7 +180,7 @@ func TestFailedDialNilPointer(t *testing.T) {
 		p := NewSessions(context.Background(), func(context.Context) (remote.Session, error) {
 			var s *remote.SMB
 			return s, errors.New("connection refused")
-		}, log)
+		}, log, Reporter{})
 		defer p.Close()
 		if _, err := p.Get(context.Background()); err == nil || err.Error() != "connection refused" {
 			t.Fatalf("Get = %v, want the dial error", err)
@@ -461,7 +461,7 @@ func TestPanickingDial(t *testing.T) {
 				panic("boom")
 			}
 			return remote.NewFake(fstest.MapFS{}), nil
-		}, log)
+		}, log, Reporter{})
 		defer p.Close()
 		if _, err := p.Get(context.Background()); err == nil || err.Error() != "internal error while connecting to the device" {
 			t.Fatalf("Get = %v, want the recovered panic", err)

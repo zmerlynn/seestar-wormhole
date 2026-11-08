@@ -284,7 +284,7 @@ func TestSaveFileHoldsFolderLockUntilDone(t *testing.T) {
 		f := remote.NewFake(fstest.MapFS{"a.fit": {Data: []byte("abc")}})
 		f.Faults = map[string]remote.Fault{"a.fit": {After: 1, Stall: func() { close(entered) }}}
 		return f, nil
-	}, slog.New(slog.DiscardHandler))
+	}, slog.New(slog.DiscardHandler), browse.Reporter{})
 	defer sessions.Close()
 	done := make(chan error, 1)
 	go func() {

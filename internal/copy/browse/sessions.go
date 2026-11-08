@@ -15,6 +15,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // Fixed times of the session pool. None is a flag.
@@ -29,6 +30,40 @@ var (
 	errRetired = errors.New("the device session was closed; try again")
 )
 
+// errNoAnswer is a dial that took longer than dialTimeout. It reads as it
+// always has, and classifies as a timeout.
+type errNoAnswer struct{}
+
+func (errNoAnswer) Error() string {
+	return fmt.Sprintf("connect to the device: no answer after %v", dialTimeout)
+}
+func (errNoAnswer) Unwrap() error { return context.DeadlineExceeded }
+
+// Reporter gets the outcome of each Browse operation as it ends: op is
+// [diagnostic.OpConnect], [diagnostic.OpRecords] or [diagnostic.OpRead],
+// and seq its number from Seq, drawn where the outcome was decided. Report
+// is called with none of the pool's locks held. A nil Report, or Seq,
+// discards them.
+type Reporter struct {
+	Report func(op string, err error, canceled bool, seq uint64)
+	Seq    func() uint64
+}
+
+// seq is the next outcome's number, or 0 without Seq.
+func (r Reporter) seq() uint64 {
+	if r.Seq == nil {
+		return 0
+	}
+	return r.Seq()
+}
+
+// send reports an outcome, if there is a Report.
+func (r Reporter) send(op string, err error, canceled bool, seq uint64) {
+	if r.Report != nil {
+		r.Report(op, err, canceled, seq)
+	}
+}
+
 // Sessions keeps at most one current remote.Session, shared by every request.
 // It dials on first use and logs off after idleTimeout without a lease. One
 // mutex guards all of its state; no session is closed and no dial is made
@@ -38,6 +73,7 @@ type Sessions struct {
 	stop context.CancelFunc
 	dial func(context.Context) (remote.Session, error)
 	log  *slog.Logger
+	rep  Reporter
 
 	mu      sync.Mutex
 	closed  bool
@@ -73,10 +109,11 @@ type Lease struct {
 
 // NewSessions returns an empty pool. dial opens a session; the context it is
 // given is the session's whole lifetime. log gets the pool's lines; the
-// caller adds the endpoint to it.
-func NewSessions(ctx context.Context, dial func(context.Context) (remote.Session, error), log *slog.Logger) *Sessions {
+// caller adds the endpoint to it. rep gets each dial's outcome, except one
+// that ends as the pool closes.
+func NewSessions(ctx context.Context, dial func(context.Context) (remote.Session, error), log *slog.Logger, rep Reporter) *Sessions {
 	ctx, stop := context.WithCancel(ctx)
-	return &Sessions{ctx: ctx, stop: stop, dial: dial, log: log}
+	return &Sessions{ctx: ctx, stop: stop, dial: dial, log: log, rep: rep}
 }
 
 // Get returns a lease on the current session, dialing one if there is none.
@@ -141,13 +178,18 @@ func (p *Sessions) startDial() *dialing {
 				p.closeSession(s)
 				s = nil
 			}
-			err = fmt.Errorf("connect to the device: no answer after %v", dialTimeout)
+			err = errNoAnswer{}
 		}
+		// A request that fails with it fails in connecting; its text is
+		// unchanged.
+		err = diagnostic.At(diagnostic.OpConnect, err)
 		// The outcome is logged before the waiters wake, so it comes
-		// before any line of theirs.
+		// before any line of theirs. It is numbered here, under p.mu, and
+		// reported after, so it may follow the waiters' lines.
 		var sess *session
 		p.mu.Lock()
 		p.pending = nil
+		closed, seq := p.closed, p.rep.seq()
 		switch {
 		case p.closed:
 			if err == nil {
@@ -159,11 +201,16 @@ func (p *Sessions) startDial() *dialing {
 			p.armIdle(sess)
 			p.log.Info("session opened")
 		default:
-			p.log.Warn("connect failed", "error", err)
+			p.log.Warn("connect failed", append(diagnostic.OpKeys(diagnostic.SourceBrowse, diagnostic.OpConnect, err), "error", err)...)
 		}
 		d.sess, d.err = sess, err
 		close(d.done)
 		p.mu.Unlock()
+		// A dial that ends as the pool closes neither failed nor
+		// succeeded.
+		if !closed {
+			p.rep.send(diagnostic.OpConnect, err, false, seq)
+		}
 		if sess == nil {
 			if s != nil {
 				p.closeSession(s)
