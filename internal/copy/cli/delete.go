@@ -9,19 +9,20 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 type deleteOptions struct {
-	endpoint    string
-	dest        string
-	destSet     bool
-	stateDir    string
-	stateDirSet bool
-	trustState  bool
-	ignoreState bool
-	olderThan   time.Duration
-	selection   selectionFlags
+	endpoint      string
+	dest          string
+	destSet       bool
+	historyDir    string
+	historyDirSet bool
+	trustState    bool
+	ignoreState   bool
+	olderThan     time.Duration
+	selection     selectionFlags
 	// selector is set by validate from selection.
 	selector engine.Selector
 	// dryRun is set by --dry-run, and by validate when --force is not
@@ -66,7 +67,7 @@ Exit 0 when the run finishes, however many files it kept, or is stopped;
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			o.destSet = cmd.Flags().Changed("dest")
-			o.stateDirSet = cmd.Flags().Changed("state-dir")
+			o.historyDirSet = cmd.Flags().Changed("history-dir")
 			if err := o.validate(); err != nil {
 				return err
 			}
@@ -77,7 +78,7 @@ Exit 0 when the run finishes, however many files it kept, or is stopped;
 	f := c.Flags()
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state and copies prove each file; never created (required unless --ignore-state)")
-	f.StringVar(&o.stateDir, "state-dir", "", "folder for the state file of --dest (default: the per-user config folder's seestar-copy)")
+	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: the per-user config folder's seestar-copy)")
 	f.BoolVar(&o.trustState, "trust-state", false, "prove a file by its state record alone, without reading the local copy")
 	f.BoolVar(&o.ignoreState, "ignore-state", false, "read no state, and delete whatever is selected, copied or not; needs --include")
 	f.Var((*ageValue)(&o.olderThan), "older-than", "delete only files whose device time is at least this old; 0 for no limit")
@@ -112,14 +113,14 @@ func (o *deleteOptions) validate() error {
 			return &diagnostic.OptionError{Option: "--ignore-state", Rule: "give at least one --include; --ignore-state deletes whatever is selected"}
 		case o.destSet:
 			return &diagnostic.OptionError{Option: "--dest", Rule: "--ignore-state reads no state; omit it"}
-		case o.stateDirSet:
-			return &diagnostic.OptionError{Option: "--state-dir", Rule: "--ignore-state reads no state; omit it"}
+		case o.historyDirSet:
+			return &diagnostic.OptionError{Option: "--history-dir", Rule: "--ignore-state reads no state; omit it"}
 		}
 	} else if o.dest == "" {
 		return &diagnostic.OptionError{Option: "--dest", Rule: "required; give the local mirror folder, or --ignore-state"}
 	}
-	if o.stateDirSet && o.stateDir == "" {
-		return &diagnostic.OptionError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
+	if o.historyDirSet && o.historyDir == "" {
+		return &diagnostic.OptionError{Option: "--history-dir", Rule: "must not be empty; omit it for the default"}
 	}
 	if o.olderThan < 0 {
 		return &diagnostic.OptionError{Option: "--older-than", Rule: "must not be negative"}
@@ -140,13 +141,13 @@ var dialRemover = func(ctx context.Context, endpoint string, log *slog.Logger) (
 	return r, nil
 }
 
-// runDelete resolves the state folder and runs the deletion. A dry run is
+// runDelete resolves the history folder and runs the deletion. A dry run is
 // read-only: the program turns the guard on before it calls this.
 func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 	var stateDir string
 	if !o.ignoreState {
 		var err error
-		if stateDir, err = resolveStateDir(o.stateDir, o.stateDirSet); err != nil {
+		if stateDir, err = state.HistoryDir(o.historyDir); err != nil {
 			return err
 		}
 	}

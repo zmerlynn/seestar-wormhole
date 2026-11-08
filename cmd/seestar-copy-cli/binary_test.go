@@ -87,7 +87,7 @@ func TestBinaryExitCodes(t *testing.T) {
 		{[]string{"sync", "--endpoint", "h:445"}, 2},
 		{[]string{"sync", "--endpoint", "h", "--dest", "d"}, 2},
 		// A state folder inside the destination is refused before any connection.
-		{[]string{"sync", "--endpoint", "h:445", "--dest", "d", "--state-dir", "d"}, 1},
+		{[]string{"sync", "--endpoint", "h:445", "--dest", "d", "--history-dir", "d"}, 1},
 	} {
 		code, stdout, stderr := execute(t, tc.args...)
 		if code != tc.code {

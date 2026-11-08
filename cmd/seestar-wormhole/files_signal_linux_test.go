@@ -43,7 +43,7 @@ func fullPipe(t *testing.T) *os.File {
 // A stalled stderr drops sync's logs instead of blocking them, so Ctrl+C
 // still stops it.
 func TestBinarySyncStopsWithStalledStderr(t *testing.T) {
-	cmd := exec.Command(binaryPath(t), "sync", "--endpoint", "127.0.0.1:1", "--dest", t.TempDir(), "--state-dir", t.TempDir())
+	cmd := exec.Command(binaryPath(t), "sync", "--endpoint", "127.0.0.1:1", "--dest", t.TempDir(), "--history-dir", t.TempDir())
 	cmd.Dir = t.TempDir()
 	cmd.Stderr = fullPipe(t)
 	if err := cmd.Start(); err != nil {

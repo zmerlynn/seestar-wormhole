@@ -36,8 +36,8 @@ type device struct {
 	// dialErrs fail the first dials, one each.
 	dialErrs []error
 	// openDelay is how long each Open takes.
-	openDelay     time.Duration
-	dials, closes int
+	openDelay            time.Duration
+	dials, closes, opens int
 }
 
 func newDevice() *device { return &device{files: fstest.MapFS{}} }
@@ -91,7 +91,7 @@ func (u unreadableFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return u.MapFS.ReadDir(name)
 }
 
-// deviceSession counts Close and delays Open.
+// deviceSession counts Open and Close, and delays Open.
 type deviceSession struct {
 	*remote.Fake
 	d     *device
@@ -99,6 +99,9 @@ type deviceSession struct {
 }
 
 func (s *deviceSession) Open(ctx context.Context, path string) (remote.File, error) {
+	s.d.mu.Lock()
+	s.d.opens++
+	s.d.mu.Unlock()
 	time.Sleep(s.delay)
 	return s.Fake.Open(ctx, path)
 }
@@ -216,7 +219,7 @@ func TestSyncPasses(t *testing.T) {
 		logs := &testlog.Buffer{}
 		code := make(chan int, 1)
 		go func() {
-			code <- run(ctx, []string{"sync", "--endpoint", "127.0.0.1:4445", "--dest", dest, "--state-dir", stateDir,
+			code <- run(ctx, []string{"sync", "--endpoint", "127.0.0.1:4445", "--dest", dest, "--history-dir", stateDir,
 				"--interval", "5m", "--ready-age", "7m", "--first-pass-age", "10m", "--workers", "1"}, io.Discard, logs)
 		}()
 
@@ -348,7 +351,7 @@ func TestSyncOnce(t *testing.T) {
 			dev.faults = tc.faults
 			dev.unreadable = tc.unreadable
 			dev.use(t)
-			code, stdout, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once")
+			code, stdout, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once")
 			if code != tc.code || stdout != "" {
 				t.Errorf("code=%d stdout=%q, want %d and no stdout", code, stdout, tc.code)
 			}
@@ -382,7 +385,7 @@ func TestSyncLogsRate(t *testing.T) {
 		dev.openDelay = 500 * time.Millisecond
 		dev.use(t)
 		var stderr bytes.Buffer
-		code := run(t.Context(), []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--state-dir", t.TempDir(), "--once"}, io.Discard, &stderr)
+		code := run(t.Context(), []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--history-dir", t.TempDir(), "--once"}, io.Discard, &stderr)
 		if want := logLines(t0.Add(500*time.Millisecond),
 			`INFO msg="file copied" path=MyWorks/a.fit size=4194304 elapsed=500ms`,
 			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=4194304 elapsed=500ms rate=8.0MiB/s`,
@@ -407,7 +410,7 @@ func TestSyncRetriesFailedPass(t *testing.T) {
 		logs := &testlog.Buffer{}
 		code := make(chan int, 1)
 		go func() {
-			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--interval", "1m"}, io.Discard, logs)
+			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--interval", "1m"}, io.Discard, logs)
 		}()
 		synctest.Wait()
 		if got, want := logs.Take(), logLines(t0, `ERROR msg="pass failed" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
@@ -435,7 +438,7 @@ func TestSyncStopWhileListing(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 		var stderr bytes.Buffer
-		code := run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--state-dir", t.TempDir(), "--once"}, io.Discard, &stderr)
+		code := run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--history-dir", t.TempDir(), "--once"}, io.Discard, &stderr)
 		if code != exitOK {
 			t.Errorf("exit %d after a stop, want 0", code)
 		}
@@ -460,7 +463,7 @@ func TestSyncLogsEachFileAsItFinishes(t *testing.T) {
 		logs := &testlog.Buffer{}
 		code := make(chan int, 1)
 		go func() {
-			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--state-dir", t.TempDir(),
+			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--history-dir", t.TempDir(),
 				"--workers", "2", "--once"}, io.Discard, logs)
 		}()
 		synctest.Wait() // a.fit is done and b.fit is stalled mid-file
@@ -490,7 +493,7 @@ func TestSyncStopMidFile(t *testing.T) {
 	dev.faults = map[string]remote.Fault{"MyWorks/a.fit": {After: 1, Stall: cancel}}
 	dev.use(t)
 	var stdout, stderr bytes.Buffer
-	code := run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--workers", "1", "--once"}, &stdout, &stderr)
+	code := run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--workers", "1", "--once"}, &stdout, &stderr)
 	if code != exitOK {
 		t.Errorf("exit %d after a stop, want 0\n%s", code, stderr.String())
 	}
@@ -560,7 +563,7 @@ func TestSyncStopEndsSession(t *testing.T) {
 		dest, stateDir := t.TempDir(), t.TempDir()
 		code := make(chan int, 1)
 		go func() {
-			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once"}, io.Discard, io.Discard)
+			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once"}, io.Discard, io.Discard)
 		}()
 		<-sess.entered
 		cancel()

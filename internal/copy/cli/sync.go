@@ -2,12 +2,9 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"io"
 	"log/slog"
 	"net"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -15,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
@@ -26,16 +24,16 @@ type syncOptions struct {
 	dest      string
 	selection selectionFlags
 	// selector is set by validate from selection.
-	selector     engine.Selector
-	interval     time.Duration
-	intervalSet  bool
-	once         bool
-	dryRun       bool
-	readyAge     time.Duration
-	firstPassAge time.Duration
-	workers      int
-	stateDir     string
-	stateDirSet  bool
+	selector      engine.Selector
+	interval      time.Duration
+	intervalSet   bool
+	once          bool
+	dryRun        bool
+	readyAge      time.Duration
+	firstPassAge  time.Duration
+	workers       int
+	historyDir    string
+	historyDirSet bool
 }
 
 // NewSync returns the sync command of program.
@@ -48,7 +46,7 @@ func NewSync(program string) *Command {
 		Long: `Mirror the telescope's images into a local folder.
 Each pass lists the whole share, except what an --exclude pattern matches,
 copies files that are new or changed on the device, and records them in a
-state file under --state-dir, so a file moved out of --dest is not copied
+copy history under --history-dir, so a file moved out of --dest is not copied
 again. Passes repeat every --interval until Ctrl+C, or run once with --once.
 The telescope is never written to. --dry-run runs one pass that only logs
 what it would copy, replace, adopt or skip, and changes nothing on disk.
@@ -70,7 +68,7 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 		Example: "  " + program + " sync --endpoint 127.0.0.1:4445 --dest ~/Seestar",
 		Args:    noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			o.stateDirSet = cmd.Flags().Changed("state-dir")
+			o.historyDirSet = cmd.Flags().Changed("history-dir")
 			o.intervalSet = cmd.Flags().Changed("interval")
 			if err := o.validate(); err != nil {
 				return err
@@ -89,7 +87,7 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 	f.DurationVar(&o.readyAge, "ready-age", 2*time.Minute, "copy a file only once its device time is at least this old")
 	f.DurationVar(&o.firstPassAge, "first-pass-age", 10*time.Minute, "on the first pass, files at least this old count as finished")
 	f.IntVar(&o.workers, "workers", 4, "files copied at once (1-64)")
-	f.StringVar(&o.stateDir, "state-dir", "", "folder for the state file (default: the per-user config folder's seestar-copy)")
+	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history (default: the per-user config folder's seestar-copy)")
 	return c
 }
 
@@ -124,8 +122,8 @@ func (o *syncOptions) validate() error {
 	if o.workers < 1 || o.workers > maxWorkers {
 		return &diagnostic.OptionError{Option: "--workers", Rule: "must be 1 to 64"}
 	}
-	if o.stateDirSet && o.stateDir == "" {
-		return &diagnostic.OptionError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
+	if o.historyDirSet && o.historyDir == "" {
+		return &diagnostic.OptionError{Option: "--history-dir", Rule: "must not be empty; omit it for the default"}
 	}
 	return nil
 }
@@ -152,19 +150,6 @@ func defaultExcludeFlags() string {
 	return strings.TrimSuffix(b.String(), "\n")
 }
 
-// resolveStateDir returns --state-dir if it was given, or the per-user
-// config folder's seestar-copy, as seestar-wormhole chooses its own.
-func resolveStateDir(stateDir string, set bool) (string, error) {
-	if set {
-		return stateDir, nil
-	}
-	base, err := os.UserConfigDir()
-	if err != nil {
-		return "", errors.New("no per-user config folder; give --state-dir")
-	}
-	return filepath.Join(base, "seestar-copy"), nil
-}
-
 // dial opens a read-only session, for each sync pass, find, browse and a
 // delete preview, whose callbacks log to log. Tests replace it with the
 // io/fs fake.
@@ -172,10 +157,10 @@ var dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.
 	return remote.Dial(ctx, endpoint, log)
 }
 
-// runSync resolves the state folder and runs the sync. A dry run is
+// runSync resolves the history folder and runs the sync. A dry run is
 // read-only: the program turns the guard on before it calls this.
 func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
-	stateDir, err := resolveStateDir(o.stateDir, o.stateDirSet)
+	stateDir, err := state.HistoryDir(o.historyDir)
 	if err != nil {
 		return err
 	}

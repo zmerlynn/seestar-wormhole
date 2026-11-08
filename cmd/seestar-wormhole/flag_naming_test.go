@@ -85,3 +85,23 @@ func TestRootUsageErrorLabel(t *testing.T) {
 		t.Errorf("exit %d record %+v logs %s", code, record, logs)
 	}
 }
+
+// The file commands' old --state-dir is refused in every form and names its
+// new spelling; proxy's own --state-dir is another folder and still parses.
+func TestRetiredStateDir(t *testing.T) {
+	files := fileArgs(t)
+	for _, name := range fileCommandNames {
+		for _, form := range [][]string{{"--state-dir", "PRIVATE_VALUE"}, {"--state-dir=PRIVATE_VALUE"}, {"--state-dir"}} {
+			args := append(append([]string{}, files[name]...), form...)
+			code, record, logs := usageExit(t, args...)
+			if code != 2 || record.Msg != name+" failed" || record.Option != "--state-dir" ||
+				record.Rule != "renamed; use --history-dir for the copy history folder" || strings.Contains(logs, "PRIVATE_VALUE") {
+				t.Errorf("%q: exit %d record %+v logs %s", args, code, record, logs)
+			}
+		}
+	}
+	o, err := parse([]string{"proxy", "--state-dir", "s"}, io.Discard)
+	if err != nil || o.stateDir != "s" {
+		t.Errorf("proxy --state-dir s: %+v %v", o, err)
+	}
+}

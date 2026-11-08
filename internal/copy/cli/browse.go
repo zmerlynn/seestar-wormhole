@@ -25,11 +25,11 @@ type browseOptions struct {
 	open      bool
 	selection selectionFlags
 	// selector is set by validate from selection.
-	selector    engine.Selector
-	dest        string
-	destSet     bool
-	stateDir    string
-	stateDirSet bool
+	selector      engine.Selector
+	dest          string
+	destSet       bool
+	historyDir    string
+	historyDirSet bool
 }
 
 // NewBrowse returns the browse command of program. It is read-only.
@@ -67,7 +67,7 @@ a usage error.`,
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			o.destSet = cmd.Flags().Changed("dest")
-			o.stateDirSet = cmd.Flags().Changed("state-dir")
+			o.historyDirSet = cmd.Flags().Changed("history-dir")
 			if err := o.validate(); err != nil {
 				return err
 			}
@@ -86,7 +86,7 @@ a usage error.`,
 	f.BoolVar(&o.open, "open", false, "also open the page in the default browser")
 	o.selection.register(f)
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state gives each file a status; never created")
-	f.StringVar(&o.stateDir, "state-dir", "", "folder for the state file of --dest (default: the per-user config folder's seestar-copy)")
+	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: the per-user config folder's seestar-copy)")
 	return c
 }
 
@@ -106,11 +106,11 @@ func (o *browseOptions) validate() error {
 	if o.destSet && o.dest == "" {
 		return &diagnostic.OptionError{Option: "--dest", Rule: "must not be empty; omit it to browse without a status"}
 	}
-	if o.stateDirSet && o.stateDir == "" {
-		return &diagnostic.OptionError{Option: "--state-dir", Rule: "must not be empty; omit it for the default"}
+	if o.historyDirSet && o.historyDir == "" {
+		return &diagnostic.OptionError{Option: "--history-dir", Rule: "must not be empty; omit it for the default"}
 	}
-	if o.stateDirSet && !o.destSet {
-		return &diagnostic.OptionError{Option: "--state-dir", Rule: "give --dest with it; browse reads a state file only for a destination"}
+	if o.historyDirSet && !o.destSet {
+		return &diagnostic.OptionError{Option: "--history-dir", Rule: "give --dest with it; browse reads a state file only for a destination"}
 	}
 	sel, err := o.selection.parse()
 	if err != nil {
@@ -162,7 +162,7 @@ func warnOpen(log *slog.Logger, err error) {
 func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Logger) error {
 	var records func() (map[string]state.Record, error)
 	if o.destSet {
-		stateDir, err := resolveStateDir(o.stateDir, o.stateDirSet)
+		stateDir, err := state.HistoryDir(o.historyDir)
 		if err != nil {
 			return err
 		}

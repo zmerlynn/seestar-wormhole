@@ -14,10 +14,10 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// scratch returns --dest and --state-dir flags naming new empty folders, and
+// scratch returns --dest and --history-dir flags naming new empty folders, and
 // --once, for an invocation that gets past the flag checks.
 func scratch(t *testing.T) []string {
-	return []string{"--dest", t.TempDir(), "--state-dir", t.TempDir(), "--once"}
+	return []string{"--dest", t.TempDir(), "--history-dir", t.TempDir(), "--once"}
 }
 
 // invoke runs one in-process invocation.
@@ -142,7 +142,7 @@ func TestVersion(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
-	valid := []string{"sync", "--endpoint", "127.0.0.1:4445", "--dest", "d", "--state-dir", "s"}
+	valid := []string{"sync", "--endpoint", "127.0.0.1:4445", "--dest", "d", "--history-dir", "s"}
 	for _, tc := range []struct {
 		args         []string
 		option, rule string
@@ -170,7 +170,7 @@ func TestUsageErrors(t *testing.T) {
 		{slices.Concat(valid, []string{"--workers", "four"}), "--workers", `"use a whole number"`},
 		{slices.Concat(valid, []string{"--once=maybe"}), "--once", `"use true or false"`},
 		{slices.Concat(valid, []string{"--dry-run", "--interval", "1m"}), "--dry-run", `"runs one pass; do not give --interval with it"`},
-		{slices.Concat(valid, []string{"--state-dir", ""}), "--state-dir", `"must not be empty; omit it for the default"`},
+		{slices.Concat(valid, []string{"--history-dir", ""}), "--history-dir", `"must not be empty; omit it for the default"`},
 	} {
 		code, stdout, stderr := invoke(t, tc.args...)
 		want := "option=" + tc.option + " rule=" + tc.rule + " help=\""

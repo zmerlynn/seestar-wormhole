@@ -55,9 +55,17 @@ func flagParseError(cmd *cobra.Command, err error) error {
 // retiredFlags holds, per command, the flags it no longer takes and the rule
 // that says what replaced each one.
 var retiredFlags = map[string]map[string]string{
-	// 0.1.0's copy CLI had --source.
-	"sync": {"--source": "removed; sync copies the whole share, so leave folders out with --exclude"},
+	// 0.1.0's copy CLI had --source, and the file commands took --state-dir
+	// until they joined this program, whose proxy --state-dir means another
+	// folder.
+	"sync":   {"--source": "removed; sync copies the whole share, so leave folders out with --exclude", "--state-dir": historyDirRenamed},
+	"find":   {"--state-dir": historyDirRenamed},
+	"browse": {"--state-dir": historyDirRenamed},
+	"delete": {"--state-dir": historyDirRenamed},
 }
+
+// historyDirRenamed is the rule for a file command's old --state-dir.
+const historyDirRenamed = "renamed; use --history-dir for the copy history folder"
 
 // flagHomeOrder lists the commands searched first for an unknown flag's home;
 // the rest of the tree follows in its own order.

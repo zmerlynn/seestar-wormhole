@@ -17,7 +17,7 @@ import (
 func fileArgs(t *testing.T) map[string][]string {
 	dest := t.TempDir()
 	return map[string][]string{
-		"sync":   {"sync", "--endpoint", "127.0.0.1:1", "--dest", dest, "--state-dir", t.TempDir()},
+		"sync":   {"sync", "--endpoint", "127.0.0.1:1", "--dest", dest, "--history-dir", t.TempDir()},
 		"find":   {"find", "--endpoint", "127.0.0.1:1"},
 		"browse": {"browse", "--endpoint", "127.0.0.1:1"},
 		"delete": {"delete", "--endpoint", "127.0.0.1:1", "--dest", dest},

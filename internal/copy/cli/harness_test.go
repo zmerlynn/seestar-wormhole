@@ -90,10 +90,10 @@ func flagError(_ *cobra.Command, err error) error {
 	return &diagnostic.OptionError{Option: "arguments", Rule: "use only supported options"}
 }
 
-// scratch returns --dest and --state-dir flags naming new empty folders, and
+// scratch returns --dest and --history-dir flags naming new empty folders, and
 // --once, for an invocation that gets past the flag checks.
 func scratch(t *testing.T) []string {
-	return []string{"--dest", t.TempDir(), "--state-dir", t.TempDir(), "--once"}
+	return []string{"--dest", t.TempDir(), "--history-dir", t.TempDir(), "--once"}
 }
 
 // invoke runs one in-process invocation.

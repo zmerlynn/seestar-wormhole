@@ -16,7 +16,7 @@ import (
 // MountOptions is what a [Mount] runs with.
 type MountOptions struct {
 	Addr     netip.AddrPort // the listener of the server that mounts it
-	StateDir string         // the CLI's default state folder
+	StateDir string         // the file commands' default history folder
 	Version  string
 	Log      *slog.Logger
 	// Target is where the telescope is now, asked again for each start and

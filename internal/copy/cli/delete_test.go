@@ -230,7 +230,7 @@ func TestDeleteModes(t *testing.T) {
 			stateBefore, destBefore := readFile(t, statePath), snapshot(t, dest)
 			args := tc.args
 			if !slices.Contains(args, "--ignore-state") {
-				args = append(args, "--dest", dest, "--state-dir", stateDir)
+				args = append(args, "--dest", dest, "--history-dir", stateDir)
 			}
 			code, stdout, stderr := deleteRun(t, append(args, "--force")...)
 			if code != exitOK || stdout != "" {
@@ -271,7 +271,7 @@ func TestDeleteMissingDest(t *testing.T) {
 		s.use(t)
 		dest, stateDir := filepath.Join(t.TempDir(), "dest"), t.TempDir()
 		writeDeleteState(t, dest, stateDir, "", rec)
-		args := []string{"--dest", dest, "--state-dir", stateDir}
+		args := []string{"--dest", dest, "--history-dir", stateDir}
 		if trust {
 			args = append(args, "--trust-state")
 		}
@@ -299,9 +299,9 @@ func TestDeleteUsage(t *testing.T) {
 		{[]string{"--endpoint", "h:445", "--dest", dest, "--trust-state", "--ignore-state"}, "give --trust-state or --ignore-state, not both"},
 		{[]string{"--endpoint", "h:445", "--ignore-state"}, "give at least one --include"},
 		{[]string{"--endpoint", "h:445", "--ignore-state", "--include", "*.jpg", "--dest", dest}, "option=--dest rule=\"--ignore-state reads no state; omit it"},
-		{[]string{"--endpoint", "h:445", "--ignore-state", "--include", "*.jpg", "--state-dir", stateDir}, "option=--state-dir rule=\"--ignore-state reads no state; omit it"},
+		{[]string{"--endpoint", "h:445", "--ignore-state", "--include", "*.jpg", "--history-dir", stateDir}, "option=--history-dir rule=\"--ignore-state reads no state; omit it"},
 		{[]string{"--endpoint", "h:445", "--dest", dest, "--dry-run", "--force"}, "option=--force rule=\"give --force or --dry-run, not both"},
-		{[]string{"--endpoint", "h:445", "--dest", dest, "--state-dir", ""}, "must not be empty"},
+		{[]string{"--endpoint", "h:445", "--dest", dest, "--history-dir", ""}, "must not be empty"},
 		{[]string{"--endpoint", "h:445", "--dest", dest, "--older-than", "-1h"}, "must not be negative"},
 		{[]string{"--endpoint", "h:445", "--dest", dest, "--older-than", "1d12h"}, "--older-than"},
 		{[]string{"--endpoint", "h:445", "--dest", dest, "--include", ""}, "--include"},
@@ -325,7 +325,7 @@ func TestDeleteHelp(t *testing.T) {
 		t.Fatalf("code=%d stderr=%q, want 0 and no stderr", code, stderr)
 	}
 	for _, want := range []string{
-		"--endpoint string", "--dest string", "--state-dir string", "--trust-state", "--ignore-state",
+		"--endpoint string", "--dest string", "--history-dir string", "--trust-state", "--ignore-state",
 		"--older-than age", "(default 7d)", "--force", "--exclude stringArray", "--no-default-excludes", "--include stringArray", "--dry-run",
 		"Without\n--force it only previews", "avoid running delete while the telescope is busy",
 	} {
@@ -390,7 +390,7 @@ func TestDeleteBackslashName(t *testing.T) {
 			dest, stateDir := t.TempDir(), t.TempDir()
 			place(t, dest, saved.path, saved.data, saved.mtime)
 			writeDeleteState(t, dest, stateDir, "", saved)
-			args = append(args, "--dest", dest, "--state-dir", stateDir)
+			args = append(args, "--dest", dest, "--history-dir", stateDir)
 		}
 		code, _, stderr := deleteRun(t, append(args, "--force")...)
 		if code != exitOK {
@@ -530,7 +530,7 @@ func TestDeleteDryRunParity(t *testing.T) {
 	place(t, dest, "MyWorks/M 42/g.fit", "ggg", deleteOld)
 	statePath := writeDeleteState(t, dest, stateDir, "", recs...)
 	stateBefore, destBefore, shareBefore := readFile(t, statePath), snapshot(t, dest), snapshot(t, s.dir)
-	args := []string{"--dest", dest, "--state-dir", stateDir}
+	args := []string{"--dest", dest, "--history-dir", stateDir}
 
 	code, stdout, dry := deleteRun(t, append(args, "--dry-run")...)
 	readonly.Reset()
@@ -601,7 +601,7 @@ func TestDeleteStateQuirks(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	code, _, stderr := deleteRun(t, "--force", "--dest", dest, "--state-dir", stateDir)
+	code, _, stderr := deleteRun(t, "--force", "--dest", dest, "--history-dir", stateDir)
 	if code != exitOK {
 		t.Fatalf("code=%d:\n%s", code, stderr)
 	}
@@ -654,7 +654,7 @@ func TestDeleteBetweenSyncs(t *testing.T) {
 	dest, stateDir := t.TempDir(), t.TempDir()
 	syncOnce := func() string {
 		t.Helper()
-		code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--state-dir", stateDir, "--once")
+		code, _, stderr := invoke(t, "sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--once")
 		if code != exitOK {
 			t.Fatalf("sync: code=%d:\n%s", code, stderr)
 		}
@@ -663,7 +663,7 @@ func TestDeleteBetweenSyncs(t *testing.T) {
 	if log := syncOnce(); !strings.Contains(log, `copied=2 `) {
 		t.Fatalf("first sync:\n%s", log)
 	}
-	if code, _, stderr := deleteRun(t, "--force", "--dest", dest, "--state-dir", stateDir); code != exitOK ||
+	if code, _, stderr := deleteRun(t, "--force", "--dest", dest, "--history-dir", stateDir); code != exitOK ||
 		!strings.Contains(stderr, `msg="deletion done" deleted=2 bytes=6 folders=2 `) {
 		t.Fatalf("delete: code=%d:\n%s", code, stderr)
 	}

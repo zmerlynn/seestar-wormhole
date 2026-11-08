@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"os"
-	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -22,7 +20,7 @@ func TestSyncHelp(t *testing.T) {
 			"  --exclude '$RECYCLE.BIN'\n  --exclude 'System Volume Information'\n  --exclude '/log'\n" +
 			"  --exclude '/tmp_stitch'\n  --exclude '/batch_stack_tmp'\n",
 		"--interval duration", "(default 5m0s)", "--once", "--dry-run", "(default 2m0s)", "(default 10m0s)",
-		"files copied at once (1-64) (default 4)", "--state-dir string",
+		"files copied at once (1-64) (default 4)", "--history-dir string",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("sync help lacks %q:\n%s", want, stdout)
@@ -35,7 +33,7 @@ func TestSyncHelp(t *testing.T) {
 
 func TestEndpoint(t *testing.T) {
 	for _, endpoint := range []string{"h", "h:", ":445", "h:0", "h:65536", "h:smb", "h:-1", "h:+445", "::1:445", "h:445:1", "[::1]"} {
-		code, _, stderr := invoke(t, "sync", "--endpoint", endpoint, "--dest", "d", "--state-dir", "s")
+		code, _, stderr := invoke(t, "sync", "--endpoint", endpoint, "--dest", "d", "--history-dir", "s")
 		if code != exitUsage || !strings.Contains(stderr, `option=--endpoint rule="use host:port, such as 127.0.0.1:4445"`) {
 			t.Errorf("%q: code=%d stderr=%q, want 2 naming --endpoint", endpoint, code, stderr)
 		}
@@ -117,7 +115,7 @@ func TestSyncFlags(t *testing.T) {
 		if got, _ := f.GetInt("workers"); got != 4 {
 			t.Errorf("--workers default %d, want 4", got)
 		}
-		for name, want := range map[string]string{"endpoint": "", "dest": "", "state-dir": ""} {
+		for name, want := range map[string]string{"endpoint": "", "dest": "", "history-dir": ""} {
 			if got, _ := f.GetString(name); got != want {
 				t.Errorf("--%s default %q, want %q", name, got, want)
 			}
@@ -161,22 +159,35 @@ func TestWorkerBounds(t *testing.T) {
 	}
 }
 
-func TestStateDir(t *testing.T) {
-	base := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", base)
-	t.Setenv("HOME", base)
-	t.Setenv("AppData", base)
-	want, err := os.UserConfigDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want = filepath.Join(want, "seestar-copy")
-	got, err := resolveStateDir("", false)
-	if err != nil || got != want {
-		t.Errorf("default state dir %q, %v, want %q", got, err, want)
-	}
-	got, err = resolveStateDir("x", true)
-	if err != nil || got != "x" {
-		t.Errorf("explicit state dir %q, %v, want x", got, err)
+// sync's flag rules, each a usage error before anything is dialed.
+func TestSyncUsage(t *testing.T) {
+	valid := []string{"sync", "--endpoint", "127.0.0.1:4445", "--dest", "d", "--history-dir", "s", "--once"}
+	for _, tc := range []struct {
+		args         []string
+		option, rule string
+	}{
+		{[]string{"sync", "extra", "--endpoint", "h:445", "--dest", "d"}, "arguments", `"positional arguments are not allowed"`},
+		{[]string{"sync"}, "--endpoint", `"required; give the SMB host:port"`},
+		{[]string{"sync", "--dest", "d"}, "--endpoint", `"required; give the SMB host:port"`},
+		{[]string{"sync", "--endpoint", "h:445"}, "--dest", `"required; give the local mirror folder"`},
+		{[]string{"sync", "--endpoint", "h:445", "--dest", ""}, "--dest", `"required; give the local mirror folder"`},
+		{[]string{"sync", "--dest", "d", "--endpoint"}, "--endpoint", `"requires a value"`},
+		{slices.Concat(valid, []string{"--interval", "soon"}), "--interval", `"use a duration such as 30s, 5m or 1h"`},
+		{slices.Concat(valid, []string{"--interval", "0s"}), "--interval", `"must be more than zero"`},
+		{slices.Concat(valid, []string{"--interval", "-1s"}), "--interval", `"must be more than zero"`},
+		{slices.Concat(valid, []string{"--ready-age", "-1ns"}), "--ready-age", `"must not be negative"`},
+		{slices.Concat(valid, []string{"--first-pass-age", "-1m"}), "--first-pass-age", `"must not be negative"`},
+		{slices.Concat(valid, []string{"--workers", "-1"}), "--workers", `"must be 1 to 64"`},
+		{slices.Concat(valid, []string{"--workers", "four"}), "--workers", `"use a whole number"`},
+		{slices.Concat(valid, []string{"--once=maybe"}), "--once", `"use true or false"`},
+		{slices.Concat(valid, []string{"--dry-run", "--interval", "1m"}), "--dry-run", `"runs one pass; do not give --interval with it"`},
+		{slices.Concat(valid, []string{"--history-dir", ""}), "--history-dir", `"must not be empty; omit it for the default"`},
+		{slices.Concat(valid, []string{"--history-dir="}), "--history-dir", `"must not be empty; omit it for the default"`},
+	} {
+		code, stdout, stderr := invoke(t, tc.args...)
+		want := "option=" + tc.option + " rule=" + tc.rule + " help=\""
+		if code != exitUsage || stdout != "" || !strings.Contains(stderr, want) || strings.Count(stderr, "\n") != 1 {
+			t.Errorf("%q: code=%d stdout=%q stderr=%q, want 2, no stdout and one line with %q", tc.args, code, stdout, stderr, want)
+		}
 	}
 }

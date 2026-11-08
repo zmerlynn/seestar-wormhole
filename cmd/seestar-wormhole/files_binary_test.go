@@ -83,7 +83,7 @@ func TestBinaryExitCodes(t *testing.T) {
 		{[]string{"sync", "--endpoint", "h:445"}, 2},
 		{[]string{"sync", "--endpoint", "h", "--dest", "d"}, 2},
 		// A history folder inside the destination is refused before any connection.
-		{[]string{"sync", "--endpoint", "h:445", "--dest", "d", "--state-dir", "d"}, 1},
+		{[]string{"sync", "--endpoint", "h:445", "--dest", "d", "--history-dir", "d"}, 1},
 		// find's stdout is its listing, so a failed find leaves it empty.
 		{[]string{"find", "--endpoint", "127.0.0.1:1"}, 1},
 	} {

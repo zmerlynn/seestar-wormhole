@@ -184,7 +184,7 @@ func TestFindStatuses(t *testing.T) {
 {"path":"MyWorks/d.fit","type":"file","size":3,"mtime":"2026-11-01T05:04:05.1234567Z","status":"new"}
 `},
 	} {
-		code, stdout, stderr := find(t, "--dest", dest, "--state-dir", stateDir, "--format", tc.format)
+		code, stdout, stderr := find(t, "--dest", dest, "--history-dir", stateDir, "--format", tc.format)
 		if code != exitOK || stdout != tc.want {
 			t.Errorf("%s: exit %d, stdout:\n%s\nwant:\n%s\n%s", tc.format, code, stdout, tc.want, stderr)
 		}
@@ -234,7 +234,7 @@ func TestFindJSONLStrings(t *testing.T) {
 func TestFindMissingDestination(t *testing.T) {
 	statusDevice(t)
 	dest, stateDir := filepath.Join(t.TempDir(), "dest"), filepath.Join(t.TempDir(), "state")
-	code, stdout, stderr := find(t, "--dest", dest, "--state-dir", stateDir)
+	code, stdout, stderr := find(t, "--dest", dest, "--history-dir", stateDir)
 	if code != exitOK || strings.Count(stdout, " new ") != 5 || strings.Contains(stdout, " copied ") {
 		t.Errorf("exit %d, stdout:\n%s\n%s", code, stdout, stderr)
 	}
@@ -254,7 +254,7 @@ func TestFindMissingDestinationWithState(t *testing.T) {
 	if err := os.Remove(dest); err != nil {
 		t.Fatal(err)
 	}
-	code, stdout, stderr := find(t, "--dest", dest, "--state-dir", stateDir)
+	code, stdout, stderr := find(t, "--dest", dest, "--history-dir", stateDir)
 	want := `d 0 2026-10-31T01:00:00Z - MyWorks
 - 0 2026-11-01T05:04:05.1234567Z new MyWorks/<x>&.fit
 - 3 2026-11-01T05:04:05.1234567Z copied MyWorks/a.fit
@@ -406,7 +406,7 @@ not json
 	if err := os.WriteFile(p, []byte(data), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	code, stdout, stderr := find(t, "--dest", dest, "--state-dir", stateDir)
+	code, stdout, stderr := find(t, "--dest", dest, "--history-dir", stateDir)
 	if dials, _ := dev.counts(); code != exitFailure || stdout != "" || dials != 0 || !strings.Contains(stderr, "line 2: jsontext: invalid character") {
 		t.Errorf("exit %d, stdout %q, dials %d; want 1, none, 0\n%s", code, stdout, dials, stderr)
 	}
@@ -474,8 +474,8 @@ func TestFindUsage(t *testing.T) {
 		{[]string{"find", "--endpoint", "h:445", "--older-than", "7"}, "--older-than", "use a duration such as 36h, or whole days such as 7d"},
 		{[]string{"find", "--endpoint", "h:445", "--older-than", "-1h"}, "--older-than", "must not be negative"},
 		{[]string{"find", "--endpoint", "h:445", "--dest="}, "--dest", "must not be empty; omit it to list without a status"},
-		{[]string{"find", "--endpoint", "h:445", "--dest", "d", "--state-dir="}, "--state-dir", "must not be empty; omit it for the default"},
-		{[]string{"find", "--endpoint", "h:445", "--state-dir", "s"}, "--state-dir", "give --dest with it; find reads a state file only for a destination"},
+		{[]string{"find", "--endpoint", "h:445", "--dest", "d", "--history-dir="}, "--history-dir", "must not be empty; omit it for the default"},
+		{[]string{"find", "--endpoint", "h:445", "--history-dir", "s"}, "--history-dir", "give --dest with it; find reads a state file only for a destination"},
 		{[]string{"find", "--endpoint", "h:445", "--include", "a/"}, "--include", "omit the trailing /; a pattern matches files and folders"},
 		{[]string{"find", "--endpoint", "h:445", "--exclude", "[a]"}, "--exclude", `[ and \ are not supported; use * and ?, and / between folders`},
 		{[]string{"find", "--endpoint", "h:445", "--once"}, "--once", "unknown flag"},
