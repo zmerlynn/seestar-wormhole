@@ -249,7 +249,7 @@ func TestCopyFailures(t *testing.T) {
 	}
 }
 
-// A temporary file left by a failed cleanup after New ran is removed before
+// A temporary file left by a failed cleanup after Sweep ran is removed before
 // the download creates its own; if it is a symbolic link, what it points to
 // is left alone.
 func TestCopyRemovesOldTempFile(t *testing.T) {

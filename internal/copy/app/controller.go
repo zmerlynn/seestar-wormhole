@@ -39,7 +39,7 @@ const (
 	stCopying     = "copying"
 	stUpToDate    = "uptodate"    // waiting after a pass with no failures
 	stFailures    = "failures"    // waiting after a pass with failed files
-	stListFail    = "listfail"    // waiting after a listing failed
+	stListFail    = "listfail"    // waiting after a listing failed, or a pass skipped for a busy folder
 	stUnreachable = "unreachable" // waiting after the connection failed
 	stStopping    = "stopping"
 	stStopped     = "stopped" // stopped during a pass's downloads
@@ -68,7 +68,7 @@ var errOtherTelescope = errors.New("the connection now reaches another telescope
 // the network or the log.
 type controller struct {
 	parent   context.Context
-	stateDir string
+	stateDir string       // the default history folder
 	log      *slog.Logger // the loop's: it also feeds activity
 	activity *activity
 	// dial opens a pass's session; tests replace it.
@@ -162,7 +162,7 @@ func (c *controller) start(set Settings, t Target) error {
 	interval := time.Duration(set.IntervalMinutes) * time.Minute
 	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, once: set.Once, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
-		Endpoint: set.Address, Dest: set.Folder, StateDir: c.stateDir, Selector: sel, Interval: interval, Once: set.Once,
+		Endpoint: set.Address, Dest: set.Folder, StateDir: set.historyDir(c.stateDir), Selector: sel, Interval: interval, Once: set.Once,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: c.dialPass, Hooks: c.hooks(ctx), CheckNow: c.checkNow, Recreate: true,
 	}
@@ -255,7 +255,7 @@ func (c *controller) finish(err error) {
 		err = c.ended
 	}
 	switch {
-	case errors.Is(err, state.ErrLocked):
+	case errors.Is(err, state.ErrLocked), errors.Is(err, state.ErrFolderLocked):
 		st.state = stInUse
 	case st.state == stDone && !c.stopping:
 		// A copy once's check ended the loop; the state words how,
@@ -477,6 +477,8 @@ func (c *controller) hooks(ctx context.Context) engine.Hooks {
 			st.next = time.Now().Add(st.interval)
 			st.passErr = sum.Err
 			switch {
+			case errors.Is(sum.Err, state.ErrFolderLocked):
+				st.state = stListFail
 			case sum.Err != nil && st.unreachable:
 				st.state = stUnreachable
 			case sum.Err != nil:
@@ -645,6 +647,10 @@ func (c *controller) view(now time.Time) copyView {
 		}
 	case stListFail:
 		v.Title = "Couldn't read " + unread(st.passErr) + "."
+		if errors.Is(st.passErr, state.ErrFolderLocked) {
+			// A pass after the first was skipped.
+			v.Title = "Another copy or delete is using this folder."
+		}
 		v.Text = "No files were copied. Trying again at " + at(st.next) + "."
 	case stUnreachable:
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."
@@ -692,8 +698,8 @@ func (c *controller) view(now time.Time) copyView {
 		}
 		v.Text = strings.Join(parts, " ")
 	case stInUse:
-		v.Title = "Another copy is already using this folder."
-		v.Text = "It's in another seestar-wormhole window or seestar-wormhole-cli sync. Stop that copy, then start copying here."
+		v.Title = "Another copy or delete is using this folder."
+		v.Text = "It's in another seestar-wormhole window, or a seestar-wormhole-cli sync or delete. Stop it, then start copying here."
 	case stCantWrite:
 		// Only a refused write in the folder names it as the cause.
 		switch {

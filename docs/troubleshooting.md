@@ -112,6 +112,38 @@ seestar-wormhole leaves the file untouched. Default locations are:
   `~/.config/seestar-wormhole/config.json` when that variable is unset.
 - Windows: `%AppData%\seestar-wormhole\config.json`
 
+This covers `config.json`. A refused `copy.json` doesn't stop the app; see
+the next section.
+
+## Copy is off and names copy.json
+
+**Copy, Browse and Free up space are off: the saved Copy settings couldn't be
+loaded safely.** The note under the tabs names the refused `copy.json`, which a
+newer version of the app may have written, or which was edited by hand. The
+connection and the proxy work as usual. seestar-wormhole doesn't change the
+file. Fix or remove it, then reopen seestar-wormhole: without the file, Copy
+starts from its default settings, which you then save again. See
+[copy.json](ui.md#copyjson-version-1) for what it may hold.
+
+## Another copy or delete is using this folder
+
+Copy, Free up space, a Browse save into the images folder, `sync` and
+`delete --force` each take the folder's lock file,
+`.seestar-wormhole.lock`, while they write there, so two of them can't write
+into one folder at once. The message, or a `sync failed` or `delete failed`
+line naming that file, means something else holds it: another
+seestar-wormhole window, a `seestar-wormhole-cli sync` or `delete`, or a
+Copy check that is running. Let it finish or stop it, then try again. A
+running `sync` or Copy only skips a check while the lock is held (`pass
+skipped` with `reason=folder_busy`) and tries again at the next one. The
+file itself is empty and harmless; don't remove it. See
+[the folder lock](copy-reference.md#the-folder-lock).
+
+**`pass failed` with `reason=destination_missing`.** The folder `sync`
+opened was removed while it ran. Restart `sync` with the folder you want;
+creating a replacement at the same path does not reconnect the running
+sync. Renaming the folder keeps copying into it under its new name.
+
 ## The OS keychain is unavailable
 
 A locked keychain, missing desktop session, or unavailable Secret Service can

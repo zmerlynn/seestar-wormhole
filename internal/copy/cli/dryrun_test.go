@@ -59,6 +59,31 @@ func snapshot(t *testing.T, root string) map[string]string {
 	return got
 }
 
+// lockedSnapshot is snapshot of root after a run that wrote there: with
+// locked, root holds the folder lock file, an empty regular file of mode
+// 0600 that the snapshot then leaves out; without it, root holds none.
+func lockedSnapshot(t *testing.T, root string, locked bool) map[string]string {
+	t.Helper()
+	got := snapshot(t, root)
+	lock := filepath.Join(root, plan.LockName)
+	desc, ok := got[lock]
+	switch {
+	case locked && !ok:
+		t.Errorf("no folder lock file %s", lock)
+	case !locked && ok:
+		t.Errorf("a folder lock file %s, want none", lock)
+	case ok && !strings.HasSuffix(desc, " "+emptySum):
+		t.Errorf("folder lock file %s: %q, want an empty file", lock, desc)
+	case ok && runtime.GOOS != "windows" && !strings.HasPrefix(desc, "-rw------- "):
+		t.Errorf("folder lock file %s: %q, want mode 0600", lock, desc)
+	}
+	delete(got, lock)
+	return got
+}
+
+// emptySum is the SHA-256 of no bytes.
+const emptySum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
 // A dry run with no destination and no state directory reports what it
 // would copy, exits 0, and creates neither. --once with it is allowed.
 func TestDryRunCreatesNothing(t *testing.T) {

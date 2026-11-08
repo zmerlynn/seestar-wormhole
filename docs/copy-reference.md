@@ -57,6 +57,7 @@ deletes anything in the destination either, except its own
 | `--first-pass-age` | `10m` | On the first pass, a file counts as finished only if its device mtime is at least this old. Zero or more. See [readiness](#readiness). |
 | `--workers` | `4` | Files copied at once, `1` to `64`. All of them share one SMB session. |
 | `--history-dir` | the per-user config folder's `seestar-copy` | The copy history folder, which holds the state file. See [location](#location). It must not be empty when given. Earlier releases called it `--state-dir`, which is now refused. |
+| `--profile` | none: no saved settings are read | `default` fills the flags not given from the app's saved settings. Only `default` exists. See [use the app's saved settings](#use-the-apps-saved-settings). |
 | `--log-format` | `text` | `text` or `json` log lines on stderr. See [logs](#logs). |
 | `--log-level` | `info` | The lowest level logged: `debug`, `info`, `warn` or `error`. |
 
@@ -80,6 +81,68 @@ goes in brackets, such as `[2001:db8::10]:445`. The port must be 1 to 65535.
 Each pass opens its own session and closes it before the wait, so the
 telescope's share is free between passes. A failed connection fails that pass
 only; see [a failed pass](#a-failed-pass).
+
+### Use the app's saved settings
+
+`--profile default` fills each flag not given from what the app saved: its
+Copy settings, [`copy.json`](ui.md#copyjson-version-1), and its connection,
+[`config.json`](ui.md#configjson-version-1), in the app's state folder
+without `--state-dir`. It is on `sync`, `find`, `browse` and `delete`, and
+`default` is the only profile; any other name exits 2 before any file is
+read. An app run with `ui --state-dir PATH` keeps its settings outside the
+default profile. Without `--profile`, the file commands read neither file.
+
+```text
+seestar-wormhole-cli sync --profile default
+seestar-wormhole-cli find --profile default --format jsonl
+seestar-wormhole-cli delete --profile default --older-than 14d
+seestar-wormhole-cli sync --profile default --exclude '*.mp4'
+```
+
+A flag given on the command line always wins, and one `--exclude` or
+`--include` replaces the whole saved list. A filled flag is not a given one
+for the rules that refuse a combination: a saved interval with `--dry-run`
+is accepted, and a saved Copy once gives way to a given `--once`,
+`--interval` or `--dry-run`. A filled `--dest` gives find and browse their
+statuses, as a given one does.
+
+| Saved | sync | find | browse | delete |
+| --- | --- | --- | --- | --- |
+| Folder for your images, `folder` | `--dest` | `--dest` | `--dest` | `--dest`, not with `--ignore-state` |
+| **Copy history folder**, `history_dir` | `--history-dir` | `--history-dir` | `--history-dir` | `--history-dir`, not with `--ignore-state` |
+| The connection | `--endpoint` | `--endpoint` | `--endpoint` | `--endpoint` |
+| **Leave out** and **Only copy**, `excludes` and `includes` | `--exclude`, `--include` | the same | the same, with a destination | never |
+| The built-in patterns off, `skip_built_in: false` | `--no-default-excludes` | the same | the same, with a destination | never |
+| `interval_minutes` | `--interval` | | | |
+| `once: true` | `--once` | | | |
+| **Files at once**, `files_at_once` | `--workers` | | | |
+
+delete takes only where to act: Free up space's patterns, its age and
+**Trust the copy history** are never applied, so give the selection, the
+proof and `--older-than` on the command line. `start_copying` is ignored.
+
+The endpoint comes from the saved connection alone. On this network it is
+the saved address. Through the account it is the
+[SMB listener](reference.md#port-mappings) for telescope port 445 on the
+saved bind address, or on `127.0.0.1` for a wildcard bind, `127.0.0.1:4445`
+by default, and something must be serving it: the app connected with
+**File sharing for other apps (SMB)** on, or `proxy --config`. The file
+commands never start a connection. With no usable `config.json`, no saved
+address, or that service off, `--endpoint` is not filled and is required as
+usual; if nothing listens, the run fails with exit 1.
+
+At the start of the run, one `INFO` record, `saved settings`, names the
+filled flags and none of their values, such as
+`profile=default filled=--dest,--history-dir,--endpoint,--interval,--workers`.
+Neither file is written or locked, and both are read with the app's own
+checks. Each refusal exits 2 with `option=--profile`:
+
+| Case | rule |
+| --- | --- |
+| A name other than `default` | `only default exists in this version` |
+| No per-user config folder | `no per-user config folder for the default profile; give the flags` |
+| No `copy.json` | `no saved Copy settings; save them on the app's Copy tab, or give the flags` |
+| A `copy.json` the app refuses | `use a valid saved copy.json in the app's state folder` |
 
 ### Performance
 
@@ -126,6 +189,15 @@ folder.
 
 Only regular files are copied. Symbolic links and other special entries on
 the share are listed but neither followed nor copied.
+
+Sync and delete keep one file of their own at the top of `--dest`: the
+[folder lock](#the-folder-lock), `.seestar-wormhole.lock`, which is empty
+and stays there. A share entry at the top of the share with that name, in
+any letter case that the [name clash](#name-clashes) rules treat as the
+same, is never copied, adopted or recorded, and neither is anything under a
+folder of that name, whatever the selection says. Each pass logs one
+`reserved name` warning for them, and they don't count as failed. `find`
+and `browse` still list them.
 
 ### Selection
 
@@ -334,6 +406,14 @@ otherwise it tries another pass after `--interval`.
 A file that fails is logged and left for the next pass; the other files go on.
 There is one attempt per file per pass, and no retry loop within a pass.
 
+A pass after the first that finds the [folder lock](#the-folder-lock) held
+by another sync or a delete is skipped: it logs `pass skipped` with
+`reason=folder_busy`, connects to nothing, and sync tries again after
+`--interval`. If `--dest` is removed while sync runs, each later pass fails
+before it connects, logging `pass failed` with
+`reason=destination_missing`, and sync goes on without creating the folder
+again. Restart sync to copy into a folder created again at that path.
+
 ## Copying a file
 
 Up to `--workers` files are copied at once, over the pass's one session. Each
@@ -366,12 +446,14 @@ file's path on the share. The leading dot hides it from most file browsers,
 and the name never ends in `.fit`, so a `*.fit` pattern never matches a
 partial file.
 
-A failed or stopped download removes its temporary file. At startup, after
-taking the [lock](#lock), sync removes every leftover temporary file anywhere
-under the destination: only regular files with exactly that form of name, and
-never through a symbolic link. It does not resume partial downloads. A folder
-under the destination that sync is not allowed to read is skipped with a
-warning; any other error reading the destination stops sync with exit 1.
+A failed or stopped download removes its temporary file. At the start of
+each pass, after taking the [folder lock](#the-folder-lock), sync removes
+every leftover temporary file anywhere under the destination: only regular
+files with exactly that form of name, and never through a symbolic link. It
+does not resume partial downloads. A folder under the destination that sync
+is not allowed to read is skipped with a warning; any other error reading
+the destination stops sync with exit 1 at the first pass, and fails a later
+pass.
 
 ## The state file
 
@@ -400,6 +482,9 @@ its history:
 | Linux | `$XDG_CONFIG_HOME/seestar-copy`, or `~/.config/seestar-copy` |
 | macOS | `~/Library/Application Support/seestar-copy` |
 | Windows | `%AppData%\seestar-copy` |
+
+The app's Copy uses the same default, unless its **Copy history folder**
+names another; see [copying images](ui.md#copy).
 
 If there is no per-user config folder, sync exits 1 and asks for
 `--history-dir`. Keep the state on a local disk: shared and network folders are
@@ -477,17 +562,65 @@ moved away.
 
 ### Lock
 
-Only one sync at a time may use a destination. Sync holds an exclusive OS
-lock on `<sha256>.lock`, next to the state file, while it runs. A second sync
-for the same destination, spelled the same way and with the same
-`--history-dir`, exits 1:
+Sync takes two exclusive OS locks: the history lock for the whole run, and
+the folder lock during each pass. A lock is released when its process
+exits, however it exits. The lock files stay on disk; that is expected.
+
+#### The history lock
+
+Only one sync at a time may use a state file. Sync holds a lock on
+`<sha256>.lock`, next to the state file, while it runs. A second sync for the
+same destination, spelled the same way and with the same `--history-dir`,
+exits 1:
 
 ```text
 destination /home/user/Seestar: another sync is using this destination (lock file .../sync/<sha256>.lock)
 ```
 
-The lock is released when the process exits, however it exits. The lock files,
-and `registry.lock` in the same folder, stay on disk; that is expected.
+`registry.lock`, in the same folder, stays on disk too.
+
+#### The folder lock
+
+Every sync pass, and every `delete --force` that has a destination, takes a
+lock on `.seestar-wormhole.lock` at the top of the destination, whatever
+its `--history-dir`. A pass holds it from before it removes leftover
+[temporary files](#temporary-files) until its downloads have ended and their
+temporary files are removed, and releases it before waiting for the next
+pass, so a delete can run between passes. A delete holds it from before it
+lists the share until its last removal. The app's Copy and Free up space take
+it as sync and delete do, and the app's Browse takes it while it saves a
+file into the folder. The file is created empty with mode 0600, less the
+umask, and is never removed.
+
+If another sync, delete or the app holds it, sync's first pass exits 1, a
+later pass is [skipped](#a-failed-pass), and delete exits 1 before it lists
+the share:
+
+```text
+destination /home/user/Seestar: another copy or delete is using this folder (lock file /home/user/Seestar/.seestar-wormhole.lock)
+```
+
+The lock is in the folder, so every way of naming the folder reaches the same
+lock: a relative path, a symbolic link, a bind mount, another letter case on
+a case-insensitive volume, or a new name after the folder is renamed. It does
+not cover a destination inside another one (`A` and `A/sub`), a folder on a
+network file system whose locks don't reach other machines, a read-only view
+of a folder that is written through another path, or `seestar-copy-cli` and
+older releases of seestar-wormhole, which don't take it. Stop those before
+upgrading.
+
+A dry run, a delete preview, `delete --ignore-state` (which has no
+destination), `find` and `browse` take no folder lock. Nor does a delete
+whose destination is missing: with `--trust-state` it goes on, since it
+doesn't read the folder, and in `hash` mode it stops at its
+missing-destination error. On a read-only file system, where the lock file
+can't be created, sync exits 1, and delete goes on without the lock, with a
+`deleting without the folder lock` warning. Such a delete isn't kept apart
+from a sync that writes the same folder through a writable path, so its
+hash proof may read a file that sync is replacing. Any other error creating
+or locking the file, such as permission denied or a file system without
+locks, stops sync and delete with exit 1, naming the lock file, before
+anything is listed.
 
 ## Stopping
 
@@ -539,6 +672,9 @@ changes them says so in its notes.
 | INFO | `skipped` | `path`, `exclude` | The file or folder matches the pattern `exclude`, the first one that matched, and is left out, by a pass or by `find`. A folder has one line; what is in it is not listed. See [selection](#selection). |
 | INFO | `pass done` | see below | A pass finished. |
 | ERROR | `pass failed` | see below, and `error` | The connection or a listing failed. |
+| WARN | `pass failed` | `reason=destination_missing`, `dest` | `--dest` was removed while sync runs; see [a failed pass](#a-failed-pass). |
+| WARN | `pass skipped` | `reason=folder_busy`, `dest`, `error` | Another sync or a delete holds the [folder lock](#the-folder-lock) at a pass after the first. |
+| WARN | `reserved name` | `path`, the first such entry; `entries`, how many; `reason` | Top-level share entries named `.seestar-wormhole.lock` were left out; see [destination layout](#destination-layout). |
 | INFO | `pass stopped` | see below | A signal stopped the pass. |
 | INFO | `would copy` | `path`, `size`, and `overwrite=true` when it would replace a different local file | Dry run: the file would be downloaded and recorded as `copied`. |
 | INFO | `would replace` | `path`, `size` | Dry run: the file changed on the device and would be downloaded again. |
@@ -558,9 +694,12 @@ changes them says so in its notes.
 | ERROR | `listing failed` | as `listing done`, and `error` | The connection or a listing failed in `find`. |
 | ERROR | `find failed` | `error` | Find is exiting 1. |
 | ERROR | `sync failed`, `find failed`, `browse failed` or `delete failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. |
+| INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
 | WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
-Every pass ends with one summary line, whose keys are:
+Each pass that runs ends with one summary line, whose keys are below. A later
+check skipped for `folder_busy` or ended by `destination_missing` emits only the
+WARN record listed above, without summary counts.
 
 | Key | Meaning |
 | --- | --- |
@@ -597,8 +736,8 @@ counted, in a `diagnostics_lost` line when stderr recovers.
 | Code | Meaning |
 | --- | --- |
 | 0 | Stopped by a signal; a `--once` or `--dry-run` pass with no failed files; or help printed. |
-| 1 | A runtime failure: the destination or state could not be opened or locked, leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), output could not be written, or log lines were lost (`diagnostics_lost`). |
-| 2 | A usage error: an unknown or invalid flag, including `--state-dir` and `--version`, a missing `--endpoint` or `--dest`, an empty `--history-dir`, `--dry-run` with `--interval`, or a positional argument. |
+| 1 | A runtime failure: the destination or state could not be opened or locked (including another copy or delete holding the [folder lock](#the-folder-lock) at the first pass), leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), output could not be written, or log lines were lost (`diagnostics_lost`). |
+| 2 | A usage error: an unknown or invalid flag, including `--state-dir` and `--version`, a missing `--endpoint` or `--dest`, an empty `--history-dir`, `--dry-run` with `--interval`, a positional argument, or a refused `--profile`. |
 
 Without `--once` or `--dry-run`, failed passes and failed files do not end
 sync: it logs them and tries again on the next pass.
@@ -704,6 +843,7 @@ seestar-wormhole-cli find --endpoint 127.0.0.1:4445 --format jsonl > share.jsonl
 | `--format` | `text` | `text` or `jsonl`. See [text format](#text-format) and [JSONL format](#jsonl-format). |
 | `--dest` | none | A destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
 | `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](#location). Only with `--dest`, and it must not be empty when given. |
+| `--profile` | none | As for sync: `default` fills the destination, history, endpoint and selection not given. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 
 `--older-than` takes a Go duration, such as `36h` or `90m`, or a whole number
@@ -842,7 +982,7 @@ time=2026-11-09T09:00:01.502Z level=INFO msg="listing done" files=212 folders=9 
 | --- | --- |
 | 0 | The listing is complete. |
 | 1 | The state could not be read, the connection or a listing failed (`connect to ...` or `list the share: ...`), the output could not be written, or a signal stopped find before it wrote the whole listing. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--format` or `--older-than`, an empty `--dest` or `--history-dir`, `--history-dir` without `--dest`, or a positional argument. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--format` or `--older-than`, an empty `--dest` or `--history-dir`, `--history-dir` without `--dest`, a positional argument, or a refused `--profile`. |
 
 ## browse
 
@@ -883,6 +1023,7 @@ the port browse listens on.
 | `--open` | off | Also open the page in the default browser. The URL is printed either way. |
 | `--dest` | none | As for find: a destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
 | `--history-dir` | as for sync | As for find: the folder that holds the state file of `--dest`. Only with `--dest`, and it must not be empty when given. |
+| `--profile` | none | As for sync: `default` fills the destination, history and endpoint not given, and the selection with a destination. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--exclude`, `--no-default-excludes`, `--include` | as for sync | The [selection](#selection) whose left-out files and folders show [`left out`](#left-out-in-browse). Only with `--dest`. |
 
@@ -1036,7 +1177,7 @@ time=2026-11-09T09:01:12.950Z level=INFO msg="session closed" endpoint=127.0.0.1
 | --- | --- |
 | 0 | Stopped by a signal. |
 | 1 | Browse could not start or keep serving: the address could not be listened on, the state of `--dest` could not be read when browse started, the URL could not be written to stdout, or the HTTP server stopped with an error. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--history-dir`, `--history-dir` or a selection flag without `--dest`, a bad pattern, or a positional argument. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--history-dir`, `--history-dir` or a selection flag without `--dest`, a bad pattern, a positional argument, or a refused `--profile`. |
 
 ## delete
 
@@ -1069,6 +1210,7 @@ seestar-wormhole-cli delete --endpoint 127.0.0.1:4445 --ignore-state --include '
 | `--endpoint` | none; required | As for sync. See [endpoint](#endpoint). |
 | `--dest` | none; required, except with `--ignore-state`, which refuses it | The destination whose [state](#the-state-file), and by default whose local copies, prove that a file was copied. It is never created. It must be the destination of **this** telescope; see [what the proof does not show](#what-the-proof-does-not-show). |
 | `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](#location). Refused with `--ignore-state`, and it must not be empty when given. |
+| `--profile` | none | As for sync, but `default` fills only the destination and history, not with `--ignore-state`, and the endpoint; never the selection, proof or age. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--trust-state` | off | Prove a file by its state record alone, without reading the local copy. Use it when the copies were moved out of `--dest` or the drive is offline. |
 | `--ignore-state` | off | Read no state, and delete every selected file that is old enough, whether or not it was copied. Needs at least one `--include`. |
@@ -1168,8 +1310,11 @@ stay cleared.
 
 ### delete and sync
 
-Delete takes no [lock](#lock) and never writes the state file, so it can run
-while a sync uses the same destination. It reads the state as a sync
+Delete never takes the [history lock](#the-history-lock) and never writes
+the state file, so it can run while a sync uses the same destination. With
+`--force` it takes the [folder lock](#the-folder-lock), which a sync holds
+only during a pass: it runs between passes, and exits 1 if a pass, another
+delete or the app holds it. It reads the state as a sync
 [dry run](#dry-run) does: a torn final line is logged and ignored. A file
 deleted from the device stays recorded, so the next pass neither copies nor
 fails it. A new file the telescope later writes at that path has a new mtime,
@@ -1211,6 +1356,7 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | Message | Meaning |
 | --- | --- |
 | `deletion starting` | The proof mode, the age limit and whether this is a preview (`dry_run`). |
+| `deleting without the folder lock` | A WARN, with `dest` and `reason`: the destination is on a read-only file system, so the run goes on without the [folder lock](#the-folder-lock). |
 | `file deleted`, `folder removed` | Removed from the device. |
 | `file kept`, `folder kept` | Not removed, with the reason; see [how delete decides](#how-delete-decides). |
 | `file failed`, `folder failed` | A failure, with the reason. |
@@ -1233,8 +1379,8 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | Code | Meaning |
 | --- | --- |
 | 0 | The run or preview finished with no failed file, however many it kept; or a signal stopped it. |
-| 1 | The state could not be read; `--dest` is missing in `hash` mode; the connection or listing failed (`connect to ...` or `list the share: ...`); a removal failed on the device, which ends the run (`deletion failed`); or a local copy could not be read (`failed files: N`). A rerun lists the share again and carries on. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, `--dest` missing without `--ignore-state`, `--trust-state` with `--ignore-state`, `--ignore-state` without `--include` or with `--dest` or `--history-dir`, `--force` with `--dry-run`, a bad `--older-than`, an empty `--history-dir`, or a positional argument. |
+| 1 | The state could not be read; `--dest` is missing in `hash` mode; with `--force`, the [folder lock](#the-folder-lock) is held or can't be taken; the connection or listing failed (`connect to ...` or `list the share: ...`); a removal failed on the device, which ends the run (`deletion failed`); or a local copy could not be read (`failed files: N`). A rerun lists the share again and carries on. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, `--dest` missing without `--ignore-state`, `--trust-state` with `--ignore-state`, `--ignore-state` without `--include` or with `--dest` or `--history-dir`, `--force` with `--dry-run`, a bad `--older-than`, an empty `--history-dir`, a positional argument, or a refused `--profile`. |
 
 > **Warning.** With `--ignore-state`, delete removes whatever is selected,
 > whether or not it was copied. With `--older-than 0` as well, that includes

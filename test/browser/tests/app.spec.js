@@ -70,9 +70,11 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(field(page, 'Folder for your images')).toHaveValue(path.join(app.home, 'Seestar'));
   await expect(field(page, 'Leave out')).toBeVisible();
   await expect(page.getByLabel('Start copying when the app opens')).not.toBeChecked();
-  for (const box of await page.locator('#copy-form input, #copy-form textarea').all()) {
+  // The one placeholder is the history folder's default, not an example.
+  for (const box of await page.locator('#copy-form input:not(#f-hist), #copy-form textarea').all()) {
     expect(await box.getAttribute('placeholder')).toBeNull();
   }
+  await expect(field(page, 'Copy history folder')).toHaveAttribute('placeholder', /[/\\]seestar-copy$/);
   await expect(page.locator('#f-ex-help')).toContainText('For example: Video, /Preview.');
   await expect(page.locator('#f-cancel')).toBeHidden();
   // Browse shows the telescope's files before the folder is saved,
@@ -530,7 +532,7 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
   expect(readJSON(app.copyFile)).toEqual({
     version: 1, folder: app.folder, interval_minutes: 30,
     excludes: ['Video', '/Preview'], includes: ['MyWorks'], skip_built_in: false, start_copying: false, once: false,
-    files_at_once: 4, older_than_days: 7, trust_state: false, free_excludes: [], free_includes: [],
+    files_at_once: 4, older_than_days: 7, trust_state: false, free_excludes: [], free_includes: [], history_dir: '',
     later: { kept: true },
   });
   // Activity shows both files, and the copy settings saved.
@@ -890,6 +892,48 @@ test('Copy history shows its file, with a Copy button, and an edited folder says
   await expect(page.locator('#h-saved')).toBeVisible();
   await expect(history).not.toHaveText(first);
   await expect(history).toHaveText(/\.jsonl$/);
+});
+
+test('Copy history folder is empty for the default, refuses a relative path, and a saved one holds the history', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await page.getByText('Copy history', { exact: true }).click();
+  const history = page.locator('#h-path');
+  await expect(history).toHaveText(/^\/.*[/\\]seestar-copy[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
+  const first = await history.textContent();
+  await page.getByRole('button', { name: 'Change…' }).click();
+  const hist = field(page, 'Copy history folder');
+  await expect(hist).toHaveValue('');
+  // The placeholder is the default folder, the one the history file is in.
+  await expect(hist).toHaveAttribute('placeholder', first.replace(/[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/, ''));
+  await expect(page.locator('#f-hist-help')).toContainText('A different folder starts a fresh history');
+  // The help names no folder of its own: the default differs by system.
+  await expect(page.locator('#f-hist-help')).toContainText('Leave empty to use the default folder shown in this field, which seestar-wormhole-cli sync uses too.');
+  await expect(page.locator('#f-hchoose')).toBeHidden();
+  // Each Choose… names its field for a screen reader's list of buttons.
+  for (const [name, id] of [['Choose folder for your images', 'f-choose'], ['Choose copy history folder', 'f-hchoose']]) {
+    await expect(page.getByRole('button', { name, exact: true, includeHidden: true })).toHaveAttribute('id', id);
+  }
+
+  await hist.fill('history');
+  await expect(page.locator('#h-unsaved')).toBeVisible();
+  await copySave(page).click();
+  await expect(page.locator('#f-hist-err')).toHaveText('Use a full path to a folder outside the folder for your images, or leave it empty for the default.');
+  await expect(hist).toHaveAttribute('aria-invalid', 'true');
+  await expect(hist).toBeFocused();
+  expect(readJSON(app.copyFile).history_dir).toBeUndefined();
+
+  // A folder from the window's picker fills the field.
+  const chosen = path.join(app.home, 'history');
+  await page.route('**/copy/api/folder', (route) => route.fulfill({ json: { folder: chosen } }));
+  await page.locator('#f-hchoose').dispatchEvent('click');
+  await expect(hist).toHaveValue(chosen);
+  await copySave(page).click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await expect(page.locator('#f-hist-err')).toBeHidden();
+  await expect(page.locator('#h-saved')).toBeVisible();
+  await expect(history).toHaveText(new RegExp('^' + chosen.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&') + '[/\\\\]sync[/\\\\][0-9a-f]{64}\\.jsonl$'));
+  expect(readJSON(app.copyFile)).toMatchObject({ version: 1, folder: '/nowhere', history_dir: chosen, later: { kept: true } });
 });
 
 for (const colorScheme of ['light', 'dark']) {

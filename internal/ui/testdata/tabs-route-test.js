@@ -229,3 +229,18 @@ async function checkLANForm(statuses, replies, scenario) {
   default: throw new Error('unknown LAN scenario ' + scenario);
   }
 }
+
+// A refused copy.json keeps Copy, Browse and Free up space off with its
+// own note, naming the file, in place of the usual one.
+async function checkCopyRefused(status) {
+  initialized = connected = true;
+  load(status.settings);
+  render(status);
+  tabAssert(!$('copy-refused').hidden && $('tabs-note').hidden, 'the refused note does not replace the usual one');
+  tabAssert($('copy-refused').textContent.includes("the saved Copy settings couldn't be loaded safely") && $('copy-refused-path').textContent === status.files.copy, 'the refused note does not name the file');
+  for (const tab of ['copy', 'browse', 'free']) {
+    tabAssert($('tab-' + tab).disabled && $('tab-' + tab).getAttribute('aria-describedby') === 'copy-refused', tab + ' is not a disabled tab with the refused note');
+  }
+  render({...status, copy_refused: false});
+  tabAssert($('copy-refused').hidden && !$('tabs-note').hidden && $('tab-copy').getAttribute('aria-describedby') === 'tabs-note', 'the usual note did not come back');
+}

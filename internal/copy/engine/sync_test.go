@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -21,6 +22,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // oldMTime is the device mtime of the test files: old enough to copy.
@@ -323,7 +325,8 @@ func TestCheckNow(t *testing.T) {
 
 // With Recreate, a destination removed between passes is created again,
 // and a later pass copies a new file there, while the state stays open
-// and locked. Without it, as in the CLI, the new file fails.
+// and locked. Without it, as in the CLI, each later pass fails as
+// destination missing, copying nothing, and the loop goes on.
 func TestRecreate(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows refuses to remove a folder the copier has open, so it can't go missing while copying is on")
@@ -367,8 +370,23 @@ func TestRecreate(t *testing.T) {
 			}
 			// A new file waits one pass to be seen unchanged.
 			files["MyWorks/b.jpg"] = file("b")
+			// Without Recreate, the pinned root is gone, so each later
+			// pass fails before it lists the share.
+			missing := func(pass string, s Summary) {
+				t.Helper()
+				if !errors.Is(s.Err, errDestMissing) || s.Copied != 0 || s.Waiting != 0 || len(s.Failed) != 0 {
+					t.Fatalf("%s pass: got %+v, want a destination-missing pass with nothing copied, waiting or failed", pass, s)
+				}
+				// The cause stays in the chain, so the failure is classed
+				// as not_found rather than unknown.
+				if !errors.Is(s.Err, fs.ErrNotExist) || diagnostic.Class(s.Err) != "not_found" {
+					t.Fatalf("%s pass: got %v (class %q), want fs.ErrNotExist classed not_found", pass, s.Err, diagnostic.Class(s.Err))
+				}
+			}
 			press()
-			if s := next(); s.Waiting != 1 {
+			if s := next(); !recreate {
+				missing("second", s)
+			} else if s.Waiting != 1 {
 				t.Fatalf("second pass: got %+v, want b.jpg waiting", s)
 			}
 			press()
@@ -381,8 +399,11 @@ func TestRecreate(t *testing.T) {
 				if s.Copied != 1 || len(s.Failed) != 0 || statErr != nil {
 					t.Errorf("third pass: got %+v and stat %v, want b.jpg copied", s, statErr)
 				}
-			} else if len(s.Failed) != 1 || statErr == nil {
-				t.Errorf("third pass: got %+v and stat %v, want b.jpg failed and absent", s, statErr)
+			} else {
+				missing("third", s)
+				if statErr == nil {
+					t.Error("b.jpg was copied, want it absent")
+				}
 			}
 			cancel()
 			select {

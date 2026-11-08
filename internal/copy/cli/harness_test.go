@@ -46,7 +46,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	root.SetOut(stdout)
 	root.SetErr(io.Discard)
 	root.SetFlagErrorFunc(flagError)
-	commands := Commands(programName)
+	commands := Commands(programName, testProfile)
 	for _, c := range commands {
 		root.AddCommand(c.Command)
 	}

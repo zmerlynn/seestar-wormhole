@@ -15,15 +15,28 @@ import (
 // there: the next pass adopts the files still in dest and copies again the
 // rest. It takes dest's lock for the removal, so it fails with an error
 // wrapping [ErrLocked] while a sync uses dest. A missing state file is not an
-// error. The lock file stays, as it always does.
+// error. The lock file stays, as it always does. As for [Open], a state
+// directory that resolves inside an existing dest is refused before
+// anything is created or removed.
 func Remove(stateDir, dest string) error {
 	readonly.Check("state.Remove")
 	path, absDest, err := resolve(stateDir, dest)
 	if err != nil {
 		return err
 	}
+	syncDir := filepath.Dir(path)
+	switch _, err := os.Stat(absDest); {
+	case errors.Is(err, fs.ErrNotExist):
+		// Nothing can be inside a destination that doesn't exist.
+	case err != nil:
+		return fmt.Errorf("destination: %w", err)
+	default:
+		if err := checkOutside(absDest, filepath.Dir(syncDir), syncDir); err != nil {
+			return err
+		}
+	}
 	lockPath := strings.TrimSuffix(path, ".jsonl") + ".lock"
-	if _, err := os.Stat(filepath.Dir(path)); errors.Is(err, fs.ErrNotExist) {
+	if _, err := os.Stat(syncDir); errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
 	lock, err := lockFile(lockPath, false)

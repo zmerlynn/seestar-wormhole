@@ -73,6 +73,10 @@ with code 2 and a fixed message; keychain reads have the three-second bound.
 This command never writes settings or takes or writes `ui.lock`. GUI and
 headless runs still follow the account's one-session rule.
 
+The file commands take the app's saved Copy settings with `--profile default`,
+such as `seestar-wormhole-cli sync --profile default`; see
+[use the app's saved settings](copy-reference.md#use-the-apps-saved-settings).
+
 On macOS, a launchd user agent works in the user's login session and may prompt
 once to allow keychain access; choosing Always Allow permits later reads.
 On Windows, scheduled tasks can read Credential Manager as the same user while

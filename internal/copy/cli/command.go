@@ -31,9 +31,10 @@ func (c *Command) store(readOnly bool, run func(context.Context, io.Writer, *slo
 	c.ReadOnly, c.Run = readOnly, run
 }
 
-// Commands returns the file commands of program, in help order.
-func Commands(program string) []*Command {
-	return []*Command{NewSync(program), NewFind(program), NewBrowse(program), NewDelete(program)}
+// Commands returns the file commands of program, in help order. load reads
+// --profile default; nil means the program has none.
+func Commands(program string, load LoadProfile) []*Command {
+	return []*Command{NewSync(program, load), NewFind(program, load), NewBrowse(program, load), NewDelete(program, load)}
 }
 
 // ValueRule returns the rule for a file-command flag value of type typ that

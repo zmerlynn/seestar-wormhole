@@ -60,7 +60,7 @@ func TestWritesPanicWhenReadOnly(t *testing.T) {
 	t.Cleanup(readonly.Reset)
 	d := decision(plan.Copy, "MyWorks/b.fit", 3)
 	for name, f := range map[string]func(){
-		"copier.New":         func() { New(fx.dest, fx.st, nil) },
+		"copier.Sweep":       func() { c.Sweep() },
 		"copier.removeTemps": func() { removeTemps(c.root, nil) },
 		"copier.Run":         func() { c.Run(t.Context(), device(nil), 1, []plan.Decision{d}, func(Result) {}) },
 		"copier.download":    func() { c.download(t.Context(), device(nil), d, "copied") },

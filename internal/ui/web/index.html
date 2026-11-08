@@ -15,6 +15,7 @@
 <button id="tab-activity" type="button" role="tab" aria-controls="panel-activity" aria-selected="false" tabindex="-1">Activity</button>
 </div>
 <p id="tabs-note" class="help">Copy, Browse and Free up space open once you connect remotely through Telescope Network, or Save an address on this network.</p>
+<p id="copy-refused" class="notice err" hidden><strong>Copy, Browse and Free up space are off: the saved Copy settings couldn't be loaded safely.</strong> Fix or remove this file, then reopen seestar-wormhole. The app doesn't change it. <code id="copy-refused-path"></code></p>
 <p id="copy-reach" class="notice" hidden><span id="copy-reach-text"></span> <button id="copy-reach-go" class="linkbtn" type="button"></button></p>
 <p id="lost" class="notice err" role="alert" hidden><span id="lost-text"></span> <span id="last-known" hidden></span></p>
 <section id="panel-connection" role="tabpanel" aria-labelledby="tab-connection">
@@ -133,9 +134,13 @@
 <form id="copy-form" novalidate hidden>
 <fieldset id="f-set">
 <label for="f-folder">Folder for your images</label>
-<div class="inline"><input id="f-folder" type="text" class="mono" spellcheck="false" autocomplete="off" aria-describedby="f-folder-help f-folder-err"><button type="button" id="f-choose" hidden>Choose…</button></div>
+<div class="inline"><input id="f-folder" type="text" class="mono" spellcheck="false" autocomplete="off" aria-describedby="f-folder-help f-folder-err"><button type="button" id="f-choose" aria-label="Choose folder for your images" hidden>Choose…</button></div>
 <p class="error" id="f-folder-err" role="alert" hidden></p>
 <p class="help" id="f-folder-help">Type the folder's full path. Images are copied here, in the same folders as on the telescope. Each folder has its own copy history: a new folder starts a new one, so everything on the telescope is copied there, and files already there are reused.</p>
+<label for="f-hist">Copy history folder</label>
+<div class="inline"><input id="f-hist" type="text" class="mono" spellcheck="false" autocomplete="off" aria-describedby="f-hist-help f-hist-err"><button type="button" id="f-hchoose" aria-label="Choose copy history folder" hidden>Choose…</button></div>
+<p class="error" id="f-hist-err" role="alert" hidden></p>
+<p class="help" id="f-hist-help">Leave empty to use the default folder shown in this field, which <code>seestar-wormhole-cli sync</code> uses too. A different folder starts a fresh history: files still in your images folder are checked and recorded again, files you moved out of it are copied again, and Free up space can't use the old history to prove that older copies are safe.</p>
 <div class="check strong wrap"><input type="checkbox" id="f-repeat" aria-describedby="f-repeat-help"><label for="f-repeat">Check for new files every</label><input type="number" id="f-int" min="1" max="1440" aria-label="Minutes between checks" aria-describedby="f-int-err"><span>minutes</span></div>
 <p class="help" id="f-repeat-help">Turn this off to copy once: Start copying then copies what's new and stops.</p>
 <p class="error" id="f-int-err" role="alert" hidden></p>

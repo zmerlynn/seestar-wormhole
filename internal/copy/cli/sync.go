@@ -20,6 +20,7 @@ import (
 const maxWorkers = 64
 
 type syncOptions struct {
+	profile   profileFlag
 	endpoint  string
 	dest      string
 	selection selectionFlags
@@ -37,7 +38,7 @@ type syncOptions struct {
 }
 
 // NewSync returns the sync command of program.
-func NewSync(program string) *Command {
+func NewSync(program string, load LoadProfile) *Command {
 	var o syncOptions
 	c := &Command{}
 	c.Command = &cobra.Command{
@@ -48,6 +49,9 @@ Each pass lists the whole share, except what an --exclude pattern matches,
 copies files that are new or changed on the device, and records them in a
 copy history under --history-dir, so a file moved out of --dest is not copied
 again. Passes repeat every --interval until Ctrl+C, or run once with --once.
+Each pass holds the lock file .seestar-wormhole.lock in --dest, which stays
+there: if another sync or a delete holds it, the first pass exits 1 and a
+later pass is skipped. A top-level share entry of that name is not copied.
 The telescope is never written to. --dry-run runs one pass that only logs
 what it would copy, replace, adopt or skip, and changes nothing on disk.
 An --exclude pattern with no / matches a file or folder name at any depth;
@@ -61,23 +65,37 @@ that are in a folder one matches; --include '/MyWorks' copies that folder and
 --include '*.jpg' JPEG files anywhere. Excludes always win, whatever the order:
 --include x --exclude x selects nothing, and no include brings back what an
 exclude skips.
+--profile default fills each flag not given from the app's saved settings:
+--dest, --history-dir, --exclude, --include, --no-default-excludes,
+--interval, --once and --workers from its Copy settings, and --endpoint
+from its connection. A flag given always wins, and one --exclude or
+--include replaces the whole saved list. Without --profile, no saved
+settings are read.
 Durations use Go units, such as 30s, 5m or 1h30m.
 Logs and errors go to stderr; help goes to stdout.
 Exit 0 when stopped or after a clean --once or --dry-run pass, 1 on a runtime
 failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
-		Example: "  " + program + " sync --endpoint 127.0.0.1:4445 --dest ~/Seestar",
-		Args:    noArguments,
+		Example: "  " + program + " sync --endpoint 127.0.0.1:4445 --dest ~/Seestar\n" +
+			"  " + program + " sync --profile default",
+		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			o.historyDirSet = cmd.Flags().Changed("history-dir")
+			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+				return err
+			}
+			o.historyDirSet = o.profile.present(cmd.Flags(), "history-dir")
 			o.intervalSet = cmd.Flags().Changed("interval")
 			if err := o.validate(); err != nil {
 				return err
 			}
-			c.store(o.dryRun, func(ctx context.Context, _ io.Writer, log *slog.Logger) error { return runSync(ctx, o, log) })
+			c.store(o.dryRun, func(ctx context.Context, _ io.Writer, log *slog.Logger) error {
+				o.profile.log(log)
+				return runSync(ctx, o, log)
+			})
 			return nil
 		},
 	}
 	f := c.Flags()
+	o.profile.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder, created if missing (required)")
 	o.selection.register(f)

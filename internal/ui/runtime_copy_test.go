@@ -374,7 +374,10 @@ func TestRuntimeStartupFailureStartsNoCopying(t *testing.T) {
 // The app's one Mount is built by copyMountOptions: with no copyDial,
 // an address saved on this network reaches the telescope by the TCP
 // dialer and remover, for a pass, a listing and a preview, and only a
-// confirmed delete opens a remover.
+// confirmed delete opens a remover. A confirmation whose remover fails
+// deletes nothing; a fresh preview's confirmation then opens a second
+// remover and deletes. Each confirmation uses its own preview, since a
+// confirmation consumes it.
 func TestStartupMountUsesTheBuilder(t *testing.T) {
 	e := newRuntimeEnv(t, false)
 	share := t.TempDir()
@@ -406,6 +409,7 @@ func TestStartupMountUsesTheBuilder(t *testing.T) {
 	var mu sync.Mutex
 	var dialed []string
 	var removers int
+	removerFails := true
 	tcpDial = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Session, error) {
 		mu.Lock()
 		dialed = append(dialed, endpoint)
@@ -416,7 +420,11 @@ func TestStartupMountUsesTheBuilder(t *testing.T) {
 		mu.Lock()
 		dialed = append(dialed, endpoint)
 		removers++
+		fail := removerFails
 		mu.Unlock()
+		if fail {
+			return nil, errors.New("synthetic remover failure")
+		}
 		return remote.NewFakeDir(share)
 	}
 	removersOpened := func() int { mu.Lock(); defer mu.Unlock(); return removers }
@@ -451,8 +459,7 @@ func TestStartupMountUsesTheBuilder(t *testing.T) {
 			t.Errorf("find = %d %s", code, reply)
 			return
 		}
-		var id int
-		if !until("the preview", func() bool {
+		free := func() (state string, id int) {
 			_, reply := c.do("GET", "/copy/api/status", "")
 			var v struct {
 				Free struct {
@@ -461,21 +468,53 @@ func TestStartupMountUsesTheBuilder(t *testing.T) {
 				} `json:"free"`
 			}
 			json.Unmarshal([]byte(reply), &v)
-			id = v.Free.ID
-			return v.Free.State == "preview"
-		}) {
+			return v.Free.State, v.Free.ID
+		}
+		var id int
+		preview := func() bool {
+			return until("the preview", func() bool {
+				var state string
+				state, id = free()
+				return state == "preview"
+			})
+		}
+		if !preview() {
 			return
 		}
 		if n := removersOpened(); n != 0 {
 			t.Errorf("the preview opened %d removers", n)
 		}
-		if code, reply := c.do("POST", "/copy/api/delete", `{"action":"delete","id":`+strconv.Itoa(id)+`,"folders":["MyWorks"]}`); code != 200 {
-			t.Errorf("delete = %d %s", code, reply)
+		confirm := func() bool {
+			code, reply := c.do("POST", "/copy/api/delete", `{"action":"delete","id":`+strconv.Itoa(id)+`,"folders":["MyWorks"]}`)
+			if code != 200 {
+				t.Errorf("delete = %d %s", code, reply)
+			}
+			return code == 200
+		}
+		// Part 1: the remover fails, so nothing is deleted.
+		if !confirm() || !until("the failed delete", func() bool { state, _ := free(); return state == "failed" }) {
+			return
+		}
+		if _, err := os.Stat(name); err != nil {
+			t.Errorf("the failed delete removed the file: %v", err)
+		}
+		if n := removersOpened(); n != 1 {
+			t.Errorf("the failed delete opened %d removers, want 1", n)
+		}
+		// Part 2: a fresh preview, and its confirmation with a remover that works.
+		mu.Lock()
+		removerFails = false
+		mu.Unlock()
+		if code, reply := c.do("POST", "/copy/api/delete", `{"action":"find","days":"0","trust":false}`); code != 200 {
+			t.Errorf("find again = %d %s", code, reply)
+			return
+		}
+		if !preview() || !confirm() {
 			return
 		}
 		until("the delete", func() bool { _, err := os.Stat(name); return os.IsNotExist(err) })
-		if n := removersOpened(); n != 1 {
-			t.Errorf("the delete opened %d removers, want 1", n)
+		if n := removersOpened(); n != 2 {
+			t.Errorf("the deletes opened %d removers in all, want 2", n)
 		}
 	})
 	mu.Lock()

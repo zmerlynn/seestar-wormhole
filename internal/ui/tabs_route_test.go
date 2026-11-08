@@ -16,6 +16,17 @@ func TestActivityHoldsDetails(t *testing.T) {
 	runPageRegression(t, "tabs-route-test.js", "checkActivityMove()")
 }
 
+// The page shows a refused copy.json's note from the server's own status.
+func TestCopyRefusedPage(t *testing.T) {
+	s := testServer(t)
+	s.copyRefused = true
+	status := serve(s, request(s, "GET", "/api/status", "")).Body.String()
+	if !strings.Contains(status, `"copy_refused":true`) {
+		t.Fatalf("status = %s", status)
+	}
+	runPageRegression(t, "tabs-route-test.js", "checkCopyRefused("+status+")")
+}
+
 // routeStatuses is the server's own status before and after a LAN save.
 func routeStatuses(t *testing.T) (*server, string) {
 	t.Helper()

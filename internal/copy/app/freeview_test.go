@@ -2,12 +2,14 @@ package app
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"reflect"
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // The wording of the states a run reaches rarely, from their status.
@@ -51,6 +53,8 @@ func TestFreeWording(t *testing.T) {
 			freeView{Title: "Stopped: the telescope refused to delete MyWorks/b.jpg (permission denied).", Text: "2 files were deleted before this; nothing after it."}},
 		{"no folder", freeStatus{state: frCheckFail, set: Settings{Folder: "/x/Seestar"}, err: engine.ErrNoDest},
 			freeView{Title: "Couldn't finish checking files: /x/Seestar isn't there.", Text: noDest}},
+		{"folder busy", freeStatus{state: frFailed, err: fmt.Errorf("destination /x/Seestar: %w (lock file /x/Seestar/.seestar-wormhole.lock)", state.ErrFolderLocked)},
+			freeView{Title: "Another copy or delete is using this folder.", Text: "No files were deleted."}},
 		{"failed to connect", freeStatus{state: frFailed, err: errors.New("connect to x: no route")},
 			freeView{Title: "Stopped: connect to x: no route.", Text: "No files were deleted."}},
 	} {

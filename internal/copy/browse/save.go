@@ -5,8 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 )
@@ -16,8 +19,41 @@ import (
 // every byte the device listed and that the file closed cleanly, then
 // renames it over dst. On any error it removes the temporary file, so an
 // existing dst is left as it was. ctx ends the copy between reads.
-func Save(ctx context.Context, sessions *Sessions, p, dst string) (err error) {
+func Save(ctx context.Context, sessions *Sessions, p, dst string) error {
 	readonly.Check("browse.Save")
+	dir, base := filepath.Dir(dst), filepath.Base(dst)
+	return save(ctx, sessions, p, func() (*os.File, error) {
+		return os.CreateTemp(dir, "."+base+".*.tmp")
+	}, func(tmp string) error {
+		return os.Rename(tmp, dst)
+	}, func(tmp string) { os.Remove(tmp) })
+}
+
+// SaveIn is [Save] to rel, a path relative to root, with the temporary
+// file, the rename and the cleanup all through root: the caller holds a
+// lock that guards the folder root is open on, such as its folder lock.
+func SaveIn(ctx context.Context, sessions *Sessions, p string, root *os.Root, rel string) error {
+	readonly.Check("browse.SaveIn")
+	dir, base := filepath.Dir(rel), filepath.Base(rel)
+	var tmpRel string
+	return save(ctx, sessions, p, func() (*os.File, error) {
+		for range 10000 {
+			tmpRel = filepath.Join(dir, "."+base+"."+strconv.FormatUint(uint64(rand.Uint32()), 10)+".tmp")
+			f, err := root.OpenFile(tmpRel, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
+			if !errors.Is(err, fs.ErrExist) {
+				return f, err
+			}
+		}
+		return nil, &fs.PathError{Op: "createtemp", Path: filepath.Join(dir, "."+base+".*.tmp"), Err: fs.ErrExist}
+	}, func(string) error {
+		return root.Rename(tmpRel, rel)
+	}, func(string) { root.Remove(tmpRel) })
+}
+
+// save copies the device's file at p into a temporary file from create,
+// then calls commit with its name; on any error it calls discard instead.
+func save(ctx context.Context, sessions *Sessions, p string, create func() (*os.File, error), commit func(tmp string) error, discard func(tmp string)) (err error) {
+	readonly.Check("browse.save")
 	lease, err := sessions.Get(ctx)
 	if err != nil {
 		return err
@@ -37,7 +73,7 @@ func Save(ctx context.Context, sessions *Sessions, p, dst string) (err error) {
 	if info.IsDir() {
 		return errors.New("it is a folder on the device")
 	}
-	out, err := os.CreateTemp(filepath.Dir(dst), "."+filepath.Base(dst)+".*.tmp")
+	out, err := create()
 	if err != nil {
 		return err
 	}
@@ -45,7 +81,7 @@ func Save(ctx context.Context, sessions *Sessions, p, dst string) (err error) {
 	defer func() {
 		if err != nil {
 			out.Close() // an error here means it was closed already
-			os.Remove(tmp)
+			discard(tmp)
 		}
 	}()
 	size := info.Size()
@@ -59,7 +95,7 @@ func Save(ctx context.Context, sessions *Sessions, p, dst string) (err error) {
 	if err := out.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, dst)
+	return commit(tmp)
 }
 
 // saveReader reads a device file until ctx is done, and reports each

@@ -62,18 +62,24 @@ folder and settings again in Copy.
 ## Things to know
 
 These hold for the app and for `seestar-wormhole-cli sync`, which use the same copy
-history.
+history unless the app's **Copy history folder** or sync's `--history-dir`
+names another.
 
 - **Moving files out is fine.** The copy history is kept outside your folder,
   so a file you move or delete is not copied again, unless it changes on the
-  telescope. See [the state file](copy-reference.md#the-state-file).
+  telescope or you choose another copy history folder, which starts a fresh
+  history. See [the state file](copy-reference.md#the-state-file).
 - **An existing copy is reused.** A file already in your folder with the same
   size and modification time, to within 2 seconds, is recorded without
   downloading it again. A different file at the same path is overwritten with
   the telescope's copy.
 - **One copy per folder.** While the app or a `sync` copies to a folder, the
-  other can't, and says the folder is in use. For a second telescope, use a
-  second folder.
+  other can't, and says the folder is in use. Free up space and
+  `delete --force` run between checks, and refuse while one is running. They
+  all share a lock file, `.seestar-wormhole.lock`, which stays in the folder;
+  leave it there. Stop any `seestar-copy-cli`, or a seestar-wormhole older
+  than this release, before copying with this one: they don't take that
+  lock. For a second telescope, use a second folder.
 - **Partial files are hidden.** A file being copied is written under a hidden
   temporary name next to where it will go, so nothing that watches for `.fit`
   files sees half a file. A file partly copied when copying stops is copied

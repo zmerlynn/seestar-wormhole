@@ -19,6 +19,7 @@ import (
 )
 
 type browseOptions struct {
+	profile   profileFlag
 	endpoint  string
 	listen    string
 	addr      netip.AddrPort // set by validate from listen
@@ -33,7 +34,7 @@ type browseOptions struct {
 }
 
 // NewBrowse returns the browse command of program. It is read-only.
-func NewBrowse(program string) *Command {
+func NewBrowse(program string, load LoadProfile) *Command {
 	var o browseOptions
 	c := &Command{}
 	c.Command = &cobra.Command{
@@ -58,6 +59,9 @@ address. Loopback addresses, such as the default, serve this computer only.
 A non-loopback address, including 0.0.0.0 or ::, serves the share without a
 password to anyone who can reach it, and browse logs a warning when it
 starts.
+--profile default fills --dest, --history-dir and --endpoint from the app's
+saved settings where they are not given, and, with a destination,
+--exclude, --include and --no-default-excludes from its Copy settings.
 browse never writes: not to the telescope, not to --dest, not to the state.
 Logs and errors go to stderr.
 Exit 0 when stopped by Ctrl+C, 1 when it cannot start or keep serving, 2 on
@@ -66,8 +70,11 @@ a usage error.`,
 			"  " + program + " browse --endpoint 127.0.0.1:4445 --dest ~/Seestar",
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			o.destSet = cmd.Flags().Changed("dest")
-			o.historyDirSet = cmd.Flags().Changed("history-dir")
+			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+				return err
+			}
+			o.destSet = o.profile.present(cmd.Flags(), "dest")
+			o.historyDirSet = o.profile.present(cmd.Flags(), "history-dir")
 			if err := o.validate(); err != nil {
 				return err
 			}
@@ -76,11 +83,15 @@ a usage error.`,
 					return &diagnostic.OptionError{Option: "--" + name, Rule: "give --dest with it; browse shows what the selection leaves out only with statuses"}
 				}
 			}
-			c.store(true, func(ctx context.Context, out io.Writer, log *slog.Logger) error { return runBrowse(ctx, o, out, log) })
+			c.store(true, func(ctx context.Context, out io.Writer, log *slog.Logger) error {
+				o.profile.log(log)
+				return runBrowse(ctx, o, out, log)
+			})
 			return nil
 		},
 	}
 	f := c.Flags()
+	o.profile.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.listen, "listen", "127.0.0.1:0", "IP address and port to serve the page on; port 0 picks a free one")
 	f.BoolVar(&o.open, "open", false, "also open the page in the default browser")

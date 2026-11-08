@@ -20,7 +20,7 @@ func fileCommand(name string) bool { return slices.Contains(fileCommandNames, na
 // addFileCommands mounts the file commands. Each has its own logging
 // options, whose default format is text, and no --version.
 func addFileCommands(root *cobra.Command, o *options) {
-	for _, c := range cli.Commands(programName) {
+	for _, c := range cli.Commands(programName, loadDefaultProfile) {
 		var logs logOptions
 		registerLoggingOptions(c.Flags(), &logs, "text")
 		c.PreRunE = func(*cobra.Command, []string) error {

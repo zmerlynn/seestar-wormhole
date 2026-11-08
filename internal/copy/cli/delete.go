@@ -14,6 +14,7 @@ import (
 )
 
 type deleteOptions struct {
+	profile       profileFlag
 	endpoint      string
 	dest          string
 	destSet       bool
@@ -33,7 +34,7 @@ type deleteOptions struct {
 
 // NewDelete returns the delete command of program. Without --force it is
 // read-only.
-func NewDelete(program string) *Command {
+func NewDelete(program string, load LoadProfile) *Command {
 	o := deleteOptions{olderThan: 7 * day}
 	c := &Command{}
 	c.Command = &cobra.Command{
@@ -57,6 +58,13 @@ Only files whose device mtime is at least --older-than old are deleted.
 the run left empty is removed too; the share root never is.
 A file the telescope rewrites between delete's check and its removal is
 lost, so avoid running delete while the telescope is busy.
+With --force and a --dest that exists, delete holds the lock file
+.seestar-wormhole.lock in --dest from before it lists the share until its
+last removal, and exits 1 if a sync pass or another delete holds it.
+--profile default fills only where to act from the app's saved settings:
+--dest and --history-dir, except with --ignore-state, and --endpoint, where
+they are not given. The app's Copy patterns and Free up space options are
+never applied: give the selection, the proof and --older-than here.
 Durations use Go units, such as 36h, or whole days, such as 7d.
 Logs and errors go to stderr.
 Exit 0 when the run finishes, however many files it kept, or is stopped;
@@ -66,16 +74,23 @@ Exit 0 when the run finishes, however many files it kept, or is stopped;
 			"  " + program + " delete --endpoint 127.0.0.1:4445 --ignore-state --include '*.jpg' --older-than 30d --force",
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			o.destSet = cmd.Flags().Changed("dest")
-			o.historyDirSet = cmd.Flags().Changed("history-dir")
+			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+				return err
+			}
+			o.destSet = o.profile.present(cmd.Flags(), "dest")
+			o.historyDirSet = o.profile.present(cmd.Flags(), "history-dir")
 			if err := o.validate(); err != nil {
 				return err
 			}
-			c.store(o.dryRun, func(ctx context.Context, _ io.Writer, log *slog.Logger) error { return runDelete(ctx, o, log) })
+			c.store(o.dryRun, func(ctx context.Context, _ io.Writer, log *slog.Logger) error {
+				o.profile.log(log)
+				return runDelete(ctx, o, log)
+			})
 			return nil
 		},
 	}
 	f := c.Flags()
+	o.profile.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state and copies prove each file; never created (required unless --ignore-state)")
 	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: the per-user config folder's seestar-copy)")

@@ -20,6 +20,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/browse"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
@@ -40,7 +41,7 @@ type server struct {
 	ctx      context.Context // the app's lifetime; browse's sessions live in it
 	addr     netip.AddrPort  // the listener's
 	version  string
-	stateDir string
+	stateDir string // the default history folder; Settings may choose another
 	log      *slog.Logger
 	// dial opens a browse session at the target; test runs Test, and
 	// reach a route's Save's check.
@@ -173,8 +174,9 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 		if sel, err = selector(set); err != nil {
 			log.Warn("browse shows nothing as left out", "err", err)
 		}
-		records = func() (map[string]state.Record, error) { return state.Load(s.stateDir, folder, log) }
-		if file, err := state.Path(s.stateDir, folder); err == nil {
+		history := set.historyDir(s.stateDir)
+		records = func() (map[string]state.Record, error) { return state.Load(history, folder, log) }
+		if file, err := state.Path(history, folder); err == nil {
 			records = browse.CacheRecords(file, records)
 		}
 	}
@@ -364,6 +366,7 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 type input struct {
 	Address      string   `json:"address"`
 	Folder       string   `json:"folder"`
+	HistoryDir   string   `json:"history_dir"`
 	Interval     string   `json:"interval"`
 	FilesAtOnce  string   `json:"files_at_once"`
 	Excludes     []string `json:"excludes"` // the box's lines
@@ -396,14 +399,15 @@ func (s *server) status(w http.ResponseWriter) {
 	// The saved folder's state file, as sync names it.
 	var history string
 	if setUp {
-		history, _ = state.Path(s.stateDir, set.Folder)
+		history, _ = state.Path(set.historyDir(s.stateDir), set.Folder)
 	}
 	lines, seq := s.copy.activity.lines()
 	localhttp.Respond(w, http.StatusOK, struct {
 		Version         string   `json:"version"`
 		SetUp           bool     `json:"set_up"`
 		Settings        Settings `json:"settings"`
-		History         string   `json:"history"` // "" until set up
+		History         string   `json:"history"`         // "" until set up
+		DefaultHistory  string   `json:"default_history"` // the history folder an empty history_dir means
 		DefaultExcludes []string `json:"default_excludes"`
 		Copy            copyView `json:"copy"`
 		Free            freeView `json:"free"`
@@ -411,7 +415,7 @@ func (s *server) status(w http.ResponseWriter) {
 		ActivitySeq     int      `json:"activity_seq"`
 		Choose          bool     `json:"choose"`      // the window's folder picker is there
 		BrowseView      int      `json:"browse_view"` // moves when Browse should load again
-	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil, view})
+	}{s.version, setUp, set, history, s.stateDir, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil, view})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -484,12 +488,14 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		}{"Couldn't save settings: " + reason(err) + ". Your changes have not been saved. Try saving again."})
 		return
 	}
-	// A new selection replaces browse too, which shows what it leaves out.
-	// Free up space's preview depends on the folder alone: it has its own
-	// patterns.
-	changed := !wasSetUp || old.Folder != set.Folder ||
+	// A new folder or history folder replaces browse, which shows its
+	// records, and discards both previews, which read them. A new
+	// selection replaces browse too, which shows what it leaves out; Free
+	// up space has its own patterns.
+	moved := !wasSetUp || old.Folder != set.Folder || old.HistoryDir != set.HistoryDir
+	changed := moved ||
 		!slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn
-	if !wasSetUp || old.Folder != set.Folder {
+	if moved {
 		s.free.clear()
 	}
 	var oldSessions *browse.Sessions
@@ -653,7 +659,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 		}{msg})
 	}
 	s.mu.Lock()
-	folder := s.file.settings.Folder
+	folder, history := s.file.settings.Folder, s.file.settings.historyDir(s.stateDir)
 	var err error
 	switch {
 	case !s.setUp():
@@ -663,7 +669,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	case !s.free.forget():
 		err = errors.New("wait for Free up space to finish")
 	default:
-		err = state.Remove(s.stateDir, folder)
+		err = state.Remove(history, folder)
 		s.preview.discard()
 	}
 	s.mu.Unlock()
@@ -717,19 +723,87 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
 	name := path.Base(p)
 	dst, err := s.native.SaveFile(name)
+	var alert string
 	if err == nil && dst != "" {
-		err = browse.Save(r.Context(), sessions, p, dst)
+		alert, err = s.saveTo(r.Context(), sessions, p, dst)
 		if err == nil {
 			s.log.Info("file saved", "path", p, "to", dst)
 		}
 	}
 	if err != nil && r.Context().Err() == nil {
 		s.log.Warn("save failed", "path", p, "to", dst, "err", err)
+		if alert == "" {
+			alert = "Couldn't save " + name + ": " + reason(err) + ". Try saving it again."
+		}
 		if s.native.Alert != nil {
-			s.native.Alert("Couldn't save " + name + ": " + reason(err) + ". Try saving it again.")
+			s.native.Alert(alert)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// errReservedName is a save to the folder lock's name in the images folder.
+var errReservedName = errors.New("the name is kept for the copy lock")
+
+// saveTo saves the device's file p to dst, as [browse.Save] does. A save
+// into the saved images folder holds the folder's lock, so it never lands
+// during a pass of copying or a delete, and writes through the folder's
+// root; it refuses the folder lock's own name. A failure the window words
+// itself comes with the alert to show.
+func (s *server) saveTo(ctx context.Context, sessions *browse.Sessions, p, dst string) (alert string, err error) {
+	s.mu.Lock()
+	folder := s.file.settings.Folder
+	s.mu.Unlock()
+	top, rel, inside := within(folder, dst)
+	if !inside {
+		return "", browse.Save(ctx, sessions, p, dst)
+	}
+	if plan.Reserved(filepath.ToSlash(rel)) {
+		return "That name is kept for the copy lock. Choose another name or folder.", errReservedName
+	}
+	root, err := os.OpenRoot(top)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
+	lock, err := state.LockFolder(root)
+	if errors.Is(err, state.ErrFolderLocked) {
+		return "Another copy or delete is using this folder. Try saving it again.", err
+	}
+	if err != nil {
+		return "", err
+	}
+	defer lock.Close()
+	return "", browse.SaveIn(ctx, sessions, p, root, rel)
+}
+
+// within reports whether the file dst is inside folder, after resolving
+// the symbolic links in dst's folder, and returns the folder that is
+// folder by [os.SameFile] (another spelling, a link or another case) and
+// dst relative to it.
+func within(folder, dst string) (top, rel string, ok bool) {
+	if !filepath.IsAbs(folder) {
+		return "", "", false
+	}
+	want, err := os.Stat(folder)
+	if err != nil {
+		return "", "", false
+	}
+	dir, err := filepath.EvalSymlinks(filepath.Dir(dst))
+	if err != nil {
+		return "", "", false
+	}
+	for d := dir; ; {
+		if fi, err := os.Stat(d); err == nil && os.SameFile(want, fi) {
+			rel, err := filepath.Rel(d, filepath.Join(dir, filepath.Base(dst)))
+			return d, rel, err == nil
+		}
+		up := filepath.Dir(d)
+		if up == d {
+			return "", "", false
+		}
+		d = up
+	}
 }
 
 // maxDays caps Only files older than N days: 100 years.

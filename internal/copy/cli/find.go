@@ -22,6 +22,7 @@ import (
 )
 
 type findOptions struct {
+	profile   profileFlag
 	endpoint  string
 	selection selectionFlags
 	// selector is set by validate from selection.
@@ -35,7 +36,7 @@ type findOptions struct {
 }
 
 // NewFind returns the find command of program. It is read-only.
-func NewFind(program string) *Command {
+func NewFind(program string, load LoadProfile) *Command {
 	var o findOptions
 	c := &Command{}
 	c.Command = &cobra.Command{
@@ -56,6 +57,10 @@ With --dest, find reads that destination's state file, as a sync dry run
 does, and adds a status to each file, as a column before the path: copied
 (recorded with the device's size and mtime), changed (recorded with another
 size or mtime) or new (not recorded).
+--profile default fills --dest, --history-dir, --exclude, --include and
+--no-default-excludes from the app's Copy settings, and --endpoint from its
+connection, where they are not given; a --dest it fills gives statuses as a
+given one does.
 find never writes: not to the telescope, not to --dest, not to the state.
 Durations use Go units, such as 36h or 90m, or whole days, such as 7d.
 Logs and errors go to stderr.
@@ -65,16 +70,23 @@ usage error.`,
 			"  " + program + " find --endpoint 127.0.0.1:4445 --dest ~/Seestar --format jsonl",
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			o.destSet = cmd.Flags().Changed("dest")
-			o.historyDirSet = cmd.Flags().Changed("history-dir")
+			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+				return err
+			}
+			o.destSet = o.profile.present(cmd.Flags(), "dest")
+			o.historyDirSet = o.profile.present(cmd.Flags(), "history-dir")
 			if err := o.validate(); err != nil {
 				return err
 			}
-			c.store(true, func(ctx context.Context, out io.Writer, log *slog.Logger) error { return runFind(ctx, o, out, log) })
+			c.store(true, func(ctx context.Context, out io.Writer, log *slog.Logger) error {
+				o.profile.log(log)
+				return runFind(ctx, o, out, log)
+			})
 			return nil
 		},
 	}
 	f := c.Flags()
+	o.profile.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	o.selection.register(f)
 	f.Var((*ageValue)(&o.olderThan), "older-than", "list only files whose device time is at least this old (default: no limit)")

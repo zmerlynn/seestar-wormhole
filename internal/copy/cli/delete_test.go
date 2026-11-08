@@ -253,7 +253,7 @@ func TestDeleteModes(t *testing.T) {
 			if got := readFile(t, statePath); got != stateBefore {
 				t.Errorf("state file changed:\n%s\nwant\n%s", got, stateBefore)
 			}
-			if got := snapshot(t, dest); !maps.Equal(got, destBefore) {
+			if got := lockedSnapshot(t, dest, !slices.Contains(tc.args, "--ignore-state")); !maps.Equal(got, destBefore) {
 				t.Errorf("destination changed: %v, want %v", got, destBefore)
 			}
 		})
@@ -328,6 +328,7 @@ func TestDeleteHelp(t *testing.T) {
 		"--endpoint string", "--dest string", "--history-dir string", "--trust-state", "--ignore-state",
 		"--older-than age", "(default 7d)", "--force", "--exclude stringArray", "--no-default-excludes", "--include stringArray", "--dry-run",
 		"Without\n--force it only previews", "avoid running delete while the telescope is busy",
+		"delete holds the lock file\n.seestar-wormhole.lock in --dest",
 	} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("delete help lacks %q:\n%s", want, stdout)
@@ -557,7 +558,7 @@ func TestDeleteDryRunParity(t *testing.T) {
 	if would, did := logged(dry, "file kept"), logged(real, "file kept"); !slices.Equal(would, did) {
 		t.Errorf("dry run would keep %q, the run kept %q", would, did)
 	}
-	if readFile(t, statePath) != stateBefore || !maps.Equal(snapshot(t, dest), destBefore) {
+	if readFile(t, statePath) != stateBefore || !maps.Equal(lockedSnapshot(t, dest, true), destBefore) {
 		t.Error("the state file or the destination changed")
 	}
 }

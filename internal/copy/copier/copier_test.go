@@ -52,11 +52,25 @@ func newFixture(t *testing.T, prepare func(dest string)) fixture {
 	return fixture{dest: dest, statePath: statePath, st: st}
 }
 
+// openSwept opens dest and sweeps it, as a pass does once it holds the
+// folder lock.
+func openSwept(dest string, st *state.State, log *slog.Logger) (*Copier, error) {
+	c, err := Open(dest, st, log)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.Sweep(); err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
 // copier returns a Copier on the fixture's destination that records
 // recordedAt.
 func (fx fixture) copier(t *testing.T) *Copier {
 	t.Helper()
-	c, err := New(fx.dest, fx.st, nil)
+	c, err := openSwept(fx.dest, fx.st, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +96,12 @@ func symlink(t *testing.T, target, name string) {
 	}
 }
 
-// New removes leftover temporary files at any depth, and nothing else: not
+// Sweep removes leftover temporary files at any depth, and nothing else: not
 // a name that is close to the pattern, not a folder or a symbolic link with
 // a temporary name, and nothing behind a symbolic link.
 // The other-case name has a folder of its own, since on a case-insensitive
 // filesystem it is the same entry as the folder with the temporary name.
-func TestNewRemovesLeftoverTempFiles(t *testing.T) {
+func TestSweepRemovesLeftoverTempFiles(t *testing.T) {
 	tmpA := plan.TempName("a.fit")
 	tmpB := plan.TempName("MyWorks/M 31/b.fit")
 	outside := t.TempDir()
@@ -118,23 +132,23 @@ func TestNewRemovesLeftoverTempFiles(t *testing.T) {
 	}
 	for name, want := range kept {
 		if got, err := os.ReadFile(filepath.Join(fx.dest, filepath.FromSlash(name))); err != nil || string(got) != want {
-			t.Errorf("%s after New: got %q, %v; want %q", name, got, err, want)
+			t.Errorf("%s after Sweep: got %q, %v; want %q", name, got, err, want)
 		}
 	}
 	if fi, err := os.Lstat(filepath.Join(fx.dest, "MyWorks", tmpB)); err != nil || fi.Mode()&fs.ModeSymlink == 0 {
-		t.Errorf("link with a temporary name after New: got %v, %v; want the link kept", fi, err)
+		t.Errorf("link with a temporary name after Sweep: got %v, %v; want the link kept", fi, err)
 	}
 	for _, name := range []string{tmpA, "target"} {
 		if got, err := os.ReadFile(filepath.Join(outside, name)); err != nil || string(got) != "outside" {
-			t.Errorf("%s outside the destination after New: got %q, %v; want %q", name, got, err, "outside")
+			t.Errorf("%s outside the destination after Sweep: got %q, %v; want %q", name, got, err, "outside")
 		}
 	}
 }
 
-func TestNewMissingDest(t *testing.T) {
+func TestOpenMissingDest(t *testing.T) {
 	fx := newFixture(t, nil)
-	if _, err := New(filepath.Join(fx.dest, "missing"), fx.st, nil); err == nil {
-		t.Error("New of a missing destination: got nil error")
+	if _, err := Open(filepath.Join(fx.dest, "missing"), fx.st, nil); err == nil {
+		t.Error("Open of a missing destination: got nil error")
 	}
 }
 
@@ -183,16 +197,16 @@ func (f deniedFS) ReadDir(name string) ([]fs.DirEntry, error) {
 	return fs.ReadDir(f.FS, name)
 }
 
-// New skips, with a warning, a folder it is not allowed to read, such as a
+// Sweep skips, with a warning, a folder it is not allowed to read, such as a
 // lost+found at the top of a mount: sync cannot have written there. Any
-// other error, or a destination it cannot read at all, fails New.
-func TestNewSkipsUnreadableFolder(t *testing.T) {
+// other error, or a destination it cannot read at all, fails Open or Sweep.
+func TestSweepSkipsUnreadableFolder(t *testing.T) {
 	tmp := plan.TempName("a.fit")
 	for _, tc := range []struct {
 		name string
 		deny string
 		err  error
-		want string // what New's error contains; "" for success
+		want string // what the error contains; "" for success
 	}{
 		{name: "permission denied", deny: "MyWorks/lost+found", err: fs.ErrPermission},
 		{name: "permission denied at the top", deny: ".", err: fs.ErrPermission, want: "remove leftover temporary files in"},
@@ -208,10 +222,10 @@ func TestNewSkipsUnreadableFolder(t *testing.T) {
 				}
 			})
 			var logged strings.Builder
-			c, err := New(fx.dest, fx.st, slog.New(slog.NewTextHandler(&logged, nil)))
+			c, err := openSwept(fx.dest, fx.st, slog.New(slog.NewTextHandler(&logged, nil)))
 			if tc.want != "" {
 				if err == nil || !strings.Contains(err.Error(), tc.want) || !errors.Is(err, tc.err) {
-					t.Errorf("New: got err %v, want one containing %q and wrapping %v", err, tc.want, tc.err)
+					t.Errorf("open and sweep: got err %v, want one containing %q and wrapping %v", err, tc.want, tc.err)
 				}
 				if c != nil {
 					c.Close()
@@ -219,7 +233,7 @@ func TestNewSkipsUnreadableFolder(t *testing.T) {
 				return
 			}
 			if err != nil {
-				t.Fatalf("New: %v", err)
+				t.Fatalf("open and sweep: %v", err)
 			}
 			c.Close()
 			for _, dir := range []string{".", "MyWorks", "Other"} {
@@ -237,7 +251,7 @@ func TestNewSkipsUnreadableFolder(t *testing.T) {
 
 // The same with a real folder that cannot be read; the test cannot run as
 // root, who can read it.
-func TestNewSkipsUnreadableFolderOnDisk(t *testing.T) {
+func TestSweepSkipsUnreadableFolderOnDisk(t *testing.T) {
 	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
 		t.Skip("needs a folder this user cannot read")
 	}
@@ -251,18 +265,18 @@ func TestNewSkipsUnreadableFolderOnDisk(t *testing.T) {
 		}
 		t.Cleanup(func() { os.Chmod(locked, 0o700) })
 	})
-	c, err := New(fx.dest, fx.st, slog.New(slog.DiscardHandler))
+	c, err := openSwept(fx.dest, fx.st, slog.New(slog.DiscardHandler))
 	if err != nil {
-		t.Fatalf("New: %v", err)
+		t.Fatalf("open and sweep: %v", err)
 	}
 	c.Close()
 	fx.checkAbsent(t, tmp)
 }
 
 // A final file reached through a symbolic link to another folder in the
-// destination is not removed by the next New, and the next pass finds it
+// destination is not removed by the next Sweep, and the next pass finds it
 // done.
-func TestNewKeepsFileBehindInternalLink(t *testing.T) {
+func TestSweepKeepsFileBehindInternalLink(t *testing.T) {
 	const p = "MyWorks/a.fit"
 	fx := newFixture(t, func(dest string) {
 		if err := os.Mkdir(filepath.Join(dest, "Other"), 0o777); err != nil {

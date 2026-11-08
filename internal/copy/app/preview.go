@@ -32,7 +32,7 @@ var errPreviewing = errors.New("a preview is already running")
 // the engine, the disk, the network or the log.
 type previewer struct {
 	parent   context.Context
-	stateDir string
+	stateDir string // the default history folder; Settings may choose another
 	log      *slog.Logger
 	// dial opens the preview's session; tests replace it.
 	dial func(ctx context.Context, t Target) (remote.Session, error)
@@ -96,7 +96,7 @@ func (p *previewer) start(set Settings, t Target) error {
 	// returns, so result needs no lock.
 	var result *previewStatus
 	o := engine.SyncOptions{
-		Endpoint: set.Address, Dest: set.Folder, StateDir: p.stateDir, Selector: sel, DryRun: true,
+		Endpoint: set.Address, Dest: set.Folder, StateDir: set.historyDir(p.stateDir), Selector: sel, DryRun: true,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: func(ctx context.Context, _ string) (sess remote.Session, err error) {
 			sess, err = establish(ctx, t, func(ctx context.Context) (remote.Session, error) {

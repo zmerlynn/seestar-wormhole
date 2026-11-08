@@ -140,11 +140,14 @@ share, and delete what is safely copied. They use the same rules and the same
 copy history as `seestar-wormhole-cli`'s [`sync`, `browse` and
 `delete`](copy-reference.md). The app keeps its copy settings in its own state
 directory, as [`copy.json`](#copyjson-version-1), which the CLI's file commands
-never read, and its copy history in the default
+read only when given `--profile default`, such as `seestar-wormhole-cli sync --profile default`
+(see [use the app's saved settings](copy-reference.md#use-the-apps-saved-settings)), and its copy history in the default
 [history location](copy-reference.md#location), whatever its `--state-dir`
-says. While copying is on, the app holds the folder's history lock, as `sync`
+says, unless **Copy history folder** names another. While copying is on, the app holds the folder's history lock, as `sync`
 does, so a `sync` for the same folder exits with its usual error, and the app
-says the folder is in use while a `sync` holds it. Through Telescope Network
+says the folder is in use while a `sync` holds it. Copy, Free up space and a
+Browse save into the folder also take its
+[folder lock](copy-reference.md#the-folder-lock), as `sync` and `delete` do. Through Telescope Network
 they reach the share through the connection itself, so they work with the SMB
 port off, and their errors name **Seestar (account connection)**. With
 **Connect when an app needs Seestar**, they count as an app: they start the
@@ -173,6 +176,21 @@ can't change while copying runs:
 
 - **Folder for your images.** Images are copied there in the same folders as
   on the telescope. Each folder has its own copy history.
+- **Copy history folder**, empty by default. Empty is the default
+  [history location](copy-reference.md#location), the one
+  `seestar-wormhole-cli sync` uses without `--history-dir`; the field shows
+  that path as its placeholder. Otherwise type a full path to a folder
+  outside the folder for your images, or use **Choose…** in the app's window;
+  **Save** refuses a relative path or one inside the images folder with
+  **Use a full path to a folder outside the folder for your images, or leave
+  it empty for the default.** A folder that leads inside the images folder
+  through a symbolic link is saved, and copying and Clear history then refuse it
+  without changing anything in the images folder. Nothing
+  moves the old history: a different folder starts a fresh one, so files
+  still in your images folder are checked and recorded again, files you moved
+  out of it are copied again, and Free up space can't use the old history to
+  prove that older copies are safe. To share the history with a `sync`, give
+  it the same folder as `--history-dir`.
 - **Check for new files every** N minutes, 5 by default. Its checkbox, on by
   default, turns the repeating check off to copy once: **Start copying** then
   checks once, copies what is new and stops, and Copy says **Checked once;
@@ -196,17 +214,22 @@ one [dry run](copy-reference.md#dry-run) with the saved settings: how many
 files it would copy and their size, with a row per folder, and how many are
 already copied, still being written, or left out. Nothing is copied.
 **Cancel** stops a preview that is running; starting, a Save that changes the
-folder or the selection, and Clear history discard it.
+folder, the copy history folder or the selection, and Clear history discard
+it.
 
-While copying is on, the app holds the folder's lock, as `sync` does: a `sync`
-for the same folder exits with its usual error, and Copy says **Another copy
-is already using this folder.** while a `sync`, or another copy of the app with
-another state directory, holds it.
+While copying is on, the app holds the folder's history lock for as long as
+copying is on, and its [folder lock](copy-reference.md#the-folder-lock)
+during each check, as `sync` does: a `sync` for the same folder exits with
+its usual error. Copy says **Another copy or delete is using this folder.**
+while a `sync`, a `delete --force`, or another copy of the app holds either
+lock: when you start copying, copying stays off; at a later check, that
+check is skipped, nothing is copied, and Copy tries again at the next one.
 
 **Copy history**, collapsed under the settings, shows the path of the saved
-folder's [state file](copy-reference.md#the-state-file), which `sync` uses
-too. While the folder field holds a folder not yet saved, it says to save
-first. **Clear history…** deletes that state file after a confirmation, so the
+folder's [state file](copy-reference.md#the-state-file) in the saved copy
+history folder, which `sync` uses too with the same `--history-dir`. While
+the folder field or the copy history folder field holds one not yet saved,
+it says to save first. **Clear history…** deletes that state file after a confirmation, so the
 app forgets what it copied to the folder. Files still in the folder are kept
 and adopted on the next pass; files moved out of it are copied again. Clear
 history is unavailable while copying is on, and refuses while Free up space
@@ -223,6 +246,13 @@ an error from before goes without a retry. Browse opens once a route is
 saved: until Copy's folder is saved it lists the telescope's files without
 statuses, and the first Save loads it again with them. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
+A save into Copy's saved folder, or a folder inside it, takes the folder's
+[folder lock](copy-reference.md#the-folder-lock) until the file is in place:
+while a check or a delete holds it, the save says **Another copy or delete
+is using this folder. Try saving it again.** and saves nothing. A file named
+`.seestar-wormhole.lock`, in any letter case, can't be saved at the top of
+that folder: **That name is kept for the copy lock. Choose another name or
+folder.** A save anywhere else takes no lock.
 
 ### Free up space
 
@@ -251,7 +281,12 @@ clears a check that couldn't finish. **Delete N files…** asks once more. The d
 folders again, and only those, saying **Checking N files again before
 deleting…**, and proves each file again just before it removes it: a file
 that changed or went away since the preview is kept. **Stop** ends a delete
-that is running.
+that is running. The delete holds the folder's
+[folder lock](copy-reference.md#the-folder-lock) from before it lists the
+folders until its last removal, and runs between Copy's checks: while a
+check, a `sync` or another delete holds the lock, it stops at once with
+**Another copy or delete is using this folder.** and deletes nothing. A
+preview takes no lock.
 
 ## Stopping and quitting
 
@@ -340,8 +375,8 @@ that service off. Each enabled local port must be unique and between 1 and
 65535. The phone setup maps local port 80 to Seestar port 80; the computer-only
 setup uses local port 8080 instead. **File sharing for other apps (SMB)** uses
 local port 4445 for Seestar port 445. It is for Finder, rclone, other SMB apps
-and `seestar-wormhole-cli`'s file commands: Copy, Browse and Free up space
-don't need it. For other mappings, use the
+and `seestar-wormhole-cli`'s file commands, including their `--profile default`
+endpoint through the account: Copy, Browse and Free up space don't need it. For other mappings, use the
 [command line](reference.md#port-mappings).
 
 ## Activity
@@ -408,11 +443,14 @@ To use another existing installation root, run
 | `webview-<random>/` | Windows only: a fresh private engine profile for each launch; see [engine data](#engine-data). |
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
 
-The copy history and each folder's lock are not in the state directory. They
-stay in the file commands' default [history location](copy-reference.md#location),
+The copy history and its locks are not in the state directory. By default they
+are in the file commands' default [history location](copy-reference.md#location),
 `seestar-copy` beside `seestar-wormhole` in the same system folder, whatever
-`--state-dir` says, so the app and `seestar-wormhole-cli sync` share them and never
-copy into one folder at once.
+`--state-dir` says, so the app and `seestar-wormhole-cli sync` share them.
+**Copy history folder** in Copy settings, saved as `history_dir`, puts the
+app's elsewhere. Whichever history each uses, the
+[folder lock](copy-reference.md#the-folder-lock) in the folder for your images
+keeps the app and `sync` from copying into one folder at once.
 
 ### config.json version 1
 
@@ -450,17 +488,32 @@ options, never on load.
 | Member | Default and meaning |
 |---|---|
 | `folder` | `Seestar` in your home folder. |
+| `history_dir` | `""`: the default [history location](copy-reference.md#location), as `--history-dir`'s default. Otherwise **Copy history folder**, an absolute path outside `folder`. A relative path or a value that isn't a string refuses the file. |
 | `interval_minutes` | `5` |
 | `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
 | `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
 | `start_copying` | `false` |
-| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range stops the app at startup. |
+| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range refuses the file. |
 | `older_than_days` | `7` |
 | `trust_state` | `false` |
 | `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
 
+Older versions keep `history_dir` when saving but use the default history
+folder. After a downgrade, files moved out of the images folder can be copied
+again, and Free up space cannot use the chosen folder's history to prove those
+copies safe.
+
 The telescope's address is not in it; it comes from the route in `config.json`.
+
+A copy.json this version can't read, such as one with another version, a
+member of the wrong type or `files_at_once` out of range, doesn't stop the app.
+The Connection tab and the proxy work, but **Copy**, **Browse** and **Free up
+space** stay off for that run, a note under the tabs names the file, and
+Activity records **Copy settings couldn't be loaded safely; Copy, Browse and
+Free up space are off.** The app never writes the file while it is refused. Fix
+or remove it, then reopen the app; a removed file brings back the default Copy
+settings. A refused `config.json` still stops the app.
 
 ### File permissions
 

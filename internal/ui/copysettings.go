@@ -2,9 +2,12 @@ package ui
 
 import (
 	"encoding/json/jsontext"
+	"errors"
 	"os"
+	"path/filepath"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
 // copyName is the copy settings' file in the state dir.
@@ -26,7 +29,8 @@ type copyStore struct {
 
 // loadCopySettings reads copy.json without writing it. A missing file is
 // nil settings, which the Copy tab asks for; a file that doesn't parse or
-// has another version or none is an error, and the app doesn't start.
+// has another version or none is an error, and the app opens with Copy,
+// Browse and Free up space off.
 func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 	c := &copyStore{storage: st}
 	// Absent members take their defaults, except the version, which the
@@ -38,7 +42,10 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 	} else if err != nil {
 		return nil, nil, err
 	}
-	if f.Version != copyapp.SettingsVersion || f.FilesAtOnce < 1 || f.FilesAtOnce > copyapp.MaxFilesAtOnce {
+	// A relative history folder would resolve against wherever the app
+	// was started, so it is refused, not guessed.
+	if f.Version != copyapp.SettingsVersion || f.FilesAtOnce < 1 || f.FilesAtOnce > copyapp.MaxFilesAtOnce ||
+		f.HistoryDir != "" && !filepath.IsAbs(f.HistoryDir) {
 		return nil, nil, errStorage
 	}
 	if f.Excludes == nil {
@@ -57,8 +64,36 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 	return c, &f.Settings, nil
 }
 
+// ErrNoCopySettings is LoadCopySettings's error when root holds no
+// copy.json, or there is no root.
+var ErrNoCopySettings = errors.New("no saved copy settings")
+
+// LoadCopySettings reads root's copy.json as the app loads it, without
+// writing a file or taking ui.lock. A missing file or root is
+// ErrNoCopySettings; one the app would refuse is another error.
+func LoadCopySettings(root string) (copyapp.Settings, error) {
+	d, err := privatefile.ReadDirectory(root)
+	if os.IsNotExist(err) {
+		return copyapp.Settings{}, ErrNoCopySettings
+	} else if err != nil {
+		return copyapp.Settings{}, errStorage
+	}
+	defer d.Close()
+	_, set, err := loadCopySettings(&storage{root: root, directory: d})
+	switch {
+	case err != nil:
+		return copyapp.Settings{}, err
+	case set == nil:
+		return copyapp.Settings{}, ErrNoCopySettings
+	}
+	return *set, nil
+}
+
 // save writes set to copy.json atomically, with the members this version
 // doesn't know as they were loaded.
 func (c *copyStore) save(set copyapp.Settings) error {
-	return c.storage.write(copyName, copyFile{Settings: set, Unknown: c.unknown})
+	return writeCopySettings(c.storage, copyFile{Settings: set, Unknown: c.unknown})
 }
+
+// writeCopySettings is copy.json's one writer; tests replace it.
+var writeCopySettings = func(st *storage, f copyFile) error { return st.write(copyName, f) }
