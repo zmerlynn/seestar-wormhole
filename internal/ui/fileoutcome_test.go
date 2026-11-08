@@ -334,7 +334,7 @@ func (e *trailEnv) freePreview(days string) int {
 	n := len(e.outcomes(diagnostic.SourceDelete, diagnostic.OpPreview))
 	e.mustPost("/copy/api/delete", `{"action":"find","days":"`+days+`","trust":false}`, 200)
 	e.reported(diagnostic.SourceDelete, diagnostic.OpPreview, n+1)
-	state, id := e.free()
+	state, id := e.freeSettled()
 	if state != "preview" {
 		e.t.Fatalf("free state %q, want preview", state)
 	}
@@ -346,7 +346,21 @@ func (e *trailEnv) confirm(id int) copyapp.Outcome {
 	e.t.Helper()
 	n := len(e.outcomes(diagnostic.SourceDelete, diagnostic.OpDelete))
 	e.mustPost("/copy/api/delete", `{"action":"delete","id":`+strconv.Itoa(id)+`,"folders":["MyWorks"]}`, 200)
-	return e.reported(diagnostic.SourceDelete, diagnostic.OpDelete, n+1)
+	o := e.reported(diagnostic.SourceDelete, diagnostic.OpDelete, n+1)
+	e.freeSettled()
+	return o
+}
+
+// freeSettled waits for Free up space's run to end and returns its state
+// and id. A run reports its outcome before it publishes its end state, so
+// an outcome alone doesn't mean the next Find or confirmation is admitted.
+func (e *trailEnv) freeSettled() (state string, id int) {
+	e.t.Helper()
+	e.until("Free up space to settle", func() bool {
+		state, id = e.free()
+		return state != "checking" && state != "deleting"
+	})
+	return state, id
 }
 
 // lockHistory holds the copy folder's history lock, as another copier
