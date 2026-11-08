@@ -89,7 +89,7 @@ firmware behind it change without notice, as above.
     UI executables and the DMG are verified by SHA256SUMS and attestation only.
 10. **`--version`.** One line on stdout, `<program> <version> (<revision>, <os>/<arch>)`, where `<program>` is the
     executable's name, a release's `<version>` is its tag, such as `v0.1.0`, and `<revision>` is the first 12 hex
-    digits of its commit. Only the top level takes `--version`.
+    digits of its commit. The root, `proxy` and `discovery` take `--version`; the file commands do not.
 11. **What the file commands do to the device.** Every file command logs in as guest to the share `EMMC Images`.
     `sync` and `find` only read: they never create, change, rename, delete or lock anything on the share. `browse`
     only reads from the device, as they do. `delete` is the only command that changes the share. It removes regular

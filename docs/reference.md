@@ -235,8 +235,9 @@ validates other supplied flags.
 See the [versioning policy](versioning.md) for the release contract.
 
 Operational flags are local to their command (`ui`, `proxy`, `discovery`,
-`sync`, `find`, `browse` or `delete`); they are not root options, and only the
-root takes `--version`. Long flags use double dashes, with the value as
+`sync`, `find`, `browse` or `delete`); they are not root options.
+`--version` is available at the root and on `proxy` and `discovery`.
+Long flags use double dashes, with the value as
 `--flag value` or `--flag=value`. The only operational short flag is `-p` for
 proxy ports. Boolean flags need no value to enable; use `--flag=false` to
 disable. Scalar flags use the last supplied value; repeatable port mappings,
