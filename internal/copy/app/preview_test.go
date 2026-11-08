@@ -35,7 +35,14 @@ func newPreviewEnv(t *testing.T, files fstest.MapFS) *previewEnv {
 // run starts a preview and waits for it to end.
 func (e *previewEnv) run() *previewView {
 	e.t.Helper()
-	if err := e.p.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+	return e.runAt(Target{Endpoint: e.set.Address})
+}
+
+// runAt runs a preview at the target and waits for it to end. A preview
+// that already ended has no done channel left to wait on.
+func (e *previewEnv) runAt(at Target) *previewView {
+	e.t.Helper()
+	if err := e.p.start(e.set, at); err != nil {
 		e.t.Fatal(err)
 	}
 	e.p.mu.Lock()

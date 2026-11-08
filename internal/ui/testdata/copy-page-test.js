@@ -71,7 +71,7 @@ async function checkCopySetup(st) {
   copyAssert($('c-main').hidden && !$('s-first').hidden && $('s-line').hidden, 'the first visit shows the copy controls');
   copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
-  copyAssert($('b-frame').src === undefined || $('b-frame').src === '', 'Browse loaded before settings');
+  copyAssert($('b-frame').src === '/browse/', 'Browse waited for settings');
   // A field error goes under its field and takes focus.
   const calls = [];
   api = async (action, body, base) => {
@@ -226,19 +226,23 @@ async function checkCopyChoose(st) {
   copyAssert(!$('f-int-err').hidden, 'the failure cleared another field\'s error');
 }
 
-// A newly opened Browse says where to set the folder, and its link goes
-// there; once saved, Browse shows the telescope's files.
+// Browse shows the telescope's files once a route is saved, without
+// waiting for Copy's folder, and loads again, with statuses, once the
+// folder is saved.
 async function checkBrowseSetup(st) {
-  copyFixture(st, st.unlocked);
+  copyFixture(st, st.locked);
+  copyRender(st.before);
+  copyAssert(!$('b-frame').src && $('b-frame').hidden, 'Browse loaded before a route was saved');
+  render(st.unlocked);
   copyRender(st.before);
   selectTab('browse');
-  copyAssert(!$('panel-browse').hidden && !$('b-setup').hidden && $('b-frame').hidden, 'Browse is blank before setup');
-  copyAssert(!$('b-frame').src, 'Browse loaded before setup');
-  $('b-setup-go').dispatchEvent({type: 'click'});
-  copyAssert(currentTab === 'copy' && !$('panel-copy').hidden && document.activeElement === $('f-folder'), 'Go to Copy did not open the folder field');
+  copyAssert(!$('panel-browse').hidden && !$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse waited for a folder');
+  copyAssert(st.after.browse_view !== st.before.browse_view, 'server statuses changed shape');
+  $('b-frame').src = 'loaded';
+  copyRender(st.before);
+  copyAssert($('b-frame').src === 'loaded', 'Browse loaded again with nothing changed');
   copyRender(st.after);
-  selectTab('browse');
-  copyAssert($('b-setup').hidden && !$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse did not show after setup');
+  copyAssert(!$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse did not load again after setup');
 }
 
 // The connected page's copying step leads with Copy and Browse, its Go to
@@ -361,4 +365,71 @@ async function checkActionAlerts(st) {
     await act();
     copyAssert(shown === '' && writes === 2, id + ' was not cleared');
   }
+}
+
+// A failed poll is said above every tab, on either route: the copy tabs
+// keep their last known state, marked stale, with their actions off and
+// their drafts kept, until a poll succeeds.
+async function checkLostLine(st) {
+  copyFixture(st, st.unlocked);
+  copyRender(st.after);
+  $('x-days').value = '30';
+  $('f-ex').value = 'Draft';
+  const views = ['c-box', 'c-preview', 'x-box', 'x-preview'], actions = ['c-start', 'c-pbtn', 'x-find', 'f-set', 'h-clear'];
+  // Browse asks the server itself: only the controls' loss makes it inert.
+  const browseOff = off => ['data-stale', 'inert'].every(name => ($('b-frame').getAttribute(name) === '') === off);
+  const everyTab = (what, wording, known) => {
+    for (const tab of tabNames) {
+      selectTab(tab);
+      copyAssert(currentTab === tab && !$('lost').hidden && $('lost-text').textContent === wording, what + ' on ' + tab + ': ' + $('lost-text').textContent);
+      copyAssert($('last-known').hidden === !known && (!known || $('last-known').textContent === known), what + ' last known: ' + $('last-known').textContent);
+    }
+    for (const id of views) copyAssert($(id).getAttribute('data-stale') === '', id + ' is not stale: ' + what);
+    for (const id of actions) copyAssert($(id).disabled, id + ' is on: ' + what);
+  };
+  // Copy's status alone: the LAN route's own controls stay on.
+  api = async (action, body, base) => {
+    if (base === '/copy/api/') throw {code: 'controls', message: lostCopy};
+    return st.unlocked;
+  };
+  await poll();
+  everyTab('copy lost', "Couldn't read the status of Copy and Free up space. They show their last known state until it can be read again.", '');
+  copyAssert(!$('lan-options').disabled && browseOff(false), 'a lost copy status turned off the LAN form or Browse');
+  // Copy's status read again clears it.
+  api = async (action, body, base) => base === '/copy/api/' ? st.after : st.unlocked;
+  await poll();
+  copyAssert($('lost').hidden && !$('c-start').disabled, 'copy stayed lost after its status was read');
+  // The controls too: on this network the header line is the last known
+  // state.
+  api = async () => {
+    throw new TypeError('Load failed');
+  };
+  await poll();
+  everyTab('controls lost on this network', lostCopy, '');
+  copyAssert($('lan-options').disabled && $('notice').hidden && browseOff(true), 'the LAN form or Browse stayed on, or the notice repeated the loss');
+  // Through the account, the last known state is the connection's.
+  render({...st.unlocked, active: true, ready: true, status: 'Connected to your Seestar', settings: {...st.unlocked.settings, route: 'account'}});
+  everyTab('controls lost through the account', lostCopy, 'Last known state: Connected to your Seestar');
+  copyAssert($('start').disabled, 'Stop stayed on');
+  // The controls come back at once, and Browse with them; the copy tabs
+  // stay stale until copy's status has been read again.
+  let reached, release;
+  const atCopy = new Promise(resolve => reached = resolve);
+  api = async (action, body, base) => {
+    if (base !== '/copy/api/') return st.unlocked;
+    reached();
+    return new Promise(resolve => release = resolve);
+  };
+  const polled = poll();
+  await atCopy;
+  copyAssert($('lost').hidden && $('last-known').hidden && !$('lan-options').disabled && !$('start').disabled && browseOff(false), 'the controls did not come back before copy status');
+  for (const id of views) copyAssert($(id).getAttribute('data-stale') === '', id + ' was current before copy status came back');
+  for (const id of actions) copyAssert($(id).disabled, id + ' came on before copy status came back');
+  // Copy's status read again puts it all back, drafts kept.
+  release(st.after);
+  await polled;
+  copyAssert($('lost').hidden && $('last-known').hidden, 'the loss stayed after a poll succeeded');
+  for (const id of views) copyAssert($(id).getAttribute('data-stale') === null, id + ' stayed stale');
+  for (const id of actions) copyAssert(!$(id).disabled, id + ' stayed off');
+  copyAssert($('x-days').value === '30' && $('f-ex').value === 'Draft', 'a draft was lost');
 }

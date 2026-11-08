@@ -150,10 +150,11 @@ func TestSameTelescope(t *testing.T) {
 	}
 }
 
-// Browse is served under /browse/ for a same-origin frame.
+// Browse is served under /browse/ for a same-origin frame, before a save
+// too.
 func TestMountBrowse(t *testing.T) {
 	e := newMountEnv(t)
-	if w := e.serve("GET", "/browse/", ""); w.Code != 404 {
+	if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
 		t.Errorf("browse before a save = %d", w.Code)
 	}
 	if w := e.serve("POST", "/copy/api/settings", goodInput); w.Code != 200 {

@@ -138,7 +138,7 @@ func (d *guiTestDriver) uxRunning() error {
 		}
 	case "lost-controls":
 		d.js(`token='synthetic-invalid-token';`)
-		if err := d.probe(`check(el('notice').textContent.startsWith('Connection to the controls was lost.') && el('last-known').textContent==='Last known state: Connected to your Seestar' && el('start').disabled,{notice:el('notice').textContent,lastKnown:el('last-known').textContent,startDisabled:el('start').disabled})`); err != nil {
+		if err := d.probe(`check(!el('lost').hidden && el('lost-text').textContent.startsWith('Connection to the controls was lost.') && el('last-known').textContent==='Last known state: Connected to your Seestar' && el('start').disabled,{lost:el('lost-text').textContent,lastKnown:el('last-known').textContent,startDisabled:el('start').disabled})`); err != nil {
 			return err
 		}
 		if err := d.capture(d.ctx, filepath.Join(d.dir, "lost-controls.png")); err != nil {
@@ -146,7 +146,7 @@ func (d *guiTestDriver) uxRunning() error {
 		}
 		// Restore only the fixture's own ephemeral capability.
 		d.js(`token=sessionStorage.getItem('seestar-control-token');`)
-		if err := d.probe(`check(!el('start').disabled && el('last-known').hidden,{startDisabled:el('start').disabled,lastKnownHidden:el('last-known').hidden})`); err != nil {
+		if err := d.probe(`check(!el('start').disabled && el('lost').hidden && el('last-known').hidden,{startDisabled:el('start').disabled,lostHidden:el('lost').hidden,lastKnownHidden:el('last-known').hidden})`); err != nil {
 			return err
 		}
 		return d.runnerUninterrupted()

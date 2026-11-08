@@ -208,7 +208,8 @@ func TestBrowseFrame(t *testing.T) {
 		}
 		return serve(s, r)
 	}
-	if w := frame(nil); w.Code != 404 {
+	// Browse is served before Copy's folder is saved, without statuses.
+	if w := frame(nil); w.Code != 200 {
 		t.Errorf("browse before copy settings = %d", w.Code)
 	}
 	copySettings(t, s)

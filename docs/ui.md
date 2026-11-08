@@ -8,7 +8,9 @@ They share one connection to the telescope.
 ## Tabs
 
 The header shows a dot and a line with the connection's state: **Not
-connected**, the status while connecting, or **Connected to** your Seestar. On
+connected**, the status while connecting, or **Connected to** your Seestar. The
+dot is green only while connected; while connecting, reconnecting, waiting for
+a busy telescope or releasing an idle session it shows busy. On
 this network it shows the saved address, then **On this network: reachable**
 or **Can't reach** the address once **Test** has run. While copying is on, a
 chip after the line says how it stands: **Copying**, **Up to date**, how many
@@ -103,8 +105,16 @@ If a setting is wrong, its field shows what to fix.
 Your settings are saved once a connection succeeds. If saving fails, the
 connection keeps running and **Retry saving settings** appears.
 
-If the window loses the controls, it shows the last known state and warns that
-the proxy may still be running. Reopen seestar-wormhole to reconnect.
+If the window loses the controls, a warning above the tab contents says so on
+every tab and on either route, with the last known state through the account,
+and says the proxy may still be running. Reopen seestar-wormhole to reconnect.
+Copy, Free up space and Browse are dimmed to show they may be out of date:
+Copy's and Free up space's buttons that act on the controls are disabled, and
+Browse takes no clicks or keys. If only the status of Copy and Free up space
+can't be read, the warning says that instead, and only those two are dimmed.
+What you've typed is kept. Connection and Browse come back as soon as the
+controls answer; Copy and Free up space come back once their status has been
+read again.
 
 ## While connected
 
@@ -199,14 +209,15 @@ folder's [statuses](copy-reference.md#statuses). What the settings leave out
 shows as [`left out`](copy-reference.md#left-out-in-browse). After a Save
 that changes the folder or the selection, or a change of how the telescope
 is reached, Browse loads again at the share's top when it is next shown, so
-an error from before goes without a retry. Until the
-folder is saved, Browse says to choose it, with **Go to Copy**. In the app's
+an error from before goes without a retry. Browse opens once a route is
+saved: until Copy's folder is saved it lists the telescope's files without
+statuses, and the first Save loads it again with them. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
 
 ### Free up space
 
 Until Copy's folder is saved, Free up space says to choose it, with **Go to
-Copy**, as Browse does. **Preview what to delete** lists, per folder, the files that are copied and
+Copy**. **Preview what to delete** lists, per folder, the files that are copied and
 safe to delete, as `delete` [proves it](copy-reference.md#proof-modes), and
 nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent

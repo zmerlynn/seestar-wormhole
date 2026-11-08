@@ -40,8 +40,8 @@ check or whether to copy once, how many files to copy at once, what to leave out
 whether to start copying when the app opens. [Using the UI](ui.md#copy) has every setting and message.
 
 **Browse** shows the telescope's files one folder at a time, with its `.jpg`
-images, `.txt` logs and FITS headers, and marks which are copied, changed, new
-or left out. It changes nothing on the telescope; **Save** saves a file you
+images, `.txt` logs and FITS headers, and, once Copy's folder is saved, marks
+which are copied, changed, new or left out. It changes nothing on the telescope; **Save** saves a file you
 pick. See [Browse](ui.md#browse).
 
 **Free up space** deletes images from the telescope once they are safely
@@ -82,12 +82,12 @@ history.
   never renamed. See [names that fail](copy-reference.md#names-that-fail).
 - **On a Mac, allow Local Network access.** The app asks macOS for Local
   Network access the first time it reaches an address on this network; allow
-  it. If it is blocked, **Test**, Copy and Preview can't reach the telescope
-  there, and on a Mac they say where to allow it: enable seestar-wormhole in
-  System Settings → Privacy & Security → Local Network, then **Test** again.
-  While the request is open, the first **Test**, **Save** or copy after the
-  app starts waits up to 5 seconds for your answer. Through Telescope
-  Network, copying doesn't need it.
+  it. If it is blocked, **Test**, Copy, Preview, Browse and Free up space
+  can't reach the telescope there, and on a Mac they say where to allow it:
+  enable seestar-wormhole in System Settings → Privacy & Security → Local
+  Network, then **Test** again. While the request is open, the first
+  connection after the app starts, from any tab, waits up to 5 seconds for
+  your answer. Through Telescope Network, copying doesn't need it.
 - **Through Telescope Network, a large copy is shared.** It uses the same telescope
   session as the phone app and control clients, and delays their status
   replies. **Files at once** in Copy settings sets how many files copying

@@ -56,7 +56,7 @@ func TestCopyChoosePage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkCopyChoose("+copyPageStatuses(t)+")")
 }
 
-// Browse before the folder is saved says where to set it.
+// Browse opens with the route, before Copy's folder is saved.
 func TestBrowseSetupPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkBrowseSetup("+copyPageStatuses(t)+")")
 }
@@ -84,4 +84,10 @@ func TestCopyOnceIntervalPage(t *testing.T) {
 // Copy's and Free up space's action errors are announced once.
 func TestActionAlertsPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkActionAlerts("+copyPageStatuses(t)+")")
+}
+
+// A failed poll is said on every tab, and the copy tabs' views go stale
+// and their actions off until a poll succeeds.
+func TestLostLinePage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkLostLine("+copyPageStatuses(t)+")")
 }

@@ -74,13 +74,15 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   }
   await expect(page.locator('#f-ex-help')).toContainText('For example: Video, /Preview.');
   await expect(page.locator('#f-cancel')).toBeHidden();
-  // Browse says where to set the folder until it is saved.
+  // Browse shows the telescope's files before the folder is saved,
+  // without statuses.
   await tab(page, 'Browse').click();
-  await expect(page.locator('#b-setup')).toBeVisible();
-  await expect(page.locator('#b-frame')).toBeHidden();
-  await page.getByRole('button', { name: 'Go to Copy' }).click();
-  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
-  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  await expect(frame(page).getByRole('link', { name: 'MyWorks/' })).toBeVisible();
+  await expect(frame(page).locator('#list')).not.toHaveClass(/statuses/);
+  await expect(frame(page).locator('#list .badge')).toHaveCount(0);
+  await expect(frame(page).locator('#key')).toBeHidden();
+  await tab(page, 'Copy').click();
 
   await field(page, 'Folder for your images').fill(app.folder);
   await expect(copySave(page)).toHaveText('Save');
@@ -644,6 +646,62 @@ test('Browse follows a change of route', async ({ page, startApp }) => {
   await expect(browseStatus(page)).toHaveText(rootStatus);
 });
 
+// While the controls are lost, Browse keeps its loaded view but takes no
+// click, key or focus, its folders and Save links included, until a poll
+// succeeds.
+test('a stale Browse takes no input until the controls come back', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  await openApp(page, app.url);
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const browse = page.locator('#b-frame');
+  const myWorks = frame(page).getByRole('link', { name: 'MyWorks/', exact: true });
+  // Focus is in Browse when the controls go.
+  await myWorks.focus();
+  let asked = 0;
+  page.on('request', (r) => { if (r.url().includes('/browse/api/')) asked++; });
+  await page.route('**/api/status', (route) => route.abort());
+  await expect(page.locator('#lost')).toBeVisible();
+  await expect(browse).toHaveAttribute('data-stale', '');
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  const box = await myWorks.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(500);
+  expect(asked).toBe(0);
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate(() => document.activeElement?.id)).not.toBe('b-frame');
+  }
+  await page.unroute('**/api/status');
+  await expect(page.locator('#lost')).toBeHidden();
+  await myWorks.click();
+  await expect(frame(page).locator('#crumbs a[aria-current="page"]')).toHaveText('MyWorks');
+});
+
+// After the controls come back, the copy tabs wait for a fresh status of
+// their own before they turn back on; the connection doesn't wait.
+test('the copy tabs stay stale until copy status is read again', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await expect(page.locator('#c-start')).toBeEnabled();
+  await page.route('**/api/status', (route) => route.abort());
+  await expect(page.locator('#lost')).toBeVisible();
+  let release;
+  const barrier = new Promise((resolve) => (release = resolve));
+  await page.route('**/copy/api/status', async (route) => { await barrier; await route.continue(); });
+  await page.unroute('**/api/status');
+  await expect(page.locator('#lost')).toBeHidden();
+  await expect(page.locator('#lan-options')).toBeEnabled();
+  await expect(page.locator('#c-box')).toHaveAttribute('data-stale', '');
+  await expect(page.locator('#c-start')).toBeDisabled();
+  release();
+  await expect(page.locator('#c-start')).toBeEnabled();
+  await expect(page.locator('#c-box')).not.toHaveAttribute('data-stale');
+});
+
 // The frame is named for assistive technology without a title, which
 // would show as a tooltip over the list.
 test("Browse's frame is named The telescope's files, with no title", async ({ page, startApp }) => {
@@ -787,7 +845,9 @@ test('the app page refuses a request without its token', async ({ page, startApp
     return Promise.all([fetch('/api/status'), fetch('/copy/api/status'), post('/copy/api/settings'), post('/api/route')]).then((rs) => rs.map((r) => r.status));
   });
   expect(codes).toEqual([403, 403, 403, 403]);
-  await expect(page.locator('#notice')).toHaveText('Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.');
+  await expect(page.locator('#lost-text')).toHaveText('Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.');
+  await expect(page.locator('#lost')).toBeVisible();
+  await expect(page.locator('#notice')).toBeHidden();
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeDisabled();
 });
 

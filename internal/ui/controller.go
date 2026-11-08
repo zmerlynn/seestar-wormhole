@@ -363,6 +363,7 @@ type runView struct {
 	Active         bool                     `json:"active"`
 	Stopping       bool                     `json:"stopping"`
 	Cancel         bool                     `json:"cancel"`
+	Ready          bool                     `json:"ready"` // connected now, as [controller.connected] has it
 	Failure        *ActionError             `json:"failure,omitempty"`
 	settings       Settings
 	SaveFailed     bool `json:"save_failed"`
@@ -377,6 +378,7 @@ func (c *controller) view() runView {
 	if active {
 		v.SelectedDevice = c.status.SelectedDevice()
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
+		v.Ready = !c.stopping && c.isReady(c.status)
 		v.Discovery = c.runSettings.Discovery && c.status.SaveBoundary(true)
 	}
 	if c.failure != nil {

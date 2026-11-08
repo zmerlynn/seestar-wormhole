@@ -99,12 +99,14 @@ func (p *previewer) start(set Settings, t Target) error {
 		Endpoint: set.Address, Dest: set.Folder, StateDir: p.stateDir, Selector: sel, DryRun: true,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: func(ctx context.Context, endpoint string) (sess remote.Session, err error) {
-			if p.at != nil {
-				err = p.at(t)
-			}
-			if err == nil {
-				sess, err = p.dial(ctx, endpoint)
-			}
+			sess, err = establish(ctx, t, func(ctx context.Context) (remote.Session, error) {
+				if p.at != nil {
+					if err := p.at(t); err != nil {
+						return nil, err
+					}
+				}
+				return p.dial(ctx, endpoint)
+			})
 			p.mu.Lock()
 			defer p.mu.Unlock()
 			if p.st.state == pvRunning {
