@@ -395,6 +395,10 @@ async function checkLostLine(st) {
   await poll();
   everyTab('copy lost', "Couldn't read the status of Copy and Free up space. They show their last known state until it can be read again.", '');
   copyAssert(!$('lan-options').disabled && browseOff(false), 'a lost copy status turned off the LAN form or Browse');
+  // Copy's status read again clears it.
+  api = async (action, body, base) => base === '/copy/api/' ? st.after : st.unlocked;
+  await poll();
+  copyAssert($('lost').hidden && !$('c-start').disabled, 'copy stayed lost after its status was read');
   // The controls too: on this network the header line is the last known
   // state.
   api = async () => {
@@ -407,9 +411,23 @@ async function checkLostLine(st) {
   render({...st.unlocked, active: true, ready: true, status: 'Connected to your Seestar', settings: {...st.unlocked.settings, route: 'account'}});
   everyTab('controls lost through the account', lostCopy, 'Last known state: Connected to your Seestar');
   copyAssert($('start').disabled, 'Stop stayed on');
-  // A poll that succeeds puts it all back, drafts kept.
-  api = async (action, body, base) => base === '/copy/api/' ? st.after : st.unlocked;
-  await poll();
+  // The controls come back at once, and Browse with them; the copy tabs
+  // stay stale until copy's status has been read again.
+  let reached, release;
+  const atCopy = new Promise(resolve => reached = resolve);
+  api = async (action, body, base) => {
+    if (base !== '/copy/api/') return st.unlocked;
+    reached();
+    return new Promise(resolve => release = resolve);
+  };
+  const polled = poll();
+  await atCopy;
+  copyAssert($('lost').hidden && $('last-known').hidden && !$('lan-options').disabled && !$('start').disabled && browseOff(false), 'the controls did not come back before copy status');
+  for (const id of views) copyAssert($(id).getAttribute('data-stale') === '', id + ' was current before copy status came back');
+  for (const id of actions) copyAssert($(id).disabled, id + ' came on before copy status came back');
+  // Copy's status read again puts it all back, drafts kept.
+  release(st.after);
+  await polled;
   copyAssert($('lost').hidden && $('last-known').hidden, 'the loss stayed after a poll succeeded');
   for (const id of views) copyAssert($(id).getAttribute('data-stale') === null, id + ' stayed stale');
   for (const id of actions) copyAssert(!$(id).disabled, id + ' stayed off');

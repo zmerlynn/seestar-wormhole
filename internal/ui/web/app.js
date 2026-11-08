@@ -25,9 +25,10 @@ const tabNames = ['connection', 'copy', 'browse', 'free', 'activity'];
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const copyLostCopy = "Couldn't read the status of Copy and Free up space. They show their last known state until it can be read again.";
 // controlsLost: the controls' status poll or an action found the server
-// gone. copyLost: copy's status poll failed. Either way the copy tabs show
+// gone. copyLost: copy's status poll failed. copyOld: the controls were lost
+// and copy's status has not been read since. Each way the copy tabs show
 // their last known state, marked stale, with their actions off.
-let controlsLost = false, copyLost = false;
+let controlsLost = false, copyLost = false, copyOld = false;
 const fieldCopy = {
   email: 'Enter your Seestar account email.', password: 'Enter a password of 8 to 32 characters, or use a saved password.',
   idle: 'Enter a wait time greater than zero.'
@@ -196,7 +197,7 @@ function fail(e, focus = false) {
   }
   if (code === 'controls') {
     connected = false;
-    controlsLost = true;
+    controlsLost = copyOld = true;
   }
 }
 function validate() {
@@ -1132,7 +1133,7 @@ function copyRender(c) {
 }
 // stale reports that what the copy tabs show may be out of date.
 function stale() {
-  return controlsLost || copyLost && !!state?.copy_unlocked;
+  return controlsLost || (copyLost || copyOld) && !!state?.copy_unlocked;
 }
 // The actions that need the server's answer, off while stale.
 const staleActions = ['c-start', 'c-check', 'c-stop', 'c-pbtn', 'c-pcancel', 's-stop', 'h-cgo', 'x-find', 'x-cancel', 'x-change', 'x-stop', 'x-done', 'x-cgo'];
@@ -1141,9 +1142,9 @@ const staleActions = ['c-start', 'c-check', 'c-stop', 'c-pbtn', 'c-pcancel', 's-
 // stale and turns their actions off. Drafts in their fields are kept, and
 // all of it comes back once a poll succeeds.
 function lostLine() {
-  const old = stale();
-  $('lost').hidden = !old;
-  text('lost-text', controlsLost ? lostCopy : old ? copyLostCopy : '');
+  const old = stale(), copyFailed = copyLost && !!state?.copy_unlocked;
+  $('lost').hidden = !controlsLost && !copyFailed;
+  text('lost-text', controlsLost ? lostCopy : copyFailed ? copyLostCopy : '');
   // On this network, the header line is the last known state.
   const known = controlsLost && !(state?.settings?.route === 'lan' && !active);
   $('last-known').hidden = !known;
@@ -1168,7 +1169,7 @@ function lostLine() {
 async function copyRefresh() {
   try {
     const c = await api('status', undefined, '/copy/api/');
-    copyLost = false;
+    copyLost = copyOld = false;
     copyRender(c);
   } catch (_) {
     copyLost = true;
@@ -1363,7 +1364,7 @@ async function poll() {
   } catch (_) {
     if (ended) return;
     connected = false;
-    controlsLost = true;
+    controlsLost = copyOld = true;
     controls();
   }
   if (!ended) setTimeout(poll, 1000);

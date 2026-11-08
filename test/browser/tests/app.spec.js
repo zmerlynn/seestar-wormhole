@@ -681,6 +681,27 @@ test('a stale Browse takes no input until the controls come back', async ({ page
   await expect(frame(page).locator('#crumbs a[aria-current="page"]')).toHaveText('MyWorks');
 });
 
+// After the controls come back, the copy tabs wait for a fresh status of
+// their own before they turn back on; the connection doesn't wait.
+test('the copy tabs stay stale until copy status is read again', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await expect(page.locator('#c-start')).toBeEnabled();
+  await page.route('**/api/status', (route) => route.abort());
+  await expect(page.locator('#lost')).toBeVisible();
+  let release;
+  const barrier = new Promise((resolve) => (release = resolve));
+  await page.route('**/copy/api/status', async (route) => { await barrier; await route.continue(); });
+  await page.unroute('**/api/status');
+  await expect(page.locator('#lost')).toBeHidden();
+  await expect(page.locator('#lan-options')).toBeEnabled();
+  await expect(page.locator('#c-box')).toHaveAttribute('data-stale', '');
+  await expect(page.locator('#c-start')).toBeDisabled();
+  release();
+  await expect(page.locator('#c-start')).toBeEnabled();
+  await expect(page.locator('#c-box')).not.toHaveAttribute('data-stale');
+});
+
 // The frame is named for assistive technology without a title, which
 // would show as a tooltip over the list.
 test("Browse's frame is named The telescope's files, with no title", async ({ page, startApp }) => {
