@@ -25,6 +25,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
@@ -377,7 +378,9 @@ func TestRuntimeStartupFailureStartsNoCopying(t *testing.T) {
 // confirmed delete opens a remover. A confirmation whose remover fails
 // deletes nothing; a fresh preview's confirmation then opens a second
 // remover and deletes. Each confirmation uses its own preview, since a
-// confirmation consumes it.
+// confirmation consumes it. Every outcome reaches the app's trail: the
+// healthy pass, listing and preview as successes with no gui.log line, the
+// failed delete as one failed line and the second as its recovery.
 func TestStartupMountUsesTheBuilder(t *testing.T) {
 	e := newRuntimeEnv(t, false)
 	share := t.TempDir()
@@ -403,10 +406,35 @@ func TestStartupMountUsesTheBuilder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	savedTCP, savedRemover, savedDial := tcpDial, tcpRemover, copyDial
-	t.Cleanup(func() { tcpDial, tcpRemover, copyDial = savedTCP, savedRemover, savedDial })
+	savedTCP, savedRemover, savedDial, savedMount := tcpDial, tcpRemover, copyDial, newMount
+	t.Cleanup(func() { tcpDial, tcpRemover, copyDial, newMount = savedTCP, savedRemover, savedDial, savedMount })
 	copyDial = nil
 	var mu sync.Mutex
+	var outcomes []copyapp.Outcome
+	newMount = func(ctx context.Context, o copyapp.MountOptions) *copyapp.Mount {
+		inner := o.Report
+		if inner == nil {
+			t.Error("the Mount has no Report")
+			inner = func(copyapp.Outcome) {}
+		}
+		o.Report = func(out copyapp.Outcome) {
+			inner(out)
+			mu.Lock()
+			outcomes = append(outcomes, out)
+			mu.Unlock()
+		}
+		return savedMount(ctx, o)
+	}
+	fileCodes := func() []string {
+		var out []string
+		for _, l := range guiLog(t, e.root) {
+			if l["source"] != diagnostic.SourceConnection {
+				c, _ := l["code"].(string)
+				out = append(out, c)
+			}
+		}
+		return out
+	}
 	var dialed []string
 	var removers int
 	removerFails := true
@@ -501,6 +529,12 @@ func TestStartupMountUsesTheBuilder(t *testing.T) {
 		if n := removersOpened(); n != 1 {
 			t.Errorf("the failed delete opened %d removers, want 1", n)
 		}
+		if !until("the failed line", func() bool { return len(fileCodes()) > 0 }) {
+			return
+		}
+		if got, want := fileCodes(), []string{"delete_delete_failed"}; !slices.Equal(got, want) {
+			t.Errorf("gui.log file-tool codes = %v, want %v", got, want)
+		}
 		// Part 2: a fresh preview, and its confirmation with a remover that works.
 		mu.Lock()
 		removerFails = false
@@ -516,9 +550,31 @@ func TestStartupMountUsesTheBuilder(t *testing.T) {
 		if n := removersOpened(); n != 2 {
 			t.Errorf("the deletes opened %d removers in all, want 2", n)
 		}
+		until("the recovered line", func() bool { return len(fileCodes()) > 1 })
 	})
+	if got, want := fileCodes(), []string{"delete_delete_failed", "delete_delete_recovered"}; !slices.Equal(got, want) {
+		t.Errorf("gui.log file-tool codes = %v, want %v", got, want)
+	}
 	mu.Lock()
 	defer mu.Unlock()
+	for _, key := range [][2]string{
+		{diagnostic.SourceCopy, diagnostic.OpPass},
+		{diagnostic.SourceBrowse, diagnostic.OpRead},
+		{diagnostic.SourceDelete, diagnostic.OpPreview},
+	} {
+		ok := false
+		for _, o := range outcomes {
+			if o.Source == key[0] && o.Op == key[1] {
+				if o.Failed() || o.Canceled {
+					t.Errorf("%s/%s = %+v", key[0], key[1], o)
+				}
+				ok = true
+			}
+		}
+		if !ok {
+			t.Errorf("no %s/%s outcome reached Report", key[0], key[1])
+		}
+	}
 	if len(dialed) == 0 {
 		t.Error("nothing was dialed")
 	}
