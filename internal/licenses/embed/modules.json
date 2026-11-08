@@ -28,6 +28,13 @@
     ]
   },
   {
+    "Path": "github.com/git-pkgs/gitignore",
+    "SPDX": "MIT",
+    "Files": [
+      "vendor/github.com/git-pkgs/gitignore/LICENSE"
+    ]
+  },
+  {
     "Path": "github.com/go-crypt/x",
     "SPDX": "BSD-3-Clause",
     "Files": [

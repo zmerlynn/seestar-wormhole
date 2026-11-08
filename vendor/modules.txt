@@ -17,6 +17,9 @@ github.com/danieljoos/wincred
 # github.com/geoffgarside/ber v1.1.0
 ## explicit; go 1.13
 github.com/geoffgarside/ber
+# github.com/git-pkgs/gitignore v1.3.0
+## explicit; go 1.26
+github.com/git-pkgs/gitignore
 # github.com/go-crypt/x v0.4.17
 ## explicit; go 1.26.0
 github.com/go-crypt/x/pbkdf2

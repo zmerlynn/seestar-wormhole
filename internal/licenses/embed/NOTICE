@@ -14,6 +14,7 @@ Vendored modules and the license files copied into vendor/:
 | github.com/coder/websocket | vendor/github.com/coder/websocket/LICENSE.txt | ISC |
 | github.com/danieljoos/wincred | vendor/github.com/danieljoos/wincred/LICENSE | MIT |
 | github.com/geoffgarside/ber | vendor/github.com/geoffgarside/ber/LICENSE | BSD-3-Clause |
+| github.com/git-pkgs/gitignore | vendor/github.com/git-pkgs/gitignore/LICENSE | MIT |
 | github.com/go-crypt/x | vendor/github.com/go-crypt/x/LICENSE | BSD-3-Clause |
 | github.com/go-krb5/krb5 | vendor/github.com/go-krb5/krb5/LICENSE | Apache-2.0 |
 | github.com/go-krb5/x | vendor/github.com/go-krb5/x/LICENSE and vendor/github.com/go-krb5/x/aescts/LICENSE and vendor/github.com/go-krb5/x/dns/LICENSE and vendor/github.com/go-krb5/x/identity/LICENSE and vendor/github.com/go-krb5/x/rpc/LICENSE | BSD-3-Clause AND Apache-2.0 |
