@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"log/slog"
 	"net"
+	"sync"
 
 	"github.com/hirochachacha/go-smb2/v2"
 	"github.com/hirochachacha/go-smb2/v2/auth"
@@ -93,28 +94,107 @@ var (
 
 // dialShare is dial for the share named share; only tests name another.
 func dialShare(ctx context.Context, endpoint string, dialer *smb2.Dialer, share string, log *slog.Logger) (*SMB, error) {
-	if log == nil {
-		log = slog.New(slog.DiscardHandler)
-	}
 	// go-smb2 would add port 445 to a bare host, and an empty host dials
 	// the local machine; both would connect somewhere the caller did not name.
 	if host, port, err := net.SplitHostPort(endpoint); err != nil || host == "" || port == "" {
 		return nil, fmt.Errorf("endpoint %q is not host:port", endpoint)
 	}
+	return open(ctx, endpoint, endpoint, dialer, share, log)
+}
+
+// open dials server with dialer, logs in and mounts share. server is the
+// name go-smb2 is given; name is the one error text shows.
+func open(ctx context.Context, name, server string, dialer *smb2.Dialer, share string, log *slog.Logger) (*SMB, error) {
+	if log == nil {
+		log = slog.New(slog.DiscardHandler)
+	}
 	// go-smb2's Dial closes its connection itself when ctx is canceled.
-	session, err := dialer.Dial(ctx, endpoint)
+	session, err := dialer.Dial(ctx, server)
 	if err != nil {
-		return nil, fmt.Errorf("dial %s: %w", endpoint, err)
+		return nil, fmt.Errorf("dial %s: %w", name, err)
 	}
 	mounted, err := mount(ctx, session, share, log)
 	if err != nil {
-		return nil, fmt.Errorf("mount %q on %s: %w", share, endpoint, err)
+		return nil, fmt.Errorf("mount %q on %s: %w", share, name, err)
 	}
 	stop := context.AfterFunc(ctx, func() {
 		defer guard.Recover(log, "closing the device session")
 		_ = closeSession(session)
 	})
-	return &SMB{endpoint: endpoint, session: session, share: mounted, stopWatch: stop}, nil
+	return &SMB{endpoint: name, session: session, share: mounted, stopWatch: stop}, nil
+}
+
+// Conn opens a stream to the telescope's SMB server. It returns once the
+// stream is open, or with ctx's error if ctx ends first.
+type Conn func(context.Context) (net.Conn, error)
+
+// viaServer is the server name DialVia gives go-smb2. go-smb2 needs one; it
+// names the server in the NTLM exchange and takes the share path's host from
+// it. A fixed loopback name carries nothing about the user's settings.
+const viaServer = "127.0.0.1:445"
+
+// DialVia is Dial over a stream conn opens, in place of a TCP connection
+// to an endpoint. name is shown in error text only and is never dialed or
+// parsed. If the login or mount fails, the stream is closed.
+func DialVia(ctx context.Context, name string, conn Conn, log *slog.Logger) (*SMB, error) {
+	return dialVia(ctx, name, conn, newDialer(), log)
+}
+
+func dialVia(ctx context.Context, name string, conn Conn, dialer *smb2.Dialer, log *slog.Logger) (*SMB, error) {
+	via := &connTransport{conn: conn}
+	d := *dialer
+	d.TransportDialer = via
+	s, err := open(ctx, name, viaServer, &d, ShareName, log)
+	if err != nil {
+		via.close()
+		return nil, err
+	}
+	return s, nil
+}
+
+// connTransport is a go-smb2 TransportDialer over the streams conn opens.
+// It keeps each stream it handed out, so DialVia can close them on failure
+// whatever go-smb2 has already closed.
+type connTransport struct {
+	conn Conn
+
+	mu    sync.Mutex
+	conns []*onceConn
+}
+
+func (c *connTransport) Dial(ctx context.Context, _ string) (smb2.Transport, error) {
+	nc, err := c.conn(ctx)
+	if err != nil {
+		return nil, err
+	}
+	oc := &onceConn{Conn: nc}
+	c.mu.Lock()
+	c.conns = append(c.conns, oc)
+	c.mu.Unlock()
+	return smb2.NewTransport(oc), nil
+}
+
+// close closes every stream Dial handed out.
+func (c *connTransport) close() {
+	c.mu.Lock()
+	conns := c.conns
+	c.conns = nil
+	c.mu.Unlock()
+	for _, oc := range conns {
+		_ = oc.Close()
+	}
+}
+
+// onceConn closes its stream once, however often it is closed.
+type onceConn struct {
+	net.Conn
+	once sync.Once
+	err  error
+}
+
+func (c *onceConn) Close() error {
+	c.once.Do(func() { c.err = c.Conn.Close() })
+	return c.err
 }
 
 // mount mounts share. On failure it has closed the session. Canceling
