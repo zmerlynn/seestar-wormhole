@@ -35,6 +35,18 @@ const (
 	commandCompletion
 )
 
+// registerUICommand adds the ui command where the executable has one. Tests
+// of the console build replace it to register the GUI's command.
+var registerUICommand = addUICommand
+
+// newUICommand is the GUI executable's ui command. It is defined in every
+// build so that console-build tests can exercise the GUI command path.
+func newUICommand(o *options) *cobra.Command {
+	command := &cobra.Command{Use: "ui", Short: "Open local controls in a native window", Args: noArguments, RunE: func(*cobra.Command, []string) error { return nil }}
+	command.Flags().StringVar(&o.stateDir, "state-dir", "", "private UI settings and shared installation identity directory")
+	return command
+}
+
 func versionString() string {
 	return buildinfo.String(programName, version, revision)
 }
@@ -86,7 +98,7 @@ func newCommand(o *options, out io.Writer) *cobra.Command {
 	})
 	root.SetFlagErrorFunc(flagParseError)
 	root.Flags().BoolVar(&o.version, "version", false, "print version, revision and platform")
-	addUICommand(root, o)
+	registerUICommand(root, o)
 	var proxyLogs logOptions
 	proxyCommand := &cobra.Command{
 		Use:   "proxy",
