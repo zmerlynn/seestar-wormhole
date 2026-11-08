@@ -33,8 +33,8 @@ be read again.
 Network.** They go through the app's own connection, not the SMB port, so
 turning that port on or off changes nothing for them. Their errors name
 **Seestar (account connection)**; the reason after it says what failed. Check
-the Connection tab: they work only while it's connected to the telescope that
-copying started with.
+the connection status on the Connection tab. With
+**Connect when an app needs Seestar**, the first file request opens the session.
 
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
 `device_offline` means the cloud or connection service reports the telescope offline or asleep.
