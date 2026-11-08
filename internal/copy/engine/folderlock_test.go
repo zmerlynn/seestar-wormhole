@@ -183,6 +183,12 @@ func TestFolderLockAcrossHistoryRoots(t *testing.T) {
 			}
 			second := dest
 			if spelling == "symlink" {
+				// The folder must exist first: Windows makes a link to a
+				// missing target a file link, which no folder can be
+				// opened through.
+				if err := os.Mkdir(dest, 0o755); err != nil {
+					t.Fatal(err)
+				}
 				second = filepath.Join(base, "link")
 				if err := os.Symlink(dest, second); err != nil {
 					t.Skipf("no symbolic links here: %v", err)
