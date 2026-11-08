@@ -74,13 +74,15 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   }
   await expect(page.locator('#f-ex-help')).toContainText('For example: Video, /Preview.');
   await expect(page.locator('#f-cancel')).toBeHidden();
-  // Browse says where to set the folder until it is saved.
+  // Browse shows the telescope's files before the folder is saved,
+  // without statuses.
   await tab(page, 'Browse').click();
-  await expect(page.locator('#b-setup')).toBeVisible();
-  await expect(page.locator('#b-frame')).toBeHidden();
-  await page.getByRole('button', { name: 'Go to Copy' }).click();
-  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
-  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  await expect(frame(page).getByRole('link', { name: 'MyWorks/' })).toBeVisible();
+  await expect(frame(page).locator('#list')).not.toHaveClass(/statuses/);
+  await expect(frame(page).locator('#list .badge')).toHaveCount(0);
+  await expect(frame(page).locator('#key')).toBeHidden();
+  await tab(page, 'Copy').click();
 
   await field(page, 'Folder for your images').fill(app.folder);
   await expect(copySave(page)).toHaveText('Save');

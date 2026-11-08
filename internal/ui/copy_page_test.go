@@ -56,7 +56,7 @@ func TestCopyChoosePage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkCopyChoose("+copyPageStatuses(t)+")")
 }
 
-// Browse before the folder is saved says where to set it.
+// Browse opens with the route, before Copy's folder is saved.
 func TestBrowseSetupPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkBrowseSetup("+copyPageStatuses(t)+")")
 }

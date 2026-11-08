@@ -199,14 +199,15 @@ folder's [statuses](copy-reference.md#statuses). What the settings leave out
 shows as [`left out`](copy-reference.md#left-out-in-browse). After a Save
 that changes the folder or the selection, or a change of how the telescope
 is reached, Browse loads again at the share's top when it is next shown, so
-an error from before goes without a retry. Until the
-folder is saved, Browse says to choose it, with **Go to Copy**. In the app's
+an error from before goes without a retry. Browse opens once a route is
+saved: until Copy's folder is saved it lists the telescope's files without
+statuses, and the first Save loads it again with them. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
 
 ### Free up space
 
 Until Copy's folder is saved, Free up space says to choose it, with **Go to
-Copy**, as Browse does. **Preview what to delete** lists, per folder, the files that are copied and
+Copy**. **Preview what to delete** lists, per folder, the files that are copied and
 safe to delete, as `delete` [proves it](copy-reference.md#proof-modes), and
 nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent

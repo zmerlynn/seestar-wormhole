@@ -66,7 +66,7 @@ type server struct {
 
 	mu       sync.Mutex
 	file     *settingsFile
-	browse   *browse.Handler // nil until a folder is saved
+	browse   *browse.Handler // without statuses until a folder is saved
 	sessions *browse.Sessions
 	// view counts what Browse shows, for the page, which loads its frame
 	// again once it moved: each new pool moves it, and so does each new
@@ -140,9 +140,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	if o.Remover != nil {
 		s.free.remover = o.Remover
 	}
-	if s.setUp() {
-		s.browse, s.sessions = s.newBrowse(file.settings)
-	}
+	s.browse, s.sessions = s.newBrowse(file.settings)
 	return s
 }
 
@@ -160,20 +158,25 @@ func (s *server) resolve(set Settings) (Settings, Target, error) {
 }
 
 // newBrowse builds a browse handler with its own session pool, which
-// reaches the target, records for the folder, and what the selection
-// leaves out.
+// reaches the target. Once a folder is saved it also shows the folder's
+// records and what the selection leaves out; before that, Browse shows
+// the telescope's files without statuses.
 // It is called holding s.mu, or before the server is shared.
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	s.view++
 	folder, log := set.Folder, s.log
-	sel, err := selector(set)
-	if err != nil {
-		log.Warn("browse shows nothing as left out", "err", err)
-	}
 	sessions := browse.NewSessions(s.ctx, s.dial, log)
-	records := func() (map[string]state.Record, error) { return state.Load(s.stateDir, folder, log) }
-	if file, err := state.Path(s.stateDir, folder); err == nil {
-		records = browse.CacheRecords(file, records)
+	var records func() (map[string]state.Record, error)
+	var sel engine.Selector
+	if s.setUp() {
+		var err error
+		if sel, err = selector(set); err != nil {
+			log.Warn("browse shows nothing as left out", "err", err)
+		}
+		records = func() (map[string]state.Record, error) { return state.Load(s.stateDir, folder, log) }
+		if file, err := state.Path(s.stateDir, folder); err == nil {
+			records = browse.CacheRecords(file, records)
+		}
 	}
 	h := browse.NewHandler(browse.Config{
 		Addr: s.addr, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true,
@@ -254,9 +257,7 @@ func (s *server) endpointChanged() {
 	s.preview.discard()
 	s.copy.moved()
 	old := s.sessions
-	if s.browse != nil {
-		s.browse, s.sessions = s.newBrowse(s.file.settings)
-	}
+	s.browse, s.sessions = s.newBrowse(s.file.settings)
 	s.mu.Unlock()
 	if old != nil {
 		old.Close()
@@ -284,10 +285,6 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.mu.Lock()
 		h, sessions := s.browse, s.sessions
 		s.mu.Unlock()
-		if h == nil {
-			http.Error(w, "Not found", http.StatusNotFound)
-			return
-		}
 		// A window's webview may not save a download itself, so the app
 		// does, with the window's save dialog.
 		var serve http.Handler = h

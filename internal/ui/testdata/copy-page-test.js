@@ -71,7 +71,7 @@ async function checkCopySetup(st) {
   copyAssert($('c-main').hidden && !$('s-first').hidden && $('s-line').hidden, 'the first visit shows the copy controls');
   copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
-  copyAssert($('b-frame').src === undefined || $('b-frame').src === '', 'Browse loaded before settings');
+  copyAssert($('b-frame').src === '/browse/', 'Browse waited for settings');
   // A field error goes under its field and takes focus.
   const calls = [];
   api = async (action, body, base) => {
@@ -226,19 +226,23 @@ async function checkCopyChoose(st) {
   copyAssert(!$('f-int-err').hidden, 'the failure cleared another field\'s error');
 }
 
-// A newly opened Browse says where to set the folder, and its link goes
-// there; once saved, Browse shows the telescope's files.
+// Browse shows the telescope's files once a route is saved, without
+// waiting for Copy's folder, and loads again, with statuses, once the
+// folder is saved.
 async function checkBrowseSetup(st) {
-  copyFixture(st, st.unlocked);
+  copyFixture(st, st.locked);
+  copyRender(st.before);
+  copyAssert(!$('b-frame').src && $('b-frame').hidden, 'Browse loaded before a route was saved');
+  render(st.unlocked);
   copyRender(st.before);
   selectTab('browse');
-  copyAssert(!$('panel-browse').hidden && !$('b-setup').hidden && $('b-frame').hidden, 'Browse is blank before setup');
-  copyAssert(!$('b-frame').src, 'Browse loaded before setup');
-  $('b-setup-go').dispatchEvent({type: 'click'});
-  copyAssert(currentTab === 'copy' && !$('panel-copy').hidden && document.activeElement === $('f-folder'), 'Go to Copy did not open the folder field');
+  copyAssert(!$('panel-browse').hidden && !$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse waited for a folder');
+  copyAssert(st.after.browse_view !== st.before.browse_view, 'server statuses changed shape');
+  $('b-frame').src = 'loaded';
+  copyRender(st.before);
+  copyAssert($('b-frame').src === 'loaded', 'Browse loaded again with nothing changed');
   copyRender(st.after);
-  selectTab('browse');
-  copyAssert($('b-setup').hidden && !$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse did not show after setup');
+  copyAssert(!$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse did not load again after setup');
 }
 
 // The connected page's copying step leads with Copy and Browse, its Go to

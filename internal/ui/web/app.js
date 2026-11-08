@@ -497,16 +497,15 @@ function goReach() {
   const target = $(reach === 'smb_off' ? 'ports' : reach === 'no_lan_address' ? 'lan-address' : 'start');
   (target.disabled ? $('tab-connection') : target).focus();
 }
-// Browse loads once there are settings; until then its notice says where
-// to set the folder. It loads again, once it is in view, when copy's
-// status says what it shows moved: a new folder or selection, or the
-// telescope reached another way, since an error the frame shows from
-// before would stay until retried.
+// Browse loads once a route is saved; until a folder is saved too, it
+// shows the telescope's files without statuses. It loads again, once it is
+// in view, when copy's status says what it shows moved: a folder saved or
+// changed, a new selection, or the telescope reached another way, since an
+// error the frame shows from before would stay until retried.
 let browseView = null;
 function browseFrame() {
-  $('b-setup').hidden = !!copySaved;
-  $('b-frame').hidden = !copySaved;
-  if (!copySaved || !state?.copy_unlocked) return;
+  if (!state?.copy_unlocked) return;
+  $('b-frame').hidden = false;
   const view = copyStatus?.browse_view;
   if ($('b-frame').src && (view === browseView || currentTab !== 'browse')) return;
   browseView = view;
@@ -1505,7 +1504,6 @@ $('f-folder').addEventListener('input', renderHistory);
 $('f-int').addEventListener('input', intervalInput);
 $('f-repeat').addEventListener('change', repeatChange);
 $('f-choose').addEventListener('click', copyChoose);
-$('b-setup-go').addEventListener('click', goSetup);
 $('copy-steps-go').addEventListener('click', goSetup);
 $('x-setup-go').addEventListener('click', goSetup);
 $('x-folder-go').addEventListener('click', goSetup);

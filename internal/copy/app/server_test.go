@@ -360,8 +360,8 @@ func TestSaveFailure(t *testing.T) {
 	}](t, e.serve("GET", "/copy/api/status", "")); st.SetUp {
 		t.Error("a failed save finished Setup")
 	}
-	if w := e.serve("GET", "/browse/", ""); w.Code != 404 {
-		t.Errorf("a failed save started Browse: %d", w.Code)
+	if w := e.serve("GET", "/browse/api/list?path=at%20192.0.2.10_445", ""); w.Code != 200 || strings.Contains(w.Body.String(), `"status"`) {
+		t.Errorf("a failed save gave Browse statuses: %d %s", w.Code, w.Body)
 	}
 }
 
@@ -880,17 +880,45 @@ func listing(t *testing.T, e *appEnv) []string {
 	return names
 }
 
-func TestBrowseSwap(t *testing.T) {
+// Browse shows the telescope's files before a folder is saved, without
+// statuses or what the selection leaves out; the first Save adds them.
+func TestBrowseBeforeSetup(t *testing.T) {
 	e := newAppEnv(t, nil)
-	if w := e.serve("GET", "/browse/", ""); w.Code != 404 {
-		t.Errorf("browse before Setup = %d", w.Code)
-	}
-	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
-		t.Fatal(w.Code)
-	}
 	page := e.serve("GET", "/browse/", "")
 	if page.Code != 200 || !strings.Contains(page.Body.String(), `class="in-app"`) || page.Header().Get("X-Frame-Options") != "SAMEORIGIN" {
-		t.Errorf("browse after Setup = %d, %q", page.Code, page.Header())
+		t.Errorf("browse before Setup = %d, %q", page.Code, page.Header())
+	}
+	list := func() string {
+		w := e.serve("GET", "/browse/api/list?path=at%20192.0.2.10_445", "")
+		if w.Code != 200 {
+			t.Fatalf("list = %d %s", w.Code, w.Body)
+		}
+		return w.Body.String()
+	}
+	if got := list(); !strings.Contains(got, `x.txt"`) || !strings.Contains(got, `"statuses":false`) || strings.Contains(got, `"status"`) {
+		t.Errorf("before Setup: %s", got)
+	}
+	// Copy and Free up space still need the folder.
+	if w := e.post("/copy/api/copy", `{"action":"preview"}`); w.Code != 409 {
+		t.Errorf("Copy's preview before Setup = %d %s", w.Code, w.Body)
+	}
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"0"}`); w.Code != 409 {
+		t.Errorf("Free up space's preview before Setup = %d %s", w.Code, w.Body)
+	}
+	if got := decode[struct {
+		BrowseChanged bool `json:"browse_changed"`
+	}](t, e.post("/copy/api/settings", goodInput)); !got.BrowseChanged {
+		t.Error("the first Save kept Browse without statuses")
+	}
+	if got := list(); !strings.Contains(got, `"status":"new"`) {
+		t.Errorf("after Setup: %s", got)
+	}
+}
+
+func TestBrowseSwap(t *testing.T) {
+	e := newAppEnv(t, nil)
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
+		t.Fatal(w.Code)
 	}
 	if got := fmt.Sprint(listing(t, e)); got != "[at 192.0.2.10_445]" {
 		t.Errorf("first share lists %s", got)
