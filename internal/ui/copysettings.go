@@ -2,10 +2,12 @@ package ui
 
 import (
 	"encoding/json/jsontext"
+	"errors"
 	"os"
 	"path/filepath"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 )
 
 // copyName is the copy settings' file in the state dir.
@@ -60,6 +62,31 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 	}
 	c.unknown = f.Unknown
 	return c, &f.Settings, nil
+}
+
+// ErrNoCopySettings is LoadCopySettings's error when root holds no
+// copy.json, or there is no root.
+var ErrNoCopySettings = errors.New("no saved copy settings")
+
+// LoadCopySettings reads root's copy.json as the app loads it, without
+// writing a file or taking ui.lock. A missing file or root is
+// ErrNoCopySettings; one the app would refuse is another error.
+func LoadCopySettings(root string) (copyapp.Settings, error) {
+	d, err := privatefile.ReadDirectory(root)
+	if os.IsNotExist(err) {
+		return copyapp.Settings{}, ErrNoCopySettings
+	} else if err != nil {
+		return copyapp.Settings{}, errStorage
+	}
+	defer d.Close()
+	_, set, err := loadCopySettings(&storage{root: root, directory: d})
+	switch {
+	case err != nil:
+		return copyapp.Settings{}, err
+	case set == nil:
+		return copyapp.Settings{}, ErrNoCopySettings
+	}
+	return *set, nil
 }
 
 // save writes set to copy.json atomically, with the members this version

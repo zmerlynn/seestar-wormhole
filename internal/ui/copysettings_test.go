@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -416,4 +417,32 @@ func TestCopySettingsRefusedQuits(t *testing.T) {
 		defer cancel()
 		refusedStart(t, ctx, `{"version":2}`, func(*runtimeClient, func(), string) { cancel() })
 	})
+}
+
+// LoadCopySettings, the file commands' reader, loads copy.json as the app
+// does and never writes it: a missing file or folder is
+// ErrNoCopySettings, and every body the app refuses is an error.
+func TestLoadCopySettings(t *testing.T) {
+	saved := writeCopySettings
+	t.Cleanup(func() { writeCopySettings = saved })
+	writeCopySettings = func(*storage, copyFile) error {
+		t.Error("copy.json was written")
+		return errStorage
+	}
+	st := testStorageWith(t, `{"version":1,"folder":"/synthetic/Seestar","history_dir":"/synthetic/history","future":true}`)
+	set, err := LoadCopySettings(st.root)
+	if err != nil || set.Folder != "/synthetic/Seestar" || set.HistoryDir != "/synthetic/history" || set.FilesAtOnce != copyapp.MaxFilesAtOnce || !set.SkipBuiltIn {
+		t.Errorf("= %+v, %v", set, err)
+	}
+	for _, body := range refusedBodies {
+		if _, err := LoadCopySettings(testStorageWith(t, body).root); err == nil || errors.Is(err, ErrNoCopySettings) {
+			t.Errorf("%s: %v; want a refusal", body, err)
+		}
+	}
+	if _, err := LoadCopySettings(testStorage(t).root); !errors.Is(err, ErrNoCopySettings) {
+		t.Errorf("no copy.json: %v", err)
+	}
+	if _, err := LoadCopySettings(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, ErrNoCopySettings) {
+		t.Errorf("no state folder: %v", err)
+	}
 }

@@ -42,11 +42,17 @@ type browsing struct {
 // URL line. The read-only guard is reset once the test ends.
 func startBrowse(t *testing.T, args ...string) *browsing {
 	t.Helper()
+	return startBrowseArgs(t, append([]string{"browse", "--endpoint", "h:445"}, args...)...)
+}
+
+// startBrowseArgs runs the command line args and waits for its URL line.
+func startBrowseArgs(t *testing.T, args ...string) *browsing {
+	t.Helper()
 	t.Cleanup(readonly.Reset)
 	ctx, stop := context.WithCancel(context.Background())
 	b := &browsing{stdout: make(lineWriter, 4), stderr: &testlog.Buffer{}, stop: stop, code: make(chan int, 1)}
 	go func() {
-		b.code <- run(ctx, append([]string{"browse", "--endpoint", "h:445"}, args...), b.stdout, b.stderr)
+		b.code <- run(ctx, args, b.stdout, b.stderr)
 	}()
 	select {
 	case b.url = <-b.stdout:

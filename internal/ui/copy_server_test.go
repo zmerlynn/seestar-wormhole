@@ -258,6 +258,12 @@ func TestSavedEndpointIsTCPOnly(t *testing.T) {
 	local.Bind, local.Discovery = "127.0.0.1", false
 	specific := account
 	specific.Bind = "192.0.2.5"
+	wildcard := account
+	wildcard.Bind = "0.0.0.0"
+	// The live target is never consulted, whatever it would return.
+	saved := copyTargetHook
+	t.Cleanup(func() { copyTargetHook = saved })
+	copyTargetHook = func() { t.Error("SavedCopyEndpoint looked up the live copy target") }
 	for _, tc := range []struct {
 		name  string
 		saved Settings
@@ -269,6 +275,7 @@ func TestSavedEndpointIsTCPOnly(t *testing.T) {
 		{"account", account, "127.0.0.1:4445", nil},
 		{"account loopback bind", local, "127.0.0.1:4445", nil},
 		{"account specific bind", specific, "192.0.2.5:4445", nil},
+		{"account wildcard bind", wildcard, "127.0.0.1:4445", nil},
 		{"account moved port", moved, "127.0.0.1:5445", nil},
 		{"smb off", smbOff, "", errSMBOff},
 	} {

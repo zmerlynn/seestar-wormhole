@@ -93,7 +93,7 @@ func TestSyncFlags(t *testing.T) {
 		{[]string{"--exclude", "b", "--no-default-excludes", "--exclude", "a,c"}, []string{"b", "a,c"}, nil},
 		{[]string{"--include", "b", "--exclude", "x", "--include", "a,c"}, []string{"x"}, []string{"b", "a,c"}},
 	} {
-		cmd := NewSync(programName)
+		cmd := NewSync(programName, nil)
 		if err := cmd.ParseFlags(tc.args); err != nil {
 			t.Fatal(err)
 		}

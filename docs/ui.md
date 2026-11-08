@@ -140,7 +140,8 @@ share, and delete what is safely copied. They use the same rules and the same
 copy history as `seestar-wormhole-cli`'s [`sync`, `browse` and
 `delete`](copy-reference.md). The app keeps its copy settings in its own state
 directory, as [`copy.json`](#copyjson-version-1), which the CLI's file commands
-never read, and its copy history in the default
+read only when given `--profile default`, such as `seestar-wormhole-cli sync --profile default`
+(see [use the app's saved settings](copy-reference.md#use-the-apps-saved-settings)), and its copy history in the default
 [history location](copy-reference.md#location), whatever its `--state-dir`
 says, unless **Copy history folder** names another. While copying is on, the app holds the folder's history lock, as `sync`
 does, so a `sync` for the same folder exits with its usual error, and the app
@@ -373,8 +374,8 @@ that service off. Each enabled local port must be unique and between 1 and
 65535. The phone setup maps local port 80 to Seestar port 80; the computer-only
 setup uses local port 8080 instead. **File sharing for other apps (SMB)** uses
 local port 4445 for Seestar port 445. It is for Finder, rclone, other SMB apps
-and `seestar-wormhole-cli`'s file commands: Copy, Browse and Free up space
-don't need it. For other mappings, use the
+and `seestar-wormhole-cli`'s file commands, including their `--profile default`
+endpoint through the account: Copy, Browse and Free up space don't need it. For other mappings, use the
 [command line](reference.md#port-mappings).
 
 ## Activity
