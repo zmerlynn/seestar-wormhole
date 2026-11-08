@@ -29,6 +29,13 @@ says it couldn't read the status of Copy and Free up space instead, the
 controls are still there; the warning clears by itself once that status can
 be read again.
 
+**Copy, Browse or Free up space can't reach the telescope through Telescope
+Network.** They go through the app's own connection, not the SMB port, so
+turning that port on or off changes nothing for them. Their errors name
+**Seestar (account connection)**; the reason after it says what failed. Check
+the connection status on the Connection tab. With
+**Connect when an app needs Seestar**, the first file request opens the session.
+
 **It keeps logging `session_unavailable`.** Look at the `reason` in that line.
 `device_offline` means the cloud or connection service reports the telescope offline or asleep.
 `connection_timeout` means a connection deadline expired without establishing the session; it does not

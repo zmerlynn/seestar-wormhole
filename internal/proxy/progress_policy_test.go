@@ -16,8 +16,8 @@ func TestCapacityComposedProgressingReconnects(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 		defer cancel()
 		s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) {
-			p.bulkBurst = true
-			p.responseBytes = (1 << 20) - 65
+			p.BulkBurst = true
+			p.ResponseBytes = (1 << 20) - 65
 		})
 		defer s.Close()
 		x := <-stacks
@@ -128,9 +128,9 @@ func TestCapacityComposedProgressingReconnects(t *testing.T) {
 		stopPolling()
 		polls := <-pollDone
 		joined = true
-		if polls.err != nil || polls.count < 638 || polls.worst > time.Second || cloud.allocs.Load() != 1 {
-			t.Fatalf("RPC calls=%d worst=%s err=%v allocations=%d", polls.count, polls.worst, polls.err, cloud.allocs.Load())
+		if polls.err != nil || polls.count < 638 || polls.worst > time.Second || cloud.Allocs.Load() != 1 {
+			t.Fatalf("RPC calls=%d worst=%s err=%v allocations=%d", polls.count, polls.worst, polls.err, cloud.Allocs.Load())
 		}
-		t.Logf("eight progressing reconnects completed, RPC=%d worst=%s elapsed=%s allocations=%d", polls.count, polls.worst, time.Since(started), cloud.allocs.Load())
+		t.Logf("eight progressing reconnects completed, RPC=%d worst=%s elapsed=%s allocations=%d", polls.count, polls.worst, time.Since(started), cloud.Allocs.Load())
 	})
 }

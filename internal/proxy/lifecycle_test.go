@@ -16,7 +16,7 @@ import (
 func TestBusyLifecycleWithoutClients(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		var logs testlog.Buffer
-		s := simulatedSession(t, context.Background(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, &simulatedCloud{busy: true})
+		s := simulatedSession(t, context.Background(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, &simulatedCloud{Busy: true})
 		defer s.Close()
 		synctest.Wait()
 		data := logs.Take()

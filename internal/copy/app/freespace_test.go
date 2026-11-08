@@ -43,7 +43,7 @@ func newFreeEnv(t *testing.T, files ...string) *freeEnv {
 	e.set = DefaultSettings()
 	e.set.Address, e.set.Folder, e.set.OlderThanDays = "192.0.2.10:445", filepath.Join(base, "Seestar"), 0
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	e.f = newFreer(t.Context(), e.stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
+	e.f = newFreer(t.Context(), e.stateDir, log, func(ctx context.Context, _ Target) (remote.Session, error) {
 		e.mu.Lock()
 		hold := e.hold
 		e.mu.Unlock()
@@ -56,7 +56,7 @@ func newFreeEnv(t *testing.T, files ...string) *freeEnv {
 		}
 		return e.share()
 	})
-	e.f.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+	e.f.remover = func(ctx context.Context, _ Target) (remote.Remover, error) {
 		d, err := e.share()
 		if e.refuse {
 			return refuser{d}, err
@@ -238,7 +238,7 @@ func TestFreeRecheckChecked(t *testing.T) {
 	e.copy()
 	v := e.preview()
 	var seen []string
-	e.f.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+	e.f.remover = func(ctx context.Context, _ Target) (remote.Remover, error) {
 		d, err := e.share()
 		return watcher{d, func() {
 			v := e.f.view()
@@ -304,7 +304,7 @@ func TestFreeConfirmRace(t *testing.T) {
 			e.copy()
 			v := e.preview()
 			opened := 0
-			e.f.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
+			e.f.remover = func(ctx context.Context, _ Target) (remote.Remover, error) {
 				opened++
 				return e.share()
 			}
@@ -433,7 +433,7 @@ func TestFreeCheckFail(t *testing.T) {
 	if err := os.MkdirAll(e.set.Folder, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	e.f.dial = func(ctx context.Context, endpoint string) (remote.Session, error) { return nil, errors.New("no route") }
+	e.f.dial = func(ctx context.Context, _ Target) (remote.Session, error) { return nil, errors.New("no route") }
 	if err := e.f.find(e.set, Target{Endpoint: e.set.Address}); err != nil {
 		t.Fatal(err)
 	}

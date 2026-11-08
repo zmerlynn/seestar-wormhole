@@ -13,7 +13,11 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
-type runFunc func(context.Context, Settings, cloud.Credentials, *proxy.Status) error
+// runFunc runs the proxy for one run. It calls attach with the session's
+// dialer before arming the status, and runs the detach it returns before
+// closing the session; a refused attach means the run is already
+// stopping, and it returns without arming.
+type runFunc func(ctx context.Context, s Settings, credentials cloud.Credentials, status *proxy.Status, attach func(proxy.Dialer) (detach func(), ok bool)) error
 type controller struct {
 	mu                 sync.Mutex
 	parent             context.Context
@@ -30,7 +34,8 @@ type controller struct {
 	save               func(Settings) error
 	log                *eventLog
 	runSettings        Settings
-	runs               uint64 // numbers each run, for the copier's target
+	runs               uint64      // numbers each run, for the copier's target
+	files              attachments // the run's channel for the file tools
 	saveAttempted      bool
 	saveMu             sync.Mutex // Serializes snapshot writes, never status or Stop.
 	pendingSave        *Settings
@@ -70,8 +75,10 @@ func (c *controller) start(s Settings, password string) error {
 	c.devicesEmail = s.Email
 	c.runSettings = s
 	c.runs++
+	c.files.begin(ctx, c.runs)
 	c.saveAttempted = false
-	done, status := c.done, c.status
+	done, status, id := c.done, c.status, c.runs
+	attach := func(d proxy.Dialer) (func(), bool) { return c.files.attach(id, d) }
 	go func() {
 		finished := make(chan struct{})
 		watched := make(chan struct{})
@@ -94,8 +101,9 @@ func (c *controller) start(s Settings, password string) error {
 		if ctx.Err() != nil {
 			err = ctx.Err()
 		} else if err == nil {
-			err = runObserved(cancel, status.Rejected(), func() error { return c.run(ctx, s, credentials, status) })
+			err = runObserved(cancel, status.Rejected(), func() error { return c.run(ctx, s, credentials, status, attach) })
 		}
+		c.files.finish(id)
 		close(finished)
 		<-watched
 		c.mu.Lock()
@@ -148,6 +156,7 @@ func (c *controller) stop() {
 	defer c.mu.Unlock()
 	if c.cancel != nil {
 		c.stopping = true
+		c.files.stop(c.runs)
 		c.cancel()
 	}
 }
@@ -158,6 +167,7 @@ func (c *controller) requestQuit() {
 	c.quitting = true
 	if c.cancel != nil {
 		c.stopping = true
+		c.files.stop(c.runs)
 		c.cancel()
 	}
 	c.mu.Unlock()
@@ -363,7 +373,7 @@ type runView struct {
 	Active         bool                     `json:"active"`
 	Stopping       bool                     `json:"stopping"`
 	Cancel         bool                     `json:"cancel"`
-	Ready          bool                     `json:"ready"` // connected now, as [controller.connected] has it
+	Ready          bool                     `json:"ready"` // the session is ready now; the file tools need only [controller.connected]
 	Failure        *ActionError             `json:"failure,omitempty"`
 	settings       Settings
 	SaveFailed     bool `json:"save_failed"`
@@ -419,13 +429,15 @@ func (c *controller) persistRoute(route, address string) error {
 }
 
 // connected returns the run's settings, the telescope it selected and
-// the run's number while it is connected to the telescope, and false
-// while it is not running, stopping or not ready. The telescope's label
-// is for comparing only: it names the serial.
+// the run's number while the run is armed and attached, and false while
+// it is not running, stopping, not yet armed or not attached. It does not
+// wait for the session to be ready: on demand, the file tools' dials are
+// what open a dormant session. The telescope's label is for comparing
+// only: it names the serial.
 func (c *controller) connected() (run Settings, device string, id uint64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.done == nil || c.stopping || !c.isReady(c.status) {
+	if c.done == nil || c.stopping || !c.status.Armed() || !c.files.live(c.runs) {
 		return Settings{}, "", 0, false
 	}
 	return c.runSettings, c.status.SelectedDevice(), c.runs, true

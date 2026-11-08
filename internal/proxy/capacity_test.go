@@ -24,10 +24,10 @@ func TestCapacityComposedPipelinedReads(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 				defer cancel()
 				s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) {
-					p.responseBytes = 1 << 20
-					p.bulkBurst = true
-					p.rdtGapAfter = 150
-					p.rdtGapPackets = 700
+					p.ResponseBytes = 1 << 20
+					p.BulkBurst = true
+					p.RDTGapAfter = 150
+					p.RDTGapPackets = 700
 				})
 				defer s.Close()
 				bulk, err := s.DialPort(ctx, 445)
@@ -112,7 +112,7 @@ func TestCapacityComposedPipelinedReads(t *testing.T) {
 					}
 					t.Logf("RPC cadence=%s deadline=%s calls=%d max latency=%s transfer=%s", cadence, deadline, polls.count, polls.worst, elapsed)
 				}
-				if cloud.allocs.Load() != 1 {
+				if cloud.Allocs.Load() != 1 {
 					t.Fatal("bulk replaced session")
 				}
 				t.Logf("delivered=%d rate=%d; all 16 responses hashed, sibling RPC live", delivered, rate)
@@ -138,10 +138,10 @@ func TestCapacityComposedStuckReader(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) {
-			p.responseBytes = 1 << 20
-			p.bulkBurst = true
-			p.rdtGapAfter = 150
-			p.rdtGapPackets = 700
+			p.ResponseBytes = 1 << 20
+			p.BulkBurst = true
+			p.RDTGapAfter = 150
+			p.RDTGapPackets = 700
 		})
 		defer s.Close()
 		bulk, err := s.DialPort(ctx, 445)
@@ -167,7 +167,7 @@ func TestCapacityComposedStuckReader(t *testing.T) {
 			inspectStack(t, x)
 			time.Sleep(5 * time.Second) // injected synctest clock, never wall-clock waiting
 		}
-		if cloud.allocs.Load() != 1 {
+		if cloud.Allocs.Load() != 1 {
 			t.Fatal("stuck reader replaced session")
 		}
 		state := make(chan p2ptunnel.ChannelState, 1)
@@ -194,10 +194,10 @@ func TestCapacityComposedHTTPFile(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
 		s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) {
-			p.httpResponse = wire.Bytes()
-			p.bulkBurst = true
-			p.rdtGapAfter = 150
-			p.rdtGapPackets = 700
+			p.HTTPResponse = wire.Bytes()
+			p.BulkBurst = true
+			p.RDTGapAfter = 150
+			p.RDTGapPackets = 700
 		})
 		defer s.Close()
 		bulk, err := s.DialPort(ctx, 80)
@@ -246,7 +246,7 @@ func TestCapacityComposedHTTPFile(t *testing.T) {
 		if received != volume || !bytes.Equal(digest.Sum(nil), expected[:]) {
 			t.Fatal("truncated/corrupt HTTP body")
 		}
-		if cloud.allocs.Load() != 1 {
+		if cloud.Allocs.Load() != 1 {
 			t.Fatal("HTTP GET replaced session")
 		}
 		t.Logf("HTTP GET received and verified all %d bytes", received)
@@ -264,7 +264,7 @@ func TestCapacityComposedManyStuckReaders(t *testing.T) {
 				defer cancel()
 				share := (8 << 20) / n
 				// The literal JSON fixture for ID 99 occupies 65 bytes around its padding.
-				s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) { p.bulkBurst = true; p.responseBytes = share - 65 })
+				s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) { p.BulkBurst = true; p.ResponseBytes = share - 65 })
 				defer s.Close()
 				x := <-stacks
 				bulk := make([]net.Conn, n)
@@ -328,7 +328,7 @@ func TestCapacityComposedManyStuckReaders(t *testing.T) {
 					time.Sleep(time.Second)
 				}
 				inspectStack(t, x)
-				if cloud.allocs.Load() != 1 {
+				if cloud.Allocs.Load() != 1 {
 					t.Fatal("aggregate pressure replaced session")
 				}
 				t.Logf("stuck=%d retained=%d victim=lowest channel ID; RPC continues on one allocation", n, before.RXBytes)
@@ -345,7 +345,7 @@ func TestCapacityComposedAllChannelSlots(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) { p.bulkBurst = true; p.responseBytes = (64 << 10) - 65 })
+		s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) { p.BulkBurst = true; p.ResponseBytes = (64 << 10) - 65 })
 		defer s.Close()
 		x := <-stacks
 		var first, rpc net.Conn
@@ -416,7 +416,7 @@ func TestCapacityComposedAllChannelSlots(t *testing.T) {
 			t.Fatal(err)
 		}
 		inspectStack(t, x)
-		if cloud.allocs.Load() != 1 {
+		if cloud.Allocs.Load() != 1 {
 			t.Fatal("full-slot pressure replaced session")
 		}
 	})

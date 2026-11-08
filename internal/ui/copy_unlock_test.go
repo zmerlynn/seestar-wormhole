@@ -82,7 +82,7 @@ func TestCopyUnlocksOnSaveAfterTest(t *testing.T) {
 			}
 		}},
 		{"Connect that never connected", func(e *routeEnv) {
-			e.s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+			e.s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
 				return errors.New("synthetic sign-in failure")
 			}
 			if code, body := e.start(testSettings()); code != 200 {
@@ -118,7 +118,8 @@ func TestCopyUnlocksOnSaveAfterTest(t *testing.T) {
 }
 
 // Through the account, the tabs open once the connection is ready, and
-// say when SMB is off.
+// have the telescope whether or not the SMB port is on: the file tools
+// don't use it.
 func TestCopyUnlocksOnConnection(t *testing.T) {
 	e := newRouteEnv(t)
 	a := e.account()
@@ -131,7 +132,7 @@ func TestCopyUnlocksOnConnection(t *testing.T) {
 		t.Errorf("while connecting = %+v", got)
 	}
 	a.markReady("SYNTHETIC1")
-	if got := e.copyStatus(); !got.Unlocked || got.Reach != "smb_off" {
+	if got := e.copyStatus(); !got.Unlocked || got.Reach != "" {
 		t.Errorf("connected with SMB off = %+v", got)
 	}
 	a.stop()
@@ -182,7 +183,7 @@ func TestRouteEstablishedSurvivesRelaunch(t *testing.T) {
 	connect := func(e *routeEnv) {
 		e.t.Helper()
 		e.account()
-		e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+		e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 			status.MarkArmed()
 			<-ctx.Done()
 			return nil

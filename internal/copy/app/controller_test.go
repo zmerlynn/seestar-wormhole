@@ -51,7 +51,7 @@ func newCopyEnv(t *testing.T, files fstest.MapFS) *copyEnv {
 	e.set = DefaultSettings()
 	e.set.Address, e.set.Folder = "192.0.2.10:445", filepath.Join(t.TempDir(), "Seestar")
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
-	e.c = newController(t.Context(), e.stateDir, log, func(ctx context.Context, endpoint string) (remote.Session, error) {
+	e.c = newController(t.Context(), e.stateDir, log, func(ctx context.Context, _ Target) (remote.Session, error) {
 		e.mu.Lock()
 		defer e.mu.Unlock()
 		e.dials++
@@ -257,13 +257,13 @@ func TestCopyOnce(t *testing.T) {
 func TestChangeAfterCopyOnce(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
-		dial  func(ctx context.Context, endpoint string) (remote.Session, error)
+		dial  func(ctx context.Context, t Target) (remote.Session, error)
 		title string
 	}{
-		{"unreachable", func(context.Context, string) (remote.Session, error) {
+		{"unreachable", func(context.Context, Target) (remote.Session, error) {
 			return nil, errors.New("connection refused")
 		}, "Can't reach the telescope at " + testEndpoint + "."},
-		{"listing failed", func(context.Context, string) (remote.Session, error) {
+		{"listing failed", func(context.Context, Target) (remote.Session, error) {
 			return failDir{remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": image("a")}), "MyWorks"}, nil
 		}, "Couldn't read MyWorks."},
 	} {

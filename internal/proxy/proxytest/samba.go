@@ -1,7 +1,8 @@
-package proxy
+package proxytest
 
-// This fixture edge only bridges tunnel local actions to the read-only Samba
-// fixture. Rendezvous, DTLS, RDT, tunnel and SMB all retain their real codecs.
+// This fixture edge only bridges tunnel local actions to a port-445 peer: the
+// read-only Samba fixture over TCP, or a test's in-memory answer. Rendezvous,
+// DTLS, RDT, tunnel and SMB all retain their real codecs.
 import (
 	"context"
 	"net"
@@ -11,18 +12,33 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
 )
 
+// port445 returns the dialer that answers device port 445, or nil when the
+// device's local sockets are the scripted ones.
+func (p *Wire) port445() func(context.Context) (net.Conn, error) {
+	if p.Port445 != nil {
+		return p.Port445
+	}
+	if p.SambaAddress == "" {
+		return nil
+	}
+	addr := p.SambaAddress
+	return func(ctx context.Context) (net.Conn, error) {
+		return (&net.Dialer{Timeout: 30 * time.Second}).DialContext(ctx, "tcp", addr)
+	}
+}
+
 type sambaPeer struct {
 	ctx    context.Context
 	cancel context.CancelFunc
-	addr   string
+	dial   func(context.Context) (net.Conn, error)
 	events chan p2ptunnel.Event
 	conns  map[byte]net.Conn // owned by the peer loop; readers borrow one connection
 	wg     sync.WaitGroup
 }
 
-func newSambaPeer(ctx context.Context, addr string) *sambaPeer {
+func newSambaPeer(ctx context.Context, dial func(context.Context) (net.Conn, error)) *sambaPeer {
 	ctx, cancel := context.WithCancel(ctx)
-	return &sambaPeer{ctx: ctx, cancel: cancel, addr: addr, events: make(chan p2ptunnel.Event, 256), conns: make(map[byte]net.Conn)}
+	return &sambaPeer{ctx: ctx, cancel: cancel, dial: dial, events: make(chan p2ptunnel.Event, 256), conns: make(map[byte]net.Conn)}
 }
 func (p *sambaPeer) close() {
 	p.cancel()
@@ -47,7 +63,7 @@ func (p *sambaPeer) handle(a p2ptunnel.Action, enqueue func(layerEvent)) bool {
 			send(e)
 			return true
 		}
-		c, err := (&net.Dialer{Timeout: 30 * time.Second}).DialContext(p.ctx, "tcp", p.addr)
+		c, err := p.dial(p.ctx)
 		if err != nil {
 			e.Failed = true
 		} else {

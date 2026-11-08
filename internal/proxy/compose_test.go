@@ -4,48 +4,30 @@ import (
 	"context"
 	"errors"
 	"io"
-	"net/http"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"testing/synctest"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
 
-type simulatedCloud struct {
-	allocs, stops, details atomic.Int32
-	logins                 atomic.Int32
-	busy                   bool
+// The simulator is proxytest's; these names keep package proxy's tests short.
+type (
+	simulatedCloud = proxytest.Cloud
+	simulatedWire  = proxytest.Wire
+)
+
+var _ wireRunner = (*simulatedWire)(nil)
+
+func newSimulatedWire(t *testing.T, trace *[]string) *simulatedWire {
+	return proxytest.NewWire(t, proxytest.WireOptions{Trace: trace})
 }
 
-func (c *simulatedCloud) RoundTrip(r *http.Request) (*http.Response, error) {
-	var b string
-	switch r.URL.Path {
-	case "/v1/user/login":
-		c.logins.Add(1)
-		b = `{"code":0,"data":{"accessToken":"sim-account-token"}}`
-	case "/v1/user/current-profile":
-		b = `{"code":0,"data":{"id":"sim-account"}}`
-	case "/v1/my-device/detail":
-		c.details.Add(1)
-		b = `{"code":200,"msg":"ok","data":{"deviceSn":"sim","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"synthetic-wifi"}}`
-	case "/v1/device-p2p/online-link":
-		c.allocs.Add(1)
-		b = `{"code":200,"msg":"ok","data":{"conId":"sim-allocation","deviceUid":"EXAMPLEUID0000000000","sdkLicenseKey":"sim-license","username":"sim-user","password":"sim-pass"}}`
-	case "/v1/device-p2p/stop":
-		c.stops.Add(1)
-		b = `{"code":200,"msg":"ok","data":null}`
-	}
-	if c.busy && r.URL.Path == "/v1/my-device/detail" {
-		b = `{"code":300404,"msg":"busy","data":null}`
-	}
-	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(b))}, nil
-}
 func TestComposedAllocationRPCHalfCloseRelease(t *testing.T) {
 
 	t.Setenv("SEESTAR_EMAIL", "fixture@example.invalid")
@@ -61,7 +43,7 @@ func TestComposedAllocationRPCHalfCloseRelease(t *testing.T) {
 		defer cancel()
 		var trace []string
 		s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-			return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
+			return &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -69,7 +51,7 @@ func TestComposedAllocationRPCHalfCloseRelease(t *testing.T) {
 		defer s.Close()
 		c, err := s.DialPort(ctx, 4700)
 		if err != nil {
-			t.Fatalf("dial: %v allocations=%d stops=%d trace=%v", err, cloud.allocs.Load(), cloud.stops.Load(), trace)
+			t.Fatalf("dial: %v allocations=%d stops=%d trace=%v", err, cloud.Allocs.Load(), cloud.Stops.Load(), trace)
 		}
 		c.SetDeadline(time.Now().Add(5 * time.Second))
 		if _, err = c.Write([]byte(rpcLine(1, 0))); err != nil {
@@ -89,8 +71,8 @@ func TestComposedAllocationRPCHalfCloseRelease(t *testing.T) {
 		if err = s.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if cloud.logins.Load() != 1 || cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
-			t.Fatalf("allocation/stop %d/%d", cloud.allocs.Load(), cloud.stops.Load())
+		if cloud.Logins.Load() != 1 || cloud.Allocs.Load() != 1 || cloud.Stops.Load() != 1 {
+			t.Fatalf("allocation/stop %d/%d", cloud.Allocs.Load(), cloud.Stops.Load())
 		}
 		if len(trace) != 1 || trace[0] != "drop-first-dtls" {
 			t.Fatalf("impairment trace %v", trace)
@@ -111,7 +93,7 @@ func TestComposedIdleClientsLeaveSiblingWriteCredit(t *testing.T) {
 		defer cancel()
 		var trace []string
 		s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-			return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
+			return &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -152,7 +134,7 @@ func TestComposedRepeatedStartStopJoinsWorkers(t *testing.T) {
 			var trace []string
 			stacks := make(chan *stack, 1)
 			s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-				return &trackingFactory{factory: &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}, stacks: stacks}
+				return &trackingFactory{factory: &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}, stacks: stacks}
 			})
 			if err != nil {
 				t.Fatal(err)
@@ -168,7 +150,7 @@ func TestComposedRepeatedStartStopJoinsWorkers(t *testing.T) {
 			}
 			cancel()
 			client.Close()
-			if cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
+			if cloud.Allocs.Load() != 1 || cloud.Stops.Load() != 1 {
 				t.Fatal("lease not released exactly once")
 			}
 			assertStackWorkersExited(t, x)
@@ -185,7 +167,7 @@ func simulatedSession(t *testing.T, ctx context.Context, cfg Config, cloud *simu
 	}
 	var trace []string
 	s, err := start(ctx, cfg, func(s *Session) sessionedge.Factory {
-		return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
+		return &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -201,7 +183,7 @@ func TestComposedLazyIdleRedialAndBusy(t *testing.T) {
 		s := simulatedSession(t, ctx, Config{Idle: time.Second}, cloud)
 		defer s.Close()
 		synctest.Wait()
-		if cloud.details.Load() != 0 {
+		if cloud.Details.Load() != 0 {
 			t.Fatal("lazy startup contacted cloud")
 		}
 		c, err := s.DialPort(ctx, 4700)
@@ -212,7 +194,7 @@ func TestComposedLazyIdleRedialAndBusy(t *testing.T) {
 		timer := time.NewTimer(2 * time.Second)
 		<-timer.C
 		synctest.Wait()
-		if cloud.stops.Load() != 1 {
+		if cloud.Stops.Load() != 1 {
 			t.Fatal("idle session not released")
 		}
 		c, err = s.DialPort(ctx, 445)
@@ -221,11 +203,11 @@ func TestComposedLazyIdleRedialAndBusy(t *testing.T) {
 		}
 		c.Close()
 		s.Close()
-		if cloud.allocs.Load() != 2 || cloud.stops.Load() != 2 {
+		if cloud.Allocs.Load() != 2 || cloud.Stops.Load() != 2 {
 			t.Fatal("idle redial ownership")
 		}
 
-		busy := &simulatedCloud{busy: true}
+		busy := &simulatedCloud{Busy: true}
 		s = simulatedSession(t, ctx, Config{}, busy)
 		defer s.Close()
 		// Inspect the settled refusal, rather than racing startup cleanup's
@@ -237,7 +219,7 @@ func TestComposedLazyIdleRedialAndBusy(t *testing.T) {
 		timer.Reset(time.Minute)
 		<-timer.C
 		synctest.Wait()
-		if busy.details.Load() < 2 || busy.allocs.Load() != 0 {
+		if busy.Details.Load() < 2 || busy.Allocs.Load() != 0 {
 			t.Fatal("first busy did not retry without allocating")
 		}
 	})

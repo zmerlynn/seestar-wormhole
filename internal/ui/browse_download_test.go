@@ -31,7 +31,7 @@ func TestBrowseDownloadOutlastsWriteTimeout(t *testing.T) {
 		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Target: s.copyTarget,
-		Dial: func(context.Context, string) (remote.Session, error) {
+		Dial: func(context.Context, copyapp.Target) (remote.Session, error) {
 			return remote.NewFake(fstest.MapFS{"MyWorks/big.fit": {Data: big}}), nil
 		},
 		Reach: func(context.Context, string) error { return nil },

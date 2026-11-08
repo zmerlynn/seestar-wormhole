@@ -21,10 +21,10 @@ func TestFairPauseComposedBulkRPC(t *testing.T) {
 		// transient PAUSE followed by RESUME between owner snapshots.
 		var decoder p2ptunnel.Decoder
 		s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) {
-			p.responseBytes = 1 << 20
-			p.bulkBurst = true
-			p.rdtGapAfter, p.rdtGapPackets = 150, 700
-			p.tunnelInput = func(e p2ptunnel.Event, m *p2ptunnel.Machine) {
+			p.ResponseBytes = 1 << 20
+			p.BulkBurst = true
+			p.RDTGapAfter, p.RDTGapPackets = 150, 700
+			p.TunnelInput = func(e p2ptunnel.Event, m *p2ptunnel.Machine) {
 				if e.Kind != p2ptunnel.Stream || m.Status() != p2ptunnel.Active {
 					return
 				}
@@ -99,8 +99,8 @@ func TestFairPauseComposedBulkRPC(t *testing.T) {
 		if got := rpcPauses.Load(); got != 0 {
 			t.Fatalf("RPC PAUSE controls=%d want 0 (including transient controls)", got)
 		}
-		if bulkPauses.Load() == 0 || cloud.allocs.Load() != 1 {
-			t.Fatalf("bulk PAUSE=%d allocations=%d want pressure on one allocation", bulkPauses.Load(), cloud.allocs.Load())
+		if bulkPauses.Load() == 0 || cloud.Allocs.Load() != 1 {
+			t.Fatalf("bulk PAUSE=%d allocations=%d want pressure on one allocation", bulkPauses.Load(), cloud.Allocs.Load())
 		}
 		t.Logf("shared RX peak observed=%d, bulk PAUSE=%d, RPC PAUSE=0, 12 replies delivered", peak, bulkPauses.Load())
 	})

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 	"reflect"
@@ -39,7 +40,7 @@ func TestPionWorkersExitAfterClose(t *testing.T) {
 			stacks := make(chan *stack, 1)
 			var trace []string
 			s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-				return &trackingFactory{&factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}, stacks}
+				return &trackingFactory{&factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}, stacks}
 			})
 			if err != nil {
 				t.Fatal(err)

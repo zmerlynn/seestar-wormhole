@@ -19,7 +19,7 @@ func (f lockedKeychain) Delete(string, string) error      { return nil }
 func TestStopDuringKeychainStartup(t *testing.T) {
 	chain := lockedKeychain{make(chan struct{}), make(chan struct{})}
 	defer close(chain.release)
-	c := testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status) error {
+	c := testController(func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
 		t.Error("canceled startup ran proxy")
 		return nil
 	})

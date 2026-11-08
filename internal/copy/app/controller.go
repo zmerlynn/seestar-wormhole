@@ -72,7 +72,7 @@ type controller struct {
 	log      *slog.Logger // the loop's: it also feeds activity
 	activity *activity
 	// dial opens a pass's session; tests replace it.
-	dial func(ctx context.Context, endpoint string) (remote.Session, error)
+	dial func(ctx context.Context, t Target) (remote.Session, error)
 	// target, if set, is where the telescope is now, which each pass
 	// follows while it is the telescope copying started for: a [Mount]'s.
 	target func() (Target, error)
@@ -132,7 +132,7 @@ type status struct {
 	startErr error // why the loop couldn't start, or go on
 }
 
-func newController(parent context.Context, stateDir string, log *slog.Logger, dial func(context.Context, string) (remote.Session, error)) *controller {
+func newController(parent context.Context, stateDir string, log *slog.Logger, dial func(context.Context, Target) (remote.Session, error)) *controller {
 	act := &activity{}
 	return &controller{
 		parent: parent, stateDir: stateDir, activity: act,
@@ -356,11 +356,11 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 	if c.admit != nil {
 		c.admit.Unlock()
 	}
-	endpoint, err := c.follow(endpoint)
+	t, err := c.follow(endpoint)
 	var sess remote.Session
 	if err == nil {
 		// On this network, the dial waits out macOS's Local Network prompt.
-		dial := func(ctx context.Context) (remote.Session, error) { return c.dial(ctx, endpoint) }
+		dial := func(ctx context.Context) (remote.Session, error) { return c.dial(ctx, t) }
 		c.mu.Lock()
 		lan := c.bound.onLAN()
 		c.mu.Unlock()
@@ -383,26 +383,27 @@ func (c *controller) dialPass(ctx context.Context, endpoint string) (remote.Sess
 	return sess, err
 }
 
-// follow is the endpoint a pass dials: the target's now, while it reaches
+// follow is the target a pass dials: the target's now, while it reaches
 // the telescope copying started for. Once it reaches another, the loop
-// ends, and copying must be started again for that telescope.
-func (c *controller) follow(endpoint string) (string, error) {
+// ends, and copying must be started again for that telescope. Without a
+// target, it is endpoint on this network.
+func (c *controller) follow(endpoint string) (Target, error) {
 	if c.target == nil {
-		return endpoint, nil
+		return Target{Endpoint: endpoint}, nil
 	}
 	now, err := c.target()
 	if err != nil {
-		return "", err
+		return Target{}, err
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !c.bound.sameTelescope(now) {
 		c.ended = errOtherTelescope
 		c.cancel()
-		return "", errOtherTelescope
+		return Target{}, errOtherTelescope
 	}
 	c.bound, c.st.endpoint = now, now.Endpoint
-	return now.Endpoint, nil
+	return now, nil
 }
 
 // hooks turns the engine's calls into the status. Calls after ctx is

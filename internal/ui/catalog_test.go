@@ -81,7 +81,7 @@ func TestCatalogEventsAndPrivateLog(t *testing.T) {
 
 func TestControllerCatalogEveryConnect(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		c := testController(func(_ context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status) error {
+		c := testController(func(_ context.Context, _ Settings, _ cloud.Credentials, status *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 			status.RecordCatalog(cloudhttp.Catalog{Pairs: []cloudhttp.CatalogPair{{Model: "S30", Serial: "synthetic-one"}}, Count: 1, Complete: true})
 			return nil
 		})

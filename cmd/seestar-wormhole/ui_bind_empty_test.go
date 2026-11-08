@@ -34,7 +34,7 @@ func TestReviewBlankBindReachesWildcardListener(t *testing.T) {
 			return nil, errors.New("unexpected")
 		},
 		func(context.Context) error { return nil })
-	_ = runner(t.Context(), ui.Settings{Version: 1, Bind: "", Idle: "0", Discovery: false}, cloud.Credentials{}, proxy.NewStatus())
+	_ = runner(t.Context(), ui.Settings{Version: 1, Bind: "", Idle: "0", Discovery: false}, cloud.Credentials{}, proxy.NewStatus(), nil)
 	if called {
 		t.Fatal("blank Other bind passed all option validation and reached wildcard socket creation")
 	}

@@ -5,6 +5,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -20,9 +21,10 @@ func TestGUITestRunner(t *testing.T) {
 		f := newGUITestRunner()
 		ctx, cancel := context.WithCancel(t.Context())
 		status := proxy.NewStatus()
+		a := &attachRecord{status: status}
 		done := make(chan error, 1)
 		go func() {
-			done <- runObserved(cancel, status.Rejected(), func() error { return f.run(ctx, Settings{}, cloud.Credentials{}, status) })
+			done <- runObserved(cancel, status.Rejected(), func() error { return f.run(ctx, Settings{}, cloud.Credentials{}, status, a.attach) })
 		}()
 		for _, step := range []struct {
 			event session.Event
@@ -58,15 +60,50 @@ func TestGUITestRunner(t *testing.T) {
 		if !errors.Is(ctx.Err(), context.Canceled) || finalStatus(err) != errorCopy("signin") {
 			t.Fatal(err)
 		}
+		a.check(t)
 	})
+}
+
+// attachRecord is a run's attach that records how the runner used it.
+type attachRecord struct {
+	status   *proxy.Status
+	mu       sync.Mutex
+	attached int
+	early    bool // attached before the status was armed
+	detached int
+}
+
+func (a *attachRecord) attach(d proxy.Dialer) (func(), bool) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.attached++
+	a.early = d != nil && !a.status.Armed()
+	return func() {
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		a.detached++
+	}, true
+}
+
+// check fails t unless the run, now returned, attached a dialer once
+// before arming and detached it once.
+func (a *attachRecord) check(t *testing.T) {
+	t.Helper()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.attached != 1 || !a.early || a.detached != 1 {
+		t.Fatalf("attached %d (before arming %v), detached %d; want 1 before arming, 1", a.attached, a.early, a.detached)
+	}
 }
 
 func TestGUITestConnectingCancellation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newGUITestRunner()
 		ctx, cancel := context.WithCancel(t.Context())
+		status := proxy.NewStatus()
+		a := &attachRecord{status: status}
 		done := make(chan error, 1)
-		go func() { done <- f.run(ctx, Settings{}, cloud.Credentials{}, proxy.NewStatus()) }()
+		go func() { done <- f.run(ctx, Settings{}, cloud.Credentials{}, status, a.attach) }()
 		cancel()
 		<-f.releasing
 		select {
@@ -78,6 +115,7 @@ func TestGUITestConnectingCancellation(t *testing.T) {
 		if err := <-done; !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
+		a.check(t)
 	})
 }
 

@@ -16,6 +16,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
 
@@ -43,9 +44,9 @@ func TestComposedSMB(t *testing.T) {
 	}
 	var trace []string
 	s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-		return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+		return &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 			p := newSimulatedWire(t, &trace)
-			p.sambaAddress = addr
+			p.SambaAddress = addr
 			return p
 		}}
 	})
@@ -112,8 +113,8 @@ func TestComposedSMB(t *testing.T) {
 	if err := s.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if cloud.logins.Load() != 1 || cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
-		t.Fatalf("login/allocation/stop=%d/%d/%d, want 1/1/1", cloud.logins.Load(), cloud.allocs.Load(), cloud.stops.Load())
+	if cloud.Logins.Load() != 1 || cloud.Allocs.Load() != 1 || cloud.Stops.Load() != 1 {
+		t.Fatalf("login/allocation/stop=%d/%d/%d, want 1/1/1", cloud.Logins.Load(), cloud.Allocs.Load(), cloud.Stops.Load())
 	}
 }
 

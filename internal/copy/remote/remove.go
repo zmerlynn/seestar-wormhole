@@ -59,6 +59,15 @@ func DialRemover(ctx context.Context, endpoint string, log *slog.Logger) (*SMBRe
 	return &SMBRemover{s}, nil
 }
 
+// DialRemoverVia is DialVia for a session that can remove.
+func DialRemoverVia(ctx context.Context, name string, conn Conn, log *slog.Logger) (*SMBRemover, error) {
+	s, err := DialVia(ctx, name, conn, log)
+	if err != nil {
+		return nil, err
+	}
+	return &SMBRemover{s}, nil
+}
+
 // RemoveFile removes a file; see Remover. go-smb2's Remove opens the path
 // for DELETE, marks it for deletion and closes it. If the server refuses
 // because the file is read-only, go-smb2 clears its read-only attribute by

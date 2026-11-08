@@ -117,8 +117,9 @@ CI covers both routes without a telescope:
   and a folder in use by `seestar-wormhole-cli sync` or a second app. They
   also cover `seestar-wormhole-cli browse`'s page.
 - **Remotely through Telescope Network:** Go tests with a fake share and a stand-in
-  connection check that copying uses the proxy's SMB port, waits for the
-  connection without starting it, and stays with its telescope, and that a
+  connection check that copying dials Seestar port 445 through the run's
+  session with the SMB port off, waits for the connection without starting
+  it, and stays with its telescope, and that a
   delete holds the connection until it ends. No CI job copies through the
   proxy itself.
 - **The window:** native scenarios on macOS, Windows and Linux run the real

@@ -33,8 +33,8 @@ func TestEveryTabWaitsForLocalNetwork(t *testing.T) {
 			waited := setRetry(t, "darwin")
 			e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
 			var tries atomic.Int32
-			e.p.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-				return blockedUntil(3, &tries, func() (remote.Session, error) { return e.c.dial(ctx, endpoint) })
+			e.p.dial = func(ctx context.Context, tg Target) (remote.Session, error) {
+				return blockedUntil(3, &tries, func() (remote.Session, error) { return e.c.dial(ctx, tg) })
 			}
 			at := Target{Endpoint: e.set.Address}
 			if !lan {
@@ -56,8 +56,8 @@ func TestEveryTabWaitsForLocalNetwork(t *testing.T) {
 		share := e.f.dial
 		waited := setRetry(t, "darwin")
 		var tries atomic.Int32
-		e.f.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return blockedUntil(3, &tries, func() (remote.Session, error) { return share(ctx, endpoint) })
+		e.f.dial = func(ctx context.Context, tg Target) (remote.Session, error) {
+			return blockedUntil(3, &tries, func() (remote.Session, error) { return share(ctx, tg) })
 		}
 		v := e.preview()
 		if v.State != frPreview || tries.Load() != 3 || time.Duration(waited.Load()) != 2*time.Second {
@@ -67,8 +67,8 @@ func TestEveryTabWaitsForLocalNetwork(t *testing.T) {
 		waited = setRetry(t, "darwin")
 		remover := e.f.remover
 		var opens atomic.Int32
-		e.f.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
-			return blockedUntil(3, &opens, func() (remote.Remover, error) { return remover(ctx, endpoint) })
+		e.f.remover = func(ctx context.Context, tg Target) (remote.Remover, error) {
+			return blockedUntil(3, &opens, func() (remote.Remover, error) { return remover(ctx, tg) })
 		}
 		if err := e.f.confirm(v.ID, []string{"MyWorks"}, Target{Endpoint: e.set.Address}); err != nil {
 			t.Fatal(err)
@@ -121,8 +121,8 @@ func TestDeleteNotRetried(t *testing.T) {
 	setRetry(t, "darwin")
 	remover := e.f.remover
 	var removes atomic.Int32
-	e.f.remover = func(ctx context.Context, endpoint string) (remote.Remover, error) {
-		r, err := remover(ctx, endpoint)
+	e.f.remover = func(ctx context.Context, tg Target) (remote.Remover, error) {
+		r, err := remover(ctx, tg)
 		return blocked{r, &removes}, err
 	}
 	if err := e.f.confirm(v.ID, []string{"MyWorks"}, Target{Endpoint: e.set.Address}); err != nil {

@@ -140,7 +140,7 @@ func TestComposedProductionSocketFraming(t *testing.T) {
 			defer cancel()
 			transport, closeTransport := socketTransport(t, ctx, tcp)
 			defer closeTransport()
-			s, _, _ := workloadSession(t, ctx, func(p *simulatedWire) { p.transport = transport })
+			s, _, _ := workloadSession(t, ctx, func(p *simulatedWire) { p.Transport = transport })
 			defer s.Close()
 			c, err := s.DialPort(ctx, 4700)
 			if err != nil {

@@ -25,8 +25,8 @@ func TestOutagePendingOpen(t *testing.T) {
 				defer cancel()
 				var offline atomic.Bool
 				s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) {
-					p.verify = verify
-					p.outage = offline.Load
+					p.VerifyPorts = verify
+					p.Outage = offline.Load
 				})
 				defer s.Close()
 				established, err := s.DialPort(ctx, 4700)
@@ -68,7 +68,7 @@ func TestOutagePendingOpen(t *testing.T) {
 					t.Fatal(err)
 				}
 
-				t.Logf("after recovery: allocations=%d stops=%d", cloud.allocs.Load(), cloud.stops.Load())
+				t.Logf("after recovery: allocations=%d stops=%d", cloud.Allocs.Load(), cloud.Stops.Load())
 
 				if r.err != nil {
 					t.Fatalf("new open rejected during surviving ten-second outage: %v", r.err)

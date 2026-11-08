@@ -80,7 +80,7 @@ func init() {
 		"MyWorks/done.fit": {Data: make([]byte, 1<<10), ModTime: time.Unix(1761700000, 0), Mode: 0o644},
 		"MyWorks/held.fit": {Data: make([]byte, 64<<10), ModTime: time.Unix(1761700000, 0), Mode: 0o644},
 	}
-	copyDial = func(context.Context, string) (remote.Session, error) {
+	copyDial = func(context.Context, copyapp.Target) (remote.Session, error) {
 		f := remote.NewFake(files)
 		f.Faults = map[string]remote.Fault{"MyWorks/held.fit": {After: 1 << 10, Stall: copyHoldOnce}}
 		return f, nil

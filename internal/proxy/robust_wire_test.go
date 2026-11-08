@@ -19,7 +19,7 @@ func TestC14AuthenticatedUnknownThenRPC(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		s, _, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.rdtPrefix = literal }, Config{})
+		s, _, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.RDTPrefix = literal }, Config{})
 		defer s.Close()
 		c, err := s.DialPort(ctx, 4700)
 		if err != nil {
@@ -31,8 +31,8 @@ func TestC14AuthenticatedUnknownThenRPC(t *testing.T) {
 		}
 		c.Close()
 		s.Close()
-		if cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
-			t.Fatalf("unexpected redial: allocations=%d stops=%d", cloud.allocs.Load(), cloud.stops.Load())
+		if cloud.Allocs.Load() != 1 || cloud.Stops.Load() != 1 {
+			t.Fatalf("unexpected redial: allocations=%d stops=%d", cloud.Allocs.Load(), cloud.Stops.Load())
 		}
 
 	})

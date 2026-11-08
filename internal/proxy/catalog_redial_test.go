@@ -32,9 +32,9 @@ func TestAllocatorRechecksPairForEveryAttempt(t *testing.T) {
 	l, err = a.Allocate(t.Context())
 	phase, reason := diagnostic.Fields(err, "")
 	if l != nil || !errors.Is(err, session.ErrUncertain) || phase != "cloud" || reason != "inconsistent server answer: detail identity differs from requested pair" {
-		t.Fatalf("second lease=%v error=%v diagnostic=%s/%s detail count=%d, want inconsistent detail refusal; logs=%s", l, err, phase, reason, tr.details.Load(), &logs)
+		t.Fatalf("second lease=%v error=%v diagnostic=%s/%s detail count=%d, want inconsistent detail refusal; logs=%s", l, err, phase, reason, tr.Details.Load(), &logs)
 	}
-	if tr.details.Load() != 2 || tr.allocs.Load() != 1 || tr.stops.Load() != 1 {
-		t.Fatalf("detail/online-link/stop=%d/%d/%d, want 2/1/1", tr.details.Load(), tr.allocs.Load(), tr.stops.Load())
+	if tr.Details.Load() != 2 || tr.Allocs.Load() != 1 || tr.Stops.Load() != 1 {
+		t.Fatalf("detail/online-link/stop=%d/%d/%d, want 2/1/1", tr.Details.Load(), tr.Allocs.Load(), tr.Stops.Load())
 	}
 }

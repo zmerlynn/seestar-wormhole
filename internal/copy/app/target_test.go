@@ -47,7 +47,8 @@ func newTargetEnv(t *testing.T) *targetEnv {
 			}
 			return e.later, e.err
 		},
-		Dial: func(_ context.Context, endpoint string) (remote.Session, error) {
+		Dial: func(_ context.Context, tg Target) (remote.Session, error) {
+			endpoint := tg.Endpoint
 			e.route.Lock()
 			e.dialed = append(e.dialed, endpoint)
 			e.route.Unlock()

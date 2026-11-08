@@ -20,9 +20,10 @@ tried on each route.
    **Connect**, or choose **On this network**, enter the
    [telescope's address](#find-the-telescopes-address), and **Save**. Until
    one is saved, Copy, Browse and Free up space are unavailable and say so.
-   Through Telescope Network, copying uses the proxy's SMB port
-   (local port 4445 by default) and waits for the connection; it never starts
-   it.
+   Through Telescope Network, copying goes through the connection itself, so
+   it doesn't need the SMB port, and waits for you to connect; it never
+   connects for you. With **Connect when an app needs Seestar**, a check
+   starts the session when it needs the telescope.
 2. **Choose a folder.** The first time you open **Copy**, choose the folder for
    your images and **Save**. Nothing is copied yet: copying
    starts when you press **Start copying**.

@@ -148,15 +148,85 @@ func newHTTPServer(handler http.Handler) *http.Server {
 // folder picker and Browse's Save; nil means a browser page.
 type windowFunc func(context.Context, string, func(), <-chan struct{}) error
 
-// copyDial is how the copier reaches the telescope; nil is remote.Dial.
-// Only the native check's guitest build and tests set it, to a fake
-// telescope.
-var copyDial func(ctx context.Context, endpoint string) (remote.Session, error)
+// copyDial, if set, is how the copier reaches the telescope by any
+// route. Only the native check's guitest build and tests set it, to a
+// fake telescope.
+var copyDial func(ctx context.Context, t copyapp.Target) (remote.Session, error)
 
-// runText reads a run's status text for the copier's target; nil is its
+// The copier's transports, by route: over TCP on this network, and over a
+// channel of the run's session through the account. Only tests replace
+// them. A failed dial returns a nil interface, never a nil pointer in one.
+var (
+	tcpDial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Session, error) {
+		s, err := remote.Dial(ctx, endpoint, log)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
+	tcpRemover = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Remover, error) {
+		s, err := remote.DialRemover(ctx, endpoint, log)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
+	dialVia = func(ctx context.Context, name string, conn remote.Conn, log *slog.Logger) (remote.Session, error) {
+		s, err := remote.DialVia(ctx, name, conn, log)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
+	removerVia = func(ctx context.Context, name string, conn remote.Conn, log *slog.Logger) (remote.Remover, error) {
+		s, err := remote.DialRemoverVia(ctx, name, conn, log)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
+)
+
+// copyMountOptions completes o, the copier's settings and environment,
+// with the host's target and dial hooks: it is the one builder of the
+// app's MountOptions. The hooks choose the route by the target's Run,
+// never by its endpoint's text: Run 0 dials the endpoint over TCP, and
+// any other run dials device port 445 through that run's session. They
+// look the run up on each dial, so one Mount reaches whichever run is
+// current.
+func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOptions {
+	files := &handler.controller.files
+	via := func(run uint64) remote.Conn {
+		return func(ctx context.Context) (net.Conn, error) { return files.dial(ctx, run) }
+	}
+	log := o.Log
+	o.Target = handler.copyTarget
+	o.Dial = func(ctx context.Context, t copyapp.Target) (remote.Session, error) {
+		switch {
+		case copyDial != nil:
+			return copyDial(ctx, t)
+		case t.Run == 0:
+			return tcpDial(ctx, t.Endpoint, log)
+		}
+		return dialVia(ctx, t.Endpoint, via(t.Run), log)
+	}
+	o.Remover = func(ctx context.Context, t copyapp.Target) (remote.Remover, error) {
+		if t.Run == 0 {
+			return tcpRemover(ctx, t.Endpoint, log)
+		}
+		return removerVia(ctx, t.Endpoint, via(t.Run), log)
+	}
+	return o
+}
+
+// runText reads a run's status text for the status's Ready; nil is its
 // Text. Only tests set it, since only a proxy session makes a status
 // Ready.
 var runText func(*proxy.Status) string
+
+// copyTargetHook, if set, runs at the start of each copy target lookup.
+// Only tests set it, to hold a lookup.
+var copyTargetHook func()
 
 func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native *copyapp.Native) (result error) {
 	st, err := openStorage(root)
@@ -234,11 +304,10 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	// to the command's bounded log sink, as the proxy's do.
 	copyState, _ := state.DefaultDir()
 	listening := listener.Addr().(*net.TCPAddr).AddrPort()
-	handler.copy = copyapp.NewMount(appCtx, copyapp.MountOptions{
+	handler.copy = copyapp.NewMount(appCtx, copyMountOptions(handler, copyapp.MountOptions{
 		Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
-		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Target: handler.copyTarget,
-		Settings: copySaved, Save: copyFile.save, Dial: copyDial, Native: native,
-	})
+		Log: diagnostic.Logger("json", logs, slog.LevelWarn), Settings: copySaved, Save: copyFile.save, Native: native,
+	}))
 	// Every return stops the copier and joins it before ui.lock is
 	// released; the cleanup below has usually done so already.
 	defer handler.copy.Quit()

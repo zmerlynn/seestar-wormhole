@@ -125,6 +125,9 @@ func (s *Status) MarkArmed() {
 		s.notify(s.Text())
 	}
 }
+
+// Armed reports whether the run's listeners and channels are serving.
+func (s *Status) Armed() bool { return s != nil && s.armed.Load() }
 func (s *Status) SaveBoundary(lazy bool) bool {
 	return s != nil && s.armed.Load() && (lazy || s.ready.Load())
 }

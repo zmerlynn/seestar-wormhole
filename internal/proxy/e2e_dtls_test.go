@@ -12,6 +12,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/dtls"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
 
@@ -19,6 +20,7 @@ import (
 // Finished flight at the actual IOTC -> packet-adapter boundary.
 type e2eDTLSWire struct {
 	*simulatedWire
+	t        *testing.T
 	injected bool
 }
 
@@ -81,11 +83,11 @@ func TestE2EComposedDTLSHandshakeAdmission(t *testing.T) {
 				}
 				defer client.Close()
 				var trace []string
-				wire := &e2eDTLSWire{simulatedWire: newSimulatedWire(t, &trace)}
-				wire.suite = suite
+				wire := &e2eDTLSWire{simulatedWire: newSimulatedWire(t, &trace), t: t}
+				wire.Suite = suite
 				stacks := make(chan *stack, 1)
 				s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-					return &trackingFactory{factory: &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return wire }}, stacks: stacks}
+					return &trackingFactory{factory: &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return wire }}, stacks: stacks}
 				})
 				if err != nil {
 					t.Fatal(err)
@@ -110,8 +112,8 @@ func TestE2EComposedDTLSHandshakeAdmission(t *testing.T) {
 				if !wire.injected {
 					t.Fatal("fixture never coalesced early application with Finished")
 				}
-				if cloud.allocs.Load() != 1 || cloud.stops.Load() != 1 {
-					t.Fatalf("allocation/stop = %d/%d, want 1/1", cloud.allocs.Load(), cloud.stops.Load())
+				if cloud.Allocs.Load() != 1 || cloud.Stops.Load() != 1 {
+					t.Fatalf("allocation/stop = %d/%d, want 1/1", cloud.Allocs.Load(), cloud.Stops.Load())
 				}
 				assertStackWorkersExited(t, x)
 				assertDTLSWorkersExited(t, x)

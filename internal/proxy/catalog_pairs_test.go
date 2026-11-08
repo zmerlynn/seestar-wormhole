@@ -28,7 +28,7 @@ func (c *pairAllocationCloud) RoundTrip(r *http.Request) (*http.Response, error)
 			return nil, errors.New("unexpected catalog page")
 		}
 	case "/v1/my-device/detail":
-		c.details.Add(1)
+		c.Details.Add(1)
 		body = c.detail
 	}
 	if r.URL.Path == "/v1/my-device/detail" || r.URL.Path == "/v1/device-p2p/online-link" {
@@ -89,13 +89,13 @@ func TestCatalogPairAllocationBoundary(t *testing.T) {
 					if err := lease.Stop(t.Context()); err != nil {
 						t.Fatal(err)
 					}
-					if tr.allocs.Load() != 1 || tr.stops.Load() != 1 {
+					if tr.Allocs.Load() != 1 || tr.Stops.Load() != 1 {
 						t.Fatal("online detail did not allocate and release once")
 					}
-				} else if lease != nil || tr.allocs.Load() != 0 || tr.stops.Load() != 0 {
+				} else if lease != nil || tr.Allocs.Load() != 0 || tr.Stops.Load() != 0 {
 					t.Fatal("refused detail reached allocation")
 				}
-				if tr.details.Load() != 1 {
+				if tr.Details.Load() != 1 {
 					t.Fatal("detail was not authoritative")
 				}
 				if strings.Contains(logs.String(), "private-other") {

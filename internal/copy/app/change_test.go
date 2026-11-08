@@ -69,7 +69,8 @@ func newChangeEnv(t *testing.T) *changeEnv {
 			defer e.route.Unlock()
 			return Target{Endpoint: e.endpoint, Run: e.run}, nil
 		},
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
+		Dial: func(ctx context.Context, tg Target) (remote.Session, error) {
+			endpoint := tg.Endpoint
 			e.mu.Lock()
 			hold := e.hold
 			e.mu.Unlock()
@@ -82,7 +83,7 @@ func newChangeEnv(t *testing.T) *changeEnv {
 			}
 			return share(endpoint)
 		},
-		Remover: func(_ context.Context, endpoint string) (remote.Remover, error) { return share(endpoint) },
+		Remover: func(_ context.Context, tg Target) (remote.Remover, error) { return share(tg.Endpoint) },
 	})
 	t.Cleanup(e.m.Quit)
 	e.f = e.m.s.free
@@ -336,7 +337,7 @@ func TestPassDuringChange(t *testing.T) {
 				}
 			}
 			dial := c.dial
-			c.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+			c.dial = func(ctx context.Context, tg Target) (remote.Session, error) {
 				mu.Lock()
 				held := armed
 				armed = false
@@ -351,7 +352,7 @@ func TestPassDuringChange(t *testing.T) {
 						return nil, ctx.Err()
 					}
 				}
-				return dial(ctx, endpoint)
+				return dial(ctx, tg)
 			}
 			until := func(what string, cond func() bool) {
 				t.Helper()

@@ -63,7 +63,10 @@ func TestDeviceChoicesUIAPI(t *testing.T) {
 			s := testServer(t)
 			s.controller.log = &eventLog{storage: s.storage}
 			release := make(chan struct{})
-			s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { <-release; return tc.failure }
+			s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+				<-release
+				return tc.failure
+			}
 			if err := s.controller.start(testSettings(), testPassword); err != nil {
 				t.Fatal(err)
 			}
@@ -143,7 +146,9 @@ func TestSavedPickerChoiceLabel(t *testing.T) {
 func TestPickerChoicesAppLifetime(t *testing.T) {
 	s := testServer(t)
 	failure := choiceFailure(t, cloudhttp.Device{})
-	s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { return failure }
+	s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+		return failure
+	}
 	run := func() {
 		t.Helper()
 		if err := s.controller.start(testSettings(), testPassword); err != nil {
@@ -161,7 +166,9 @@ func TestPickerChoicesAppLifetime(t *testing.T) {
 	if len(choices) != 2 || choices[1].Serial != "synthetic-choice-5678" {
 		t.Fatal("received list not retained", choices)
 	}
-	s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { return nil }
+	s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+		return nil
+	}
 	run()
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, request(s, "GET", "/api/status", ""))

@@ -87,7 +87,7 @@ func TestStatusSilentDeviceRetries(t *testing.T) {
 		var offline atomic.Bool
 		offline.Store(true)
 		s, stacks, _ := workloadSession(t, t.Context(), func(p *simulatedWire) {
-			p.outage = offline.Load
+			p.Outage = offline.Load
 		}, Config{Status: status})
 		defer s.Close()
 		<-stacks

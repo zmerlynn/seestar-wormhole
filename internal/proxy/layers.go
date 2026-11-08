@@ -83,9 +83,8 @@ func startSelected(ctx context.Context, cfg Config, detail cloud.Detail, factory
 	return start(ctx, cfg, factory)
 }
 
-type wireRunner interface {
-	Run(context.Context, <-chan iotc.Action, func(iotc.Event) bool)
-}
+type wireRunner = WireRunner
+
 type factory struct {
 	s      *Session
 	cloud  *cloudhttp.Client

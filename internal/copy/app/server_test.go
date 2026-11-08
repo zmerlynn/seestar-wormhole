@@ -44,7 +44,8 @@ type dials struct {
 	sessions  []*remote.Fake
 }
 
-func (d *dials) dial(ctx context.Context, endpoint string) (remote.Session, error) {
+func (d *dials) dial(ctx context.Context, t Target) (remote.Session, error) {
+	endpoint := t.Endpoint
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.fail != nil {
@@ -74,6 +75,7 @@ type appEnv struct {
 	mu       sync.Mutex
 	endpoint string     // the target's
 	device   string     // the target's; "" on this network
+	run      uint64     // the target's; 0 on this network
 	lost     error      // what finding the target fails with
 	saved    []Settings // each Save, in order
 	saveErr  error      // what Save fails with
@@ -90,7 +92,7 @@ func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 		Target: func() (Target, error) {
 			e.mu.Lock()
 			defer e.mu.Unlock()
-			return Target{Endpoint: e.endpoint, Device: e.device}, e.lost
+			return Target{Endpoint: e.endpoint, Device: e.device, Run: e.run}, e.lost
 		},
 		Dial: e.d.dial,
 		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
@@ -1006,6 +1008,15 @@ func TestBrowseViewMoves(t *testing.T) {
 	e.endpoint = "127.0.0.1:4445"
 	e.mu.Unlock()
 	step("a new endpoint without a change", true)
+	e.mu.Lock()
+	e.run = 7
+	e.mu.Unlock()
+	step("a new run at the same endpoint", true)
+	e.mu.Lock()
+	e.device = "synthetic"
+	e.mu.Unlock()
+	step("a device at the same endpoint and run", true)
+	step("the same target again", false)
 	e.mu.Lock()
 	e.lost = errors.New("not connected")
 	e.mu.Unlock()

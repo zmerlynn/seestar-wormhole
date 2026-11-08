@@ -255,6 +255,44 @@ func TestMountStartsCopyingWhenReady(t *testing.T) {
 	}
 }
 
+// A start as the app opens that the target refused tries again at the
+// next look, even when the target became ready right after the refusal:
+// here the very look that refuses makes the next one ready.
+func TestMountStartRetriesAClearedRefusal(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var armed, ready atomic.Bool
+		set := savedAt(t.TempDir())
+		set.StartCopying = true
+		m := NewMount(t.Context(), MountOptions{
+			Addr: testAddr, StateDir: t.TempDir(), Settings: set, Log: slog.New(slog.DiscardHandler),
+			Target: func() (Target, error) {
+				if ready.Load() {
+					return Target{Endpoint: testEndpoint, Device: "synthetic", Run: 1}, nil
+				}
+				if armed.Load() {
+					ready.Store(true)
+				}
+				return Target{}, errors.New("Not connected")
+			},
+			Dial: func(context.Context, Target) (remote.Session, error) {
+				return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": image("abc")}), nil
+			},
+		})
+		defer m.Quit()
+		armed.Store(true)
+		m.Start()
+		synctest.Wait()
+		if !ready.Load() {
+			t.Fatal("the start never looked for the target")
+		}
+		time.Sleep(2 * startEvery)
+		synctest.Wait()
+		if !m.s.copy.on() {
+			t.Error("copying didn't start once the target was ready")
+		}
+	})
+}
+
 // A start from the page while copying waits to start as the app opens
 // takes its place: once that start's single pass has ended, copying stays
 // off, though the target is there by the next look.
@@ -272,7 +310,7 @@ func TestMountStartGivesWayToPage(t *testing.T) {
 				}
 				return Target{Endpoint: testEndpoint, Device: "synthetic", Run: 1}, nil
 			},
-			Dial: func(context.Context, string) (remote.Session, error) {
+			Dial: func(context.Context, Target) (remote.Session, error) {
 				dialed.Add(1)
 				return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": image("abc")}), nil
 			},

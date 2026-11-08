@@ -72,7 +72,7 @@ type server struct {
 	// again once it moved: each new pool moves it, and so does each new
 	// endpoint status finds, such as a route's run connecting.
 	view   int
-	viewAt string // the endpoint view last moved for; "" for none
+	viewAt Target // the target view last moved for; zero for none
 }
 
 func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server {
@@ -98,8 +98,8 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	}
 	dial := o.Dial
 	if dial == nil {
-		dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return remote.Dial(ctx, endpoint, log)
+		dial = func(ctx context.Context, t Target) (remote.Session, error) {
+			return remote.Dial(ctx, t.Endpoint, log)
 		}
 	}
 	// Browse's dials ask for the endpoint again, so they reach the
@@ -111,7 +111,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 		if err != nil {
 			return nil, err
 		}
-		sess, err := establish(ctx, t, func(ctx context.Context) (remote.Session, error) { return dial(ctx, t.Endpoint) })
+		sess, err := establish(ctx, t, func(ctx context.Context) (remote.Session, error) { return dial(ctx, t) })
 		if err != nil && t.onLAN() {
 			err = withHint(err)
 		}
@@ -187,6 +187,13 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 // errStarted refuses the start as the app opens once copying has started.
 var errStarted = errors.New("copying has started since the app opened")
 
+// noTarget is a start refused because the telescope has no target yet.
+// It reads as the target's own error.
+type noTarget struct{ err error }
+
+func (e noTarget) Error() string { return e.err.Error() }
+func (e noTarget) Unwrap() error { return e.err }
+
 // startCopying turns copying on with the saved settings, which discards
 // a preview. Holding s.admit keeps a Save or a change of endpoint from
 // landing between the check and the start. The start as the app opens,
@@ -205,7 +212,7 @@ func (s *server) startCopying(opening bool) error {
 	}
 	set, t, err := s.resolve(s.file.settings)
 	if err != nil {
-		return err
+		return noTarget{err}
 	}
 	if err := s.copy.start(set, t); err != nil {
 		return err
@@ -377,11 +384,11 @@ type input struct {
 func (s *server) status(w http.ResponseWriter) {
 	t, err := s.target()
 	if err != nil {
-		t.Endpoint = ""
+		t = Target{}
 	}
 	s.mu.Lock()
-	if t.Endpoint != s.viewAt {
-		s.viewAt = t.Endpoint
+	if t != s.viewAt {
+		s.viewAt = t
 		s.view++
 	}
 	set, setUp, view := s.file.settings, s.setUp(), s.view

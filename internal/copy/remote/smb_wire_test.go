@@ -77,10 +77,11 @@ type peer struct {
 	deny   string
 	// notDir is a name CREATE refuses as not a directory.
 	notDir string
-	// setup and tree, if not zero, are the statuses SESSION_SETUP and
-	// TREE_CONNECT fail with.
-	setup uint32
-	tree  uint32
+	// negotiate, setup and tree, if not zero, are the statuses NEGOTIATE,
+	// SESSION_SETUP and TREE_CONNECT fail with.
+	negotiate uint32
+	setup     uint32
+	tree      uint32
 	// hold lists commands the peer reads but never answers, from the
 	// first request on. holdNow adds to it later, once Dial has set up the
 	// session. mu guards it after startPeer.
@@ -266,6 +267,9 @@ func (p *peer) handle(req wire.PacketCodec, prior uint32) (uint32, bool) {
 func (p *peer) respond(req wire.PacketCodec) (wire.Packet, uint32) {
 	switch req.Command() {
 	case wire.SMB2_NEGOTIATE:
+		if p.negotiate != 0 {
+			return nil, p.negotiate
+		}
 		return &wire.NegotiateResponse{DialectRevision: wire.SMB210, SecurityMode: wire.SMB2_NEGOTIATE_SIGNING_ENABLED,
 			MaxTransactSize: 65536, MaxReadSize: 65536, MaxWriteSize: 65536}, 0
 	case wire.SMB2_SESSION_SETUP:

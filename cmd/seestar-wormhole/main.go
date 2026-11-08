@@ -62,6 +62,7 @@ type options struct {
 	pauseThreshold            int
 	version                   bool
 	uiStatus                  *proxy.Status
+	uiAttach                  func(proxy.Dialer) (detach func(), ok bool) // the UI's file tools; nil outside the UI
 	lanDiscovery              bool
 	lanDiscoveryAllInterfaces bool
 	serial, model, stateDir   string
@@ -302,6 +303,17 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	warnWildcardBind(logger, forwards, systemInterfaces())
 	done := make(chan error, 1)
 	go func() { done <- proxy.Serve(ctx, s, forwards, 128, logger) }()
+	// The UI's file tools dial through the session; they get it before the
+	// run is armed, and lose it before the session closes.
+	if o.uiAttach != nil {
+		detach, ok := o.uiAttach(s)
+		if !ok {
+			// Stop came first: the run's context is already ending.
+			cancel()
+			return <-done
+		}
+		defer detach()
+	}
 	o.uiStatus.MarkArmed()
 	logger.Info("proxy_started", "revision", buildinfo.Revision(revision), "listeners", len(forwards), "lazy", o.idle > 0, "pause_threshold", o.pauseThreshold)
 	for {

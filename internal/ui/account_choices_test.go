@@ -31,13 +31,17 @@ func TestChoicesDoNotCrossAccounts(t *testing.T) {
 					<-done
 				}
 			}
-			s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { return failure }
+			s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+				return failure
+			}
 			original := testSettings()
 			run(original)
 			if len(s.controller.view().Devices) != 2 {
 				t.Fatal("fixture did not retain choices")
 			}
-			s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status) error { return result.err }
+			s.controller.run = func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+				return result.err
+			}
 			normalized := original
 			normalized.Email = " " + strings.ReplaceAll(original.Email, "@", " @") + " "
 			run(normalized)

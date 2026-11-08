@@ -43,6 +43,7 @@ type routeEnv struct {
 
 	mu         sync.Mutex
 	dialed     []string
+	targets    []copyapp.Target // the target of each session dialed
 	sessions   []*routeSession
 	holdDial   chan struct{} // if not nil, a dial waits for it
 	holdRemove chan struct{} // if not nil, a remover waits for it
@@ -75,7 +76,8 @@ func newRouteEnv(t *testing.T) *routeEnv {
 		Addr: netip.MustParseAddrPort(e.s.host), StateDir: filepath.Join(base, "state"), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Target: e.s.copyTarget,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
+		Dial: func(ctx context.Context, tg copyapp.Target) (remote.Session, error) {
+			endpoint := tg.Endpoint
 			if err := e.wait(ctx, &e.holdDial, nil); err != nil {
 				return nil, err
 			}
@@ -86,13 +88,15 @@ func newRouteEnv(t *testing.T) *routeEnv {
 			s := &routeSession{Session: d, ctx: ctx}
 			e.mu.Lock()
 			e.dialed = append(e.dialed, endpoint)
+			e.targets = append(e.targets, tg)
 			e.sessions = append(e.sessions, s)
 			e.mu.Unlock()
 			return s, nil
 		},
 		Test:  test,
 		Reach: reachBy(test),
-		Remover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
+		Remover: func(ctx context.Context, tg copyapp.Target) (remote.Remover, error) {
+			endpoint := tg.Endpoint
 			if err := e.wait(ctx, &e.holdRemove, &e.removing); err != nil {
 				return nil, err
 			}
@@ -240,7 +244,7 @@ func (e *routeEnv) locked() bool {
 // connect starts a run through the account that lasts until the test
 // ends or it is stopped.
 func (e *routeEnv) connect() (int, string) {
-	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		<-ctx.Done()
 		return nil
 	}
@@ -267,24 +271,45 @@ func (e *routeEnv) account() *account {
 		}
 		return st.Text()
 	}
-	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		<-ctx.Done()
 		return nil
 	}
 	return a
 }
 
-// markReady selects the telescope with serial in the current run and
-// makes the run read Ready, as a proxy session selects before it is.
+// markReady selects the telescope with serial in the current run, arms
+// it and makes it read Ready, as a proxy session selects before it is.
 func (a *account) markReady(serial string) {
-	c := a.e.s.controller
-	c.mu.Lock()
-	st := c.status
-	c.mu.Unlock()
-	st.SetSelectedDevice(cloudhttp.Device{Serial: serial, Model: "Seestar S50"})
+	st := a.arm(serial)
 	a.mu.Lock()
 	a.ready = st
 	a.mu.Unlock()
+}
+
+// arm selects the telescope with serial in the current run, attaches the
+// run and arms it, as runProxy does once its session is open, dormant or
+// not. The run doesn't read Ready.
+func (a *account) arm(serial string) *proxy.Status {
+	a.e.t.Helper()
+	c := a.e.s.controller
+	c.mu.Lock()
+	st, id := c.status, c.runs
+	c.mu.Unlock()
+	st.SetSelectedDevice(cloudhttp.Device{Serial: serial, Model: "Seestar S50"})
+	if _, ok := c.files.attach(id, noDialer{}); !ok {
+		a.e.t.Fatalf("run %d refused its attach", id)
+	}
+	st.MarkArmed()
+	return st
+}
+
+// noDialer is a session dialer for tests whose file tools never dial
+// through the run.
+type noDialer struct{}
+
+func (noDialer) DialPort(context.Context, uint16) (net.Conn, error) {
+	return nil, errors.New("this test's session has no channels")
 }
 
 // stop stops the run and waits for it to end.
@@ -307,6 +332,13 @@ func (e *routeEnv) copying() (state, title string) {
 		e.t.Fatalf("copy status %s: %v", body, err)
 	}
 	return v.Copy.State, v.Copy.Title
+}
+
+// dialedTargets is the targets of the sessions dialed so far.
+func (e *routeEnv) dialedTargets() []copyapp.Target {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return append([]copyapp.Target(nil), e.targets...)
 }
 
 // dials is the endpoints dialed so far.
@@ -635,17 +667,18 @@ func TestFreeUpSpaceLocksTheRoute(t *testing.T) {
 	e.lan("192.0.2.20")
 }
 
-// Through the account, the copier reaches the telescope at the run's SMB
-// mapping once the run's status reads Ready, and not while it connects,
-// stops or reconnects. Connect again while copying through the account
-// between passes goes ahead, and copying resumes once the same telescope
-// is Ready again, at its new mapping.
+// Through the account, the copier reaches the telescope through the run,
+// shown by the account label and named by the run's number, once the run
+// is armed, and not while it connects, stops or reconnects. The run's
+// SMB mapping doesn't enter into it. Connect again while copying through
+// the account between passes goes ahead, and copying resumes once the
+// same telescope is armed again, through the new run.
 func TestAccountEndpoint(t *testing.T) {
 	e := newRouteEnv(t)
 	a := e.account()
 	// A run ends once stopped and released, or once the test has.
 	release := make(chan struct{})
-	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+	e.s.controller.run = func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 		<-ctx.Done()
 		select {
 		case <-release:
@@ -655,17 +688,26 @@ func TestAccountEndpoint(t *testing.T) {
 	}
 	settings := testSettings()
 	settings.Ports = []proxyrun.Port{{Local: 5445, Device: 445}}
-	want := "127.0.0.1:5445"
+	var run uint64 // the run the target should name
 	endpoint := func(what string, wantErr error) {
 		t.Helper()
 		got, err := e.s.copyTarget()
-		if wantErr != nil && (got.Endpoint != "" || !errors.Is(err, wantErr)) || wantErr == nil && (got.Endpoint != want || err != nil) {
-			t.Errorf("endpoint %s = %q, %v", what, got.Endpoint, err)
+		ok := got.Endpoint == accountEndpoint && strings.Contains(got.Device, "synthetic-device-a") && got.Run == run && err == nil
+		if wantErr != nil {
+			ok = got == copyapp.Target{} && errors.Is(err, wantErr)
 		}
+		if !ok {
+			t.Errorf("target %s = %q, %q, run %d, %v; want run %d", what, got.Endpoint, got.Device, got.Run, err, run)
+		}
+	}
+	current := func() uint64 {
+		e.s.controller.mu.Lock()
+		defer e.s.controller.mu.Unlock()
+		return e.s.controller.runs
 	}
 	listed := func(what string) {
 		t.Helper()
-		if code, body := e.get("/browse/api/list?path=MyWorks"); code != 200 || !strings.Contains(body, "at_127.0.0.1.jpg") {
+		if code, body := e.get("/browse/api/list?path=MyWorks"); code != 200 || !strings.Contains(body, "at_"+accountEndpoint+".jpg") {
 			t.Errorf("Browse %s = %d %s", what, code, body)
 		}
 	}
@@ -678,17 +720,18 @@ func TestAccountEndpoint(t *testing.T) {
 		t.Fatalf("Connect = %d %s", code, body)
 	}
 	endpoint("while connecting", errNotConnected)
-	a.markReady("synthetic-device-a")
-	endpoint("once Ready", nil)
+	a.arm("synthetic-device-a")
+	run = current()
+	endpoint("once armed", nil)
 	e.settings()
 	if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
 		t.Fatalf("start copying = %d %s", code, body)
 	}
 	passDone("the first pass")
-	if dialed := e.dials(); len(dialed) != 1 || dialed[0] != want {
-		t.Errorf("copying reached %q", dialed)
+	if dialed := e.dialedTargets(); len(dialed) != 1 || dialed[0].Run != run {
+		t.Errorf("copying reached %d sessions, want one at run %d", len(dialed), run)
 	}
-	listed("once Ready")
+	listed("once armed")
 
 	e.s.controller.stop()
 	endpoint("while stopping", errNotConnected)
@@ -702,21 +745,28 @@ func TestAccountEndpoint(t *testing.T) {
 	release = make(chan struct{})
 	close(release)
 	settings.Ports = []proxyrun.Port{{Local: 6445, Device: 445}}
-	want = "127.0.0.1:6445"
 	if code, body := e.start(settings); code != 200 {
 		t.Fatalf("Connect while copying through the account = %d %s", code, body)
 	}
 	endpoint("while reconnecting", errNotConnected)
-	a.markReady("synthetic-device-a")
-	endpoint("once Ready again", nil)
-	listed("once Ready again")
+	a.arm("synthetic-device-a")
+	run = current()
+	endpoint("once armed again", nil)
+	listed("once armed again")
 	e.until("a pass after the reconnect", func() bool {
 		e.post("/copy/api/copy", `{"action":"check"}`)
-		return len(e.dials()) > 1
+		// Browse's listing dialed the new run once; the pass is next.
+		n := 0
+		for _, tg := range e.dialedTargets() {
+			if tg.Run == run {
+				n++
+			}
+		}
+		return n > 1
 	})
 	passDone("the pass after the reconnect")
-	if dialed := e.dials(); dialed[len(dialed)-1] != want {
-		t.Errorf("after the reconnect copying reached %q", dialed)
+	if dialed := e.dialedTargets(); dialed[len(dialed)-1].Run != run {
+		t.Errorf("after the reconnect copying reached run %d, want %d", dialed[len(dialed)-1].Run, run)
 	}
 	if !e.s.copy.Busy() {
 		t.Error("copying stopped after a reconnect to the same telescope")
@@ -731,14 +781,7 @@ func TestAccountCopyStaysWithItsTelescope(t *testing.T) {
 	e := newRouteEnv(t)
 	a := e.account()
 	atA, atB := testSettings(), testSettings()
-	atA.Ports = []proxyrun.Port{{Local: 5445, Device: 445}}
-	atB.Ports = []proxyrun.Port{{Local: 6445, Device: 445}}
-	// B has a newer file of the same name, which a pass there would copy
-	// over A's.
-	if err := e.put("127.0.0.1:6445", "BBB", time.Date(2021, 1, 2, 3, 4, 5, 0, time.UTC)); err != nil {
-		t.Fatal(err)
-	}
-	local := filepath.Join(e.folder, "MyWorks", "at_127.0.0.1.jpg")
+	local := filepath.Join(e.folder, "MyWorks", "at_"+accountEndpoint+".jpg")
 	if code, body := e.start(atA); code != 200 {
 		t.Fatalf("Connect to A = %d %s", code, body)
 	}
@@ -749,6 +792,11 @@ func TestAccountCopyStaysWithItsTelescope(t *testing.T) {
 	}
 	e.until("A's pass", func() bool { state, _ := e.copying(); return state == "uptodate" })
 	a.stop()
+	// B, at the same label, has a newer file of the same name, which a
+	// pass there would copy over A's.
+	if err := e.put(accountEndpoint, "BBB", time.Date(2021, 1, 2, 3, 4, 5, 0, time.UTC)); err != nil {
+		t.Fatal(err)
+	}
 
 	if code, body := e.start(atB); code != 200 {
 		t.Fatalf("Connect to B with copying on between passes = %d %s", code, body)
@@ -762,9 +810,9 @@ func TestAccountCopyStaysWithItsTelescope(t *testing.T) {
 	if state != "cantwrite" || !strings.Contains(title, "another telescope") || strings.Contains(title, "synthetic-device") {
 		t.Errorf("copying ended in %q: %q", state, title)
 	}
-	for _, endpoint := range e.dials() {
-		if endpoint != "127.0.0.1:5445" {
-			t.Errorf("copying reached %s", endpoint)
+	for _, tg := range e.dialedTargets() {
+		if !strings.Contains(tg.Device, "synthetic-device-a") {
+			t.Errorf("copying reached %q", tg.Device)
 		}
 	}
 	if b, err := os.ReadFile(local); err != nil || string(b) != "synthetic" {
@@ -805,7 +853,7 @@ func TestAccountPassDuringConnect(t *testing.T) {
 			e.s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
 				Addr: netip.MustParseAddrPort(e.s.host), StateDir: t.TempDir(), Target: e.s.copyTarget,
 				Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
-				Dial: func(ctx context.Context, _ string) (remote.Session, error) {
+				Dial: func(ctx context.Context, _ copyapp.Target) (remote.Session, error) {
 					mu.Lock()
 					dials++
 					first, held := dials == 1, armed
@@ -980,7 +1028,7 @@ func TestAccountPreviewEndsWithItsRun(t *testing.T) {
 	if code, body := e.post("/copy/api/delete", `{"action":"delete","id":`+strconv.Itoa(id)+`,"folders":["MyWorks"]}`); code != 409 || !strings.Contains(body, "Preview again") {
 		t.Errorf("delete with the last run's preview = %d %s", code, body)
 	}
-	if _, err := os.Stat(e.shareFile("127.0.0.1:5445")); err != nil {
+	if _, err := os.Stat(e.shareFile(accountEndpoint)); err != nil {
 		t.Errorf("the telescope's file: %v", err)
 	}
 }
@@ -1036,9 +1084,10 @@ func TestRouteReload(t *testing.T) {
 	}
 }
 
-// The status says ready only while the run is connected now, as copying
-// has it: not while connecting, not once the run moves off Ready, and not
-// while it stops.
+// The status says ready only while the session is ready now, and the
+// file tools have the run as soon as it is armed and attached, whether
+// or not its session is ready: a dormant on-demand session opens on
+// their dial. Neither holds while connecting or stopping.
 func TestStatusReady(t *testing.T) {
 	e := newRouteEnv(t)
 	a := e.account()
@@ -1046,39 +1095,30 @@ func TestStatusReady(t *testing.T) {
 		t.Fatalf("Connect = %d %s", code, body)
 	}
 	c := e.s.controller
-	ready := func() bool {
+	check := func(what string, wantReady, wantConnected bool) {
+		t.Helper()
 		_, _, _, connected := c.connected()
-		v := c.view()
-		if v.Ready != connected {
-			t.Errorf("ready %v, connected %v", v.Ready, connected)
+		if v := c.view(); v.Ready != wantReady || connected != wantConnected {
+			t.Errorf("%s: ready %v, connected %v; want %v, %v", what, v.Ready, connected, wantReady, wantConnected)
 		}
-		return v.Ready
 	}
-	if ready() {
-		t.Error("ready while connecting")
-	}
+	check("while connecting", false, false)
+	a.arm("synthetic-device-a")
+	check("armed, the session dormant", false, true)
 	a.markReady("synthetic-device-a")
-	if !ready() {
-		t.Error("not ready once Ready")
-	}
+	check("once Ready", true, true)
 	a.mu.Lock()
 	a.ready = nil
 	a.mu.Unlock()
-	if ready() {
-		t.Error("ready after the run moved off Ready")
-	}
+	check("after the session moved off Ready", false, true)
 	a.markReady("synthetic-device-a")
 	c.mu.Lock()
 	c.stopping = true
 	c.mu.Unlock()
-	if ready() {
-		t.Error("ready while stopping")
-	}
+	check("while stopping", false, false)
 	c.mu.Lock()
 	c.stopping = false
 	c.mu.Unlock()
 	a.stop()
-	if ready() {
-		t.Error("ready after Stop")
-	}
+	check("after Stop", false, false)
 }

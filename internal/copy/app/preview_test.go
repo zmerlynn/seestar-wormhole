@@ -176,8 +176,8 @@ func TestPreviewFails(t *testing.T) {
 		t.Errorf("unreachable: %+v", v)
 	}
 	e.dialErr = nil
-	e.p.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-		s, err := e.c.dial(ctx, endpoint)
+	e.p.dial = func(ctx context.Context, tg Target) (remote.Session, error) {
+		s, err := e.c.dial(ctx, tg)
 		return failDir{s, "MyWorks/M 42"}, err
 	}
 	if v := e.run(); v.State != pvFailed || v.Title != "Couldn't read MyWorks/M 42." || v.Text != "Preview again to retry." {
@@ -228,7 +228,7 @@ func TestPreviewLocalNetworkHint(t *testing.T) {
 func TestPreviewDiscard(t *testing.T) {
 	e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
 	dialed := make(chan struct{})
-	e.p.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+	e.p.dial = func(ctx context.Context, _ Target) (remote.Session, error) {
 		close(dialed)
 		<-ctx.Done()
 		return nil, ctx.Err()
@@ -274,8 +274,8 @@ func TestPreviewDiscardAtEnd(t *testing.T) {
 	for _, name := range []string{"done", "failed"} {
 		t.Run(name, func(t *testing.T) {
 			e := newPreviewEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("a")})
-			e.p.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-				s, err := e.c.dial(ctx, endpoint)
+			e.p.dial = func(ctx context.Context, tg Target) (remote.Session, error) {
+				s, err := e.c.dial(ctx, tg)
 				if name == "failed" {
 					s = failDir{s, "MyWorks"}
 				}
@@ -318,8 +318,8 @@ func TestPreviewListing(t *testing.T) {
 	e = newPreviewEnv(t, fstest.MapFS{"A.jpg": image("a"), "MyWorks/M 31/a.jpg": image("a")})
 	var seen []string
 	dial := e.p.dial
-	e.p.dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
-		sess, err := dial(ctx, endpoint)
+	e.p.dial = func(ctx context.Context, tg Target) (remote.Session, error) {
+		sess, err := dial(ctx, tg)
 		return walkSpy{sess, func(p string, dir bool) {
 			if v := e.p.view(); dir && v != nil {
 				seen = append(seen, v.Title+" "+v.Path+" "+v.ToCopy)

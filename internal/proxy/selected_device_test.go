@@ -59,7 +59,7 @@ func TestSelectedDeviceStatusAndReady(t *testing.T) {
 			if record.Phase != "ready" || record.Telescope != tc.label {
 				t.Fatalf("ready=%s", &logs)
 			}
-			if peer.allocs.Load() != 0 || peer.details.Load() != 0 {
+			if peer.Allocs.Load() != 0 || peer.Details.Load() != 0 {
 				t.Fatal("lazy selection allocated or queried detail")
 			}
 		})

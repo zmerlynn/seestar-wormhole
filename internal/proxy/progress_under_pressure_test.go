@@ -16,7 +16,7 @@ func TestComposedProgressingReaderSurvivesPressure(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()
-		s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) { p.bulkBurst = true; p.responseBytes = (1 << 20) - 65 })
+		s, stacks, cloud := workloadSessionLegacyCapacity(t, ctx, func(p *simulatedWire) { p.BulkBurst = true; p.ResponseBytes = (1 << 20) - 65 })
 		defer s.Close()
 		x := <-stacks
 		healthy, err := s.DialPort(ctx, 445)
@@ -88,7 +88,7 @@ func TestComposedProgressingReaderSurvivesPressure(t *testing.T) {
 		}
 		result := <-readDone
 		joined = true
-		t.Logf("normal-rate transfer delivered=%d elapsed=%s err=%v stuck-active=%d cloud allocations=%d", result.n, time.Since(started), result.err, active, cloud.allocs.Load())
+		t.Logf("normal-rate transfer delivered=%d elapsed=%s err=%v stuck-active=%d cloud allocations=%d", result.n, time.Since(started), result.err, active, cloud.Allocs.Load())
 		if result.err != nil {
 			t.Fatalf("progressing 64KiB/s transfer terminated with %d stuck readers still active: %v", active, result.err)
 		}
@@ -108,7 +108,7 @@ func TestComposedProgressingReaderSurvivesPressure(t *testing.T) {
 		if result.n != 4<<20 || result.digest != want {
 			t.Fatalf("full transfer bytes/hash: got=%d/%x want=%d/%x", result.n, result.digest, 4<<20, want)
 		}
-		if cloud.allocs.Load() != 1 {
+		if cloud.Allocs.Load() != 1 {
 			t.Fatal("aggregate pressure replaced session")
 		}
 

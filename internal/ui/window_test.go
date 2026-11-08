@@ -24,7 +24,7 @@ func TestWindowLifetime(t *testing.T) {
 			process, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			entered, releasing, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
-			run := func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status) error {
+			run := func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
 				close(entered)
 				<-ctx.Done()
 				close(releasing)
