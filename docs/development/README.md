@@ -155,7 +155,7 @@ See [certificate selection and renewal](releasing.md#mac-signing-and-notarizatio
 | `internal/edge/`, `internal/edge/iotcedge/`, `internal/dtls/` | Profile checks, Pion integration, datagram boundaries, worker cleanup |
 | `internal/proxy/` | Composed sessions, listeners, forwarding, busy/idle recovery, site protection and cleanup |
 | `cmd/seestar-wormhole/` | CLI output/exits, startup, diagnostics and cancellation |
-| `internal/landiscovery/` | Scan decoding, synthesized replies, source/interface policy and rate bounds |
+| `internal/landiscovery/` | Scan decoding, synthesized replies, source/interface policy and rate bounds; the scan client over fake interfaces and sockets, reply decoding, and re-resolving a moved telescope |
 
 The [tunnel contract](../../DESIGN.md#tunnel-contract) describes the retained stream behavior.
 

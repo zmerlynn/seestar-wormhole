@@ -24,7 +24,7 @@ The [connection command reference](reference/connection-cli.md) has the detail o
 `delete`). The app's Copy, Browse and Free up space tabs use the same code as the file commands. The share and the
 firmware behind it change without notice, as above.
 
-1. **Commands and flags.** `proxy`, `discovery`, `sync`, `find`, `browse`, `delete`, `licenses`, `help`, the top-level
+1. **Commands and flags.** `proxy`, `discovery`, `sync`, `find`, `browse`, `delete`, `scan`, `licenses`, `help`, the top-level
    `--version`, and GUI-only `ui`; flag names, meanings and grammar; defaults that change what is written or sent; and
    the rules about which combinations are refused. For the file commands that includes the defaults of every `sync`,
    `find` and `delete` flag, as in [flags](reference/files-cli.md#flags), [find flags](reference/files-cli.md#find-flags) and

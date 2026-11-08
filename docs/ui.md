@@ -39,11 +39,20 @@ only the telescope's files, for Copy, Browse and Free up space.
   Seestar through Telescope Network, and copying will use its file-sharing
   (SMB) port.
 - **On this network** is for a Seestar on the same network as this computer.
-  Enter its [address](copying.md#find-the-telescopes-address), with an
+  When you choose it, or when it shows with no address saved, it scans this
+  network the way the phone app does, for about 6 seconds, and lists each
+  telescope that answers under **Telescopes on this network**: its name, its
+  model, **busy** when it reports as many clients as the phone app allows
+  (copying still works), and **saved** for the one saved here. Each address
+  is a button that fills it in. **Scan again** repeats the scan. When
+  nothing answers, or the telescope's network doesn't pass the scan through,
+  enter its [address](copying.md#find-the-telescopes-address) yourself, with an
   optional port (445 by default); its help says
   that Copy, Browse and Free up space read the telescope's files there.
   **Test** checks that it answers file sharing and saves nothing: when it
-  passes for an address other than the saved one, it says to **Save**.
+  passes for an address other than the saved one, it says to **Save**. Test
+  also sends the scan request to that address alone, and when a telescope
+  answers it adds its name and model.
   **Save** tests it first, unless it has just passed, then checks that it
   still answers (the line under the address says **Checking…**) and saves
   it only if it does; Copy, Browse and Free up space then use it. Otherwise
@@ -51,6 +60,13 @@ only the telescope's files, for Copy, Browse and Free up space.
   On a Mac, when nothing answers at the address, Test or Save also says to
   enable seestar-wormhole in System Settings → Privacy & Security → Local
   Network, which macOS may be blocking; see [Local Network access](copying.md#things-to-know).
+  A scan that macOS refuses says so, with the same hint, rather than that
+  no telescope answered.
+  An address picked from a scan is saved with the telescope's serial
+  number. When the router later gives the telescope another address and the
+  saved one stops answering, Copy, Browse and Free up space scan for that
+  serial, use the telescope's new address and save it; Activity says so,
+  naming only the model.
   This route doesn't start the proxy or use your account.
 
 You can't change the choice while a connection is running or while copying or

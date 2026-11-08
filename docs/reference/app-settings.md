@@ -48,6 +48,7 @@ for how the app and `seestar-wormhole-cli` share them.
 | `remember_password` | `false` |
 | `route` | Empty, meaning **Remotely through Telescope Network**. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means Telescope Network. |
 | `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
+| `lan_serial` | Empty. The serial number a scan of this network saw at `lan_address` when it was saved. Copy, Browse and Free up space, and `--profile default` on the command line, use it to find the telescope by a scan when `lan_address` stops answering; the app then saves the new address here. Absent or empty, the saved address is used as it is. It is never shown in the app or logged. |
 | `route_established` | `false`. `true` once a connection through Telescope Network is ready or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
 
 These defaults differ from the UI's first-run phone setup.

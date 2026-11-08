@@ -17,7 +17,7 @@ not copied again. It repeats passes until it is stopped.
 
 | Path | What it does |
 | --- | --- |
-| `internal/copy/cli` | The file commands (built with [cobra](https://github.com/spf13/cobra)): their flags and checks, the copy history folder, `find`'s listing, and `browse`'s listener and `--open`. |
+| `internal/copy/cli` | The file commands (built with [cobra](https://github.com/spf13/cobra)): their flags and checks, the copy history folder, `find`'s listing, `browse`'s listener and `--open`, `scan`'s list, and following a telescope the app saved on this network to a new address (`follow.go`). |
 | `cmd/seestar-wormhole` | Mounts the file commands under `seestar-wormhole-cli` and the app's executable (`files.go`), and gives them the shared `--log-format` and `--log-level`, the stderr logger, usage errors, exit codes, and the read-only guard before a dry run. |
 | `internal/copy/app` | The Copy, Browse and Free up space tabs' server, which seestar-wormhole's app (`internal/ui`) mounts under `/copy/api/` and `/browse/`: the copy, preview and free-space controllers, Settings validation, Test, the activity log, and the Browse tab, which is `internal/copy/browse` in its in-app mode. The app keeps the settings in its `copy.json` and tells the mount where the telescope is. |
 | `internal/copy/engine` | The work the commands share: the `--exclude` and `--include` selection and its walk of the share, the `sync` pass loop (dial, list, plan, copy, log off, sleep) and its dry run, and `delete`'s run. It never turns the read-only guard on. |

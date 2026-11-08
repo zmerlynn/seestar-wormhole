@@ -1,7 +1,7 @@
 # File command reference
 
 Use this page when you script `seestar-wormhole-cli`'s file commands, `sync`,
-`find`, `browse` and `delete`, or need an exact flag, rule or log line. [Copy images](../copying.md#from-the-command-line) has a first run.
+`find`, `browse`, `delete` and `scan`, or need an exact flag, rule or log line. [Copy images](../copying.md#from-the-command-line) has a first run.
 
 - [sync](#sync): flags, endpoint, [performance](#performance), destination
   layout, [selection](#selection) and [dry run](#dry-run)
@@ -19,6 +19,7 @@ Use this page when you script `seestar-wormhole-cli`'s file commands, `sync`,
 - [delete](#delete): [proof modes](#proof-modes),
   [how delete decides](#how-delete-decides), [emptied folders](#emptied-folders)
   and [the check-then-remove race](#the-check-then-remove-race)
+- [scan](#scan): the telescopes on this network
 - [Help, licenses and releases](#help-licenses-and-releases), which the
   [connection command reference](connection-cli.md) covers for every command
 
@@ -130,6 +131,16 @@ by default, and something must be serving it: the app connected with
 commands never start a connection. With no usable `config.json`, no saved
 address, or that service off, `--endpoint` is not filled and is required as
 usual; if nothing listens, the run fails with exit 1.
+
+On this network, an address the app saved from a scan is saved with the
+telescope's serial number, [`lan_serial`](app-settings.md#configjson-version-1).
+When `--endpoint` was filled from it and the address gets no answer (the
+connection times out, is refused or has no route), the run
+[scans this network](#scan) for that serial and connects to the address the
+telescope answered from, on the same port. It keeps using that address for
+the rest of the run, and saves nothing; the app saves the new address the
+next time it connects. A given `--endpoint` is dialed as it is. The scan's
+records are in [logs](#logs).
 
 At the start of the run, one `INFO` record, `saved settings`, names the
 filled flags and none of their values, such as
@@ -478,8 +489,11 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | INFO | `listing done` | see [find logs](#find-logs) | A `find` listing finished. |
 | ERROR | `listing failed` | `source`, `op`, `phase`, `reason`, as `listing done`, and `error` | The connection or a listing failed in `find`. |
 | ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
-| ERROR | `sync failed`, `find failed`, `browse failed` or `delete failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
+| ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
+| INFO | `found the saved telescope at a new address on this network` | `model` when the reply had one, `replies` | With `--profile default` on this network: the saved address got no answer and a scan found the telescope at another, which the run now uses; see [use the app's saved settings](#use-the-apps-saved-settings). No address, name or serial is logged. |
+| WARN | `found the saved telescope on this network, but it didn't answer at its new address` | `model`, `replies` | As above, but the new address got no answer either; the run fails as it would have at the saved one. |
+| WARN | `the saved telescope didn't answer, and a scan of this network didn't find it` | `replies` | As above, but no reply carried the saved serial. |
 | WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
 Each pass that runs ends with one summary line, whose keys are below. A later
@@ -1171,6 +1185,72 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 > **Warning.** With `--ignore-state`, delete removes whatever is selected,
 > whether or not it was copied. With `--older-than 0` as well, that includes
 > a file the telescope is still writing. Preview first, without `--force`.
+
+## scan
+
+```sh
+seestar-wormhole-cli scan [--format text|json]
+```
+
+`scan` lists the Seestars on this network, as the phone app finds them. It
+sends the phone app's scan request to UDP port 4720 on the directed
+broadcast address of each up IPv4 interface that can broadcast, three times
+2 seconds apart, and lists every telescope that answers within 6 seconds.
+Loopback and point-to-point (VPN) interfaces are skipped, and so are replies
+from this computer's own addresses, such as a proxy here that answers for
+the phone app. A reply needs a serial number; replies with the same serial
+are one telescope with every address it answered from. scan never shows a
+serial number, and never reads the reply's password.
+
+A telescope found here can be given to the other file commands as
+`--endpoint ADDRESS:445`. scan connects to nothing and reads no saved
+settings: it has no `--endpoint` or `--profile`.
+
+### scan flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--format` | `text` | `text` or `json`. Any other value exits 2 with `rule="use text or json"`. |
+| `--log-format` | `text` | As for sync. |
+| `--log-level` | `info` | As for sync. |
+
+### scan output
+
+The text format writes one line per address, telescope by telescope in the
+order they first answered: the address, `busy` or `-`, the name (the reply's `ssid`) and the model.
+`busy` means the telescope reports as many clients as the phone app allows,
+8; the phone app may refuse to connect, but copying still works. The name and
+model are quoted as [find's paths](#text-format) are, and an empty one is
+`""`, so each line has four fields.
+
+```text
+192.0.2.10 - S50_Garden "Seestar S50"
+198.51.100.23 busy "Seestar S30" "Seestar S30"
+```
+
+The JSON format writes one object on one line, with `telescopes` and
+`replies`, the number of replies accepted:
+
+```json
+{"telescopes":[{"name":"S50_Garden","model":"Seestar S50","addresses":["192.0.2.10"],"busy":false}],"replies":3}
+```
+
+In both formats, bytes of a name or model that are not UTF-8 become U+FFFD.
+A scan keeps at most 64 telescopes and 8 addresses for each; further
+replies are only counted.
+
+### scan logs and exit codes
+
+`scan` logs `scanned this network` at INFO with `replies` and `telescopes`,
+and `no telescope answered` at WARN when the list is empty. On macOS that
+warning adds where to allow Local Network access, which macOS may be
+blocking. It logs no address, name or serial.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The scan ran, even if nothing answered. |
+| 1 | It couldn't scan: no interface to scan from, a send the system refused, or stdout failed. When sends fail with "no route to host" and nothing answers, `scan failed` says `sending was refused (no route to host)`, and on macOS where to allow Local Network access. |
+| 2 | A usage error: an unknown or invalid flag, a bad `--format`, or a positional argument. |
 
 ## Help, licenses and releases
 

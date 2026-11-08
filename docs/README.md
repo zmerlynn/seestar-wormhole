@@ -34,8 +34,8 @@ Start by choosing how to reach your Seestar. Then use the app or command-line to
   or with another SMB app.
 - In the app: [Copy](ui.md#copy), [Browse](ui.md#browse) and
   [Free up space](ui.md#free-up-space).
-- From the command line: `sync`, `find`, `browse` and `delete` in the
-  [file command reference](reference/files-cli.md).
+- From the command line: `sync`, `find`, `browse`, `delete` and `scan` in
+  the [file command reference](reference/files-cli.md).
 - [Selection and copy history](reference/selection-and-history.md): which
   files are copied, where the copy history is kept, and how the app and the
   commands share a folder.

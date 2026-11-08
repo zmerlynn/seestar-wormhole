@@ -92,9 +92,11 @@ names another.
   it. If it is blocked, **Test**, Copy, Preview, Browse and Free up space
   can't reach the telescope there, and on a Mac they say where to allow it:
   enable seestar-wormhole in System Settings → Privacy & Security → Local
-  Network, then **Test** again. While the request is open, the first
-  connection after the app starts, from any tab, waits up to 5 seconds for
-  your answer. Through Telescope Network, copying doesn't need it.
+  Network, then **Test** again. A blocked scan says so too. While the
+  request is open, the first connection after the app starts, from any tab,
+  waits up to 5 seconds for your answer. When macOS refuses
+  `seestar-wormhole-cli scan`'s request, it says so and exits 1. Through Telescope
+  Network, copying doesn't need it.
 - **Through Telescope Network, a large copy is shared.** It uses the same telescope
   session as the phone app and control clients, and delays their status
   replies. **Files at once** in Copy settings sets how many files copying
@@ -107,9 +109,25 @@ On this network, the app and `seestar-wormhole-cli` need the telescope's address
 Through Telescope Network they use the proxy's listener instead.
 
 When the telescope is on your home Wi-Fi, your router gave it its address.
-Open the router's list of connected devices and find the telescope's entry,
-not this computer's, with an address such as `192.0.2.10`. In the app,
-**Test** checks that the address answers file sharing.
+The app's **On this network** scans for it and lists each telescope that
+answers, as the phone app finds them; pick its address. From the command
+line, `./seestar-wormhole-cli scan` lists them, one address per line:
+
+```text
+192.0.2.10 - S50_Garden "Seestar S50"
+```
+
+A scan reaches only this computer's own networks, and some routers and
+guest networks don't pass it through. If nothing answers, open the router's
+list of connected devices and find the telescope's entry, not this
+computer's, with an address such as `192.0.2.10`. In the app, **Test**
+checks that the address answers file sharing. On a Mac, scanning needs
+Local Network access; see [things to know](#things-to-know).
+
+An address picked from a scan is saved with the telescope's serial number.
+If the router gives the telescope a new address, the app finds it again
+by scanning and saves the new one; `--profile default` on the command line
+finds it the same way for that run.
 
 The app takes the address alone and uses SMB port 445 unless you add another
 port. `seestar-wormhole-cli` needs the port too: `--endpoint 192.0.2.10:445`.
