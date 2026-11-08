@@ -121,6 +121,7 @@ type channelSession struct {
 	name string
 	c    net.Conn
 	held func(string) bool
+	wrap func(*channelSession, string, remote.File) remote.File // if set, wraps each file opened
 	mu   sync.Mutex
 }
 
@@ -158,7 +159,11 @@ func (s *channelSession) Open(ctx context.Context, p string) (remote.File, error
 	if err := s.ping(p); err != nil {
 		return nil, err
 	}
-	return s.FakeDir.Open(ctx, p)
+	f, err := s.FakeDir.Open(ctx, p)
+	if err != nil || s.wrap == nil {
+		return f, err
+	}
+	return s.wrap(s, p, f), nil
 }
 
 func (s *channelSession) RemoveFile(ctx context.Context, e remote.Entry) error {
@@ -188,6 +193,8 @@ type viaEnv struct {
 	*routeEnv
 	shareDir string
 	held     func(string) bool // requests the echo peer holds
+	wrap     func(*channelSession, string, remote.File) remote.File
+	stateDir string // the Mount's history root
 
 	mu       sync.Mutex
 	names    []string // the name each account dial gave
@@ -217,7 +224,7 @@ func newViaEnv(t *testing.T, settings *copyapp.Settings) *viaEnv {
 			c.Close()
 			return nil, err
 		}
-		return &channelSession{FakeDir: d, name: name, c: c, held: e.held}, nil
+		return &channelSession{FakeDir: d, name: name, c: c, held: e.held, wrap: e.wrap}, nil
 	}
 	dialVia = func(ctx context.Context, name string, conn remote.Conn, _ *slog.Logger) (remote.Session, error) {
 		e.mu.Lock()
@@ -261,8 +268,9 @@ func (e *viaEnv) mount(saved *copyapp.Settings) {
 	test := func(context.Context, string) ([]remote.Entry, error) {
 		return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
 	}
+	e.stateDir = filepath.Join(e.t.TempDir(), "state")
 	e.s.copy = copyapp.NewMount(context.Background(), copyMountOptions(e.s, copyapp.MountOptions{
-		Addr: netip.MustParseAddrPort(e.s.host), StateDir: filepath.Join(e.t.TempDir(), "state"), Version: "synthetic",
+		Addr: netip.MustParseAddrPort(e.s.host), StateDir: e.stateDir, Version: "synthetic",
 		Log: slog.New(slog.NewTextHandler(io.Discard, nil)), Settings: saved, Test: test, Reach: reachBy(test),
 	}))
 	e.t.Cleanup(e.s.copy.Quit)
