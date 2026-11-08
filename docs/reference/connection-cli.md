@@ -482,29 +482,13 @@ serial refusals also list the received pairs. These lists are command output,
 not log records. Invalid serials are omitted using the command's serial rules;
 all model labels use Go ASCII string escaping (without enclosing quotes) and
 are capped at 64 display characters, including escapes and a `...` truncation
-marker. Valid serial labels preserve printable ASCII verbatim without truncation; log encoders still escape their own syntax. The desktop
-exposes the choices structurally only for multiple devices without a serial;
-its Telescope picker below the account fields fills the exact wire serial and
-model for the next Connect. **Find on my account** is the default and clears
-the pair. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
-After several telescopes are found for the current account, the empty
-option reads **Choose a telescope…** until that selection step clears or the
-account changes. In that step, **Your account has several telescopes. Choose one, then Connect.**
-replaces the discovery help; only one picker help line appears at a time. Connect remains explicit; Enter manually… reveals manual
-Serial and Model fields, with Connect after them in DOM and visual order. In manual
-entry, an empty Serial shows **Enter a serial number.** Connect validates it locally
-without an account request. The instruction and validation error are associated with Serial. A usable serial shows
-**Ready to connect**; Model remains optional. A saved pair is selected on load. An entry found only in settings is labeled
-**Saved: {model} {serial}**, using the same escaping and capping as received
-labels. If it is the only identity entry, **Choose “Find on my account”, then Connect to load other telescopes.**
-replaces the picker help. A saved pair also received from the current account
-appears once with its received label. Selection failures for a chosen pair say
-**Choose “Find on my account” to reload telescopes, or check Serial and Model.**
-Absence from the catalog alone is not invalid; the detail fallback above remains.
-Received choices
-remain in memory for this app run and are never added to the settings file.
-To switch telescopes, choose Stop, choose **Find on my account** or another
-picker entry, then Connect. Several telescopes still enter the selection step.
+marker. Valid serial labels preserve printable ASCII verbatim without truncation; log encoders still escape their own syntax.
+
+The app offers the received pairs as choices only for several devices
+without a serial: its **Telescope** picker then fills the exact wire serial
+and model for the next Connect. The picker's
+entries, help lines and manual entry are in
+[Telescope selection](../ui.md#telescope-selection).
 
 Every catalog page requests `isContainShared=3`, the mode sent by the
 app 3.3.2 connect screen ([spec device selection](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection)).
