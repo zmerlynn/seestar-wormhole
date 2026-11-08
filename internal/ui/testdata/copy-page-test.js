@@ -211,18 +211,27 @@ async function checkCopyChoose(st) {
   };
   $('f-folder').value = '/typed';
   showErrors({interval: 'Enter whole minutes.'});
-  await copyChoose();
+  await copyChoose('folder');
   copyAssert(calls.length === 1 && calls[0][0] === 'folder' && calls[0][1] === '{"folder":"/typed"}' && calls[0][2] === '/copy/api/', 'Choose… posted ' + JSON.stringify(calls));
   copyAssert($('f-folder').value === '/picked' && document.activeElement === $('f-folder'), 'the pick was not filled in');
   copyAssert(!$('f-int-err').hidden && $('f-int-err').textContent === 'Enter whole minutes.', 'the pick cleared another field\'s error');
   answer = {folder: ''};
-  await copyChoose();
+  await copyChoose('folder');
   copyAssert($('f-folder').value === '/picked' && $('f-folder-err').hidden, 'Cancel changed the folder');
   answer = new Error("Couldn't open the folder picker: synthetic. Type the folder's full path instead.");
-  await copyChoose();
+  await copyChoose('folder');
   copyAssert(!$('f-folder-err').hidden && $('f-folder-err').textContent === answer.message && $('f-folder').value === '/picked', 'the picker failure is not shown');
   copyAssert(document.activeElement === $('f-folder'), 'the failure did not focus the folder');
   copyAssert(!$('f-int-err').hidden, 'the failure cleared another field\'s error');
+  // The history folder's Choose… starts at its default when it is empty,
+  // and fills the history folder, not the images folder.
+  calls.length = 0;
+  answer = {folder: '/history'};
+  $('f-hist').value = '';
+  $('f-hist').placeholder = '/default-history';
+  await copyChoose('history_dir');
+  copyAssert(calls.length === 1 && calls[0][1] === '{"folder":"/default-history"}', 'the history Choose… posted ' + JSON.stringify(calls));
+  copyAssert($('f-hist').value === '/history' && $('f-folder').value === '/picked' && document.activeElement === $('f-hist'), 'the history pick was not filled in');
 }
 
 // Browse shows the telescope's files once a route is saved, without

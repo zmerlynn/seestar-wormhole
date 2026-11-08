@@ -25,7 +25,7 @@ var (
 // or the log.
 type freer struct {
 	parent   context.Context
-	stateDir string
+	stateDir string // the default history folder; Settings may choose another
 	log      *slog.Logger
 	// dial opens a preview's session and remover a delete's; tests
 	// replace them.
@@ -65,7 +65,7 @@ func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial fu
 func (f *freer) options(set Settings) (engine.DeleteOptions, error) {
 	sel, err := selector(Settings{Excludes: set.FreeExcludes, Includes: set.FreeIncludes, SkipBuiltIn: true})
 	return engine.DeleteOptions{
-		Endpoint: set.Address, Dest: set.Folder, StateDir: f.stateDir,
+		Endpoint: set.Address, Dest: set.Folder, StateDir: set.historyDir(f.stateDir),
 		TrustState: set.TrustState, OlderThan: time.Duration(set.OlderThanDays) * 24 * time.Hour,
 		Selector: sel,
 	}, err

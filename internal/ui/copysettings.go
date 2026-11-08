@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json/jsontext"
 	"os"
+	"path/filepath"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 )
@@ -39,7 +40,10 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, error) {
 	} else if err != nil {
 		return nil, nil, err
 	}
-	if f.Version != copyapp.SettingsVersion || f.FilesAtOnce < 1 || f.FilesAtOnce > copyapp.MaxFilesAtOnce {
+	// A relative history folder would resolve against wherever the app
+	// was started, so it is refused, not guessed.
+	if f.Version != copyapp.SettingsVersion || f.FilesAtOnce < 1 || f.FilesAtOnce > copyapp.MaxFilesAtOnce ||
+		f.HistoryDir != "" && !filepath.IsAbs(f.HistoryDir) {
 		return nil, nil, errStorage
 	}
 	if f.Excludes == nil {

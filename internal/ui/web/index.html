@@ -137,6 +137,10 @@
 <div class="inline"><input id="f-folder" type="text" class="mono" spellcheck="false" autocomplete="off" aria-describedby="f-folder-help f-folder-err"><button type="button" id="f-choose" hidden>Choose…</button></div>
 <p class="error" id="f-folder-err" role="alert" hidden></p>
 <p class="help" id="f-folder-help">Type the folder's full path. Images are copied here, in the same folders as on the telescope. Each folder has its own copy history: a new folder starts a new one, so everything on the telescope is copied there, and files already there are reused.</p>
+<label for="f-hist">Copy history folder</label>
+<div class="inline"><input id="f-hist" type="text" class="mono" spellcheck="false" autocomplete="off" aria-describedby="f-hist-help f-hist-err"><button type="button" id="f-hchoose" hidden>Choose…</button></div>
+<p class="error" id="f-hist-err" role="alert" hidden></p>
+<p class="help" id="f-hist-help">Leave empty for the default, <code>~/.config/seestar-copy</code>, which <code>seestar-wormhole-cli sync</code> uses too. A different folder starts a fresh history: files still in your images folder are checked and recorded again, files you moved out of it are copied again, and Free up space can't use the old history to prove that older copies are safe.</p>
 <div class="check strong wrap"><input type="checkbox" id="f-repeat" aria-describedby="f-repeat-help"><label for="f-repeat">Check for new files every</label><input type="number" id="f-int" min="1" max="1440" aria-label="Minutes between checks" aria-describedby="f-int-err"><span>minutes</span></div>
 <p class="help" id="f-repeat-help">Turn this off to copy once: Start copying then copies what's new and stops.</p>
 <p class="error" id="f-int-err" role="alert" hidden></p>

@@ -20,11 +20,13 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 const (
 	addressError  = "Enter the telescope address, with an optional port."
 	folderError   = "Enter the full path of a folder."
+	historyError  = "Use a full path to a folder outside the folder for your images, or leave it empty for the default."
 	intervalError = "Enter a whole number of minutes from 1 to 1440."
 	filesError    = "Enter a whole number from 1 to 4."
 )
@@ -61,6 +63,17 @@ func checkInput(in input) (Settings, map[string]string) {
 	set := Settings{Version: SettingsVersion, Folder: strings.TrimSpace(in.Folder), SkipBuiltIn: in.SkipBuiltIn, StartCopying: in.StartCopying, Once: in.Once}
 	if !filepath.IsAbs(set.Folder) {
 		errs["folder"] = folderError
+	}
+	// The history folder is checked against the folder by the strings, as
+	// state.Path does; state.Open checks it again, resolved, at each use.
+	// Unlike --history-dir, it can't be relative: the app has no working
+	// folder to resolve it against.
+	if set.HistoryDir = strings.TrimSpace(in.HistoryDir); set.HistoryDir != "" {
+		if !filepath.IsAbs(set.HistoryDir) {
+			errs["history_dir"] = historyError
+		} else if _, err := state.Path(set.HistoryDir, set.Folder); err != nil && filepath.IsAbs(set.Folder) {
+			errs["history_dir"] = historyError
+		}
 	}
 	// Copy once never waits between checks: its interval, kept for a later
 	// return to repeating, is the default when it isn't one.

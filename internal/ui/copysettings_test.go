@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"io"
 	"os"
@@ -175,7 +176,7 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := map[string]any{
-		"version": 1.0, "folder": "/synthetic/Other", "interval_minutes": 9.0, "excludes": []any{}, "includes": []any{},
+		"version": 1.0, "folder": "/synthetic/Other", "history_dir": "", "interval_minutes": 9.0, "excludes": []any{}, "includes": []any{},
 		"skip_built_in": true, "start_copying": false, "once": false, "files_at_once": 1.0, "older_than_days": 7.0, "trust_state": false,
 		"free_excludes": []any{}, "free_includes": []any{},
 		"future_object": map[string]any{"enabled": true, "limit": 17.0}, "future_array": []any{1.0, "two", map[string]any{"three": nil}}, "future_flag": false,
@@ -188,7 +189,77 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 // refusedBodies are copy.json bodies this version refuses.
 var refusedBodies = []string{`{"version":2,"future":{"keep":[1,2]}}`, `{"version":1,"interval_minutes":"5"}`, `[1]`, `{"version":1`,
 	`{}`, `{"folder":"/synthetic/Seestar"}`, `null`,
-	`{"version":1,"files_at_once":0}`, `{"version":1,"files_at_once":5}`, `{"version":1,"files_at_once":-1}`, `{"version":1,"files_at_once":2.5}`}
+	`{"version":1,"files_at_once":0}`, `{"version":1,"files_at_once":5}`, `{"version":1,"files_at_once":-1}`, `{"version":1,"files_at_once":2.5}`,
+	`{"version":1,"history_dir":"synthetic/history"}`, `{"version":1,"history_dir":7}`}
+
+// A chosen copy history folder loads as saved and survives a save.
+func TestCopySettingsHistoryDir(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "history")
+	b, _ := json.Marshal(dir)
+	st := testStorageWith(t, `{"version":1,"folder":"/synthetic/Seestar","history_dir":`+string(b)+`}`)
+	c, set, err := loadCopySettings(st)
+	if err != nil || set == nil || set.HistoryDir != dir {
+		t.Fatalf("load = %+v, %v; want history_dir %s", set, err, dir)
+	}
+	if err := c.save(*set); err != nil {
+		t.Fatal(err)
+	}
+	if _, again, err := loadCopySettings(st); err != nil || again == nil || again.HistoryDir != dir {
+		t.Errorf("after a save = %+v, %v", again, err)
+	}
+}
+
+// v51Settings and v51File are copy.json's types as 92c76d99 (#51) had
+// them, before history_dir, frozen here: an app of that version keeps the
+// member through a load and a save, so this version reads it back.
+type v51Settings struct {
+	Version         int      `json:"version"`
+	Address         string   `json:"-"`
+	Folder          string   `json:"folder"`
+	IntervalMinutes int      `json:"interval_minutes"`
+	Excludes        []string `json:"excludes"`
+	Includes        []string `json:"includes"`
+	SkipBuiltIn     bool     `json:"skip_built_in"`
+	StartCopying    bool     `json:"start_copying"`
+	FilesAtOnce     int      `json:"files_at_once"`
+	Once            bool     `json:"once"`
+	OlderThanDays   int      `json:"older_than_days"`
+	TrustState      bool     `json:"trust_state"`
+	FreeExcludes    []string `json:"free_excludes"`
+	FreeIncludes    []string `json:"free_includes"`
+}
+
+type v51File struct {
+	v51Settings
+	Unknown jsontext.Value `json:",embed"`
+}
+
+func TestCopySettingsHistoryDirSurvivesOlderApp(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "history")
+	st := testStorage(t)
+	c, _, err := loadCopySettings(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := copyapp.DefaultSettings()
+	set.Folder, set.HistoryDir = "/synthetic/Seestar", dir
+	if err := c.save(set); err != nil {
+		t.Fatal(err)
+	}
+	// The older app loads the file, changes a setting and saves it.
+	var old v51File
+	if err := st.read(copyName, &old); err != nil {
+		t.Fatal(err)
+	}
+	old.IntervalMinutes = 9
+	if err := st.write(copyName, old); err != nil {
+		t.Fatal(err)
+	}
+	_, got, err := loadCopySettings(st)
+	if err != nil || got == nil || got.HistoryDir != dir || got.IntervalMinutes != 9 {
+		t.Errorf("after the older app's save = %+v, %v; want history_dir %s, interval 9", got, err, dir)
+	}
+}
 
 // testStorageWith is a state dir whose copy.json is body.
 func testStorageWith(t *testing.T, body string) *storage {

@@ -420,6 +420,9 @@ its history:
 | macOS | `~/Library/Application Support/seestar-copy` |
 | Windows | `%AppData%\seestar-copy` |
 
+The app's Copy uses the same default, unless its **Copy history folder**
+names another; see [copying images](ui.md#copy).
+
 If there is no per-user config folder, sync exits 1 and asks for
 `--history-dir`. Keep the state on a local disk: shared and network folders are
 not supported.

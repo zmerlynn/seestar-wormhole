@@ -62,11 +62,13 @@ folder and settings again in Copy.
 ## Things to know
 
 These hold for the app and for `seestar-wormhole-cli sync`, which use the same copy
-history.
+history unless the app's **Copy history folder** or sync's `--history-dir`
+names another.
 
 - **Moving files out is fine.** The copy history is kept outside your folder,
   so a file you move or delete is not copied again, unless it changes on the
-  telescope. See [the state file](copy-reference.md#the-state-file).
+  telescope or you choose another copy history folder, which starts a fresh
+  history. See [the state file](copy-reference.md#the-state-file).
 - **An existing copy is reused.** A file already in your folder with the same
   size and modification time, to within 2 seconds, is recorded without
   downloading it again. A different file at the same path is overwritten with

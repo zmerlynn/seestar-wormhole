@@ -142,7 +142,7 @@ copy history as `seestar-wormhole-cli`'s [`sync`, `browse` and
 directory, as [`copy.json`](#copyjson-version-1), which the CLI's file commands
 never read, and its copy history in the default
 [history location](copy-reference.md#location), whatever its `--state-dir`
-says. While copying is on, the app holds the folder's history lock, as `sync`
+says, unless **Copy history folder** names another. While copying is on, the app holds the folder's history lock, as `sync`
 does, so a `sync` for the same folder exits with its usual error, and the app
 says the folder is in use while a `sync` holds it. Copy, Free up space and a
 Browse save into the folder also take its
@@ -175,6 +175,20 @@ can't change while copying runs:
 
 - **Folder for your images.** Images are copied there in the same folders as
   on the telescope. Each folder has its own copy history.
+- **Copy history folder**, empty by default. Empty is the default
+  [history location](copy-reference.md#location), the one
+  `seestar-wormhole-cli sync` uses without `--history-dir`; the field shows
+  that path as its placeholder. Otherwise type a full path to a folder
+  outside the folder for your images, or use **Choose…** in the app's window;
+  **Save** refuses a relative path or one inside the images folder with
+  **Use a full path to a folder outside the folder for your images, or leave
+  it empty for the default.** A folder that leads inside the images folder
+  through a symbolic link is saved, and copying then refuses to start. Nothing
+  moves the old history: a different folder starts a fresh one, so files
+  still in your images folder are checked and recorded again, files you moved
+  out of it are copied again, and Free up space can't use the old history to
+  prove that older copies are safe. To share the history with a `sync`, give
+  it the same folder as `--history-dir`.
 - **Check for new files every** N minutes, 5 by default. Its checkbox, on by
   default, turns the repeating check off to copy once: **Start copying** then
   checks once, copies what is new and stops, and Copy says **Checked once;
@@ -198,7 +212,8 @@ one [dry run](copy-reference.md#dry-run) with the saved settings: how many
 files it would copy and their size, with a row per folder, and how many are
 already copied, still being written, or left out. Nothing is copied.
 **Cancel** stops a preview that is running; starting, a Save that changes the
-folder or the selection, and Clear history discard it.
+folder, the copy history folder or the selection, and Clear history discard
+it.
 
 While copying is on, the app holds the folder's history lock for as long as
 copying is on, and its [folder lock](copy-reference.md#the-folder-lock)
@@ -209,9 +224,10 @@ lock: when you start copying, copying stays off; at a later check, that
 check is skipped, nothing is copied, and Copy tries again at the next one.
 
 **Copy history**, collapsed under the settings, shows the path of the saved
-folder's [state file](copy-reference.md#the-state-file), which `sync` uses
-too. While the folder field holds a folder not yet saved, it says to save
-first. **Clear history…** deletes that state file after a confirmation, so the
+folder's [state file](copy-reference.md#the-state-file) in the saved copy
+history folder, which `sync` uses too with the same `--history-dir`. While
+the folder field or the copy history folder field holds one not yet saved,
+it says to save first. **Clear history…** deletes that state file after a confirmation, so the
 app forgets what it copied to the folder. Files still in the folder are kept
 and adopted on the next pass; files moved out of it are copied again. Clear
 history is unavailable while copying is on, and refuses while Free up space
@@ -425,11 +441,14 @@ To use another existing installation root, run
 | `webview-<random>/` | Windows only: a fresh private engine profile for each launch; see [engine data](#engine-data). |
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
 
-The copy history and each folder's lock are not in the state directory. They
-stay in the file commands' default [history location](copy-reference.md#location),
+The copy history and its locks are not in the state directory. By default they
+are in the file commands' default [history location](copy-reference.md#location),
 `seestar-copy` beside `seestar-wormhole` in the same system folder, whatever
-`--state-dir` says, so the app and `seestar-wormhole-cli sync` share them and never
-copy into one folder at once.
+`--state-dir` says, so the app and `seestar-wormhole-cli sync` share them.
+**Copy history folder** in Copy settings, saved as `history_dir`, puts the
+app's elsewhere. Whichever history each uses, the
+[folder lock](copy-reference.md#the-folder-lock) in the folder for your images
+keeps the app and `sync` from copying into one folder at once.
 
 ### config.json version 1
 
@@ -467,6 +486,7 @@ options, never on load.
 | Member | Default and meaning |
 |---|---|
 | `folder` | `Seestar` in your home folder. |
+| `history_dir` | `""`: the default [history location](copy-reference.md#location), as `--history-dir`'s default. Otherwise **Copy history folder**, an absolute path outside `folder`. A relative path or a value that isn't a string refuses the file. |
 | `interval_minutes` | `5` |
 | `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |

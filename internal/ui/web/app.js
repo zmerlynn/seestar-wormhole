@@ -569,10 +569,11 @@ function copyError(e) {
 
 // The copy settings: a summary line, and the form Change… opens. The
 // first visit has the form open, without Cancel.
-const copyFields = {folder: 'f-folder', interval: 'f-int', files_at_once: 'f-files', excludes: 'f-ex', includes: 'f-in'};
+const copyFields = {folder: 'f-folder', history_dir: 'f-hist', interval: 'f-int', files_at_once: 'f-files', excludes: 'f-ex', includes: 'f-in'};
 const lines = value => value === '' ? [] : value.split('\n');
 function copyFill(s) {
   $('f-folder').value = s.folder;
+  $('f-hist').value = s.history_dir || '';
   $('f-int').value = copyInterval = String(s.interval_minutes);
   $('f-repeat').checked = !s.once;
   repeatChange();
@@ -603,7 +604,7 @@ function repeatChange() {
 }
 function copyInput() {
   return {
-    folder: $('f-folder').value, interval: $('f-repeat').checked ? $('f-int').value : copyInterval, files_at_once: $('f-files').value,
+    folder: $('f-folder').value, history_dir: $('f-hist').value, interval: $('f-repeat').checked ? $('f-int').value : copyInterval, files_at_once: $('f-files').value,
     excludes: lines($('f-ex').value), includes: lines($('f-in').value),
     skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked
   };
@@ -700,27 +701,29 @@ async function copySave() {
     button.disabled = false;
   }
 }
-// copyChoose shows the window's folder picker; Cancel changes nothing.
-// The other fields' errors stay as they are.
-async function copyChoose() {
-  const shown = {};
-  for (const [name, id] of Object.entries(copyFields)) if (!$(id + '-err').hidden) shown[name] = $(id + '-err').textContent;
+// copyChoose shows the window's folder picker for a folder field, the
+// images folder's or the copy history's, starting at the folder it shows;
+// Cancel changes nothing. The other fields' errors stay as they are.
+async function copyChoose(name) {
+  const id = copyFields[name], shown = {};
+  for (const [other, oid] of Object.entries(copyFields)) if (!$(oid + '-err').hidden) shown[other] = $(oid + '-err').textContent;
   try {
-    const data = await api('folder', {folder: $('f-folder').value}, '/copy/api/');
+    const data = await api('folder', {folder: $(id).value || $(id).placeholder}, '/copy/api/');
     if (data.folder) {
-      $('f-folder').value = data.folder;
+      $(id).value = data.folder;
       renderHistory();
-      showErrors({...shown, folder: ''});
+      showErrors({...shown, [name]: ''});
     }
   } catch (e) {
-    showErrors({...shown, folder: e?.error || "Couldn't open the folder picker. Type the folder's full path instead."});
+    showErrors({...shown, [name]: e?.error || "Couldn't open the folder picker. Type the folder's full path instead."});
   }
-  $('f-folder').focus();
+  $(id).focus();
 }
 // renderHistory shows the saved folder's history file, or, while the
-// Folder field holds an unsaved folder, a line saying to save first.
+// folder or the history folder field holds an unsaved one, a line saying
+// to save first.
 function renderHistory() {
-  const edited = !!copySaved && $('f-folder').value !== copySaved.folder;
+  const edited = !!copySaved && ($('f-folder').value !== copySaved.folder || $('f-hist').value !== (copySaved.history_dir || ''));
   $('h-details').hidden = !copyHistory;
   $('h-saved').hidden = edited;
   $('h-unsaved').hidden = !edited;
@@ -1116,7 +1119,8 @@ function copyRender(c) {
   copyStatus = c;
   copySaved = c.set_up ? c.settings : null;
   copyHistory = c.history;
-  $('f-choose').hidden = !c.choose;
+  $('f-choose').hidden = $('f-hchoose').hidden = !c.choose;
+  $('f-hist').placeholder = c.default_history || '';
   if (!copyFilled) {
     copyFilled = true;
     put('f-builtin', c.default_excludes.join(' · '));
@@ -1553,9 +1557,11 @@ $('copy-form').addEventListener('submit', e => {
 $('s-change').addEventListener('click', openCopyForm);
 $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);
+$('f-hist').addEventListener('input', renderHistory);
 $('f-int').addEventListener('input', intervalInput);
 $('f-repeat').addEventListener('change', repeatChange);
-$('f-choose').addEventListener('click', copyChoose);
+$('f-choose').addEventListener('click', () => copyChoose('folder'));
+$('f-hchoose').addEventListener('click', () => copyChoose('history_dir'));
 $('copy-steps-go').addEventListener('click', goSetup);
 $('x-setup-go').addEventListener('click', goSetup);
 $('x-folder-go').addEventListener('click', goSetup);

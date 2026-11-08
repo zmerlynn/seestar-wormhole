@@ -18,6 +18,7 @@ type Settings struct {
 	Version         int      `json:"version"`
 	Address         string   `json:"-"` // the target's endpoint, set for each start
 	Folder          string   `json:"folder"`
+	HistoryDir      string   `json:"history_dir"` // absolute and outside Folder; "" is --history-dir's default
 	IntervalMinutes int      `json:"interval_minutes"`
 	Excludes        []string `json:"excludes"`
 	Includes        []string `json:"includes"`
@@ -53,6 +54,15 @@ func DefaultSettings() Settings {
 		s.Folder = filepath.Join(home, "Seestar")
 	}
 	return s
+}
+
+// historyDir is the copy history folder s chooses, or def, the file
+// commands' default, when it chooses none.
+func (s Settings) historyDir(def string) string {
+	if s.HistoryDir != "" {
+		return s.HistoryDir
+	}
+	return def
 }
 
 // settingsFile is the settings as last loaded or saved.

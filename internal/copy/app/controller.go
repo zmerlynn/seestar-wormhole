@@ -68,7 +68,7 @@ var errOtherTelescope = errors.New("the connection now reaches another telescope
 // the network or the log.
 type controller struct {
 	parent   context.Context
-	stateDir string
+	stateDir string       // the default history folder
 	log      *slog.Logger // the loop's: it also feeds activity
 	activity *activity
 	// dial opens a pass's session; tests replace it.
@@ -162,7 +162,7 @@ func (c *controller) start(set Settings, t Target) error {
 	interval := time.Duration(set.IntervalMinutes) * time.Minute
 	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, once: set.Once, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
-		Endpoint: set.Address, Dest: set.Folder, StateDir: c.stateDir, Selector: sel, Interval: interval, Once: set.Once,
+		Endpoint: set.Address, Dest: set.Folder, StateDir: set.historyDir(c.stateDir), Selector: sel, Interval: interval, Once: set.Once,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: c.dialPass, Hooks: c.hooks(ctx), CheckNow: c.checkNow, Recreate: true,
 	}

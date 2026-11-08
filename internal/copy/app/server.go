@@ -41,7 +41,7 @@ type server struct {
 	ctx      context.Context // the app's lifetime; browse's sessions live in it
 	addr     netip.AddrPort  // the listener's
 	version  string
-	stateDir string
+	stateDir string // the default history folder; Settings may choose another
 	log      *slog.Logger
 	// dial opens a browse session at the target; test runs Test, and
 	// reach a route's Save's check.
@@ -174,8 +174,9 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 		if sel, err = selector(set); err != nil {
 			log.Warn("browse shows nothing as left out", "err", err)
 		}
-		records = func() (map[string]state.Record, error) { return state.Load(s.stateDir, folder, log) }
-		if file, err := state.Path(s.stateDir, folder); err == nil {
+		history := set.historyDir(s.stateDir)
+		records = func() (map[string]state.Record, error) { return state.Load(history, folder, log) }
+		if file, err := state.Path(history, folder); err == nil {
 			records = browse.CacheRecords(file, records)
 		}
 	}
@@ -365,6 +366,7 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 type input struct {
 	Address      string   `json:"address"`
 	Folder       string   `json:"folder"`
+	HistoryDir   string   `json:"history_dir"`
 	Interval     string   `json:"interval"`
 	FilesAtOnce  string   `json:"files_at_once"`
 	Excludes     []string `json:"excludes"` // the box's lines
@@ -397,14 +399,15 @@ func (s *server) status(w http.ResponseWriter) {
 	// The saved folder's state file, as sync names it.
 	var history string
 	if setUp {
-		history, _ = state.Path(s.stateDir, set.Folder)
+		history, _ = state.Path(set.historyDir(s.stateDir), set.Folder)
 	}
 	lines, seq := s.copy.activity.lines()
 	localhttp.Respond(w, http.StatusOK, struct {
 		Version         string   `json:"version"`
 		SetUp           bool     `json:"set_up"`
 		Settings        Settings `json:"settings"`
-		History         string   `json:"history"` // "" until set up
+		History         string   `json:"history"`         // "" until set up
+		DefaultHistory  string   `json:"default_history"` // the history folder an empty history_dir means
 		DefaultExcludes []string `json:"default_excludes"`
 		Copy            copyView `json:"copy"`
 		Free            freeView `json:"free"`
@@ -412,7 +415,7 @@ func (s *server) status(w http.ResponseWriter) {
 		ActivitySeq     int      `json:"activity_seq"`
 		Choose          bool     `json:"choose"`      // the window's folder picker is there
 		BrowseView      int      `json:"browse_view"` // moves when Browse should load again
-	}{s.version, setUp, set, history, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil, view})
+	}{s.version, setUp, set, history, s.stateDir, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil, view})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -485,12 +488,14 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		}{"Couldn't save settings: " + reason(err) + ". Your changes have not been saved. Try saving again."})
 		return
 	}
-	// A new selection replaces browse too, which shows what it leaves out.
-	// Free up space's preview depends on the folder alone: it has its own
-	// patterns.
-	changed := !wasSetUp || old.Folder != set.Folder ||
+	// A new folder or history folder replaces browse, which shows its
+	// records, and discards both previews, which read them. A new
+	// selection replaces browse too, which shows what it leaves out; Free
+	// up space has its own patterns.
+	moved := !wasSetUp || old.Folder != set.Folder || old.HistoryDir != set.HistoryDir
+	changed := moved ||
 		!slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn
-	if !wasSetUp || old.Folder != set.Folder {
+	if moved {
 		s.free.clear()
 	}
 	var oldSessions *browse.Sessions
@@ -654,7 +659,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 		}{msg})
 	}
 	s.mu.Lock()
-	folder := s.file.settings.Folder
+	folder, history := s.file.settings.Folder, s.file.settings.historyDir(s.stateDir)
 	var err error
 	switch {
 	case !s.setUp():
@@ -664,7 +669,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	case !s.free.forget():
 		err = errors.New("wait for Free up space to finish")
 	default:
-		err = state.Remove(s.stateDir, folder)
+		err = state.Remove(history, folder)
 		s.preview.discard()
 	}
 	s.mu.Unlock()
