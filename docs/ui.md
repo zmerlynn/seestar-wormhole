@@ -127,7 +127,8 @@ When discovery is on, **Using the Seestar app** tells you to pick your
 telescope from the **LAN** tab of the Seestar app. If it doesn't appear, see
 the [phone app guide](phone-app.md). **Copying files** points you to the
 **Copy** tab, with **Go to Copy**, and to **Browse**; below that, it shows the
-local SMB port for [another file-sharing app](copying.md#copy-with-a-graphical-app).
+local SMB port for [another file-sharing app](copying.md#copy-with-a-graphical-app)
+when that port is on.
 
 Keep seestar-wormhole open while you use the telescope.
 
@@ -143,15 +144,18 @@ never read, and its copy history in the default
 [history location](copy-reference.md#location), whatever its `--state-dir`
 says. While copying is on, the app holds the folder's history lock, as `sync`
 does, so a `sync` for the same folder exits with its usual error, and the app
-says the folder is in use while a `sync` holds it. Through Telescope Network they reach the share through the proxy's SMB port
-(local port 4445 by default); on this network, at the saved address.
+says the folder is in use while a `sync` holds it. Through Telescope Network
+they reach the share through the connection itself, so they work with the SMB
+port off, and their errors name **Seestar (account connection)**. With
+**Connect when an app needs Seestar**, they count as an app: they start the
+session when they need it, and it releases once they and every other app are
+done. On this network they reach the share at the saved address.
 
 If they can't reach the share, each says why and links to the fix:
 
 | Notice | Fix |
 |---|---|
 | **Not connected.** | **Go to Connection** and connect. On Copy, while copying repeats, the notice adds **Copying resumes at the next check after you connect.** Scheduled checks wait for the connection; they don't start it. |
-| **SMB is off. Turn on its port in Connection > Advanced.** | **Open Advanced** and forward a local port to Seestar port 445. |
 | **Save the telescope's address on the Connection tab first.** | **Go to Connection**, choose **On this network**, and save the address. |
 
 ### Copy
@@ -334,8 +338,11 @@ network. It needs **All networks** or a local network IPv4 address. See
 The **Services** table has ten fixed rows. Leave a **Local port** empty to turn
 that service off. Each enabled local port must be unique and between 1 and
 65535. The phone setup maps local port 80 to Seestar port 80; the computer-only
-setup uses local port 8080 instead. SMB uses local port 4445 for Seestar port
-445. For other mappings, use the [command line](reference.md#port-mappings).
+setup uses local port 8080 instead. **File sharing for other apps (SMB)** uses
+local port 4445 for Seestar port 445. It is for Finder, rclone, other SMB apps
+and `seestar-wormhole-cli`'s file commands: Copy, Browse and Free up space
+don't need it. For other mappings, use the
+[command line](reference.md#port-mappings).
 
 ## Activity
 

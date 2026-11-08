@@ -5,8 +5,8 @@ specification](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/00-overview
 describes its sources and their limitations. The composed proxy implements the cloud-to-tunnel
 runtime and [internal stream interface](#internal-stream-interface).
 Tested devices, phones and platforms are listed in [status](docs/status.md);
-they do not establish complete interoperability. Downloads use standard SMB clients over a proxy listener.
-The proxy does not interpret SMB.
+they do not establish complete interoperability. External downloads use standard SMB clients over a proxy listener;
+the app's own file tools run an SMB client over a session channel to port 445. The proxy does not interpret SMB.
 
 ## Layering and ownership
 
@@ -512,8 +512,10 @@ bounds admission, while net.Conn deadlines apply after admission. `CloseWrite`
 sends tunnel END and preserves reading; `Close` releases the individual channel.
 Use `Session.Close()` to cancel all streams, join workers and attempt cloud stop.
 In-process consumers can depend on `DialPort(context.Context, uint16) (net.Conn,error)`.
-One Session must be shared by all in-process users of a device. Attaching to a
-proxy uses its configured local TCP listener and does not allocate another session.
+One Session must be shared by all in-process users of a device. The UI's file
+tools are such users: they dial port 445 through the run's Session. An external
+client attaches to a proxy through its configured local TCP listener and does
+not allocate another session.
 
 The runtime extends `sessionedge.Factory` with an optional bounded `Driver.Work`
 queue. Only the existing session owner executes these completions and all IOTC,

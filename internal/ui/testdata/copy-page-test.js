@@ -28,7 +28,6 @@ async function checkCopyUnlock(st) {
   // Each reach state words the notice, and its link opens what it names.
   for (const [reach, wording, link, focus] of [
     ['not_connected', 'Not connected.', 'Go to Connection', 'start'],
-    ['smb_off', 'SMB is off. Turn on its port in Connection > Advanced.', 'Open Advanced', 'ports'],
     ['no_lan_address', "Save the telescope's address on the Connection tab first.", 'Go to Connection', 'lan-address']
   ]) {
     render({...st.unlocked, copy_reach: reach});
@@ -38,7 +37,7 @@ async function checkCopyUnlock(st) {
     goReach();
     copyAssert(currentTab === 'connection' && !$('panel-connection').hidden && $('copy-reach').hidden, reach + ' link did not open Connection');
     copyAssert(document.activeElement === $(focus) || document.activeElement === $('tab-connection'), reach + ' link focused ' + JSON.stringify(document.activeElement?.attributes));
-    copyAssert(($('advanced').open === true) === (reach === 'smb_off'), reach + ' Advanced');
+    copyAssert($('advanced').open === false, reach + ' link opened Advanced');
     if (reach === 'no_lan_address') copyAssert(routeChoice === 'lan', 'the LAN link did not choose On this network');
   }
   // Only a repeating copy, and only on Copy, says it resumes.

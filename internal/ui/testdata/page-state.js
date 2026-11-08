@@ -86,7 +86,7 @@
       }
       assert(Array.from($('details').querySelectorAll('h2')).map(e => e.textContent).join('|') === 'Recent events|Connection settings|Copy settings|Files', 'Details headings missing');
       assert(Array.from($('ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous port headings');
-      assert($('ports-help').textContent === 'Local ports are on this computer. Leave a port empty to turn off that service.', 'local port definition missing');
+      assert($('ports-help').textContent === "Local ports are on this computer. Leave a port empty to turn off that service. Copy, Browse and Free up space don't need the SMB port.", 'local port definition missing');
     });
     await check('Version and external links', async () => {
       const s = status();
@@ -312,7 +312,7 @@
     await check('Structured ports and validation', async () => {
       $('password').value = 'synthetic-password';
       const rows = $('ports').querySelectorAll('tbody tr');
-      assert(rows.length === 10 && rows[0].cells[1].textContent === '4700' && rows[9].cells[2].textContent === 'File sharing (SMB)', 'port rows or order');
+      assert(rows.length === 10 && rows[0].cells[1].textContent === '4700' && rows[9].cells[2].textContent === 'File sharing for other apps (SMB)', 'port rows or order');
       assert([...$('ports').querySelectorAll('input')].every(input => input.type === 'number' && input.min === '1' && input.max === '65535'), 'port number bounds');
       for (const value of ['0', '-1', '65536', '1.5']) {
         $('port-80').value = value;

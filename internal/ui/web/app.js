@@ -74,7 +74,7 @@ const services = [
   [4800, 'Main camera images'], [4804, 'Wide camera images'],
   [4801, 'Album and files'], [4554, 'Main camera video'],
   [4555, 'Wide camera video (some models)'], [4350, 'Firmware updater'],
-  [4361, 'Firmware upload'], [445, 'File sharing (SMB)']
+  [4361, 'Firmware upload'], [445, 'File sharing for other apps (SMB)']
 ];
 function portValues(s) {
   const ports = Object.fromEntries(portDefaults.map(p => [p.device, p.local]));
@@ -469,7 +469,6 @@ function tabKey(event) {
 const copyTabNames = ['copy', 'browse', 'free'];
 const reachCopy = {
   not_connected: ['Not connected.', 'Go to Connection'],
-  smb_off: ['SMB is off. Turn on its port in Connection > Advanced.', 'Open Advanced'],
   no_lan_address: ["Save the telescope's address on the Connection tab first.", 'Go to Connection']
 };
 // The last copy status, the saved copy settings (null until saved), the
@@ -498,16 +497,14 @@ function copyNotice() {
   text('copy-reach-text', repeating ? 'Not connected. Copying resumes at the next check after you connect.' : reach[0]);
   text('copy-reach-go', reach[1]);
 }
-// The notice's link opens what it names: Advanced's ports for SMB, the
-// address on this network, or the account's Connect.
+// The notice's link opens what it names: the address on this network,
+// or the account's Connect.
 function goReach() {
   const reach = state?.copy_reach;
   if (reach === 'no_lan_address') routeChoice = 'lan';
-  else if (reach === 'smb_off') routeChoice = 'account';
   selectTab('connection');
-  if (reach === 'smb_off') $('advanced').open = true;
   controls();
-  const target = $(reach === 'smb_off' ? 'ports' : reach === 'no_lan_address' ? 'lan-address' : 'start');
+  const target = $(reach === 'no_lan_address' ? 'lan-address' : 'start');
   (target.disabled ? $('tab-connection') : target).focus();
 }
 // Browse loads once a route is saved; until a folder is saved too, it
