@@ -5,7 +5,7 @@ cover the rest. Every lane follows the scope rule and output format in
 [SKILL.md](SKILL.md).
 
 Two rules cut across every lane for a change to the copy code
-(`internal/copy/`, `cmd/seestar-copy-cli/`, the app's copy tabs):
+(`internal/copy/`, the file commands, the app's copy tabs):
 
 - **Never write to the device unasked.** Copying opens files on the share
   read-only and does nothing else to it. Only `delete --force` and a
@@ -240,9 +240,9 @@ disagrees with the code, or anything that looks copied or captured.
 
 ## cli-contract
 
-`docs/reference.md`, and `docs/copy-reference.md` for `seestar-copy-cli`, are
+`docs/reference.md`, and `docs/copy-reference.md` for the file commands, are
 the contract for scripts and careful users; help text is the contract for
-people at a terminal. For `seestar-copy-cli`, that includes the per-file lines
+people at a terminal. For the file commands, that includes the per-file lines
 and the per-pass summary line, a state file for another destination or one
 already in use, and a relative `--dest`.
 
@@ -401,7 +401,7 @@ The readers:
 - `README.md` is for Seestar owners who are not developers;
 - each `docs/` guide is for the same readers doing one task;
 - `docs/reference.md` owns the mechanics: flags, defaults, exit codes and
-  formats; `docs/copy-reference.md` owns them for `seestar-copy-cli` and the
+  formats; `docs/copy-reference.md` owns them for the file commands and the
   copy state file;
 - `DESIGN.md` and `docs/development/` are for contributors.
 

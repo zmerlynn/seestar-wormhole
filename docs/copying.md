@@ -4,11 +4,11 @@ seestar-wormhole copies the images from your Seestar's file share to a folder
 on your computer in three ways:
 
 - the app's [**Copy**, **Browse** and **Free up space**](#copy-in-the-app) tabs;
-- [`seestar-copy-cli`](#from-the-command-line), the same copier for terminals,
-  scripts and services, which comes in every download;
+- [`seestar-wormhole-cli sync`](#from-the-command-line), the same copier for
+  terminals, scripts and services, which comes in every download;
 - [rclone or another SMB app](#with-rclone), through the proxy's SMB listener.
 
-The app and `seestar-copy-cli` reach the telescope either remotely through
+The app and `seestar-wormhole-cli` reach the telescope either remotely through
 Telescope Network, sharing the proxy's connection, or directly on the network
 the telescope is on. See [tested coverage](status.md#copying) for what has been
 tried on each route.
@@ -60,7 +60,7 @@ folder and settings again in Copy.
 
 ## Things to know
 
-These hold for the app and for `seestar-copy-cli`, which use the same copy
+These hold for the app and for `seestar-wormhole-cli sync`, which use the same copy
 history.
 
 - **Moving files out is fine.** The copy history is kept outside your folder,
@@ -96,7 +96,7 @@ history.
 
 ## Find the telescope's address
 
-On this network, the app and `seestar-copy-cli` need the telescope's address.
+On this network, the app and `seestar-wormhole-cli` need the telescope's address.
 Through Telescope Network they use the proxy's listener instead.
 
 When the telescope is on your home Wi-Fi, your router gave it its address.
@@ -105,17 +105,18 @@ not this computer's, with an address such as `192.0.2.10`. In the app,
 **Test** checks that the address answers file sharing.
 
 The app takes the address alone and uses SMB port 445 unless you add another
-port. `seestar-copy-cli` needs the port too: `--endpoint 192.0.2.10:445`.
+port. `seestar-wormhole-cli` needs the port too: `--endpoint 192.0.2.10:445`.
 
 ## From the command line
 
-`seestar-copy-cli` comes in every download, next to `seestar-wormhole-cli`.
-Run these commands from the folder that holds it; on macOS, copy it off the
-disk image first, as in [Install](../README.md#install). In PowerShell, write
-`.\seestar-copy-cli.exe` for `./seestar-copy-cli`.
+`seestar-wormhole-cli` comes in every download. Run these commands from the
+folder that holds it; on macOS, copy it off the disk image first, as in
+[Install](../README.md#install). In PowerShell, write
+`.\seestar-wormhole-cli.exe` for `./seestar-wormhole-cli`. Earlier releases
+had these commands in a separate `seestar-copy-cli`.
 
-`seestar-copy-cli` doesn't sign in or connect through Telescope Network
-itself. Through Telescope Network, keep the app connected, or run
+The file commands (`sync`, `find`, `browse` and `delete`) don't sign in or
+connect through Telescope Network themselves. Through Telescope Network, keep the app connected, or run
 `./seestar-wormhole-cli proxy` from the tools' folder in another terminal
 (see [Sign in](../README.md#sign-in)) while the copy command runs. In
 PowerShell, use `.\seestar-wormhole-cli.exe proxy`. For a telescope on this
@@ -128,13 +129,13 @@ network, give its address directly; no proxy or account is needed.
 2. Run one pass to check the connection:
 
    ```sh
-   ./seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar --once
+   ./seestar-wormhole-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar --once
    ```
 
    In PowerShell:
 
    ```powershell
-   .\seestar-copy-cli.exe sync --endpoint 127.0.0.1:4445 --dest "$HOME\Seestar" --once
+   .\seestar-wormhole-cli.exe sync --endpoint 127.0.0.1:4445 --dest "$HOME\Seestar" --once
    ```
 
 3. Run it without `--once` to keep copying. Press Ctrl+C to stop it.
@@ -142,16 +143,16 @@ network, give its address directly; no proxy or account is needed.
 To look through the telescope's files in your web browser:
 
 ```sh
-./seestar-copy-cli browse --endpoint 127.0.0.1:4445 --open
+./seestar-wormhole-cli browse --endpoint 127.0.0.1:4445 --open
 ```
 
 To free space on the telescope, run sync, make your own backup of the folder,
 then preview with
-`./seestar-copy-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar`, which
+`./seestar-wormhole-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar`, which
 only reports what it would delete. When the preview looks right, add
 `--force`.
 
-The [seestar-copy-cli reference](copy-reference.md) has every command, flag,
+The [copy command reference](copy-reference.md) has every command, flag,
 log line and exit code; `find` lists the share for scripts.
 
 ## With rclone
@@ -273,7 +274,7 @@ smbclient '//127.0.0.1/EMMC Images' -p 4445 -U guest%
 
 ## Windows
 
-On Windows, copy with the app's Copy tab, `seestar-copy-cli` or rclone. The
+On Windows, copy with the app's Copy tab, `seestar-wormhole-cli sync` or rclone. The
 built-in SMB client reaches an
 alternate TCP port only on Windows 11 24H2 or later and Windows Server 2025.
 Its alternate-port mapping requires an administrator, for example:

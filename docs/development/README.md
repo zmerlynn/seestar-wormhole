@@ -9,7 +9,7 @@ All application packages live under `internal/`. They support the command and
 simulator within this module; there is no Go API for external consumers.
 
 The copier behind the Copy, Browse and Free up space tabs and
-`seestar-copy-cli` has [its own guide](copy.md).
+`seestar-wormhole-cli`'s file commands has [its own guide](copy.md).
 
 - [Follow a connection](#follow-a-connection)
 - [Build and run](#build-and-run)

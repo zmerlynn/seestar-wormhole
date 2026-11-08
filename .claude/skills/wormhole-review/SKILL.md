@@ -1,6 +1,6 @@
 ---
 name: wormhole-review
-description: Review a seestar-wormhole change (a branch, a commit range or chosen areas, including seestar-copy-cli and the copy tabs) in focused lanes - correctness, concurrency, tests, simplicity, operability and security, provenance, CLI contract, upgrade, licensing, build and release, public hygiene, docs editorial - scoped to what the change touches, ending in one verdict.
+description: Review a seestar-wormhole change (a branch, a commit range or chosen areas, including the file commands and the copy tabs) in focused lanes - correctness, concurrency, tests, simplicity, operability and security, provenance, CLI contract, upgrade, licensing, build and release, public hygiene, docs editorial - scoped to what the change touches, ending in one verdict.
 ---
 
 # Reviewing a seestar-wormhole change

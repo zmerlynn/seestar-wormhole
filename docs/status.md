@@ -81,20 +81,23 @@ test the command's version and help output.
   loopback behavior is tested in CI:
   unicast reply address/port, malformed and oversized input, and cancellation.
   Real LAN behavior on Windows is not yet validated.
-  Copy with the app, `seestar-copy-cli` or rclone; see
+  Copy with the app, `seestar-wormhole-cli sync` or rclone; see
   [copying on Windows](copying.md#windows).
 - **Containers** are checked for the image's user and startup. The phone setup
   hasn't been run in one.
 
 ## Copying
 
-### The Copy, Browse and Free up space tabs and seestar-copy-cli
+### The Copy, Browse and Free up space tabs and the file commands
 
 The app's Copy, Browse and Free up space tabs, new in 0.7.0, haven't been run
 against a telescope yet, on either route. Their copier came from seestar-copy
 0.4.0, which before the merge was tried on a telescope only on macOS, through
 the proxy. Its Free up space wasn't tried on a telescope, and neither was the
-**On this network** route.
+**On this network** route. In 0.7.0 its commands moved from
+`seestar-copy-cli` into `seestar-wormhole-cli` (`sync`, `find`, `browse` and
+`delete`) with the copy engine unchanged; the merged commands haven't been run
+against a telescope either.
 
 Two 0.7.0 additions are tested only in CI. The Mac app's Info.plist carries
 the Local Network usage text, and a **Test**, **Save**, copy pass or Preview on
@@ -111,8 +114,8 @@ CI covers both routes without a telescope:
   Free up space. Browser tests in Chromium and WebKit drive the app's page
   against it: saving and testing an address, copying with real passes,
   Preview, Clear history, Browse, Free up space's preview and confirmation,
-  and a folder in use by `seestar-copy-cli` or a second app. They also cover
-  `seestar-copy-cli browse`'s page.
+  and a folder in use by `seestar-wormhole-cli sync` or a second app. They
+  also cover `seestar-wormhole-cli browse`'s page.
 - **Remotely through Telescope Network:** Go tests with a fake share and a stand-in
   connection check that copying uses the proxy's SMB port, waits for the
   connection without starting it, and stays with its telescope, and that a
@@ -122,8 +125,9 @@ CI covers both routes without a telescope:
   tabs against a fake share: they close the window, or quit on macOS, while a
   file is mid-copy, save a file from Browse, preview Free up space and cancel
   its confirmation, and show a folder in use by another app.
-- **seestar-copy-cli** is built and vetted for every release target, and
-  smoke tested natively on macOS and Windows.
+- **The file commands** of `seestar-wormhole-cli` are built and vetted for
+  every release target, and `sync --help` is smoke tested natively on macOS
+  and Windows.
 
 ### rclone and other SMB apps
 

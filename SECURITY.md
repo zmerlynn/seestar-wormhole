@@ -23,7 +23,7 @@ Only the latest release receives fixes.
 ## Scope
 
 In scope: the `seestar-wormhole` and `seestar-wormhole-cli` binaries and Containerfile, its handling of credentials, cloud and device traffic,
-and its local listeners; `seestar-copy-cli` and the app's Copy, Browse and Free up space tabs, which only read the
+and its local listeners; the file commands of `seestar-wormhole-cli` (`sync`, `find`, `browse`, `delete`) and the app's Copy, Browse and Free up space tabs, which only read the
 telescope's share except for `delete --force` and a confirmed Free up space; their handling of names and data from the
 device, and what they write in the destination folder and the copy state; the release workflow and its artifacts.
 

@@ -12,7 +12,7 @@ Two things it doesn't say, because a person wouldn't need telling:
   run the proxy against a device, or sign in to the cloud, unless the
   person you're working for asks. It forwards commands to a real telescope and holds its only
   remote session. The copy tests use a fake share; don't point
-  seestar-copy-cli or the copy tabs at a device, directly or through the
+  the file commands (`sync`, `find`, `browse`, `delete`) or the copy tabs at a device, directly or through the
   proxy, unless asked. The copy packages' guide is
   [docs/development/copy.md](docs/development/copy.md).
 - **Reviewing a change:** follow [.claude/skills/wormhole-review](.claude/skills/wormhole-review/SKILL.md).

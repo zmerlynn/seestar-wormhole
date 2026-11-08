@@ -1,7 +1,7 @@
-# seestar-copy-cli reference
+# Copy command reference
 
-Use this page when you script `seestar-copy-cli` or need an exact flag, rule or
-log line. [Copy images](copying.md#from-the-command-line) has a first run.
+Use this page when you script `seestar-wormhole-cli`'s file commands, `sync`,
+`find`, `browse` and `delete`, or need an exact flag, rule or log line. [Copy images](copying.md#from-the-command-line) has a first run.
 
 - [sync](#sync): flags, endpoint, [performance](#performance), destination
   layout, [selection](#selection) and [dry run](#dry-run)
@@ -19,15 +19,13 @@ log line. [Copy images](copying.md#from-the-command-line) has a first run.
 - [delete](#delete): [proof modes](#proof-modes),
   [how delete decides](#how-delete-decides), [emptied folders](#emptied-folders)
   and [the check-then-remove race](#the-check-then-remove-race)
-- [licenses](#licenses)
-- [Global command behavior](#global-command-behavior)
-- [The app](#the-app): seestar-wormhole's Copy, Browse and Free up space tabs
-- [Verifying a release](#verifying-a-release)
+- [Help, licenses and releases](#help-licenses-and-releases), which the
+  [command and log reference](reference.md) covers for every command
 
 ## sync
 
 ```sh
-seestar-copy-cli sync --endpoint HOST:PORT --dest DIR [flags]
+seestar-wormhole-cli sync --endpoint HOST:PORT --dest DIR [flags]
 ```
 
 Mirrors the telescope's images into the folder `--dest`, in passes. Each pass
@@ -58,7 +56,9 @@ deletes anything in the destination either, except its own
 | `--ready-age` | `2m` | A file is copied only once its device mtime is at least this old. Zero or more. |
 | `--first-pass-age` | `10m` | On the first pass, a file counts as finished only if its device mtime is at least this old. Zero or more. See [readiness](#readiness). |
 | `--workers` | `4` | Files copied at once, `1` to `64`. All of them share one SMB session. |
-| `--state-dir` | the per-user config folder's `seestar-copy` | The folder that holds the state file. See [location](#location). It must not be empty when given. |
+| `--history-dir` | the per-user config folder's `seestar-copy` | The copy history folder, which holds the state file. See [location](#location). It must not be empty when given. Earlier releases called it `--state-dir`, which is now refused. |
+| `--log-format` | `text` | `text` or `json` log lines on stderr. See [logs](#logs). |
+| `--log-level` | `info` | The lowest level logged: `debug`, `info`, `warn` or `error`. |
 
 Durations use Go units, such as `30s`, `5m` or `1h30m`; there is no unit for
 days. All flags are checked before anything touches the network or the disk,
@@ -166,7 +166,7 @@ list, give `--no-default-excludes` and repeat the `--exclude` flags you want to
 keep. For example, to also leave out videos and the `Preview` folder:
 
 ```sh
-seestar-copy-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar \
+seestar-wormhole-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar \
   --exclude 'Video' --exclude '/Preview'
 ```
 
@@ -381,18 +381,19 @@ don't edit it while sync is running.
 ### Location
 
 ```text
-<state-dir>/sync/<sha256>.jsonl
+<history-dir>/sync/<sha256>.jsonl
 ```
 
 `<sha256>` is the lowercase hex SHA-256 of the absolute, cleaned `--dest`
 (a trailing separator is dropped, and a relative path is made absolute). The
 path is derived from that string alone: symbolic links are not resolved and
 case is not folded. Each destination has its own state file, which is never
-kept inside the destination; a `--state-dir` inside the destination is
+kept inside the destination; a `--history-dir` inside the destination is
 refused.
 
-The default `--state-dir` is the `seestar-copy` folder in the per-user config
-folder:
+The default `--history-dir` is the `seestar-copy` folder in the per-user config
+folder, the one earlier releases' `seestar-copy-cli` used, so an upgrade keeps
+its history:
 
 | Platform | Default state folder |
 | --- | --- |
@@ -401,7 +402,7 @@ folder:
 | Windows | `%AppData%\seestar-copy` |
 
 If there is no per-user config folder, sync exits 1 and asks for
-`--state-dir`. Keep the state on a local disk: shared and network folders are
+`--history-dir`. Keep the state on a local disk: shared and network folders are
 not supported.
 
 Sync creates the `sync` folder, and any missing folders above it, with mode
@@ -429,7 +430,7 @@ destination /mnt/b is the same folder as /mnt/a, which already has the state fil
 ```
 
 This check is best effort. It cannot compare a destination that is gone or
-unreadable, and it does not look in another `--state-dir`.
+unreadable, and it does not look in another `--history-dir`.
 
 ### Format
 
@@ -479,7 +480,7 @@ moved away.
 Only one sync at a time may use a destination. Sync holds an exclusive OS
 lock on `<sha256>.lock`, next to the state file, while it runs. A second sync
 for the same destination, spelled the same way and with the same
-`--state-dir`, exits 1:
+`--history-dir`, exits 1:
 
 ```text
 destination /home/user/Seestar: another sync is using this destination (lock file .../sync/<sha256>.lock)
@@ -505,8 +506,9 @@ one stopped.
 
 ## Logs
 
-Sync logs to stderr, as text lines with UTC timestamps to the millisecond.
-Help, `--version` and `licenses` write to stdout. Per-file lines are logged as
+Sync logs to stderr, as text lines with UTC timestamps to the millisecond, or
+as JSON records with the same messages and keys with `--log-format json`.
+Help and `licenses` write to stdout. Per-file lines are logged as
 each file finishes. A pass that skips the `log` folder and copies two files
 looks like this:
 
@@ -555,7 +557,8 @@ changes them says so in its notes.
 | INFO | `listing done` | see [find logs](#find-logs) | A `find` listing finished. |
 | ERROR | `listing failed` | as `listing done`, and `error` | The connection or a listing failed in `find`. |
 | ERROR | `find failed` | `error` | Find is exiting 1. |
-| ERROR | `invalid arguments` | `option`, `rule`, `help` | A usage error; the command is exiting 2. |
+| ERROR | `sync failed`, `find failed`, `browse failed` or `delete failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. |
+| WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
 Every pass ends with one summary line, whose keys are:
 
@@ -573,26 +576,35 @@ Every pass ends with one summary line, whose keys are:
 | `rate` | `bytes` over `elapsed`, in MiB/s, such as `8.7MiB/s`. Left out when nothing was downloaded. |
 
 Files that are done are not counted. A usage error is a single line naming the
-flag and the rule it broke, and the help command to run:
+flag and the rule it broke, and the help command to run. It is a text line
+whatever `--log-format` says, since that flag may be the bad one:
 
 ```text
-time=2026-11-02T03:00:00.000Z level=ERROR msg="invalid arguments" option=--workers rule="must be 1 to 64" help="seestar-copy-cli sync --help"
+time=2026-11-02T03:00:00.000Z level=ERROR msg="sync failed" option=--workers rule="must be 1 to 64" help="seestar-wormhole-cli sync --help" phase=arguments reason=invalid_option
 ```
 
-Flag values are never echoed in it.
+Flag values are never echoed in it. A flag that belongs to another command is
+named, with that command's help; any other unknown flag is reported as
+`option=arguments rule="unknown flag"`.
+
+Stderr never holds a command up: a stalled terminal or log reader loses lines
+instead, so Ctrl+C still stops sync. The file commands never write log lines
+to stdout, which is find's listing and browse's URL, so lost lines are only
+counted, in a `diagnostics_lost` line when stderr recovers.
 
 ## Exit codes
 
 | Code | Meaning |
 | --- | --- |
-| 0 | Stopped by a signal; a `--once` or `--dry-run` pass with no failed files; or help, `--version` or `licenses` printed. |
-| 1 | A runtime failure: the destination or state could not be opened or locked, leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), or output could not be written. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint` or `--dest`, `--dry-run` with `--interval`, or a positional argument. |
+| 0 | Stopped by a signal; a `--once` or `--dry-run` pass with no failed files; or help printed. |
+| 1 | A runtime failure: the destination or state could not be opened or locked, leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), output could not be written, or log lines were lost (`diagnostics_lost`). |
+| 2 | A usage error: an unknown or invalid flag, including `--state-dir` and `--version`, a missing `--endpoint` or `--dest`, an empty `--history-dir`, `--dry-run` with `--interval`, or a positional argument. |
 
 Without `--once` or `--dry-run`, failed passes and failed files do not end
 sync: it logs them and tries again on the next pass.
 
-For `find`, see [find exit codes](#find-exit-codes); for `delete`, see
+Lost log lines and the usage errors above end every file command the same
+way. For `find`, see [find exit codes](#find-exit-codes); for `delete`, see
 [delete exit codes](#delete-exit-codes); for `browse`, see
 [browse exit codes](#browse-exit-codes).
 
@@ -667,7 +679,7 @@ are still copied byte for byte; the folded form is used only to compare.
 ## find
 
 ```sh
-seestar-copy-cli find --endpoint HOST:PORT [flags]
+seestar-wormhole-cli find --endpoint HOST:PORT [flags]
 ```
 
 Lists the files and folders on the telescope's share, once, with one line per
@@ -677,9 +689,9 @@ it. Like sync, it only reads from the telescope. It writes nothing on disk:
 not the destination, not the state, not a lock.
 
 ```sh
-seestar-copy-cli find --endpoint 127.0.0.1:4445 --include /MyWorks
-seestar-copy-cli find --endpoint 127.0.0.1:4445 --dest ~/Seestar --older-than 7d
-seestar-copy-cli find --endpoint 127.0.0.1:4445 --format jsonl > share.jsonl
+seestar-wormhole-cli find --endpoint 127.0.0.1:4445 --include /MyWorks
+seestar-wormhole-cli find --endpoint 127.0.0.1:4445 --dest ~/Seestar --older-than 7d
+seestar-wormhole-cli find --endpoint 127.0.0.1:4445 --format jsonl > share.jsonl
 ```
 
 ### find flags
@@ -691,7 +703,8 @@ seestar-copy-cli find --endpoint 127.0.0.1:4445 --format jsonl > share.jsonl
 | `--older-than` | no limit | List only files whose device mtime is at least this old. See below. |
 | `--format` | `text` | `text` or `jsonl`. See [text format](#text-format) and [JSONL format](#jsonl-format). |
 | `--dest` | none | A destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
-| `--state-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](#location). Only with `--dest`, and it must not be empty when given. |
+| `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](#location). Only with `--dest`, and it must not be empty when given. |
+| `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 
 `--older-than` takes a Go duration, such as `36h` or `90m`, or a whole number
 of days, such as `7d`. The two do not mix: `1d12h` is a usage error, and so
@@ -745,7 +758,7 @@ of the line, and a path that starts with `"` is quoted. Go's `strconv.Unquote`
 reverses it. To read paths without Go, use the JSONL format.
 
 ```text
-$ seestar-copy-cli find --endpoint 127.0.0.1:4445 --include /MyWorks --dest ~/Seestar
+$ seestar-wormhole-cli find --endpoint 127.0.0.1:4445 --include /MyWorks --dest ~/Seestar
 d 0 2026-11-01T02:14:07Z - MyWorks
 d 0 2026-11-01T03:10:02.5Z - "MyWorks/M 31"
 - 734512 2026-11-01T03:10:02.5Z new "MyWorks/M 31/M 31.jpg"
@@ -829,12 +842,12 @@ time=2026-11-09T09:00:01.502Z level=INFO msg="listing done" files=212 folders=9 
 | --- | --- |
 | 0 | The listing is complete. |
 | 1 | The state could not be read, the connection or a listing failed (`connect to ...` or `list the share: ...`), the output could not be written, or a signal stopped find before it wrote the whole listing. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--format` or `--older-than`, an empty `--dest` or `--state-dir`, `--state-dir` without `--dest`, or a positional argument. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--format` or `--older-than`, an empty `--dest` or `--history-dir`, `--history-dir` without `--dest`, or a positional argument. |
 
 ## browse
 
 ```sh
-seestar-copy-cli browse --endpoint HOST:PORT [--dest DIR] [--listen ADDR] [--open] [selection flags]
+seestar-wormhole-cli browse --endpoint HOST:PORT [--dest DIR] [--listen ADDR] [--open] [selection flags]
 ```
 
 Serves a read-only web page for looking through the telescope's share. The
@@ -847,8 +860,8 @@ Like sync and find, browse only reads from the telescope, and it writes
 nothing on disk: not the destination, not the state, not a lock.
 
 ```sh
-seestar-copy-cli browse --endpoint 127.0.0.1:4445 --open
-seestar-copy-cli browse --endpoint 127.0.0.1:4445 --dest ~/Seestar
+seestar-wormhole-cli browse --endpoint 127.0.0.1:4445 --open
+seestar-wormhole-cli browse --endpoint 127.0.0.1:4445 --dest ~/Seestar
 ```
 
 Once it is listening, browse prints exactly one line to stdout, the page's
@@ -869,7 +882,8 @@ the port browse listens on.
 | `--listen` | `127.0.0.1:0` | The IP address and port to serve the page on. Port `0` picks a free port. See below. |
 | `--open` | off | Also open the page in the default browser. The URL is printed either way. |
 | `--dest` | none | As for find: a destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
-| `--state-dir` | as for sync | As for find: the folder that holds the state file of `--dest`. Only with `--dest`, and it must not be empty when given. |
+| `--history-dir` | as for sync | As for find: the folder that holds the state file of `--dest`. Only with `--dest`, and it must not be empty when given. |
+| `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--exclude`, `--no-default-excludes`, `--include` | as for sync | The [selection](#selection) whose left-out files and folders show [`left out`](#left-out-in-browse). Only with `--dest`. |
 
 Browse always shows the whole share. The selection flags only choose what
@@ -1022,14 +1036,14 @@ time=2026-11-09T09:01:12.950Z level=INFO msg="session closed" endpoint=127.0.0.1
 | --- | --- |
 | 0 | Stopped by a signal. |
 | 1 | Browse could not start or keep serving: the address could not be listened on, the state of `--dest` could not be read when browse started, the URL could not be written to stdout, or the HTTP server stopped with an error. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--state-dir`, `--state-dir` or a selection flag without `--dest`, a bad pattern, or a positional argument. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--history-dir`, `--history-dir` or a selection flag without `--dest`, a bad pattern, or a positional argument. |
 
 ## delete
 
 ```sh
-seestar-copy-cli delete --endpoint HOST:PORT --dest DIR [--force] [flags]
-seestar-copy-cli delete --endpoint HOST:PORT --dest DIR --trust-state [--force] [flags]
-seestar-copy-cli delete --endpoint HOST:PORT --ignore-state --include PAT [--force] [flags]
+seestar-wormhole-cli delete --endpoint HOST:PORT --dest DIR [--force] [flags]
+seestar-wormhole-cli delete --endpoint HOST:PORT --dest DIR --trust-state [--force] [flags]
+seestar-wormhole-cli delete --endpoint HOST:PORT --ignore-state --include PAT [--force] [flags]
 ```
 
 Deletes files from the telescope's share once they are copied, then removes
@@ -1043,9 +1057,9 @@ weakens the proof. `--trust-state` and `--ignore-state` are the only ways to
 ask for less proof.
 
 ```sh
-seestar-copy-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar
-seestar-copy-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar --force
-seestar-copy-cli delete --endpoint 127.0.0.1:4445 --ignore-state --include '*.jpg' --older-than 30d --force
+seestar-wormhole-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar
+seestar-wormhole-cli delete --endpoint 127.0.0.1:4445 --dest ~/Seestar --force
+seestar-wormhole-cli delete --endpoint 127.0.0.1:4445 --ignore-state --include '*.jpg' --older-than 30d --force
 ```
 
 ### delete flags
@@ -1054,7 +1068,8 @@ seestar-copy-cli delete --endpoint 127.0.0.1:4445 --ignore-state --include '*.jp
 | --- | --- | --- |
 | `--endpoint` | none; required | As for sync. See [endpoint](#endpoint). |
 | `--dest` | none; required, except with `--ignore-state`, which refuses it | The destination whose [state](#the-state-file), and by default whose local copies, prove that a file was copied. It is never created. It must be the destination of **this** telescope; see [what the proof does not show](#what-the-proof-does-not-show). |
-| `--state-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](#location). Refused with `--ignore-state`, and it must not be empty when given. |
+| `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](#location). Refused with `--ignore-state`, and it must not be empty when given. |
+| `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--trust-state` | off | Prove a file by its state record alone, without reading the local copy. Use it when the copies were moved out of `--dest` or the drive is offline. |
 | `--ignore-state` | off | Read no state, and delete every selected file that is old enough, whether or not it was copied. Needs at least one `--include`. |
 | `--older-than` | `7d` | Delete only files whose device mtime is at least this old. The grammar is find's: a Go duration, such as `36h`, or a whole number of days, such as `7d`, not both, and not negative. `0` is no age limit. |
@@ -1219,58 +1234,19 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | --- | --- |
 | 0 | The run or preview finished with no failed file, however many it kept; or a signal stopped it. |
 | 1 | The state could not be read; `--dest` is missing in `hash` mode; the connection or listing failed (`connect to ...` or `list the share: ...`); a removal failed on the device, which ends the run (`deletion failed`); or a local copy could not be read (`failed files: N`). A rerun lists the share again and carries on. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, `--dest` missing without `--ignore-state`, `--trust-state` with `--ignore-state`, `--ignore-state` without `--include` or with `--dest` or `--state-dir`, `--force` with `--dry-run`, a bad `--older-than`, an empty `--state-dir`, or a positional argument. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, `--dest` missing without `--ignore-state`, `--trust-state` with `--ignore-state`, `--ignore-state` without `--include` or with `--dest` or `--history-dir`, `--force` with `--dry-run`, a bad `--older-than`, an empty `--history-dir`, or a positional argument. |
 
 > **Warning.** With `--ignore-state`, delete removes whatever is selected,
 > whether or not it was copied. With `--older-than 0` as well, that includes
 > a file the telescope is still writing. Preview first, without `--force`.
 
-## licenses
+## Help, licenses and releases
 
-```sh
-seestar-copy-cli licenses
-```
-
-Prints the project's NOTICE, then, for each third-party module
-linked into this binary, a `Module:` line with its path, an `SPDX:` line with
-its license identifier, and the full texts of its license and notice files.
-It needs no network and no source checkout. It takes no flags except
-`--help`/`-h` and no arguments; anything else exits 2, and a failure to write
-the output exits 1. See [NOTICE](../NOTICE).
-
-## Global command behavior
-
-- `seestar-copy-cli` with no arguments, `--help` or `-h` prints help and
-  exits 0. `seestar-copy-cli help sync` and `seestar-copy-cli sync --help`
-  print a command's help.
-- `seestar-copy-cli --version` prints
-  `seestar-copy-cli <version> (<revision>, <os>/<arch>)`, such as
-  `seestar-copy-cli development (development, linux/arm64)` for a build
-  without release metadata. `--version` belongs to the top-level command
-  only.
-- Flags take their value as `--flag value` or `--flag=value`. Boolean flags
-  need no value; `--once=false` turns one off. A flag given twice keeps the
-  last value, except `--exclude` and `--include`, which collect every value.
-- Help and version need no network and touch no files.
-- `sync` without `--once` or `--dry-run`, and `browse`, run until Ctrl+C or
-  SIGTERM stops them. The other commands run once and exit.
-
-## The app
-
-seestar-wormhole's app copies, browses and frees up space in its **Copy**,
-**Browse** and **Free up space** tabs, with the same rules and the same state
-files as `sync`, `browse` and `delete`; see [copying images](ui.md#copying-images).
-It keeps its copy settings in its own state directory, as `copy.json`, which
-`seestar-copy-cli` never reads, and its copy history in this
-[location](#location), whatever its `--state-dir` says. While copying is on,
-the app holds the folder's state lock, as `sync` does, so a `sync` for the
-same folder exits with its usual error, and the app says the folder is in use
-while a `sync` holds it.
-
-## Verifying a release
-
-`seestar-copy-cli` ships in seestar-wormhole's downloads; see
-[verifying a release](reference.md#verifying-a-release). Its Linux and Windows
-executables are byte-for-byte reproducible like `seestar-wormhole-cli`'s. See
-[versioning](versioning.md#the-seestar-copy-cli-contract) for what a release
-promises.
+The file commands share `seestar-wormhole-cli`'s help, `--version`,
+`licenses` and flag grammar; see [global command behavior](reference.md#global-command-behavior)
+and [licenses](reference.md#licenses). `sync` without `--once` or `--dry-run`,
+and `browse`, run until Ctrl+C or SIGTERM stops them; the other file commands
+run once and exit. For the app's Copy, Browse and Free up space tabs, which
+share the copy history, see [copying images](ui.md#copying-images). For
+checking a download, see [verifying a release](reference.md#verifying-a-release),
+and for what a release promises, [versioning](versioning.md#the-contract).

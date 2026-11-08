@@ -136,8 +136,14 @@ Keep seestar-wormhole open while you use the telescope.
 **Copy**, **Browse** and **Free up space** copy your images from the
 telescope's file share to a folder on this computer, show what is on the
 share, and delete what is safely copied. They use the same rules and the same
-copy history as [`seestar-copy-cli`](copy-reference.md)'s `sync`, `browse` and
-`delete`. Through Telescope Network they reach the share through the proxy's SMB port
+copy history as `seestar-wormhole-cli`'s [`sync`, `browse` and
+`delete`](copy-reference.md). The app keeps its copy settings in its own state
+directory, as [`copy.json`](#copyjson-version-1), which the CLI's file commands
+never read, and its copy history in the default
+[history location](copy-reference.md#location), whatever its `--state-dir`
+says. While copying is on, the app holds the folder's history lock, as `sync`
+does, so a `sync` for the same folder exits with its usual error, and the app
+says the folder is in use while a `sync` holds it. Through Telescope Network they reach the share through the proxy's SMB port
 (local port 4445 by default); on this network, at the saved address.
 
 If they can't reach the share, each says why and links to the fix:
@@ -204,7 +210,7 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 
 ### Browse
 
-Browse is `seestar-copy-cli browse`'s page for the share, with the saved
+Browse is `seestar-wormhole-cli browse`'s page for the share, with the saved
 folder's [statuses](copy-reference.md#statuses). What the settings leave out
 shows as [`left out`](copy-reference.md#left-out-in-browse). After a Save
 that changes the folder or the selection, or a change of how the telescope
@@ -396,9 +402,9 @@ To use another existing installation root, run
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
 
 The copy history and each folder's lock are not in the state directory. They
-stay in `seestar-copy-cli`'s default [state location](copy-reference.md#location),
+stay in the file commands' default [history location](copy-reference.md#location),
 `seestar-copy` beside `seestar-wormhole` in the same system folder, whatever
-`--state-dir` says, so the app and `seestar-copy-cli sync` share them and never
+`--state-dir` says, so the app and `seestar-wormhole-cli sync` share them and never
 copy into one folder at once.
 
 ### config.json version 1

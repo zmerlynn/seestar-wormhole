@@ -9,6 +9,8 @@ proxy's wire behavior and local policy to the v1 specification.
 - [Using the UI](ui.md): setup and controls
 - [proxy](#proxy): listeners and flags
 - [discovery](#discovery): scan replies without a cloud session
+- [sync, find, browse and delete](#file-commands): copy, list, browse and
+  delete the telescope's images
 - [licenses](#licenses)
 - [Global command behavior](#global-command-behavior) and [exit codes](#exit-codes)
 - [Availability and busy devices](#availability-and-busy-devices)
@@ -184,6 +186,27 @@ Lifecycle records are the shared `lan_discovery_started` (INFO, `port` and
 `lan_discovery_delivery_failed`; see [logs](#logs) for the latter records and
 logging-loss handling. No serial, name, model, or credentials are logged.
 
+## File commands
+
+```sh
+seestar-wormhole-cli sync --endpoint HOST:PORT --dest DIR [flags]
+seestar-wormhole-cli find --endpoint HOST:PORT [flags]
+seestar-wormhole-cli browse --endpoint HOST:PORT [flags]
+seestar-wormhole-cli delete --endpoint HOST:PORT --dest DIR [flags]
+```
+
+The file commands copy images from the telescope's SMB share, list it, serve a
+read-only page over it, and delete what is safely copied. The
+[copy command reference](copy-reference.md) has their flags, rules, logs and
+exit codes. They need no cloud session and no credentials: `--endpoint` is the
+share's address, such as a running proxy's SMB port (`127.0.0.1:4445` by
+default) or the telescope on this network. Earlier releases shipped them as a
+separate `seestar-copy-cli`.
+
+The app's executable, `seestar-wormhole`, has the same file commands. On
+Windows its exit codes don't reach scripts, so scripts use
+`seestar-wormhole-cli.exe`.
+
 ## licenses
 
 ```sh
@@ -209,12 +232,21 @@ Use `help [command]` or
 validates other supplied flags.
 See the [versioning policy](versioning.md) for the release contract.
 
-Operational flags are local to their command (`ui`, `proxy`, or `discovery`);
-they are not root options.
-Long flags use double dashes. The only operational short flag is `-p` for
+Operational flags are local to their command (`ui`, `proxy`, `discovery`,
+`sync`, `find`, `browse` or `delete`); they are not root options, and only the
+root takes `--version`. Long flags use double dashes, with the value as
+`--flag value` or `--flag=value`. The only operational short flag is `-p` for
 proxy ports. Boolean flags need no value to enable; use `--flag=false` to
-disable. Scalar flags use the last supplied value; repeatable port mappings
-accumulate. Durations use Go units such as `2m` and `1h30m`, without a `d` unit.
+disable. Scalar flags use the last supplied value; repeatable port mappings,
+`--exclude` and `--include` accumulate. Durations use Go units such as `2m`
+and `1h30m`, without a `d` unit; find's and delete's `--older-than` also take
+a whole number of days, such as `7d`.
+
+`--log-format` is `json` by default for `proxy` and `discovery`, and `text`
+for the file commands; `--log-level` is `info` for all of them. The file
+commands' `--history-dir` is the copy history folder. Earlier releases called
+it `--state-dir`, a name the file commands now refuse; `proxy --state-dir` and
+`ui --state-dir` are the installation identity's folder and are unchanged.
 
 ### Identity and logging flags
 
@@ -240,10 +272,18 @@ be valid UTF-8, at most 4096 bytes, and match
 Password must be valid UTF-8 and 8–32 UTF-16 units.
 
 Flag parsing and settings validation precede credentials and
-listeners. Command-line configuration errors emit one JSON error with fixed `option`,
-`rule`, and command-help hint, regardless of requested log settings. Supplied
-values, paths, coordinates, and unknown option names are omitted. Unknown
-flags/positional arguments use `option=arguments`. Startup bind and
+listeners. A command-line error emits one `<command> failed` record (`seestar-wormhole-cli failed`
+for the root) with fixed
+`option`, `rule`, command-help hint, `phase=arguments` and
+`reason=invalid_option` (and, for `proxy` and `discovery`, `cleanup_reason=none`),
+regardless of requested log settings: JSON for the root, `proxy`, `discovery`,
+`licenses` and `ui`, and a text line for the file commands. Supplied values,
+paths and coordinates are omitted. A flag that another command of this program
+defines, or a retired name such as a file command's `--state-dir`, is named,
+and the rule says where it belongs, such as
+`option=--dest rule="not a flag of proxy; see seestar-wormhole-cli sync --help"`.
+Any other unknown flag is reported as `option=arguments rule="unknown flag"`,
+and a positional argument as `option=arguments`. Startup bind and
 identity-storage errors identify `--bind` and `--state-dir`.
 
 ### Exit codes
@@ -260,6 +300,11 @@ Correct the credentials
 or account restriction before deliberately restarting; see the
 [service recipe](always-on.md#a-systemd-service).
 See [status and reason values](#status-and-reason-values) for the complete mapping.
+
+The file commands exit 0 on success, 2 for a usage error, and 1 for any other
+failure, including stderr lines lost to a stalled or failed stderr; they never
+exit 3. The [copy command reference](copy-reference.md#exit-codes) has each
+command's cases.
 
 ## Availability and busy devices
 
@@ -559,7 +604,7 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 | `transport_discard_summary` | WARN | Nonzero discard deltas per `rule` (audit row ID) and `count`, every ten seconds on the owner timer; release flushes the final interval |
 | `tunnel_refused` | WARN | Replacement or terminal local write failure; `rule`, `channel`, `discarded_bytes`; the local error carries the discarded byte count |
 | `dtls_credentials_refused` | WARN | NUL-containing credentials refused with an error; `rule=R024` |
-| `diagnostics_lost` | WARN | Rule and cumulative loss count for startup or stderr rules; stderr failure uses stdout |
+| `diagnostics_lost` | WARN | Rule and cumulative loss count for startup or stderr rules; stderr failure uses stdout, except for the file commands, which have no stdout fallback |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
 | `console control failed` | ERROR, JSON | Windows console event wait failed or returned an unexpected result; `phase=console_control`, `reason=operation_failed`. Cancels the command so release and cleanup proceed. |
@@ -756,9 +801,9 @@ gh attestation verify <downloaded-asset> --repo zmerlynn/seestar-wormhole
 
 Linux and Windows CLI executables are byte-for-byte reproducible with identical
 source, version, revision, and Go toolchain: rebuild and compare against
-`seestar-wormhole-cli` and `seestar-copy-cli` (with `.exe` on Windows) unpacked
-from the archive. See [release build mechanics](development/releasing.md). The
-Mac CLIs are combined with lipo and signed, so they are not byte-reproducible. UI executables and the DMG
+`seestar-wormhole-cli` (with `.exe` on Windows) unpacked from the archive. See
+[release build mechanics](development/releasing.md). The Mac CLI is combined
+with lipo and signed, so it is not byte-reproducible. UI executables and the DMG
 are verified by SHA256SUMS and attestation only; native toolchains, packaging,
 and signing affect their bytes.
 
@@ -791,7 +836,7 @@ TCP pair at `127.0.0.1`, independently of `--bind`, and refuses startup with exi
 and a final ERROR if the query fails, returns a short result, or loopback setup is
 unavailable.
 
-Copy images with the app's Copy tab, `seestar-copy-cli` or rclone; see
+Copy images with the app's Copy tab, `seestar-wormhole-cli sync` or rclone; see
 [copying on Windows](copying.md#windows).
 
 Installation identity files must be owned by the current user and have a
@@ -803,7 +848,7 @@ directories. Unsupported private storage fails closed.
 
 Ctrl+C or Ctrl+Break requests cleanup; wait for exit. Console close, logoff,
 and shutdown allow only best-effort cleanup before OS termination. Windows
-stderr logging uses a bounded queue; lost lines are counted, reported on recovery or stdout, and cause a failed command result.
+stderr logging uses a bounded queue; lost lines are counted, reported on recovery or stdout (stderr only, for the file commands), and cause a failed command result.
 LAN discovery uses the [shared responder](#lan-discovery).
 For build/runtime coverage, see [status](status.md).
 
