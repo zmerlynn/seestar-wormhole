@@ -4,6 +4,7 @@ package main
 
 import (
 	"errors"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -106,5 +107,61 @@ func TestBinaryLogAppendsToRedirectedFile(t *testing.T) {
 	if len(lines) != 4 || lines[0] != prefix || !strings.Contains(lines[1], `msg="sync failed" option=--state-dir`) ||
 		!strings.Contains(lines[2], `"msg":"proxy failed"`) || lines[3] != "" {
 		t.Errorf("log file %q, want the earlier line, then the sync record, then the proxy record", data)
+	}
+}
+
+// Logs to a regular file opened without O_APPEND, as 2>log opens it, start at
+// the offset the shell left: whatever is before it stays, and the shell's
+// descriptor moves past the new record. A file command and the proxy and
+// discovery commands share this path; usage refusals start no listener.
+func TestBinaryLogKeepsInheritedOffset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "existing.log")
+	const prefix = "an earlier line\n"
+	if err := os.WriteFile(path, []byte(prefix), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(path, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if _, err := f.Seek(int64(len(prefix)), io.SeekStart); err != nil {
+		t.Fatal(err)
+	}
+	want := prefix
+	for _, tc := range []struct {
+		args   []string
+		record string
+	}{
+		{[]string{"sync", "--state-dir=PRIVATE_VALUE"}, `msg="sync failed" option=--state-dir`},
+		{[]string{"proxy", "--bogus"}, `"msg":"proxy failed"`},
+		{[]string{"discovery"}, `"msg":"discovery failed"`},
+	} {
+		before, err := f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cmd := exec.Command(binaryPath(t), tc.args...)
+		cmd.Dir = t.TempDir()
+		cmd.Stderr = f
+		err = cmd.Run()
+		if exit, ok := errors.AsType[*exec.ExitError](err); !ok || exit.ExitCode() != 2 {
+			t.Fatalf("%q: %v, want exit 2", tc.args, err)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		after, err := f.Seek(0, io.SeekCurrent)
+		if err != nil {
+			t.Fatal(err)
+		}
+		added, ok := strings.CutPrefix(string(data), want)
+		if !ok || int64(len(want)) != before || !strings.HasPrefix(added, "time=") && !strings.HasPrefix(added, "{") ||
+			!strings.Contains(added, tc.record) || strings.Count(added, "\n") != 1 || after != int64(len(data)) {
+			t.Fatalf("%q: log %q, offset %d then %d; want %q, then one record at offset %d, and the offset at the end",
+				tc.args, data, before, after, want, before)
+		}
+		want = string(data)
 	}
 }
