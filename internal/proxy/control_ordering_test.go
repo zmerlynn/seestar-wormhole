@@ -28,7 +28,7 @@ func TestControlPerClientInterleaving(t *testing.T) {
 		configure := func(p *simulatedWire) {
 			requests := make(map[byte]int)
 			clients := make(map[byte]string)
-			p.controlReply = func(ch byte, line []byte) []byte {
+			p.ControlReply = func(ch byte, line []byte) []byte {
 				var request struct {
 					ID     int
 					Client string

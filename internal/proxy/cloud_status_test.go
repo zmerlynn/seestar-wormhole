@@ -15,6 +15,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
@@ -182,10 +183,10 @@ func TestBusyAndRejectedCloudCallsPolicy(t *testing.T) {
 						}
 						c := statusClient(t, tr)
 						s, err := start(context.Background(), Config{}, func(s *Session) sessionedge.Factory {
-							return &factory{s: s, cloud: c, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+							return &factory{s: s, cloud: c, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 								trace := []string{}
 								p := newSimulatedWire(t, &trace)
-								p.outage = tr.outage.Load
+								p.Outage = tr.outage.Load
 								return p
 							}}
 						})
@@ -337,10 +338,10 @@ func TestTemporaryCloudOwnerRecovery(t *testing.T) {
 						c := statusClient(t, tr)
 						defer c.Close()
 						s, err := start(t.Context(), Config{}, func(s *Session) sessionedge.Factory {
-							return &factory{s: s, cloud: c, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+							return &factory{s: s, cloud: c, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 								trace := []string{}
 								p := newSimulatedWire(t, &trace)
-								p.outage = tr.outage.Load
+								p.Outage = tr.outage.Load
 								return p
 							}}
 						})

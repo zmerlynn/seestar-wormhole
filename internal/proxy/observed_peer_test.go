@@ -13,6 +13,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
 
@@ -114,10 +115,10 @@ func TestObservedApplicationPeersThroughByteCopy(t *testing.T) {
 		}
 		stacks := make(chan *stack, 16)
 		s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-			return &workloadFactory{&factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+			return &workloadFactory{&factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 				trace := []string{}
 				w := newSimulatedWire(t, &trace)
-				w.socketScript = p.socket
+				w.SocketScript = p.socket
 				return w
 			}}, stacks}
 		})
@@ -151,8 +152,8 @@ func TestObservedApplicationPeersThroughByteCopy(t *testing.T) {
 		checkLease := func() {
 			t.Helper()
 			synctest.Wait()
-			if cloud.allocs.Load() != 1 || cloud.logins.Load() != 1 || cloud.details.Load() != 1 || cloud.stops.Load() != 0 || len(stacks) != 0 {
-				t.Fatalf("session changed: allocations/login/detail/stop/stacks=%d/%d/%d/%d/%d, want 1/1/1/0/0", cloud.allocs.Load(), cloud.logins.Load(), cloud.details.Load(), cloud.stops.Load(), len(stacks))
+			if cloud.Allocs.Load() != 1 || cloud.Logins.Load() != 1 || cloud.Details.Load() != 1 || cloud.Stops.Load() != 0 || len(stacks) != 0 {
+				t.Fatalf("session changed: allocations/login/detail/stop/stacks=%d/%d/%d/%d/%d, want 1/1/1/0/0", cloud.Allocs.Load(), cloud.Logins.Load(), cloud.Details.Load(), cloud.Stops.Load(), len(stacks))
 			}
 		}
 		rpc := connect(4700)
@@ -237,8 +238,8 @@ func TestObservedApplicationPeersThroughByteCopy(t *testing.T) {
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
 		}
-		if cloud.stops.Load() != 1 || cloud.allocs.Load() != 1 || cloud.logins.Load() != 1 {
-			t.Fatalf("final lease counts allocation/login/stop=%d/%d/%d, want 1/1/1", cloud.allocs.Load(), cloud.logins.Load(), cloud.stops.Load())
+		if cloud.Stops.Load() != 1 || cloud.Allocs.Load() != 1 || cloud.Logins.Load() != 1 {
+			t.Fatalf("final lease counts allocation/login/stop=%d/%d/%d, want 1/1/1", cloud.Allocs.Load(), cloud.Logins.Load(), cloud.Stops.Load())
 		}
 	})
 }

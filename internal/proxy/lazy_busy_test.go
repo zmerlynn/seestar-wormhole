@@ -16,6 +16,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
@@ -65,7 +66,7 @@ func lazyBusySession(t *testing.T, ctx context.Context, cfg Config, tr *lazyBusy
 	}
 	var trace []string
 	s, err := startWithRNG(ctx, cfg, func(s *Session) sessionedge.Factory {
-		return &factory{s: s, cloud: c, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
+		return &factory{s: s, cloud: c, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
 	}, zeroRetryRNG{})
 	if err != nil {
 		t.Fatal(err)
@@ -91,8 +92,8 @@ func TestLazyBusyThenReady(t *testing.T) {
 					if elapsed := time.Since(began); elapsed < window || elapsed > 95*time.Second {
 						t.Fatalf("ready after %v, want %v..95s", elapsed, window)
 					}
-					if tr.attempts.Load() < 3 || tr.allocs.Load() != 1 {
-						t.Fatalf("attempts/allocations=%d/%d", tr.attempts.Load(), tr.allocs.Load())
+					if tr.attempts.Load() < 3 || tr.Allocs.Load() != 1 {
+						t.Fatalf("attempts/allocations=%d/%d", tr.attempts.Load(), tr.Allocs.Load())
 					}
 					conn.SetDeadline(time.Now().Add(5 * time.Second))
 					conn.Write([]byte(rpcLine(1, 0)))

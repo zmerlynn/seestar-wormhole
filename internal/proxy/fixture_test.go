@@ -9,30 +9,13 @@ import (
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 )
-
-type fixtureAccountTransport struct{ cloudhttp.Transport }
-
-func (f fixtureAccountTransport) RoundTrip(r *http.Request) (*http.Response, error) {
-	var body string
-	switch r.URL.Path {
-	case "/v1/user/login":
-		body = `{"code":0,"data":{"accessToken":"fixture-token"}}`
-	case "/v1/user/current-profile":
-		body = `{"code":0,"data":{"id":"fixture-account"}}`
-	default:
-		return f.Transport.RoundTrip(r)
-	}
-	return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, nil
-}
 
 // Allocation fixtures receive an account login independently of their failure routes.
 func newFixtureClient(t *testing.T, cfg cloudhttp.Config) (*cloudhttp.Client, error) {
 	t.Helper()
-	t.Setenv("SEESTAR_EMAIL", "fixture@example.invalid")
-	t.Setenv("SEESTAR_PASSWORD", "fixture-password")
-	cfg.Transport = fixtureAccountTransport{cfg.Transport}
-	return cloudhttp.NewFromEnvironment(cfg)
+	return proxytest.NewClient(t, cfg)
 }
 
 // expiredAllocationTransport establishes a real remote 401 and joins the account

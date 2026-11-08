@@ -13,6 +13,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
@@ -45,7 +46,7 @@ func TestFirstRefusalCannotExtendClientBudget(t *testing.T) {
 		}
 		var trace []string
 		s, err := startWithRNG(context.Background(), Config{Idle: time.Minute}, func(s *Session) sessionedge.Factory {
-			return &factory{s: s, cloud: c, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
+			return &factory{s: s, cloud: c, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
 		}, zeroRetryRNG{})
 		if err != nil {
 			t.Fatal(err)

@@ -16,6 +16,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
@@ -61,7 +62,7 @@ func (c *phaseCloud) RoundTrip(r *http.Request) (*http.Response, error) {
 func (c *phaseCloud) respond(r *http.Request) (*http.Response, error) {
 	if c.reject {
 		if r.URL.Path == "/v1/user/login" {
-			c.logins.Add(1)
+			c.Logins.Add(1)
 			return &http.Response{StatusCode: 403, Body: rejectedReplayBody{r.Context()}}, nil
 		}
 		if r.URL.Path == "/v1/user/current-profile" {
@@ -118,7 +119,7 @@ func TestComposedAccountLifecycleProperties(t *testing.T) {
 					}
 					var trace []string
 					s, err := start(context.Background(), Config{Idle: time.Second}, func(s *Session) sessionedge.Factory {
-						return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
+						return &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
 					})
 					if err != nil {
 						client.Close()
@@ -145,11 +146,11 @@ func TestComposedAccountLifecycleProperties(t *testing.T) {
 						if err := <-admission; !errors.Is(err, session.ErrClosed) {
 							t.Fatalf("shutdown admission=%v", err)
 						}
-						closedLogins := tr.logins.Load()
-						if err := client.Login(t.Context()); !errors.Is(err, cloud.ErrReauthentication) || tr.logins.Load() != closedLogins {
-							t.Fatalf("shutdown revived account: error=%v logins=%d, want %d", err, tr.logins.Load(), closedLogins)
+						closedLogins := tr.Logins.Load()
+						if err := client.Login(t.Context()); !errors.Is(err, cloud.ErrReauthentication) || tr.Logins.Load() != closedLogins {
+							t.Fatalf("shutdown revived account: error=%v logins=%d, want %d", err, tr.Logins.Load(), closedLogins)
 						}
-						if tr.allocs.Load() != tr.stops.Load() {
+						if tr.Allocs.Load() != tr.Stops.Load() {
 							t.Fatal("shutdown leaked observed allocation")
 						}
 						return
@@ -160,8 +161,8 @@ func TestComposedAccountLifecycleProperties(t *testing.T) {
 					<-time.After(2 * time.Second)
 					synctest.Wait()
 					wantLogins := int32(replays + 1)
-					if tr.logins.Load() != wantLogins {
-						t.Fatalf("logins=%d, want %d", tr.logins.Load(), wantLogins)
+					if tr.Logins.Load() != wantLogins {
+						t.Fatalf("logins=%d, want %d", tr.Logins.Load(), wantLogins)
 					}
 
 					// After idle release, a received credential rejection must remain
@@ -171,7 +172,7 @@ func TestComposedAccountLifecycleProperties(t *testing.T) {
 					if !errors.Is(err, cloud.ErrRejected) {
 						t.Fatalf("rejection missing: %v", err)
 					}
-					rejectedLogins := tr.logins.Load()
+					rejectedLogins := tr.Logins.Load()
 					rejectedCtx, rejectedCancel := context.WithTimeout(t.Context(), 30*time.Second)
 					rejectedConn, rejectedErr := s.DialPort(rejectedCtx, 4700)
 					rejectedCancel()
@@ -179,8 +180,8 @@ func TestComposedAccountLifecycleProperties(t *testing.T) {
 						rejectedConn.Close()
 						t.Fatal("rejected credentials admitted a client")
 					}
-					if (!errors.Is(rejectedErr, session.ErrUncertain) && !errors.Is(rejectedErr, session.ErrStop)) || tr.logins.Load() != rejectedLogins {
-						t.Fatalf("credential rejection retried: error=%v logins=%d, want %d", rejectedErr, tr.logins.Load(), rejectedLogins)
+					if (!errors.Is(rejectedErr, session.ErrUncertain) && !errors.Is(rejectedErr, session.ErrStop)) || tr.Logins.Load() != rejectedLogins {
+						t.Fatalf("credential rejection retried: error=%v logins=%d, want %d", rejectedErr, tr.Logins.Load(), rejectedLogins)
 					}
 					// Received rejection now blocks the composed adapter too, so its
 					// joined cleanup may retain ErrStop for every request phase.
@@ -188,8 +189,8 @@ func TestComposedAccountLifecycleProperties(t *testing.T) {
 						t.Fatal(err)
 					}
 					synctest.Wait()
-					if tr.allocs.Load() != tr.stops.Load() {
-						t.Fatalf("allocations/stops=%d/%d", tr.allocs.Load(), tr.stops.Load())
+					if tr.Allocs.Load() != tr.Stops.Load() {
+						t.Fatalf("allocations/stops=%d/%d", tr.Allocs.Load(), tr.Stops.Load())
 					}
 				})
 			})

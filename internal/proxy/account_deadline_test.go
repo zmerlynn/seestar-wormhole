@@ -6,6 +6,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 	"io"
 	"net/http"
@@ -48,7 +49,7 @@ func TestTimedOutMalformedLoginDoesNotReacquire(t *testing.T) {
 			t.Fatal(err)
 		}
 		s, err := start(t.Context(), Config{}, func(s *Session) sessionedge.Factory {
-			return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+			return &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 				trace := []string{}
 				p := newSimulatedWire(t, &trace)
 				return r4Wire{p, &tr.r4Cloud, t}

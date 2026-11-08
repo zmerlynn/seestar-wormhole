@@ -18,6 +18,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
@@ -36,7 +37,7 @@ func TestBusyListenerLogsOnce(t *testing.T) {
 		defer cancel()
 		var logs testlog.Buffer
 		logger := slog.New(slog.NewJSONHandler(&logs, nil))
-		s := simulatedSession(t, ctx, Config{Logger: logger}, &simulatedCloud{busy: true})
+		s := simulatedSession(t, ctx, Config{Logger: logger}, &simulatedCloud{Busy: true})
 		defer s.Close()
 		synctest.Wait()
 		l := &admissionQueueListener{conns: make(chan net.Conn, 1), done: make(chan struct{})}
@@ -117,10 +118,10 @@ func recoveryBusySession(t *testing.T, ctx context.Context, cfg Config, tr *reco
 		t.Fatal(err)
 	}
 	s, err := startWithRNG(ctx, cfg, func(s *Session) sessionedge.Factory {
-		return &factory{s: s, cloud: c, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+		return &factory{s: s, cloud: c, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 			trace := []string{}
 			p := newSimulatedWire(t, &trace)
-			p.outage = tr.lost.Load
+			p.Outage = tr.lost.Load
 			return p
 		}}
 	}, zeroRetryRNG{})
@@ -205,8 +206,8 @@ func TestAmbientBusyRecovery(t *testing.T) {
 					t.Fatal(err)
 				}
 				synctest.Wait()
-				if tr.allocs.Load() != 2 || tr.stops.Load() != 2 {
-					t.Errorf("allocations/stops=%d/%d, want 2/2", tr.allocs.Load(), tr.stops.Load())
+				if tr.Allocs.Load() != 2 || tr.Stops.Load() != 2 {
+					t.Errorf("allocations/stops=%d/%d, want 2/2", tr.Allocs.Load(), tr.Stops.Load())
 				}
 				if n := ownedWorkerCount(t, label, t.Name()); n != 0 {
 					t.Errorf("owned workers after close=%d, want 0", n)
@@ -228,8 +229,8 @@ func TestAmbientFirstBusyThenReady(t *testing.T) {
 				s := recoveryBusySession(t, t.Context(), Config{Logger: slog.New(slog.NewJSONHandler(&logs, nil))}, tr)
 				defer s.Close()
 				synctest.Wait()
-				if tr.attempts.Load() != 1 || tr.allocs.Load() != 0 {
-					t.Fatalf("first busy attempts/allocations=%d/%d, want 1/0", tr.attempts.Load(), tr.allocs.Load())
+				if tr.attempts.Load() != 1 || tr.Allocs.Load() != 0 {
+					t.Fatalf("first busy attempts/allocations=%d/%d, want 1/0", tr.attempts.Load(), tr.Allocs.Load())
 				}
 				// Down clients cannot accelerate ambient backoff.
 				for i := 0; i < 20; i++ {
@@ -300,8 +301,8 @@ func TestAmbientFirstBusyThenReady(t *testing.T) {
 				if err := s.Close(); err != nil {
 					t.Fatal(err)
 				}
-				if tr.allocs.Load() != 1 || tr.stops.Load() != 1 {
-					t.Errorf("allocations/stops=%d/%d, want 1/1", tr.allocs.Load(), tr.stops.Load())
+				if tr.Allocs.Load() != 1 || tr.Stops.Load() != 1 {
+					t.Errorf("allocations/stops=%d/%d, want 1/1", tr.Allocs.Load(), tr.Stops.Load())
 				}
 			})
 		})

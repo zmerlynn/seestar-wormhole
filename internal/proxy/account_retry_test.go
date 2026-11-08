@@ -19,6 +19,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
@@ -128,10 +129,10 @@ func (w r5Wire) Run(ctx context.Context, a <-chan iotc.Action, emit func(iotc.Ev
 func r5Session(t *testing.T, ctx context.Context, client *cloudhttp.Client, c *r5Cloud) *Session {
 	t.Helper()
 	s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-		return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+		return &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 			trace := []string{}
 			w := newSimulatedWire(t, &trace)
-			w.outage = c.offline.Load
+			w.Outage = c.offline.Load
 			return r5Wire{w, c, t}
 		}}
 	})

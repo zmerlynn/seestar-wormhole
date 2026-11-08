@@ -22,6 +22,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/dtls"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
 	"github.com/zmerlynn/seestar-wormhole/internal/p2ptunnel"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
@@ -81,7 +82,7 @@ func workloadSessionWithTunnel(t *testing.T, ctx context.Context, configure func
 		if tunnel != nil {
 			s.tunnelConfig = *tunnel
 		}
-		return &workloadFactory{&factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+		return &workloadFactory{&factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 			trace := []string{}
 			p := newSimulatedWire(t, &trace)
 			configure(p)
@@ -169,7 +170,7 @@ func TestComposedSustainedBurstAndSlowConsumer(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()
-		s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.responseBytes = 96 << 10; p.delay = time.Millisecond })
+		s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.ResponseBytes = 96 << 10; p.Delay = time.Millisecond })
 		defer s.Close()
 		slow, err := s.DialPort(ctx, 4700)
 		if err != nil {
@@ -213,7 +214,7 @@ func TestComposedSustainedBurstAndSlowConsumer(t *testing.T) {
 		if e != nil || len(b) < 96<<10 {
 			t.Fatalf("slow transfer %d bytes: %v", len(b), e)
 		}
-		if cloud.allocs.Load() != 1 {
+		if cloud.Allocs.Load() != 1 {
 			t.Fatal("backpressure replaced allocation")
 		}
 	})
@@ -234,10 +235,10 @@ func TestComposedSeededInvariants(t *testing.T) {
 					suite = dtls.CCAC
 				}
 				s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) {
-					p.suite = suite
-					p.verify = seed != 7
-					p.impairEvery = 17 + int(seed%7)
-					p.responseBytes = 96 << 10
+					p.Suite = suite
+					p.VerifyPorts = seed != 7
+					p.ImpairEvery = 17 + int(seed%7)
+					p.ResponseBytes = 96 << 10
 				})
 				defer s.Close()
 				c, err := s.DialPort(ctx, 4700)
@@ -365,7 +366,7 @@ func TestComposedSeededInvariants(t *testing.T) {
 					t.Fatal(err)
 				}
 				assertDTLSWorkersExited(t, x)
-				if cloud.allocs.Load() != cloud.stops.Load() {
+				if cloud.Allocs.Load() != cloud.Stops.Load() {
 					t.Fatal("allocation not released exactly once")
 				}
 			})
@@ -410,7 +411,7 @@ func TestComposedEightHourPlateau(t *testing.T) {
 				time.Sleep(time.Minute)
 			}
 		}
-		if cloud.allocs.Load() != 1 {
+		if cloud.Allocs.Load() != 1 {
 			t.Fatal("steady workload lost session")
 		}
 	})
@@ -424,7 +425,7 @@ func TestComposedOutageRecoveryAndRedial(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 				defer cancel()
 				var outage atomic.Bool
-				s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.outage = outage.Load })
+				s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.Outage = outage.Load })
 				defer s.Close()
 				c, err := s.DialPort(ctx, 4700)
 				if err != nil {
@@ -442,7 +443,7 @@ func TestComposedOutageRecoveryAndRedial(t *testing.T) {
 					if err = exchange(c.(*stream), 2, 7900); err != nil {
 						t.Fatal(err)
 					}
-					if cloud.allocs.Load() != 1 {
+					if cloud.Allocs.Load() != 1 {
 						t.Fatal("short outage unnecessarily replaced allocation")
 					}
 				} else {
@@ -459,8 +460,8 @@ func TestComposedOutageRecoveryAndRedial(t *testing.T) {
 					if err = exchange(c.(*stream), 3, 7900); err != nil {
 						t.Fatal(err)
 					}
-					if cloud.allocs.Load() != 2 || cloud.stops.Load() != 1 {
-						t.Fatalf("redial ownership %d/%d", cloud.allocs.Load(), cloud.stops.Load())
+					if cloud.Allocs.Load() != 2 || cloud.Stops.Load() != 1 {
+						t.Fatalf("redial ownership %d/%d", cloud.Allocs.Load(), cloud.Stops.Load())
 					}
 				}
 				inspectStack(t, x)
@@ -474,7 +475,7 @@ func TestComposedVerifiedCancellationRaces(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
-		s, stacks, _ := workloadSession(t, ctx, func(p *simulatedWire) { p.verify = true; p.delay = time.Millisecond })
+		s, stacks, _ := workloadSession(t, ctx, func(p *simulatedWire) { p.VerifyPorts = true; p.Delay = time.Millisecond })
 		defer s.Close()
 		c, err := s.DialPort(ctx, 4700)
 		if err != nil {

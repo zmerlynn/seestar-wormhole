@@ -106,7 +106,7 @@ func TestConstructorCatalogObserver(t *testing.T) {
 				if (tc.refuse && selected != 0) || (!tc.refuse && selected != 1) {
 					t.Fatalf("selected records=%d", selected)
 				}
-				if peer.allocs.Load() != 0 || peer.details.Load() != 0 {
+				if peer.Allocs.Load() != 0 || peer.Details.Load() != 0 {
 					t.Fatal("lazy constructor allocated or queried device detail")
 				}
 			})

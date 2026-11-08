@@ -13,6 +13,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
 
@@ -42,7 +43,7 @@ func TestIdleRedialReusesEphemeralIdentity(t *testing.T) {
 		defer cancel()
 		var trace []string
 		s, err := start(ctx, Config{Idle: time.Second}, func(s *Session) sessionedge.Factory {
-			return &factory{s: s, cloud: c, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
+			return &factory{s: s, cloud: c, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner { return newSimulatedWire(t, &trace) }}
 		})
 		if err != nil {
 			t.Fatal(err)
@@ -72,7 +73,7 @@ func TestIdleRedialReusesEphemeralIdentity(t *testing.T) {
 			} else if id != first {
 				t.Fatal("idle redial changed identity")
 			}
-			if tr.stops.Load() != int32(i+1) {
+			if tr.Stops.Load() != int32(i+1) {
 				t.Fatal("idle release missing")
 			}
 		}

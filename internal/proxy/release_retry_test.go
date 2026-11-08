@@ -16,6 +16,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
@@ -54,10 +55,10 @@ func TestAllTrafficOutageReleaseRecovery(t *testing.T) {
 		}
 		stacks := make(chan *stack, 16)
 		s, err := start(ctx, Config{Logger: logger}, func(s *Session) sessionedge.Factory {
-			return &workloadFactory{&factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+			return &workloadFactory{&factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 				trace := []string{}
 				p := newSimulatedWire(t, &trace)
-				p.outage = cloud.offline.Load
+				p.Outage = cloud.offline.Load
 				return p
 			}}, stacks}
 		})
@@ -82,8 +83,8 @@ func TestAllTrafficOutageReleaseRecovery(t *testing.T) {
 			t.Fatalf("daemon exited during outage: %v", s.Close())
 		default:
 		}
-		if cloud.blockedStops.Load() != 1 || cloud.stops.Load() != 0 {
-			t.Fatalf("blocked/accepted stops=%d/%d, want 1/0", cloud.blockedStops.Load(), cloud.stops.Load())
+		if cloud.blockedStops.Load() != 1 || cloud.Stops.Load() != 0 {
+			t.Fatalf("blocked/accepted stops=%d/%d, want 1/0", cloud.blockedStops.Load(), cloud.Stops.Load())
 		}
 		assertDTLSWorkersExited(t, first)
 		cloud.offline.Store(false)
@@ -98,8 +99,8 @@ func TestAllTrafficOutageReleaseRecovery(t *testing.T) {
 		if err := exchange(c2.(*stream), 2, 7900); err != nil {
 			t.Fatal(err)
 		}
-		if cloud.allocs.Load() != 2 {
-			t.Fatalf("successful allocations=%d, want exactly 2", cloud.allocs.Load())
+		if cloud.Allocs.Load() != 2 {
+			t.Fatalf("successful allocations=%d, want exactly 2", cloud.Allocs.Load())
 		}
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
@@ -109,10 +110,10 @@ func TestAllTrafficOutageReleaseRecovery(t *testing.T) {
 		if !strings.Contains(logs.String(), `"reason":"release_abandoned"`) {
 			t.Fatalf("missing bounded abandonment diagnostic: %s", logs.String())
 		}
-		if cloud.stops.Load() != 1 {
-			t.Fatalf("final accepted stops=%d, want 1", cloud.stops.Load())
+		if cloud.Stops.Load() != 1 {
+			t.Fatalf("final accepted stops=%d, want 1", cloud.Stops.Load())
 		}
-		t.Logf("120s all-traffic outage: abandoned stops=%d, allocations=%d, final accepted stops=%d", cloud.blockedStops.Load(), cloud.allocs.Load(), cloud.stops.Load())
+		t.Logf("120s all-traffic outage: abandoned stops=%d, allocations=%d, final accepted stops=%d", cloud.blockedStops.Load(), cloud.Allocs.Load(), cloud.Stops.Load())
 	})
 }
 
@@ -210,8 +211,8 @@ func TestCloudNetworkRecoveryPhaseMatrix(t *testing.T) {
 				if err := lease.Stop(context.Background()); err != nil {
 					t.Fatal(err)
 				}
-				if tr.allocs.Load() != 1 || tr.stops.Load() != 1 {
-					t.Fatalf("accepted allocation/stop=%d/%d, want 1/1", tr.allocs.Load(), tr.stops.Load())
+				if tr.Allocs.Load() != 1 || tr.Stops.Load() != 1 {
+					t.Fatalf("accepted allocation/stop=%d/%d, want 1/1", tr.Allocs.Load(), tr.Stops.Load())
 				}
 			})
 		})

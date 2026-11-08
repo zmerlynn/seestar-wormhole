@@ -18,6 +18,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/iotc"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy/proxytest"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 	"github.com/zmerlynn/seestar-wormhole/internal/session/sessionedge"
 )
@@ -111,10 +112,10 @@ func outageSession(t *testing.T, ctx context.Context, c *independentOutageCloud)
 		t.Fatal(err)
 	}
 	s, err := start(ctx, Config{}, func(s *Session) sessionedge.Factory {
-		return &factory{s: s, cloud: client, device: cloudhttp.Device{Serial: "sim", Model: "S50 Pro"}, verify: func(string) (iotc.License, error) { return iotc.License{Realm: "test"}, nil }, wire: func(iotc.License) wireRunner {
+		return &factory{s: s, cloud: client, device: proxytest.Device, verify: proxytest.Verify, wire: func(iotc.License) wireRunner {
 			trace := []string{}
 			p := newSimulatedWire(t, &trace)
-			p.outage = c.offline.Load
+			p.Outage = c.offline.Load
 			return reviewWire{p, c, t}
 		}}
 	})

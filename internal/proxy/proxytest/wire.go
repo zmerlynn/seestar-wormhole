@@ -1,4 +1,4 @@
-package proxy
+package proxytest
 
 // Specification-derived peers adapted from iotc/simulator{,_peer}_test.go and
 // the paired RDT/tunnel tests. The shipped RSA private keys are unavailable:
@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"net/netip"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -36,6 +38,22 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/rdt"
 )
 
+// packetAddr is the peer's address for the in-memory DTLS packet pair.
+type packetAddr struct{}
+
+func (packetAddr) Network() string { return "p2ptunnel" }
+func (packetAddr) String() string  { return "device-stream" }
+
+// layerEvent is one input to the peer's RDT or tunnel machine.
+type layerEvent struct {
+	r *rdt.Event
+	t *p2ptunnel.Event
+}
+
+func event(a p2ptunnel.Action, k p2ptunnel.EventKind) p2ptunnel.Event {
+	return p2ptunnel.Event{Kind: k, Channel: a.Channel, Generation: a.Generation, Token: a.Token}
+}
+
 type peerPackets struct {
 	ctx    context.Context
 	rx, tx chan []byte
@@ -44,7 +62,7 @@ type peerPackets struct {
 func (p *peerPackets) ReadFrom(b []byte) (int, net.Addr, error) {
 	select {
 	case d := <-p.rx:
-		return copy(b, d), streamAddr{}, nil
+		return copy(b, d), packetAddr{}, nil
 	case <-p.ctx.Done():
 		return 0, nil, net.ErrClosed
 	}
@@ -58,32 +76,44 @@ func (p *peerPackets) WriteTo(b []byte, _ net.Addr) (int, error) {
 	}
 }
 func (p *peerPackets) Close() error                     { return nil }
-func (p *peerPackets) LocalAddr() net.Addr              { return streamAddr{} }
+func (p *peerPackets) LocalAddr() net.Addr              { return packetAddr{} }
 func (p *peerPackets) SetDeadline(time.Time) error      { return nil }
 func (p *peerPackets) SetReadDeadline(time.Time) error  { return nil }
 func (p *peerPackets) SetWriteDeadline(time.Time) error { return nil }
 
-type simulatedWire struct {
-	capture                    func(client bool, datagram []byte)
-	controlReply               func(channel byte, line []byte) []byte           // Scripted control replies/events, owned by peer loop.
-	tunnelInput                func(p2ptunnel.Event, *p2ptunnel.Machine)        // Test-only observation before each peer tunnel step.
-	socketScript               func(p2ptunnel.Action) ([]p2ptunnel.Event, bool) // Scripted local sockets, owned by peer loop.
-	rdtPrefix                  []byte                                           // One literal authenticated test packet before normal RDT output.
-	sambaAddress               string
-	outage                     func() bool
-	transport                  func(context.Context, []byte) ([]byte, error)
-	suite                      uint16
-	responseBytes              int
-	rdtGapAfter, rdtGapPackets int    // Synthetic missing DATA followed by a device-window burst.
-	httpResponse               []byte // Standard HTTP fixture on port 80.
-	bulkBurst                  bool   // Native-size RDT backlog and immediate socket reads for capacity tests.
-	verify                     bool
-	delay                      time.Duration
-	impairEvery                int
-	packetIndex                int
-	held                       []byte
+// WireOptions configures a Wire. A test may also set these fields on the
+// returned Wire before the session runs it.
+type WireOptions struct {
+	Capture       func(client bool, datagram []byte)
+	ControlReply  func(channel byte, line []byte) []byte           // Scripted control replies/events, owned by peer loop.
+	TunnelInput   func(p2ptunnel.Event, *p2ptunnel.Machine)        // Test-only observation before each peer tunnel step.
+	SocketScript  func(p2ptunnel.Action) ([]p2ptunnel.Event, bool) // Scripted local sockets, owned by peer loop.
+	RDTPrefix     []byte                                           // One literal authenticated test packet before normal RDT output.
+	SambaAddress  string                                           // TCP address that answers device port 445.
+	Port445       func(ctx context.Context) (net.Conn, error)      // Answers device port 445; overrides SambaAddress.
+	Outage        func() bool
+	Transport     func(context.Context, []byte) ([]byte, error)
+	Suite         uint16
+	ResponseBytes int
+	RDTGapAfter   int    // Synthetic missing DATA after this many DATA packets...
+	RDTGapPackets int    // ...followed by a device-window burst of this many.
+	HTTPResponse  []byte // Standard HTTP fixture on port 80.
+	BulkBurst     bool   // Native-size RDT backlog and immediate socket reads for capacity tests.
+	VerifyPorts   bool   // The device tunnel verifies requested ports.
+	Delay         time.Duration
+	ImpairEvery   int
+	Trace         *[]string // Impairments applied, in order; nil keeps a private record.
+}
 
-	t        *testing.T
+// Wire is the simulated device side of IOTC: rendezvous, DTLS, RDT, tunnel and
+// the device's local sockets. Its Run method has proxy's wire runner method set.
+type Wire struct {
+	WireOptions
+
+	packetIndex int
+	held        []byte
+
+	t        testing.TB
 	fixtures map[uint16][]byte
 	crypt    iotcedge.IOTCCrypto
 	mat      iotc.Material
@@ -92,19 +122,33 @@ type simulatedWire struct {
 	iv       [12]byte
 	device   iotc.Link
 	drop     bool
-	trace    *[]string
 }
 
-func newSimulatedWire(t *testing.T, trace *[]string) *simulatedWire {
-	b, err := os.ReadFile("../iotc/testdata/modern-fixtures.json")
+// fixturePath locates the IOTC fixtures from this source file, so the wire
+// works from any package's test directory.
+func fixturePath(t testing.TB) string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("proxytest: cannot locate its own source to find the IOTC fixtures")
+	}
+	return filepath.Join(filepath.Dir(file), "..", "..", "iotc", "testdata", "modern-fixtures.json")
+}
+
+// NewWire returns a simulated device wire configured by o.
+func NewWire(t testing.TB, o WireOptions) *Wire {
+	path := fixturePath(t)
+	b, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("proxytest: IOTC fixtures missing at %s: %v", path, err)
 	}
 	var fs []struct{ Hex string }
 	if err = json.Unmarshal(b, &fs, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
-	p := &simulatedWire{t: t, fixtures: make(map[uint16][]byte), trace: trace, drop: true}
+	if o.Trace == nil {
+		o.Trace = new([]string)
+	}
+	p := &Wire{WireOptions: o, t: t, fixtures: make(map[uint16][]byte), drop: true}
 	for _, f := range fs {
 		b, err := hex.DecodeString(f.Hex)
 		if err != nil {
@@ -114,12 +158,14 @@ func newSimulatedWire(t *testing.T, trace *[]string) *simulatedWire {
 	}
 	return p
 }
-func (p *simulatedWire) Run(ctx context.Context, actions <-chan iotc.Action, emit func(iotc.Event) bool) {
+
+// Run drives the device side until ctx ends or the session disposes the wire.
+func (p *Wire) Run(ctx context.Context, actions <-chan iotc.Action, emit func(iotc.Event) bool) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	downstream := emit
 	emit = func(e iotc.Event) bool {
-		if e.Kind == iotc.Wire && p.outage != nil && p.outage() {
+		if e.Kind == iotc.Wire && p.Outage != nil && p.Outage() {
 			return true
 		}
 		return downstream(e)
@@ -133,8 +179,8 @@ func (p *simulatedWire) Run(ctx context.Context, actions <-chan iotc.Action, emi
 		case <-ctx.Done():
 			return
 		case b := <-packets.tx:
-			if p.capture != nil {
-				p.capture(false, b)
+			if p.Capture != nil {
+				p.Capture(false, b)
 			}
 			body := make([]byte, 12+len(b))
 			binary.LittleEndian.PutUint32(body, 12)
@@ -171,16 +217,16 @@ func (p *simulatedWire) Run(ctx context.Context, actions <-chan iotc.Action, emi
 				e.Kind = iotc.LinkFailed
 				emit(e)
 			case iotc.Send:
-				if p.outage != nil && p.outage() {
+				if p.Outage != nil && p.Outage() {
 					e.Kind = iotc.Sent
 					if !emit(e) {
 						return
 					}
 					continue
 				}
-				if p.transport != nil {
+				if p.Transport != nil {
 					var err error
-					a.Data, err = p.transport(ctx, a.Data)
+					a.Data, err = p.Transport(ctx, a.Data)
 					if err != nil {
 						if ctx.Err() == nil {
 							p.t.Error(err)
@@ -199,7 +245,7 @@ func (p *simulatedWire) Run(ctx context.Context, actions <-chan iotc.Action, emi
 		}
 	}
 }
-func (p *simulatedWire) legacy(l iotc.Link, q iotc.Packet, emit func(iotc.Event) bool) {
+func (p *Wire) legacy(l iotc.Link, q iotc.Packet, emit func(iotc.Event) bool) {
 	b, err := iotc.EncodeLegacy(q, iotc.ScrambleKey([16]byte{}))
 	if err != nil {
 		p.t.Error(err)
@@ -207,7 +253,7 @@ func (p *simulatedWire) legacy(l iotc.Link, q iotc.Packet, emit func(iotc.Event)
 	}
 	emit(iotc.Event{Kind: iotc.Wire, Link: l, Data: b, Marker: iotc.Marker{Seconds: 100}})
 }
-func (p *simulatedWire) encrypted(l iotc.Link, typ byte, plain []byte, emit func(iotc.Event) bool) {
+func (p *Wire) encrypted(l iotc.Link, typ byte, plain []byte, emit func(iotc.Event) bool) {
 	a, iv := p.pair, p.iv
 	prefix := 0
 	if typ == 1 {
@@ -225,7 +271,7 @@ func (p *simulatedWire) encrypted(l iotc.Link, typ byte, plain []byte, emit func
 	b := a.Seal(nil, iv[:], plain, aad)
 	emit(iotc.Event{Kind: iotc.Wire, Link: l, Data: append(aad, b...), Marker: iotc.Marker{Seconds: 100}})
 }
-func (p *simulatedWire) send(a iotc.Action, packets *peerPackets, emit func(iotc.Event) bool) {
+func (p *Wire) send(a iotc.Action, packets *peerPackets, emit func(iotc.Event) bool) {
 	b := a.Data
 	if len(b) >= 12 && binary.LittleEndian.Uint32(b) == 0xcc51 {
 		r, err := iotc.ParseRecord(b)
@@ -317,13 +363,13 @@ func (p *simulatedWire) send(a iotc.Action, packets *peerPackets, emit func(iotc
 			p.t.Error(err)
 			return
 		}
-		if p.capture != nil {
-			p.capture(true, data)
+		if p.Capture != nil {
+			p.Capture(true, data)
 		}
 		// Deterministic packet loss exercises real DTLS handshake retransmission.
 		if p.drop {
 			p.drop = false
-			*p.trace = append(*p.trace, "drop-first-dtls")
+			*p.Trace = append(*p.Trace, "drop-first-dtls")
 			return
 		}
 		p.packetIndex++
@@ -331,9 +377,9 @@ func (p *simulatedWire) send(a iotc.Action, packets *peerPackets, emit func(iotc
 			p.t.Error("DTLS exceeds path MTU")
 			return
 		}
-		if p.delay > 0 {
+		if p.Delay > 0 {
 			select {
-			case <-time.After(p.delay):
+			case <-time.After(p.Delay):
 			case <-packets.ctx.Done():
 				return
 			}
@@ -344,16 +390,16 @@ func (p *simulatedWire) send(a iotc.Action, packets *peerPackets, emit func(iotc
 			case <-packets.ctx.Done():
 			}
 		}
-		if p.impairEvery > 0 {
-			switch p.packetIndex % p.impairEvery {
+		if p.ImpairEvery > 0 {
+			switch p.packetIndex % p.ImpairEvery {
 			case 0:
-				*p.trace = append(*p.trace, "loss")
+				*p.Trace = append(*p.Trace, "loss")
 				return
 			case 1:
-				*p.trace = append(*p.trace, "duplicate")
+				*p.Trace = append(*p.Trace, "duplicate")
 				deliver(data)
 			case 2:
-				*p.trace = append(*p.trace, "reorder")
+				*p.Trace = append(*p.Trace, "reorder")
 				p.held = append([]byte(nil), data...)
 				return
 			}
@@ -370,13 +416,13 @@ func (p *simulatedWire) send(a iotc.Action, packets *peerPackets, emit func(iotc
 	}
 }
 
-func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
+func (p *Wire) devicePeer(ctx context.Context, packets *peerPackets) {
 	_, key, _ := dtls.Credentials([]byte("sim-user"), []byte("sim-pass"))
 	opts := []pion.ServerOption{pion.WithCipherSuites(pion.TLS_PSK_WITH_AES_128_GCM_SHA256), pion.WithPSK(func([]byte) ([]byte, error) { return key[:], nil }), pion.WithPSKIdentityHint([]byte{})}
-	if p.suite == dtls.CCAC {
+	if p.Suite == dtls.CCAC {
 		opts = append(opts, pion.WithCipherSuites(pion.TLS_ECDHE_PSK_WITH_CHACHA20_POLY1305_SHA256, pion.TLS_PSK_WITH_AES_128_GCM_SHA256))
 	}
-	c, err := pion.ServerWithOptions(packets, streamAddr{}, opts...)
+	c, err := pion.ServerWithOptions(packets, packetAddr{}, opts...)
 	if err != nil {
 		p.t.Error(err)
 		return
@@ -412,7 +458,7 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 	completed := make(chan struct{}, 16)
 	writeFailed := make(chan error, 1)
 	writerStop, writerDone := make(chan struct{}), make(chan struct{})
-	if p.bulkBurst {
+	if p.BulkBurst {
 		go func() {
 			defer close(writerDone)
 			var held []byte
@@ -439,8 +485,8 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 					skip := false
 					if packet.Type == rdt.Data {
 						dataPackets++
-						if p.rdtGapPackets > 0 && dataPackets == p.rdtGapAfter {
-							held, heldSequence, remaining = b, packet.Sequence, p.rdtGapPackets
+						if p.RDTGapPackets > 0 && dataPackets == p.RDTGapAfter {
+							held, heldSequence, remaining = b, packet.Sequence, p.RDTGapPackets
 						}
 						if held != nil {
 							skip = packet.Sequence == heldSequence
@@ -476,7 +522,7 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 	}
 	rc := rdt.DefaultConfig()
 	rc.LocalID = 2
-	if p.bulkBurst {
+	if p.BulkBurst {
 		rc.SendCapacity = 16
 		rc.TXBytes = (4 << 20) + p2ptunnel.MaxInput
 		rc.TXPackets = 8192
@@ -484,16 +530,16 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 	rm, _ := rdt.New(rc)
 	tc := p2ptunnel.DefaultConfig()
 	tc.Role = p2ptunnel.Server
-	tc.VerifyPorts = p.verify
+	tc.VerifyPorts = p.VerifyPorts
 	tc.AllowedPorts = []uint16{4700, 445, 80}
-	if p.socketScript != nil {
+	if p.SocketScript != nil {
 		tc.AllowedPorts = append(tc.AllowedPorts, 4350, 4554, 4555)
 	}
 	tm, _ := p2ptunnel.New(tc)
 	var bridge *sambaPeer
 	var localEvents <-chan p2ptunnel.Event
-	if p.sambaAddress != "" {
-		bridge = newSambaPeer(ctx, p.sambaAddress)
+	if dial := p.port445(); dial != nil {
+		bridge = newSambaPeer(ctx, dial)
 		localEvents = bridge.events
 		defer bridge.close()
 	}
@@ -522,13 +568,13 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 					case rdt.CancelTimer:
 						deadlines[0] = 0
 					case rdt.Send:
-						if len(p.rdtPrefix) > 0 {
-							if _, err = c.Write(p.rdtPrefix); err != nil {
+						if len(p.RDTPrefix) > 0 {
+							if _, err = c.Write(p.RDTPrefix); err != nil {
 								return
 							}
-							p.rdtPrefix = nil
+							p.RDTPrefix = nil
 						}
-						if p.bulkBurst {
+						if p.BulkBurst {
 							select {
 							case outgoing <- a.Data:
 							case <-ctx.Done():
@@ -554,12 +600,12 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 				}
 			}
 			if e.t != nil {
-				if p.tunnelInput != nil {
-					p.tunnelInput(*e.t, tm)
+				if p.TunnelInput != nil {
+					p.TunnelInput(*e.t, tm)
 				}
 				for _, a := range tm.Step(*e.t, now) {
-					if p.socketScript != nil {
-						events, handled := p.socketScript(a)
+					if p.SocketScript != nil {
+						events, handled := p.SocketScript(a)
 						for _, local := range events {
 							enqueue(layerEvent{t: &local})
 						}
@@ -594,7 +640,7 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 							}
 						}
 					case p2ptunnel.ConnectLocal:
-						httpChannels[a.Channel] = a.Port == 80 && len(p.httpResponse) > 0
+						httpChannels[a.Channel] = a.Port == 80 && len(p.HTTPResponse) > 0
 						enqueue(layerEvent{t: &p2ptunnel.Event{Kind: p2ptunnel.Connected, Channel: a.Channel, Generation: a.Generation}})
 					case p2ptunnel.WriteLocal:
 
@@ -610,7 +656,7 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 								return
 							}
 							request.Body.Close()
-							pending[a.Channel] = append(pending[a.Channel], p.httpResponse...)
+							pending[a.Channel] = append(pending[a.Channel], p.HTTPResponse...)
 							received[a.Channel] = nil
 						}
 						for !httpChannels[a.Channel] {
@@ -619,8 +665,8 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 								break
 							}
 							received[a.Channel] = rest
-							if p.controlReply != nil {
-								pending[a.Channel] = append(pending[a.Channel], p.controlReply(a.Channel, bytes.Clone(line))...)
+							if p.ControlReply != nil {
+								pending[a.Channel] = append(pending[a.Channel], p.ControlReply(a.Channel, bytes.Clone(line))...)
 								continue
 							}
 							var request struct {
@@ -635,8 +681,8 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 							// Synthetic response semantics: only line framing and transaction IDs
 							// derive from the app appendix, never these invented state fields.
 							response := fmt.Sprintf("{\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":{\"state\":\"idle\"", request.ID)
-							if p.responseBytes > 0 && request.ID == 99 {
-								response += ",\"padding\":\"" + strings.Repeat("s", p.responseBytes) + "\""
+							if p.ResponseBytes > 0 && request.ID == 99 {
+								response += ",\"padding\":\"" + strings.Repeat("s", p.ResponseBytes) + "\""
 							}
 							pending[a.Channel] = append(pending[a.Channel], []byte(response+"}}\n")...)
 							if request.Finish != "" {
@@ -656,7 +702,7 @@ func (p *simulatedWire) devicePeer(ctx context.Context, packets *peerPackets) {
 							e.Kind = p2ptunnel.LocalEOF
 						}
 						enqueue(layerEvent{t: &e})
-						if p.bulkBurst && n > 0 {
+						if p.BulkBurst && n > 0 {
 							enqueue(layerEvent{t: &p2ptunnel.Event{Kind: p2ptunnel.ReadReady, Channel: a.Channel, Generation: a.Generation}})
 						}
 					case p2ptunnel.CloseLocal:

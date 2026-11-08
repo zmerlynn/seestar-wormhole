@@ -20,7 +20,7 @@ func TestPendingOpenCountAndCancel(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		var offline atomic.Bool
-		s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.verify = true; p.outage = offline.Load })
+		s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.VerifyPorts = true; p.Outage = offline.Load })
 		defer s.Close()
 		c, err := s.DialPort(ctx, 4700)
 		if err != nil {
@@ -81,7 +81,7 @@ func TestPendingOpenCountAndCancel(t *testing.T) {
 			close(done)
 		})
 		<-done
-		if cloud.allocs.Load() != 1 || cloud.stops.Load() != 0 {
+		if cloud.Allocs.Load() != 1 || cloud.Stops.Load() != 0 {
 			t.Fatal("short outage replaced session")
 		}
 		s.Close()
@@ -96,7 +96,7 @@ func TestPendingOpenWaitExpiry(t *testing.T) {
 		defer cancel()
 		cfg := runtimeTunnelConfig(4 << 20)
 		cfg.MaxChannels = 1
-		s, stacks, _ := workloadSessionWithTunnel(t, ctx, func(p *simulatedWire) { p.verify = true }, Config{}, &cfg)
+		s, stacks, _ := workloadSessionWithTunnel(t, ctx, func(p *simulatedWire) { p.VerifyPorts = true }, Config{}, &cfg)
 		defer s.Close()
 		c, err := s.DialPort(ctx, 4700)
 		if err != nil {
@@ -165,8 +165,8 @@ func TestPendingOpenRetryCadence(t *testing.T) {
 		attempts := make(chan time.Time, 16)
 		var decoder p2ptunnel.Decoder
 		s, stacks, _ := workloadSessionWithTunnel(t, ctx, func(p *simulatedWire) {
-			p.verify = true
-			p.tunnelInput = func(e p2ptunnel.Event, m *p2ptunnel.Machine) {
+			p.VerifyPorts = true
+			p.TunnelInput = func(e p2ptunnel.Event, m *p2ptunnel.Machine) {
 				if e.Kind != p2ptunnel.Stream || m.Status() != p2ptunnel.Active {
 					return
 				}
@@ -262,7 +262,7 @@ func TestPendingOpenSessionEnd(t *testing.T) {
 				ctx, cancel := context.WithCancel(context.Background())
 				defer cancel()
 				var offline atomic.Bool
-				s, stacks, _ := workloadSession(t, ctx, func(p *simulatedWire) { p.verify = true; p.outage = offline.Load })
+				s, stacks, _ := workloadSession(t, ctx, func(p *simulatedWire) { p.VerifyPorts = true; p.Outage = offline.Load })
 				defer s.Close()
 				c, err := s.DialPort(ctx, 4700)
 				if err != nil {

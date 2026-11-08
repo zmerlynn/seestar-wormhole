@@ -19,7 +19,7 @@ func TestComposedSlowReader(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithTimeout(context.Background(), 8*time.Minute)
 		defer cancel()
-		s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.responseBytes = 256 << 10 })
+		s, stacks, cloud := workloadSession(t, ctx, func(p *simulatedWire) { p.ResponseBytes = 256 << 10 })
 		defer s.Close()
 		c, err := s.DialPort(ctx, 445)
 		if err != nil {
@@ -76,7 +76,7 @@ func TestComposedSlowReader(t *testing.T) {
 		if digests[0] != digests[1] {
 			t.Fatal("two read hashes differ")
 		}
-		if cloud.allocs.Load() != 1 {
+		if cloud.Allocs.Load() != 1 {
 			t.Fatal("slow reader replaced session")
 		}
 		t.Logf("two %d-byte passes at 204800 B/s; sibling live; heap baseline=%d", volume, baseline)
