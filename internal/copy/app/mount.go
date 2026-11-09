@@ -55,6 +55,13 @@ type MountOptions struct {
 	// address's folder. It is shown on the page and suggested as a folder
 	// name only, never logged. nil is "Seestar".
 	Name func(t Target) string
+	// KnowSerial, if set, saves that the telescope saved by t's address
+	// only is the one with serial t.Heard, so that t's telescope is keyed
+	// by that serial from then on. Accepting the offer of the address's
+	// folder to a serial heard there calls it, first; without it, no such
+	// offer is made. It is called with the Mount's locks held, so it must
+	// not call back into the Mount.
+	KnowSerial func(t Target) error
 	// Report, if set, gets the outcome of each Copy, Browse and Free up
 	// space operation as it ends, numbered in the order they ended. It is
 	// called with none of the Mount's locks held, from the goroutine the
@@ -89,6 +96,11 @@ type Target struct {
 	// Serial is the serial number a scan saw at Endpoint on this network,
 	// or "". It is compared only, never shown or logged.
 	Serial string
+	// Heard is the serial the latest scan or Test heard at Endpoint on
+	// this network, when the telescope is saved by its address only, or
+	// "". It only offers the address's folder to that serial (see
+	// MountOptions.KnowSerial), and is never shown or logged.
+	Heard string
 	// Telescope is the telescope's key in the settings' telescopes (see
 	// SerialKey and AddressKey), or "" while it isn't known. It chooses
 	// the folder, and is compared only, never shown or logged. The host

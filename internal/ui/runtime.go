@@ -226,6 +226,7 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 	}
 	o.Target = handler.copyTarget
 	o.Name = handler.telescopeName
+	o.KnowSerial = handler.knowSerial
 	o.Report = handler.controller.log.addOutcome
 	o.Dial = func(ctx context.Context, t copyapp.Target) (remote.Session, error) {
 		switch {

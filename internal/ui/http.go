@@ -466,7 +466,11 @@ func (s *server) copyTarget() (copyapp.Target, error) {
 	s.mu.Unlock()
 	if settings.Route == routeLAN {
 		endpoint, err := lanEndpoint(settings)
-		return copyapp.Target{Endpoint: endpoint, Serial: settings.LANSerial, Telescope: SavedTelescope(settings)}, err
+		t := copyapp.Target{Endpoint: endpoint, Serial: settings.LANSerial, Telescope: SavedTelescope(settings)}
+		if err == nil && settings.LANSerial == "" {
+			t.Heard = s.heardAt(endpoint)
+		}
+		return t, err
 	}
 	_, device, serial, id, ok := s.controller.connectedSerial()
 	if !ok {
@@ -477,6 +481,39 @@ func (s *server) copyTarget() (copyapp.Target, error) {
 		key = copyapp.SerialKey(serial)
 	}
 	return copyapp.Target{Endpoint: accountEndpoint, Device: device, Run: id, Telescope: key}, nil
+}
+
+// heardAt is the serial the latest scan or Test heard at endpoint's
+// address, or "".
+func (s *server) heardAt(endpoint string) string {
+	host, _, err := net.SplitHostPort(endpoint)
+	if err != nil {
+		return ""
+	}
+	ip, err := netip.ParseAddr(host)
+	if err != nil {
+		return ""
+	}
+	serial, _ := s.lan.serial(ip)
+	return serial
+}
+
+// errRouteMoved refuses to save a serial for an address that is no
+// longer the one saved by itself.
+var errRouteMoved = errors.New("the saved telescope changed")
+
+// knowSerial saves the route on this network to t's address as t.Heard's,
+// as accepting the offer of the address's folder to that serial does,
+// when the route saved is still that address by itself. Copy calls it
+// inside its admission, as changeRoute does.
+func (s *server) knowSerial(t copyapp.Target) error {
+	s.mu.Lock()
+	settings := s.settings
+	s.mu.Unlock()
+	if endpoint, err := lanEndpoint(settings); settings.Route != routeLAN || settings.LANSerial != "" || err != nil || endpoint != t.Endpoint || t.Heard == "" {
+		return errRouteMoved
+	}
+	return s.controller.persistRoute(routeLAN, t.Endpoint, t.Heard)
 }
 
 // SavedTelescope is the key of the telescope settings save, which chooses

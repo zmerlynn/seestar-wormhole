@@ -220,6 +220,9 @@ folder, and that telescope has none, Copy says **This telescope's address is
 now known as** the model and serial, names the address's folder and offers
 **Use the address's folder**. Nothing changes until you press it; it then
 saves that folder for the telescope, with its copy history, and Copy opens.
+When the address was saved without a serial number, it also saves the
+serial with the address, as a Save on the Connection tab would, so stop
+copying first.
 See [more than one telescope](copying.md#more-than-one-telescope).
 
 After that, Copy shows what

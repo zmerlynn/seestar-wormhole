@@ -2,6 +2,7 @@ package ui
 
 import (
 	"bytes"
+	"errors"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"maps"
@@ -234,5 +235,201 @@ func TestTelescopeFolderPrivacy(t *testing.T) {
 				t.Errorf("%s holds %q", where, s)
 			}
 		}
+	}
+}
+
+// heardEnv is a route env whose copy settings save to saves and fail with
+// saveErr, with copy's KnowSerial wrapped by know, saved at an address
+// on this network by itself with a folder.
+type heardEnv struct {
+	*routeEnv
+	mu      sync.Mutex
+	saves   []copyapp.Settings
+	saveErr error
+	knowErr error
+}
+
+func newHeardEnv(t *testing.T) *heardEnv {
+	t.Helper()
+	h := &heardEnv{}
+	h.routeEnv = newRouteEnv(t, func(o *copyapp.MountOptions) {
+		o.Save = func(s copyapp.Settings) error {
+			h.mu.Lock()
+			defer h.mu.Unlock()
+			if h.saveErr != nil {
+				return h.saveErr
+			}
+			h.saves = append(h.saves, s)
+			return nil
+		}
+		o.Name = func(tg copyapp.Target) string { return h.s.telescopeName(tg) }
+		o.KnowSerial = func(tg copyapp.Target) error {
+			h.mu.Lock()
+			err := h.knowErr
+			h.mu.Unlock()
+			if err != nil {
+				return err
+			}
+			return h.s.knowSerial(tg)
+		}
+	})
+	h.lan("192.0.2.10")
+	h.settings()
+	return h
+}
+
+// hear delivers a scan's answer from serial at 192.0.2.10, as a scan or
+// Test hears it.
+func (h *heardEnv) hear(serial string) {
+	ip := netip.MustParseAddr("192.0.2.10")
+	h.s.lan.remember(h.s.lan.begin(), ip, landiscovery.ScanResult{Telescopes: []landiscovery.Telescope{{Serial: serial, Model: "Seestar S30", Addresses: []netip.Addr{ip}}}})
+}
+
+type heardOffer struct {
+	Name   string `json:"name"`
+	Folder string `json:"folder"`
+	Token  string `json:"token"`
+}
+
+// offer is the offer copy's status shows, or nil.
+func (h *heardEnv) offer() *heardOffer {
+	h.t.Helper()
+	code, body := h.get("/copy/api/status")
+	var v struct {
+		Telescope struct {
+			Offer *heardOffer `json:"offer"`
+		} `json:"telescope"`
+	}
+	if err := json.Unmarshal([]byte(body), &v); code != 200 || err != nil {
+		h.t.Fatalf("status = %d %s, %v", code, body, err)
+	}
+	return v.Telescope.Offer
+}
+
+func (h *heardEnv) savedSerial() string {
+	h.s.mu.Lock()
+	defer h.s.mu.Unlock()
+	return h.s.settings.LANSerial
+}
+
+func (h *heardEnv) saveCount() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.saves)
+}
+
+// A scan or Test that hears a serial at an address saved by itself, with
+// its own folder, offers that folder to the serial before any Connection
+// Save, and nothing changes until it is accepted; accepting saves the
+// serial with the address and gives its key the folder.
+func TestHeardSerialOffersFolder(t *testing.T) {
+	h := newHeardEnv(t)
+	if o := h.offer(); o != nil {
+		t.Fatalf("an offer before a serial was heard: %+v", o)
+	}
+	saves := h.saveCount()
+	h.hear("SYNTH-HEARD-1")
+	o := h.offer()
+	if o == nil {
+		t.Fatal("hearing a serial at the saved address did not offer its folder")
+	}
+	if o.Folder != h.folder || !strings.Contains(o.Name, "SYNTH-HEARD-1") || o.Token == "" {
+		t.Errorf("offer = %+v", o)
+	}
+	if h.savedSerial() != "" || h.saveCount() != saves {
+		t.Fatal("the offer changed which telescope has which folder before it was accepted")
+	}
+	// The offer shown was for another serial than the one heard now.
+	h.hear("SYNTH-HEARD-2")
+	if code, body := h.post("/copy/api/adopt", `{"token":"`+o.Token+`"}`); code != 409 {
+		t.Errorf("a stale offer accepted = %d %s", code, body)
+	}
+	if h.savedSerial() != "" || h.saveCount() != saves {
+		t.Fatal("a stale acceptance changed which telescope has which folder")
+	}
+	h.hear("SYNTH-HEARD-1")
+	if code, body := h.post("/copy/api/adopt", `{}`); code != 200 {
+		t.Fatalf("adopt = %d %s", code, body)
+	}
+	if got := h.savedSerial(); got != "SYNTH-HEARD-1" {
+		t.Errorf("saved serial = %q", got)
+	}
+	var config Settings
+	if err := h.s.storage.read("config.json", &config); err != nil || config.LANSerial != "SYNTH-HEARD-1" || config.LANAddress != "192.0.2.10:445" {
+		t.Errorf("config.json = %+v, %v", config, err)
+	}
+	h.mu.Lock()
+	last := h.saves[len(h.saves)-1]
+	h.mu.Unlock()
+	if !maps.Equal(folderMapOf(last), map[string]string{"serial:SYNTH-HEARD-1": h.folder}) {
+		t.Errorf("telescopes = %v", folderMapOf(last))
+	}
+	if o := h.offer(); o != nil {
+		t.Errorf("the offer stayed after it was accepted: %+v", o)
+	}
+	target, err := h.s.copyTarget()
+	if err != nil || target.Telescope != "serial:SYNTH-HEARD-1" || target.Heard != "" {
+		t.Errorf("target = %+v, %v", target, err)
+	}
+}
+
+// An acceptance whose serial can't be saved changes nothing; one whose
+// serial is saved but whose folder isn't leaves the folder at the address,
+// offered again to the telescope saved with its serial.
+func TestHeardSerialAcceptanceFails(t *testing.T) {
+	h := newHeardEnv(t)
+	saves := h.saveCount()
+	h.hear("SYNTH-HEARD-1")
+	// Copying is on: the copier's telescope would move under it.
+	if code, body := h.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
+		t.Fatalf("start copying = %d %s", code, body)
+	}
+	if code, body := h.post("/copy/api/adopt", `{}`); code != 409 || !strings.Contains(body, "Stop copying") {
+		t.Errorf("adopt while copying = %d %s", code, body)
+	}
+	h.mu.Lock()
+	h.knowErr = errors.New("synthetic")
+	h.mu.Unlock()
+	if code, body := h.post("/copy/api/copy", `{"action":"stop"}`); code != 200 {
+		t.Fatalf("stop copying = %d %s", code, body)
+	}
+	if h.savedSerial() != "" || h.saveCount() != saves {
+		t.Fatal("an acceptance while copying changed something")
+	}
+	// Once the pass ends, an acceptance whose serial can't be saved.
+	h.until("the pass to end", func() bool {
+		code, body := h.post("/copy/api/adopt", `{}`)
+		if code != 409 || !strings.Contains(body, "Stop copying") && !strings.Contains(body, "Couldn't save settings") {
+			t.Fatalf("adopt with no serial saved = %d %s", code, body)
+		}
+		return strings.Contains(body, "Couldn't save settings")
+	})
+	if h.savedSerial() != "" || h.saveCount() != saves || h.offer() == nil {
+		t.Fatal("a failed acceptance changed something")
+	}
+	h.mu.Lock()
+	h.knowErr, h.saveErr = nil, errors.New("synthetic")
+	h.mu.Unlock()
+	if code, body := h.post("/copy/api/adopt", `{}`); code != 409 || !strings.Contains(body, "Couldn't save settings") {
+		t.Errorf("adopt with no folder saved = %d %s", code, body)
+	}
+	if h.savedSerial() != "SYNTH-HEARD-1" {
+		t.Fatal("the serial wasn't saved")
+	}
+	o := h.offer()
+	if o == nil || o.Folder != h.folder {
+		t.Fatalf("the address's folder isn't offered again: %+v", o)
+	}
+	h.mu.Lock()
+	h.saveErr = nil
+	h.mu.Unlock()
+	if code, body := h.post("/copy/api/adopt", `{}`); code != 200 {
+		t.Fatalf("adopt again = %d %s", code, body)
+	}
+	h.mu.Lock()
+	last := h.saves[len(h.saves)-1]
+	h.mu.Unlock()
+	if !maps.Equal(folderMapOf(last), map[string]string{"serial:SYNTH-HEARD-1": h.folder}) {
+		t.Errorf("telescopes = %v", folderMapOf(last))
 	}
 }

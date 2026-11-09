@@ -58,6 +58,8 @@ type server struct {
 	// name is how the page names a target's telescope; see
 	// [MountOptions.Name].
 	name    func(Target) string
+	// knowSerial is MountOptions.KnowSerial.
+	knowSerial func(Target) error
 	native  Native // the window's dialogs; each nil without one
 	copy    *controller
 	preview *previewer
@@ -109,7 +111,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	log = slog.New(withoutFolder{log.Handler()})
 	s := &server{
 		ctx: ctx, addr: o.Addr, version: o.Version, stateDir: o.StateDir, target: o.Target, file: file, log: log,
-		rep: &reporter{report: o.Report}, name: o.Name, tokenKey: make([]byte, 32),
+		rep: &reporter{report: o.Report}, name: o.Name, knowSerial: o.KnowSerial, tokenKey: make([]byte, 32),
 		test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 			return engine.Test(ctx, endpoint, log)
 		},
@@ -708,24 +710,39 @@ func (s *server) telescopeView(t Target) telescopeView {
 	v := telescopeView{ID: s.telescope, Known: t.Telescope != "" || !claimed, New: claimed && s.folderAt(t) == "", Token: s.telescopeToken(t.Telescope)}
 	if from, to, ok := s.offerAt(t); ok {
 		folder := s.file.settings.Telescopes[from].Folder
-		v.Offer = &offerView{Name: s.name(t), Folder: folder, Token: s.offerToken(from, to, folder)}
+		named := t
+		if from == t.Telescope {
+			named.Serial = t.Heard
+		}
+		v.Offer = &offerView{Name: s.name(named), Folder: folder, Token: s.offerToken(from, to, folder)}
 	}
 	return v
 }
 
 // offerAt finds, holding s.mu, the address's folder to offer t's
-// telescope: on this network, a telescope saved with its serial whose
-// key has no folder, at the saved address whose own key has one. It
-// returns both keys.
+// telescope on this network, where the saved address's own key has one:
+// to a telescope saved with its serial whose key has no folder, or, when
+// the telescope is saved by its address only, to the serial a scan or
+// Test heard there, whose key has no folder. It returns both keys. In the
+// second case the address's key is t's own: nothing changes which
+// telescope it is until the offer is accepted.
 func (s *server) offerAt(t Target) (from, to string, ok bool) {
-	if !s.file.exists || !t.onLAN() || t.Serial == "" || t.Telescope != SerialKey(t.Serial) || s.folderAt(t) != "" {
+	if !s.file.exists || !t.onLAN() {
 		return "", "", false
 	}
 	from = AddressKey(t.Endpoint)
+	switch {
+	case t.Serial != "" && t.Telescope == SerialKey(t.Serial) && s.folderAt(t) == "":
+		to = t.Telescope
+	case t.Serial == "" && t.Heard != "" && t.Telescope == from && s.knowSerial != nil && s.file.settings.Telescopes[SerialKey(t.Heard)].Folder == "":
+		to = SerialKey(t.Heard)
+	default:
+		return "", "", false
+	}
 	if s.file.settings.Telescopes[from].Folder == "" {
 		return "", "", false
 	}
-	return from, t.Telescope, true
+	return from, to, true
 }
 
 // adopt gives the telescope the target is now its address's folder, as
@@ -755,28 +772,51 @@ func (s *server) adopt(w http.ResponseWriter, token string) {
 		conflict(errTelescopeMoved)
 		return
 	}
-	set, err := s.file.settings.adopt(from, to)
+	// A telescope saved by its address only is saved as the serial heard
+	// there first, as a route's Save would, which moves the copier's
+	// telescope as Change does. If that save succeeds and the folder's
+	// doesn't, the address's folder is offered again, as to any telescope
+	// saved with its serial.
+	known := from == t.Telescope
+	if known && (s.copy.passing() || s.preview.running() || s.free.running() || s.copy.on()) {
+		s.mu.Unlock()
+		s.admit.Unlock()
+		conflict("Stop copying, and wait for any preview or Free up space check to end, then use the address's folder.")
+		return
+	}
+	var set Settings
+	var err error
+	if known {
+		err = s.knowSerial(t)
+		t = s.current()
+	}
+	if err == nil {
+		set, err = s.file.settings.adopt(from, to)
+	}
 	if err == nil {
 		err = s.file.save(set)
 	}
+	var oldSessions *browse.Sessions
+	if err == nil && !known {
+		// The telescope has a folder now: Browse shows its records.
+		s.free.clear()
+		s.preview.discard()
+		oldSessions = s.sessions
+		s.browse, s.sessions = s.newBrowse(set)
+	}
+	page := s.pageSettings(t)
+	s.mu.Unlock()
+	if known {
+		s.endpointChanged()
+	}
+	seq := s.rep.next()
+	s.admit.Unlock()
 	if err != nil {
-		s.mu.Unlock()
-		seq := s.rep.next()
-		s.admit.Unlock()
 		s.log.Error("save settings", "err", reason(err))
 		s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpSaveSettings, Err: err, Seq: seq})
 		conflict("Couldn't save settings: " + reason(err) + ". Try again.")
 		return
 	}
-	// The telescope has a folder now: Browse shows its records.
-	s.free.clear()
-	s.preview.discard()
-	oldSessions := s.sessions
-	s.browse, s.sessions = s.newBrowse(set)
-	page := s.pageSettings(t)
-	s.mu.Unlock()
-	seq := s.rep.next()
-	s.admit.Unlock()
 	s.log.Info("settings saved", "telescope", "the address's folder is this telescope's now")
 	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpSaveSettings, Seq: seq})
 	if oldSessions != nil {
