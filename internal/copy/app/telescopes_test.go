@@ -218,7 +218,7 @@ func TestOverlapOnDisk(t *testing.T) {
 		filepath.Join(up, "B", "new"):         "",
 		dangling:                              folderUnresolved,
 		filepath.Join(dangling, "child"):      folderUnresolved,
-		string(filepath.Separator):            folderContains,
+		filepath.VolumeName(base) + string(filepath.Separator): folderContains, // the root of base's drive
 	} {
 		if got := set.overlap(keyB, folder); got != want {
 			t.Errorf("%q: %q, want %q", folder, got, want)
