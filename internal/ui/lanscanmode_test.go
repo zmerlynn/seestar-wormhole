@@ -731,6 +731,11 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 	n := &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"}}}
 	useLAN(t, n)
 	noDNS(t)
+	// The dial under test is the production one below copyDial, which the
+	// native check's guitest build sets to its fake telescope.
+	savedDial := copyDial
+	t.Cleanup(func() { copyDial = savedDial })
+	copyDial = nil
 	s := testServer(t)
 	s.controller.log = &eventLog{storage: s.storage}
 	if err := s.controller.persistRoute(routeLAN, "telescope.invalid:445", "SERIAL-A"); err != nil {
