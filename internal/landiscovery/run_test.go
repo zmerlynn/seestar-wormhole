@@ -113,17 +113,22 @@ func TestInRunRescansOnceAfterAFailedConnect(t *testing.T) {
 }
 
 func TestInRunFailedSearchKeepsNoAddress(t *testing.T) {
-	c := &runCounter{found: []string{"", "a"}, up: map[string]bool{"a": true}}
-	r := &Run{}
-	if _, _, err := c.connect(t, r, "k"); err == nil {
-		t.Fatal("a failed search connected")
-	}
-	at, searched, err := c.connect(t, r, "k")
-	if err != nil || at != "a" || !searched {
-		t.Fatalf("after a failed search: %q searched=%v %v", at, searched, err)
-	}
-	if len(c.dials) != 1 {
-		t.Fatalf("dials = %q: a failed search's address was dialed", c.dials)
+	for _, first := range []string{"", "b"} {
+		// The first search finds nothing, or finds the target at b and
+		// fails to connect there.
+		c := &runCounter{found: []string{first, "a"}, up: map[string]bool{"a": true}}
+		r := &Run{}
+		if _, _, err := c.connect(t, r, "k"); err == nil {
+			t.Fatal("a failed search connected")
+		}
+		dials := len(c.dials)
+		at, searched, err := c.connect(t, r, "k")
+		if err != nil || at != "a" || !searched {
+			t.Fatalf("after a failed search at %q: %q searched=%v %v", first, at, searched, err)
+		}
+		if len(c.dials) != dials+1 {
+			t.Fatalf("dials = %q: a failed search's address was dialed", c.dials)
+		}
 	}
 }
 
