@@ -14,6 +14,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
 	"mime"
+	"net"
 	"net/http"
 	"net/netip"
 	"path/filepath"
@@ -462,13 +463,68 @@ func (s *server) copyTarget() (copyapp.Target, error) {
 	s.mu.Unlock()
 	if settings.Route == routeLAN {
 		endpoint, err := lanEndpoint(settings)
-		return copyapp.Target{Endpoint: endpoint, Serial: settings.LANSerial}, err
+		return copyapp.Target{Endpoint: endpoint, Serial: settings.LANSerial, Telescope: SavedTelescope(settings)}, err
 	}
-	_, device, id, ok := s.controller.connected()
+	_, device, serial, id, ok := s.controller.connectedSerial()
 	if !ok {
-		return copyapp.Target{}, errNotConnected
+		return copyapp.Target{Telescope: SavedTelescope(settings)}, errNotConnected
 	}
-	return copyapp.Target{Endpoint: accountEndpoint, Device: device, Run: id}, nil
+	key := SavedTelescope(settings)
+	if serial != "" {
+		key = copyapp.SerialKey(serial)
+	}
+	return copyapp.Target{Endpoint: accountEndpoint, Device: device, Run: id, Telescope: key}, nil
+}
+
+// SavedTelescope is the key of the telescope settings save, which chooses
+// its copy folder: on this network its serial, or the address when it was
+// saved without one; through the account the saved serial, or "" when the
+// account's telescope isn't saved, until a run selects it.
+func SavedTelescope(s Settings) string {
+	if s.Route == routeLAN {
+		if s.LANSerial != "" {
+			return copyapp.SerialKey(s.LANSerial)
+		}
+		if endpoint, err := lanEndpoint(s); err == nil {
+			return copyapp.AddressKey(endpoint)
+		}
+		return ""
+	}
+	if s.Serial != "" {
+		return copyapp.SerialKey(s.Serial)
+	}
+	return ""
+}
+
+// telescopeName is how the Copy tab names t's telescope, in the folder it
+// suggests and the offer of an address's folder: "<model> <serial>", or
+// for an address "<model or Seestar> <host> <port>". It is never logged.
+func (s *server) telescopeName(t copyapp.Target) string {
+	if t.Device != "" {
+		return t.Device
+	}
+	if t.Serial != "" {
+		model := s.lan.modelOf(t.Serial)
+		if model == "" {
+			s.mu.Lock()
+			if s.settings.Serial == t.Serial {
+				model = s.settings.Model
+			}
+			s.mu.Unlock()
+		}
+		return cloudhttp.Device{Serial: t.Serial, Model: model}.DisplayName()
+	}
+	host, port, err := net.SplitHostPort(t.Endpoint)
+	if err != nil {
+		return "Seestar"
+	}
+	model := "Seestar"
+	if ip, err := netip.ParseAddr(host); err == nil {
+		if m := s.lan.modelAt(ip); m != "" {
+			model = cloudhttp.ModelLabel(m)
+		}
+	}
+	return model + " " + host + " " + port
 }
 
 // SavedCopyEndpoint is the TCP endpoint saved settings name for a copier

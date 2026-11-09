@@ -37,6 +37,7 @@ type lanState struct {
 // heard at an address; "" when a probe of the address got no answer.
 type sighting struct {
 	serial string
+	model  string // the model it answered with, for naming its folder
 	gen    uint64
 }
 
@@ -57,21 +58,41 @@ func (l *lanState) remember(gen uint64, probed netip.Addr, r landiscovery.ScanRe
 	if l.seen == nil || len(l.seen) > maxSeen {
 		l.seen = make(map[netip.Addr]sighting)
 	}
-	set := func(address netip.Addr, serial string) {
+	set := func(address netip.Addr, serial, model string) {
 		if old, ok := l.seen[address]; !ok || old.gen <= gen {
-			l.seen[address] = sighting{serial, gen}
+			l.seen[address] = sighting{serial, model, gen}
 		}
 	}
 	answered := false
 	for _, t := range r.Telescopes {
 		for _, address := range t.Addresses {
-			set(address, t.Serial)
+			set(address, t.Serial, t.Model)
 			answered = answered || address == probed
 		}
 	}
 	if probed.IsValid() && !answered {
-		set(probed, "")
+		set(probed, "", "")
 	}
+}
+
+// modelOf is the model the latest scan or probe heard with serial, or "".
+func (l *lanState) modelOf(serial string) string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var best sighting
+	for _, s := range l.seen {
+		if s.serial == serial && s.model != "" && s.gen >= best.gen {
+			best = s
+		}
+	}
+	return best.model
+}
+
+// modelAt is the model last heard at address, or "".
+func (l *lanState) modelAt(address netip.Addr) string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.seen[address.Unmap()].model
 }
 
 // serial is the serial last heard at address, if the latest word on it

@@ -499,12 +499,19 @@ func (c *controller) savedAt(address, serial string) bool {
 // what open a dormant session. The telescope's label is for comparing
 // only: it names the serial.
 func (c *controller) connected() (run Settings, device string, id uint64, ok bool) {
+	run, device, _, id, ok = c.connectedSerial()
+	return run, device, id, ok
+}
+
+// connectedSerial is connected with the selected telescope's serial, which
+// keys its copy folder and is never shown or logged.
+func (c *controller) connectedSerial() (run Settings, device, serial string, id uint64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.done == nil || c.stopping || !c.status.Armed() || !c.files.live(c.runs) {
-		return Settings{}, "", 0, false
+		return Settings{}, "", "", 0, false
 	}
-	return c.runSettings, c.status.SelectedDevice(), c.runs, true
+	return c.runSettings, c.status.SelectedDevice(), c.status.SelectedSerial(), c.runs, true
 }
 
 func (c *controller) isReady(status *proxy.Status) bool {
