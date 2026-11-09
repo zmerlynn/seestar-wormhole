@@ -39,16 +39,19 @@ func Save(ctx context.Context, lease *Lease, p, dst string, hold Hold) error {
 	}, func(tmp string) { os.Remove(tmp) })
 }
 
-// missingFolder is err, from creating a file in dir, or the error that
-// dir doesn't exist when it doesn't, so a save to a folder that isn't
-// there says "not found" on every system: Windows has answered such a
-// create with an error that reads as a file where a folder should be.
+// missingFolder is err, from creating a file in dir, or, when dir isn't
+// there, an error that says only that it doesn't exist. On Windows a
+// create in a missing folder fails with ERROR_PATH_NOT_FOUND, which Go's
+// syscall package also names ENOTDIR, so that error reads both as not
+// found and as not a folder, and a check for ENOTDIR first takes it for
+// the second. A stat of dir tells them apart. Elsewhere the error a
+// missing folder gives is only not-exist already, and keeps that class.
 func missingFolder(dir string, err error) error {
-	if err == nil || errors.Is(err, fs.ErrNotExist) {
+	if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
 	if _, serr := os.Stat(dir); errors.Is(serr, fs.ErrNotExist) {
-		return serr
+		return &fs.PathError{Op: "createtemp", Path: dir, Err: fs.ErrNotExist}
 	}
 	return err
 }

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
@@ -158,31 +159,43 @@ func TestSaveCanceledMidFile(t *testing.T) {
 func TestSaveUnwritable(t *testing.T) {
 	e, dir := saveEnv(t, nil)
 	err := Save(t.Context(), leased(t, e.p), fitPath, filepath.Join(dir, "missing", "X.fit"), nil)
-	if !errors.Is(err, fs.ErrNotExist) {
+	// Not also ENOTDIR, which Windows' answer is too: see missingFolder.
+	if !errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 		t.Errorf("Save = %v", err)
 	}
 	onlyFile(t, dir, []byte("old"))
 }
 
-// A create that fails in a folder that isn't there says the folder is
-// missing, whatever the system answered; in one that is there, the
-// create's own error stands.
+// A create that fails because its folder isn't there says only that,
+// even when the system's error also reads as not a folder, as Windows'
+// ERROR_PATH_NOT_FOUND does; any other error, or a not-exist in a folder
+// that is there, stands.
 func TestMissingFolder(t *testing.T) {
 	dir := t.TempDir()
-	other := errors.New("synthetic")
-	if err := missingFolder(filepath.Join(dir, "gone"), other); !errors.Is(err, fs.ErrNotExist) {
+	gone := filepath.Join(dir, "gone")
+	both := &fs.PathError{Op: "open", Path: "x", Err: notExistNotDir{}}
+	if err := missingFolder(gone, both); !errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 		t.Errorf("missing folder: %v", err)
 	}
-	if err := missingFolder(dir, other); err != other {
+	if err := missingFolder(dir, both); err != both {
 		t.Errorf("folder there: %v", err)
 	}
-	notExist := &fs.PathError{Op: "open", Path: "x", Err: fs.ErrNotExist}
-	if err := missingFolder(filepath.Join(dir, "gone"), notExist); err != notExist {
-		t.Errorf("not-exist kept: %v", err)
+	other := errors.New("synthetic")
+	if err := missingFolder(gone, other); err != other {
+		t.Errorf("other error: %v", err)
 	}
-	if err := missingFolder(filepath.Join(dir, "gone"), nil); err != nil {
+	if err := missingFolder(gone, nil); err != nil {
 		t.Errorf("no error: %v", err)
 	}
+}
+
+// notExistNotDir is an error that is both not-exist and ENOTDIR, as
+// ERROR_PATH_NOT_FOUND is on Windows.
+type notExistNotDir struct{}
+
+func (notExistNotDir) Error() string { return "synthetic path not found" }
+func (notExistNotDir) Is(target error) bool {
+	return target == fs.ErrNotExist || target == syscall.ENOTDIR
 }
 
 // TestDownload checks that Download leaves only a checked GET with
