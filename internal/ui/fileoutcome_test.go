@@ -1257,6 +1257,11 @@ func TestTrailPrivacySentinels(t *testing.T) {
 	e.mustPost("/copy/api/folder", `{"folder":""}`, 500)
 	e.get("/browse/file?path=" + trailFile + "&download=1")
 	e.reported(diagnostic.SourceBrowse, diagnostic.OpSaveFile, 1)
+	// The download connected before its dialog. Wait for both successful
+	// Browse connects before injecting the next connection failure.
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2); o.Failed() {
+		t.Fatalf("connect before dialog = %+v", o)
+	}
 	folder, _ := json.Marshal(e.folder + "-other")
 	e.post("/copy/api/settings", `{"folder":`+string(folder)+`,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`)
 	e.reported(diagnostic.SourceCopy, diagnostic.OpSaveSettings, 2)
@@ -1264,7 +1269,7 @@ func TestTrailPrivacySentinels(t *testing.T) {
 	e.lan("192.0.2.11")
 	e.browse()
 	// The connect's outcome can reach the trail after the listing answers.
-	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2); !o.Failed() {
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 3); !o.Failed() {
 		t.Fatalf("connect = %+v", o)
 	}
 	e.s.controller.log.addCatalog(cloudhttp.Catalog{Pairs: []cloudhttp.CatalogPair{{Model: "S30", Serial: "SERIAL-SENTINEL"}}, Count: 1, Complete: true})
