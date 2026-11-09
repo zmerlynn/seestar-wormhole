@@ -45,7 +45,8 @@ firmware behind it change without notice, as above.
    `127.0.0.1:0`, `--open`, off by default, `--dest` and `--history-dir`; `--listen` takes an IP address and a port,
    never a host name; and browse shows the whole share, with the selection flags, only with `--dest`, choosing only
    what shows as left out. `--log-format` defaults to `json` for `proxy` and `discovery` and to `text` for the file
-   commands.
+   commands. `--scan` takes `start`, `connect` or `off`, and with `--profile default` defaults to the app's saved
+   `lan_scan`, `start` without one, as in [use the app's saved settings](reference/files-cli.md#use-the-apps-saved-settings).
 2. **Runtime inputs.** `SEESTAR_EMAIL` and `SEESTAR_PASSWORD` and how they are interpreted. Without `--config`,
    `proxy` reads no config or credential file (a systemd EnvironmentFile is the service manager's, not ours). With
    `--config`, it reads the UI's saved `config.json` without rewriting it, and takes the password from the OS keychain

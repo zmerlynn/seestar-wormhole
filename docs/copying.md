@@ -125,13 +125,21 @@ checks that the address answers file sharing. On a Mac, scanning needs
 Local Network access; see [things to know](#things-to-know).
 
 An address picked from a scan is saved with the telescope's serial number.
-From then on, every connect scans for that serial and uses the address the
+From then on, the app scans for that serial and uses the address the
 telescope answers from, the saved one first, so a new address from the
 router is followed and saved; `--profile default` on the command line
 follows it the same way for that run. If another telescope answers at the
 saved address, it isn't used. If the scan doesn't see the telescope, the
 saved address is tried. Free up space deletes only where its preview
 connected; if the telescope has moved since, preview again.
+
+By default it scans once when copying starts, and once when Browse opens or
+Free up space checks, and again only when a connection fails. **Scan for
+the saved telescope** under **On this network** can make it scan before
+every connection, or never: then nothing is sent on this network unless you
+choose **Scan**, and a telescope that moves isn't followed. On the command
+line, `--scan=start`, `--scan=connect` or `--scan=off` chooses for one
+run.
 
 The app takes the address alone and uses SMB port 445 unless you add another
 port. `seestar-wormhole-cli` needs the port too: `--endpoint 192.0.2.10:445`.

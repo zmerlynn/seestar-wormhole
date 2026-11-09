@@ -603,6 +603,13 @@ In trail entries:
   - `scan_other_telescope`: another telescope answers at the saved address
     and the scan didn't see the saved serial anywhere; the saved address
     isn't used, and the connect fails.
+
+  A connect scans as `lan_scan` in
+  [`config.json`](app-settings.md#configjson-version-1) says: by default
+  once per run (starting copying, opening Browse, each preview or Free up
+  space check), and again only when a connect fails; with `connect`, on
+  every connect; with `off`, never, so none of the connect codes above is
+  recorded, and `scan_probed` neither.
 - File-tool lines carry a fixed message and the classified `phase` and
   `reason`. They leave out paths, file and folder names, endpoints and error
   text. Connection lines keep their telescope text, including the selected
