@@ -358,10 +358,21 @@ func TestPreviewsAndBrowseAreRuns(t *testing.T) {
 		Settings: &set, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}))
 	s.copy = copyapp.NewMount(t.Context(), o)
 	t.Cleanup(s.copy.Quit)
+	// An outcome is reported before its controller has stopped, so the
+	// next operation waits until the Mount is idle.
+	idle := func() {
+		t.Helper()
+		for deadline := time.Now().Add(10 * time.Second); s.copy.Busy(); time.Sleep(time.Millisecond) {
+			if time.Now().After(deadline) {
+				t.Fatal("the Mount never became idle")
+			}
+		}
+	}
 	if code := doPost(s, "/copy/api/copy", `{"action":"start"}`).Code; code != 200 {
 		t.Fatalf("start = %d", code)
 	}
 	await(diagnostic.SourceCopy, diagnostic.OpPass)
+	idle()
 	if n.scans() != 1 {
 		t.Fatalf("a Copy start scanned %d times", n.scans())
 	}
@@ -372,6 +383,7 @@ func TestPreviewsAndBrowseAreRuns(t *testing.T) {
 		if out := await(diagnostic.SourceDelete, diagnostic.OpPreview); out.Failed() {
 			t.Fatalf("check %d failed: %v", i-1, out.Err)
 		}
+		idle()
 		if n.scans() != i {
 			t.Fatalf("Free up space check %d made the scans %d, want %d", i-1, n.scans(), i)
 		}
