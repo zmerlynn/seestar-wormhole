@@ -676,8 +676,11 @@ func (s *server) adopt(w http.ResponseWriter) {
 		conflict("There is no folder to use for this telescope now.")
 		return
 	}
-	set := s.file.settings.adopt(from, to)
-	if err := s.file.save(set); err != nil {
+	set, err := s.file.settings.adopt(from, to)
+	if err == nil {
+		err = s.file.save(set)
+	}
+	if err != nil {
 		s.mu.Unlock()
 		seq := s.rep.next()
 		s.admit.Unlock()

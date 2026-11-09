@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"log/slog"
 	"maps"
@@ -99,12 +100,44 @@ func TestWithFolderAndClaim(t *testing.T) {
 func TestAdoptMovesOneEntry(t *testing.T) {
 	addr := AddressKey("192.0.2.10:445")
 	set := *claimedAt("/data/A", map[string]string{keyA: "/data/A", addr: "/data/Addr"})
-	got := set.adopt(addr, keyB)
+	got, err := set.adopt(addr, keyB)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if !maps.Equal(folderMap(got), map[string]string{keyA: "/data/A", keyB: "/data/Addr"}) || got.Folder != "/data/A" {
 		t.Errorf("adopt = %+v", got)
 	}
 	if _, ok := set.Telescopes[keyB]; ok {
 		t.Error("adopt changed the settings it was given")
+	}
+}
+
+// Adopting keeps the members a later version added to either entry: the
+// address's travel with its folder, and win over the serial's of the same
+// name; the serial's own stay.
+func TestAdoptKeepsUnknownMembers(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{`{"version":1,"folder":"/synthetic/A","telescopes":{"address:192.0.2.10:445":{"folder":"/synthetic/A","future":{"kept":true}}}}`,
+			`"serial:SYNTHETIC-A":{"folder":"/synthetic/A","future":{"kept":true}}`},
+		{`{"version":1,"folder":"/synthetic/A","telescopes":{"address:192.0.2.10:445":{"folder":"/synthetic/A","future":1,"from":"address"},` +
+			`"serial:SYNTHETIC-A":{"later":[2],"future":0}}}`,
+			`"serial:SYNTHETIC-A":{"folder":"/synthetic/A","from":"address","future":1,"later":[2]}`},
+	} {
+		var s Settings
+		if err := json.Unmarshal([]byte(tc.in), &s); err != nil {
+			t.Fatal(err)
+		}
+		got, err := s.adopt(AddressKey("192.0.2.10:445"), SerialKey("SYNTHETIC-A"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		out, err := json.Marshal(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(string(out), tc.want) || strings.Contains(string(out), "address:") {
+			t.Errorf("adopt of %s = %s", tc.in, out)
+		}
 	}
 }
 
@@ -376,7 +409,11 @@ func TestSaveRefusesSharedFolders(t *testing.T) {
 func TestAddressFolderOffered(t *testing.T) {
 	first, addrFolder := abs("/data/Seestar"), abs("/data/Seestar 192.0.2.10 445")
 	addr := AddressKey(testEndpoint)
-	e := newAppEnv(t, claimedAt(first, map[string]string{keyA: first, addr: addrFolder}))
+	set := claimedAt(first, map[string]string{keyA: first, addr: addrFolder})
+	entry := set.Telescopes[addr]
+	entry.Unknown = jsontext.Value(`{"future":true}`)
+	set.Telescopes[addr] = entry
+	e := newAppEnv(t, set)
 	e.key, e.serial, e.name = keyB, serialB, "Seestar S30 "+serialB
 	got := e.status()
 	if got.Telescope.Offer == nil || got.Telescope.Offer.Name != "Seestar S30 "+serialB || got.Telescope.Offer.Folder != addrFolder || got.SetUp {
@@ -392,7 +429,8 @@ func TestAddressFolderOffered(t *testing.T) {
 		t.Fatalf("adopt = %d %s", w.Code, w.Body)
 	}
 	saves := e.saves()
-	if len(saves) != 1 || !maps.Equal(folderMap(saves[0]), map[string]string{keyA: first, keyB: addrFolder}) {
+	if len(saves) != 1 || !maps.Equal(folderMap(saves[0]), map[string]string{keyA: first, keyB: addrFolder}) ||
+		string(saves[0].Telescopes[keyB].Unknown) != `{"future":true}` {
 		t.Errorf("saved %+v", saves)
 	}
 	if got := e.status(); !got.SetUp || got.Telescope.Offer != nil || got.Settings.Folder != addrFolder {

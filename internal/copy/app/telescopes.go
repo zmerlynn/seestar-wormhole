@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"maps"
 	"path/filepath"
 	"runtime"
@@ -83,15 +84,46 @@ func (s Settings) claim(key string) (Settings, bool) {
 }
 
 // adopt is s with the folder of the telescope keyed from given to the one
-// keyed to, which has none, and from's entry removed.
-func (s Settings) adopt(from, to string) Settings {
+// keyed to, which has none, and from's entry removed. The members a later
+// version added to from's entry go with its folder, taking the place of
+// to's of the same name.
+func (s Settings) adopt(from, to string) (Settings, error) {
 	t := maps.Clone(s.Telescopes)
 	e := t[to]
 	e.Folder = t[from].Folder
+	unknown, err := mergeMembers(e.Unknown, t[from].Unknown)
+	if err != nil {
+		return s, err
+	}
+	e.Unknown = unknown
 	t[to] = e
 	delete(t, from)
 	s.Telescopes = t
-	return s
+	return s, nil
+}
+
+// mergeMembers is the object of base's members and over's, over's winning
+// a name both have, with its members in name order.
+func mergeMembers(base, over jsontext.Value) (jsontext.Value, error) {
+	if len(over) == 0 {
+		return base, nil
+	}
+	if len(base) == 0 {
+		return over, nil
+	}
+	var m, o map[string]jsontext.Value
+	if err := json.Unmarshal(base, &m); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(over, &o); err != nil {
+		return nil, err
+	}
+	if m == nil {
+		m = map[string]jsontext.Value{}
+	}
+	maps.Copy(m, o)
+	b, err := json.Marshal(m, json.Deterministic(true))
+	return jsontext.Value(b), err
 }
 
 // Messages for a folder another telescope's folder is, contains or is in.
