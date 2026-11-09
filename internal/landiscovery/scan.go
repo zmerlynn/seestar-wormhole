@@ -235,11 +235,11 @@ func (s *Scanner) run(ctx context.Context, targets []target, local map[netip.Add
 	// A done ctx moves the read deadline into the past. The mutex keeps the
 	// loop from moving it forward again afterward.
 	var mu sync.Mutex
-	cancelled := false
+	canceled := false
 	stop := context.AfterFunc(ctx, func() {
 		mu.Lock()
 		defer mu.Unlock()
-		cancelled = true
+		canceled = true
 		conn.SetReadDeadline(time.Unix(1, 0))
 	})
 	defer stop()
@@ -279,7 +279,7 @@ func (s *Scanner) run(ctx context.Context, targets []target, local map[netip.Add
 			deadline = next
 		}
 		mu.Lock()
-		if cancelled {
+		if canceled {
 			mu.Unlock()
 			break
 		}
