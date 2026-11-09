@@ -51,7 +51,10 @@ type server struct {
 	test  func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	reach func(ctx context.Context, endpoint string) error
 	// target is where the telescope is for every dial and start.
-	target  func() (Target, error)
+	target func() (Target, error)
+	// name is how the page names a target's telescope; see
+	// [MountOptions.Name].
+	name    func(Target) string
 	native  Native // the window's dialogs; each nil without one
 	copy    *controller
 	preview *previewer
@@ -85,6 +88,10 @@ type server struct {
 	// endpoint status finds, such as a route's run connecting.
 	view   int
 	viewAt Target // the target view last moved for; zero for none
+	// telescope counts the telescopes status has found the target to be,
+	// for the page, which fills the folder field again once it moved.
+	telescope   int
+	telescopeAt string // the key telescope last moved for
 }
 
 func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server {
@@ -92,15 +99,20 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
+	// The copy folder is a telescope's: no log or Activity line names it.
+	log = slog.New(withoutFolder{log.Handler()})
 	s := &server{
 		ctx: ctx, addr: o.Addr, version: o.Version, stateDir: o.StateDir, target: o.Target, file: file, log: log,
-		rep: &reporter{report: o.Report},
+		rep: &reporter{report: o.Report}, name: o.Name,
 		test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 			return engine.Test(ctx, endpoint, log)
 		},
 	}
 	if o.Test != nil {
 		s.test = o.Test
+	}
+	if s.name == nil {
+		s.name = func(Target) string { return "Seestar" }
 	}
 	s.reach = o.Reach
 	if s.reach == nil {
@@ -149,7 +161,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	s.free = newFreer(ctx, o.StateDir, log, dial)
 	s.free.at, s.free.rep = at, s.rep
 	// Free up space's outcomes join copy's in Activity, tagged "delete".
-	s.free.record = slog.New(newTee(slog.DiscardHandler, s.copy.activity, "delete"))
+	s.free.record = slog.New(withoutFolder{newTee(slog.DiscardHandler, s.copy.activity, "delete")})
 	if o.Remover != nil {
 		s.free.remover = o.Remover
 	}
@@ -159,17 +171,100 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	return s
 }
 
-// setUp reports whether the saved settings are enough to copy: a folder,
-// since the address is the target's.
+// setUp reports whether the saved settings are enough to copy to the
+// telescope the target is now: its folder, since the address is the
+// target's. It is called holding s.mu.
 func (s *server) setUp() bool {
-	return s.file.exists && s.file.settings.Folder != ""
+	return s.folderAt(s.current()) != ""
 }
 
-// resolve is set with the target's address now, and the target.
+// current is the target now, or, when there is none, only the telescope
+// the host knows is saved.
+func (s *server) current() Target {
+	t, err := s.target()
+	if err != nil {
+		return Target{Telescope: t.Telescope}
+	}
+	return t
+}
+
+// folderAt is the saved folder of t's telescope, or "" before it has one.
+// It is called holding s.mu.
+func (s *server) folderAt(t Target) string {
+	if !s.file.exists {
+		return ""
+	}
+	return s.file.settings.FolderFor(t.Telescope)
+}
+
+// resolve is set with the target's address now and its telescope's
+// folder, and the target.
 func (s *server) resolve(set Settings) (Settings, Target, error) {
 	t, err := s.target()
-	set.Address = t.Endpoint
-	return set, t, err
+	return settingsAt(set, t), t, err
+}
+
+// settingsAt is set with t's address and the folder of t's telescope.
+func settingsAt(set Settings, t Target) Settings {
+	set.Address, set.Folder = t.Endpoint, set.FolderFor(t.Telescope)
+	return set
+}
+
+// errNoFolder refuses Copy and Free up space for a telescope with no
+// folder yet, while another telescope has one.
+var errNoFolder = errors.New("this telescope has no folder yet; choose one in Copy")
+
+// ready checks, holding s.mu, that the telescope of t, the target now,
+// which failed with err, has a folder, and gives Folder to the first
+// telescope known, so a later one can't take it too. A telescope not
+// known until there is a target fails with the target's error, as a
+// [noTarget]. The caller reads the target once, since a check that
+// started at one target must not go on at another.
+func (s *server) ready(t Target, err error) error {
+	if err != nil {
+		t = Target{Telescope: t.Telescope}
+	}
+	if s.folderAt(t) != "" {
+		s.claim(t.Telescope)
+		return nil
+	}
+	switch {
+	case !s.file.exists || !s.file.settings.claimed():
+		return errNotSetUp
+	case t.Telescope == "" && err != nil:
+		return noTarget{err}
+	}
+	return errNoFolder
+}
+
+// wantsStart reports, holding s.mu, whether copying is to start as the
+// app opens: the settings say so and the telescope has a folder, or isn't
+// known until there is a target.
+func (s *server) wantsStart() bool {
+	if !s.file.exists || !s.file.settings.StartCopying {
+		return false
+	}
+	t, err := s.target()
+	return s.folderAt(t) != "" || err != nil && t.Telescope == "" && s.file.settings.claimed()
+}
+
+// claim saves Folder as the folder of the telescope keyed key when no
+// telescope has a folder of its own yet: as copying, a preview, Free up
+// space, a clear of the history or a change of route begins, and never
+// just because the file was read. A failure is logged only: the folder
+// stays every telescope's until a save succeeds. It is called holding
+// s.mu.
+func (s *server) claim(key string) {
+	if !s.file.exists {
+		return
+	}
+	set, ok := s.file.settings.claim(key)
+	if !ok {
+		return
+	}
+	if err := s.file.save(set); err != nil {
+		s.log.Warn("couldn't save this telescope's folder", "err", reason(err))
+	}
 }
 
 // newBrowse builds a browse handler with its own session pool, which
@@ -188,7 +283,7 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 // the scan on this network, with its own sessions. It is called holding
 // s.mu, or before the server is shared.
 func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
-	folder, log := set.Folder, s.log
+	folder, log := s.folderAt(s.current()), s.log
 	// Every pool, old or new, numbers its outcomes from the Mount's one
 	// sequence, so an old pool's late failure can't reopen what a new
 	// one's success cleared.
@@ -205,7 +300,7 @@ func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 	}, log, rep)
 	var records func() (map[string]state.Record, error)
 	var sel engine.Selector
-	if s.setUp() {
+	if folder != "" {
 		var err error
 		if sel, err = selector(set); err != nil {
 			log.Warn("browse shows nothing as left out", "err", err)
@@ -253,13 +348,14 @@ func (s *server) startCopyingSeq(opening bool) (seq uint64, err error) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if !s.setUp() {
-		return 0, errNotSetUp
+	t, terr := s.target()
+	if err := s.ready(t, terr); err != nil {
+		return 0, err
 	}
-	set, t, err := s.resolve(s.file.settings)
-	if err != nil {
-		return 0, noTarget{err}
+	if terr != nil {
+		return 0, noTarget{terr}
 	}
+	set := settingsAt(s.file.settings, t)
 	if err := s.copy.start(set, t); err != nil {
 		return 0, err
 	}
@@ -283,16 +379,17 @@ func (s *server) startPreview() (seq uint64, err error) {
 	defer func() { seq = s.rep.next() }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	switch {
-	case !s.setUp():
-		return 0, errNotSetUp
-	case s.copy.on():
-		return 0, errors.New("copying is on")
-	}
-	set, t, err := s.resolve(s.file.settings)
-	if err != nil {
+	t, terr := s.target()
+	if err := s.ready(t, terr); err != nil {
 		return 0, err
 	}
+	if s.copy.on() {
+		return 0, errors.New("copying is on")
+	}
+	if terr != nil {
+		return 0, terr
+	}
+	set := settingsAt(s.file.settings, t)
 	return 0, s.preview.start(set, t)
 }
 
@@ -389,7 +486,7 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 		}
 		s.status(w)
 		return
-	case "test", "settings", "copy", "delete", "clear":
+	case "test", "settings", "copy", "delete", "clear", "adopt":
 	case "folder":
 		if s.native.ChooseFolder == nil {
 			fail(http.StatusNotFound)
@@ -424,6 +521,8 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 		s.freeAction(w, in)
 	case "clear":
 		s.clearHistory(w)
+	case "adopt":
+		s.adopt(w)
 	default:
 		s.save(w, in)
 	}
@@ -453,37 +552,158 @@ type input struct {
 }
 
 func (s *server) status(w http.ResponseWriter) {
-	t, err := s.target()
-	if err != nil {
-		t = Target{}
-	}
+	t := s.current()
 	s.mu.Lock()
 	if t != s.viewAt {
 		s.viewAt = t
 		s.view++
 	}
-	set, setUp, view := s.file.settings, s.setUp(), s.view
+	if t.Telescope != s.telescopeAt {
+		s.telescopeAt = t.Telescope
+		s.telescope++
+	}
+	folder, view := s.folderAt(t), s.view
+	set, tv := s.pageSettings(t), s.telescopeView(t)
 	s.mu.Unlock()
-	// The saved folder's state file, as sync names it.
+	setUp := folder != ""
+	// The telescope's folder's state file, as sync names it.
 	var history string
 	if setUp {
-		history, _ = state.Path(set.historyDir(s.stateDir), set.Folder)
+		history, _ = state.Path(set.historyDir(s.stateDir), folder)
 	}
 	lines, seq := s.copy.activity.lines()
 	localhttp.Respond(w, http.StatusOK, struct {
-		Version         string   `json:"version"`
-		SetUp           bool     `json:"set_up"`
-		Settings        Settings `json:"settings"`
-		History         string   `json:"history"`         // "" until set up
-		DefaultHistory  string   `json:"default_history"` // the history folder an empty history_dir means
-		DefaultExcludes []string `json:"default_excludes"`
-		Copy            copyView `json:"copy"`
-		Free            freeView `json:"free"`
-		Activity        []entry  `json:"activity"` // newest first
-		ActivitySeq     int      `json:"activity_seq"`
-		Choose          bool     `json:"choose"`      // the window's folder picker is there
-		BrowseView      int      `json:"browse_view"` // moves when Browse should load again
-	}{s.version, setUp, set, history, s.stateDir, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil, view})
+		Version         string        `json:"version"`
+		SetUp           bool          `json:"set_up"`
+		Settings        Settings      `json:"settings"`
+		History         string        `json:"history"`         // "" until set up
+		DefaultHistory  string        `json:"default_history"` // the history folder an empty history_dir means
+		DefaultExcludes []string      `json:"default_excludes"`
+		Copy            copyView      `json:"copy"`
+		Free            freeView      `json:"free"`
+		Activity        []entry       `json:"activity"` // newest first
+		ActivitySeq     int           `json:"activity_seq"`
+		Choose          bool          `json:"choose"`      // the window's folder picker is there
+		BrowseView      int           `json:"browse_view"` // moves when Browse should load again
+		Telescope       telescopeView `json:"telescope"`
+	}{s.version, setUp, set, history, s.stateDir, engine.DefaultExcludes, s.copyView(), s.free.view(), lines, seq, s.native.ChooseFolder != nil, view, tv})
+}
+
+// pageSettings is what the page shows of the settings for t's telescope,
+// holding s.mu: its folder, or the folder suggested for it before it has
+// one, and never the telescopes, whose keys hold serials and addresses.
+func (s *server) pageSettings(t Target) Settings {
+	set := s.file.settings
+	set.Telescopes = nil
+	switch folder := s.folderAt(t); {
+	case folder != "":
+		set.Folder = folder
+	case s.file.exists && s.file.settings.claimed():
+		set.Folder = ""
+		if t.Telescope != "" {
+			set.Folder = Suggested(s.file.settings.Folder, s.name(t))
+		}
+	}
+	return set
+}
+
+// telescopeView is what the page knows of the telescope the target is.
+type telescopeView struct {
+	// ID moves when the target is another telescope, and the page fills
+	// the folder field again.
+	ID int `json:"id"`
+	// Known is false while the telescope can't be known until the
+	// connection is up, and another telescope has a folder: its folder
+	// can't be chosen yet.
+	Known bool `json:"known"`
+	// New is true when another telescope has a folder and this one has
+	// none yet.
+	New bool `json:"new"`
+	// Offer is the folder saved for this telescope's address, offered to
+	// it now that its serial is known, or nil.
+	Offer *offerView `json:"offer"`
+}
+
+// offerView is an address's folder offered to the telescope known there
+// now: its name on the page and the folder.
+type offerView struct {
+	Name   string `json:"name"`
+	Folder string `json:"folder"`
+}
+
+// telescopeView is the page's view of t's telescope, holding s.mu.
+func (s *server) telescopeView(t Target) telescopeView {
+	claimed := s.file.exists && s.file.settings.claimed()
+	v := telescopeView{ID: s.telescope, Known: t.Telescope != "" || !claimed, New: claimed && s.folderAt(t) == ""}
+	if from, _, ok := s.offerAt(t); ok {
+		v.Offer = &offerView{Name: s.name(t), Folder: s.file.settings.Telescopes[from].Folder}
+	}
+	return v
+}
+
+// offerAt finds, holding s.mu, the address's folder to offer t's
+// telescope: on this network, a telescope saved with its serial whose
+// key has no folder, at the saved address whose own key has one. It
+// returns both keys.
+func (s *server) offerAt(t Target) (from, to string, ok bool) {
+	if !s.file.exists || !t.onLAN() || t.Serial == "" || t.Telescope != SerialKey(t.Serial) || s.folderAt(t) != "" {
+		return "", "", false
+	}
+	from = AddressKey(t.Endpoint)
+	if s.file.settings.Telescopes[from].Folder == "" {
+		return "", "", false
+	}
+	return from, t.Telescope, true
+}
+
+// adopt gives the telescope the target is now its address's folder, as
+// the page's offer asks, and answers the settings as status shows them.
+// Nothing moves until this runs: the address may be another telescope's
+// now.
+func (s *server) adopt(w http.ResponseWriter) {
+	conflict := func(msg string) {
+		localhttp.Respond(w, http.StatusConflict, struct {
+			Error string `json:"error"`
+		}{msg})
+	}
+	s.admit.Lock()
+	s.mu.Lock()
+	t := s.current()
+	from, to, ok := s.offerAt(t)
+	if !ok {
+		s.mu.Unlock()
+		s.admit.Unlock()
+		conflict("There is no folder to use for this telescope now.")
+		return
+	}
+	set := s.file.settings.adopt(from, to)
+	if err := s.file.save(set); err != nil {
+		s.mu.Unlock()
+		seq := s.rep.next()
+		s.admit.Unlock()
+		s.log.Error("save settings", "err", reason(err))
+		s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpSaveSettings, Err: err, Seq: seq})
+		conflict("Couldn't save settings: " + reason(err) + ". Try again.")
+		return
+	}
+	// The telescope has a folder now: Browse shows its records.
+	s.free.clear()
+	s.preview.discard()
+	oldSessions := s.sessions
+	s.browse, s.sessions = s.newBrowse(set)
+	page := s.pageSettings(t)
+	s.mu.Unlock()
+	seq := s.rep.next()
+	s.admit.Unlock()
+	s.log.Info("settings saved", "telescope", "the address's folder is this telescope's now")
+	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpSaveSettings, Seq: seq})
+	if oldSessions != nil {
+		oldSessions.Close()
+	}
+	localhttp.Respond(w, http.StatusOK, struct {
+		Settings      Settings `json:"settings"`
+		BrowseChanged bool     `json:"browse_changed"`
+	}{page, true})
 }
 
 func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
@@ -493,10 +713,11 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		return
 	}
 	entries, err := s.testLAN(ctx, endpoint)
+	// The address is the user's to see on the page, never in a log.
 	if err != nil {
-		s.log.Warn("test failed", "endpoint", endpoint, "err", err)
+		s.log.Warn("test failed", "err", err)
 	} else {
-		s.log.Info("test passed", "endpoint", endpoint)
+		s.log.Info("test passed")
 	}
 	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpTest, Err: err, Canceled: ctx.Err() != nil && err != nil, Seq: s.rep.next()})
 	localhttp.Respond(w, http.StatusOK, struct {
@@ -545,7 +766,23 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		}{"Stop copying to change settings."})
 		return
 	}
-	old, wasSetUp := s.file.settings, s.setUp()
+	old, t := s.file.settings, s.current()
+	oldFolder := s.folderAt(t)
+	// The folder is the telescope's the target is now; the rest is every
+	// telescope's. A telescope not known yet can choose a folder only
+	// while none has one: it takes the first folder.
+	if errs := s.checkFolder(t.Telescope, set); len(errs) > 0 {
+		s.mu.Unlock()
+		s.admit.Unlock()
+		localhttp.Respond(w, http.StatusBadRequest, fieldErrors{errs})
+		return
+	}
+	folder := set.Folder
+	set.Folder, set.Telescopes = old.Folder, old.Telescopes
+	if !s.file.exists {
+		set.Folder = ""
+	}
+	set = set.withFolder(t.Telescope, folder)
 	// The Free up space options are saved by Find, not by this form.
 	set.OlderThanDays, set.TrustState = old.OlderThanDays, old.TrustState
 	set.FreeExcludes, set.FreeIncludes = old.FreeExcludes, old.FreeIncludes
@@ -565,7 +802,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	// records, and discards both previews, which read them. A new
 	// selection replaces browse too, which shows what it leaves out; Free
 	// up space has its own patterns.
-	moved := !wasSetUp || old.Folder != set.Folder || old.HistoryDir != set.HistoryDir
+	moved := oldFolder != folder || old.HistoryDir != set.HistoryDir
 	changed := moved ||
 		!slices.Equal(old.Excludes, set.Excludes) || !slices.Equal(old.Includes, set.Includes) || old.SkipBuiltIn != set.SkipBuiltIn
 	if moved {
@@ -577,6 +814,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		oldSessions = s.sessions
 		s.browse, s.sessions = s.newBrowse(set)
 	}
+	page := s.pageSettings(t)
 	s.mu.Unlock()
 	seq := s.rep.next()
 	s.admit.Unlock()
@@ -589,7 +827,33 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	localhttp.Respond(w, http.StatusOK, struct {
 		Settings      Settings `json:"settings"`
 		BrowseChanged bool     `json:"browse_changed"`
-	}{set, changed})
+	}{page, changed})
+}
+
+// checkFolder checks, holding s.mu, the form's folder and history folder
+// for the telescope keyed key against the other telescopes' folders. It
+// returns a message for each field in error, which names no folder.
+func (s *server) checkFolder(key string, set Settings) map[string]string {
+	errs := map[string]string{}
+	if !s.file.exists {
+		return errs
+	}
+	old := s.file.settings
+	if key == "" && old.claimed() {
+		errs["folder"] = "Connect to the telescope first: its folder is chosen once it is known."
+		return errs
+	}
+	if msg := old.overlap(key, set.Folder); msg != "" {
+		errs["folder"] = msg
+	}
+	if set.HistoryDir != "" {
+		for _, other := range old.others(key) {
+			if _, err := state.Path(set.HistoryDir, other); err != nil {
+				errs["history_dir"] = historyError
+			}
+		}
+	}
+	return errs
 }
 
 // copyAction starts or stops copying, starts the next pass now, or starts
@@ -674,8 +938,9 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpPreview, Err: err, Seq: seq})
 			conflict("Couldn't preview: " + err.Error() + ".")
 		}
-		if !s.setUp() {
-			refused(errNotSetUp, false)
+		t, terr := s.target()
+		if err := s.ready(t, terr); err != nil {
+			refused(err, false)
 			return
 		}
 		// A Find refused as busy saves nothing: the running check keeps
@@ -704,9 +969,8 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			s.free.clear()
 			saved = true
 		}
-		var t Target
-		if set, t, err = s.resolve(set); err == nil {
-			err = s.free.find(set, t)
+		if err = terr; err == nil {
+			err = s.free.find(settingsAt(set, t), t)
 		}
 		if err != nil {
 			refused(err, saved)
@@ -767,11 +1031,14 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 		}{msg})
 	}
 	s.mu.Lock()
-	folder, history := s.file.settings.Folder, s.file.settings.historyDir(s.stateDir)
-	var err error
+	t, terr := s.target()
+	if terr != nil {
+		t = Target{Telescope: t.Telescope}
+	}
+	folder, history := s.folderAt(t), s.file.settings.historyDir(s.stateDir)
+	err := s.ready(t, terr)
 	switch {
-	case !s.setUp():
-		err = errNotSetUp
+	case err != nil:
 	case s.copy.on():
 		err = errors.New("stop copying first")
 	case !s.free.forget():
@@ -789,10 +1056,10 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	case errors.Is(err, state.ErrLocked):
 		conflict("Couldn't clear the history: another copy is using this folder, in another seestar-wormhole window or seestar-wormhole-cli sync. Stop that copy, then try again.")
 	case err != nil:
-		s.log.Warn("clear history", "dest", folder, "err", err)
+		s.log.Warn("clear history", "err", err)
 		conflict("Couldn't clear the history: " + reason(err) + ".")
 	default:
-		s.log.Info("copy history cleared", "dest", folder)
+		s.log.Info("copy history cleared")
 		localhttp.Respond(w, http.StatusOK, struct{}{})
 	}
 }
@@ -840,6 +1107,17 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
 	name := path.Base(p)
 	var dst, alert string
+	// A save waits for the telescope's folder, which may hold the file.
+	s.mu.Lock()
+	folder := s.folderAt(s.current())
+	s.mu.Unlock()
+	if folder == "" {
+		if s.native.Alert != nil {
+			s.native.Alert(noFolderAlert)
+		}
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	lease, err := sessions.Get(r.Context())
 	if err == nil {
 		defer lease.Release()
@@ -848,7 +1126,7 @@ func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *brow
 	if err == nil && dst != "" {
 		alert, err = s.saveTo(r.Context(), lease, p, dst)
 		if err == nil {
-			s.log.Info("file saved", "path", p, "to", dst)
+			s.log.Info("file saved", "path", p)
 		}
 	}
 	// A Cancel, which answers "", and a request gone away are neither a
@@ -858,7 +1136,7 @@ func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *brow
 		Canceled: err == nil && dst == "" || err != nil && r.Context().Err() != nil, Seq: s.rep.next(),
 	})
 	if err != nil && r.Context().Err() == nil {
-		s.log.Warn("save failed", "path", p, "to", dst, "err", err)
+		s.log.Warn("save failed", "path", p, "err", err)
 		if alert == "" {
 			alert = "Couldn't save " + name + ": " + reason(err) + ". Try saving it again."
 		}
@@ -869,19 +1147,30 @@ func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *brow
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// noFolderAlert answers a save before the telescope's folder is chosen.
+const noFolderAlert = "This telescope has no folder yet. Choose one in Copy, then save the file again."
+
 // errReservedName is a save to the folder lock's name in the images folder.
 var errReservedName = errors.New("the name is kept for the copy lock")
 
 // saveTo saves the device's file p to dst through lease, as [browse.Save]
-// does. A save into the saved images folder holds the folder's lock, so it
-// never lands during a pass of copying or a delete, and writes through the
-// folder's root; it refuses the folder lock's own name. A failure the
-// window words itself comes with the alert to show.
+// does. A save into a telescope's saved images folder, this one's or
+// another's, holds the folder's lock, so it never lands during a pass of
+// copying or a delete, and writes through the folder's root; it refuses
+// the folder lock's own name. A failure the window words itself comes
+// with the alert to show.
 func (s *server) saveTo(ctx context.Context, lease *browse.Lease, p, dst string) (alert string, err error) {
 	s.mu.Lock()
-	folder := s.file.settings.Folder
+	t := s.current()
+	folders := append([]string{s.folderAt(t)}, s.file.settings.others(t.Telescope)...)
 	s.mu.Unlock()
-	top, rel, inside := within(folder, dst)
+	var top, rel string
+	inside := false
+	for _, folder := range folders {
+		if top, rel, inside = within(folder, dst); inside {
+			break
+		}
+	}
 	if !inside {
 		return "", browse.Save(ctx, lease, p, dst)
 	}

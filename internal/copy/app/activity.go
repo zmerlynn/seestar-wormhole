@@ -127,3 +127,59 @@ func writeAttr(b *strings.Builder, prefix string, a slog.Attr) {
 	}
 	b.WriteString(" " + prefix + a.Key + "=" + v)
 }
+
+// private are the keys of the attributes no copy log or Activity line
+// keeps: a telescope's folder, a file's destination and the address the
+// telescope is at. The page shows them; logs say "this telescope's
+// folder".
+var private = map[string]bool{"dest": true, "to": true, "endpoint": true}
+
+// withoutFolder is a slog.Handler that passes each record to next without
+// its private attributes, at any group.
+type withoutFolder struct{ next slog.Handler }
+
+func (h withoutFolder) Enabled(ctx context.Context, l slog.Level) bool {
+	return h.next.Enabled(ctx, l)
+}
+
+func (h withoutFolder) Handle(ctx context.Context, r slog.Record) error {
+	out := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		if a, ok := public(a); ok {
+			out.AddAttrs(a)
+		}
+		return true
+	})
+	return h.next.Handle(ctx, out)
+}
+
+func (h withoutFolder) WithAttrs(as []slog.Attr) slog.Handler {
+	kept := make([]slog.Attr, 0, len(as))
+	for _, a := range as {
+		if a, ok := public(a); ok {
+			kept = append(kept, a)
+		}
+	}
+	return withoutFolder{h.next.WithAttrs(kept)}
+}
+
+func (h withoutFolder) WithGroup(name string) slog.Handler {
+	return withoutFolder{h.next.WithGroup(name)}
+}
+
+// public is a without its private attributes, and false when a is one.
+func public(a slog.Attr) (slog.Attr, bool) {
+	if private[a.Key] {
+		return a, false
+	}
+	if a.Value.Kind() != slog.KindGroup {
+		return a, true
+	}
+	var kept []slog.Attr
+	for _, g := range a.Value.Group() {
+		if g, ok := public(g); ok {
+			kept = append(kept, g)
+		}
+	}
+	return slog.Attr{Key: a.Key, Value: slog.GroupValue(kept...)}, true
+}

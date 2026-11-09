@@ -140,7 +140,7 @@ func newController(parent context.Context, stateDir string, log *slog.Logger, di
 	act := &activity{}
 	return &controller{
 		parent: parent, stateDir: stateDir, activity: act,
-		log:      slog.New(newTee(log.Handler(), act, "copy")),
+		log:      slog.New(withoutFolder{newTee(log.Handler(), act, "copy")}),
 		dial:     dial,
 		checkNow: make(chan struct{}),
 		st:       status{state: stOff},
@@ -173,7 +173,7 @@ func (c *controller) start(set Settings, t Target) error {
 		Dial: c.dialPass, Hooks: c.hooks(ctx), CheckNow: c.checkNow, Recreate: true,
 	}
 	c.mu.Unlock()
-	c.log.Info("copying started", "endpoint", t.logged(), "dest", set.Folder)
+	c.log.Info("copying started", "folder", "this telescope's folder")
 	// The loop is over, and done closes, on every exit, a recovered panic's
 	// included, so Quit and the next start never wait on a dead loop.
 	go func() {
