@@ -2,9 +2,9 @@ package ui
 
 import (
 	"bytes"
-	"errors"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"maps"
 	"net/netip"
 	"os"

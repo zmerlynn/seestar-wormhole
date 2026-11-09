@@ -57,13 +57,13 @@ type server struct {
 	target func() (Target, error)
 	// name is how the page names a target's telescope; see
 	// [MountOptions.Name].
-	name    func(Target) string
+	name func(Target) string
 	// knowSerial is MountOptions.KnowSerial.
 	knowSerial func(Target) error
-	native  Native // the window's dialogs; each nil without one
-	copy    *controller
-	preview *previewer
-	free    *freer
+	native     Native // the window's dialogs; each nil without one
+	copy       *controller
+	preview    *previewer
+	free       *freer
 	// rep reports each operation's outcome to the host, numbered from
 	// one sequence that the controllers and Browse share.
 	rep *reporter

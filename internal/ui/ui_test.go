@@ -107,6 +107,7 @@ func request(s *server, method, path, body string) *http.Request {
 	r.Header.Set("Content-Type", "application/json")
 	return r
 }
+
 // withCopyToken is body as the page sends it: a copy Save, or an
 // adoption, with the token copy's status gives the page now for the
 // telescope, or its offer, unless body has one.
