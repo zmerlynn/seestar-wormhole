@@ -126,7 +126,8 @@ saved without one, and by the saved `serial` through the account; see
 a folder of its own, and without a usable `config.json`, it is `folder`. If
 the saved telescope has no folder while another has one, a command that
 would fill `--dest` exits 2 for `--profile`; a given `--dest`, or delete
-with `--ignore-state`, runs as usual.
+with `--ignore-state`, runs as usual. browse instead fills only
+`--endpoint` and lists without statuses.
 
 delete takes only where to act: Free up space's patterns, its age and
 **Trust the copy history** are never applied, so give the selection, the
@@ -183,7 +184,7 @@ checks. Each refusal exits 2 with `option=--profile`:
 | No per-user config folder | `no per-user config folder for the default profile; give the flags` |
 | No `copy.json` | `no saved Copy settings; save them on the app's Copy tab, or give the flags` |
 | A `copy.json` the app refuses | `use a valid saved copy.json in the app's state folder` |
-| The saved telescope has no folder yet, and `--dest` is not given | `the telescope saved in the app has no folder yet; choose one on the app's Copy tab, or give --dest` |
+| The saved telescope has no folder yet, and `--dest` is not given, except for browse | `the telescope saved in the app has no folder yet; choose one on the app's Copy tab, or give --dest` |
 
 ### Performance
 

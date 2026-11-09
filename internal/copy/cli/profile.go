@@ -51,6 +51,10 @@ type profileFlag struct {
 	name   string
 	set    bool
 	filled []string
+	// statuses is set by a command that runs without a local folder,
+	// only without the statuses one gives, as browse does: a saved
+	// telescope without a folder fills no --dest there, and is no error.
+	statuses bool
 }
 
 func (p *profileFlag) register(f *pflag.FlagSet) {
@@ -80,7 +84,7 @@ func (p *profileFlag) fill(flags *pflag.FlagSet, load LoadProfile, fillSaved fun
 	if !ok {
 		return err
 	}
-	if s.NoFolder && !flags.Changed("dest") && takesDest(flags) {
+	if s.NoFolder && !flags.Changed("dest") && !p.statuses && takesDest(flags) {
 		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder}
 	}
 	p.filled = fillSaved(s, flags.Changed)
@@ -188,12 +192,15 @@ func (o *findOptions) fillSaved(s Saved, changed func(string) bool) []string {
 
 // fillSaved fills browse's flags from s and returns the names filled. The
 // selection is filled only with a destination, as browse uses it only
-// for statuses.
+// for statuses. A saved telescope without a folder, when --dest isn't
+// given, fills only where to browse: the page lists without statuses.
 func (o *browseOptions) fillSaved(s Saved, changed func(string) bool) []string {
 	var filled []string
 	f := filler{changed, &filled}
-	f.str("dest", &o.dest, s.Dest)
-	f.str("history-dir", &o.historyDir, s.HistoryDir)
+	if !s.NoFolder || changed("dest") {
+		f.str("dest", &o.dest, s.Dest)
+		f.str("history-dir", &o.historyDir, s.HistoryDir)
+	}
 	f.str("endpoint", &o.endpoint, s.Endpoint)
 	o.follow = newFollow(s, changed)
 	if o.dest != "" {

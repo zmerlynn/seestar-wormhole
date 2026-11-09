@@ -66,6 +66,8 @@ starts.
 --profile default fills --dest, --history-dir and --endpoint from the app's
 saved settings where they are not given, and, with a destination,
 --exclude, --include and --no-default-excludes from its Copy settings.
+While the telescope saved in the app has no folder yet, it fills only
+--endpoint, and the page lists without statuses.
 ` + followHelp + `browse never writes: not to the telescope, not to --dest, not to the state.
 Logs and errors go to stderr.
 Exit 0 when stopped by Ctrl+C, 1 when it cannot start or keep serving, 2 on
@@ -99,6 +101,7 @@ a usage error.`,
 	}
 	f := c.Flags()
 	o.profile.register(f)
+	o.profile.statuses = true
 	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.listen, "listen", "127.0.0.1:0", "IP address and port to serve the page on; port 0 picks a free one")

@@ -378,3 +378,24 @@ func TestExposed(t *testing.T) {
 		}
 	}
 }
+
+// Before the saved telescope has a folder, browse fills only where to
+// browse, and lists without statuses: no --dest, and so no history
+// folder or selection, which browse takes only with one.
+func TestBrowseWithoutFolder(t *testing.T) {
+	c := NewBrowse("synthetic", func() (Saved, error) {
+		return Saved{NoFolder: true, Endpoint: "192.0.2.10:445", HistoryDir: "/synthetic/history", Excludes: []string{"*.jpg"}}, nil
+	})
+	c.SetArgs([]string{"--profile", "default"})
+	if err := c.Execute(); err != nil {
+		t.Fatalf("browse without a folder: %v", err)
+	}
+	for _, name := range []string{"dest", "history-dir", "exclude"} {
+		if f := c.Flags().Lookup(name); f != nil && f.Value.String() != "" && f.Value.String() != "[]" {
+			t.Errorf("--%s filled: %q", name, f.Value.String())
+		}
+	}
+	if got := c.Flags().Lookup("endpoint").Value.String(); got != "192.0.2.10:445" {
+		t.Errorf("--endpoint = %q", got)
+	}
+}

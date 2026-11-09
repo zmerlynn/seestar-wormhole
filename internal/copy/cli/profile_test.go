@@ -258,20 +258,22 @@ func TestProfileNotRead(t *testing.T) {
 
 // A profile whose telescope has no folder fails each command that would
 // fill --dest, unless --dest is given; delete with --ignore-state takes
-// no folder and runs.
+// no folder and runs, as does browse, which lists without statuses.
 func TestProfileNoFolder(t *testing.T) {
 	load := func() (Saved, error) { return Saved{NoFolder: true, Endpoint: "h:1"}, nil }
 	for _, tc := range []struct {
-		args []string
-		fail bool
+		args     []string
+		statuses bool
+		fail     bool
 	}{
-		{[]string{"--profile", "default"}, true},
-		{[]string{"--profile", "default", "--dest", "/given"}, false},
-		{[]string{"--profile", "default", "--ignore-state"}, false},
-		{[]string{"--profile", "default", "--ignore-state=false"}, true},
+		{[]string{"--profile", "default"}, false, true},
+		{[]string{"--profile", "default", "--dest", "/given"}, false, false},
+		{[]string{"--profile", "default", "--ignore-state"}, false, false},
+		{[]string{"--profile", "default", "--ignore-state=false"}, false, true},
+		{[]string{"--profile", "default"}, true, false},
 	} {
 		flags := pflag.NewFlagSet("t", pflag.ContinueOnError)
-		var p profileFlag
+		p := profileFlag{statuses: tc.statuses}
 		p.register(flags)
 		var dest string
 		var ignore bool

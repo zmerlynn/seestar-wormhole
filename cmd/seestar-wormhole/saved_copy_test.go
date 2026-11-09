@@ -272,9 +272,16 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 		}
 	}
 
-	// The last config.json's telescope has no folder.
+	// The last config.json's telescope has no folder. Browse lists without
+	// statuses; every other command needs one.
 	before := profileFiles(t, root)
 	for _, cmd := range copyCommandNames {
+		if cmd == "browse" {
+			if o, err := parse([]string{cmd, "--profile", "default"}, io.Discard); err != nil || o.file == nil {
+				t.Errorf("browse without a folder: %v", err)
+			}
+			continue
+		}
 		code, record, logs := usageExit(t, cmd, "--profile", "default")
 		if code != 2 || record.Option != "--profile" || !strings.Contains(record.Rule, "has no folder yet") || !strings.Contains(record.Rule, "--dest") ||
 			strings.Contains(logs, "synthetic") || strings.Contains(logs, "192.0.2") || strings.Contains(logs, "SYNTH-") {
