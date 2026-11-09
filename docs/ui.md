@@ -325,8 +325,12 @@ while a check or a delete holds it, the save says **Another copy or delete
 is using this folder. Try saving it again.** and saves nothing. A file named
 `.seestar-wormhole.lock`, in any letter case, can't be saved at the top of
 that folder: **That name is kept for the copy lock. Choose another name or
-folder.** A save anywhere else takes no lock. A save into any telescope's
-folder takes that folder's lock. A save waits for the telescope's folder,
+folder.** A save anywhere else takes no lock. A save into another
+telescope's folder, or a folder inside it, also through a symbolic link, is
+refused with **That folder is another telescope's. Save the file outside
+it.** If the telescope or its folder changes while the dialog is open, the
+save says **The telescope or its folder changed while you chose where to
+save. Save the file again.** and saves nothing. A save waits for the telescope's folder,
 the first telescope's too: until it is chosen, **Save** says **This
 telescope has no folder yet. Choose one in Copy, then save the file again.**
 and saves nothing; in a browser, the download fails with that message.

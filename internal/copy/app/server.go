@@ -1132,13 +1132,19 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
 	name := path.Base(p)
 	var dst, alert string
+	// The save is the telescope's the target is now, with its folder:
+	// a change of either while the dialog is open refuses it.
+	s.mu.Lock()
+	t := s.current()
+	from := saveFrom{t.Telescope, s.folderAt(t)}
+	s.mu.Unlock()
 	lease, err := sessions.Get(r.Context())
 	if err == nil {
 		defer lease.Release()
 		dst, err = s.native.SaveFile(name)
 	}
 	if err == nil && dst != "" {
-		alert, err = s.saveTo(r.Context(), lease, p, dst)
+		alert, err = s.saveTo(r.Context(), lease, from, p, dst)
 		if err == nil {
 			s.log.Info("file saved", "path", p)
 		}
@@ -1171,27 +1177,48 @@ func (s *server) hasFolder() bool {
 // noFolderAlert answers a save before the telescope's folder is chosen.
 const noFolderAlert = "This telescope has no folder yet. Choose one in Copy, then save the file again."
 
-// errReservedName is a save to the folder lock's name in the images folder.
-var errReservedName = errors.New("the name is kept for the copy lock")
+// Errors of a save the window words itself.
+var (
+	errReservedName = errors.New("the name is kept for the copy lock")
+	errSaveMoved    = errors.New("the telescope or its folder changed")
+	errOtherFolder  = errors.New("another telescope's folder")
+)
 
-// saveTo saves the device's file p to dst through lease, as [browse.Save]
-// does. A save into a telescope's saved images folder, this one's or
-// another's, holds the folder's lock, so it never lands during a pass of
-// copying or a delete, and writes through the folder's root; it refuses
-// the folder lock's own name. A failure the window words itself comes
-// with the alert to show.
-func (s *server) saveTo(ctx context.Context, lease *browse.Lease, p, dst string) (alert string, err error) {
+// saveFrom is the telescope a save is for, by its key, and its folder,
+// when the save began.
+type saveFrom struct{ key, folder string }
+
+// saveTo saves the device's file p, of the telescope from was when the
+// save began, to dst through lease, as [browse.Save] does. It refuses
+// once that telescope, or its folder, is no longer the target's, and a
+// dst in another telescope's folder, on disk too. A save into this
+// telescope's folder holds the folder's lock, so it never lands during a
+// pass of copying or a delete, and writes through the folder's root; it
+// refuses the folder lock's own name. A failure the window words itself
+// comes with the alert to show.
+//
+// Once admitted, the save needs no hold on the folders: another
+// telescope's folder changes only while it is the target, and the change
+// of target that makes it so closes the lease's session.
+func (s *server) saveTo(ctx context.Context, lease *browse.Lease, from saveFrom, p, dst string) (alert string, err error) {
 	s.mu.Lock()
 	t := s.current()
-	folders := append([]string{s.folderAt(t)}, s.file.settings.others(t.Telescope)...)
+	moved := t.Telescope != from.key || s.folderAt(t) != from.folder
+	shared := from.folder != "" && s.file.settings.overlap(from.key, from.folder) != ""
+	others := s.file.settings.others(from.key)
 	s.mu.Unlock()
-	var top, rel string
-	inside := false
-	for _, folder := range folders {
-		if top, rel, inside = within(folder, dst); inside {
-			break
+	switch {
+	case moved:
+		return "The telescope or its folder changed while you chose where to save. Save the file again.", errSaveMoved
+	case shared:
+		return "", errFolderShared
+	}
+	for _, other := range others {
+		if msg := relate(filepath.Dir(dst), other); msg == folderTaken || msg == folderInside {
+			return "That folder is another telescope's. Save the file outside it.", errOtherFolder
 		}
 	}
+	top, rel, inside := within(from.folder, dst)
 	if !inside {
 		return "", browse.Save(ctx, lease, p, dst)
 	}

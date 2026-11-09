@@ -295,7 +295,7 @@ func TestSaveFileHoldsFolderLockUntilDone(t *testing.T) {
 	defer lease.Release()
 	done := make(chan error, 1)
 	go func() {
-		_, err := e.s.saveTo(t.Context(), lease, "a.fit", filepath.Join(folder, "a.fit"))
+		_, err := e.s.saveTo(t.Context(), lease, saveFrom{"", folder}, "a.fit", filepath.Join(folder, "a.fit"))
 		done <- err
 	}()
 	select {

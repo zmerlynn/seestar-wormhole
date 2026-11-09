@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -628,8 +629,112 @@ func TestSaveFileWaitsForFolder(t *testing.T) {
 	defer held.Close()
 	f.alerts = nil
 	e.serve("GET", xURL, "")
-	if !slices.Equal(f.alerts, []string{"Another copy or delete is using this folder. Try saving it again."}) {
+	if !slices.Equal(f.alerts, []string{otherFolderAlert}) {
 		t.Errorf("save into the first telescope's folder: alerts %q", f.alerts)
+	}
+}
+
+const otherFolderAlert = "That folder is another telescope's. Save the file outside it."
+
+// A telescope's file is never saved into another telescope's folder, free
+// or held, nor through a link to it; its own folder takes the lock.
+func TestSaveFileOutsideOtherFolders(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	e := newAppEnv(t, claimedAt(a, map[string]string{keyA: a, keyB: b}))
+	e.key = keyB
+	if err := os.Mkdir(filepath.Join(a, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	theirs := filepath.Join(a, "a.txt")
+	if err := os.WriteFile(theirs, []byte("from A"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(a, link); err != nil {
+		t.Fatal(err)
+	}
+	f := &fakeNative{}
+	e.s.native = f.native()
+	for _, dst := range []string{theirs, filepath.Join(a, "sub", "new.txt"), filepath.Join(link, "a.txt"), filepath.Join(link, "sub", "x.txt")} {
+		f.answer, f.alerts = dst, nil
+		e.serve("GET", xURL, "")
+		if !slices.Equal(f.alerts, []string{otherFolderAlert}) || strings.Contains(e.logs.String(), a) {
+			t.Errorf("%s: alerts %q", dst, f.alerts)
+		}
+	}
+	if got, _ := os.ReadFile(theirs); string(got) != "from A" {
+		t.Errorf("A's file is %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(a, "sub", "new.txt")); err == nil {
+		t.Error("saved into A's folder")
+	}
+	// Its own folder, and anywhere else, it may.
+	for _, dst := range []string{filepath.Join(b, "x.txt"), filepath.Join(t.TempDir(), "x.txt")} {
+		f.answer, f.alerts = dst, nil
+		e.serve("GET", xURL, "")
+		if got, _ := os.ReadFile(dst); len(f.alerts) != 0 || string(got) != "x" {
+			t.Errorf("%s: alerts %q, saved %q", dst, f.alerts, got)
+		}
+	}
+}
+
+// A save whose telescope, or its folder, changes while the dialog is open
+// is refused: the file is the telescope's the dialog was opened for.
+func TestSaveFileAfterChange(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(e *appEnv, b string)
+	}{
+		{"folder saved", func(e *appEnv, b string) {
+			// Opening Browse again retires the dialog's pool, so the
+			// folder's change leaves its session open.
+			if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
+				e.t.Errorf("browse = %d", w.Code)
+			}
+			if w := e.post("/copy/api/settings", saveInput(filepath.Join(b, "moved"))); w.Code != 200 {
+				e.t.Errorf("settings = %d %s", w.Code, w.Body)
+			}
+		}},
+		{"route changed", func(e *appEnv, _ string) {
+			if err := e.m.Change(func() bool { return true }, func() error {
+				e.set(func() { e.key, e.endpoint = keyA, atB })
+				return nil
+			}); err != nil {
+				e.t.Error(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b := t.TempDir(), t.TempDir()
+			e := newAppEnv(t, claimedAt(a, map[string]string{keyA: a, keyB: b}))
+			e.key = keyB
+			dst := filepath.Join(t.TempDir(), "x.txt")
+			entered, release := make(chan struct{}), make(chan struct{})
+			var mu sync.Mutex
+			var alerts []string
+			e.s.native = Native{
+				SaveFile: func(string) (string, error) { close(entered); <-release; return dst, nil },
+				Alert: func(m string) {
+					mu.Lock()
+					defer mu.Unlock()
+					alerts = append(alerts, m)
+				},
+			}
+			saved := make(chan struct{})
+			go func() { defer close(saved); e.serve("GET", xURL, "") }()
+			<-entered
+			tc.change(e, b)
+			close(release)
+			<-saved
+			if _, err := os.Stat(dst); err == nil {
+				t.Error("saved after the change")
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(alerts) != 1 {
+				t.Errorf("alerts %q", alerts)
+			}
+		})
 	}
 }
 
