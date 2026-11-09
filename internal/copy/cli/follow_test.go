@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -15,6 +16,71 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
+
+// noDNS makes the default resolver's lookups fail, without sending any,
+// for the rest of the test: its server answers with an error naming the
+// server.
+func noDNS(t *testing.T) {
+	saved := net.DefaultResolver
+	t.Cleanup(func() { net.DefaultResolver = saved })
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("resolver 198.51.100.53 unreachable")
+	}}
+}
+
+// A telescope saved with its serial at a hostname, with scans off, whose
+// lookup fails, is named nowhere in the logs or the error of find, sync,
+// delete or browse, nor is the resolver: the production dials say the
+// saved telescope's name lookup failed.
+func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
+	commands := map[string][]string{
+		"find":   {"find", "--profile", "default"},
+		"sync":   {"sync", "--profile", "default", "--once"},
+		"delete": {"delete", "--profile", "default", "--ignore-state", "--include", "*.fit", "--force"},
+		"browse": {"browse", "--profile", "default"},
+	}
+	for name, args := range commands {
+		t.Run(name, func(t *testing.T) {
+			t.Cleanup(readonly.Reset)
+			n := twoTelescopes()
+			useLAN(t, n)
+			noDNS(t)
+			// The production dials, which TestMain replaces.
+			useDialAs(t)
+			dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
+				return remote.DialVia(ctx, name, remote.TCP(endpoint), log)
+			}
+			dialRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
+				return remote.DialRemoverVia(ctx, name, remote.TCP(endpoint), log)
+			}
+			useProfile(t, Saved{Endpoint: "telescope.invalid:445", LANSerial: "SERIAL-A", LANScan: "off", Dest: t.TempDir(), HistoryDir: t.TempDir()})
+			var out, errs string
+			if name == "browse" {
+				b := startBrowseArgs(t, args...)
+				b.get(t, "api/list?path=")
+				b.end()
+				errs = b.stderr.Take()
+			} else {
+				var code int
+				code, out, errs = invoke(t, args...)
+				if code == exitOK {
+					t.Errorf("exit %d", code)
+				}
+			}
+			if !strings.Contains(errs, lanName) || !strings.Contains(errs, "name lookup") {
+				t.Errorf("the failure isn't the saved telescope's lookup:\n%s", errs)
+			}
+			for _, private := range []string{"telescope.invalid", "198.51.100.53", ":53", "SERIAL-"} {
+				if strings.Contains(out+errs, private) {
+					t.Errorf("output carries %q:\n%s%s", private, out, errs)
+				}
+			}
+			if n.scans() != 0 {
+				t.Errorf("scans %d with scans off", n.scans())
+			}
+		})
+	}
+}
 
 // A followed telescope that a scan found, at its saved address or at
 // another, but that refuses or times out the connect, is named nowhere

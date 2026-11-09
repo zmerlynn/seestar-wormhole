@@ -21,14 +21,57 @@ func TCP(endpoint string) Conn {
 	}
 }
 
-// unaddressed is err with the addresses a *net.OpError names removed. Its
-// Op, Net and Err stay, so errors.Is and the timeout and connect checks
-// still see what failed.
+// unaddressed is err with the addresses a *net.OpError names removed, and
+// a cause that would name a host or a resolver given fixed text (see
+// [unnamed]). Its Op, Net and Err stay, so errors.Is and the timeout and
+// connect checks still see what failed.
 func unaddressed(err error) error {
 	if op, ok := errors.AsType[*net.OpError](err); ok {
-		return &net.OpError{Op: op.Op, Net: op.Net, Err: op.Err}
+		return &net.OpError{Op: op.Op, Net: op.Net, Err: unnamed(op.Err)}
+	}
+	return unnamed(err)
+}
+
+// unnamed is err, or, when err is a cause whose text names the host it
+// looked up, the server it asked or the address it parsed, an error with
+// fixed text in its place. That error unwraps to err and keeps its
+// timeout and temporary classification.
+func unnamed(err error) error {
+	switch e := err.(type) {
+	case *net.DNSError:
+		text := "name lookup failed"
+		switch {
+		case e.IsNotFound:
+			text = "name lookup: no such host"
+		case e.IsTimeout:
+			text = "name lookup: timed out"
+		}
+		return &fixedText{text, err}
+	case *net.AddrError, *net.ParseError:
+		return &fixedText{"invalid address", err}
 	}
 	return err
+}
+
+// fixedText is an error whose text is text, in place of err's.
+type fixedText struct {
+	text string
+	err  error
+}
+
+func (e *fixedText) Error() string { return e.text }
+func (e *fixedText) Unwrap() error { return e.err }
+
+// Timeout and Temporary are err's, so that fixedText stays a net.Error
+// that classifies as err does.
+func (e *fixedText) Timeout() bool {
+	t, ok := e.err.(interface{ Timeout() bool })
+	return ok && t.Timeout()
+}
+
+func (e *fixedText) Temporary() bool {
+	t, ok := e.err.(interface{ Temporary() bool })
+	return ok && t.Temporary()
 }
 
 // unaddressedConn is a stream whose read and write errors name no address.

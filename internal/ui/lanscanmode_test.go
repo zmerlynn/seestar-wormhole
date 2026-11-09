@@ -3,8 +3,10 @@ package ui
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http/httptest"
 	"net/netip"
 	"os"
@@ -17,8 +19,10 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 // scanModeServer is a server saved on this network at 192.0.2.10 with
@@ -567,5 +571,123 @@ func TestRunSerialChangeSearches(t *testing.T) {
 	}
 	if calls := l.take(); len(calls) != 1 || !strings.HasSuffix(calls[0], "192.0.2.20:445") {
 		t.Fatalf("serial change reused the earlier telescope: %q", calls)
+	}
+}
+
+// reported is o with its Report also handing each outcome to the
+// returned await, which waits for the next outcome of source's op and
+// returns it.
+func reported(t *testing.T, o copyapp.MountOptions) (copyapp.MountOptions, func(source, op string) copyapp.Outcome) {
+	ch := make(chan copyapp.Outcome, 64)
+	report := o.Report
+	o.Report = func(out copyapp.Outcome) {
+		if report != nil {
+			report(out)
+		}
+		ch <- out
+	}
+	return o, func(source, op string) copyapp.Outcome {
+		t.Helper()
+		timeout := time.After(10 * time.Second)
+		for {
+			select {
+			case out := <-ch:
+				if out.Source == source && out.Op == op {
+					return out
+				}
+			case <-timeout:
+				t.Fatalf("no %s %s outcome", source, op)
+			}
+		}
+	}
+}
+
+// noDNS makes the default resolver's lookups fail, without sending any,
+// for the rest of the test: its server answers with an error naming the
+// server.
+func noDNS(t *testing.T) {
+	saved := net.DefaultResolver
+	t.Cleanup(func() { net.DefaultResolver = saved })
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("resolver 198.51.100.53 unreachable")
+	}}
+}
+
+// A saved hostname is a valid telescope address with a serial, in every
+// mode.
+func TestSerialBoundHostnameIsValid(t *testing.T) {
+	s := testServer(t)
+	if err := s.controller.persistRoute(routeLAN, "telescope.invalid:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.controller.persistLANScan("off"); err != nil {
+		t.Fatal(err)
+	}
+	got, err := loadSettings(s.storage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint, err := SavedCopyEndpoint(got)
+	if err != nil || endpoint != "telescope.invalid:445" || SavedLANSerial(got) != "SERIAL-A" || SavedLANScan(got) != "off" {
+		t.Fatalf("hostname profile not accepted: endpoint=%q err=%v", endpoint, err)
+	}
+}
+
+// A telescope saved with its serial at a hostname, with scans off, whose
+// lookup fails, is named nowhere in Activity, the trail or the logs of
+// Copy or Browse, nor is the resolver: through the production dial, they
+// say the saved telescope's name lookup failed.
+func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
+	n := &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"}}}
+	useLAN(t, n)
+	noDNS(t)
+	s := testServer(t)
+	s.controller.log = &eventLog{storage: s.storage}
+	if err := s.controller.persistRoute(routeLAN, "telescope.invalid:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.controller.persistLANScan(landiscovery.ScanOff); err != nil {
+		t.Fatal(err)
+	}
+	var logs testlog.Buffer
+	set := copyapp.DefaultSettings()
+	set.Folder, set.Once = filepath.Join(t.TempDir(), "copy"), true
+	o, await := reported(t, copyMountOptions(s, copyapp.MountOptions{Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(),
+		Settings: &set, Log: slog.New(slog.NewTextHandler(&logs, nil))}))
+	s.copy = copyapp.NewMount(t.Context(), o)
+	t.Cleanup(s.copy.Quit)
+	if w := doPost(s, "/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
+		t.Fatalf("start = %d %s", w.Code, w.Body)
+	}
+	if out := await(diagnostic.SourceCopy, diagnostic.OpPass); out.Err == nil {
+		t.Fatal("the pass connected")
+	}
+	for _, path := range []string{"/browse/", "/browse/api/list"} {
+		serve(s, request(s, "GET", path, ""))
+	}
+	w := serve(s, request(s, "GET", "/copy/api/status", ""))
+	var v struct {
+		Activity []struct {
+			Text string `json:"text"`
+		} `json:"activity"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	var activity strings.Builder
+	for _, e := range v.Activity {
+		activity.WriteString(e.Text + "\n")
+	}
+	text := activity.String() + logs.String() + trailText(t, s)
+	if !strings.Contains(activity.String(), lanName+": dial tcp: name lookup failed") {
+		t.Errorf("Activity doesn't say the saved telescope's lookup failed:\n%s", activity.String())
+	}
+	for _, private := range []string{"telescope.invalid", "198.51.100.53", ":53"} {
+		if strings.Contains(text, private) {
+			t.Errorf("Activity, the trail or the logs carry %q:\n%s", private, text)
+		}
+	}
+	if n.scans() != 0 {
+		t.Errorf("scans %d with scans off", n.scans())
 	}
 }

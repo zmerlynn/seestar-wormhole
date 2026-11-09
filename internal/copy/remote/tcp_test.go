@@ -1,6 +1,7 @@
 package remote
 
 import (
+	"context"
 	"errors"
 	"net"
 	"os"
@@ -75,5 +76,76 @@ func TestTCPStreamErrorsNameNoAddress(t *testing.T) {
 	// other errors through untouched.
 	if err := unaddressed(nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// noDNS makes the default resolver's lookups fail, without sending any,
+// for the rest of the test: its server answers with an error naming the
+// server.
+func noDNS(t *testing.T) {
+	saved := net.DefaultResolver
+	t.Cleanup(func() { net.DefaultResolver = saved })
+	net.DefaultResolver = &net.Resolver{PreferGo: true, Dial: func(context.Context, string, string) (net.Conn, error) {
+		return nil, errors.New("resolver 198.51.100.53 unreachable")
+	}}
+}
+
+// A lookup's error, whether it names the host, the server or neither,
+// says only that the lookup failed, and stays the lookup error it was.
+func TestDNSFailureNamesNoHost(t *testing.T) {
+	const host = "telescope.invalid"
+	for _, c := range []struct {
+		cause                     *net.DNSError
+		text                      string
+		timeout, temporary, found bool
+	}{
+		{&net.DNSError{Err: "no such host", Name: host, Server: "198.51.100.53:53", IsNotFound: true}, "name lookup: no such host", false, false, true},
+		{&net.DNSError{Err: "i/o timeout", Name: host, Server: "198.51.100.53:53", IsTimeout: true, IsTemporary: true}, "name lookup: timed out", true, true, false},
+		{&net.DNSError{Err: "server misbehaving", Name: host, Server: "198.51.100.53:53", IsTemporary: true}, "name lookup failed", false, true, false},
+	} {
+		conn := func(context.Context) (net.Conn, error) {
+			return nil, unaddressed(&net.OpError{Op: "dial", Net: "tcp", Err: c.cause})
+		}
+		_, err := DialVia(t.Context(), "the saved telescope", conn, nil)
+		if err == nil {
+			t.Fatal("wanted a lookup failure")
+		}
+		if text := err.Error(); strings.Contains(text, host) || strings.Contains(text, "198.51.100.53") ||
+			!strings.Contains(text, c.text) || !strings.Contains(text, "the saved telescope") {
+			t.Fatalf("error %q", text)
+		}
+		dns, ok := errors.AsType[*net.DNSError](err)
+		if !ok || dns != c.cause {
+			t.Fatalf("error %v doesn't unwrap to its lookup error", err)
+		}
+		ne, ok := errors.AsType[net.Error](err)
+		if !ok || ne.Timeout() != c.timeout {
+			t.Fatalf("error %v: timeout %v, want %v", err, ok && ne.Timeout(), c.timeout)
+		}
+		if op, ok := errors.AsType[*net.OpError](err); !ok || op.Op != "dial" || op.Temporary() != c.temporary {
+			t.Fatalf("error %v lost what failed", err)
+		}
+		if got := unnamed(unnamed(c.cause)); got.Error() != c.text {
+			t.Fatalf("hidden twice: %q", got)
+		}
+	}
+	// An address that doesn't parse names nothing either.
+	for _, cause := range []error{&net.AddrError{Err: "missing port in address", Addr: host}, &net.ParseError{Type: "IP address", Text: host}} {
+		err := unaddressed(&net.OpError{Op: "dial", Net: "tcp", Err: cause})
+		if strings.Contains(err.Error(), host) || !errors.Is(err, cause) {
+			t.Fatalf("error %q", err)
+		}
+	}
+	// A real dial of a hostname, its lookup failing without a query sent.
+	noDNS(t)
+	_, err := DialVia(t.Context(), "the saved telescope", TCP(host+":445"), nil)
+	if err == nil {
+		t.Fatal("wanted a lookup failure")
+	}
+	if text := err.Error(); strings.Contains(text, host) || strings.Contains(text, "198.51.100.53") || strings.Contains(text, ":53") || !strings.Contains(text, "name lookup") {
+		t.Fatalf("dial error %q", text)
+	}
+	if _, ok := errors.AsType[*net.DNSError](err); !ok {
+		t.Fatalf("dial error %v isn't a lookup error", err)
 	}
 }
