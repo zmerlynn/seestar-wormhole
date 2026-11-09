@@ -527,7 +527,8 @@ func TestFileToolOutcomesReachGUILog(t *testing.T) {
 			e.reported(diagnostic.SourceBrowse, diagnostic.OpRead, 1)
 		}, want{"browse", "read", "read", "operation_failed", 0}},
 		{"browse save file", func(e *trailEnv) {
-			e.lan("192.0.2.10")
+			// Saving a file waits for the telescope's folder.
+			e.ready()
 			e.fail(stepSaveAs, errSynthetic)
 			e.get("/browse/file?path=" + trailFile + "&download=1")
 			e.reported(diagnostic.SourceBrowse, diagnostic.OpSaveFile, 1)
@@ -754,7 +755,7 @@ func TestCanceledIsNeither(t *testing.T) {
 // the save dialog each fail once, a Cancel of each leaves both failing.
 func TestDialogCancelKeepsFailure(t *testing.T) {
 	e := newTrailEnv(t)
-	e.lan("192.0.2.10")
+	e.ready()
 	e.fail(stepFolder, errSynthetic)
 	e.fail(stepSaveAs, errSynthetic)
 	e.mustPost("/copy/api/folder", `{"folder":""}`, 500)
@@ -970,7 +971,7 @@ func TestClassChangeAndCounts(t *testing.T) {
 // recovering leaves its save_file failing.
 func TestFailuresPerOp(t *testing.T) {
 	e := newTrailEnv(t)
-	e.lan("192.0.2.10")
+	e.ready()
 	e.fail(stepSaveAs, errSynthetic)
 	e.get("/browse/file?path=" + trailFile + "&download=1")
 	e.reported(diagnostic.SourceBrowse, diagnostic.OpSaveFile, 1)
