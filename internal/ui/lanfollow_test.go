@@ -36,6 +36,9 @@ type lanTCP struct {
 	remover func(endpoint string) (remote.Remover, error)
 	// gate, when set, holds a labeled dial until it is closed.
 	gate chan struct{}
+	// entered, when set, is closed when the first gated dial begins.
+	entered     chan struct{}
+	enteredOnce sync.Once
 }
 
 func (l *lanTCP) reach(kind, endpoint string) error {
@@ -97,6 +100,9 @@ func useLANTCP(t *testing.T, l *lanTCP) {
 	}
 	tcpDialAs = func(ctx context.Context, name, endpoint string, _ *slog.Logger) (remote.Session, error) {
 		if l.gate != nil {
+			if l.entered != nil {
+				l.enteredOnce.Do(func() { close(l.entered) })
+			}
 			select {
 			case <-l.gate:
 			case <-ctx.Done():
@@ -233,7 +239,7 @@ func TestCopierFollowsTelescope(t *testing.T) {
 
 // Dials for one target at once share one scan.
 func TestFollowSharesOneScan(t *testing.T) {
-	l := &lanTCP{up: []string{"192.0.2.30:445"}, gate: make(chan struct{})}
+	l := &lanTCP{up: []string{"192.0.2.30:445"}, gate: make(chan struct{}), entered: make(chan struct{})}
 	useLANTCP(t, l)
 	n := &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"}}}
 	useLAN(t, n)
@@ -244,16 +250,24 @@ func TestFollowSharesOneScan(t *testing.T) {
 	target, _ := s.copyTarget()
 	o := copyMountOptions(s, copyapp.MountOptions{})
 	var wg sync.WaitGroup
-	for range 3 {
+	dial := func(ctx context.Context) {
 		wg.Go(func() {
-			if session, err := o.Dial(t.Context(), target); err != nil {
+			if session, err := o.Dial(ctx, target); err != nil {
 				t.Error(err)
 			} else {
 				session.Close()
 			}
 		})
 	}
-	time.Sleep(100 * time.Millisecond)
+	// The first dial scans and is held in its dial; the other two are
+	// let go only once both wait on it.
+	dial(t.Context())
+	<-l.entered
+	for range 2 {
+		ctx := &waitingContext{Context: t.Context(), waiting: make(chan struct{})}
+		dial(ctx)
+		<-ctx.waiting
+	}
 	close(l.gate)
 	wg.Wait()
 	if n.scans() != 1 {
@@ -523,4 +537,77 @@ func TestFollowedFailureNamesNoAddress(t *testing.T) {
 		t.Errorf("no failed pass in Activity: %s", w.Body)
 	}
 	trailText(t, s)
+}
+
+// waitingContext closes waiting the first time its Done is called, which
+// for a dial that finds a search for its target running is when it
+// begins to wait on that search.
+type waitingContext struct {
+	context.Context
+	waiting chan struct{}
+	once    sync.Once
+}
+
+func (c *waitingContext) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.waiting) })
+	return c.Context.Done()
+}
+
+// probe is a connection a test's dial returns.
+type probe string
+
+func (probe) Close() error { return nil }
+
+// Dials that wait on another's search for the same target don't save its
+// address over an explicit Save made meanwhile, even of the same settings.
+func TestConcurrentConnectsRespectRouteSave(t *testing.T) {
+	n := &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"}}}
+	useLAN(t, n)
+	s := testServer(t)
+	if err := s.controller.persistRoute(routeLAN, "192.0.2.20:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	target, _ := s.copyTarget()
+	gate, started := make(chan struct{}), make(chan struct{})
+	var first sync.Once
+	var mu sync.Mutex
+	calls := 0
+	dial := func(ctx context.Context, endpoint string) (probe, error) {
+		mu.Lock()
+		calls++
+		mu.Unlock()
+		first.Do(func() { close(started) })
+		select {
+		case <-gate:
+			return probe(endpoint), nil
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+	var wg sync.WaitGroup
+	run := func(ctx context.Context) {
+		wg.Go(func() {
+			got, at, err := lanFollow(ctx, s, target, dial)
+			if err != nil || got != "192.0.2.30:445" || at.Endpoint != string(got) {
+				t.Errorf("dialed %q at %q: %v", got, at.Endpoint, err)
+			}
+		})
+	}
+	run(t.Context())
+	<-started
+	for range 2 {
+		ctx := &waitingContext{Context: t.Context(), waiting: make(chan struct{})}
+		run(ctx)
+		<-ctx.waiting
+	}
+	if err := s.controller.persistRoute(routeLAN, "192.0.2.20:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	close(gate)
+	wg.Wait()
+	got, _ := loadSettings(s.storage)
+	now, _ := s.copyTarget()
+	if got.LANAddress != "192.0.2.20:445" || now.Endpoint != got.LANAddress || calls != 3 || n.scans() != 1 {
+		t.Fatalf("saved %s, target %s, dials %d, scans %d", got.LANAddress, now.Endpoint, calls, n.scans())
+	}
 }
