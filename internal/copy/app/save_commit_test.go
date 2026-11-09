@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -179,13 +180,16 @@ func TestSaveCommitWhereTheRootIs(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			a, b := t.TempDir(), t.TempDir()
-			link := filepath.Join(t.TempDir(), "link")
-			if err := os.Symlink(a, link); err != nil {
-				t.Fatal(err)
+			if runtime.GOOS == "windows" && tc.name == "renamed folder" {
+				t.Skip("Windows refuses to rename an open folder")
 			}
-			folder := a
+			a, b := t.TempDir(), t.TempDir()
+			folder, link := a, ""
 			if tc.linked {
+				link = filepath.Join(t.TempDir(), "link")
+				if err := os.Symlink(a, link); err != nil {
+					t.Skipf("no symlinks: %v", err)
+				}
 				folder = link
 			}
 			e := newAppEnv(t, claimedAt(folder, map[string]string{keyA: folder, keyB: b}))
@@ -238,5 +242,32 @@ func TestSaveCommitWhereTheRootIs(t *testing.T) {
 				t.Errorf("alerts %q, want %q", alerts, tc.alert)
 			}
 		})
+	}
+}
+
+// openAt matches a root only to the folder it is open on, on every
+// platform: not another folder at the path, a missing path, or a closed
+// root.
+func TestOpenAt(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	root, err := os.OpenRoot(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if !openAt(root, a) {
+		t.Error("the root did not match its own folder")
+	}
+	if openAt(root, b) {
+		t.Error("another existing folder matched the root")
+	}
+	if openAt(root, filepath.Join(a, "missing")) {
+		t.Error("a missing path matched the root")
+	}
+	if err := root.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if openAt(root, a) {
+		t.Error("a closed root matched its folder")
 	}
 }
