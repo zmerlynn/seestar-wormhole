@@ -137,6 +137,8 @@ async function checkLANForm(statuses, replies, scenario) {
   let scans = replies.scans.list;
   const reply = (base, action, body) => {
     calls.push([base + action, body === undefined ? undefined : JSON.parse(JSON.stringify(body))]);
+    // Copy's status is the server's own, read after the LAN route is saved.
+    if (base === '/copy/api/' && action === 'status') return statuses.copy;
     if (action === 'status') return statuses.saved;
     if (base === '/api/' && action === 'scan') {
       const r = scans[body.address || ''] || {status: 200, body: {ok: true, telescopes: [], replies: 0, blocked: false, message: ''}};
@@ -197,13 +199,15 @@ async function checkLANForm(statuses, replies, scenario) {
     $('lan-address').value = '192.0.2.20';
     let prevented = false;
     $('lan-form').dispatchEvent({type: 'submit', preventDefault() {prevented = true;}});
-    for (let i = 0; i < 200 && (lanPending || calls.length < 4); i++) await null;
+    for (let i = 0; i < 200 && (lanPending || calls.length < 5); i++) await null;
     tabAssert(prevented, 'Save submitted the form');
-    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan', '/copy/api/test', '/api/route', '/api/status']), 'Save requests ' + JSON.stringify(calls));
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan', '/copy/api/test', '/api/route', '/api/status', '/copy/api/status']), 'Save requests ' + JSON.stringify(calls));
     tabAssert(JSON.stringify(calls[2][1]) === JSON.stringify({settings: {route: 'lan', lan_address: replies['192.0.2.20'].body.address}}), 'Save body ' + JSON.stringify(calls[1][1]));
     tabAssert(state.settings.route === 'lan' && $('connection-text').textContent === 'On this network: reachable' && $('connection-dot').getAttribute('data-tone') === 'on', 'header after Test and Save: ' + $('connection-text').textContent);
     tabAssert($('lan-result').textContent === 'Saved. ' + lan + ' is reachable.' && $('lan-result').getAttribute('data-tone') === 'ok', 'Save result');
     tabAssert(lan === replies['192.0.2.20'].body.address, 'fixture: the saved address is the tested one');
+    // Copy shows the saved telescope, and its token, by Saved.
+    tabAssert(copyStatus === statuses.copy && statuses.copy.telescope?.token, 'Copy status after Save ' + JSON.stringify(copyStatus?.telescope));
     break;
   }
   case 'save after test': {
@@ -211,7 +215,7 @@ async function checkLANForm(statuses, replies, scenario) {
     await lanTest();
     calls.length = 0;
     await lanSave();
-    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/route', '/api/status']), 'a passed Test ran again ' + JSON.stringify(calls));
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/route', '/api/status', '/copy/api/status']), 'a passed Test ran again ' + JSON.stringify(calls));
     tabAssert($('lan-result').textContent === 'Saved. ' + lan + ' is reachable.' && $('lan-result').getAttribute('data-tone') === 'ok', 'Save result');
     // An edited address is Tested again before it is saved.
     $('lan-address').value = '192.0.2.99';
