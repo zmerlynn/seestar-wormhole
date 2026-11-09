@@ -422,18 +422,27 @@ func TestFollowDial(t *testing.T) {
 		t.Errorf("logs: %s", logs.String())
 	}
 
-	// A pinned follow keeps the first address that connected, unscanned.
-	f = newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}, none)
-	f.pin = true
-	if _, err = follow(f, "192.0.2.7:445", "192.0.2.20:445"); err != nil {
-		t.Fatal(err)
-	}
-	scans = n.scans()
+	// A pinned follow keeps the first address that connected, unscanned,
+	// in every mode that scans, even when a connect there fails.
 	n.mu.Lock()
-	n.answers = nil
+	answers := n.answers
 	n.mu.Unlock()
-	if _, err = follow(f, "192.0.2.7:445", "192.0.2.20:445"); err != nil || !slices.Equal(calls, []string{"192.0.2.20:445"}) || n.scans() != scans {
-		t.Errorf("pinned: %v; calls %q scans %d, want %d", err, calls, n.scans(), scans)
+	for _, mode := range []string{"start", "connect"} {
+		n.mu.Lock()
+		n.answers = answers
+		n.mu.Unlock()
+		f = newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A", LANScan: mode}, none)
+		f.pin = true
+		if _, err = follow(f, "192.0.2.7:445", "192.0.2.20:445"); err != nil {
+			t.Fatal(err)
+		}
+		scans = n.scans()
+		if _, err = follow(f, "192.0.2.7:445", "192.0.2.20:445"); err != nil || !slices.Equal(calls, []string{"192.0.2.20:445"}) || n.scans() != scans {
+			t.Errorf("%s pinned: %v; calls %q scans %d, want %d", mode, err, calls, n.scans(), scans)
+		}
+		if _, err = follow(f, "192.0.2.7:445"); err == nil || !slices.Equal(calls, []string{"192.0.2.20:445"}) || n.scans() != scans {
+			t.Errorf("%s pinned, refused: %v; calls %q scans %d, want %d", mode, err, calls, n.scans(), scans)
+		}
 	}
 
 	for _, private := range []string{"SERIAL-", "192.0.2.", "198.51.100.", "S50_A", "S30 B"} {
