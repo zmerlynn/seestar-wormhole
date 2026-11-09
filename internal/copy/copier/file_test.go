@@ -479,7 +479,7 @@ func TestHashExactly(t *testing.T) {
 		wantErr error
 	}{
 		{name: "exact", ctx: t.Context(), size: 3, want: sumABC},
-		{name: "short", ctx: t.Context(), size: 4, want: "the device sent 3 of its 4 bytes", wantErr: remote.ErrShort},
+		{name: "short", ctx: t.Context(), size: 4, want: "it ended after 3 of its 4 bytes"},
 		{name: "long", ctx: t.Context(), size: 2, want: "stopped after 0 of 2 bytes", wantErr: errTooLong},
 		{name: "canceled", ctx: canceled, size: 3, want: "stopped after 0 of 3 bytes", wantErr: context.Canceled},
 	} {
@@ -497,6 +497,10 @@ func TestHashExactly(t *testing.T) {
 			}
 			if tc.wantErr != nil && !errors.Is(err, tc.wantErr) {
 				t.Errorf("got err %v, want one wrapping %v", err, tc.wantErr)
+			}
+			// It hashes local files too, so it doesn't say the device.
+			if errors.Is(err, remote.ErrShort) {
+				t.Errorf("got err %v, a short device transfer", err)
 			}
 		})
 	}

@@ -14,6 +14,9 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
+// errLonger is a save of a file that grew on the device as it was read.
+var errLonger = errors.New("the device sent more bytes than expected")
+
 // Hold runs a save's rename, the one step that puts the file at its
 // destination, and may refuse it with an error instead: the save then
 // removes its temporary file and returns that error. A nil Hold renames.
@@ -91,8 +94,11 @@ func save(ctx context.Context, lease *Lease, p string, hold Hold, create func() 
 	if err != nil {
 		return err
 	}
-	if n != size {
+	switch {
+	case n < size:
 		return &remote.ShortError{Got: n, Size: size}
+	case n > size:
+		return errLonger
 	}
 	if err := out.Close(); err != nil {
 		return err
