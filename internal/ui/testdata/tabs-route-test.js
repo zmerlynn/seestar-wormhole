@@ -305,7 +305,7 @@ async function checkLANWhen(statuses, replies, scenario) {
   routeFixture(statuses);
   const calls = [];
   let refuse = null;
-  const reply = (base, action, body) => {
+  let reply = (base, action, body) => {
     calls.push([base + action, body === undefined ? undefined : JSON.parse(JSON.stringify(body))]);
     if (action === 'status') return statuses.saved;
     if (base === '/api/' && action === 'scan') return replies.scans.list[body.address || ''] ? replies.scans.list[body.address || ''].body : {ok: true, telescopes: [], replies: 0, blocked: false, message: ''};
@@ -355,10 +355,21 @@ async function checkLANWhen(statuses, replies, scenario) {
     tabAssert($('lan-when').value === 'start', 'the default shows ' + $('lan-when').value);
     await open();
     tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/scan', {}]]), 'the default did not scan on opening ' + JSON.stringify(calls));
+    // As in a browser, disabling the focused select leaves focus on the
+    // page's body.
+    const select = $('lan-when');
+    document.body = new TestElement();
+    let disabled = select.disabled;
+    Object.defineProperty(select, 'disabled', {get() {return disabled;}, set(v) {
+      disabled = v;
+      if (v && document.activeElement === select) document.activeElement = document.body;
+    }});
+    select.focus();
     calls.length = 0;
     await choose('off');
     tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/lan-scan', {settings: {lan_scan: 'off'}}], ['/api/status', undefined]]), 'choosing Never ' + JSON.stringify(calls));
     tabAssert(state.settings.lan_scan === 'off' && $('lan-when').value === 'off' && $('lan-when-result').textContent === 'Saved.' && !$('lan-options').disabled, 'after choosing Never: ' + $('lan-when').value + ' ' + $('lan-when-result').textContent);
+    tabAssert(document.activeElement === select, 'saving the choice left focus off it');
     // Now leaving and opening the form again doesn't scan.
     calls.length = 0;
     $('route-account').checked = true;
@@ -369,10 +380,18 @@ async function checkLANWhen(statuses, replies, scenario) {
     refuse = replies.locked;
     await choose('connect');
     tabAssert($('lan-when').value === 'off' && $('lan-when-result').textContent === replies.locked.message && $('lan-when-result').getAttribute('data-tone') === 'error', 'a refused choice: ' + $('lan-when').value + ' ' + $('lan-when-result').textContent);
+    tabAssert(document.activeElement === select, 'a refused choice left focus off it');
     refuse = null;
     calls.length = 0;
+    // A control focused while the choice saves keeps focus.
+    const saving = reply;
+    reply = (base, action, body) => {
+      if (action === 'lan-scan') $('lan-address').focus();
+      return saving(base, action, body);
+    };
     await choose('connect');
     tabAssert(JSON.stringify(calls[0]) === JSON.stringify(['/api/lan-scan', {settings: {lan_scan: 'connect'}}]) && $('lan-when').value === 'connect', 'choosing every connection ' + JSON.stringify(calls));
+    tabAssert(document.activeElement === $('lan-address'), 'saving the choice took focus from the address');
     break;
   }
   case 'newer': {

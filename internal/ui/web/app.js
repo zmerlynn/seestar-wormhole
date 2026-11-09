@@ -536,9 +536,12 @@ function lanWhenResult(message, tone = '') {
   else $('lan-when-result').removeAttribute('data-tone');
 }
 // Choosing when to scan saves it at once; a refused choice goes back.
+// Saving disables the select, which takes focus from it: it gets focus
+// back unless another control took it meanwhile.
 async function lanWhenSave() {
   if (lanPending) return;
-  const when = $('lan-when').value;
+  const select = $('lan-when'), when = select.value;
+  const focused = document.activeElement === select;
   lanPending = 'when';
   lanWhenResult('');
   controls();
@@ -551,6 +554,8 @@ async function lanWhenSave() {
   } finally {
     lanPending = '';
     controls();
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (focused && lost && !select.disabled && !$('lan-route').hidden) select.focus();
   }
 }
 // Tabs: only the enabled ones can be selected; Arrow, Home and End move
