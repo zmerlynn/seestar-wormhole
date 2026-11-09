@@ -193,11 +193,13 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		return err
 	}
 	return engine.RunSync(ctx, engine.SyncOptions{
-		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, Selector: o.selector,
+		Endpoint: o.follow.label(o.endpoint), Dest: o.dest, StateDir: stateDir, Selector: o.selector,
 		Interval: o.interval, Once: o.once, DryRun: o.dryRun,
 		ReadyAge: o.readyAge, FirstPassAge: o.firstPassAge, Workers: o.workers,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return followDial(ctx, o.follow, endpoint, log, dial, dialAs)
+		// Endpoint is a label when o.follow is set; the dial uses the
+		// real one.
+		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
+			return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
 		},
 	}, log)
 }

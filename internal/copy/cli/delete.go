@@ -180,13 +180,15 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 		}
 	}
 	_, err := engine.RunDelete(ctx, engine.DeleteOptions{
-		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
+		Endpoint: o.follow.label(o.endpoint), Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
 		OlderThan: o.olderThan, Selector: o.selector, DryRun: o.dryRun,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return followDial(ctx, o.follow, endpoint, log, dial, dialAs)
+		// Endpoint is a label when o.follow is set; the dials use the
+		// real one.
+		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
+			return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
 		},
-		OpenRemover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
-			return followDial(ctx, o.follow, endpoint, log, dialRemover, dialRemoverAs)
+		OpenRemover: func(ctx context.Context, _ string) (remote.Remover, error) {
+			return followDial(ctx, o.follow, o.endpoint, log, dialRemover, dialRemoverAs)
 		},
 	}, log)
 	return err

@@ -182,7 +182,7 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 	}()
 	sess, err := followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
 	if err != nil {
-		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.endpoint, err))
+		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.follow.label(o.endpoint), err))
 	}
 	defer sess.Close()
 	entries, left, err := o.selector.Walk(ctx, sess)

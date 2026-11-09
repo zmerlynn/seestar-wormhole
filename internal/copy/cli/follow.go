@@ -53,6 +53,17 @@ func newFollow(s Saved, changed func(string) bool) *follow {
 	return &follow{saved: s.Endpoint, serial: s.LANSerial}
 }
 
+// label is what logs and error text call endpoint, a run's --endpoint:
+// lanName when f follows it, since a scan may have found or confirmed the
+// telescope there, and endpoint as it is otherwise. The dial hooks keep
+// the real endpoint.
+func (f *follow) label(endpoint string) string {
+	if f == nil {
+		return endpoint
+	}
+	return lanName
+}
+
 // followDial dials endpoint with d, or, when f is set and endpoint is its
 // saved one, follows the telescope and dials with as, whose errors call it
 // lanName. The log records the model a scan saw and its reply count,
