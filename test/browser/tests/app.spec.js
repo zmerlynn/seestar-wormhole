@@ -28,7 +28,7 @@ const copySave = (page) => page.locator('#f-save');
 
 // chooseLAN picks the route on this network on Connection.
 async function chooseLAN(page) {
-  await page.getByLabel('On this network').check();
+  await page.getByRole('radio', { name: 'On this network', exact: true }).check();
   await expect(field(page, 'Telescope address')).toBeVisible();
 }
 
