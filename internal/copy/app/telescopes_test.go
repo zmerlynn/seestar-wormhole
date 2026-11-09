@@ -534,13 +534,9 @@ func TestTelescopeFoldersStayOutOfLogs(t *testing.T) {
 	e.post("/copy/api/test", `{"address":"192.0.2.10"}`)
 	e.post("/copy/api/settings", saveInput(second))
 	e.post("/copy/api/clear", `{}`)
-	e.post("/copy/api/copy", `{"action":"start"}`)
-	deadline := time.Now().Add(10 * time.Second)
-	for !strings.Contains(e.logs.String(), "copying started") {
-		if time.Now().After(deadline) {
-			t.Fatalf("copying never started: %s", e.logs.String())
-		}
-		time.Sleep(5 * time.Millisecond)
+	// Start logs "copying started" before it answers.
+	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
+		t.Fatalf("start = %d %s", w.Code, w.Body)
 	}
 	e.post("/copy/api/copy", `{"action":"stop"}`)
 	e.post("/copy/api/delete", `{"action":"find","days":"0"}`)
