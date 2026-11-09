@@ -125,9 +125,13 @@ checks that the address answers file sharing. On a Mac, scanning needs
 Local Network access; see [things to know](#things-to-know).
 
 An address picked from a scan is saved with the telescope's serial number.
-If the router gives the telescope a new address, the app finds it again
-by scanning and saves the new one; `--profile default` on the command line
-finds it the same way for that run.
+From then on, every connect scans for that serial and uses the address the
+telescope answers from, the saved one first, so a new address from the
+router is followed and saved; `--profile default` on the command line
+follows it the same way for that run. If another telescope answers at the
+saved address, it isn't used. If the scan doesn't see the telescope, the
+saved address is tried. Free up space deletes only where its preview
+connected; if the telescope has moved since, preview again.
 
 The app takes the address alone and uses SMB port 445 unless you add another
 port. `seestar-wormhole-cli` needs the port too: `--endpoint 192.0.2.10:445`.

@@ -105,7 +105,7 @@ to catch omitted targets:
 | `internal/cloud/cloudhttp` | `FuzzCloudMetamorphic`, `FuzzRejectedResponseDiagnostics` |
 | `internal/edge/iotcedge` | `FuzzIOTCLicenseVerification` |
 | `internal/proxy` | `FuzzSiteProtection` |
-| `internal/landiscovery` | `FuzzDecodeRequest` |
+| `internal/landiscovery` | `FuzzDecodeRequest`, `FuzzDecodeReply` |
 | `internal/edge` | `FuzzDTLSAdmission` |
 | `internal/dtls` | `FuzzControlBytes` |
 | `internal/rdt` | `FuzzDecode`, `FuzzMachine`, `FuzzMetamorphicReceive` |
@@ -155,7 +155,7 @@ See [certificate selection and renewal](releasing.md#mac-signing-and-notarizatio
 | `internal/edge/`, `internal/edge/iotcedge/`, `internal/dtls/` | Profile checks, Pion integration, datagram boundaries, worker cleanup |
 | `internal/proxy/` | Composed sessions, listeners, forwarding, busy/idle recovery, site protection and cleanup |
 | `cmd/seestar-wormhole/` | CLI output/exits, startup, diagnostics and cancellation |
-| `internal/landiscovery/` | Scan decoding, synthesized replies, source/interface policy and rate bounds; the scan client over fake interfaces and sockets, reply decoding, and re-resolving a moved telescope |
+| `internal/landiscovery/` | Scan decoding, synthesized replies, source/interface policy and rate bounds; the scan client over fake interfaces and sockets, reply decoding, and following a saved telescope by its serial on every connect |
 
 The [tunnel contract](../../DESIGN.md#tunnel-contract) describes the retained stream behavior.
 

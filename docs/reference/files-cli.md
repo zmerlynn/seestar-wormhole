@@ -134,13 +134,17 @@ usual; if nothing listens, the run fails with exit 1.
 
 On this network, an address the app saved from a scan is saved with the
 telescope's serial number, [`lan_serial`](app-settings.md#configjson-version-1).
-When `--endpoint` was filled from it and the address gets no answer (the
-connection times out, is refused or has no route), the run
-[scans this network](#scan) for that serial and connects to the address the
-telescope answered from, on the same port. It keeps using that address for
-the rest of the run, and saves nothing; the app saves the new address the
-next time it connects. A given `--endpoint` is dialed as it is. The scan's
-records are in [logs](#logs).
+When `--endpoint` was filled from it, every connect
+[scans this network](#scan) for that serial and connects, on the same port,
+to an address the telescope answered from, the saved address first; an
+address that doesn't connect doesn't end the search. If another telescope
+answers at the saved address, it isn't used. If no reply carries the serial,
+the saved address is tried. `delete` keeps the address it first connected at
+for the rest of the run. Nothing is saved; the app saves a new address the
+next time it connects. A given `--endpoint`, or an address saved without a
+serial, is dialed as it is, without a scan. Errors call a telescope reached
+this way `the saved telescope`, not its address. The scan's records are in
+[logs](#logs).
 
 At the start of the run, one `INFO` record, `saved settings`, names the
 filled flags and none of their values, such as
@@ -491,9 +495,10 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
 | ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
-| INFO | `found the saved telescope at a new address on this network` | `model` when the reply had one, `replies` | With `--profile default` on this network: the saved address got no answer and a scan found the telescope at another, which the run now uses; see [use the app's saved settings](#use-the-apps-saved-settings). No address, name or serial is logged. |
-| WARN | `found the saved telescope on this network, but it didn't answer at its new address` | `model`, `replies` | As above, but the new address got no answer either; the run fails as it would have at the saved one. |
-| WARN | `the saved telescope didn't answer, and a scan of this network didn't find it` | `replies` | As above, but no reply carried the saved serial. |
+| INFO | `found the saved telescope at another address on this network` | `model` when the reply had one, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). Logged again only when the outcome changes. No address, name or serial is logged. |
+| WARN | `the saved telescope wasn't seen in a scan of this network; tried its saved address` | none | As above, but no reply carried the saved serial, so the saved address was dialed. Logged again only when the outcome changes. |
+| WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `replies` | As above, but another serial answered from the saved address, which isn't used; the connect fails. |
+| WARN | `found the saved telescope on this network, but it didn't connect where it answered` | `model`, `replies` | As above, but no address that answered with the serial connected; the connect fails. |
 | WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
 Each pass that runs ends with one summary line, whose keys are below. A later

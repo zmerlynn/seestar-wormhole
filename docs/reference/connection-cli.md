@@ -590,15 +590,17 @@ In trail entries:
   - `scan_listed`: **On this network** scanned, with the reply count.
   - `scan_probed`: **Test** sent the scan request to the typed address.
   - `scan_failed`: a scan couldn't run, such as with no network to scan.
-  - `scan_moved`: the saved address stopped answering, a scan found the
-    saved serial at another address, and it was saved.
+  - `scan_moved`: a connect's scan found the saved serial at another
+    address, which connected and was saved.
   - `scan_moved_unsaved`: as `scan_moved`, but the new address wasn't saved:
     the settings changed meanwhile, a connection is running, or the save
     failed. The copier still uses it.
-  - `scan_unreached`: a scan found the saved serial, but it didn't answer
-    file sharing at its new address.
-  - `scan_not_found`: the saved address stopped answering and a scan didn't
-    find the saved serial.
+  - `scan_unreached`: a connect's scan found the saved serial, but no
+    address it answered from accepted file sharing.
+  - `scan_not_seen`: a connect's scan didn't see the saved serial, so the
+    saved address was tried.
+  - `scan_other_telescope`: another telescope answers at the saved address
+    and the scan didn't find the saved one; the saved address isn't used.
 - File-tool lines carry a fixed message and the classified `phase` and
   `reason`. They leave out paths, file and folder names, endpoints and error
   text. Connection lines keep their telescope text, including the selected

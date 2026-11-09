@@ -63,10 +63,14 @@ only the telescope's files, for Copy, Browse and Free up space.
   A scan that macOS refuses says so, with the same hint, rather than that
   no telescope answered.
   An address picked from a scan is saved with the telescope's serial
-  number. When the router later gives the telescope another address and the
-  saved one stops answering, Copy, Browse and Free up space scan for that
-  serial, use the telescope's new address and save it; Activity says so,
-  naming only the model.
+  number. Every connect by Copy, Browse and Free up space then scans for that
+  serial and uses the address that answers with it and accepts file
+  sharing, the saved address first; a new address is saved, and Activity
+  says so, naming only the model. Another telescope answering at the saved
+  address is never used. When the scan doesn't see the telescope, the saved
+  address is tried, and Activity says it wasn't seen. Free up space deletes
+  only at the address its preview connected to; if that changes or stops
+  answering, preview again.
   This route doesn't start the proxy or use your account.
 
 You can't change the choice while a connection is running or while copying or
