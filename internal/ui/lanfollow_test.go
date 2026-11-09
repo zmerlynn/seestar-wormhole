@@ -679,6 +679,51 @@ func TestWaiterSearchKeepsItsGeneration(t *testing.T) {
 	}
 }
 
+// Two telescopes saved at one address, under one save, don't share a
+// search: a dial for the second serial, made while the first's search is
+// still connecting, scans for its own and reaches it where it answers.
+func TestFollowKeysSerial(t *testing.T) {
+	s, _, n := scanModeServer(t, "connect")
+	n.set(map[netip.Addr][3]string{
+		netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"},
+		netip.MustParseAddr("192.0.2.40"): {"SERIAL-B", "S50_B", "Seestar S50"},
+	})
+	a, _ := s.copyTarget()
+	b := a
+	b.Serial = "SERIAL-B"
+	gen := s.controller.routeGeneration()
+	gate, entered := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	defer once.Do(func() { close(gate) })
+	first := make(chan error, 1)
+	go func() {
+		_, _, err := lanFollow(t.Context(), s, a, gen, func(_ context.Context, endpoint string) (probe, error) {
+			close(entered)
+			<-gate
+			return probe(endpoint), nil
+		})
+		first <- err
+	}()
+	<-entered
+	waiting := &waitingContext{Context: t.Context(), waiting: make(chan struct{})}
+	second := make(chan copyapp.Target, 1)
+	go func() {
+		_, at, err := lanFollow(waiting, s, b, gen, func(_ context.Context, endpoint string) (probe, error) { return probe(endpoint), nil })
+		if err != nil {
+			t.Error(err)
+		}
+		second <- at
+	}()
+	<-waiting.waiting
+	once.Do(func() { close(gate) })
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if at := <-second; at.Endpoint != "192.0.2.40:445" || n.scans() != 2 {
+		t.Fatalf("the second serial reached %q, scans %d", at.Endpoint, n.scans())
+	}
+}
+
 // Another serial answering at the saved address while the saved one
 // answers elsewhere and doesn't connect there is recorded as a sighting
 // that didn't connect, not as another telescope in its place.
