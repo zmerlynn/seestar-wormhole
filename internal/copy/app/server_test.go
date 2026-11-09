@@ -1002,6 +1002,8 @@ func TestBrowseViewMoves(t *testing.T) {
 		last = got
 	}
 	step("status again", false)
+	e.serve("GET", "/browse/", "")
+	step("opening Browse", false)
 	e.post("/copy/api/settings", strings.Replace(goodInput, `"interval":"5"`, `"interval":"9"`, 1))
 	step("an interval change", false)
 	e.move("192.0.2.20:4445")

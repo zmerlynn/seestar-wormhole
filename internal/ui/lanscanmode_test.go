@@ -691,3 +691,82 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 		t.Errorf("scans %d with scans off", n.scans())
 	}
 }
+
+// browseServer is scanModeServer's server in mode with a Mount, for
+// Browse.
+func browseServer(t *testing.T, mode string) (*server, *lanTCP, *lanNet) {
+	s, l, n := scanModeServer(t, mode)
+	s.copy = copyapp.NewMount(t.Context(), copyMountOptions(s, copyapp.MountOptions{Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(),
+		Log: slog.New(slog.NewTextHandler(io.Discard, nil))}))
+	t.Cleanup(s.copy.Quit)
+	return s, l, n
+}
+
+// browseGet serves a GET of Browse's path, as its frame sends it from
+// site, and returns the status.
+func browseGet(s *server, path, site string) int {
+	r := httptest.NewRequest("GET", "http://"+s.host+path, nil)
+	r.Header.Set("Sec-Fetch-Site", site)
+	return serve(s, r).Code
+}
+
+// Each opening of Browse is a run of its own, with its own sessions: its
+// first listing scans, though the last opening's session is still open.
+// Another site's request opens nothing.
+func TestBrowseReopenScansWithLiveSession(t *testing.T) {
+	s, l, n := browseServer(t, "start")
+	for i := 1; i <= 2; i++ {
+		for _, path := range []string{"/browse/", "/browse/api/list", "/browse/api/list"} {
+			if code := browseGet(s, path, "same-origin"); code != 200 {
+				t.Fatalf("opening %d, %s: %d", i, path, code)
+			}
+		}
+		if n.scans() != i {
+			t.Fatalf("opening %d: scans %d, want %d", i, n.scans(), i)
+		}
+	}
+	if code := browseGet(s, "/browse/", "cross-site"); code != 403 {
+		t.Fatalf("another site's opening: %d", code)
+	}
+	if code := browseGet(s, "/browse/api/list", "same-origin"); code != 200 || n.scans() != 2 {
+		t.Fatalf("after another site's opening: %d, scans %d", code, n.scans())
+	}
+	if calls := l.take(); len(calls) != 2 {
+		t.Fatalf("dials %q, want one per opening", calls)
+	}
+}
+
+// Opening Browse while the last opening's first listing is still dialing
+// cancels that dial; the new opening's listing scans for itself.
+func TestBrowseReopenDuringADial(t *testing.T) {
+	s, l, n := browseServer(t, "start")
+	l.gate, l.entered = make(chan struct{}), make(chan struct{})
+	if code := browseGet(s, "/browse/", "same-origin"); code != 200 {
+		t.Fatalf("opening: %d", code)
+	}
+	first := make(chan int, 1)
+	go func() { first <- browseGet(s, "/browse/api/list", "same-origin") }()
+	<-l.entered // the first listing's scan found the telescope; its dial waits
+	if code := browseGet(s, "/browse/", "same-origin"); code != 200 {
+		t.Fatalf("reopening: %d", code)
+	}
+	// Well before the dial's own 30 s limit.
+	select {
+	case code := <-first:
+		if code == 200 {
+			t.Fatal("the old opening's listing outlived it")
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("reopening didn't end the old opening's dial")
+	}
+	close(l.gate)
+	if code := browseGet(s, "/browse/api/list", "same-origin"); code != 200 {
+		t.Fatalf("the new opening's listing: %d", code)
+	}
+	if n.scans() != 2 {
+		t.Fatalf("scans %d, want 2", n.scans())
+	}
+	if calls := l.take(); len(calls) != 1 || !strings.HasSuffix(calls[0], "192.0.2.30:445") {
+		t.Fatalf("dials %q", calls)
+	}
+}

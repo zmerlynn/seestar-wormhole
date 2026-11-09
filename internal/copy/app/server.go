@@ -74,9 +74,6 @@ type server struct {
 	file     *settingsFile
 	browse   *browse.Handler // without statuses until a folder is saved
 	sessions *browse.Sessions
-	// browseRun is Browse's run for the scan on this network: a new one
-	// with each pool and each load of Browse's page.
-	browseRun *landiscovery.Run
 	// view counts what Browse shows, for the page, which loads its frame
 	// again once it moved: each new pool moves it, and so does each new
 	// endpoint status finds, such as a route's run connecting.
@@ -172,9 +169,18 @@ func (s *server) resolve(set Settings) (Settings, Target, error) {
 // reaches the target. Once a folder is saved it also shows the folder's
 // records and what the selection leaves out; before that, Browse shows
 // the telescope's files without statuses.
-// It is called holding s.mu, or before the server is shared.
+// It is called holding s.mu, or before the server is shared. The new
+// pool moves what Browse shows, so the page loads its frame again.
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	s.view++
+	return s.browseFor(set)
+}
+
+// browseFor is newBrowse without moving what Browse shows: each opening
+// of Browse's page gets one, so that the opening is a run of its own for
+// the scan on this network, with its own sessions. It is called holding
+// s.mu, or before the server is shared.
+func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 	folder, log := set.Folder, s.log
 	// Every pool, old or new, numbers its outcomes from the Mount's one
 	// sequence, so an old pool's late failure can't reopen what a new
@@ -185,11 +191,9 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 		},
 		Seq: s.rep.next,
 	}
-	s.browseRun = &landiscovery.Run{}
+	// The pool's dials share one run for the scan on this network.
+	run := &landiscovery.Run{}
 	sessions := browse.NewSessions(s.ctx, func(ctx context.Context) (remote.Session, error) {
-		s.mu.Lock()
-		run := s.browseRun
-		s.mu.Unlock()
 		return s.dial(landiscovery.WithRun(ctx, run))
 	}, log, rep)
 	var records func() (map[string]state.Record, error)
@@ -332,12 +336,21 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.api(w, r, strings.TrimPrefix(r.URL.Path, "/copy/api/"))
 	case strings.HasPrefix(r.URL.Path, "/browse/"):
 		s.mu.Lock()
-		h, sessions := s.browse, s.sessions
-		if r.URL.Path == "/browse/" && r.Method == http.MethodGet {
-			// Opening Browse is a new run for the scan on this network.
-			s.browseRun = &landiscovery.Run{}
+		var old *browse.Sessions
+		if site := r.Header.Get("Sec-Fetch-Site"); r.URL.Path == "/browse/" && r.Method == http.MethodGet &&
+			(site == "" || site == "same-origin" || site == "none") {
+			// Opening Browse is a new run for the scan on this network,
+			// with new sessions: the old page's are retired, and a
+			// download still holding one finishes first. Another site's
+			// request, which Browse refuses, opens nothing.
+			old = s.sessions
+			s.browse, s.sessions = s.browseFor(s.file.settings)
 		}
+		h, sessions := s.browse, s.sessions
 		s.mu.Unlock()
+		if old != nil {
+			old.Retire()
+		}
 		// A window's webview may not save a download itself, so the app
 		// does, with the window's save dialog.
 		var serve http.Handler = h

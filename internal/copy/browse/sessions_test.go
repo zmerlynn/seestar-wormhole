@@ -477,3 +477,99 @@ func TestPanickingDial(t *testing.T) {
 		l.Release()
 	})
 }
+
+// Retire keeps a leased session open until its last release, which
+// closes it and ends the pool; Gets fail at once.
+func TestRetireLetsALeaseFinish(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		d := &dialer{fsys: fstest.MapFS{}}
+		p, logs := newPool(d)
+		a := mustGet(t, p, context.Background())
+		b := mustGet(t, p, context.Background())
+		p.Retire()
+		p.Retire()
+		s := d.session(0)
+		if s.closed() || s.ctx.Err() != nil {
+			t.Fatal("Retire closed a leased session")
+		}
+		if _, err := p.Get(context.Background()); !errors.Is(err, errStopped) {
+			t.Fatalf("Get after Retire = %v", err)
+		}
+		a.Release()
+		a.Release()
+		time.Sleep(10 * idleTimeout)
+		synctest.Wait()
+		if s.closed() {
+			t.Fatal("closed with a lease held")
+		}
+		b.Release()
+		synctest.Wait()
+		if s.n("Close") != 1 || s.ctx.Err() == nil || p.ctx.Err() == nil {
+			t.Fatalf("the last release: Close calls %d, session context %v, pool context %v", s.n("Close"), s.ctx.Err(), p.ctx.Err())
+		}
+		if d.dials() != 1 || logs.count("session closed", "reason=stopped") != 1 {
+			t.Errorf("dials %d, logs:\n%s", d.dials(), logs)
+		}
+	})
+}
+
+// Retiring an unleased pool, or one dialing, is Close.
+func TestRetireUnleasedIsClose(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		d := &dialer{fsys: fstest.MapFS{}}
+		p, _ := newPool(d)
+		mustGet(t, p, context.Background()).Release()
+		p.Retire()
+		if s := d.session(0); s.n("Close") != 1 || s.ctx.Err() == nil {
+			t.Fatalf("an idle session stayed open after Retire")
+		}
+
+		d = &dialer{fsys: fstest.MapFS{}, gate: make(chan struct{})}
+		p, _ = newPool(d)
+		got := make(chan error)
+		go func() {
+			_, err := p.Get(context.Background())
+			got <- err
+		}()
+		synctest.Wait()
+		p.Retire()
+		if d.session(0).ctx.Err() == nil {
+			t.Fatal("the dial wasn't canceled")
+		}
+		close(d.gate)
+		if err := <-got; !errors.Is(err, errStopped) {
+			t.Fatalf("a Get waiting on the dial = %v", err)
+		}
+		synctest.Wait()
+		if s := d.session(0); s.n("Close") != 1 {
+			t.Fatal("a dial that succeeded after Retire wasn't closed")
+		}
+	})
+}
+
+// A retired session that fails, or a Close after Retire, ends it and the
+// pool at once.
+func TestRetiredSessionEnds(t *testing.T) {
+	for _, end := range []string{"fail", "close"} {
+		t.Run(end, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				d := &dialer{fsys: fstest.MapFS{}}
+				p, _ := newPool(d)
+				l := mustGet(t, p, context.Background())
+				p.Retire()
+				if end == "fail" {
+					l.Fail(io.ErrUnexpectedEOF)
+				} else {
+					p.Close()
+				}
+				if s := d.session(0); s.n("Close") != 1 || s.ctx.Err() == nil || p.ctx.Err() == nil {
+					t.Fatalf("%s after Retire left the session or pool open", end)
+				}
+				l.Release()
+				if s := d.session(0); s.n("Close") != 1 {
+					t.Fatalf("closed %d times", s.n("Close"))
+				}
+			})
+		})
+	}
+}
