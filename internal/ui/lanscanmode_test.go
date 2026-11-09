@@ -354,54 +354,52 @@ func TestPreviewsAndBrowseAreRuns(t *testing.T) {
 	s, _, n := scanModeServer(t, "")
 	set := copyapp.DefaultSettings()
 	set.Folder, set.Once = filepath.Join(t.TempDir(), "copy"), true
-	s.copy = copyapp.NewMount(t.Context(), copyMountOptions(s, copyapp.MountOptions{Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(),
+	o, await := reported(t, copyMountOptions(s, copyapp.MountOptions{Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(),
 		Settings: &set, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}))
+	s.copy = copyapp.NewMount(t.Context(), o)
 	t.Cleanup(s.copy.Quit)
 	if code := doPost(s, "/copy/api/copy", `{"action":"start"}`).Code; code != 200 {
 		t.Fatalf("start = %d", code)
 	}
-	waitFree(t, s, "copied")
+	await(diagnostic.SourceCopy, diagnostic.OpPass)
 	if n.scans() != 1 {
 		t.Fatalf("a Copy start scanned %d times", n.scans())
 	}
-
-	if code := doPost(s, "/copy/api/delete", `{"action":"find","days":"0","trust":false}`).Code; code != 200 {
-		t.Fatalf("find = %d", code)
+	for i := 2; i <= 3; i++ {
+		if code := doPost(s, "/copy/api/delete", `{"action":"find","days":"0","trust":false}`).Code; code != 200 {
+			t.Fatalf("find %d = %d", i-1, code)
+		}
+		if out := await(diagnostic.SourceDelete, diagnostic.OpPreview); out.Failed() {
+			t.Fatalf("check %d failed: %v", i-1, out.Err)
+		}
+		if n.scans() != i {
+			t.Fatalf("Free up space check %d made the scans %d, want %d", i-1, n.scans(), i)
+		}
 	}
-	waitFree(t, s, "preview")
-	if n.scans() != 2 {
-		t.Fatalf("a Free up space check scanned %d times", n.scans()-1)
-	}
-	if code := doPost(s, "/copy/api/delete", `{"action":"find","days":"0","trust":false}`).Code; code != 200 {
-		t.Fatalf("find again = %d", code)
-	}
-	waitFree(t, s, "preview")
-	if n.scans() != 3 {
-		t.Fatalf("a second check scanned %d times", n.scans()-2)
-	}
-	// A Copy preview is a run of its own.
+	// A Copy preview is a run of its own. Browse starts once it has
+	// finished, so it can't join the preview's search.
 	if code := doPost(s, "/copy/api/copy", `{"action":"preview"}`).Code; code != 200 {
 		t.Fatalf("preview = %d", code)
 	}
-	for deadline := time.Now().Add(10 * time.Second); n.scans() < 4; time.Sleep(time.Millisecond) {
-		if time.Now().After(deadline) {
-			t.Fatal("the Copy preview never scanned")
-		}
+	if out := await(diagnostic.SourceCopy, diagnostic.OpPreview); out.Failed() || out.Canceled {
+		t.Fatalf("the Copy preview didn't finish: %+v", out)
+	}
+	if n.scans() != 4 {
+		t.Fatalf("the Copy preview made the scans %d, want 4", n.scans())
 	}
 
-	browse := func(path string) {
-		t.Helper()
-		r := httptest.NewRequest("GET", "http://"+s.host+path, nil)
-		r.Header.Set("Sec-Fetch-Site", "same-origin")
-		if w := serve(s, r); w.Code != 200 {
-			t.Fatalf("%s = %d %s", path, w.Code, w.Body)
+	// Browse is a run each time it opens.
+	for i := 1; i <= 2; i++ {
+		if code := browseGet(s, "/browse/", "same-origin"); code != 200 {
+			t.Fatalf("opening Browse %d = %d", i, code)
 		}
-	}
-	browse("/browse/")
-	scans := n.scans()
-	browse("/browse/api/list")
-	if n.scans() != scans+1 {
-		t.Fatalf("Browse's first listing scanned %d times", n.scans()-scans)
+		scans := n.scans()
+		if code := browseGet(s, "/browse/api/list", "same-origin"); code != 200 {
+			t.Fatalf("listing %d = %d", i, code)
+		}
+		if n.scans() != scans+1 {
+			t.Fatalf("Browse opening %d's first listing scanned %d times", i, n.scans()-scans)
+		}
 	}
 	trailText(t, s)
 }
