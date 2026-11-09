@@ -21,7 +21,8 @@ import (
 type browseOptions struct {
 	profile  profileFlag
 	endpoint string
-	// follow follows a moved telescope at the endpoint the profile filled.
+	// follow follows a saved telescope by its serial at the endpoint the
+	// profile filled.
 	follow    *follow
 	listen    string
 	addr      netip.AddrPort // set by validate from listen
@@ -195,7 +196,7 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 	}
 	addr := netip.AddrPortFrom(o.addr.Addr(), uint16(ln.Addr().(*net.TCPAddr).Port))
 	sessions := browse.NewSessions(ctx, func(ctx context.Context) (remote.Session, error) {
-		return followDial(ctx, o.follow, o.endpoint, log, dial)
+		return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
 	}, log.With("endpoint", o.endpoint), browse.Reporter{})
 	srv := &http.Server{
 		Handler: browse.NewHandler(browse.Config{

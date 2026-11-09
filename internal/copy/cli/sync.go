@@ -22,7 +22,8 @@ const maxWorkers = 64
 type syncOptions struct {
 	profile  profileFlag
 	endpoint string
-	// follow follows a moved telescope at the endpoint the profile filled.
+	// follow follows a saved telescope by its serial at the endpoint the
+	// profile filled.
 	follow    *follow
 	dest      string
 	selection selectionFlags
@@ -178,6 +179,12 @@ var dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.
 	return remote.Dial(ctx, endpoint, log)
 }
 
+// dialAs is dial for a telescope followed by its serial: its errors call
+// it name, never its address.
+var dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
+	return remote.DialVia(ctx, name, remote.TCP(endpoint), log)
+}
+
 // runSync resolves the history folder and runs the sync. A dry run is
 // read-only: the program turns the guard on before it calls this.
 func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
@@ -190,7 +197,7 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		Interval: o.interval, Once: o.once, DryRun: o.dryRun,
 		ReadyAge: o.readyAge, FirstPassAge: o.firstPassAge, Workers: o.workers,
 		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return followDial(ctx, o.follow, endpoint, log, dial)
+			return followDial(ctx, o.follow, endpoint, log, dial, dialAs)
 		},
 	}, log)
 }

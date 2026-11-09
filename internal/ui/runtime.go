@@ -171,6 +171,22 @@ var (
 		}
 		return s, nil
 	}
+	// tcpDialAs and tcpRemoverAs dial endpoint over TCP for a telescope
+	// saved with its serial; their errors call it name, never its address.
+	tcpDialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
+		s, err := remote.DialVia(ctx, name, remote.TCP(endpoint), log)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
+	tcpRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
+		s, err := remote.DialRemoverVia(ctx, name, remote.TCP(endpoint), log)
+		if err != nil {
+			return nil, err
+		}
+		return s, nil
+	}
 	dialVia = func(ctx context.Context, name string, conn remote.Conn, log *slog.Logger) (remote.Session, error) {
 		s, err := remote.DialVia(ctx, name, conn, log)
 		if err != nil {
@@ -192,33 +208,49 @@ var (
 // app's MountOptions. The hooks choose the route by the target's Run,
 // never by its endpoint's text: Run 0 dials the endpoint over TCP, and
 // any other run dials device port 445 through that run's session. On this
-// network a saved serial lets them find a telescope that moved. They
-// look the run up on each dial, so one Mount reaches whichever run is
-// current. Every file-tool outcome goes to the app's event trail.
+// network a target saved with its serial is dialed where a scan hears
+// that serial (see [lanFollow]), except by a delete's remover, which dials
+// the exact target its preview reached. They look the run up on each
+// dial, so one Mount reaches whichever run is current. Every file-tool
+// outcome goes to the app's event trail.
 func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOptions {
 	files := &handler.controller.files
 	via := func(run uint64) remote.Conn {
 		return func(ctx context.Context) (net.Conn, error) { return files.dial(ctx, run) }
 	}
 	log := o.Log
+	follow := func(ctx context.Context, t copyapp.Target) (remote.Session, copyapp.Target, error) {
+		return lanFollow(ctx, handler, t, func(ctx context.Context, endpoint string) (remote.Session, error) {
+			return tcpDialAs(ctx, lanName, endpoint, log)
+		})
+	}
 	o.Target = handler.copyTarget
 	o.Report = handler.controller.log.addOutcome
 	o.Dial = func(ctx context.Context, t copyapp.Target) (remote.Session, error) {
 		switch {
 		case copyDial != nil:
 			return copyDial(ctx, t)
+		case t.Run == 0 && t.Serial != "":
+			s, _, err := follow(ctx, t)
+			return s, err
 		case t.Run == 0:
-			return lanRedial(ctx, handler, t, func(ctx context.Context, endpoint string) (remote.Session, error) {
-				return tcpDial(ctx, endpoint, log)
-			})
+			return tcpDial(ctx, t.Endpoint, log)
 		}
 		return dialVia(ctx, t.Endpoint, via(t.Run), log)
 	}
+	o.Resolve = func(ctx context.Context, t copyapp.Target) (remote.Session, copyapp.Target, error) {
+		if copyDial == nil && t.Run == 0 && t.Serial != "" {
+			return follow(ctx, t)
+		}
+		s, err := o.Dial(ctx, t)
+		return s, t, err
+	}
 	o.Remover = func(ctx context.Context, t copyapp.Target) (remote.Remover, error) {
-		if t.Run == 0 {
-			return lanRedial(ctx, handler, t, func(ctx context.Context, endpoint string) (remote.Remover, error) {
-				return tcpRemover(ctx, endpoint, log)
-			})
+		switch {
+		case t.Run == 0 && t.Serial != "":
+			return tcpRemoverAs(ctx, lanName, t.Endpoint, log)
+		case t.Run == 0:
+			return tcpRemover(ctx, t.Endpoint, log)
 		}
 		return removerVia(ctx, t.Endpoint, via(t.Run), log)
 	}

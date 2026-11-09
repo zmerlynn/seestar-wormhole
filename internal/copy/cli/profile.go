@@ -191,5 +191,10 @@ func (o *deleteOptions) fillSaved(s Saved, changed func(string) bool) []string {
 	}
 	f.str("endpoint", &o.endpoint, s.Endpoint)
 	o.follow = newFollow(s, changed)
+	if o.follow != nil {
+		// A run deletes where it first connected: a later connect,
+		// the remover's among them, never scans again.
+		o.follow.pin = true
+	}
 	return filled
 }

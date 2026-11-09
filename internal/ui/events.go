@@ -95,15 +95,17 @@ func (l *eventLog) addScan(code, text string) {
 	l.diskMu.Lock()
 	defer l.diskMu.Unlock()
 	l.mu.Lock()
-	entry := l.publishCodedLocked(text, nil, code, false)
+	// Every connect scans, so a repeat of the last connection line, as
+	// a not-seen one is on each pass, collapses into it.
+	entry := l.publishCodedLocked(text, nil, code, true)
 	l.mu.Unlock()
 	l.write(entry)
 }
 
 // The scan codes: a scan of the page's, a typed address asked, a scan that
-// couldn't run, and the copier's scans for a saved telescope that stopped
-// answering: found and saved, found but not saved, found but not
-// answering at its new address, and not found.
+// couldn't run, and the copier's scans for a saved telescope: found at a
+// new address and saved, found there but not saved, found but not
+// connecting, not seen, and another telescope at the saved address.
 const (
 	scanListed     = "scan_listed"
 	scanProbed     = "scan_probed"
@@ -111,7 +113,8 @@ const (
 	scanMoved      = "scan_moved"
 	scanUnsaved    = "scan_moved_unsaved"
 	scanUnreached  = "scan_unreached"
-	scanNotFound   = "scan_not_found"
+	scanNotSeen    = "scan_not_seen"
+	scanOther      = "scan_other_telescope"
 )
 
 // publishLocked records an immutable event in memory, without disk I/O.

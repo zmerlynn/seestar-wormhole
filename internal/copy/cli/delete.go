@@ -16,7 +16,8 @@ import (
 type deleteOptions struct {
 	profile  profileFlag
 	endpoint string
-	// follow follows a moved telescope at the endpoint the profile filled.
+	// follow follows a saved telescope by its serial at the endpoint the
+	// profile filled.
 	follow        *follow
 	dest          string
 	destSet       bool
@@ -158,6 +159,16 @@ var dialRemover = func(ctx context.Context, endpoint string, log *slog.Logger) (
 	return r, nil
 }
 
+// dialRemoverAs is dialRemover for a telescope followed by its serial: its
+// errors call it name, never its address.
+var dialRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
+	r, err := remote.DialRemoverVia(ctx, name, remote.TCP(endpoint), log)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // runDelete resolves the history folder and runs the deletion. A dry run is
 // read-only: the program turns the guard on before it calls this.
 func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
@@ -172,10 +183,10 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
 		OlderThan: o.olderThan, Selector: o.selector, DryRun: o.dryRun,
 		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return followDial(ctx, o.follow, endpoint, log, dial)
+			return followDial(ctx, o.follow, endpoint, log, dial, dialAs)
 		},
 		OpenRemover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
-			return followDial(ctx, o.follow, endpoint, log, dialRemover)
+			return followDial(ctx, o.follow, endpoint, log, dialRemover, dialRemoverAs)
 		},
 	}, log)
 	return err

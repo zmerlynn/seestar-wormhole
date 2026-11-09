@@ -1,10 +1,8 @@
 package ui
 
 import (
-	"context"
 	"encoding/json/v2"
 	"errors"
-	"log/slog"
 	"net"
 	"net/netip"
 	"os"
@@ -14,12 +12,10 @@ import (
 	"sync"
 	"syscall"
 	"testing"
-	"testing/fstest"
 	"time"
 
-	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
-	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
+	"golang.org/x/net/ipv4"
 )
 
 // lanNet is a network of telescopes with no sockets behind it: each send
@@ -30,6 +26,19 @@ type lanNet struct {
 	clients int
 	sendErr error
 	sent    []netip.Addr
+	listens int // sockets opened: one per scan or probe
+}
+
+func (n *lanNet) scans() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.listens
+}
+
+func (n *lanNet) set(answers map[netip.Addr][3]string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.answers = answers
 }
 
 func (n *lanNet) sends() []netip.Addr {
@@ -46,6 +55,9 @@ func useLAN(t *testing.T, n *lanNet) {
 	lanScanner = &landiscovery.Scanner{
 		Interfaces: lanInterfaces{},
 		Listen: func() (landiscovery.Conn, error) {
+			n.mu.Lock()
+			n.listens++
+			n.mu.Unlock()
 			return &lanConn{n: n, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}, nil
 		},
 		Interval: 20 * time.Millisecond,
@@ -108,7 +120,7 @@ func (c *lanConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	}
 }
 
-func (c *lanConn) WriteTo(b []byte, to net.Addr) (int, error) {
+func (c *lanConn) WriteTo(b []byte, _ *ipv4.ControlMessage, to net.Addr) (int, error) {
 	target := to.(*net.UDPAddr).AddrPort().Addr()
 	c.n.mu.Lock()
 	defer c.n.mu.Unlock()
@@ -221,7 +233,7 @@ func TestScanListsTelescopes(t *testing.T) {
 func TestScanMessages(t *testing.T) {
 	saved := hostOS
 	t.Cleanup(func() { hostOS = saved })
-	for _, goos := range []string{"darwin", "linux"} {
+	for _, goos := range []string{"darwin", "linux", "windows"} {
 		hostOS = goos
 		s := testServer(t)
 
@@ -233,7 +245,9 @@ func TestScanMessages(t *testing.T) {
 
 		useLAN(t, &lanNet{sendErr: &net.OpError{Op: "write", Net: "udp", Err: os.NewSyscallError("sendto", syscall.EHOSTUNREACH)}})
 		v = scanPost(t, s, `{}`)
-		if !v.Blocked || !strings.HasPrefix(v.Message, scanBlocked) || strings.Contains(v.Message, "System Settings") != (goos == "darwin") {
+		// Only on macOS is no route to host a Local Network denial.
+		if want := scanNoRoute; !v.Blocked || (goos == "darwin") != strings.HasPrefix(v.Message, scanBlocked) ||
+			(goos != "darwin" && v.Message != want) || strings.Contains(v.Message, "System Settings") != (goos == "darwin") {
 			t.Fatalf("%s blocked: %+v", goos, v)
 		}
 
@@ -351,92 +365,5 @@ func TestLANSerialIsOptional(t *testing.T) {
 	}
 	if got, err := loadSettings(st); err != nil || got.LANSerial != "SERIAL-A" {
 		t.Fatalf("%+v %v", got, err)
-	}
-}
-
-// The copier's dials on this network follow a saved telescope that moved:
-// a scan for its serial finds it, the dial goes there, and the new address
-// is saved. Activity names the model and the reply count only.
-func TestCopierFollowsMovedTelescope(t *testing.T) {
-	saved := [...]any{tcpDial, tcpRemover, copyDial}
-	t.Cleanup(func() {
-		tcpDial = saved[0].(func(context.Context, string, *slog.Logger) (remote.Session, error))
-		tcpRemover = saved[1].(func(context.Context, string, *slog.Logger) (remote.Remover, error))
-		copyDial = saved[2].(func(context.Context, copyapp.Target) (remote.Session, error))
-	})
-	copyDial = nil
-	var mu sync.Mutex
-	var dialed []string
-	at := "192.0.2.30:445"
-	reach := func(endpoint string) error {
-		mu.Lock()
-		defer mu.Unlock()
-		dialed = append(dialed, endpoint)
-		if endpoint != at {
-			return &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
-		}
-		return nil
-	}
-	tcpDial = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Session, error) {
-		if err := reach(endpoint); err != nil {
-			return nil, err
-		}
-		return remote.NewFake(fstest.MapFS{"MyWorks/a.jpg": {Data: []byte("a")}}), nil
-	}
-	tcpRemover = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Remover, error) {
-		if err := reach(endpoint); err != nil {
-			return nil, err
-		}
-		return remote.NewFakeDir(t.TempDir())
-	}
-	n := &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"}}}
-	useLAN(t, n)
-	s := testServer(t)
-	s.controller.log = &eventLog{storage: s.storage}
-	if err := s.controller.persistRoute(routeLAN, "192.0.2.10:445", "SERIAL-A"); err != nil {
-		t.Fatal(err)
-	}
-	o := copyMountOptions(s, copyapp.MountOptions{})
-	stale, err := s.copyTarget()
-	if err != nil || stale.Serial != "SERIAL-A" {
-		t.Fatalf("target %+v %v", stale, err)
-	}
-	session, err := o.Dial(t.Context(), stale)
-	if err != nil || session == nil {
-		t.Fatalf("dial: %v", err)
-	}
-	session.Close()
-	got, _ := loadSettings(s.storage)
-	if got.LANAddress != "192.0.2.30:445" || got.LANSerial != "SERIAL-A" {
-		t.Fatalf("saved %+v", got)
-	}
-	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_moved"`) || !strings.Contains(text, "(Seestar S50)") || !strings.Contains(text, "1 reply") {
-		t.Fatalf("trail %s", text)
-	}
-
-	// A dial still holding the old target goes to the new address without
-	// another scan, and so does Free up space's remover.
-	scans := len(n.sends())
-	if _, err := o.Dial(t.Context(), stale); err != nil {
-		t.Fatal(err)
-	}
-	if r, err := o.Remover(t.Context(), stale); err != nil || r == nil {
-		t.Fatalf("remover: %v", err)
-	}
-	if len(n.sends()) != scans {
-		t.Fatal("a stale target scanned again")
-	}
-
-	// Without a saved serial nothing scans and the failure stands.
-	at = "192.0.2.31:445"
-	if _, err := o.Dial(t.Context(), copyapp.Target{Endpoint: "192.0.2.30:445"}); err == nil || len(n.sends()) != scans {
-		t.Fatalf("serial-less dial: %v, scanned %t", err, len(n.sends()) != scans)
-	}
-	// Not found: the first failure stands and Activity says so.
-	if _, err := o.Dial(t.Context(), copyapp.Target{Endpoint: "192.0.2.30:445", Serial: "SERIAL-Z"}); !landiscovery.Unreached(err) {
-		t.Fatalf("not found: %v", err)
-	}
-	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_not_found"`) {
-		t.Fatalf("trail %s", text)
 	}
 }

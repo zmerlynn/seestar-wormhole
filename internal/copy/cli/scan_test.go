@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/netip"
@@ -15,12 +17,14 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"testing/fstest"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
+	"golang.org/x/net/ipv4"
 )
 
 // lanNet is a network of telescopes with no sockets behind it: each send
@@ -30,6 +34,7 @@ type lanNet struct {
 	answers map[netip.Addr][3]string // serial, ssid, model by address
 	clients int
 	sendErr error
+	listens int // sockets opened: one per scan
 }
 
 // useLAN makes the commands' scanner scan n, from a computer at
@@ -41,6 +46,9 @@ func useLAN(t *testing.T, n *lanNet) {
 	lanScanner = &landiscovery.Scanner{
 		Interfaces: lanInterfaces{},
 		Listen: func() (landiscovery.Conn, error) {
+			n.mu.Lock()
+			n.listens++
+			n.mu.Unlock()
 			return &lanConn{n: n, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}, nil
 		},
 		Interval: 20 * time.Millisecond,
@@ -101,7 +109,7 @@ func (c *lanConn) ReadFrom(b []byte) (int, net.Addr, error) {
 	}
 }
 
-func (c *lanConn) WriteTo(b []byte, to net.Addr) (int, error) {
+func (c *lanConn) WriteTo(b []byte, _ *ipv4.ControlMessage, to net.Addr) (int, error) {
 	target := to.(*net.UDPAddr).AddrPort().Addr()
 	c.n.mu.Lock()
 	defer c.n.mu.Unlock()
@@ -271,11 +279,17 @@ func TestScanHelp(t *testing.T) {
 	}
 }
 
+func (n *lanNet) scans() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.listens
+}
+
 // A run follows the telescope only at the endpoint the profile filled, and
-// only with a saved serial.
+// only with a saved serial; delete pins the address it first connects at.
 func TestNewFollow(t *testing.T) {
 	s := Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}
-	if f := newFollow(s, none); f == nil || f.saved != s.Endpoint || f.at != s.Endpoint || f.serial != "SERIAL-A" {
+	if f := newFollow(s, none); f == nil || f.saved != s.Endpoint || f.serial != "SERIAL-A" || f.pin {
 		t.Errorf("filled = %+v", f)
 	}
 	if f := newFollow(s, given("endpoint")); f != nil {
@@ -295,12 +309,13 @@ func TestNewFollow(t *testing.T) {
 	bo.fillSaved(s, none)
 	var do deleteOptions
 	do.fillSaved(s, none)
-	if fo.follow == nil || so.follow != nil || bo.follow == nil || do.follow == nil {
-		t.Errorf("fillSaved follow: find %v sync %v browse %v delete %v", fo.follow, so.follow, bo.follow, do.follow)
+	if fo.follow == nil || so.follow != nil || bo.follow == nil || do.follow == nil || fo.follow.pin || bo.follow.pin || !do.follow.pin {
+		t.Errorf("fillSaved follow: find %+v sync %+v browse %+v delete %+v", fo.follow, so.follow, bo.follow, do.follow)
 	}
 }
 
 // fakeDial answers at the addresses in up and gets no answer elsewhere.
+// Its labeled form records the name it was given in names.
 func fakeDial(calls *[]string, up ...string) func(context.Context, string, *slog.Logger) (string, error) {
 	return func(_ context.Context, endpoint string, _ *slog.Logger) (string, error) {
 		*calls = append(*calls, endpoint)
@@ -311,70 +326,110 @@ func fakeDial(calls *[]string, up ...string) func(context.Context, string, *slog
 	}
 }
 
+func fakeDialAs(names *[]string, calls *[]string, up ...string) func(context.Context, string, string, *slog.Logger) (string, error) {
+	d := fakeDial(calls, up...)
+	return func(ctx context.Context, name, endpoint string, log *slog.Logger) (string, error) {
+		*names = append(*names, name)
+		return d(ctx, endpoint, log)
+	}
+}
+
 func TestFollowDial(t *testing.T) {
 	ctx := context.Background()
-	useLAN(t, twoTelescopes())
+	n := twoTelescopes()
+	useLAN(t, n)
 	var logs bytes.Buffer
 	log := diagnostic.Logger("text", &logs, slog.LevelInfo)
 	f := newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}, none)
-
-	// Moved: the scan finds the serial, the run connects there and keeps
-	// using it.
-	var calls []string
-	got, err := followDial(ctx, f, "192.0.2.7:445", log, fakeDial(&calls, "192.0.2.20:445"))
-	if err != nil || got != "session at 192.0.2.20:445" || !slices.Equal(calls, []string{"192.0.2.7:445", "192.0.2.20:445"}) {
-		t.Fatalf("moved = %q, %v; calls %q", got, err, calls)
+	var calls, plain, names []string
+	follow := func(f *follow, endpoint string, up ...string) (string, error) {
+		calls, plain, names = nil, nil, nil
+		return followDial(ctx, f, endpoint, log, fakeDial(&plain, up...), fakeDialAs(&names, &calls, up...))
 	}
-	if !strings.Contains(logs.String(), `msg="found the saved telescope at a new address on this network" model="Seestar S50" replies=`) {
+
+	// Moved: the scan finds the serial elsewhere, and the run connects
+	// there, labeled, without trying the saved address.
+	got, err := follow(f, "192.0.2.7:445", "192.0.2.7:445", "192.0.2.20:445")
+	if err != nil || got != "session at 192.0.2.20:445" || !slices.Equal(calls, []string{"192.0.2.20:445"}) || plain != nil ||
+		!slices.Equal(names, []string{lanName}) {
+		t.Fatalf("moved = %q, %v; calls %q plain %q names %q", got, err, calls, plain, names)
+	}
+	if !strings.Contains(logs.String(), `level=INFO msg="found the saved telescope at another address on this network" model="Seestar S50" replies=`) {
 		t.Errorf("logs: %s", logs.String())
 	}
-	calls = nil
-	if got, err = followDial(ctx, f, "192.0.2.7:445", log, fakeDial(&calls, "192.0.2.20:445")); err != nil || !slices.Equal(calls, []string{"192.0.2.20:445"}) {
-		t.Errorf("the next dial = %q, %v; calls %q", got, err, calls)
+	// Every connect scans again, and a repeated outcome isn't logged again.
+	logs.Reset()
+	if got, err = follow(f, "192.0.2.7:445", "192.0.2.20:445"); err != nil || !slices.Equal(calls, []string{"192.0.2.20:445"}) || n.scans() != 2 {
+		t.Errorf("the next dial = %q, %v; calls %q scans %d", got, err, calls, n.scans())
+	}
+	if logs.Len() != 0 {
+		t.Errorf("repeat logged: %s", logs.String())
 	}
 
-	// Another endpoint, or no follow, is dialed as it is.
-	calls = nil
-	if _, err = followDial(ctx, f, "198.51.100.9:445", log, fakeDial(&calls)); !landiscovery.Unreached(err) || !slices.Equal(calls, []string{"198.51.100.9:445"}) {
-		t.Errorf("another endpoint: %v; calls %q", err, calls)
-	}
-	calls = nil
-	if _, err = followDial(ctx, nil, "192.0.2.7:445", log, fakeDial(&calls)); !landiscovery.Unreached(err) || !slices.Equal(calls, []string{"192.0.2.7:445"}) {
-		t.Errorf("no follow: %v; calls %q", err, calls)
+	// The saved address answering with the serial is dialed, and isn't a move.
+	f = newFollow(Saved{Endpoint: "192.0.2.20:445", LANSerial: "SERIAL-A"}, none)
+	if got, err = follow(f, "192.0.2.20:445", "192.0.2.20:445"); err != nil || !slices.Equal(calls, []string{"192.0.2.20:445"}) || logs.Len() != 0 {
+		t.Errorf("at the saved address = %q, %v; calls %q logs %s", got, err, calls, logs.String())
 	}
 
-	// Not found: the first failure, and a warning with the reply count.
+	// Another endpoint, or no follow, is dialed as it is, unscanned.
+	scans := n.scans()
+	if _, err = follow(f, "198.51.100.9:445"); err == nil || !slices.Equal(plain, []string{"198.51.100.9:445"}) || calls != nil {
+		t.Errorf("another endpoint: %v; plain %q calls %q", err, plain, calls)
+	}
+	if _, err = follow(nil, "192.0.2.20:445"); err == nil || !slices.Equal(plain, []string{"192.0.2.20:445"}) || calls != nil {
+		t.Errorf("no follow: %v; plain %q calls %q", err, plain, calls)
+	}
+	if n.scans() != scans {
+		t.Errorf("an unfollowed dial scanned")
+	}
+
+	// Not seen: the saved address, and a warning that names nothing.
 	logs.Reset()
 	f = newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-C"}, none)
-	calls = nil
-	if _, err = followDial(ctx, f, "192.0.2.7:445", log, fakeDial(&calls)); !landiscovery.Unreached(err) || !slices.Equal(calls, []string{"192.0.2.7:445"}) {
-		t.Errorf("not found: %v; calls %q", err, calls)
+	if got, err = follow(f, "192.0.2.7:445", "192.0.2.7:445"); err != nil || !slices.Equal(calls, []string{"192.0.2.7:445"}) {
+		t.Errorf("not seen: %q, %v; calls %q", got, err, calls)
 	}
-	if !strings.Contains(logs.String(), `msg="the saved telescope didn't answer, and a scan of this network didn't find it" replies=`) {
+	if !strings.Contains(logs.String(), `level=WARN msg="the saved telescope wasn't seen in a scan of this network; tried its saved address"`+"\n") {
 		t.Errorf("logs: %s", logs.String())
 	}
 
-	// Seen but silent at its new address.
+	// Another telescope at the saved address: it is never dialed.
+	logs.Reset()
+	f = newFollow(Saved{Endpoint: "192.0.2.20:445", LANSerial: "SERIAL-C"}, none)
+	if _, err = follow(f, "192.0.2.20:445", "192.0.2.20:445"); !errors.Is(err, landiscovery.ErrOtherTelescope) || calls != nil {
+		t.Errorf("other telescope: %v; calls %q", err, calls)
+	}
+	if !strings.Contains(logs.String(), `msg="another telescope answers at the saved address, and a scan of this network didn't find the saved one" replies=`) {
+		t.Errorf("logs: %s", logs.String())
+	}
+
+	// Seen but not connecting where it answered: the saved address isn't
+	// tried, and the error is the dial's.
 	logs.Reset()
 	f = newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-B"}, none)
-	if _, err = followDial(ctx, f, "192.0.2.7:445", log, fakeDial(&calls)); !landiscovery.Unreached(err) || f.at != "192.0.2.7:445" {
-		t.Errorf("seen: %v at %s", err, f.at)
+	if _, err = follow(f, "192.0.2.7:445", "192.0.2.7:445"); !errors.Is(err, syscall.ECONNREFUSED) || !slices.Equal(calls, []string{"192.0.2.40:445"}) {
+		t.Errorf("seen: %v; calls %q", err, calls)
 	}
-	if !strings.Contains(logs.String(), `didn't answer at its new address" model="Seestar S30"`) {
+	if !strings.Contains(logs.String(), `didn't connect where it answered" model="Seestar S30"`) {
 		t.Errorf("logs: %s", logs.String())
 	}
 
-	// An answer from a server is not a moved telescope: no scan.
-	saved := lanScanner
-	lanScanner = nil
-	defer func() { lanScanner = saved }()
+	// A pinned follow keeps the first address that connected, unscanned.
 	f = newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}, none)
-	refused := errors.New("logon failure")
-	if _, err = followDial(ctx, f, "192.0.2.7:445", log, func(context.Context, string, *slog.Logger) (string, error) { return "", refused }); err != refused {
-		t.Errorf("a server's answer: %v", err)
+	f.pin = true
+	if _, err = follow(f, "192.0.2.7:445", "192.0.2.20:445"); err != nil {
+		t.Fatal(err)
+	}
+	scans = n.scans()
+	n.mu.Lock()
+	n.answers = nil
+	n.mu.Unlock()
+	if _, err = follow(f, "192.0.2.7:445", "192.0.2.20:445"); err != nil || !slices.Equal(calls, []string{"192.0.2.20:445"}) || n.scans() != scans {
+		t.Errorf("pinned: %v; calls %q scans %d, want %d", err, calls, n.scans(), scans)
 	}
 
-	for _, private := range []string{"SERIAL-", "192.0.2.", "S50_A", "S30 B"} {
+	for _, private := range []string{"SERIAL-", "192.0.2.", "198.51.100.", "S50_A", "S30 B"} {
 		if strings.Contains(logs.String(), private) {
 			t.Errorf("logs carry %q: %s", private, logs.String())
 		}
@@ -390,21 +445,112 @@ func TestFindFollowsMovedTelescope(t *testing.T) {
 	dev := newDevice()
 	dev.set("a.fit", "abc", findDir)
 	dev.use(t)
+	useDialAs(t)
 	var calls []string
 	device := dial
-	dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Session, error) {
-		calls = append(calls, endpoint)
+	dial = func(context.Context, string, *slog.Logger) (remote.Session, error) {
+		t.Error("a followed endpoint dialed unlabeled")
+		return nil, errNoDevice
+	}
+	dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
+		calls = append(calls, name+" "+endpoint)
 		if endpoint != "192.0.2.20:445" {
 			return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
 		}
 		return device(ctx, endpoint, log)
 	}
 	code, out, errs := invoke(t, "find", "--profile", "default")
-	if code != exitOK || out != "- 3 2026-10-31T01:00:00Z a.fit\n" || !slices.Equal(calls, []string{"192.0.2.7:445", "192.0.2.20:445"}) {
+	if code != exitOK || out != "- 3 2026-10-31T01:00:00Z a.fit\n" || !slices.Equal(calls, []string{lanName + " 192.0.2.20:445"}) {
 		t.Fatalf("exit %d out %q calls %q\n%s", code, out, calls, errs)
 	}
-	if !strings.Contains(errs, `found the saved telescope at a new address on this network" model="Seestar S50"`) ||
+	if !strings.Contains(errs, `found the saved telescope at another address on this network" model="Seestar S50"`) ||
 		strings.Contains(errs, "192.0.2.20") || strings.Contains(errs, "SERIAL-") {
 		t.Errorf("logs: %s", errs)
+	}
+}
+
+// delete with --profile default lists and deletes through one session at
+// the address the scan found, dialed as the saved telescope; a dry run
+// lists through a read-only one the same way.
+func TestDeleteFollowsTelescope(t *testing.T) {
+	n := twoTelescopes()
+	useLAN(t, n)
+	useProfile(t, Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"})
+	s, _ := modesShare(t)
+	s.use(t)
+	useDialAs(t)
+	open, openRemover := dial, dialRemover
+	var calls []string
+	dial = func(context.Context, string, *slog.Logger) (remote.Session, error) { return nil, errNoDevice }
+	dialRemover = func(context.Context, string, *slog.Logger) (remote.Remover, error) { return nil, errNoDevice }
+	dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
+		calls = append(calls, "dial "+name+" "+endpoint)
+		return open(ctx, endpoint, log)
+	}
+	dialRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
+		calls = append(calls, "remover "+name+" "+endpoint)
+		return openRemover(ctx, endpoint, log)
+	}
+	t.Cleanup(readonly.Reset)
+	for _, tc := range []struct {
+		force bool
+		want  string
+	}{{false, "dial " + lanName + " 192.0.2.20:445"}, {true, "remover " + lanName + " 192.0.2.20:445"}} {
+		readonly.Reset()
+		calls = nil
+		scans := n.scans()
+		args := []string{"delete", "--profile", "default", "--ignore-state", "--include", "*.fit"}
+		if tc.force {
+			args = append(args, "--force")
+		}
+		code, _, errs := invoke(t, args...)
+		if code != exitOK || n.scans() != scans+1 || !slices.Equal(calls, []string{tc.want}) {
+			t.Errorf("force %t: exit %d scans %d calls %q\n%s", tc.force, code, n.scans()-scans, calls, errs)
+		}
+		if strings.Contains(errs, "192.0.2.") || strings.Contains(errs, "SERIAL-") {
+			t.Errorf("logs: %s", errs)
+		}
+	}
+	if !s.has(t, "MyWorks/M 31/f.fit") || s.has(t, "MyWorks/M 31/a.fit") {
+		t.Errorf("deleted the wrong files")
+	}
+}
+
+// useDialAs restores dialAs and dialRemoverAs after the test.
+func useDialAs(t *testing.T) {
+	as, removerAs := dialAs, dialRemoverAs
+	t.Cleanup(func() { dialAs, dialRemoverAs = as, removerAs })
+}
+
+// failedWalk is a session whose listing fails naming its server, as an
+// SMB session's errors do.
+type failedWalk struct {
+	remote.Session
+	server string
+}
+
+func (f failedWalk) Walk(context.Context, func(string, bool) bool, func(remote.Entry)) ([]remote.Entry, error) {
+	return nil, fmt.Errorf("walk on %s: connection reset", f.server)
+}
+
+// A listing that fails after the scan found the telescope elsewhere logs
+// no address: its session's errors call it the saved telescope.
+func TestFollowedFailureNamesNoAddress(t *testing.T) {
+	useLAN(t, twoTelescopes())
+	useDialAs(t)
+	dialAs = func(_ context.Context, name, endpoint string, _ *slog.Logger) (remote.Session, error) {
+		if endpoint != "192.0.2.20:445" {
+			return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+		}
+		return failedWalk{remote.NewFake(fstest.MapFS{}), name}, nil
+	}
+	f := newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}, none)
+	var logs bytes.Buffer
+	err := list(t.Context(), findOptions{endpoint: "192.0.2.7:445", follow: f}, nil, io.Discard, diagnostic.Logger("text", &logs, slog.LevelDebug))
+	if err == nil || !strings.Contains(err.Error(), lanName+": connection reset") {
+		t.Fatalf("list = %v", err)
+	}
+	if strings.Contains(logs.String()+err.Error(), "192.0.2.20") {
+		t.Fatalf("the found address reached the logs: %s %v", logs.String(), err)
 	}
 }

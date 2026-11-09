@@ -24,7 +24,8 @@ import (
 type findOptions struct {
 	profile  profileFlag
 	endpoint string
-	// follow follows a moved telescope at the endpoint the profile filled.
+	// follow follows a saved telescope by its serial at the endpoint the
+	// profile filled.
 	follow    *follow
 	selection selectionFlags
 	// selector is set by validate from selection.
@@ -179,7 +180,7 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		}
 		log.Info("listing done", args...)
 	}()
-	sess, err := followDial(ctx, o.follow, o.endpoint, log, dial)
+	sess, err := followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
 	if err != nil {
 		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.endpoint, err))
 	}

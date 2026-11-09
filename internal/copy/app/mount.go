@@ -30,7 +30,13 @@ type MountOptions struct {
 	// check; nil is engine.Test. Reach is [Mount.Reach]'s; nil is
 	// remote.Reach. Both check an address on this network. Tests replace
 	// them.
-	Dial    func(ctx context.Context, t Target) (remote.Session, error)
+	Dial func(ctx context.Context, t Target) (remote.Session, error)
+	// Resolve, if set, opens a Free up space preview's session at t and
+	// returns the target it reached: on this network, a telescope saved
+	// with its serial is wherever that serial answers now. The preview,
+	// and the delete that follows it, are bound to that target, and
+	// Remover is given it exactly. nil is Dial at t.
+	Resolve func(ctx context.Context, t Target) (remote.Session, Target, error)
 	Test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	Reach   func(ctx context.Context, endpoint string) error
 	Remover func(ctx context.Context, t Target) (remote.Remover, error)
@@ -81,6 +87,19 @@ type Target struct {
 
 // String is the endpoint only.
 func (t Target) String() string { return t.Endpoint }
+
+// SavedLabel is what logs and error text call a telescope on this network
+// saved with its serial, in place of its address: a scan may have found
+// it there.
+const SavedLabel = "the saved telescope"
+
+// logged is how logs, Activity and error text name t's endpoint.
+func (t Target) logged() string {
+	if t.onLAN() && t.Serial != "" {
+		return SavedLabel
+	}
+	return t.Endpoint
+}
 
 // onLAN reports whether t is an address on this network.
 func (t Target) onLAN() bool { return t.Device == "" && t.Run == 0 }

@@ -129,11 +129,10 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	s.copy.admit, s.copy.target, s.copy.rep = &s.admit, s.target, s.rep
 	// A preview's and a delete's dials go only to the target they were
 	// started at, and fail once that changed, even by a reconnect: a
-	// delete must not remove files on a telescope it never checked. On
-	// this network the same serial at a new address is the same telescope.
+	// delete must not remove files on a telescope it never checked.
 	at := func(t Target) error {
 		now, err := s.target()
-		if err == nil && now != t && !t.moved(now) {
+		if err == nil && now != t {
 			err = errMoved
 		}
 		return err
@@ -147,6 +146,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	if o.Remover != nil {
 		s.free.remover = o.Remover
 	}
+	s.free.resolve = o.Resolve
 	s.browse, s.sessions = s.newBrowse(file.settings)
 	return s
 }

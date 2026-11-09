@@ -6,6 +6,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
@@ -41,6 +42,10 @@ type controller struct {
 	saveMu             sync.Mutex // Serializes snapshot writes, never status or Stop.
 	pendingSave        *Settings
 	lastSaved          Settings
+	// routeGen numbers the explicit route saves, so a telescope's new
+	// address found by a search that started before one is not saved over
+	// it.
+	routeGen atomic.Uint64
 	// text reads a run's status text for isReady; nil is its Text. Tests
 	// replace it, since only a proxy session makes a status Ready.
 	text func(*proxy.Status) string
@@ -417,6 +422,7 @@ func (c *controller) persistRoute(route, address, serial string) error {
 	if running {
 		return &ActionError{Code: "route_locked"}
 	}
+	c.routeGen.Add(1)
 	s := c.lastSaved
 	if s.Version == 0 {
 		s = defaultSettings()
@@ -429,11 +435,15 @@ func (c *controller) persistRoute(route, address, serial string) error {
 	return c.persistLocked(s)
 }
 
+// routeGeneration numbers the latest explicit route save.
+func (c *controller) routeGeneration() uint64 { return c.routeGen.Load() }
+
 // persistMoved saves address as this network's address after a scan found
-// the telescope with serial there, when it was saved at from. It saves
-// nothing when the saved settings changed meanwhile or a run is active,
-// and reports whether it saved.
-func (c *controller) persistMoved(from, address, serial string) bool {
+// the telescope with serial there, when it was saved at from and no route
+// save came after gen, the routeGeneration when the search started. It
+// saves nothing when the saved settings changed meanwhile or a run is
+// active, and reports whether it saved.
+func (c *controller) persistMoved(from, address, serial string, gen uint64) bool {
 	c.saveMu.Lock()
 	defer c.saveMu.Unlock()
 	c.mu.Lock()
@@ -441,11 +451,21 @@ func (c *controller) persistMoved(from, address, serial string) bool {
 	s := c.lastSaved
 	c.mu.Unlock()
 	saved, ok := copyapp.NormalizeAddress(s.LANAddress)
-	if running || !ok || s.Route != routeLAN || s.LANSerial != serial || saved != from {
+	if running || !ok || s.Route != routeLAN || serial == "" || s.LANSerial != serial || saved != from || c.routeGen.Load() != gen {
 		return false
 	}
 	s.LANAddress = address
 	return c.persistLocked(s) == nil
+}
+
+// savedAt reports whether the saved route is this network at address,
+// with serial.
+func (c *controller) savedAt(address, serial string) bool {
+	c.mu.Lock()
+	s := c.lastSaved
+	c.mu.Unlock()
+	saved, ok := copyapp.NormalizeAddress(s.LANAddress)
+	return ok && s.Route == routeLAN && saved == address && serial != "" && s.LANSerial == serial
 }
 
 // connected returns the run's settings, the telescope it selected and

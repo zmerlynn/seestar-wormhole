@@ -28,8 +28,8 @@ type Settings struct {
 	Route      string `json:"route,omitempty"`
 	LANAddress string `json:"lan_address,omitempty"`
 	// LANSerial is the serial number a scan saw at LANAddress when it was
-	// saved, or "". When the saved address stops answering, a scan for it
-	// finds the telescope's new address. It is never shown or logged.
+	// saved, or "". Every connect scans for it and uses the address that
+	// answers with it, LANAddress first. It is never shown or logged.
 	LANSerial string `json:"lan_serial,omitempty"`
 	// RouteEstablished opens Copy, Browse and Free up space at launch: the
 	// account route has connected, or an address on this network passed

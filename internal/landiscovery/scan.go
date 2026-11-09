@@ -12,6 +12,9 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/zmerlynn/pktinfo"
+	"golang.org/x/net/ipv4"
 )
 
 // The scan's defaults: three sends 2 s apart, and 6 s of listening in all.
@@ -38,6 +41,10 @@ const (
 // interface to send from.
 var ErrNoInterface = errors.New("LAN scan: no network interface to scan from")
 
+// errLocal is a scan that couldn't list this computer's own addresses, so
+// it couldn't tell a reply from a proxy here from a telescope's.
+var errLocal = errors.New("LAN scan: couldn't determine this computer's addresses")
+
 // Telescope is one serial number seen in a scan, with every address that
 // answered for it. Serial identifies the telescope and is never shown or
 // logged; Name is the reply's ssid.
@@ -62,22 +69,25 @@ type ScanResult struct {
 	Blocked    bool
 }
 
-// Find returns the telescope with serial, if the scan saw it.
-func (r ScanResult) Find(serial string) (Telescope, bool) {
-	for _, t := range r.Telescopes {
-		if serial != "" && t.Serial == serial {
-			return t, true
-		}
-	}
-	return Telescope{}, false
-}
-
-// Conn is the part of a UDP socket a scan uses. A *net.UDPConn is one.
+// Conn is the part of a UDP socket a scan uses. WriteTo sends with the
+// packet information in cm, when it is not nil: a broadcast names the
+// interface and the source address it goes out from.
 type Conn interface {
 	ReadFrom([]byte) (int, net.Addr, error)
-	WriteTo([]byte, net.Addr) (int, error)
+	WriteTo(b []byte, cm *ipv4.ControlMessage, dst net.Addr) (int, error)
 	SetReadDeadline(time.Time) error
 	Close() error
+}
+
+// udpConn is a Conn on a UDP socket, whose sends use the platform's packet
+// information support.
+type udpConn struct {
+	*net.UDPConn
+	packet *pktinfo.IPv4PacketConn
+}
+
+func (c udpConn) WriteTo(b []byte, cm *ipv4.ControlMessage, dst net.Addr) (int, error) {
+	return c.packet.WriteTo(b, cm, dst)
 }
 
 // Scanner sends the phone app's scan_iscope request and collects the
@@ -95,15 +105,14 @@ type Scanner struct {
 // Scan broadcasts the request on each eligible interface and returns every
 // telescope that answered within the window.
 func (s *Scanner) Scan(ctx context.Context) (ScanResult, error) {
-	return s.broadcast(ctx, nil)
+	return s.broadcast(ctx, nil, nil)
 }
 
-// Find broadcasts like Scan but returns as soon as serial answers.
-func (s *Scanner) Find(ctx context.Context, serial string) (ScanResult, error) {
-	return s.broadcast(ctx, func(r *ScanResult) bool {
-		_, ok := r.Find(serial)
-		return ok
-	})
+// watch is Scan, calling observe with each accepted reply, its telescope
+// and the address it came from, as it arrives. observe runs on the scan's
+// goroutine and must not block.
+func (s *Scanner) watch(ctx context.Context, observe func(Telescope, netip.Addr)) (ScanResult, error) {
+	return s.broadcast(ctx, nil, observe)
 }
 
 // Probe sends the request straight to address and returns once it answers.
@@ -113,12 +122,12 @@ func (s *Scanner) Probe(ctx context.Context, address netip.Addr) (ScanResult, er
 	if !address.Is4() {
 		return ScanResult{}, fmt.Errorf("LAN scan: %s is not an IPv4 address", address)
 	}
-	local, err := s.local()
+	_, local, err := s.inventory()
 	if err != nil {
 		return ScanResult{}, err
 	}
-	return s.run(ctx, []netip.Addr{address}, local, func(from netip.Addr) bool { return from == address },
-		func(r *ScanResult) bool { return len(r.Telescopes) > 0 })
+	return s.run(ctx, []target{{address: address}}, local, func(from netip.Addr) bool { return from == address },
+		func(r *ScanResult) bool { return len(r.Telescopes) > 0 }, nil)
 }
 
 func (s *Scanner) source() Interfaces {
@@ -128,79 +137,74 @@ func (s *Scanner) source() Interfaces {
 	return s.Interfaces
 }
 
-func (s *Scanner) broadcast(ctx context.Context, done func(*ScanResult) bool) (ScanResult, error) {
-	targets, err := s.targets()
+func (s *Scanner) broadcast(ctx context.Context, done func(*ScanResult) bool, observe func(Telescope, netip.Addr)) (ScanResult, error) {
+	targets, local, err := s.inventory()
 	if err != nil {
 		return ScanResult{}, err
-	}
-	local, err := s.local()
-	if err != nil {
-		return ScanResult{}, err
-	}
-	return s.run(ctx, targets, local, func(netip.Addr) bool { return true }, done)
-}
-
-// targets are the directed broadcasts of the eligible interfaces: up,
-// broadcast-capable, neither loopback nor point-to-point.
-func (s *Scanner) targets() ([]netip.Addr, error) {
-	source := s.source()
-	interfaces, err := source.List()
-	if err != nil {
-		return nil, err
-	}
-	var targets []netip.Addr
-	for _, iface := range interfaces {
-		if !eligibleInterface(iface.Flags, Options{}) || iface.Flags&net.FlagPointToPoint != 0 {
-			continue
-		}
-		addresses, err := source.Addrs(&iface)
-		if err != nil {
-			continue
-		}
-		for _, address := range addresses {
-			prefix, err := netip.ParsePrefix(address.String())
-			if err != nil || !prefix.Addr().Is4() || !prefix.Addr().IsGlobalUnicast() || prefix.Bits() >= 31 {
-				continue
-			}
-			if b := broadcast(prefix); !slices.Contains(targets, b) {
-				targets = append(targets, b)
-			}
-		}
 	}
 	if len(targets) == 0 {
-		return nil, ErrNoInterface
+		return ScanResult{}, ErrNoInterface
 	}
-	return targets, nil
+	return s.run(ctx, targets, local, func(netip.Addr) bool { return true }, done, observe)
 }
 
-// local lists every address of this computer, so a proxy here that answers
-// scans for the phone app is not listed as a telescope.
-func (s *Scanner) local() (map[netip.Addr]bool, error) {
+// target is where one send of a scan goes: a directed broadcast, sent out
+// of the interface numbered index from the source address src, or, for a
+// probe, one address with no interface chosen (index 0).
+type target struct {
+	address netip.Addr
+	index   int
+	src     netip.Addr
+}
+
+// inventory reads the interfaces once and returns both the scan's targets
+// and every address of this computer, so a proxy here that answers scans
+// for the phone app is not listed as a telescope. The targets are the
+// directed broadcasts of the eligible interfaces: up, broadcast-capable,
+// neither loopback nor point-to-point, one per subnet on each interface.
+// It fails if any interface's addresses can't be read: the own-address
+// filter needs all of them.
+func (s *Scanner) inventory() ([]target, map[netip.Addr]bool, error) {
 	source := s.source()
 	interfaces, err := source.List()
 	if err != nil {
-		return nil, err
+		return nil, nil, errLocal
 	}
+	var targets []target
 	local := make(map[netip.Addr]bool)
 	for _, iface := range interfaces {
 		addresses, err := source.Addrs(&iface)
 		if err != nil {
-			continue
+			return nil, nil, errLocal
 		}
+		eligible := eligibleInterface(iface.Flags, Options{}) && iface.Flags&net.FlagPointToPoint == 0 && iface.Index > 0
 		for _, address := range addresses {
-			if prefix, err := netip.ParsePrefix(address.String()); err == nil {
-				local[prefix.Addr().Unmap()] = true
+			prefix, err := netip.ParsePrefix(address.String())
+			if err != nil {
+				continue
+			}
+			local[prefix.Addr().Unmap()] = true
+			if !eligible || !prefix.Addr().Is4() || !prefix.Addr().IsGlobalUnicast() || prefix.Bits() >= 31 {
+				continue
+			}
+			t := target{address: broadcast(prefix), index: iface.Index, src: prefix.Addr()}
+			if !slices.ContainsFunc(targets, func(u target) bool { return u.index == t.index && u.address == t.address }) {
+				targets = append(targets, t)
 			}
 		}
 	}
-	return local, nil
+	return targets, local, nil
 }
 
 func (s *Scanner) listen() (Conn, error) {
 	if s.Listen != nil {
 		return s.Listen()
 	}
-	return net.ListenUDP("udp4", &net.UDPAddr{})
+	conn, err := net.ListenUDP("udp4", &net.UDPAddr{})
+	if err != nil {
+		return nil, err
+	}
+	return udpConn{UDPConn: conn, packet: pktinfo.NewIPv4PacketConn(conn)}, nil
 }
 
 func (s *Scanner) timers() (sends int, interval, window time.Duration) {
@@ -218,8 +222,9 @@ func (s *Scanner) timers() (sends int, interval, window time.Duration) {
 }
 
 // run sends the request to each target sends times and reads replies until
-// the window closes, ctx is done, or done reports true.
-func (s *Scanner) run(ctx context.Context, targets []netip.Addr, local map[netip.Addr]bool, accept func(netip.Addr) bool, done func(*ScanResult) bool) (ScanResult, error) {
+// the window closes, ctx is done, or done reports true. observe, if set,
+// sees each accepted reply as it arrives.
+func (s *Scanner) run(ctx context.Context, targets []target, local map[netip.Addr]bool, accept func(netip.Addr) bool, done func(*ScanResult) bool, observe func(Telescope, netip.Addr)) (ScanResult, error) {
 	var result ScanResult
 	conn, err := s.listen()
 	if err != nil {
@@ -252,7 +257,11 @@ func (s *Scanner) run(ctx context.Context, targets []netip.Addr, local map[netip
 			request := fmt.Appendf(nil, `{"id":%d,"method":"scan_iscope","params":""}`+"\r\n", sent)
 			for _, target := range targets {
 				attempts++
-				if _, err := conn.WriteTo(request, net.UDPAddrFromAddrPort(netip.AddrPortFrom(target, Port))); err != nil {
+				var cm *ipv4.ControlMessage
+				if target.index > 0 {
+					cm = &ipv4.ControlMessage{IfIndex: target.index, Src: net.IP(target.src.AsSlice())}
+				}
+				if _, err := conn.WriteTo(request, cm, net.UDPAddrFromAddrPort(netip.AddrPortFrom(target.address, Port))); err != nil {
 					failed++
 					if errors.Is(err, syscall.EHOSTUNREACH) {
 						blocked++
@@ -299,6 +308,9 @@ func (s *Scanner) run(ctx context.Context, targets []netip.Addr, local map[netip
 		}
 		result.Replies++
 		result.add(t, address)
+		if observe != nil {
+			observe(t, address)
+		}
 	}
 	if result.Replies == 0 && blocked > 0 {
 		result.Blocked = true
@@ -365,11 +377,12 @@ func decodeReply(b []byte) (Telescope, bool) {
 	if json.Unmarshal(v.Result.SN, &t.Serial) != nil || t.Serial == "" {
 		return Telescope{}, false
 	}
+	// Invalid UTF-8 in a label reads as U+FFFD, as in the outer decode.
 	var name, model string
-	if json.Unmarshal(v.Result.SSID, &name) == nil {
+	if json.Unmarshal(v.Result.SSID, &name, jsontext.AllowInvalidUTF8(true)) == nil {
 		t.Name = name
 	}
-	if json.Unmarshal(v.Result.Model, &model) == nil {
+	if json.Unmarshal(v.Result.Model, &model, jsontext.AllowInvalidUTF8(true)) == nil {
 		t.Model = model
 	}
 	var clients int
