@@ -48,9 +48,9 @@ type server struct {
 	version  string
 	stateDir string // the default history folder; Settings may choose another
 	log      *slog.Logger
-	// dial opens a browse session at the target; test runs Test, and
-	// reach a route's Save's check.
-	dial  func(ctx context.Context) (remote.Session, error)
+	// dial opens a browse session at t, which [server.dialNow] reads
+	// from target; test runs Test, and reach a route's Save's check.
+	dial  func(ctx context.Context, t Target) (remote.Session, error)
 	test  func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	reach func(ctx context.Context, endpoint string) error
 	// target is where the telescope is for every dial and start.
@@ -136,15 +136,9 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 			return remote.Dial(ctx, t.Endpoint, log)
 		}
 	}
-	// Browse's dials ask for the endpoint again, so they reach the
-	// telescope where it is now. A change of route replaces Browse's pool.
 	// Browse's page shows only the error's message, so one on this network
 	// carries the Local Network hint.
-	s.dial = func(ctx context.Context) (remote.Session, error) {
-		t, err := s.target()
-		if err != nil {
-			return nil, err
-		}
+	s.dial = func(ctx context.Context, t Target) (remote.Session, error) {
 		sess, err := establish(ctx, t, func(ctx context.Context) (remote.Session, error) { return dial(ctx, t) })
 		if err != nil && t.onLAN() {
 			err = withHint(err)
@@ -178,6 +172,39 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	s.route, s.endRoute = context.WithCancel(ctx)
 	s.browse, s.sessions = s.newBrowse(file.settings)
 	return s
+}
+
+// dialNow is Browse's dial. It asks for the target again, so it reaches
+// the telescope where it is now; a change of route replaces Browse's
+// pool. The session it opens carries that target, which a save of one
+// file reads back with [dialedAt]: its bytes are that telescope's,
+// whatever the target is by then.
+func (s *server) dialNow(ctx context.Context) (remote.Session, error) {
+	t, err := s.target()
+	if err != nil {
+		return nil, err
+	}
+	sess, err := s.dial(ctx, t)
+	if err != nil {
+		return nil, err
+	}
+	return &dialed{Session: sess, at: t}, nil
+}
+
+// dialed is a Browse session and the target it was dialed at.
+type dialed struct {
+	remote.Session
+	at Target
+}
+
+// dialedAt is the target [server.dialNow] dialed sess at, and false for a
+// session it didn't dial.
+func dialedAt(sess remote.Session) (Target, bool) {
+	d, ok := sess.(*dialed)
+	if !ok {
+		return Target{}, false
+	}
+	return d.at, true
 }
 
 // setUp reports whether the saved settings are enough to copy to the
@@ -321,7 +348,7 @@ func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 	// The pool's dials share one run for the scan on this network.
 	run := &landiscovery.Run{}
 	sessions := browse.NewSessions(s.route, func(ctx context.Context) (remote.Session, error) {
-		return s.dial(landiscovery.WithRun(ctx, run))
+		return s.dialNow(landiscovery.WithRun(ctx, run))
 	}, log, rep)
 	var records func() (map[string]state.Record, error)
 	var sel engine.Selector
@@ -1287,6 +1314,7 @@ var (
 	errReservedName = errors.New("the name is kept for the copy lock")
 	errSaveMoved    = errors.New("the telescope or its folder changed")
 	errOtherFolder  = errors.New("another telescope's folder")
+	errBecameOther  = errors.New("the folder became another telescope's")
 )
 
 // saveFrom is the telescope a save is for, by its key, and its folder,
@@ -1295,37 +1323,55 @@ type saveFrom struct{ key, folder string }
 
 // saveTo saves the device's file p, of the telescope from was when the
 // save began, to dst through lease, as [browse.Save] does. It refuses
-// once that telescope, or its folder, is no longer the target's, and a
-// dst in another telescope's folder, on disk too. A save into this
-// telescope's folder holds the folder's lock, so it never lands during a
-// pass of copying or a delete, and writes through the folder's root; it
-// refuses the folder lock's own name. A failure the window words itself
-// comes with the alert to show.
+// unless lease's session was dialed at that telescope, which is still the
+// target's, with the same folder; and a dst in another telescope's
+// folder, on disk too. A save into this telescope's folder holds the
+// folder's lock, so it never lands during a pass of copying or a delete,
+// and writes through the folder's root; it refuses the folder lock's own
+// name. A failure the window words itself comes with the alert to show.
 //
-// Once admitted, the save needs no hold on the folders: another
-// telescope's folder changes only while it is the target, and the change
-// of target that makes it so closes the lease's session.
+// Nothing is reserved while the file is read from the telescope, which
+// holds neither s.admit nor s.mu: a folder may be given to another
+// telescope meanwhile, and closing the old route's session doesn't stop
+// a read that has already ended. So the rename that puts the file at dst
+// runs holding s.mu, which every change of a telescope's folder holds (a
+// Save, an adoption, a claim), after checking dst against the other
+// telescopes' folders again. A folder given to another telescope before
+// the rename refuses the save, which removes its temporary file and
+// leaves dst as it was; one given after it finds the file already there,
+// as it would any other.
 func (s *server) saveTo(ctx context.Context, lease *browse.Lease, from saveFrom, p, dst string) (alert string, err error) {
+	src, dialed := dialedAt(lease.Session())
 	s.mu.Lock()
 	t := s.current()
-	moved := t.Telescope != from.key || s.folderAt(t) != from.folder
+	moved := !dialed || src.Telescope != from.key || t.Telescope != from.key || s.folderAt(t) != from.folder
 	shared := from.folder != "" && s.file.settings.overlap(from.key, from.folder) != ""
-	others := s.file.settings.others(from.key)
+	other := s.othersHold(from.key, dst)
 	s.mu.Unlock()
 	switch {
 	case moved:
 		return "The telescope or its folder changed while you chose where to save. Save the file again.", errSaveMoved
 	case shared:
 		return "", errFolderShared
+	case other:
+		return "That folder is another telescope's. Save the file outside it.", errOtherFolder
 	}
-	for _, other := range others {
-		if msg := relate(filepath.Dir(dst), other); msg == folderTaken || msg == folderInside {
-			return "That folder is another telescope's. Save the file outside it.", errOtherFolder
+	hold := func(rename func() error) error {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.othersHold(from.key, dst) {
+			return errBecameOther
 		}
+		return rename()
 	}
+	defer func() {
+		if errors.Is(err, errBecameOther) {
+			alert = "That folder became another telescope's while the file was saved. Save the file again outside it."
+		}
+	}()
 	top, rel, inside := within(from.folder, dst)
 	if !inside {
-		return "", browse.Save(ctx, lease, p, dst)
+		return "", browse.Save(ctx, lease, p, dst, hold)
 	}
 	if plan.Reserved(filepath.ToSlash(rel)) {
 		return "That name is kept for the copy lock. Choose another name or folder.", errReservedName
@@ -1343,7 +1389,18 @@ func (s *server) saveTo(ctx context.Context, lease *browse.Lease, from saveFrom,
 		return "", err
 	}
 	defer lock.Close()
-	return "", browse.SaveIn(ctx, lease, p, root, rel)
+	return "", browse.SaveIn(ctx, lease, p, root, rel, hold)
+}
+
+// othersHold reports, holding s.mu, whether dst's folder is, on disk too,
+// the folder of a telescope other than the one keyed key, or inside it.
+func (s *server) othersHold(key, dst string) bool {
+	for _, other := range s.file.settings.others(key) {
+		if msg := relate(filepath.Dir(dst), other); msg == folderTaken || msg == folderInside {
+			return true
+		}
+	}
+	return false
 }
 
 // within reports whether the file dst is inside folder, after resolving

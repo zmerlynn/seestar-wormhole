@@ -334,7 +334,10 @@ telescope's folder, or a folder inside it, also through a symbolic link, is
 refused with **That folder is another telescope's. Save the file outside
 it.** If the telescope or its folder changes while the dialog is open, the
 save says **The telescope or its folder changed while you chose where to
-save. Save the file again.** and saves nothing. A save waits for the telescope's folder,
+save. Save the file again.** and saves nothing. If the folder becomes
+another telescope's while the file is saved, the save says **That folder
+became another telescope's while the file was saved. Save the file again
+outside it.**, and a file already there is left as it was. A save waits for the telescope's folder,
 the first telescope's too: until it is chosen, **Save** says **This
 telescope has no folder yet. Choose one in Copy, then save the file again.**
 and saves nothing; in a browser, the download fails with that message.

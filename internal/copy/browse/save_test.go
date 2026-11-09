@@ -51,11 +51,11 @@ func onlyFile(t *testing.T, dir string, want []byte) {
 
 func TestSave(t *testing.T) {
 	e, dir := saveEnv(t, nil)
-	if err := Save(t.Context(), leased(t, e.p), fitPath, filepath.Join(dir, "X.fit")); err != nil {
+	if err := Save(t.Context(), leased(t, e.p), fitPath, filepath.Join(dir, "X.fit"), nil); err != nil {
 		t.Fatal(err)
 	}
 	onlyFile(t, dir, fitData)
-	if err := Save(t.Context(), leased(t, e.p), "MyWorks/M 31/X.jpg", filepath.Join(dir, "new.jpg")); err != nil {
+	if err := Save(t.Context(), leased(t, e.p), "MyWorks/M 31/X.jpg", filepath.Join(dir, "new.jpg"), nil); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "new.jpg")); string(got) != "jpeg" {
@@ -97,7 +97,7 @@ func TestSaveFailures(t *testing.T) {
 				mustGet(t, e.p, ctx).Release()
 				ctx = tt.ctx(ctx)
 			}
-			err := Save(ctx, leased(t, e.p), tt.path, filepath.Join(dir, "X.fit"))
+			err := Save(ctx, leased(t, e.p), tt.path, filepath.Join(dir, "X.fit"), nil)
 			if err == nil || !tt.want(err) {
 				t.Errorf("Save = %v", err)
 			}
@@ -107,7 +107,7 @@ func TestSaveFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer root.Close()
-			if err := SaveIn(ctx, leased(t, e.p), tt.path, root, "X.fit"); err == nil || !tt.want(err) {
+			if err := SaveIn(ctx, leased(t, e.p), tt.path, root, "X.fit", nil); err == nil || !tt.want(err) {
 				t.Errorf("SaveIn = %v", err)
 			}
 			onlyFile(t, dir, []byte("old"))
@@ -132,7 +132,7 @@ func TestSaveIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(moved) })
-	if err := SaveIn(t.Context(), leased(t, e.p), fitPath, root, "X.fit"); err != nil {
+	if err := SaveIn(t.Context(), leased(t, e.p), fitPath, root, "X.fit", nil); err != nil {
 		t.Fatal(err)
 	}
 	onlyFile(t, moved, fitData)
@@ -144,7 +144,7 @@ func TestSaveCanceledMidFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	e := newEnv(t, envOptions{setup: func(s *spy) { s.readFault = func() error { cancel(); return nil } }})
 	dir := t.TempDir()
-	err := Save(ctx, leased(t, e.p), fitPath, filepath.Join(dir, "X.fit"))
+	err := Save(ctx, leased(t, e.p), fitPath, filepath.Join(dir, "X.fit"), nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Save = %v, want canceled", err)
 	}
@@ -155,7 +155,7 @@ func TestSaveCanceledMidFile(t *testing.T) {
 
 func TestSaveUnwritable(t *testing.T) {
 	e, dir := saveEnv(t, nil)
-	err := Save(t.Context(), leased(t, e.p), fitPath, filepath.Join(dir, "missing", "X.fit"))
+	err := Save(t.Context(), leased(t, e.p), fitPath, filepath.Join(dir, "missing", "X.fit"), nil)
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Save = %v", err)
 	}
@@ -213,4 +213,30 @@ func TestDownload(t *testing.T) {
 			t.Errorf("%s %s = %d, want %d", tt.method, tt.target, w.Code, tt.code)
 		}
 	}
+}
+
+// A save whose hold refuses the rename leaves the existing file as it was
+// and no temporary file, and a hold that renames saves the file.
+func TestSaveHold(t *testing.T) {
+	refused := errors.New("synthetic refusal")
+	refuse := func(func() error) error { return refused }
+	e, dir := saveEnv(t, nil)
+	if err := Save(t.Context(), leased(t, e.p), fitPath, filepath.Join(dir, "X.fit"), refuse); !errors.Is(err, refused) {
+		t.Errorf("Save = %v", err)
+	}
+	onlyFile(t, dir, []byte("old"))
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	if err := SaveIn(t.Context(), leased(t, e.p), fitPath, root, "X.fit", refuse); !errors.Is(err, refused) {
+		t.Errorf("SaveIn = %v", err)
+	}
+	onlyFile(t, dir, []byte("old"))
+	held := 0
+	if err := SaveIn(t.Context(), leased(t, e.p), fitPath, root, "X.fit", func(rename func() error) error { held++; return rename() }); err != nil || held != 1 {
+		t.Fatalf("SaveIn = %v, held %d times", err, held)
+	}
+	onlyFile(t, dir, fitData)
 }
