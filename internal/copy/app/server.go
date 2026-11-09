@@ -822,13 +822,20 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 
 // saveFile asks where to save the device's file p and saves it there. It
 // answers 204 in every case, so the page stays where it is; a failed save
-// is shown in the window's message, unless the app is stopping.
+// is shown in the window's message, unless the app is stopping. It takes
+// its lease from sessions, the opening of Browse the download was asked
+// in, before the dialog: an opening of Browse while the dialog is open
+// retires that pool, and the lease keeps its session until the save ends.
 func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
 	name := path.Base(p)
-	dst, err := s.native.SaveFile(name)
-	var alert string
+	var dst, alert string
+	lease, err := sessions.Get(r.Context())
+	if err == nil {
+		defer lease.Release()
+		dst, err = s.native.SaveFile(name)
+	}
 	if err == nil && dst != "" {
-		alert, err = s.saveTo(r.Context(), sessions, p, dst)
+		alert, err = s.saveTo(r.Context(), lease, p, dst)
 		if err == nil {
 			s.log.Info("file saved", "path", p, "to", dst)
 		}
@@ -854,18 +861,18 @@ func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *brow
 // errReservedName is a save to the folder lock's name in the images folder.
 var errReservedName = errors.New("the name is kept for the copy lock")
 
-// saveTo saves the device's file p to dst, as [browse.Save] does. A save
-// into the saved images folder holds the folder's lock, so it never lands
-// during a pass of copying or a delete, and writes through the folder's
-// root; it refuses the folder lock's own name. A failure the window words
-// itself comes with the alert to show.
-func (s *server) saveTo(ctx context.Context, sessions *browse.Sessions, p, dst string) (alert string, err error) {
+// saveTo saves the device's file p to dst through lease, as [browse.Save]
+// does. A save into the saved images folder holds the folder's lock, so it
+// never lands during a pass of copying or a delete, and writes through the
+// folder's root; it refuses the folder lock's own name. A failure the
+// window words itself comes with the alert to show.
+func (s *server) saveTo(ctx context.Context, lease *browse.Lease, p, dst string) (alert string, err error) {
 	s.mu.Lock()
 	folder := s.file.settings.Folder
 	s.mu.Unlock()
 	top, rel, inside := within(folder, dst)
 	if !inside {
-		return "", browse.Save(ctx, sessions, p, dst)
+		return "", browse.Save(ctx, lease, p, dst)
 	}
 	if plan.Reserved(filepath.ToSlash(rel)) {
 		return "That name is kept for the copy lock. Choose another name or folder.", errReservedName
@@ -883,7 +890,7 @@ func (s *server) saveTo(ctx context.Context, sessions *browse.Sessions, p, dst s
 		return "", err
 	}
 	defer lock.Close()
-	return "", browse.SaveIn(ctx, sessions, p, root, rel)
+	return "", browse.SaveIn(ctx, lease, p, root, rel)
 }
 
 // within reports whether the file dst is inside folder, after resolving

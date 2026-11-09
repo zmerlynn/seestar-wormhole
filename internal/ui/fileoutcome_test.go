@@ -974,9 +974,15 @@ func TestFailuresPerOp(t *testing.T) {
 	e.fail(stepSaveAs, errSynthetic)
 	e.get("/browse/file?path=" + trailFile + "&download=1")
 	e.reported(diagnostic.SourceBrowse, diagnostic.OpSaveFile, 1)
+	// The download connected before its dialog; a new opening of Browse
+	// connects again.
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 1); o.Failed() {
+		t.Fatalf("connect = %+v", o)
+	}
 	e.fail(stepDial, errSynthetic)
+	e.get("/browse/")
 	e.browse()
-	e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 1)
+	e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2)
 	if got, want := e.failing(), []string{"browse/save_file", "browse/connect"}; !slices.Equal(got, want) {
 		t.Fatalf("failing = %v, want %v", got, want)
 	}
@@ -986,7 +992,7 @@ func TestFailuresPerOp(t *testing.T) {
 	}
 	// The connect's outcome is sent after its waiters wake, so the
 	// listing can answer before the trail has it.
-	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2); o.Failed() {
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 3); o.Failed() {
 		t.Fatalf("connect = %+v", o)
 	}
 	if got, want := e.failing(), []string{"browse/save_file"}; !slices.Equal(got, want) {

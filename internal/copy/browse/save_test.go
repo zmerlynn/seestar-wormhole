@@ -51,11 +51,11 @@ func onlyFile(t *testing.T, dir string, want []byte) {
 
 func TestSave(t *testing.T) {
 	e, dir := saveEnv(t, nil)
-	if err := Save(t.Context(), e.p, fitPath, filepath.Join(dir, "X.fit")); err != nil {
+	if err := Save(t.Context(), leased(t, e.p), fitPath, filepath.Join(dir, "X.fit")); err != nil {
 		t.Fatal(err)
 	}
 	onlyFile(t, dir, fitData)
-	if err := Save(t.Context(), e.p, "MyWorks/M 31/X.jpg", filepath.Join(dir, "new.jpg")); err != nil {
+	if err := Save(t.Context(), leased(t, e.p), "MyWorks/M 31/X.jpg", filepath.Join(dir, "new.jpg")); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := os.ReadFile(filepath.Join(dir, "new.jpg")); string(got) != "jpeg" {
@@ -97,7 +97,7 @@ func TestSaveFailures(t *testing.T) {
 				mustGet(t, e.p, ctx).Release()
 				ctx = tt.ctx(ctx)
 			}
-			err := Save(ctx, e.p, tt.path, filepath.Join(dir, "X.fit"))
+			err := Save(ctx, leased(t, e.p), tt.path, filepath.Join(dir, "X.fit"))
 			if err == nil || !tt.want(err) {
 				t.Errorf("Save = %v", err)
 			}
@@ -107,7 +107,7 @@ func TestSaveFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer root.Close()
-			if err := SaveIn(ctx, e.p, tt.path, root, "X.fit"); err == nil || !tt.want(err) {
+			if err := SaveIn(ctx, leased(t, e.p), tt.path, root, "X.fit"); err == nil || !tt.want(err) {
 				t.Errorf("SaveIn = %v", err)
 			}
 			onlyFile(t, dir, []byte("old"))
@@ -132,7 +132,7 @@ func TestSaveIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(moved) })
-	if err := SaveIn(t.Context(), e.p, fitPath, root, "X.fit"); err != nil {
+	if err := SaveIn(t.Context(), leased(t, e.p), fitPath, root, "X.fit"); err != nil {
 		t.Fatal(err)
 	}
 	onlyFile(t, moved, fitData)
@@ -144,7 +144,7 @@ func TestSaveCanceledMidFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	e := newEnv(t, envOptions{setup: func(s *spy) { s.readFault = func() error { cancel(); return nil } }})
 	dir := t.TempDir()
-	err := Save(ctx, e.p, fitPath, filepath.Join(dir, "X.fit"))
+	err := Save(ctx, leased(t, e.p), fitPath, filepath.Join(dir, "X.fit"))
 	if !errors.Is(err, context.Canceled) {
 		t.Errorf("Save = %v, want canceled", err)
 	}
@@ -155,7 +155,7 @@ func TestSaveCanceledMidFile(t *testing.T) {
 
 func TestSaveUnwritable(t *testing.T) {
 	e, dir := saveEnv(t, nil)
-	err := Save(t.Context(), e.p, fitPath, filepath.Join(dir, "missing", "X.fit"))
+	err := Save(t.Context(), leased(t, e.p), fitPath, filepath.Join(dir, "missing", "X.fit"))
 	if !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("Save = %v", err)
 	}

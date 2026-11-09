@@ -231,3 +231,11 @@ func mustGet(t *testing.T, p *Sessions, ctx context.Context) *Lease {
 	}
 	return l
 }
+
+// leased is a lease on p's session for the rest of the test.
+func leased(t *testing.T, p *Sessions) *Lease {
+	t.Helper()
+	l := mustGet(t, p, t.Context())
+	t.Cleanup(l.Release)
+	return l
+}

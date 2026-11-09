@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"time"
@@ -286,9 +288,14 @@ func TestSaveFileHoldsFolderLockUntilDone(t *testing.T) {
 		return f, nil
 	}, slog.New(slog.DiscardHandler), browse.Reporter{})
 	defer sessions.Close()
+	lease, err := sessions.Get(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lease.Release()
 	done := make(chan error, 1)
 	go func() {
-		_, err := e.s.saveTo(t.Context(), sessions, "a.fit", filepath.Join(folder, "a.fit"))
+		_, err := e.s.saveTo(t.Context(), lease, "a.fit", filepath.Join(folder, "a.fit"))
 		done <- err
 	}()
 	select {
@@ -324,5 +331,143 @@ func TestSaveFileHoldsFolderLockUntilDone(t *testing.T) {
 		t.Errorf("after the failed save the folder lock is %v, want it free", err)
 	} else {
 		held.Close()
+	}
+}
+
+// countedSession counts its Closes.
+type countedSession struct {
+	remote.Session
+	closes atomic.Int32
+}
+
+func (s *countedSession) Close() error { s.closes.Add(1); return s.Session.Close() }
+
+// A download keeps the opening of Browse it was asked in while its save
+// dialog is open: opening Browse again meanwhile doesn't stop the save, or
+// a Cancel, which saves nothing. Either way the old opening's session
+// serves no other dial, and ends once the dialog's answer is done with.
+func TestNativeDialogSurvivesBrowseReopen(t *testing.T) {
+	for _, cancel := range []bool{false, true} {
+		t.Run(map[bool]string{false: "save", true: "cancel"}[cancel], func(t *testing.T) {
+			e, _ := newNativeEnv(t)
+			var mu sync.Mutex
+			var made []*countedSession
+			e.s.dial = func(context.Context) (remote.Session, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				s := &countedSession{Session: remote.NewFake(fstest.MapFS{"at 192.0.2.10_445/x.txt": {Data: []byte("x")}})}
+				made = append(made, s)
+				return s, nil
+			}
+			dst := filepath.Join(t.TempDir(), "saved.txt")
+			answer := dst
+			if cancel {
+				answer = ""
+			}
+			entered, release := make(chan struct{}), make(chan struct{})
+			var alerts []string
+			e.s.native = Native{
+				SaveFile: func(string) (string, error) { close(entered); <-release; return answer, nil },
+				Alert:    func(s string) { alerts = append(alerts, s) },
+			}
+			if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
+				t.Fatal(w.Code)
+			}
+			done := make(chan int, 1)
+			go func() { done <- e.serve("GET", xURL, "").Code }()
+			select {
+			case <-entered:
+			case <-time.After(10 * time.Second):
+				t.Fatal("no save dialog")
+			}
+			if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
+				t.Fatal(w.Code)
+			}
+			close(release)
+			select {
+			case code := <-done:
+				if code != http.StatusNoContent {
+					t.Fatal(code)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the save didn't end")
+			}
+			b, err := os.ReadFile(dst)
+			if cancel && !errors.Is(err, os.ErrNotExist) || !cancel && (err != nil || string(b) != "x") || len(alerts) != 0 {
+				t.Fatalf("the reopening changed the save: data %q, err %v, alerts %q", b, err, alerts)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(made) != 1 {
+				t.Fatalf("%d sessions, want the opening's one", len(made))
+			}
+			if n := made[0].closes.Load(); n != 1 {
+				t.Fatalf("the opening's session closed %d times", n)
+			}
+		})
+	}
+}
+
+// heldRead is a session whose first read waits for release.
+type heldRead struct {
+	countedSession
+	entered, release chan struct{}
+	once             sync.Once
+}
+
+func (s *heldRead) Open(ctx context.Context, p string) (remote.File, error) {
+	f, err := s.Session.Open(ctx, p)
+	if err != nil {
+		return nil, err
+	}
+	return &heldFile{File: f, s: s}, nil
+}
+
+type heldFile struct {
+	remote.File
+	s *heldRead
+}
+
+func (f *heldFile) Read(p []byte) (int, error) {
+	f.s.once.Do(func() { close(f.s.entered); <-f.s.release })
+	return f.File.Read(p)
+}
+
+// A download reading when Browse is opened again finishes on its own
+// session, which then closes once; the new opening has its own pool.
+func TestLeasedDownloadSurvivesBrowseReopen(t *testing.T) {
+	e, _ := newNativeEnv(t)
+	held := &heldRead{
+		countedSession: countedSession{Session: remote.NewFake(fstest.MapFS{"a.fit": {Data: []byte("abc")}})},
+		entered:        make(chan struct{}), release: make(chan struct{}),
+	}
+	e.s.dial = func(context.Context) (remote.Session, error) { return held, nil }
+	if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	old := e.s.sessions
+	dst := filepath.Join(t.TempDir(), "a.fit")
+	e.s.native = Native{SaveFile: func(string) (string, error) { return dst, nil }}
+	done := make(chan int, 1)
+	go func() { done <- e.serve("GET", "/browse/file?path=a.fit&download=1", "").Code }()
+	select {
+	case <-held.entered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no read")
+	}
+	if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
+		t.Fatal(w.Code)
+	}
+	if e.s.sessions == old || held.closes.Load() != 0 {
+		t.Fatalf("the reopening kept the pool or closed the reading session: %d closes", held.closes.Load())
+	}
+	close(held.release)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the download didn't end")
+	}
+	if b, err := os.ReadFile(dst); err != nil || string(b) != "abc" || held.closes.Load() != 1 {
+		t.Fatalf("data %q, err %v, %d closes", b, err, held.closes.Load())
 	}
 }
