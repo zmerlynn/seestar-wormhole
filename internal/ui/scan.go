@@ -30,7 +30,7 @@ type lanState struct {
 	mu      sync.Mutex // guards the rest
 	seen    map[netip.Addr]sighting
 	gen     uint64
-	follows map[string]*following
+	follows map[followKey]*following
 }
 
 // sighting is the serial the latest scan or probe to finish, numbered gen,
@@ -256,8 +256,8 @@ const lanName = copyapp.SavedLabel
 // alone; connect follows the telescope (see [lanFollow]); start follows
 // it once in the run ctx carries (see [landiscovery.InRun]) and dials
 // where it connected after that, following it again when that fails. A
-// connect outside a run follows the telescope. It returns the target it
-// reached.
+// connect outside a run follows the telescope. Every follow is under the
+// routeGeneration read with the mode. It returns the target it reached.
 func lanConnect[T io.Closer](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
 	mode, gen := h.lanPolicy()
 	run := landiscovery.RunFrom(ctx)
@@ -266,14 +266,14 @@ func lanConnect[T io.Closer](ctx context.Context, h *server, t copyapp.Target, d
 		v, err := dial(ctx, t.Endpoint)
 		return v, t, err
 	case mode == landiscovery.ScanConnect || run == nil:
-		return lanFollow(ctx, h, t, dial)
+		return lanFollow(ctx, h, t, gen, dial)
 	}
 	// The run remembers the telescope by its serial and the explicit save
 	// it was found under: once a scan saved a new address, the next
 	// connect's target carries it, and after a route save or a change of
 	// mode, the run's earlier finding is not reused.
 	v, at, _, err := landiscovery.InRunAt(ctx, run, t.Serial, gen, dial, func(ctx context.Context) (T, string, error) {
-		v, reached, err := lanFollow(ctx, h, t, dial)
+		v, reached, err := lanFollow(ctx, h, t, gen, dial)
 		return v, reached.Endpoint, err
 	})
 	if err == nil {
@@ -289,18 +289,27 @@ type following struct {
 	endpoint string
 }
 
+// followKey is what dials share a search by: the target and the explicit
+// save it was made under, so a dial after a newer save never waits for
+// an older search's finding.
+type followKey struct {
+	endpoint, serial string
+	gen              uint64
+}
+
 // lanFollow connects to t, a target on this network saved with its
 // serial, with dial: it scans for the serial and dials where it answers
 // (see [landiscovery.Follow]), and saves a new address it connected at.
-// It returns the target it reached. Dials for the same target at once
-// share one scan: the others wait for it and dial where it connected, and
-// search on their own only if that fails. Activity names the model the
-// scan saw and the reply count, never an address, a name or the serial.
-func lanFollow[T io.Closer](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
-	key := t.Endpoint + "\x00" + t.Serial
+// It returns the target it reached. Dials for the same target under the
+// same routeGeneration gen at once share one scan: the others wait for it
+// and dial where it connected, and search on their own only if that
+// fails. Activity names the model the scan saw and the reply count, never
+// an address, a name or the serial.
+func lanFollow[T io.Closer](ctx context.Context, h *server, t copyapp.Target, gen uint64, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
+	key := followKey{t.Endpoint, t.Serial, gen}
 	h.lan.mu.Lock()
 	if h.lan.follows == nil {
-		h.lan.follows = make(map[string]*following)
+		h.lan.follows = make(map[followKey]*following)
 	}
 	if f := h.lan.follows[key]; f != nil {
 		h.lan.mu.Unlock()
@@ -316,7 +325,7 @@ func lanFollow[T io.Closer](ctx context.Context, h *server, t copyapp.Target, di
 				return v, t, nil
 			}
 		}
-		return lanSearch(ctx, h, t, dial)
+		return lanSearch(ctx, h, t, gen, dial)
 	}
 	f := &following{done: make(chan struct{})}
 	h.lan.follows[key] = f
@@ -327,7 +336,7 @@ func lanFollow[T io.Closer](ctx context.Context, h *server, t copyapp.Target, di
 		h.lan.mu.Unlock()
 		close(f.done)
 	}()
-	v, reached, err := lanSearch(ctx, h, t, dial)
+	v, reached, err := lanSearch(ctx, h, t, gen, dial)
 	if err == nil {
 		f.endpoint = reached.Endpoint
 	}
@@ -335,9 +344,9 @@ func lanFollow[T io.Closer](ctx context.Context, h *server, t copyapp.Target, di
 }
 
 // lanSearch is one search for t, the scan and its dials, and what it
-// saves and records.
-func lanSearch[T io.Closer](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
-	gen := h.controller.routeGeneration()
+// saves and records. It saves a new address only when no explicit save
+// came after gen, the routeGeneration its connect was made under.
+func lanSearch[T io.Closer](ctx context.Context, h *server, t copyapp.Target, gen uint64, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
 	v, r, err := landiscovery.Follow(ctx, lanScanner, t.Endpoint, t.Serial, dial, func(v T) { v.Close() })
 	if ctx.Err() != nil {
 		return v, t, err

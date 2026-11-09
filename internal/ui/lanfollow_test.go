@@ -569,6 +569,7 @@ func TestConcurrentConnectsRespectRouteSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	target, _ := s.copyTarget()
+	gen := s.controller.routeGeneration()
 	gate, started := make(chan struct{}), make(chan struct{})
 	var first sync.Once
 	var mu sync.Mutex
@@ -588,7 +589,7 @@ func TestConcurrentConnectsRespectRouteSave(t *testing.T) {
 	var wg sync.WaitGroup
 	run := func(ctx context.Context) {
 		wg.Go(func() {
-			got, at, err := lanFollow(ctx, s, target, dial)
+			got, at, err := lanFollow(ctx, s, target, gen, dial)
 			if err != nil || got != "192.0.2.30:445" || at.Endpoint != string(got) {
 				t.Errorf("dialed %q at %q: %v", got, at.Endpoint, err)
 			}
@@ -613,6 +614,71 @@ func TestConcurrentConnectsRespectRouteSave(t *testing.T) {
 	}
 }
 
+// A dial that waited on a search from before an explicit Save, and
+// searches on its own when the address that search found fails, saves
+// nothing over the Save: its search is under the save its connect read.
+func TestWaiterSearchKeepsItsGeneration(t *testing.T) {
+	n := &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"}}}
+	useLAN(t, n)
+	s := testServer(t)
+	s.controller.log = &eventLog{storage: s.storage}
+	if err := s.controller.persistRoute(routeLAN, "192.0.2.20:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	target, _ := s.copyTarget()
+	gen := s.controller.routeGeneration()
+	gate, started := make(chan struct{}), make(chan struct{})
+	var mu sync.Mutex
+	calls := 0
+	dial := func(ctx context.Context, endpoint string) (probe, error) {
+		mu.Lock()
+		calls++
+		call := calls
+		mu.Unlock()
+		switch call {
+		case 1: // the first search's, held until the Save
+			close(started)
+			select {
+			case <-gate:
+			case <-ctx.Done():
+				return "", ctx.Err()
+			}
+		case 2: // the waiter's, where that search connected
+			return "", errors.New("refused")
+		}
+		return probe(endpoint), nil
+	}
+	first := make(chan error, 1)
+	go func() {
+		_, _, err := lanFollow(t.Context(), s, target, gen, dial)
+		first <- err
+	}()
+	<-started
+	waiting := &waitingContext{Context: t.Context(), waiting: make(chan struct{})}
+	second := make(chan error, 1)
+	go func() {
+		_, _, err := lanFollow(waiting, s, target, gen, dial)
+		second <- err
+	}()
+	<-waiting.waiting
+	if err := s.controller.persistRoute(routeLAN, "192.0.2.20:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	close(gate)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.20:445" || calls != 3 || n.scans() != 2 {
+		t.Fatalf("saved %s, dials %d, scans %d", got.LANAddress, calls, n.scans())
+	}
+	if text := trailText(t, s); strings.Contains(text, `"code":"scan_moved"`) {
+		t.Errorf("trail: %s", text)
+	}
+}
+
 // Another serial answering at the saved address while the saved one
 // answers elsewhere and doesn't connect there is recorded as a sighting
 // that didn't connect, not as another telescope in its place.
@@ -628,7 +694,7 @@ func TestConflictWithSightingIsRecordedAsUnreached(t *testing.T) {
 	}
 	target, _ := s.copyTarget()
 	var dialed []string
-	_, _, err := lanSearch(t.Context(), s, target, func(_ context.Context, endpoint string) (probe, error) {
+	_, _, err := lanSearch(t.Context(), s, target, s.controller.routeGeneration(), func(_ context.Context, endpoint string) (probe, error) {
 		dialed = append(dialed, endpoint)
 		return "", errors.New("refused")
 	})

@@ -550,6 +550,86 @@ func TestModeChangeDuringASearch(t *testing.T) {
 	}
 }
 
+// reachedSession is a session that knows the endpoint it was dialed at.
+type reachedSession struct {
+	remote.Session
+	endpoint string
+}
+
+// A run that starts after a change of mode doesn't join a search an
+// earlier run began before it: it scans for itself, and keeps its own
+// finding, not the older one.
+func TestNewRunDoesNotJoinAnOlderSearch(t *testing.T) {
+	s, l, n := scanModeServer(t, "start")
+	open := l.open
+	l.open = func(at string) (remote.Session, error) {
+		session, err := open(at)
+		if err != nil {
+			return nil, err
+		}
+		return &reachedSession{session, at}, nil
+	}
+	o := copyMountOptions(s, copyapp.MountOptions{})
+	connect := func(ctx context.Context) (string, error) {
+		target, err := s.copyTarget()
+		if err != nil {
+			return "", err
+		}
+		session, err := o.Dial(ctx, target)
+		if err != nil {
+			return "", err
+		}
+		defer session.Close()
+		return session.(*reachedSession).endpoint, nil
+	}
+	l.gate, l.entered = make(chan struct{}), make(chan struct{})
+	first := make(chan error, 1)
+	go func() {
+		_, err := connect(landiscovery.WithRun(t.Context(), &landiscovery.Run{}))
+		first <- err
+	}()
+	<-l.entered // the first run's scan found 192.0.2.30, and its dial waits
+	moveSerials(l, n)
+	for _, mode := range []string{"connect", "start"} {
+		if w := doPost(s, "/api/lan-scan", `{"settings":{"lan_scan":"`+mode+`"}}`); w.Code != 200 {
+			t.Fatalf("setting %s: %d %s", mode, w.Code, w.Body)
+		}
+	}
+	type result struct {
+		at  string
+		err error
+	}
+	next := &landiscovery.Run{}
+	waiting := &waitingContext{Context: t.Context(), waiting: make(chan struct{})}
+	second := make(chan result, 1)
+	go func() {
+		at, err := connect(landiscovery.WithRun(waiting, next))
+		second <- result{at, err}
+	}()
+	<-waiting.waiting // the second run waits, on the first's search or its own dial
+	close(l.gate)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	got := <-second
+	if got.err != nil {
+		t.Fatal(got.err)
+	}
+	if got.at != "192.0.2.40:445" || n.scans() != 2 {
+		t.Fatalf("the newer run took the older search's finding: at %q, %d scans", got.at, n.scans())
+	}
+	at, err := connect(landiscovery.WithRun(t.Context(), next))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if at != "192.0.2.40:445" || n.scans() != 2 {
+		t.Fatalf("the newer run kept %q, %d scans", at, n.scans())
+	}
+	if saved, _ := loadSettings(s.storage); saved.LANAddress != "192.0.2.40:445" {
+		t.Fatalf("saved %q", saved.LANAddress)
+	}
+}
+
 // A changed serial searches in the same run, though the earlier
 // telescope's address still connects.
 func TestRunSerialChangeSearches(t *testing.T) {

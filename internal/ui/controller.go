@@ -463,10 +463,10 @@ func (c *controller) persistLANScan(mode landiscovery.Mode) error {
 func (c *controller) routeGeneration() uint64 { return c.routeGen.Load() }
 
 // persistMoved saves address as this network's address after a scan found
-// the telescope with serial there, when it was saved at from and no route
-// save came after gen, the routeGeneration when the search started. It
-// saves nothing when the saved settings changed meanwhile or a run is
-// active, and reports whether it saved.
+// the telescope with serial there, when it was saved at from and no
+// explicit save came after gen, the routeGeneration its connect read with
+// the mode. It saves nothing when the saved settings changed meanwhile or
+// a run is active, and reports whether it saved.
 func (c *controller) persistMoved(from, address, serial string, gen uint64) bool {
 	c.saveMu.Lock()
 	defer c.saveMu.Unlock()
