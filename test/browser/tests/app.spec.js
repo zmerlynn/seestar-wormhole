@@ -113,6 +113,21 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   });
 });
 
+// Saving the address makes it the copy tabs' telescope at once: Copy's
+// first Save straight after it isn't refused as for the telescope before.
+test("Copy's first Save straight after saving the address is the new telescope's", async ({ page, startApp }) => {
+  const app = await startApp();
+  await openApp(page, app.url);
+  await chooseLAN(page);
+  await field(page, 'Telescope address').fill(share);
+  await page.locator('#lan-save').click();
+  await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
+  await tab(page, 'Copy').click();
+  await copySave(page).click();
+  await expect(page.locator('#c-next')).toBeFocused();
+  expect(readJSON(app.copyFile)).toMatchObject({ folder: app.folder });
+});
+
 test('a failed first Save is off while it runs and says so, and Enter saves', async ({ page, startApp }) => {
   const app = await startApp({ 'config.json': lan() });
   await openCopy(page, app.url);

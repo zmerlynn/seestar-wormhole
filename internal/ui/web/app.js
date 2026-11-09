@@ -510,6 +510,10 @@ async function lanSave() {
     await api('route', {settings: {route: 'lan', lan_address: address}});
     saved = true;
     await refresh();
+    // The route names the telescope the copy tabs are for: they show its
+    // folder, and its token, before Saved, not on the next poll, so a
+    // Save on Copy right after isn't refused as for another telescope.
+    await copyRefresh();
   } catch (e) {
     if (e.field === 'lan_address') {
       lanError(e.message || 'Check this address.');
