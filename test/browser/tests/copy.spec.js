@@ -306,9 +306,9 @@ test('the status region, bars and focus follow the stage, not each tick', async 
   const live = page.locator('#c-live');
   const busy = page.locator('#c-busy');
   const bar = page.locator('#c-bar');
-  // The Copy tab's status regions: its state, and the answers to Save and
-  // to the history's buttons.
-  expect(await page.locator('#panel-copy [role=status]').evaluateAll((els) => els.map((e) => e.id))).toEqual(['c-live', 'f-saved', 'h-result']);
+  // The Copy tab's status regions: its state, and the answers to an
+  // address's folder offered, to Save and to the history's buttons.
+  expect(await page.locator('#panel-copy [role=status]').evaluateAll((els) => els.map((e) => e.id))).toEqual(['c-live', 's-offer-result', 'f-saved', 'h-result']);
   await expect(live).toHaveAttribute('role', 'status');
 
   // Connecting and listing have an indeterminate bar with a label.

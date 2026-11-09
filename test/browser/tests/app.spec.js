@@ -536,6 +536,8 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
     excludes: ['Video', '/Preview'], includes: ['MyWorks'], skip_built_in: false, start_copying: false, once: false,
     files_at_once: 4, older_than_days: 7, trust_state: false, free_excludes: [], free_includes: [], history_dir: '',
     later: { kept: true },
+    // The save names the connected telescope's folder: the address saved.
+    telescopes: { 'address:127.0.0.1:14450': { folder: app.folder } },
   });
   // Activity shows both files, and the copy settings saved.
   await tab(page, 'Activity').click();
@@ -556,6 +558,70 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
   await expect(page.locator('#copy-form')).toBeHidden();
   await page.getByRole('button', { name: 'Change…' }).click();
   await expect(page.locator('#f-int')).toHaveValue('30');
+});
+
+test('a second telescope is asked for its own folder beside the first, and Save refuses the first one\'s', async ({ page, startApp }) => {
+  // The first telescope, known by an invented serial, has the folder; the
+  // saved address is another telescope.
+  const app = await startApp({
+    'config.json': lan(),
+    'copy.json': (folder) => ({ version: 1, folder, start_copying: false, telescopes: { 'serial:SYNTHETIC-FIRST': { folder, later: { kept: true } } } }),
+  });
+  await openApp(page, app.url);
+  await tab(page, 'Copy').click();
+  await expect(page.locator('#s-first')).toHaveText('This telescope has no folder yet. Each telescope has its own: choose one for its images, then press Save. Copying starts when you press Start copying.');
+  await expect(page.locator('#c-main')).toBeHidden();
+  await expect(page.locator('#s-offer')).toBeHidden();
+  const suggested = path.join(app.home, 'Seestar 127.0.0.1 14450');
+  await expect(field(page, 'Folder for your images')).toHaveValue(suggested);
+  // Browse lists it without statuses until it has a folder.
+  await tab(page, 'Browse').click();
+  await expect(browseStatus(page)).toHaveText(rootStatus);
+  await expect(frame(page).locator('#list')).not.toHaveClass(/statuses/);
+  await tab(page, 'Copy').click();
+
+  // The first telescope's folder, and one inside it, are refused.
+  for (const [folder, message] of [
+    [app.folder, 'Another telescope copies to this folder. Choose a folder of its own for this telescope.'],
+    [path.join(app.folder, 'inner'), "This folder is inside another telescope's folder. Choose a folder outside it."],
+  ]) {
+    await field(page, 'Folder for your images').fill(folder);
+    await copySave(page).click();
+    await expect(page.locator('#f-folder-err')).toHaveText(message);
+    await expect(field(page, 'Folder for your images')).toBeFocused();
+  }
+  expect(readJSON(app.copyFile).telescopes).toEqual({ 'serial:SYNTHETIC-FIRST': { folder: app.folder, later: { kept: true } } });
+
+  await field(page, 'Folder for your images').fill(suggested);
+  await copySave(page).click();
+  await expect(page.locator('#c-next')).toBeFocused();
+  await expect(page.locator('#s-first')).toBeHidden();
+  const saved = readJSON(app.copyFile);
+  expect(saved.folder).toBe(app.folder);
+  expect(saved.telescopes).toEqual({ 'serial:SYNTHETIC-FIRST': { folder: app.folder, later: { kept: true } }, 'address:127.0.0.1:14450': { folder: suggested } });
+  await tab(page, 'Browse').click();
+  await expect(frame(page).locator('#list.statuses')).toBeVisible();
+});
+
+test('a serial heard at an address with a folder is offered that folder, and nothing moves until it is chosen', async ({ page, startApp }) => {
+  const app = await startApp({
+    'config.json': { ...lan(), lan_serial: 'SYNTHETIC-HEARD' },
+    'copy.json': (folder) => ({ version: 1, folder, start_copying: false, telescopes: { 'address:127.0.0.1:14450': { folder } } }),
+  });
+  await openApp(page, app.url);
+  await tab(page, 'Copy').click();
+  await expect(page.locator('#s-offer-text')).toHaveText(`This telescope's address is now known as Seestar SYNTHETIC-HEARD. If it is the same telescope, it can keep the folder saved for the address, ${app.folder}. Nothing changes until you choose it.`);
+  await expect(page.locator('#s-first')).toHaveText(/^This telescope has no folder yet\./);
+  const before = fs.readFileSync(app.copyFile, 'utf8');
+  await page.waitForTimeout(500);
+  expect(fs.readFileSync(app.copyFile, 'utf8')).toBe(before);
+
+  await page.getByRole('button', { name: "Use the address's folder" }).click();
+  await expect(page.locator('#s-offer')).toBeHidden();
+  await expect(page.locator('#c-main')).toBeVisible();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await expect(page.locator('#s-summary')).toContainText('Copying to ' + app.folder + ' ');
+  expect(readJSON(app.copyFile).telescopes).toEqual({ 'serial:SYNTHETIC-HEARD': { folder: app.folder } });
 });
 
 test('Copy settings field errors show under each field and nothing is saved', async ({ page, startApp }) => {
