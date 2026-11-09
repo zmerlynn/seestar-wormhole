@@ -30,7 +30,8 @@ func TestCopyRefusedPage(t *testing.T) {
 	runPageRegression(t, "tabs-route-test.js", "checkCopyRefused("+status+")")
 }
 
-// routeStatuses is the server's own status before and after a LAN save.
+// routeStatuses is the server's own status before and after a LAN save,
+// and its copy status after it.
 func routeStatuses(t *testing.T) (*server, string) {
 	t.Helper()
 	s, _ := copyServer(t)
@@ -39,7 +40,8 @@ func routeStatuses(t *testing.T) (*server, string) {
 		t.Fatalf("save lan = %d %s", w.Code, w.Body)
 	}
 	lan := serve(s, request(s, "GET", "/api/status", "")).Body.String()
-	return s, `{account:` + account + `,lan:` + lan + `}`
+	copyStatus := serve(s, request(s, "GET", "/copy/api/status", "")).Body.String()
+	return s, `{account:` + account + `,lan:` + lan + `,copy:` + copyStatus + `}`
 }
 
 func TestRouteChoicePage(t *testing.T) {

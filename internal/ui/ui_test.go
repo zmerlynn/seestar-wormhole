@@ -98,12 +98,63 @@ func testServer(t *testing.T) *server {
 	return s
 }
 func request(s *server, method, path, body string) *http.Request {
+	if method == "POST" {
+		body = withCopyToken(s, path, body)
+	}
 	r := httptest.NewRequest(method, "http://"+s.host+path, strings.NewReader(body))
 	r.Header.Set("X-Seestar-Token", s.token)
 	r.Header.Set("Origin", "http://"+s.host)
 	r.Header.Set("Content-Type", "application/json")
 	return r
 }
+
+// withCopyToken is body as the page sends it: a copy Save, or an
+// adoption, with the token copy's status gives the page now for the
+// telescope, or its offer, unless body has one.
+func withCopyToken(s *server, path, body string) string {
+	if s.copy == nil {
+		return body
+	}
+	return copyTokenFrom(path, body, func() []byte {
+		r := httptest.NewRequest("GET", "http://"+s.host+"/copy/api/status", nil)
+		r.Header.Set("X-Seestar-Token", s.token)
+		r.Header.Set("Origin", "http://"+s.host)
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, r)
+		return w.Body.Bytes()
+	})
+}
+
+// copyTokenFrom is withCopyToken for any client: status fetches
+// /copy/api/status.
+func copyTokenFrom(path, body string, status func() []byte) string {
+	if (path != "/copy/api/settings" && path != "/copy/api/adopt") || !strings.HasPrefix(body, "{") || strings.Contains(body, `"token"`) {
+		return body
+	}
+	var view struct {
+		Telescope struct {
+			Token string `json:"token"`
+			Offer *struct {
+				Token string `json:"token"`
+			} `json:"offer"`
+		} `json:"telescope"`
+	}
+	json.Unmarshal(status(), &view)
+	token := view.Telescope.Token
+	if path == "/copy/api/adopt" {
+		token = ""
+		if view.Telescope.Offer != nil {
+			token = view.Telescope.Offer.Token
+		}
+	}
+	sep := ","
+	if strings.TrimSpace(body[1:]) == "}" {
+		sep = ""
+	}
+	q, _ := json.Marshal(token)
+	return `{"token":` + string(q) + sep + body[1:]
+}
+
 func TestHTTPRejections(t *testing.T) {
 	s := testServer(t)
 	for _, tc := range []struct {

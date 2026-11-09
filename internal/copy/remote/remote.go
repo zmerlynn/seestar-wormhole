@@ -33,6 +33,21 @@ const ShareName = "EMMC Images"
 // ErrNotDir is returned, wrapped, by ReadDir for a path that is not a folder.
 var ErrNotDir = errors.New("not a folder")
 
+// ErrShort is the cause of a transfer that ended before its file's listed
+// size. Its text is what may be shown of a [ShortError].
+var ErrShort = errors.New("the device sent fewer bytes than expected")
+
+// ShortError is a transfer that ended after Got of a file's Size bytes.
+// It is [ErrShort].
+type ShortError struct{ Got, Size int64 }
+
+func (e *ShortError) Error() string {
+	return fmt.Sprintf("the device sent %d of its %d bytes", e.Got, e.Size)
+}
+
+// Is reports whether target is [ErrShort].
+func (e *ShortError) Is(target error) bool { return target == ErrShort }
+
 // Kind is the type of a listed entry.
 type Kind uint8
 

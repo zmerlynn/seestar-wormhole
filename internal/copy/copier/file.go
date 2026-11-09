@@ -27,6 +27,18 @@ var syncFile = (*os.File).Sync
 // errTooLong reports a file that holds more than its listed size.
 var errTooLong = errors.New("the file is longer than its listed size")
 
+// endedError is what [hashExactly] returns for a source that ended after
+// got of its size bytes. [fetch] reports it as [remote.ShortError] and
+// adopt as errLocalChanged.
+type endedError struct{ got, size int64 }
+
+func (e *endedError) Error() string {
+	return fmt.Sprintf("it ended after %d of its %d bytes", e.got, e.size)
+}
+
+// errLocalChanged reports a local file that ended early as it was hashed.
+var errLocalChanged = errors.New("the local file changed while it was checked")
+
 // tempName returns the temporary file of share path p, relative to the
 // root: [plan.TempName] in the folder of p.
 func tempName(p string) string {
@@ -110,6 +122,10 @@ func fetch(ctx context.Context, sess remote.Session, d plan.Decision, w io.Write
 	// changes nothing.
 	defer rf.Close()
 	sum, err := hashExactly(ctx, w, rf, d.Size)
+	var ended *endedError
+	if errors.As(err, &ended) {
+		err = &remote.ShortError{Got: ended.got, Size: ended.size}
+	}
 	if err != nil {
 		return "", fmt.Errorf("download: %w", err)
 	}
@@ -133,6 +149,10 @@ func (c *Copier) adopt(ctx context.Context, d plan.Decision) (state.Record, erro
 		return state.Record{}, err
 	}
 	sum, err := hashExactly(ctx, io.Discard, f, d.Size)
+	var ended *endedError
+	if errors.As(err, &ended) {
+		return state.Record{}, errLocalChanged
+	}
 	if err != nil {
 		return state.Record{}, fmt.Errorf("hash the local file: %w", err)
 	}
@@ -196,7 +216,8 @@ func (c *Copier) syncFolder(dir string) error {
 }
 
 // hashExactly copies src to w and returns the lowercase hex SHA-256 of what
-// it copied, which must be exactly size bytes. It stops once ctx is done.
+// it copied, which must be exactly size bytes: a src that ends early is an
+// [endedError]. It stops once ctx is done.
 func hashExactly(ctx context.Context, w io.Writer, src io.WriterTo, size int64) (string, error) {
 	h := sha256.New()
 	lw := &limitWriter{ctx: ctx, w: io.MultiWriter(w, h), left: size}
@@ -204,7 +225,7 @@ func hashExactly(ctx context.Context, w io.Writer, src io.WriterTo, size int64) 
 		return "", fmt.Errorf("stopped after %d of %d bytes: %w", size-lw.left, size, err)
 	}
 	if lw.left != 0 {
-		return "", fmt.Errorf("short read: got %d of %d bytes", size-lw.left, size)
+		return "", &endedError{got: size - lw.left, size: size}
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

@@ -3,7 +3,6 @@ package browse
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"math/rand/v2"
@@ -12,31 +11,59 @@ import (
 	"strconv"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
+
+// errLonger is a save of a file that grew on the device as it was read.
+var errLonger = errors.New("the device sent more bytes than expected")
+
+// Hold runs a save's rename, the one step that puts the file at its
+// destination, and may refuse it with an error instead: the save then
+// removes its temporary file and returns that error. A nil Hold renames.
+type Hold func(rename func() error) error
 
 // Save copies the device's file at share path p to dst, through lease's
 // session, which the caller releases. It writes a temporary file beside dst, checks that it got
 // every byte the device listed and that the file closed cleanly, then
-// renames it over dst. On any error it removes the temporary file, so an
-// existing dst is left as it was. ctx ends the copy between reads.
-func Save(ctx context.Context, lease *Lease, p, dst string) error {
+// renames it over dst through hold. On any error it removes the temporary
+// file, so an existing dst is left as it was. ctx ends the copy between
+// reads.
+func Save(ctx context.Context, lease *Lease, p, dst string, hold Hold) error {
 	readonly.Check("browse.Save")
 	dir, base := filepath.Dir(dst), filepath.Base(dst)
-	return save(ctx, lease, p, func() (*os.File, error) {
-		return os.CreateTemp(dir, "."+base+".*.tmp")
+	return save(ctx, lease, p, hold, func() (*os.File, error) {
+		f, err := os.CreateTemp(dir, "."+base+".*.tmp")
+		return f, missingFolder(dir, err)
 	}, func(tmp string) error {
 		return os.Rename(tmp, dst)
 	}, func(tmp string) { os.Remove(tmp) })
 }
 
+// missingFolder is err, from creating a file in dir, or, when dir isn't
+// there, an error that says only that it doesn't exist. On Windows a
+// create in a missing folder fails with ERROR_PATH_NOT_FOUND, which Go's
+// syscall package also names ENOTDIR, so that error reads both as not
+// found and as not a folder, and a check for ENOTDIR first takes it for
+// the second. A stat of dir tells them apart. Elsewhere the error a
+// missing folder gives is only not-exist already, and keeps that class.
+func missingFolder(dir string, err error) error {
+	if !errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if _, serr := os.Stat(dir); errors.Is(serr, fs.ErrNotExist) {
+		return &fs.PathError{Op: "createtemp", Path: dir, Err: fs.ErrNotExist}
+	}
+	return err
+}
+
 // SaveIn is [Save] to rel, a path relative to root, with the temporary
 // file, the rename and the cleanup all through root: the caller holds a
 // lock that guards the folder root is open on, such as its folder lock.
-func SaveIn(ctx context.Context, lease *Lease, p string, root *os.Root, rel string) error {
+func SaveIn(ctx context.Context, lease *Lease, p string, root *os.Root, rel string, hold Hold) error {
 	readonly.Check("browse.SaveIn")
 	dir, base := filepath.Dir(rel), filepath.Base(rel)
 	var tmpRel string
-	return save(ctx, lease, p, func() (*os.File, error) {
+	return save(ctx, lease, p, hold, func() (*os.File, error) {
 		for range 10000 {
 			tmpRel = filepath.Join(dir, "."+base+"."+strconv.FormatUint(uint64(rand.Uint32()), 10)+".tmp")
 			f, err := root.OpenFile(tmpRel, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o600)
@@ -51,8 +78,9 @@ func SaveIn(ctx context.Context, lease *Lease, p string, root *os.Root, rel stri
 }
 
 // save copies the device's file at p into a temporary file from create,
-// then calls commit with its name; on any error it calls discard instead.
-func save(ctx context.Context, lease *Lease, p string, create func() (*os.File, error), commit func(tmp string) error, discard func(tmp string)) (err error) {
+// then calls commit with its name, through hold; on any error, hold's
+// refusal too, it calls discard instead.
+func save(ctx context.Context, lease *Lease, p string, hold Hold, create func() (*os.File, error), commit func(tmp string) error, discard func(tmp string)) (err error) {
 	readonly.Check("browse.save")
 	f, err := lease.Session().Open(lease.Context(), p)
 	if err != nil {
@@ -84,13 +112,19 @@ func save(ctx context.Context, lease *Lease, p string, create func() (*os.File, 
 	if err != nil {
 		return err
 	}
-	if n != size {
-		return fmt.Errorf("the device sent %d of its %d bytes", n, size)
+	switch {
+	case n < size:
+		return &remote.ShortError{Got: n, Size: size}
+	case n > size:
+		return errLonger
 	}
 	if err := out.Close(); err != nil {
 		return err
 	}
-	return commit(tmp)
+	if hold == nil {
+		return commit(tmp)
+	}
+	return hold(func() error { return commit(tmp) })
 }
 
 // saveReader reads a device file until ctx is done, and reports each

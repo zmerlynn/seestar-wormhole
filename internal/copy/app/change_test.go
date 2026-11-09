@@ -37,6 +37,7 @@ type changeEnv struct {
 	route    sync.Mutex
 	endpoint string
 	run      uint64
+	key      string // the target's telescope key
 	// moveOnce, if set, moves the endpoint to B once the next target has
 	// been answered.
 	moveOnce bool
@@ -74,7 +75,7 @@ func newChangeEnv(t *testing.T) *changeEnv {
 		Target: func() (Target, error) {
 			e.route.Lock()
 			defer e.route.Unlock()
-			tg := Target{Endpoint: e.endpoint, Run: e.run}
+			tg := Target{Endpoint: e.endpoint, Run: e.run, Telescope: e.key}
 			if e.moveOnce {
 				e.endpoint, e.moveOnce = atB, false
 			}

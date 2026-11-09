@@ -60,6 +60,9 @@ func (e *mountEnv) set(endpoint string, err error) {
 
 // serve sends one request; the mounting server has made its checks.
 func (e *mountEnv) serve(method, target, body string) *httptest.ResponseRecorder {
+	if method == "POST" {
+		body = withToken(e.m.s, target, body)
+	}
 	r := httptest.NewRequest(method, target, strings.NewReader(body))
 	r.Host = testAddr.String()
 	if method == "POST" {
@@ -148,6 +151,13 @@ func TestSameTelescope(t *testing.T) {
 		{"other serial, new address", Target{Endpoint: atA, Serial: "synthetic-sn"}, Target{Endpoint: atB, Serial: "synthetic-sn2"}, false},
 		{"serial only on one", Target{Endpoint: atA, Serial: "synthetic-sn"}, Target{Endpoint: atB}, false},
 		{"same serial through the account", Target{Endpoint: atA, Run: 1, Serial: "synthetic-sn"}, Target{Endpoint: atB, Run: 1, Serial: "synthetic-sn"}, false},
+		// Another key is another folder, wherever the telescope is.
+		{"other key, same address", Target{Endpoint: atA, Telescope: "serial:synthetic-sn"}, Target{Endpoint: atA, Telescope: "serial:synthetic-sn2"}, false},
+		{"other key, same device and run", Target{Endpoint: atA, Device: "synthetic-a", Run: 1, Telescope: "serial:synthetic-sn"},
+			Target{Endpoint: atA, Device: "synthetic-a", Run: 1, Telescope: "serial:synthetic-sn2"}, false},
+		{"address key, then the serial's", Target{Endpoint: atA, Telescope: AddressKey(atA)},
+			Target{Endpoint: atA, Serial: "synthetic-sn", Telescope: SerialKey("synthetic-sn")}, false},
+		{"same key, same address", Target{Endpoint: atA, Telescope: AddressKey(atA)}, Target{Endpoint: atA, Telescope: AddressKey(atA)}, true},
 	} {
 		if got := tc.t.sameTelescope(tc.u); got != tc.want {
 			t.Errorf("%s: sameTelescope = %v", tc.name, got)

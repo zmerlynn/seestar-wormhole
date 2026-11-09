@@ -13,11 +13,13 @@ import (
 var defaultProfileRoot = func() (string, error) { return ui.StateRoot("") }
 
 // loadDefaultProfile reads the default profile for --profile default: the
-// folder, history and Copy options from copy.json, and the endpoint from
-// config.json, with the serial saved with it on this network. It writes
-// and locks nothing. Without copy.json there is
-// nothing to fill, so it is refused; without a usable config.json only the
-// endpoint stays unfilled.
+// history and Copy options from copy.json, the endpoint from config.json,
+// with the serial saved with it on this network, and the folder of the
+// telescope config.json saves. It writes and locks nothing. Without
+// copy.json there is nothing to fill, so it is refused; without a usable
+// config.json the endpoint stays unfilled, and the folder is copy.json's
+// folder only until any telescope has a folder of its own: after that,
+// none is filled, and NoFolder is set.
 func loadDefaultProfile() (cli.Saved, error) {
 	root, err := defaultProfileRoot()
 	if err != nil {
@@ -36,10 +38,17 @@ func loadDefaultProfile() (cli.Saved, error) {
 	if set.IntervalMinutes > 0 {
 		saved.Interval = time.Duration(set.IntervalMinutes) * time.Minute
 	}
+	key := ""
 	if config, err := ui.LoadSettings(root); err == nil {
 		saved.Endpoint, _ = ui.SavedCopyEndpoint(config)
 		saved.LANSerial = ui.SavedLANSerial(config)
 		saved.LANScan = ui.SavedLANScan(config)
+		key = ui.SavedTelescope(config)
 	}
+	// Until a telescope has a folder of its own, every telescope's folder
+	// is copy.json's folder; after, "" while that is set means the saved
+	// telescope has none yet, and another does.
+	saved.Dest = set.FolderFor(key)
+	saved.NoFolder = saved.Dest == "" && set.Folder != ""
 	return saved, nil
 }

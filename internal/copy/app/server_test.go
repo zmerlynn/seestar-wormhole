@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
-	"io"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -73,12 +72,16 @@ type appEnv struct {
 	d *dials
 
 	mu       sync.Mutex
-	endpoint string     // the target's
-	device   string     // the target's; "" on this network
-	run      uint64     // the target's; 0 on this network
-	lost     error      // what finding the target fails with
-	saved    []Settings // each Save, in order
-	saveErr  error      // what Save fails with
+	endpoint string       // the target's
+	device   string       // the target's; "" on this network
+	run      uint64       // the target's; 0 on this network
+	lost     error        // what finding the target fails with
+	serial   string       // the target's serial on this network
+	key      string       // the target's telescope key; "" for none
+	name     string       // the telescope's name on the page; "" is "Seestar"
+	logs     lockedBuffer // the Mount's log, every level
+	saved    []Settings   // each Save, in order
+	saveErr  error        // what Save fails with
 }
 
 // newAppEnv is a Mount's server with saved settings, or nil for none,
@@ -88,11 +91,19 @@ func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 	e := &appEnv{t: t, d: &dials{}, endpoint: testEndpoint}
 	m := NewMount(context.Background(), MountOptions{
 		Addr: testAddr, StateDir: t.TempDir(), Version: "v9.9.9",
-		Log: slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Log: slog.New(slog.NewTextHandler(&e.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Target: func() (Target, error) {
 			e.mu.Lock()
 			defer e.mu.Unlock()
-			return Target{Endpoint: e.endpoint, Device: e.device, Run: e.run}, e.lost
+			return Target{Endpoint: e.endpoint, Device: e.device, Run: e.run, Serial: e.serial, Telescope: e.key}, e.lost
+		},
+		Name: func(Target) string {
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.name == "" {
+				return "Seestar"
+			}
+			return e.name
 		},
 		Dial: e.d.dial,
 		Test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
@@ -112,6 +123,24 @@ func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 	e.m, e.s = m, m.s
 	t.Cleanup(m.Quit)
 	return e
+}
+
+// lockedBuffer is a log's output, written from any goroutine.
+type lockedBuffer struct {
+	mu  sync.Mutex
+	buf strings.Builder
+}
+
+func (b *lockedBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *lockedBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // move changes where the telescope is, as a reconnect does.
@@ -166,7 +195,32 @@ func (e *appEnv) serve(method, target, body string, headers ...string) *httptest
 
 // post sends a POST as the page does.
 func (e *appEnv) post(path, body string) *httptest.ResponseRecorder {
-	return e.serve("POST", path, body, "Content-Type", "application/json")
+	return e.serve("POST", path, withToken(e.s, path, body), "Content-Type", "application/json")
+}
+
+// withToken is body as the page sends it: a Save, or an adoption, with
+// the token status gives the page for the telescope there now, or its
+// offer, unless body has one.
+func withToken(s *server, path, body string) string {
+	if (path != "/copy/api/settings" && path != "/copy/api/adopt") || !strings.HasPrefix(body, "{") || strings.Contains(body, `"token"`) {
+		return body
+	}
+	t := s.current()
+	s.mu.Lock()
+	v := s.telescopeView(t)
+	s.mu.Unlock()
+	token := v.Token
+	if path == "/copy/api/adopt" {
+		token = ""
+		if v.Offer != nil {
+			token = v.Offer.Token
+		}
+	}
+	sep := ","
+	if strings.TrimSpace(body[1:]) == "}" {
+		sep = ""
+	}
+	return `{"token":` + quote(token) + sep + body[1:]
 }
 
 func decode[T any](t *testing.T, w *httptest.ResponseRecorder) T {

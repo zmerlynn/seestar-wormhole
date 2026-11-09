@@ -16,7 +16,11 @@ const DefaultProfile = "default"
 // Saved is what a profile holds for the file commands. A zero member is
 // one it doesn't set, and fills no flag.
 type Saved struct {
+	// Dest is the folder of the telescope saved in the app. NoFolder is
+	// true when that telescope has none yet while another has one: a
+	// command that would fill --dest then fails until one is chosen.
 	Dest       string
+	NoFolder   bool
 	HistoryDir string
 	Endpoint   string
 	// LANSerial is the serial the app saved with Endpoint on this
@@ -47,6 +51,10 @@ type profileFlag struct {
 	name   string
 	set    bool
 	filled []string
+	// statuses is set by a command that runs without a local folder,
+	// only without the statuses one gives, as browse does: a saved
+	// telescope without a folder fills no --dest there, and is no error.
+	statuses bool
 }
 
 func (p *profileFlag) register(f *pflag.FlagSet) {
@@ -73,10 +81,25 @@ func (p *profileFlag) load(flags *pflag.FlagSet, load LoadProfile) (Saved, bool,
 // not given with fillSaved.
 func (p *profileFlag) fill(flags *pflag.FlagSet, load LoadProfile, fillSaved func(Saved, func(string) bool) []string) error {
 	s, ok, err := p.load(flags, load)
-	if ok {
-		p.filled = fillSaved(s, flags.Changed)
+	if !ok {
+		return err
 	}
-	return err
+	if s.NoFolder && !flags.Changed("dest") && !p.statuses && takesDest(flags) {
+		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder}
+	}
+	p.filled = fillSaved(s, flags.Changed)
+	return nil
+}
+
+// errNoFolder is --profile's rule when the telescope saved in the app has
+// no folder yet. It names neither the telescope nor a folder.
+const errNoFolder = "the telescope saved in the app has no folder yet; choose one on the app's Copy tab, or give --dest"
+
+// takesDest reports whether the command uses a local folder: all do but
+// delete with --ignore-state.
+func takesDest(flags *pflag.FlagSet) bool {
+	ignore, err := flags.GetBool("ignore-state")
+	return err != nil || !ignore
 }
 
 // present reports whether the flag name was given or filled: what a rule
@@ -169,12 +192,15 @@ func (o *findOptions) fillSaved(s Saved, changed func(string) bool) []string {
 
 // fillSaved fills browse's flags from s and returns the names filled. The
 // selection is filled only with a destination, as browse uses it only
-// for statuses.
+// for statuses. A saved telescope without a folder, when --dest isn't
+// given, fills only where to browse: the page lists without statuses.
 func (o *browseOptions) fillSaved(s Saved, changed func(string) bool) []string {
 	var filled []string
 	f := filler{changed, &filled}
-	f.str("dest", &o.dest, s.Dest)
-	f.str("history-dir", &o.historyDir, s.HistoryDir)
+	if !s.NoFolder || changed("dest") {
+		f.str("dest", &o.dest, s.Dest)
+		f.str("history-dir", &o.historyDir, s.HistoryDir)
+	}
 	f.str("endpoint", &o.endpoint, s.Endpoint)
 	o.follow = newFollow(s, changed)
 	if o.dest != "" {

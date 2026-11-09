@@ -510,6 +510,10 @@ async function lanSave() {
     await api('route', {settings: {route: 'lan', lan_address: address}});
     saved = true;
     await refresh();
+    // The route names the telescope the copy tabs are for: they show its
+    // folder, and its token, before Saved, not on the next poll, so a
+    // Save on Copy right after isn't refused as for another telescope.
+    await copyRefresh();
   } catch (e) {
     if (e.field === 'lan_address') {
       lanError(e.message || 'Check this address.');
@@ -592,6 +596,9 @@ const reachCopy = {
 // The last copy status, the saved copy settings (null until saved), the
 // saved folder's history file, and whether Change… has the form open.
 let copyStatus = null, copySaved = null, copyHistory = '', copyFormOpen = false, copyFilled = false;
+// copyTelescope is the id of the telescope whose folder the folder field
+// was filled with; each telescope has its own.
+let copyTelescope = null;
 // A refused copy.json keeps them off for the run, and its note, naming
 // the file, replaces the usual one.
 function copyTabs(s) {
@@ -727,7 +734,10 @@ function copyInput() {
   return {
     folder: $('f-folder').value, history_dir: $('f-hist').value, interval: $('f-repeat').checked ? $('f-int').value : copyInterval, files_at_once: $('f-files').value,
     excludes: lines($('f-ex').value), includes: lines($('f-in').value),
-    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked
+    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked,
+    // The telescope's whose folder the folder field shows: a Save that
+    // reaches the app after the telescope changed is refused.
+    token: copyStatus?.telescope?.token || ''
   };
 }
 // showErrors puts each message under its field and returns the first
@@ -754,11 +764,22 @@ function copySummary(s) {
   if (s.includes.length) parts.push('only ' + s.includes.join(', '));
   return parts.join(', ') + '.' + (s.start_copying ? ' Starts when the app opens.' : '');
 }
+// The notice above a form no folder was saved from: the first visit's,
+// or, once another telescope has a folder, this telescope's.
+const firstNotices = {
+  first: 'Choose the folder for your images, then press Save. Copying starts later, when you press Start copying.',
+  new: 'This telescope has no folder yet. Each telescope has its own: choose one for its images, then press Save. Copying starts when you press Start copying.',
+  unknown: "Connect to the telescope to choose its folder. Each telescope has its own, and this one is known once it's connected."
+};
 function renderSetup() {
-  const first = !copySaved;
+  const first = !copySaved, telescope = copyStatus?.telescope;
   if (first) copyFormOpen = true;
   $('c-main').hidden = first;
   $('s-first').hidden = !first;
+  put('s-first', firstNotices[telescope && !telescope.known ? 'unknown' : telescope?.new ? 'new' : 'first']);
+  const offer = telescope?.offer;
+  $('s-offer').hidden = !offer;
+  put('s-offer-text', offer ? "This telescope's address is now known as " + offer.name + '. If it is the same telescope, it can keep the folder saved for the address, ' + offer.folder + '. Nothing changes until you choose it.' : '');
   $('s-line').hidden = first;
   put('s-summary', copySaved && copySummary(copySaved));
   $('copy-form').hidden = !copyFormOpen;
@@ -818,6 +839,30 @@ async function copySave() {
       result('f-saved', 'Settings saved.', 'ok');
       $('s-change').focus();
     }
+  } finally {
+    button.disabled = false;
+  }
+}
+// copyAdopt gives this telescope the folder saved for its address, as the
+// offer above the form says.
+async function copyAdopt() {
+  const button = $('s-adopt');
+  if (button.disabled || stale()) return;
+  button.disabled = true;
+  result('s-offer-result', '');
+  try {
+    // The offer shown: an acceptance of an offer gone or changed is refused.
+    const data = await api('adopt', {token: copyStatus?.telescope?.offer?.token || ''}, '/copy/api/');
+    copySaved = data.settings;
+    $('f-folder').value = data.settings.folder;
+    showErrors({});
+    copyFormOpen = false;
+    await copyRefresh();
+    result('f-saved', 'Settings saved.', 'ok');
+    $('s-change').focus();
+  } catch (e) {
+    result('s-offer-result', e?.error || "Couldn't save settings. Try again.", 'err');
+    $('s-offer-result').focus();
   } finally {
     button.disabled = false;
   }
@@ -1237,6 +1282,7 @@ async function clip(button, value, live, copied) {
   setTimeout(() => button.textContent = label, 2000);
 }
 function copyRender(c) {
+  const wasSetUp = !!copySaved;
   copyStatus = c;
   copySaved = c.set_up ? c.settings : null;
   copyHistory = c.history;
@@ -1247,7 +1293,15 @@ function copyRender(c) {
     put('f-builtin', c.default_excludes.join(' · '));
     copyFill(c.settings);
     freeFill(c.settings);
+  } else if (c.telescope && c.telescope.id !== copyTelescope) {
+    // Another telescope: the folder field shows its folder, or the one
+    // suggested for it. The settings all telescopes share stay as edited.
+    $('f-folder').value = c.settings.folder;
+    showErrors({});
+    // A form open only because the last telescope had no folder closes.
+    if (c.set_up && !wasSetUp) copyFormOpen = false;
   }
+  copyTelescope = c.telescope ? c.telescope.id : null;
   renderSetup();
   renderCopy(c.copy);
   renderFree(c.free);
@@ -1261,7 +1315,7 @@ function stale() {
   return controlsLost || (copyLost || copyOld) && !!state?.copy_unlocked;
 }
 // The actions that need the server's answer, off while stale.
-const staleActions = ['c-start', 'c-check', 'c-stop', 'c-pbtn', 'c-pcancel', 's-stop', 'h-cgo', 'x-find', 'x-cancel', 'x-change', 'x-stop', 'x-done', 'x-cgo'];
+const staleActions = ['c-start', 's-adopt', 'c-check', 'c-stop', 'c-pbtn', 'c-pcancel', 's-stop', 'h-cgo', 'x-find', 'x-cancel', 'x-change', 'x-stop', 'x-done', 'x-cgo'];
 // lostLine says, above every tab, that the controls or copy's status are
 // lost, with the connection's last known state, marks the copy tabs' views
 // stale and turns their actions off. Drafts in their fields are kept, and
@@ -1693,6 +1747,7 @@ $('copy-form').addEventListener('submit', e => {
   copySave();
 });
 $('s-change').addEventListener('click', openCopyForm);
+$('s-adopt').addEventListener('click', copyAdopt);
 $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);
 $('f-hist').addEventListener('input', renderHistory);

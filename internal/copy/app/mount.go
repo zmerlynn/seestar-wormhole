@@ -49,6 +49,19 @@ type MountOptions struct {
 	// Native is the host window's dialogs; nil, or a nil dialog, without
 	// a window.
 	Native *Native
+	// Name, if set, is how the page names t's telescope, as "<model>
+	// <serial>" or for an address "<model> <host> <port>": the base of
+	// the folder suggested for it and the name in the offer of an
+	// address's folder. It is shown on the page and suggested as a folder
+	// name only, never logged. nil is "Seestar".
+	Name func(t Target) string
+	// KnowSerial, if set, saves that the telescope saved by t's address
+	// only is the one with serial t.Heard, so that t's telescope is keyed
+	// by that serial from then on. Accepting the offer of the address's
+	// folder to a serial heard there calls it, first; without it, no such
+	// offer is made. It is called with the Mount's locks held, so it must
+	// not call back into the Mount.
+	KnowSerial func(t Target) error
 	// Report, if set, gets the outcome of each Copy, Browse and Free up
 	// space operation as it ends, numbered in the order they ended. It is
 	// called with none of the Mount's locks held, from the goroutine the
@@ -83,6 +96,16 @@ type Target struct {
 	// Serial is the serial number a scan saw at Endpoint on this network,
 	// or "". It is compared only, never shown or logged.
 	Serial string
+	// Heard is the serial the latest scan or Test heard at Endpoint on
+	// this network, when the telescope is saved by its address only, or
+	// "". It only offers the address's folder to that serial (see
+	// MountOptions.KnowSerial), and is never shown or logged.
+	Heard string
+	// Telescope is the telescope's key in the settings' telescopes (see
+	// SerialKey and AddressKey), or "" while it isn't known. It chooses
+	// the folder, and is compared only, never shown or logged. The host
+	// sets it even with an error, when it knows the telescope saved.
+	Telescope string
 }
 
 // String is the endpoint only.
@@ -108,7 +131,11 @@ func (t Target) onLAN() bool { return t.Device == "" && t.Run == 0 }
 // the account the same device, in any run and at any endpoint; with no
 // device on either, the same address in the same run, which on this
 // network is always 0, or on this network the same serial at any address.
+// Another key is another telescope, whose folder is another.
 func (t Target) sameTelescope(u Target) bool {
+	if t.Telescope != u.Telescope {
+		return false
+	}
 	if t.Device == "" && u.Device == "" {
 		return t.Endpoint == u.Endpoint && t.Run == u.Run || t.moved(u)
 	}
@@ -153,7 +180,7 @@ func (m *Mount) Start() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.s.mu.Lock()
-	want := m.s.setUp() && m.s.file.settings.StartCopying
+	want := m.s.wantsStart()
 	m.s.mu.Unlock()
 	if m.quitting || !want {
 		return
@@ -177,7 +204,7 @@ func (s *server) startWhenReady(ctx context.Context, every time.Duration) {
 	defer tick.Stop()
 	for {
 		s.mu.Lock()
-		want := s.setUp() && s.file.settings.StartCopying
+		want := s.wantsStart()
 		s.mu.Unlock()
 		if !want {
 			return
@@ -215,7 +242,9 @@ var ErrBusy = errors.New("copying or Free up space is running")
 // can start. It is refused with ErrBusy, without calling commit, while a
 // pass of copying, a preview, or a Free up space check or delete runs, and
 // also while copying is on if moves reports that the change takes the
-// copier to another route or address. Once commit has run, even if it
+// copier to another route or address, and with ErrClaim, also without
+// calling commit, when the telescope saved before couldn't keep Folder as
+// its own. Once commit has run, even if it
 // failed partway, the copy and Free up space previews go back to Start and
 // Browse gets a new session pool. moves and commit may take the caller's
 // locks, but must not call back into the Mount.
@@ -225,6 +254,15 @@ func (m *Mount) Change(moves func() bool, commit func() error) error {
 	defer s.admit.Unlock()
 	if s.copy.passing() || s.preview.running() || s.free.running() || moves() && s.copy.on() {
 		return ErrBusy
+	}
+	// The telescope saved before keeps Folder: a change may make another
+	// telescope the first one known. Without that save the change is
+	// refused, with ErrClaim, before commit.
+	s.mu.Lock()
+	err := s.claim(s.current().Telescope)
+	s.mu.Unlock()
+	if err != nil {
+		return err
 	}
 	defer s.endpointChanged()
 	return commit()

@@ -48,7 +48,7 @@ for how the app and `seestar-wormhole-cli` share them.
 | `remember_password` | `false` |
 | `route` | Empty, meaning **Remotely through Telescope Network**. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means Telescope Network. |
 | `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
-| `lan_serial` | Empty. The serial number a scan of this network saw at `lan_address` when it was saved. Copy, Browse and Free up space, and `--profile default` on the command line, scan for it when `lan_scan` says and use the address that answers with it, `lan_address` first; the app saves a new address here, unless a Save came since. An address where another serial answers is never used; when no reply carries it, `lan_address` is tried. Absent or empty, the saved address is used as it is, without a scan. It is never shown in the app or logged. |
+| `lan_serial` | Empty. The serial number a scan of this network saw at `lan_address` when it was saved, or that a scan or Test heard there when you chose **Use the address's folder** for it. Copy, Browse and Free up space, and `--profile default` on the command line, scan for it when `lan_scan` says and use the address that answers with it, `lan_address` first; the app saves a new address here, unless a Save came since. An address where another serial answers is never used; when no reply carries it, `lan_address` is tried. Absent or empty, the saved address is used as it is, without a scan. It is never shown in the app or logged. |
 | `lan_scan` | Empty, meaning `"start"`. When a connect scans this network for `lan_serial`, chosen under **On this network** > **Scan for the saved telescope**: `"start"` once per run (starting copying, opening Browse, each Copy preview and each Free up space check, and each command-line command), and again only when a connect fails; `"connect"` before every connect; `"off"` never, and the app then sends no scan request it wasn't asked for. Any other value is treated as `"start"` and kept until a new choice is saved. `--scan` overrides it for one command. It can't be changed while connected through Telescope Network. |
 | `route_established` | `false`. `true` once a connection through Telescope Network is ready or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
 
@@ -66,12 +66,16 @@ and left untouched. A failed load never overwrites existing state.
 
 `version` is required and must be `1`. Missing members take these defaults,
 and members this version doesn't know are kept when it saves. The file is
-written when you save Copy settings or preview Free up space with changed
-options, never on load.
+written when you save Copy settings, preview Free up space with changed
+options, or accept an address's folder for a telescope. After an upgrade,
+the saved telescope's folder is also recorded before its first Copy,
+preview, Free up space check, history clear, or connection change. Loading
+alone never writes the file.
 
 | Member | Default and meaning |
 |---|---|
-| `folder` | `Seestar` in your home folder. |
+| `folder` | `Seestar` in your home folder. The first telescope's folder, which an older app uses for every telescope; see `telescopes`. |
+| `telescopes` | Absent. Each telescope's folder, keyed `serial:<serial>` for a telescope known by its serial number, through either route, or `address:<host:port>` for an address on this network saved without one, as the address is saved. Each entry is `{"folder": "<absolute path>"}`; members this version doesn't know are kept. Until an entry has a folder, every telescope's folder is `folder`, and the first telescope Copy uses, the one saved on the Connection tab, is written in with it; after that a telescope without an entry has no folder and is asked for one. Two entries never hold the same folder or one inside another, by their text or on disk through symbolic links. |
 | `history_dir` | `""`: the default [history location](selection-and-history.md#location), as `--history-dir`'s default. Otherwise **Copy history folder**, an absolute path outside `folder`. A relative path or a value that isn't a string refuses the file. |
 | `interval_minutes` | `5` |
 | `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
@@ -89,6 +93,13 @@ again, and Free up space cannot use the chosen folder's history to prove those
 copies safe.
 
 The telescope's address is not in it; it comes from the route in `config.json`.
+`telescopes` names a telescope only by its key, which also chooses the
+folder `--profile default` fills; see
+[use the app's saved settings](files-cli.md#use-the-apps-saved-settings).
+
+`telescopes` needs no new version: an older app reads `folder` and keeps
+`telescopes` when it saves, so after a downgrade every telescope copies into
+the first telescope's folder until the newer app is back.
 
 A copy.json this version can't read, such as one with another version, a
 member of the wrong type or `files_at_once` out of range, doesn't stop the app.

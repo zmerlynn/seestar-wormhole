@@ -42,10 +42,21 @@ func resolve(stateDir, dest string) (path, absDest string, err error) {
 	sum := sha256.Sum256([]byte(absDest))
 	path = filepath.Join(absState, "sync", hex.EncodeToString(sum[:])+".jsonl")
 	if inside(absDest, path) {
-		return "", "", fmt.Errorf("state directory %s is inside the destination %s", absState, absDest)
+		return "", "", insideError{fmt.Sprintf("state directory %s is inside the destination %s", absState, absDest)}
 	}
 	return path, absDest, nil
 }
+
+// ErrInside is what refuses a state directory inside the destination, in
+// words that name neither.
+var ErrInside = errors.New("the history folder is inside the destination")
+
+// insideError is a refusal of a state directory inside the destination,
+// which names both; it unwraps to [ErrInside].
+type insideError struct{ text string }
+
+func (e insideError) Error() string { return e.text }
+func (e insideError) Unwrap() error { return ErrInside }
 
 // inside reports whether path is dir or lies under it, judged by the strings.
 func inside(dir, path string) bool {
@@ -77,14 +88,14 @@ func checkOutside(absDest string, dirs ...string) error {
 			return fmt.Errorf("resolve state directory %s: %w", dir, err)
 		}
 		if inside(realDest, real) {
-			return fmt.Errorf("state directory %s is inside the destination %s: it resolves to %s, inside %s", dir, absDest, real, realDest)
+			return insideError{fmt.Sprintf("state directory %s is inside the destination %s: it resolves to %s, inside %s", dir, absDest, real, realDest)}
 		}
 		same, err := ancestorSameAs(real, destInfo)
 		if err != nil {
 			return fmt.Errorf("compare state directory %s with the destination %s: %w", dir, absDest, err)
 		}
 		if same != "" {
-			return fmt.Errorf("state directory %s is inside the destination %s: its ancestor %s is the same folder as the destination", dir, absDest, same)
+			return insideError{fmt.Sprintf("state directory %s is inside the destination %s: its ancestor %s is the same folder as the destination", dir, absDest, same)}
 		}
 	}
 	return nil

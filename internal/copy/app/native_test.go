@@ -175,7 +175,7 @@ func TestSaveFileFails(t *testing.T) {
 	f.alerts = nil
 	f.answer = filepath.Join(t.TempDir(), "gone.txt")
 	e.serve("GET", strings.Replace(xURL, "x.txt", "gone.txt", 1), "")
-	if len(f.alerts) != 1 || f.alerts[0] != "Couldn't save gone.txt: file does not exist. Try saving it again." {
+	if len(f.alerts) != 1 || f.alerts[0] != "Couldn't save gone.txt: not found. Try saving it again." {
 		t.Errorf("alerts %q", f.alerts)
 	}
 }
@@ -285,7 +285,7 @@ func TestSaveFileHoldsFolderLockUntilDone(t *testing.T) {
 	sessions := browse.NewSessions(t.Context(), func(context.Context) (remote.Session, error) {
 		f := remote.NewFake(fstest.MapFS{"a.fit": {Data: []byte("abc")}})
 		f.Faults = map[string]remote.Fault{"a.fit": {After: 1, Stall: func() { close(entered) }}}
-		return f, nil
+		return &dialed{Session: f}, nil
 	}, slog.New(slog.DiscardHandler), browse.Reporter{})
 	defer sessions.Close()
 	lease, err := sessions.Get(t.Context())
@@ -295,7 +295,7 @@ func TestSaveFileHoldsFolderLockUntilDone(t *testing.T) {
 	defer lease.Release()
 	done := make(chan error, 1)
 	go func() {
-		_, err := e.s.saveTo(t.Context(), lease, "a.fit", filepath.Join(folder, "a.fit"))
+		_, err := e.s.saveTo(t.Context(), lease, saveFrom{"", folder}, "a.fit", filepath.Join(folder, "a.fit"))
 		done <- err
 	}()
 	select {
@@ -352,7 +352,7 @@ func TestNativeDialogSurvivesBrowseReopen(t *testing.T) {
 			e, _ := newNativeEnv(t)
 			var mu sync.Mutex
 			var made []*countedSession
-			e.s.dial = func(context.Context) (remote.Session, error) {
+			e.s.dial = func(context.Context, Target) (remote.Session, error) {
 				mu.Lock()
 				defer mu.Unlock()
 				s := &countedSession{Session: remote.NewFake(fstest.MapFS{"at 192.0.2.10_445/x.txt": {Data: []byte("x")}})}
@@ -441,7 +441,7 @@ func TestLeasedDownloadSurvivesBrowseReopen(t *testing.T) {
 		countedSession: countedSession{Session: remote.NewFake(fstest.MapFS{"a.fit": {Data: []byte("abc")}})},
 		entered:        make(chan struct{}), release: make(chan struct{}),
 	}
-	e.s.dial = func(context.Context) (remote.Session, error) { return held, nil }
+	e.s.dial = func(context.Context, Target) (remote.Session, error) { return held, nil }
 	if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
@@ -498,7 +498,7 @@ func TestDialogLifetimes(t *testing.T) {
 			var mu sync.Mutex
 			var made []*endedSession
 			var dials []context.Context
-			e.s.dial = func(ctx context.Context) (remote.Session, error) {
+			e.s.dial = func(ctx context.Context, _ Target) (remote.Session, error) {
 				mu.Lock()
 				defer mu.Unlock()
 				text := "replacement source"

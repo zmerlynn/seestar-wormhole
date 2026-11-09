@@ -2,13 +2,16 @@ package copier
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
 // hookContext runs hook the first time Err is called. When adopt is called
@@ -116,5 +119,30 @@ func TestAdoptChangedWhileHashing(t *testing.T) {
 				t.Errorf("state records: %q", got)
 			}
 		})
+	}
+}
+
+// A local file truncated after its first read, so that it ends early as it
+// is hashed, is not adopted, and says the local file changed: no device
+// transfer was involved.
+func TestAdoptTruncatedWhileHashing(t *testing.T) {
+	const p = "MyWorks/a.fit"
+	data := strings.Repeat("a", 1<<20) // longer than one read
+	fx := newFixture(t, func(dest string) { writeLocal(t, dest, p, data) })
+	c := fx.copier(t)
+	ctx := &hookContext{Context: t.Context(), hook: func() {
+		if err := os.Truncate(filepath.Join(fx.dest, filepath.FromSlash(p)), 0); err != nil {
+			t.Fatal(err)
+		}
+	}}
+	_, err := c.adopt(ctx, decision(plan.Adopt, p, int64(len(data))))
+	if err != errLocalChanged {
+		t.Errorf("got err %v, want %v", err, errLocalChanged)
+	}
+	if errors.Is(err, remote.ErrShort) {
+		t.Error("a local file that changed is called a short device transfer")
+	}
+	if got := fx.records(t); len(got) != 0 {
+		t.Errorf("state records: %q", got)
 	}
 }

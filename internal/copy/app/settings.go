@@ -34,6 +34,10 @@ type Settings struct {
 	TrustState    bool     `json:"trust_state"`
 	FreeExcludes  []string `json:"free_excludes"` // Keep on the telescope
 	FreeIncludes  []string `json:"free_includes"` // Only free up
+	// Telescopes are each telescope's folder, by its key: see SerialKey
+	// and AddressKey. Folder stays the first telescope's, which an older
+	// app reads. Until one has a folder here, Folder is every telescope's.
+	Telescopes map[string]Telescope `json:"telescopes,omitempty"`
 }
 
 // DefaultSettings is what a missing file, or a field absent from one,

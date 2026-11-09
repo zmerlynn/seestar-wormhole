@@ -218,8 +218,11 @@ nonempty state file keeps its permissions; an empty state file is replaced
 with a new 0600 file. On Windows the mode bits do not apply, and privacy
 comes from the ACLs the folder inherits.
 
-The state is keyed by destination only. With a second telescope, use a second
-destination.
+The state is keyed by destination only. The app gives each telescope its own
+folder, and so its own history; see
+[more than one telescope](../copying.md#more-than-one-telescope). With
+`sync`, give a second telescope a second destination, or use
+`--profile default`, which fills the saved telescope's folder.
 
 ### One spelling per destination
 

@@ -107,6 +107,8 @@ func errorCopy(code string) string {
 		return "Saved password not found. Remove the saved password, then enter it again."
 	case "route_locked":
 		return "Stop the connection and any copying or deleting, then change how to reach the telescope."
+	case "folder_claim":
+		return "Couldn't save the telescope's copy folder, so nothing changed. Check that the app's settings folder can be written, then try again."
 	case "lan_address":
 		return "Enter the telescope address, with an optional port."
 	case "lan_unreachable":

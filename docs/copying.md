@@ -26,7 +26,9 @@ tried on each route.
    starts the session when it needs the telescope.
 2. **Choose a folder.** The first time you open **Copy**, choose the folder for
    your images and **Save**. Nothing is copied yet: copying
-   starts when you press **Start copying**.
+   starts when you press **Start copying**. Each telescope has its own
+   folder: a second one is asked for its folder the first time Copy reaches
+   it. See [more than one telescope](#more-than-one-telescope).
 3. **Start copying.** **Start copying** checks the telescope every 5 minutes
    by default and copies what is new; **Check now** checks at once, and **Stop
    copying** stops. To copy once instead, turn off **Check for new files
@@ -43,7 +45,7 @@ whether to start copying when the app opens. [Using the UI](ui.md#copy) has ever
 **Browse** shows the telescope's files one folder at a time, with its `.jpg`
 images, `.txt` logs and FITS headers, and, once Copy's folder is saved, marks
 which are copied, changed, new or left out. It changes nothing on the telescope; **Save** saves a file you
-pick. See [Browse](ui.md#browse).
+pick, once Copy's folder is saved. See [Browse](ui.md#browse).
 
 **Free up space** deletes images from the telescope once they are safely
 copied. Copy first, make your own backup or export of the folder, then
@@ -58,6 +60,37 @@ See [Free up space](ui.md#free-up-space) and the
 
 Settings saved by seestar-copy 0.4.0's own app aren't imported. Choose the
 folder and settings again in Copy.
+
+## More than one telescope
+
+Each telescope copies into its own folder, with its own copy history, so two
+telescopes never mark each other's files as copied or overwrite them. The
+app knows a telescope by its serial number, the same through Telescope
+Network and on this network, so switching how you reach it keeps its folder.
+An address saved without a serial is a telescope of its own.
+
+- **The first telescope** keeps the folder you chose. After an upgrade, the
+  telescope saved on the Connection tab keeps the folder and history it had,
+  or, with none saved, the first telescope Copy reaches does. Nothing moves
+  and nothing is copied again.
+- **Another telescope** has no folder yet: Copy says so and asks for one
+  before it copies, Free up space waits for it, and Browse lists the
+  telescope's files without statuses. The folder field suggests one beside
+  the first telescope's, named for the telescope, such as
+  `Seestar S50 <serial>`, or `Seestar <host> <port>` for an address. Save
+  refuses another telescope's folder, or a folder inside or around one.
+- **An address that turns out to be a telescope you know.** When a scan or
+  Test hears a serial number at an address that has a folder of its own,
+  and that telescope has none, Copy offers the address's folder. Nothing
+  changes until you choose **Use the address's folder**, since the router
+  may have given the address to another telescope.
+- **Switching telescopes** stops copying, as any change of telescope does;
+  **Start copying** then uses the new telescope's folder, or asks for one.
+- **Shared by all telescopes:** the copy history folder, how often to check,
+  files at once, and the patterns to leave out or only copy.
+
+After a downgrade, an older app reads only the first telescope's folder, so
+every telescope copies into it again.
 
 ## Things to know
 
@@ -78,8 +111,7 @@ names another.
   `delete --force` run between checks. A lock file, `.seestar-wormhole.lock`,
   stays in the folder; leave it there. Stop any `seestar-copy-cli`, or an
   older seestar-wormhole, first: they don't take that lock. See
-  [locks](reference/selection-and-history.md#locks). For a second telescope,
-  use a second folder.
+  [locks](reference/selection-and-history.md#locks).
 - **Partial files are hidden.** A file being copied is written under a hidden
   temporary name next to where it will go, so nothing that watches for `.fit`
   files sees half a file. A file partly copied when copying stops is copied

@@ -53,7 +53,7 @@ type routeEnv struct {
 	testErr    error         // if not nil, a Test of any address fails with it
 }
 
-func newRouteEnv(t *testing.T) *routeEnv {
+func newRouteEnv(t *testing.T, opts ...func(*copyapp.MountOptions)) *routeEnv {
 	t.Helper()
 	base := t.TempDir()
 	e := &routeEnv{t: t, s: testServer(t), shares: filepath.Join(base, "shares"), folder: filepath.Join(base, "Seestar")}
@@ -72,7 +72,7 @@ func newRouteEnv(t *testing.T) *routeEnv {
 		}
 		return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
 	}
-	e.s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
+	o := copyapp.MountOptions{
 		Addr: netip.MustParseAddrPort(e.s.host), StateDir: filepath.Join(base, "state"), Version: "synthetic",
 		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Target: e.s.copyTarget,
@@ -102,7 +102,11 @@ func newRouteEnv(t *testing.T) *routeEnv {
 			}
 			return e.share(endpoint)
 		},
-	})
+	}
+	for _, opt := range opts {
+		opt(&o)
+	}
+	e.s.copy = copyapp.NewMount(context.Background(), o)
 	t.Cleanup(e.s.copy.Quit)
 	return e
 }
@@ -216,8 +220,14 @@ func (e *routeEnv) lan(address string) {
 // settings saves copy's settings for e.folder.
 func (e *routeEnv) settings() {
 	e.t.Helper()
-	folder, _ := json.Marshal(e.folder)
-	if code, body := e.post("/copy/api/settings", `{"folder":`+string(folder)+`,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`); code != 200 {
+	e.settingsIn(e.folder)
+}
+
+// settingsIn saves copy's settings with folder, the telescope's now.
+func (e *routeEnv) settingsIn(folder string) {
+	e.t.Helper()
+	quoted, _ := json.Marshal(folder)
+	if code, body := e.post("/copy/api/settings", `{"folder":`+string(quoted)+`,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`); code != 200 {
 		e.t.Fatalf("copy settings = %d %s", code, body)
 	}
 }
@@ -388,8 +398,13 @@ func TestRouteCommitAdmitsOne(t *testing.T) {
 	if err := <-saved; err != nil {
 		t.Fatal(err)
 	}
-	if code := <-started; code != 200 {
+	// The new address is another telescope, which needs its own folder.
+	if code := <-started; code != 409 {
 		t.Fatalf("start copying = %d", code)
+	}
+	e.settingsIn(e.folder + "-b")
+	if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
+		t.Fatalf("start copying with a folder = %d %s", code, body)
 	}
 	e.until("a copy dial", func() bool {
 		e.mu.Lock()
@@ -819,11 +834,21 @@ func TestAccountCopyStaysWithItsTelescope(t *testing.T) {
 		t.Errorf("A's copy = %q, %v", b, err)
 	}
 
-	// Start copying again copies from B.
+	// B has no folder yet: starting again asks for one, and then copies
+	// B's file into B's folder, leaving A's.
+	if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 409 || !strings.Contains(body, "this telescope has no folder yet") {
+		t.Fatalf("start copying for B = %d %s", code, body)
+	}
+	folderB := e.folder + "-b"
+	e.settingsIn(folderB)
 	if code, body := e.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
 		t.Fatalf("start copying again = %d %s", code, body)
 	}
-	e.until("B's file", func() bool { b, _ := os.ReadFile(local); return string(b) == "BBB" })
+	localB := filepath.Join(folderB, "MyWorks", "at_"+accountEndpoint+".jpg")
+	e.until("B's file", func() bool { b, _ := os.ReadFile(localB); return string(b) == "BBB" })
+	if b, err := os.ReadFile(local); err != nil || string(b) != "synthetic" {
+		t.Errorf("A's copy after B's = %q, %v", b, err)
+	}
 }
 
 // A pass that comes due while Connect is admitted, and before it has

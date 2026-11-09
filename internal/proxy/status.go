@@ -18,6 +18,7 @@ type Status struct {
 	Catalog   func(cloudhttp.Catalog)
 	text      atomic.Pointer[string]
 	selected  atomic.Pointer[string]
+	serial    atomic.Pointer[string]
 	ready     atomic.Bool
 	armed     atomic.Bool
 	updates   chan string
@@ -148,9 +149,21 @@ func (s *Status) notify(text string) {
 // SetSelectedDevice publishes only the same public identity as device_selected.
 func (s *Status) SetSelectedDevice(d cloudhttp.Device) {
 	if s != nil {
-		label := d.DisplayName()
+		label, serial := d.DisplayName(), d.Serial
 		s.selected.Store(&label)
+		s.serial.Store(&serial)
 	}
+}
+
+// SelectedSerial is the selected telescope's serial as the account
+// listed it, for keying its copy folder; "" before one is selected.
+func (s *Status) SelectedSerial() string {
+	if s != nil {
+		if serial := s.serial.Load(); serial != nil {
+			return *serial
+		}
+	}
+	return ""
 }
 func (s *Status) SelectedDevice() string {
 	if s != nil {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -8,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
@@ -251,5 +253,39 @@ func TestProfileNotRead(t *testing.T) {
 	useProfile(t, Saved{Dest: t.TempDir()})
 	if code, _, stderr := invoke(t, "sync", "--profile", "default"); code != exitUsage || !strings.Contains(stderr, `option=--endpoint rule="required; give the SMB host:port"`) {
 		t.Errorf("no saved endpoint: exit %d:\n%s", code, stderr)
+	}
+}
+
+// A profile whose telescope has no folder fails each command that would
+// fill --dest, unless --dest is given; delete with --ignore-state takes
+// no folder and runs, as does browse, which lists without statuses.
+func TestProfileNoFolder(t *testing.T) {
+	load := func() (Saved, error) { return Saved{NoFolder: true, Endpoint: "h:1"}, nil }
+	for _, tc := range []struct {
+		args     []string
+		statuses bool
+		fail     bool
+	}{
+		{[]string{"--profile", "default"}, false, true},
+		{[]string{"--profile", "default", "--dest", "/given"}, false, false},
+		{[]string{"--profile", "default", "--ignore-state"}, false, false},
+		{[]string{"--profile", "default", "--ignore-state=false"}, false, true},
+		{[]string{"--profile", "default"}, true, false},
+	} {
+		flags := pflag.NewFlagSet("t", pflag.ContinueOnError)
+		p := profileFlag{statuses: tc.statuses}
+		p.register(flags)
+		var dest string
+		var ignore bool
+		flags.StringVar(&dest, "dest", "", "")
+		flags.BoolVar(&ignore, "ignore-state", false, "")
+		if err := flags.Parse(tc.args); err != nil {
+			t.Fatal(err)
+		}
+		err := p.fill(flags, load, func(Saved, func(string) bool) []string { return nil })
+		var oe *diagnostic.OptionError
+		if got := errors.As(err, &oe); got != tc.fail || got && (oe.Option != "--profile" || oe.Rule != errNoFolder) {
+			t.Errorf("%q: %v", tc.args, err)
+		}
 	}
 }

@@ -127,3 +127,75 @@ func writeAttr(b *strings.Builder, prefix string, a slog.Attr) {
 	}
 	b.WriteString(" " + prefix + a.Key + "=" + v)
 }
+
+// private are the keys of the attributes no copy log or Activity line
+// keeps: a telescope's folder, a file's destination and the address the
+// telescope is at. The page shows them; logs say "this telescope's
+// folder".
+var private = map[string]bool{"dest": true, "to": true, "endpoint": true}
+
+// withoutFolder is a slog.Handler that passes each record to next without
+// its private attributes, at any group.
+type withoutFolder struct{ next slog.Handler }
+
+func (h withoutFolder) Enabled(ctx context.Context, l slog.Level) bool {
+	return h.next.Enabled(ctx, l)
+}
+
+func (h withoutFolder) Handle(ctx context.Context, r slog.Record) error {
+	out := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	r.Attrs(func(a slog.Attr) bool {
+		if a, ok := public(a); ok {
+			out.AddAttrs(a)
+		}
+		return true
+	})
+	return h.next.Handle(ctx, out)
+}
+
+func (h withoutFolder) WithAttrs(as []slog.Attr) slog.Handler {
+	kept := make([]slog.Attr, 0, len(as))
+	for _, a := range as {
+		if a, ok := public(a); ok {
+			kept = append(kept, a)
+		}
+	}
+	return withoutFolder{h.next.WithAttrs(kept)}
+}
+
+func (h withoutFolder) WithGroup(name string) slog.Handler {
+	return withoutFolder{h.next.WithGroup(name)}
+}
+
+// public is a without its private attributes, and false when a is one.
+// An error, under any key, becomes its [reason], and a text under an
+// error's key is kept only when it is [safeText]: an error's own text may
+// name a folder, a file, an address, a host or a serial.
+func public(a slog.Attr) (slog.Attr, bool) {
+	if private[a.Key] {
+		return a, false
+	}
+	a.Value = a.Value.Resolve()
+	switch a.Value.Kind() {
+	case slog.KindGroup:
+		var kept []slog.Attr
+		for _, g := range a.Value.Group() {
+			if g, ok := public(g); ok {
+				kept = append(kept, g)
+			}
+		}
+		return slog.Attr{Key: a.Key, Value: slog.GroupValue(kept...)}, true
+	case slog.KindAny:
+		if err, ok := a.Value.Any().(error); ok {
+			return slog.String(a.Key, reason(err)), true
+		}
+	case slog.KindString:
+		if errorKey[a.Key] && !safeText(a.Value.String()) {
+			return slog.String(a.Key, "operation failed"), true
+		}
+	}
+	return a, true
+}
+
+// errorKey are the keys a log gives an error's text.
+var errorKey = map[string]bool{"err": true, "error": true}

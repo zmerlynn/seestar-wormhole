@@ -47,6 +47,18 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 		defer client.CloseIdleConnections()
 		post := func(path, body string) {
 			t.Helper()
+			body = copyTokenFrom(path, body, func() []byte {
+				req, _ := http.NewRequest("GET", base+"/copy/api/status", nil)
+				req.Header.Set("Origin", base)
+				req.Header.Set("X-Seestar-Token", token)
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer resp.Body.Close()
+				b, _ := io.ReadAll(resp.Body)
+				return b
+			})
 			req, _ := http.NewRequest("POST", base+path, strings.NewReader(body))
 			req.Header.Set("Origin", base)
 			req.Header.Set("X-Seestar-Token", token)
@@ -102,8 +114,12 @@ func TestCopyStateIsShared(t *testing.T) {
 		base, token, _ := strings.Cut(url, "/#")
 		client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: 2 * time.Second}
 		defer client.CloseIdleConnections()
-		send := func(method, path, body string) []byte {
+		var send func(method, path, body string) []byte
+		send = func(method, path, body string) []byte {
 			t.Helper()
+			if method == "POST" {
+				body = copyTokenFrom(path, body, func() []byte { return send("GET", "/copy/api/status", "") })
+			}
 			req, _ := http.NewRequest(method, base+path, strings.NewReader(body))
 			req.Header.Set("Origin", base)
 			req.Header.Set("X-Seestar-Token", token)
