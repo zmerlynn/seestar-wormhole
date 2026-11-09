@@ -60,6 +60,9 @@ func (e *mountEnv) set(endpoint string, err error) {
 
 // serve sends one request; the mounting server has made its checks.
 func (e *mountEnv) serve(method, target, body string) *httptest.ResponseRecorder {
+	if method == "POST" {
+		body = withToken(e.m.s, target, body)
+	}
 	r := httptest.NewRequest(method, target, strings.NewReader(body))
 	r.Host = testAddr.String()
 	if method == "POST" {

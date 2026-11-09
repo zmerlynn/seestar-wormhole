@@ -730,7 +730,10 @@ function copyInput() {
   return {
     folder: $('f-folder').value, history_dir: $('f-hist').value, interval: $('f-repeat').checked ? $('f-int').value : copyInterval, files_at_once: $('f-files').value,
     excludes: lines($('f-ex').value), includes: lines($('f-in').value),
-    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked
+    skip_built_in: $('f-skip').checked, start_copying: $('f-start').checked, once: !$('f-repeat').checked,
+    // The telescope's whose folder the folder field shows: a Save that
+    // reaches the app after the telescope changed is refused.
+    token: copyStatus?.telescope?.token || ''
   };
 }
 // showErrors puts each message under its field and returns the first
@@ -844,7 +847,8 @@ async function copyAdopt() {
   button.disabled = true;
   result('s-offer-result', '');
   try {
-    const data = await api('adopt', {}, '/copy/api/');
+    // The offer shown: an acceptance of an offer gone or changed is refused.
+    const data = await api('adopt', {token: copyStatus?.telescope?.offer?.token || ''}, '/copy/api/');
     copySaved = data.settings;
     $('f-folder').value = data.settings.folder;
     showErrors({});

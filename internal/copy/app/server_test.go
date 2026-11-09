@@ -195,7 +195,32 @@ func (e *appEnv) serve(method, target, body string, headers ...string) *httptest
 
 // post sends a POST as the page does.
 func (e *appEnv) post(path, body string) *httptest.ResponseRecorder {
-	return e.serve("POST", path, body, "Content-Type", "application/json")
+	return e.serve("POST", path, withToken(e.s, path, body), "Content-Type", "application/json")
+}
+
+// withToken is body as the page sends it: a Save, or an adoption, with
+// the token status gives the page for the telescope there now, or its
+// offer, unless body has one.
+func withToken(s *server, path, body string) string {
+	if (path != "/copy/api/settings" && path != "/copy/api/adopt") || !strings.HasPrefix(body, "{") || strings.Contains(body, `"token"`) {
+		return body
+	}
+	t := s.current()
+	s.mu.Lock()
+	v := s.telescopeView(t)
+	s.mu.Unlock()
+	token := v.Token
+	if path == "/copy/api/adopt" {
+		token = ""
+		if v.Offer != nil {
+			token = v.Offer.Token
+		}
+	}
+	sep := ","
+	if strings.TrimSpace(body[1:]) == "}" {
+		sep = ""
+	}
+	return `{"token":` + quote(token) + sep + body[1:]
 }
 
 func decode[T any](t *testing.T, w *httptest.ResponseRecorder) T {

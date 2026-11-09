@@ -361,7 +361,9 @@ type telescopeStatus struct {
 		Offer *struct {
 			Name   string `json:"name"`
 			Folder string `json:"folder"`
+			Token  string `json:"token"`
 		} `json:"offer"`
+		Token string `json:"token"`
 	} `json:"telescope"`
 }
 
@@ -946,5 +948,70 @@ func TestClaimFailureRefuses(t *testing.T) {
 			t.Errorf("restart %v: log holds the folder: %s", restart, e.logs.String())
 		}
 		e.m.Quit()
+	}
+}
+
+// An adoption is of the offer the page showed: after the telescope at the
+// page's address changes to one with an offer of its own, the old page's
+// click, with its token or with none, adopts nothing.
+func TestStaleAdoptRefused(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	e := newAppEnv(t, claimedAt(a, map[string]string{AddressKey(atA): a, AddressKey(atB): b}))
+	e.key, e.serial, e.endpoint = keyA, serialA, atA
+	shown := e.status()
+	if shown.Telescope.Offer == nil || shown.Telescope.Offer.Folder != a || shown.Telescope.Offer.Token == "" {
+		t.Fatalf("no offer of A's address folder: %+v", shown.Telescope)
+	}
+	for _, tok := range []string{shown.Telescope.Offer.Token, shown.Telescope.Token} {
+		for _, s := range []string{serialA, "192.0.2.", a} {
+			if strings.Contains(tok, s) {
+				t.Errorf("token %q names %q", tok, s)
+			}
+		}
+	}
+	if err := e.m.Change(func() bool { return true }, func() error {
+		e.set(func() { e.key, e.serial, e.endpoint = keyB, serialB, atB })
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, body := range []string{`{}`, `{"token":` + quote(shown.Telescope.Offer.Token) + `}`} {
+		if w := e.serve("POST", "/copy/api/adopt", body, "Content-Type", "application/json"); w.Code != http.StatusConflict {
+			t.Errorf("adopt %s = %d %s", body, w.Code, w.Body)
+		}
+	}
+	if len(e.saves()) != 0 {
+		t.Error("a stale acceptance changed which telescope has which folder")
+	}
+	// B's own offer, as status shows it now, is adopted.
+	if w := e.post("/copy/api/adopt", `{}`); w.Code != 200 {
+		t.Fatalf("adopt B's offer = %d %s", w.Code, w.Body)
+	}
+	if saves := e.saves(); len(saves) != 1 || saves[0].FolderFor(keyB) != b || saves[0].FolderFor(keyA) != "" {
+		t.Errorf("saves = %+v", saves)
+	}
+}
+
+// A Save is of the telescope whose folder the page showed: a form filled
+// for A doesn't become B's folder once the target is B.
+func TestStaleSaveRefused(t *testing.T) {
+	a := t.TempDir()
+	e := newAppEnv(t, claimedAt(a, map[string]string{keyA: a}))
+	e.key = keyA
+	token := e.status().Telescope.Token
+	e.set(func() { e.key = keyB })
+	folder := filepath.Join(t.TempDir(), "B")
+	body := `{"token":` + quote(token) + "," + saveInput(folder)[1:]
+	if w := e.serve("POST", "/copy/api/settings", body, "Content-Type", "application/json"); w.Code != http.StatusConflict {
+		t.Errorf("stale save = %d %s", w.Code, w.Body)
+	}
+	if w := e.serve("POST", "/copy/api/settings", saveInput(folder), "Content-Type", "application/json"); w.Code != http.StatusConflict {
+		t.Errorf("save without a token = %d %s", w.Code, w.Body)
+	}
+	if len(e.saves()) != 0 {
+		t.Error("a stale Save changed the settings")
+	}
+	if w := e.post("/copy/api/settings", saveInput(folder)); w.Code != 200 {
+		t.Errorf("B's save = %d %s", w.Code, w.Body)
 	}
 }

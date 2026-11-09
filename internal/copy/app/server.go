@@ -2,6 +2,10 @@ package app
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -91,6 +95,9 @@ type server struct {
 	// for the page, which fills the folder field again once it moved.
 	telescope   int
 	telescopeAt string // the key telescope last moved for
+	// tokenKey signs the tokens status gives the page for the telescope
+	// and its offer, which a Save and an adoption send back.
+	tokenKey []byte
 }
 
 func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server {
@@ -102,7 +109,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	log = slog.New(withoutFolder{log.Handler()})
 	s := &server{
 		ctx: ctx, addr: o.Addr, version: o.Version, stateDir: o.StateDir, target: o.Target, file: file, log: log,
-		rep: &reporter{report: o.Report}, name: o.Name,
+		rep: &reporter{report: o.Report}, name: o.Name, tokenKey: make([]byte, 32),
 		test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 			return engine.Test(ctx, endpoint, log)
 		},
@@ -110,6 +117,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	if o.Test != nil {
 		s.test = o.Test
 	}
+	rand.Read(s.tokenKey)
 	if s.name == nil {
 		s.name = func(Target) string { return "Seestar" }
 	}
@@ -550,7 +558,7 @@ func (s *server) api(w http.ResponseWriter, r *http.Request, name string) {
 	case "clear":
 		s.clearHistory(w)
 	case "adopt":
-		s.adopt(w)
+		s.adopt(w, in.Token)
 	default:
 		s.save(w, in)
 	}
@@ -577,6 +585,9 @@ type input struct {
 	FreeIncludes []string `json:"free_includes"`
 	ID           int      `json:"id"`
 	Folders      []string `json:"folders"`
+	// Token is the telescope's, for a Save, or the offer's, for an
+	// adoption, as status gave it.
+	Token string `json:"token"`
 }
 
 func (s *server) status(w http.ResponseWriter) {
@@ -650,21 +661,54 @@ type telescopeView struct {
 	// Offer is the folder saved for this telescope's address, offered to
 	// it now that its serial is known, or nil.
 	Offer *offerView `json:"offer"`
+	// Token is this telescope's, opaque, which a Save sends back: a form
+	// filled for one telescope is never saved as another's folder.
+	Token string `json:"token"`
 }
 
 // offerView is an address's folder offered to the telescope known there
-// now: its name on the page and the folder.
+// now: its name on the page and the folder, and the offer's opaque token,
+// which its acceptance sends back.
 type offerView struct {
 	Name   string `json:"name"`
 	Folder string `json:"folder"`
+	Token  string `json:"token"`
 }
+
+// token is an opaque token for parts, which names none of them: the page
+// is given keys it can't read and can only send back.
+func (s *server) token(parts ...string) string {
+	m := hmac.New(sha256.New, s.tokenKey)
+	for _, p := range parts {
+		m.Write([]byte(p))
+		m.Write([]byte{0})
+	}
+	return base64.RawURLEncoding.EncodeToString(m.Sum(nil))
+}
+
+// telescopeToken is the token of the telescope keyed key.
+func (s *server) telescopeToken(key string) string { return s.token("telescope", key) }
+
+// offerToken is the token of the offer of from's folder, folder, to the
+// telescope keyed to.
+func (s *server) offerToken(from, to, folder string) string {
+	return s.token("offer", from, to, folder)
+}
+
+// sameToken reports whether the page sent want.
+func sameToken(got, want string) bool { return hmac.Equal([]byte(got), []byte(want)) }
+
+// errTelescopeMoved refuses a Save or an adoption the page made for
+// another telescope, or another offer, than the one there now.
+const errTelescopeMoved = "The telescope or its folder changed since the page showed it. Check the folder, then try again."
 
 // telescopeView is the page's view of t's telescope, holding s.mu.
 func (s *server) telescopeView(t Target) telescopeView {
 	claimed := s.file.exists && s.file.settings.claimed()
-	v := telescopeView{ID: s.telescope, Known: t.Telescope != "" || !claimed, New: claimed && s.folderAt(t) == ""}
-	if from, _, ok := s.offerAt(t); ok {
-		v.Offer = &offerView{Name: s.name(t), Folder: s.file.settings.Telescopes[from].Folder}
+	v := telescopeView{ID: s.telescope, Known: t.Telescope != "" || !claimed, New: claimed && s.folderAt(t) == "", Token: s.telescopeToken(t.Telescope)}
+	if from, to, ok := s.offerAt(t); ok {
+		folder := s.file.settings.Telescopes[from].Folder
+		v.Offer = &offerView{Name: s.name(t), Folder: folder, Token: s.offerToken(from, to, folder)}
 	}
 	return v
 }
@@ -687,8 +731,9 @@ func (s *server) offerAt(t Target) (from, to string, ok bool) {
 // adopt gives the telescope the target is now its address's folder, as
 // the page's offer asks, and answers the settings as status shows them.
 // Nothing moves until this runs: the address may be another telescope's
-// now.
-func (s *server) adopt(w http.ResponseWriter) {
+// now. It is refused unless the offer the page showed, whose token it
+// sends, is the offer now.
+func (s *server) adopt(w http.ResponseWriter, token string) {
 	conflict := func(msg string) {
 		localhttp.Respond(w, http.StatusConflict, struct {
 			Error string `json:"error"`
@@ -702,6 +747,12 @@ func (s *server) adopt(w http.ResponseWriter) {
 		s.mu.Unlock()
 		s.admit.Unlock()
 		conflict("There is no folder to use for this telescope now.")
+		return
+	}
+	if !sameToken(token, s.offerToken(from, to, s.file.settings.Telescopes[from].Folder)) {
+		s.mu.Unlock()
+		s.admit.Unlock()
+		conflict(errTelescopeMoved)
 		return
 	}
 	set, err := s.file.settings.adopt(from, to)
@@ -798,6 +849,14 @@ func (s *server) save(w http.ResponseWriter, in input) {
 		return
 	}
 	old, t := s.file.settings, s.current()
+	if !sameToken(in.Token, s.telescopeToken(t.Telescope)) {
+		s.mu.Unlock()
+		s.admit.Unlock()
+		localhttp.Respond(w, http.StatusConflict, struct {
+			Error string `json:"error"`
+		}{errTelescopeMoved})
+		return
+	}
 	oldFolder := s.folderAt(t)
 	// The folder is the telescope's the target is now; the rest is every
 	// telescope's. A telescope not known yet can choose a folder only
