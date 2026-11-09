@@ -434,3 +434,138 @@ func TestLANScanLockedWhileConnected(t *testing.T) {
 		t.Fatalf("a locked change saved: %+v", got)
 	}
 }
+
+// moveSerials makes 192.0.2.30, where SERIAL-A answered, answer as
+// SERIAL-B, and SERIAL-A answer at 192.0.2.40; both connect.
+func moveSerials(l *lanTCP, n *lanNet) {
+	n.set(map[netip.Addr][3]string{
+		netip.MustParseAddr("192.0.2.30"): {"SERIAL-B", "Other", "Seestar S30"},
+		netip.MustParseAddr("192.0.2.40"): {"SERIAL-A", "S50_A", "Seestar S50"},
+	})
+	l.setUp("192.0.2.30:445", "192.0.2.40:445")
+}
+
+// A change of mode is an explicit save: a start-mode run doesn't reuse
+// an address its scan found before one, though that address still
+// connects, now to another telescope.
+func TestModeChangeDoesNotReviveRejectedAddress(t *testing.T) {
+	s, l, n := scanModeServer(t, "start")
+	o := copyMountOptions(s, copyapp.MountOptions{})
+	ctx := landiscovery.WithRun(t.Context(), &landiscovery.Run{})
+	connect := func() {
+		t.Helper()
+		target, err := s.copyTarget()
+		if err != nil {
+			t.Fatal(err)
+		}
+		session, err := o.Dial(ctx, target)
+		if err != nil {
+			t.Fatal(err)
+		}
+		session.Close()
+	}
+	connect()
+	l.take()
+	moveSerials(l, n)
+	if w := doPost(s, "/api/lan-scan", `{"settings":{"lan_scan":"connect"}}`); w.Code != 200 {
+		t.Fatalf("setting: %d %s", w.Code, w.Body)
+	}
+	connect()
+	if calls := l.take(); len(calls) != 1 || !strings.HasSuffix(calls[0], "192.0.2.40:445") {
+		t.Fatalf("connect mode didn't choose the matching telescope: %q", calls)
+	}
+	if w := doPost(s, "/api/lan-scan", `{"settings":{"lan_scan":"start"}}`); w.Code != 200 {
+		t.Fatalf("setting: %d %s", w.Code, w.Body)
+	}
+	scans := n.scans()
+	connect()
+	if calls := l.take(); len(calls) != 1 || !strings.HasSuffix(calls[0], "192.0.2.40:445") {
+		t.Fatalf("returning to start revived a rejected address: %q", calls)
+	}
+	if n.scans() != scans+1 {
+		t.Fatalf("returning to start scanned %d times", n.scans()-scans)
+	}
+	// The run keeps what the new mode's scan found.
+	connect()
+	if calls := l.take(); len(calls) != 1 || !strings.HasSuffix(calls[0], "192.0.2.40:445") || n.scans() != scans+1 {
+		t.Fatalf("after the new scan: %q, %d scans", calls, n.scans()-scans)
+	}
+}
+
+// A connect whose search began before a change of mode doesn't make its
+// finding the run's: a connect after the change scans for itself, whether
+// it waited for that search or came after it.
+func TestModeChangeDuringASearch(t *testing.T) {
+	s, l, n := scanModeServer(t, "start")
+	o := copyMountOptions(s, copyapp.MountOptions{})
+	ctx := landiscovery.WithRun(t.Context(), &landiscovery.Run{})
+	connect := func() error {
+		target, err := s.copyTarget()
+		if err != nil {
+			return err
+		}
+		session, err := o.Dial(ctx, target)
+		if err == nil {
+			session.Close()
+		}
+		return err
+	}
+	l.gate, l.entered = make(chan struct{}), make(chan struct{})
+	first := make(chan error, 1)
+	go func() { first <- connect() }()
+	<-l.entered // the first connect's scan found 192.0.2.30, and its dial waits
+	moveSerials(l, n)
+	for _, mode := range []string{"connect", "start"} {
+		if w := doPost(s, "/api/lan-scan", `{"settings":{"lan_scan":"`+mode+`"}}`); w.Code != 200 {
+			t.Fatalf("setting %s: %d %s", mode, w.Code, w.Body)
+		}
+	}
+	second := make(chan error, 1)
+	go func() { second <- connect() }()
+	close(l.gate)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	calls := l.take()
+	if len(calls) != 2 || !strings.HasSuffix(calls[0], "192.0.2.30:445") || !strings.HasSuffix(calls[1], "192.0.2.40:445") {
+		t.Fatalf("the connect after the change reused the older finding: %q", calls)
+	}
+	if n.scans() != 2 {
+		t.Fatalf("scans %d, want 2", n.scans())
+	}
+	// The older search saved nothing over the explicit save.
+	if got, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.40:445" {
+		t.Fatalf("saved %q", got.LANAddress)
+	}
+	if err := connect(); err != nil {
+		t.Fatal(err)
+	}
+	if calls := l.take(); len(calls) != 1 || !strings.HasSuffix(calls[0], "192.0.2.40:445") || n.scans() != 2 {
+		t.Fatalf("the run didn't keep the newer finding: %q, %d scans", calls, n.scans())
+	}
+}
+
+// A changed serial searches in the same run, though the earlier
+// telescope's address still connects.
+func TestRunSerialChangeSearches(t *testing.T) {
+	s, l, n := scanModeServer(t, "start")
+	ctx := landiscovery.WithRun(t.Context(), &landiscovery.Run{})
+	if got := modeDials(t, s, n, ctx, 1); got != 1 {
+		t.Fatalf("first scans %d", got)
+	}
+	l.take()
+	if err := s.controller.persistRoute(routeLAN, "192.0.2.20:445", "SERIAL-B"); err != nil {
+		t.Fatal(err)
+	}
+	n.set(map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.20"): {"SERIAL-B", "Other", "Seestar S30"}})
+	l.setUp("192.0.2.20:445", "192.0.2.30:445")
+	if got := modeDials(t, s, n, ctx, 1); got != 1 {
+		t.Fatalf("changed serial scans %d", got)
+	}
+	if calls := l.take(); len(calls) != 1 || !strings.HasSuffix(calls[0], "192.0.2.20:445") {
+		t.Fatalf("serial change reused the earlier telescope: %q", calls)
+	}
+}

@@ -3,6 +3,7 @@ package landiscovery
 import (
 	"context"
 	"errors"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -200,5 +201,94 @@ func TestInRunWaitHonorsCancel(t *testing.T) {
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v, want canceled", err)
+	}
+}
+
+func TestInRunAtSearchesInANewEpoch(t *testing.T) {
+	c := &runCounter{found: []string{"a", "b", "c"}, up: map[string]bool{"a": true, "b": true, "c": true}}
+	r := &Run{}
+	connect := func(epoch uint64) (string, bool) {
+		t.Helper()
+		_, at, searched, err := InRunAt(context.Background(), r, "k", epoch, c.dial, c.search)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return at, searched
+	}
+	if at, searched := connect(1); at != "a" || !searched {
+		t.Fatalf("epoch 1: %q searched=%v", at, searched)
+	}
+	if at, searched := connect(1); at != "a" || searched {
+		t.Fatalf("epoch 1 again: %q searched=%v", at, searched)
+	}
+	if at, searched := connect(2); at != "b" || !searched {
+		t.Fatalf("epoch 2 reused epoch 1's finding: %q searched=%v", at, searched)
+	}
+	// An older epoch never revives its finding, nor replaces the newer.
+	if at, searched := connect(1); at != "c" || !searched {
+		t.Fatalf("epoch 1 after 2: %q searched=%v", at, searched)
+	}
+	if at, searched := connect(2); at != "b" || searched {
+		t.Fatalf("epoch 2 after an older search: %q searched=%v", at, searched)
+	}
+}
+
+func TestInRunAtOvertakenSearchKeepsNothing(t *testing.T) {
+	r := &Run{}
+	release := make(chan struct{})
+	entered := make(chan struct{})
+	var searches atomic.Int32
+	dial := func(_ context.Context, at string) (string, error) { return at, nil }
+	old := make(chan string)
+	go func() {
+		_, at, _, _ := InRunAt(context.Background(), r, "k", 1, dial, func(context.Context) (string, string, error) {
+			searches.Add(1)
+			close(entered)
+			<-release
+			return "stale", "stale", nil
+		})
+		old <- at
+	}()
+	<-entered
+	// A connect in a newer epoch waits for the older search, which then
+	// keeps nothing, and searches on its own.
+	fresh := make(chan string)
+	waiting := make(chan struct{})
+	go func() {
+		_, at, _, _ := InRunAt(context.Background(), r, "k", 2, dial, func(context.Context) (string, string, error) {
+			searches.Add(1)
+			return "fresh", "fresh", nil
+		})
+		fresh <- at
+	}()
+	go func() {
+		for {
+			r.mu.Lock()
+			n := r.newest
+			r.mu.Unlock()
+			if n == 2 {
+				close(waiting)
+				return
+			}
+			runtime.Gosched()
+		}
+	}()
+	<-waiting
+	close(release)
+	if at := <-old; at != "stale" {
+		t.Fatalf("the older connect reached %q", at)
+	}
+	if at := <-fresh; at != "fresh" {
+		t.Fatalf("the newer connect reached %q: it reused an older epoch's finding", at)
+	}
+	if searches.Load() != 2 {
+		t.Fatalf("searches = %d, want 2", searches.Load())
+	}
+	_, at, searched, _ := InRunAt(context.Background(), r, "k", 2, dial, func(context.Context) (string, string, error) {
+		t.Error("searched again")
+		return "", "", errors.New("no")
+	})
+	if at != "fresh" || searched {
+		t.Fatalf("epoch 2 kept %q searched=%v", at, searched)
 	}
 }

@@ -517,6 +517,14 @@ func (s *server) lanScan() landiscovery.Mode {
 	return landiscovery.ModeOf(s.settings.LANScan)
 }
 
+// lanPolicy is the saved LANScan and the routeGeneration it was saved
+// in, read together: saveSettings changes both under s.mu.
+func (s *server) lanPolicy() (landiscovery.Mode, uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return landiscovery.ModeOf(s.settings.LANScan), s.controller.routeGeneration()
+}
+
 // lanEndpoint is this network's saved address, normalized.
 func lanEndpoint(s Settings) (string, error) {
 	if address, ok := copyapp.NormalizeAddress(s.LANAddress); ok {
@@ -562,6 +570,11 @@ func (s *server) saveSettings(settings Settings) error {
 	// whose settings write failed. The controller owns the retry snapshot.
 	if err != nil {
 		s.retainSavedPair(&settings)
+	}
+	// A change of when to scan is an explicit save: a run's earlier
+	// finding is not reused after it (see lanPolicy).
+	if s.controller != nil && landiscovery.ModeOf(s.settings.LANScan) != landiscovery.ModeOf(settings.LANScan) {
+		s.controller.routeGen.Add(1)
 	}
 	s.settings = settings
 	if err == nil && settings.RouteEstablished {

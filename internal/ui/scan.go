@@ -259,7 +259,7 @@ const lanName = copyapp.SavedLabel
 // connect outside a run follows the telescope. It returns the target it
 // reached.
 func lanConnect[T io.Closer](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
-	mode := h.lanScan()
+	mode, gen := h.lanPolicy()
 	run := landiscovery.RunFrom(ctx)
 	switch {
 	case mode == landiscovery.ScanOff:
@@ -268,9 +268,11 @@ func lanConnect[T io.Closer](ctx context.Context, h *server, t copyapp.Target, d
 	case mode == landiscovery.ScanConnect || run == nil:
 		return lanFollow(ctx, h, t, dial)
 	}
-	// The run remembers the telescope by its serial alone: once a scan
-	// saved a new address, the next connect's target carries it.
-	v, at, _, err := landiscovery.InRun(ctx, run, t.Serial, dial, func(ctx context.Context) (T, string, error) {
+	// The run remembers the telescope by its serial and the explicit save
+	// it was found under: once a scan saved a new address, the next
+	// connect's target carries it, and after a route save or a change of
+	// mode, the run's earlier finding is not reused.
+	v, at, _, err := landiscovery.InRunAt(ctx, run, t.Serial, gen, dial, func(ctx context.Context) (T, string, error) {
 		v, reached, err := lanFollow(ctx, h, t, dial)
 		return v, reached.Endpoint, err
 	})

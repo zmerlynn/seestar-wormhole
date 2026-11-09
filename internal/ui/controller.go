@@ -43,9 +43,11 @@ type controller struct {
 	saveMu             sync.Mutex // Serializes snapshot writes, never status or Stop.
 	pendingSave        *Settings
 	lastSaved          Settings
-	// routeGen numbers the explicit route saves, so a telescope's new
-	// address found by a search that started before one is not saved over
-	// it.
+	// routeGen numbers the explicit saves of the telescope: route saves
+	// and changes of when to scan for it (see server.saveSettings). A
+	// telescope's new address found by a search that started before one
+	// is not saved over it, nor reused by a run after it. A moved address
+	// saved by persistMoved is no explicit save.
 	routeGen atomic.Uint64
 	// text reads a run's status text for isReady; nil is its Text. Tests
 	// replace it, since only a proxy session makes a status Ready.
@@ -457,7 +459,7 @@ func (c *controller) persistLANScan(mode landiscovery.Mode) error {
 	return c.persistLocked(s)
 }
 
-// routeGeneration numbers the latest explicit route save.
+// routeGeneration numbers the latest explicit save of the telescope.
 func (c *controller) routeGeneration() uint64 { return c.routeGen.Load() }
 
 // persistMoved saves address as this network's address after a scan found

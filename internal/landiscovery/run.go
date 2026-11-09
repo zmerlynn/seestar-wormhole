@@ -45,6 +45,8 @@ type Run struct {
 	mu       sync.Mutex
 	searched chan struct{} // closed when the search in progress ends; nil when none is
 	key, at  string        // the target last found and where; at is "" when none connected
+	epoch    uint64        // the epoch key and at were found in
+	newest   uint64        // the newest epoch any connect brought
 	gen      uint64        // counts searches, so a failed reuse rescans once
 }
 
@@ -69,9 +71,19 @@ func RunFrom(ctx context.Context) *Run {
 // arrives while a search is in progress waits for it. InRun returns the
 // address it reached and whether it searched.
 func InRun[T any](ctx context.Context, r *Run, key string, dial func(context.Context, string) (T, error), search func(context.Context) (T, string, error)) (v T, at string, searched bool, err error) {
+	return InRunAt(ctx, r, key, 0, dial, search)
+}
+
+// InRunAt is [InRun] in epoch: a connect reuses only an address found in
+// its own epoch, and a search that began in an older epoch than the
+// newest one a connect brought keeps nothing. Callers number epochs from
+// the choices that make an earlier finding untrustworthy, such as an
+// explicit save of the telescope, so that a finding made before one is
+// never reused after it.
+func InRunAt[T any](ctx context.Context, r *Run, key string, epoch uint64, dial func(context.Context, string) (T, error), search func(context.Context) (T, string, error)) (v T, at string, searched bool, err error) {
 	var zero T
 	for tries := 0; ; tries++ {
-		at, gen, err := r.wait(ctx, key)
+		at, gen, err := r.wait(ctx, key, epoch)
 		if err != nil {
 			return zero, "", false, err
 		}
@@ -88,20 +100,21 @@ func InRun[T any](ctx context.Context, r *Run, key string, dial func(context.Con
 			continue
 		}
 		v, at, err := search(ctx)
-		r.end(key, at, err == nil)
+		r.end(key, epoch, at, err == nil)
 		return v, at, true, err
 	}
 }
 
 // wait waits for any search in progress and returns where key was found
-// and the search count.
-func (r *Run) wait(ctx context.Context, key string) (string, uint64, error) {
+// in epoch and the search count.
+func (r *Run) wait(ctx context.Context, key string, epoch uint64) (string, uint64, error) {
 	for {
 		r.mu.Lock()
+		r.newest = max(r.newest, epoch)
 		ch := r.searched
 		if ch == nil {
 			at := ""
-			if r.key == key {
+			if r.key == key && r.epoch == epoch {
 				at = r.at
 			}
 			gen := r.gen
@@ -136,15 +149,19 @@ func (r *Run) begin(key string, gen uint64) bool {
 	return true
 }
 
-// end ends a search for key that connected at at, when ok, or failed: a
-// failed search keeps no address, so the next connect searches again.
-func (r *Run) end(key, at string, ok bool) {
+// end ends a search for key in epoch that connected at at, when ok, or
+// failed: a failed search keeps no address, so the next connect searches
+// again, and neither does one a newer epoch overtook.
+func (r *Run) end(key string, epoch uint64, at string, ok bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.key, r.at = key, ""
+	close(r.searched)
+	r.searched = nil
+	if epoch < r.newest {
+		return
+	}
+	r.key, r.at, r.epoch = key, "", epoch
 	if ok {
 		r.at = at
 	}
-	close(r.searched)
-	r.searched = nil
 }
