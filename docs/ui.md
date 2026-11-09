@@ -337,7 +337,11 @@ save says **The telescope or its folder changed while you chose where to
 save. Save the file again.** and saves nothing. If the folder becomes
 another telescope's while the file is saved, the save says **That folder
 became another telescope's while the file was saved. Save the file again
-outside it.**, and a file already there is left as it was. A save waits for the telescope's folder,
+outside it.**, and a file already there is left as it was. If the
+telescope's folder is moved or renamed while the file is saved, the save
+says **The telescope or its folder changed while you chose where to save.
+Save the file again.**, saves nothing and leaves a file already there as it
+was. A save waits for the telescope's folder,
 the first telescope's too: until it is chosen, **Save** says **This
 telescope has no folder yet. Choose one in Copy, then save the file again.**
 and saves nothing; in a browser, the download fails with that message.

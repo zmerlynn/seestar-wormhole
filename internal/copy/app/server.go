@@ -1336,10 +1336,13 @@ type saveFrom struct{ key, folder string }
 // a read that has already ended. So the rename that puts the file at dst
 // runs holding s.mu, which every change of a telescope's folder holds (a
 // Save, an adoption, a claim), after checking dst against the other
-// telescopes' folders again. A folder given to another telescope before
-// the rename refuses the save, which removes its temporary file and
-// leaves dst as it was; one given after it finds the file already there,
-// as it would any other.
+// telescopes' folders again. A save through the folder's root checks the
+// path the root was opened at, which must still be that folder: a root
+// keeps its folder when the folder is renamed, and a link in dst may now
+// lead elsewhere. A folder given to another telescope before the rename,
+// or moved away from its path, refuses the save, which removes its
+// temporary file and leaves the file there as it was; one given after it
+// finds the file already there, as it would any other.
 func (s *server) saveTo(ctx context.Context, lease *browse.Lease, from saveFrom, p, dst string) (alert string, err error) {
 	src, dialed := dialedAt(lease.Session())
 	s.mu.Lock()
@@ -1350,28 +1353,38 @@ func (s *server) saveTo(ctx context.Context, lease *browse.Lease, from saveFrom,
 	s.mu.Unlock()
 	switch {
 	case moved:
-		return "The telescope or its folder changed while you chose where to save. Save the file again.", errSaveMoved
+		return movedAlert, errSaveMoved
 	case shared:
 		return "", errFolderShared
 	case other:
 		return "That folder is another telescope's. Save the file outside it.", errOtherFolder
 	}
-	hold := func(rename func() error) error {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if s.othersHold(from.key, dst) {
-			return errBecameOther
+	// hold renames to the file at, through root when it isn't nil, which
+	// was opened at top.
+	hold := func(root *os.Root, top, at string) browse.Hold {
+		return func(rename func() error) error {
+			s.mu.Lock()
+			defer s.mu.Unlock()
+			if root != nil && !openAt(root, top) {
+				return errSaveMoved
+			}
+			if s.othersHold(from.key, at) {
+				return errBecameOther
+			}
+			return rename()
 		}
-		return rename()
 	}
 	defer func() {
-		if errors.Is(err, errBecameOther) {
+		switch {
+		case errors.Is(err, errBecameOther):
 			alert = "That folder became another telescope's while the file was saved. Save the file again outside it."
+		case errors.Is(err, errSaveMoved):
+			alert = movedAlert
 		}
 	}()
 	top, rel, inside := within(from.folder, dst)
 	if !inside {
-		return "", browse.Save(ctx, lease, p, dst, hold)
+		return "", browse.Save(ctx, lease, p, dst, hold(nil, "", dst))
 	}
 	if plan.Reserved(filepath.ToSlash(rel)) {
 		return "That name is kept for the copy lock. Choose another name or folder.", errReservedName
@@ -1389,7 +1402,20 @@ func (s *server) saveTo(ctx context.Context, lease *browse.Lease, from saveFrom,
 		return "", err
 	}
 	defer lock.Close()
-	return "", browse.SaveIn(ctx, lease, p, root, rel, hold)
+	return "", browse.SaveIn(ctx, lease, p, root, rel, hold(root, top, filepath.Join(top, rel)))
+}
+
+// movedAlert answers a save whose telescope or folder changed.
+const movedAlert = "The telescope or its folder changed while you chose where to save. Save the file again."
+
+// openAt reports whether root is open on the folder at top now.
+func openAt(root *os.Root, top string) bool {
+	opened, err := root.Stat(".")
+	if err != nil {
+		return false
+	}
+	now, err := os.Stat(top)
+	return err == nil && os.SameFile(opened, now)
 }
 
 // othersHold reports, holding s.mu, whether dst's folder is, on disk too,

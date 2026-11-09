@@ -135,3 +135,108 @@ func TestSaveFromTheSessionsTelescope(t *testing.T) {
 		t.Errorf("alerts %q", f.alerts)
 	}
 }
+
+// A save into its telescope's folder renames through the root it opened
+// on that folder, which keeps the folder when its path changes. So the
+// commit checks the folder the root is open on: a folder moved to another
+// path and given to another telescope, or reached through a link that
+// now leads elsewhere while another telescope is given the folder, keeps
+// the file that was there.
+func TestSaveCommitWhereTheRootIs(t *testing.T) {
+	const became = "That folder became another telescope's while the file was saved. Save the file again outside it."
+	for _, tc := range []struct {
+		name   string
+		linked bool // whether A's folder is a link to it
+		// move changes the paths once the save has read every byte, and
+		// returns the folder to give B, which holds the existing file.
+		move  func(t *testing.T, a, link string) string
+		alert string
+	}{
+		{
+			name: "renamed folder",
+			move: func(t *testing.T, a, _ string) string {
+				moved := filepath.Join(t.TempDir(), "moved")
+				if err := os.Rename(a, moved); err != nil {
+					t.Fatal(err)
+				}
+				return moved
+			},
+			alert: movedAlert,
+		},
+		{
+			name:   "retargeted link",
+			linked: true,
+			move: func(t *testing.T, a, link string) string {
+				if err := os.Remove(link); err != nil {
+					t.Fatal(err)
+				}
+				if err := os.Symlink(t.TempDir(), link); err != nil {
+					t.Fatal(err)
+				}
+				return a
+			},
+			alert: became,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, b := t.TempDir(), t.TempDir()
+			link := filepath.Join(t.TempDir(), "link")
+			if err := os.Symlink(a, link); err != nil {
+				t.Fatal(err)
+			}
+			folder := a
+			if tc.linked {
+				folder = link
+			}
+			e := newAppEnv(t, claimedAt(folder, map[string]string{keyA: folder, keyB: b}))
+			e.key = keyA
+			if err := os.WriteFile(filepath.Join(a, "saved.txt"), []byte("original"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			sess := &eofSession{Session: remote.NewFake(fstest.MapFS{"at 192.0.2.10_445/x.txt": {Data: []byte("from A")}}), entered: make(chan struct{}), release: make(chan struct{})}
+			e.s.dial = func(context.Context, Target) (remote.Session, error) { return sess, nil }
+			var mu sync.Mutex
+			var alerts []string
+			e.s.native = Native{
+				SaveFile: func(string) (string, error) { return filepath.Join(folder, "saved.txt"), nil },
+				Alert: func(m string) {
+					mu.Lock()
+					defer mu.Unlock()
+					alerts = append(alerts, m)
+				},
+			}
+			done := make(chan struct{})
+			go func() { defer close(done); e.serve("GET", xURL, "") }()
+			<-sess.entered
+			// A's transfer has read every byte, with the folder's root and
+			// lock open, but not renamed yet. Make B the target, move the
+			// paths, then give B the folder.
+			if err := e.m.Change(func() bool { return true }, func() error { e.set(func() { e.key = keyB; e.endpoint = atB }); return nil }); err != nil {
+				t.Fatal(err)
+			}
+			given := tc.move(t, a, link)
+			if w := e.post("/copy/api/settings", saveInput(given)); w.Code != 200 {
+				t.Fatalf("giving B the folder: %d %s", w.Code, w.Body.String())
+			}
+			close(sess.release)
+			<-done
+			if got, err := os.ReadFile(filepath.Join(given, "saved.txt")); err != nil || string(got) != "original" {
+				t.Errorf("B's file = %q, %v; want it as it was", got, err)
+			}
+			names, err := os.ReadDir(given)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, n := range names {
+				if strings.HasSuffix(n.Name(), ".tmp") {
+					t.Errorf("temporary file %s left", n.Name())
+				}
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if len(alerts) != 1 || alerts[0] != tc.alert {
+				t.Errorf("alerts %q, want %q", alerts, tc.alert)
+			}
+		})
+	}
+}
