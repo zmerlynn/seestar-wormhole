@@ -1107,11 +1107,13 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
 	name := path.Base(p)
 	var dst, alert string
-	// A save waits for the telescope's folder, which may hold the file.
+	// Once another telescope has a folder, a save waits for this one's:
+	// the file may belong in it. Before any folder is saved, a save goes
+	// anywhere, as before.
 	s.mu.Lock()
-	folder := s.folderAt(s.current())
+	waits := s.file.exists && s.file.settings.claimed() && s.folderAt(s.current()) == ""
 	s.mu.Unlock()
-	if folder == "" {
+	if waits {
 		if s.native.Alert != nil {
 			s.native.Alert(noFolderAlert)
 		}
