@@ -89,7 +89,7 @@
 </form>
 <div id="lan-when-box">
 <label for="lan-when">Scan for the saved telescope</label><select id="lan-when" aria-describedby="lan-when-help" disabled><option value="start">Once each time copying, Browse or Free up space starts</option><option value="connect">Before every connection</option><option value="off">Never: use the saved address</option></select>
-<p id="lan-when-help" class="help">A scan finds the telescope you saved even after the router gives it a new address. Once also scans again when a connection fails. With Never, nothing is sent on this network until you choose Scan or Scan again, and Test only connects to the address.</p>
+<p id="lan-when-help" class="help">A scan finds the telescope you saved even after the router gives it a new address. Once also scans again when a connection fails. With Never, scans run only when you choose Scan or Scan again. Test still connects to the entered address, and file operations use the saved address.</p>
 <p id="lan-when-result" role="status" aria-live="polite"></p>
 </div>
 <p class="help">On this network, the proxy doesn't start and your Seestar account isn't used. Connect on the Telescope Network route saves that route instead.</p>

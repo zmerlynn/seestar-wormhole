@@ -136,10 +136,10 @@ connected; if the telescope has moved since, preview again.
 By default it scans once when copying starts, and once when Browse opens or
 Free up space checks, and again only when a connection fails. **Scan for
 the saved telescope** under **On this network** can make it scan before
-every connection, or never: then nothing is sent on this network unless you
-choose **Scan**, and a telescope that moves isn't followed. On the command
-line, `--scan=start`, `--scan=connect` or `--scan=off` chooses for one
-run.
+every connection, or never: then only **Scan** and **Scan again** send
+scan requests. File operations still connect to the saved address, and a
+telescope that moves isn't followed. On the command line, `--scan=start`,
+`--scan=connect` or `--scan=off` chooses for one run.
 
 The app takes the address alone and uses SMB port 445 unless you add another
 port. `seestar-wormhole-cli` needs the port too: `--endpoint 192.0.2.10:445`.
