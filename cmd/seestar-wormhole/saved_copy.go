@@ -14,7 +14,8 @@ var defaultProfileRoot = func() (string, error) { return ui.StateRoot("") }
 
 // loadDefaultProfile reads the default profile for --profile default: the
 // folder, history and Copy options from copy.json, and the endpoint from
-// config.json. It writes and locks nothing. Without copy.json there is
+// config.json, with the serial saved with it on this network. It writes
+// and locks nothing. Without copy.json there is
 // nothing to fill, so it is refused; without a usable config.json only the
 // endpoint stays unfilled.
 func loadDefaultProfile() (cli.Saved, error) {
@@ -37,6 +38,8 @@ func loadDefaultProfile() (cli.Saved, error) {
 	}
 	if config, err := ui.LoadSettings(root); err == nil {
 		saved.Endpoint, _ = ui.SavedCopyEndpoint(config)
+		saved.LANSerial = ui.SavedLANSerial(config)
+		saved.LANScan = ui.SavedLANScan(config)
 	}
 	return saved, nil
 }

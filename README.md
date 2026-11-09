@@ -53,7 +53,8 @@ These examples, and the copy guide's, run the tool from that folder. In
 PowerShell, write `.\seestar-wormhole-cli.exe` for `./seestar-wormhole-cli`.
 
 Earlier releases also shipped a separate `seestar-copy-cli`; its commands are
-now `seestar-wormhole-cli sync`, `find`, `browse` and `delete`.
+now `seestar-wormhole-cli sync`, `find`, `browse` and `delete`; `scan` lists
+the telescopes on this network.
 
 See the [versioning policy](docs/versioning.md) for what a release promises.
 Saving the password needs an available OS keychain.

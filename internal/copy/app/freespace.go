@@ -13,6 +13,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
 
 // The refusals of a Free up space action.
@@ -32,6 +33,9 @@ type freer struct {
 	// replace them.
 	dial    func(ctx context.Context, t Target) (remote.Session, error)
 	remover func(ctx context.Context, t Target) (remote.Remover, error)
+	// resolve, if set, opens a preview's session where the telescope is
+	// now and returns that target; nil is dial at the target as it is.
+	resolve func(ctx context.Context, t Target) (remote.Session, Target, error)
 	// at, if set, fails each dial and remover once the telescope is no
 	// longer at the target the run started at: a [Mount]'s.
 	at func(t Target) error
@@ -62,13 +66,13 @@ func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial fu
 	}
 }
 
-// options are a run's options for set; the caller adds the rest. Its
+// options are a run's options for set at t; the caller adds the rest. Its
 // selection is Free up space's own patterns, after the built-in excludes,
 // as `delete --exclude --include` selects; Copy's patterns play no part.
-func (f *freer) options(set Settings) (engine.DeleteOptions, error) {
+func (f *freer) options(set Settings, t Target) (engine.DeleteOptions, error) {
 	sel, err := selector(Settings{Excludes: set.FreeExcludes, Includes: set.FreeIncludes, SkipBuiltIn: true})
 	return engine.DeleteOptions{
-		Endpoint: set.Address, Dest: set.Folder, StateDir: set.historyDir(f.stateDir),
+		Endpoint: t.logged(), Dest: set.Folder, StateDir: set.historyDir(f.stateDir),
 		TrustState: set.TrustState, OlderThan: time.Duration(set.OlderThanDays) * 24 * time.Hour,
 		Selector: sel,
 	}, err
@@ -88,6 +92,9 @@ func (f *freer) run(st freeStatus, o engine.DeleteOptions, stop chan struct{}, i
 		return errStale
 	}
 	ctx, cancel := context.WithCancel(f.parent)
+	// A check is one run for the scan on this network; a delete never
+	// scans, as it goes only to the target its check reached.
+	ctx = landiscovery.WithRun(ctx, &landiscovery.Run{})
 	done := make(chan struct{})
 	f.cancel, f.stop, f.done, f.st = cancel, stop, done, st
 	o.Stop = stop
@@ -182,9 +189,11 @@ func (f *freer) report(dry bool, r engine.DeleteResult, err error, canceled bool
 	f.rep.send(o)
 }
 
-// find starts a preview with set at t, which it keeps.
+// find starts a preview with set at t. The preview keeps the target its
+// session reached, which on this network may be the telescope's new
+// address: a delete of its files dials only there.
 func (f *freer) find(set Settings, t Target) error {
-	o, err := f.options(set)
+	o, err := f.options(set, t)
 	if err != nil {
 		return err
 	}
@@ -194,7 +203,22 @@ func (f *freer) find(set Settings, t Target) error {
 			if err := f.still(t); err != nil {
 				return nil, err
 			}
-			return f.dial(ctx, t)
+			sess, at, err := f.open(ctx, t)
+			if err != nil {
+				return nil, err
+			}
+			f.mu.Lock()
+			if f.st.state == frChecking {
+				f.st.target = at
+			}
+			f.mu.Unlock()
+			// A new address the host couldn't save is not where the
+			// telescope is now.
+			if err := f.still(at); err != nil {
+				sess.Close()
+				return nil, err
+			}
+			return sess, nil
 		})
 	}
 	return f.run(freeStatus{state: frChecking, set: set, target: t}, o, nil, 0, func(r engine.DeleteResult, err error, canceled bool) {
@@ -217,7 +241,9 @@ func (f *freer) find(set Settings, t Target) error {
 // confirm deletes the files of preview id in the folders named, with the
 // preview's settings, if now, where the telescope is now, is the target
 // the preview was checked at, in the same run. Each file is checked again
-// before it is removed.
+// before it is removed. The remover is opened at that target exactly and
+// never looks for the telescope elsewhere: if it can't be reached there,
+// the delete fails and needs a new preview.
 func (f *freer) confirm(id int, folders []string, now Target) error {
 	f.mu.Lock()
 	st := f.st
@@ -234,7 +260,7 @@ func (f *freer) confirm(id int, folders []string, now Target) error {
 	if len(only) == 0 {
 		return errors.New("no folder is checked")
 	}
-	o, err := f.options(st.set)
+	o, err := f.options(st.set, st.target)
 	if err != nil {
 		return err
 	}
@@ -267,6 +293,15 @@ func (f *freer) confirm(id int, folders []string, now Target) error {
 			st.state = frDone
 		}
 	})
+}
+
+// open opens a preview's session at t and returns the target it reached.
+func (f *freer) open(ctx context.Context, t Target) (remote.Session, Target, error) {
+	if f.resolve != nil {
+		return f.resolve(ctx, t)
+	}
+	sess, err := f.dial(ctx, t)
+	return sess, t, err
 }
 
 // still fails if the telescope is no longer at t.

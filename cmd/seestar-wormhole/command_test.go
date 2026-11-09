@@ -56,7 +56,7 @@ func TestCommandTreeAndFlagScope(t *testing.T) {
 	var o options
 	root := newCommand(&o, io.Discard)
 	commands := root.Commands()
-	want := []string{"browse", "delete", "discovery", "find", "licenses", "proxy", "sync"}
+	want := []string{"browse", "delete", "discovery", "find", "licenses", "proxy", "scan", "sync"}
 	if guiEnabled {
 		want = append(want, "ui")
 	}

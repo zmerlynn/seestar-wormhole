@@ -9,6 +9,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
@@ -49,10 +50,19 @@ type server struct {
 	// copyRefused is set when copy.json was refused at startup, so this
 	// run has no copy; the page then says to fix or remove the file.
 	copyRefused bool
+	// lan is the scans' state: what they saw, and the dials looking for
+	// a telescope that moved.
+	lan lanState
 }
 type input struct {
 	Settings Settings `json:"settings"`
 	Password string   `json:"password"`
+}
+
+// scanInput is /api/scan's body: a typed address, or none to scan this
+// network.
+type scanInput struct {
+	Address string `json:"address"`
 }
 
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -221,7 +231,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return s.settings.Route == routeLAN
 		}, func() error {
 			s.mu.Lock()
-			in.Settings.Route, in.Settings.LANAddress = routeAccount, s.settings.LANAddress
+			in.Settings.Route, in.Settings.LANAddress, in.Settings.LANSerial = routeAccount, s.settings.LANAddress, s.settings.LANSerial
+			in.Settings.LANScan = s.settings.LANScan
 			s.mu.Unlock()
 			if err := s.controller.start(in.Settings, in.Password); err != nil {
 				return err
@@ -239,7 +250,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	case "/api/password/save":
 		s.mu.Lock()
-		in.Settings.Route, in.Settings.LANAddress = s.settings.Route, s.settings.LANAddress
+		in.Settings.Route, in.Settings.LANAddress, in.Settings.LANSerial = s.settings.Route, s.settings.LANAddress, s.settings.LANSerial
+		in.Settings.LANScan = s.settings.LANScan
 		s.mu.Unlock()
 		if _, _, err = in.Settings.validate(); err == nil {
 			generation := s.controller.credentials.nextGeneration()
@@ -268,6 +280,24 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.saveRoute(r.Context(), in.Settings.Route, in.Settings.LANAddress)
+	case "/api/lan-scan":
+		mode, ok := landiscovery.ParseMode(in.Settings.LANScan)
+		if !ok {
+			fail(http.StatusBadRequest)
+			return
+		}
+		err = s.controller.persistLANScan(mode)
+	case "/api/scan":
+		var scan scanInput
+		if json.Unmarshal(b, &scan) != nil {
+			fail(http.StatusBadRequest)
+			return
+		}
+		var found scanView
+		if found, err = s.scan(r.Context(), scan.Address); err == nil {
+			localhttp.Respond(w, http.StatusOK, found)
+			return
+		}
 	case "/api/retry-storage":
 		err = s.controller.retrySave()
 	case "/api/quit":
@@ -339,7 +369,8 @@ func (s *server) saveRoute(ctx context.Context, route, address string) error {
 			}
 		}
 	}
-	return s.changeRoute(func() bool { return true }, func() error { return s.controller.persistRoute(route, address) })
+	serial := s.serialFor(route, address)
+	return s.changeRoute(func() bool { return true }, func() error { return s.controller.persistRoute(route, address, serial) })
 }
 
 // changeRoute commits a change of how the copier reaches the telescope
@@ -431,7 +462,7 @@ func (s *server) copyTarget() (copyapp.Target, error) {
 	s.mu.Unlock()
 	if settings.Route == routeLAN {
 		endpoint, err := lanEndpoint(settings)
-		return copyapp.Target{Endpoint: endpoint}, err
+		return copyapp.Target{Endpoint: endpoint, Serial: settings.LANSerial}, err
 	}
 	_, device, id, ok := s.controller.connected()
 	if !ok {
@@ -459,6 +490,39 @@ func SavedCopyEndpoint(s Settings) (string, error) {
 		}
 	}
 	return "", errSMBOff
+}
+
+// SavedLANSerial is the serial saved with this network's address, when
+// that is the route, or "".
+func SavedLANSerial(s Settings) string {
+	if s.Route != routeLAN {
+		return ""
+	}
+	return s.LANSerial
+}
+
+// SavedLANScan is when to scan for the serial saved with this network's
+// address, as saved: see [Settings.LANScan].
+func SavedLANScan(s Settings) string {
+	if s.Route != routeLAN {
+		return ""
+	}
+	return s.LANScan
+}
+
+// lanScan is when the copier's connects scan for the saved serial now.
+func (s *server) lanScan() landiscovery.Mode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return landiscovery.ModeOf(s.settings.LANScan)
+}
+
+// lanPolicy is the saved LANScan and the routeGeneration it was saved
+// in, read together: saveSettings changes both under s.mu.
+func (s *server) lanPolicy() (landiscovery.Mode, uint64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return landiscovery.ModeOf(s.settings.LANScan), s.controller.routeGeneration()
 }
 
 // lanEndpoint is this network's saved address, normalized.
@@ -507,6 +571,11 @@ func (s *server) saveSettings(settings Settings) error {
 	if err != nil {
 		s.retainSavedPair(&settings)
 	}
+	// A change of when to scan is an explicit save: a run's earlier
+	// finding is not reused after it (see lanPolicy).
+	if s.controller != nil && landiscovery.ModeOf(s.settings.LANScan) != landiscovery.ModeOf(settings.LANScan) {
+		s.controller.routeGen.Add(1)
+	}
 	s.settings = settings
 	if err == nil && settings.RouteEstablished {
 		s.routeSaved = true
@@ -533,6 +602,8 @@ type pageSettings struct {
 }
 
 func pageSettingsFor(s Settings) pageSettings {
+	// The page has no use for the telescope's serial on this network.
+	s.LANSerial = ""
 	d, _ := time.ParseDuration(s.Idle)
 	return pageSettings{s, d.Minutes(), (cloudhttp.Device{Serial: s.Serial, Model: s.Model}).ChoiceLabel()}
 }

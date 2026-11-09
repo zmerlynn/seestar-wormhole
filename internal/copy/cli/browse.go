@@ -19,8 +19,12 @@ import (
 )
 
 type browseOptions struct {
-	profile   profileFlag
-	endpoint  string
+	profile  profileFlag
+	endpoint string
+	// follow follows a saved telescope by its serial at the endpoint the
+	// profile filled.
+	follow    *follow
+	scan      scanFlag
 	listen    string
 	addr      netip.AddrPort // set by validate from listen
 	open      bool
@@ -62,7 +66,7 @@ starts.
 --profile default fills --dest, --history-dir and --endpoint from the app's
 saved settings where they are not given, and, with a destination,
 --exclude, --include and --no-default-excludes from its Copy settings.
-browse never writes: not to the telescope, not to --dest, not to the state.
+` + followHelp + `browse never writes: not to the telescope, not to --dest, not to the state.
 Logs and errors go to stderr.
 Exit 0 when stopped by Ctrl+C, 1 when it cannot start or keep serving, 2 on
 a usage error.`,
@@ -71,6 +75,9 @@ a usage error.`,
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+				return err
+			}
+			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {
 				return err
 			}
 			o.destSet = o.profile.present(cmd.Flags(), "dest")
@@ -92,6 +99,7 @@ a usage error.`,
 	}
 	f := c.Flags()
 	o.profile.register(f)
+	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.listen, "listen", "127.0.0.1:0", "IP address and port to serve the page on; port 0 picks a free one")
 	f.BoolVar(&o.open, "open", false, "also open the page in the default browser")
@@ -193,8 +201,8 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 	}
 	addr := netip.AddrPortFrom(o.addr.Addr(), uint16(ln.Addr().(*net.TCPAddr).Port))
 	sessions := browse.NewSessions(ctx, func(ctx context.Context) (remote.Session, error) {
-		return dial(ctx, o.endpoint, log)
-	}, log.With("endpoint", o.endpoint), browse.Reporter{})
+		return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
+	}, log.With("endpoint", o.follow.label(o.endpoint)), browse.Reporter{})
 	srv := &http.Server{
 		Handler: browse.NewHandler(browse.Config{
 			Addr: addr, Endpoint: o.endpoint, Sessions: sessions, Records: records, Selector: o.selector, Log: log,
@@ -241,7 +249,7 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 // announce logs that browse is listening, prints the page's URL and, with
 // --open, opens it.
 func announce(o browseOptions, addr netip.AddrPort, out io.Writer, log *slog.Logger) error {
-	args := []any{"addr", addr.String(), "endpoint", o.endpoint}
+	args := []any{"addr", addr.String(), "endpoint", o.follow.label(o.endpoint)}
 	if o.destSet {
 		args = append(args, "dest", o.dest)
 	}

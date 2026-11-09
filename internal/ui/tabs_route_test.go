@@ -3,8 +3,11 @@ package ui
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"net"
+	"os"
 	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -65,13 +68,67 @@ func TestLANFormPage(t *testing.T) {
 	replies["unreachable"] = jsontext.Value(w.Body.String())
 	locked, _ := json.Marshal(map[string]string{"code": "route_locked", "message": errorCopy("route_locked")})
 	replies["locked"] = locked
+	replies["scans"] = scanReplies(t, s)
 	encoded, err := json.Marshal(replies)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scenario := range []string{"test passes", "test fails", "test bad address", "save", "save after test", "save unreachable", "save rejected"} {
+	for _, scenario := range []string{"test passes", "test fails", "test bad address", "save", "save after test", "save unreachable", "save rejected", "scan lists", "test names", "saved route"} {
 		t.Run(scenario, func(t *testing.T) {
 			runPageRegression(t, "tabs-route-test.js", "checkLANForm("+statuses+","+string(encoded)+","+strconv.Quote(scenario)+")")
 		})
 	}
+}
+
+// The LAN form's choice of when to scan, with the server's own statuses
+// for each choice and its own replies.
+func TestLANWhenPage(t *testing.T) {
+	s, _ := copyServer(t)
+	statuses := map[string]jsontext.Value{}
+	for _, when := range []string{"start", "connect", "off"} {
+		if w := serve(s, request(s, "POST", "/api/lan-scan", `{"settings":{"lan_scan":"`+when+`"}}`)); w.Code != 200 {
+			t.Fatalf("lan-scan %s = %d %s", when, w.Code, w.Body)
+		}
+		statuses[when] = jsontext.Value(serve(s, request(s, "GET", "/api/status", "")).Body.String())
+	}
+	account, _ := copyServer(t)
+	statuses["account"] = jsontext.Value(serve(account, request(account, "GET", "/api/status", "")).Body.String())
+	if strings.Contains(string(statuses["account"]), "lan_scan") || !strings.Contains(string(statuses["off"]), `"lan_scan":"off"`) {
+		t.Fatalf("statuses %s", statuses)
+	}
+	replies := map[string]jsontext.Value{}
+	w := serve(s, request(s, "POST", "/copy/api/test", `{"address":"192.0.2.20"}`))
+	replies["192.0.2.20"] = jsontext.Value(`{"status":` + strconv.Itoa(w.Code) + `,"body":` + w.Body.String() + `}`)
+	locked, _ := json.Marshal(map[string]string{"code": "route_locked", "message": errorCopy("route_locked")})
+	replies["locked"] = locked
+	replies["scans"] = scanReplies(t, s)
+	encodedStatuses, _ := json.Marshal(statuses)
+	encoded, _ := json.Marshal(replies)
+	for _, scenario := range []string{"off", "choose", "newer"} {
+		t.Run(scenario, func(t *testing.T) {
+			runPageRegression(t, "tabs-route-test.js", "checkLANWhen("+string(encodedStatuses)+","+string(encoded)+","+strconv.Quote(scenario)+")")
+		})
+	}
+}
+
+// scanReplies is the server's own /api/scan answers, by typed address or
+// "" for a scan of the whole network: two telescopes, a blocked scan on a
+// Mac, and silence.
+func scanReplies(t *testing.T, s *server) jsontext.Value {
+	t.Helper()
+	saved := hostOS
+	t.Cleanup(func() { hostOS = saved })
+	hostOS = "darwin"
+	answer := func(body string) string {
+		w := serve(s, request(s, "POST", "/api/scan", body))
+		return `{"status":` + strconv.Itoa(w.Code) + `,"body":` + w.Body.String() + `}`
+	}
+	useLAN(t, twoTelescopes())
+	list := answer(`{}`)
+	probe := answer(`{"address":"192.0.2.20"}`)
+	useLAN(t, &lanNet{sendErr: &net.OpError{Op: "write", Net: "udp", Err: os.NewSyscallError("sendto", syscall.EHOSTUNREACH)}})
+	blocked := answer(`{}`)
+	useLAN(t, &lanNet{})
+	silent := answer(`{}`)
+	return jsontext.Value(`{"list":{"":` + list + `,"192.0.2.20":` + probe + `},"blocked":{"":` + blocked + `},"silent":{"":` + silent + `}}`)
 }

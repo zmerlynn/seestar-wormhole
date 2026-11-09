@@ -101,6 +101,7 @@ async function checkRouteChoice(statuses, scenario) {
     routeChoice = 'lan';
     render({...statuses.account, active: true, cancel: true, status: 'Connecting to your Seestar…'});
     tabAssert($('route-choice').disabled && !$('route-help').hidden && shown('account') && $('lan-options').disabled, 'the choice is open while the account route runs');
+    tabAssert($('lan-when').disabled, 'when to scan is open while the account route runs');
     tabAssert($('connection-text').textContent === 'Connecting to your Seestar…' && $('connection-dot').getAttribute('data-tone') === 'busy', 'header line while connecting');
     render({...statuses.account, active: true, ready: true, status: 'Connected to your Seestar'});
     tabAssert($('connection-text').textContent === 'Connected to your Seestar' && $('connection-dot').getAttribute('data-tone') === 'on', 'header line when connected');
@@ -118,6 +119,8 @@ async function checkRouteChoice(statuses, scenario) {
     routeChoice = 'lan';
     render({...statuses.lan, copy_busy: true});
     tabAssert($('route-choice').disabled && !$('route-help').hidden && $('lan-options').disabled && shown('lan'), 'the choice or LAN form is open while copying');
+    // When to scan stays open: copying takes it at its next connection.
+    for (let e = $('lan-when'); e; e = e.parentElement) tabAssert(!e.disabled, 'when to scan is disabled while copying by ' + e.id);
     render(statuses.lan);
     tabAssert(!$('route-choice').disabled && !$('lan-options').disabled, 'the choice stays locked after copying');
     break;
@@ -128,12 +131,18 @@ async function checkRouteChoice(statuses, scenario) {
 
 async function checkLANForm(statuses, replies, scenario) {
   routeFixture(statuses);
-  $('route-lan').checked = true;
-  $('route-lan').dispatchEvent({type: 'change'});
   const calls = [];
+  // The server's own scan answers: by typed address, or "" for a scan of
+  // the whole network. An address with none got no answer.
+  let scans = replies.scans.list;
   const reply = (base, action, body) => {
     calls.push([base + action, body === undefined ? undefined : JSON.parse(JSON.stringify(body))]);
     if (action === 'status') return statuses.saved;
+    if (base === '/api/' && action === 'scan') {
+      const r = scans[body.address || ''] || {status: 200, body: {ok: true, telescopes: [], replies: 0, blocked: false, message: ''}};
+      if (r.status !== 200) throw r.body;
+      return r.body;
+    }
     if (base === '/copy/api/' && action === 'test') {
       const r = replies[body.address];
       if (r.status !== 200) throw r.body;
@@ -147,13 +156,23 @@ async function checkLANForm(statuses, replies, scenario) {
     throw new Error('unexpected request ' + base + action);
   };
   api = async (action, body, base = '/api/') => reply(base, action, body);
+  const settle = async () => {
+    for (let i = 0; i < 200; i++) await null;
+  };
+  // Opening On this network with nothing saved there scans by itself.
+  $('route-lan').checked = true;
+  $('route-lan').dispatchEvent({type: 'change'});
+  await settle();
+  tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/scan', {}]]), 'opening On this network did not scan once: ' + JSON.stringify(calls));
+  calls.length = 0;
   const lan = statuses.lan.settings.lan_address;
   statuses.saved = statuses.account;
   switch (scenario) {
   case 'test passes': {
+    scans = replies.scans.silent;
     $('lan-address').value = ' 192.0.2.20 ';
     await lanTest();
-    tabAssert(JSON.stringify(calls) === JSON.stringify([['/copy/api/test', {address: '192.0.2.20'}]]), 'Test request ' + JSON.stringify(calls));
+    tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/scan', {address: '192.0.2.20'}], ['/copy/api/test', {address: '192.0.2.20'}]]), 'Test request ' + JSON.stringify(calls));
     // The saved route is Telescope Network, so the Test says to Save.
     tabAssert($('lan-result').textContent === replies['192.0.2.20'].body.message + ' Save to use this address for Copy, Browse and Free up space.' && $('lan-result').getAttribute('data-tone') === 'ok' && $('lan-address-error').hidden, 'Test result: ' + $('lan-result').textContent);
     tabAssert(!$('lan-options').disabled && $('lan-test').textContent === 'Test', 'Test left the form locked');
@@ -178,10 +197,10 @@ async function checkLANForm(statuses, replies, scenario) {
     $('lan-address').value = '192.0.2.20';
     let prevented = false;
     $('lan-form').dispatchEvent({type: 'submit', preventDefault() {prevented = true;}});
-    for (let i = 0; i < 200 && (lanPending || calls.length < 3); i++) await null;
+    for (let i = 0; i < 200 && (lanPending || calls.length < 4); i++) await null;
     tabAssert(prevented, 'Save submitted the form');
-    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/copy/api/test', '/api/route', '/api/status']), 'Save requests ' + JSON.stringify(calls));
-    tabAssert(JSON.stringify(calls[1][1]) === JSON.stringify({settings: {route: 'lan', lan_address: replies['192.0.2.20'].body.address}}), 'Save body ' + JSON.stringify(calls[1][1]));
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan', '/copy/api/test', '/api/route', '/api/status']), 'Save requests ' + JSON.stringify(calls));
+    tabAssert(JSON.stringify(calls[2][1]) === JSON.stringify({settings: {route: 'lan', lan_address: replies['192.0.2.20'].body.address}}), 'Save body ' + JSON.stringify(calls[1][1]));
     tabAssert(state.settings.route === 'lan' && $('connection-text').textContent === 'On this network: reachable' && $('connection-dot').getAttribute('data-tone') === 'on', 'header after Test and Save: ' + $('connection-text').textContent);
     tabAssert($('lan-result').textContent === 'Saved. ' + lan + ' is reachable.' && $('lan-result').getAttribute('data-tone') === 'ok', 'Save result');
     tabAssert(lan === replies['192.0.2.20'].body.address, 'fixture: the saved address is the tested one');
@@ -198,13 +217,13 @@ async function checkLANForm(statuses, replies, scenario) {
     $('lan-address').value = '192.0.2.99';
     calls.length = 0;
     await lanSave();
-    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/copy/api/test']), 'an edited address was saved untested ' + JSON.stringify(calls));
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan', '/copy/api/test']), 'an edited address was saved untested ' + JSON.stringify(calls));
     break;
   }
   case 'save unreachable': {
     $('lan-address').value = '192.0.2.99';
     await lanSave();
-    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/copy/api/test']) && state.settings.route !== 'lan', 'an unreachable address was saved ' + JSON.stringify(calls));
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan', '/copy/api/test']) && state.settings.route !== 'lan', 'an unreachable address was saved ' + JSON.stringify(calls));
     tabAssert($('lan-result').textContent === replies['192.0.2.99'].body.message && $('lan-result').getAttribute('data-tone') === 'error', 'unreachable Save result');
     break;
   }
@@ -212,7 +231,7 @@ async function checkLANForm(statuses, replies, scenario) {
     $('lan-address').value = 'not an address!';
     await lanSave();
     tabAssert(!$('lan-address-error').hidden && $('lan-address-error').textContent === replies['not an address!'].body.fields.address && document.activeElement === $('lan-address'), 'rejected Save message');
-    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/copy/api/test']) && state.settings.route !== 'lan', 'a rejected Save went on');
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan', '/copy/api/test']) && state.settings.route !== 'lan', 'a rejected Save went on');
     // The server's own Test and its route lock refuse a Save the page's
     // Test passed.
     replies.save = replies.unreachable;
@@ -226,7 +245,166 @@ async function checkLANForm(statuses, replies, scenario) {
     tabAssert($('lan-result').textContent === replies.locked.message && $('lan-result').getAttribute('data-tone') === 'error' && $('lan-address-error').hidden, 'locked Save message');
     break;
   }
+  case 'scan lists': {
+    // The auto-scan listed both telescopes, without serials, each address
+    // a button that fills it in.
+    const found = $('lan-found').children;
+    tabAssert(found.length === 2 && $('lan-scan-result').textContent === 'Found 2 telescopes. Pick an address to fill it in.' && $('lan-scan').textContent === 'Scan again' && !$('lan-scan').disabled, 'scan list: ' + found.length + ' ' + $('lan-scan-result').textContent);
+    const row = found.find(li => li.children[0].textContent.startsWith('S50_A'));
+    tabAssert(row && row.children[0].textContent === 'S50_A (Seestar S50)', 'row text ' + row?.children[0].textContent);
+    const pick = row.children[2];
+    tabAssert(pick.textContent === '192.0.2.20' && pick.attributes['aria-label'] === 'Use 192.0.2.20 for S50_A', 'address button');
+    pick.dispatchEvent({type: 'click'});
+    tabAssert($('lan-address').value === '192.0.2.20' && $('lan-result').textContent === 'Picked S50_A at 192.0.2.20. Test or Save to use it.' && document.activeElement === $('lan-address'), 'picking a row');
+    tabAssert(!JSON.stringify(replies.scans.list).includes('SERIAL-'), 'the fixture carries a serial');
+    // Scan again asks again; a blocked scan says Local Network is off.
+    scans = replies.scans.blocked;
+    $('lan-scan').dispatchEvent({type: 'click'});
+    await settle();
+    tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan']) && $('lan-found').children.length === 0, 'Scan again ' + JSON.stringify(calls));
+    tabAssert($('lan-scan-result').textContent === replies.scans.blocked[''].body.message && $('lan-scan-result').getAttribute('data-tone') === 'error' && $('lan-scan-result').textContent.includes('System Settings'), 'blocked message ' + $('lan-scan-result').textContent);
+    scans = replies.scans.silent;
+    $('lan-scan').dispatchEvent({type: 'click'});
+    await settle();
+    tabAssert($('lan-scan-result').textContent.startsWith('No telescope answered.') && $('lan-scan-result').getAttribute('data-tone') === null, 'silence message ' + $('lan-scan-result').textContent);
+    // Leaving and opening On this network again scans again.
+    calls.length = 0;
+    $('route-account').checked = true;
+    $('route-account').dispatchEvent({type: 'change'});
+    $('route-lan').checked = true;
+    $('route-lan').dispatchEvent({type: 'change'});
+    await settle();
+    tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/scan', {}]]), 'reopening did not scan ' + JSON.stringify(calls));
+    break;
+  }
+  case 'test names': {
+    // Test asks the typed address too and names what answered there.
+    $('lan-address').value = '192.0.2.20';
+    await lanTest();
+    tabAssert($('lan-result').textContent === replies['192.0.2.20'].body.message + ' It answered as S50_A (Seestar S50). Save to use this address for Copy, Browse and Free up space.', 'Test result: ' + $('lan-result').textContent);
+    break;
+  }
+  case 'saved route': {
+    // A saved LAN route reopens without scanning.
+    calls.length = 0;
+    lanShown = false;
+    load(statuses.lan.settings);
+    render(statuses.lan);
+    await settle();
+    tabAssert(routeChoice === 'lan' && calls.length === 0 && $('lan-scan').textContent === 'Scan again', 'a saved LAN route scanned ' + JSON.stringify(calls));
+    break;
+  }
   default: throw new Error('unknown LAN scenario ' + scenario);
+  }
+}
+
+// When to scan: the saved choice shows in the form, choosing saves it,
+// a refused choice goes back, and Never keeps the page from scanning or
+// probing unasked.
+async function checkLANWhen(statuses, replies, scenario) {
+  routeFixture(statuses);
+  const calls = [];
+  let refuse = null;
+  let reply = (base, action, body) => {
+    calls.push([base + action, body === undefined ? undefined : JSON.parse(JSON.stringify(body))]);
+    if (action === 'status') return statuses.saved;
+    if (base === '/api/' && action === 'scan') return replies.scans.list[body.address || ''] ? replies.scans.list[body.address || ''].body : {ok: true, telescopes: [], replies: 0, blocked: false, message: ''};
+    if (base === '/copy/api/' && action === 'test') return replies[body.address].body;
+    if (action === 'lan-scan') {
+      if (refuse) throw refuse;
+      statuses.saved = statuses[body.settings.lan_scan];
+      return {ok: true};
+    }
+    throw new Error('unexpected request ' + base + action);
+  };
+  api = async (action, body, base = '/api/') => reply(base, action, body);
+  const settle = async () => {
+    for (let i = 0; i < 200; i++) await null;
+  };
+  const open = async () => {
+    $('route-lan').checked = true;
+    $('route-lan').dispatchEvent({type: 'change'});
+    await settle();
+  };
+  const choose = async (when) => {
+    $('lan-when').value = when;
+    $('lan-when').dispatchEvent({type: 'change'});
+    for (let i = 0; i < 200 && (lanPending || !calls.length); i++) await null;
+  };
+  switch (scenario) {
+  case 'off': {
+    // Never: opening the form doesn't scan, and Test doesn't probe.
+    load(statuses.off.settings);
+    render(statuses.off);
+    tabAssert($('lan-when').value === 'off', 'the form shows ' + $('lan-when').value);
+    await open();
+    tabAssert(calls.length === 0 && $('lan-found').children.length === 0, 'Never scanned on opening ' + JSON.stringify(calls));
+    $('lan-address').value = '192.0.2.20';
+    await lanTest();
+    tabAssert(JSON.stringify(calls) === JSON.stringify([['/copy/api/test', {address: '192.0.2.20'}]]), 'Never probed on Test ' + JSON.stringify(calls));
+    tabAssert($('lan-result').textContent === replies['192.0.2.20'].body.message + ' Save to use this address for Copy, Browse and Free up space.', 'Test result ' + $('lan-result').textContent);
+    // Scan, pressed, scans.
+    calls.length = 0;
+    $('lan-scan').dispatchEvent({type: 'click'});
+    await settle();
+    tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/scan', {}]]) && $('lan-found').children.length === 2, 'Scan under Never ' + JSON.stringify(calls));
+    break;
+  }
+  case 'choose': {
+    statuses.saved = statuses.account;
+    tabAssert($('lan-when').value === 'start', 'the default shows ' + $('lan-when').value);
+    await open();
+    tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/scan', {}]]), 'the default did not scan on opening ' + JSON.stringify(calls));
+    // As in a browser, disabling the focused select leaves focus on the
+    // page's body.
+    const select = $('lan-when');
+    document.body = new TestElement();
+    let disabled = select.disabled;
+    Object.defineProperty(select, 'disabled', {get() {return disabled;}, set(v) {
+      disabled = v;
+      if (v && document.activeElement === select) document.activeElement = document.body;
+    }});
+    select.focus();
+    calls.length = 0;
+    await choose('off');
+    tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/lan-scan', {settings: {lan_scan: 'off'}}], ['/api/status', undefined]]), 'choosing Never ' + JSON.stringify(calls));
+    tabAssert(state.settings.lan_scan === 'off' && $('lan-when').value === 'off' && $('lan-when-result').textContent === 'Saved.' && !$('lan-options').disabled, 'after choosing Never: ' + $('lan-when').value + ' ' + $('lan-when-result').textContent);
+    tabAssert(document.activeElement === select, 'saving the choice left focus off it');
+    // Now leaving and opening the form again doesn't scan.
+    calls.length = 0;
+    $('route-account').checked = true;
+    $('route-account').dispatchEvent({type: 'change'});
+    await open();
+    tabAssert(calls.length === 0, 'reopening under Never scanned ' + JSON.stringify(calls));
+    // A refused choice goes back to the saved one and says why.
+    refuse = replies.locked;
+    await choose('connect');
+    tabAssert($('lan-when').value === 'off' && $('lan-when-result').textContent === replies.locked.message && $('lan-when-result').getAttribute('data-tone') === 'error', 'a refused choice: ' + $('lan-when').value + ' ' + $('lan-when-result').textContent);
+    tabAssert(document.activeElement === select, 'a refused choice left focus off it');
+    refuse = null;
+    calls.length = 0;
+    // A control focused while the choice saves keeps focus.
+    const saving = reply;
+    reply = (base, action, body) => {
+      if (action === 'lan-scan') $('lan-address').focus();
+      return saving(base, action, body);
+    };
+    await choose('connect');
+    tabAssert(JSON.stringify(calls[0]) === JSON.stringify(['/api/lan-scan', {settings: {lan_scan: 'connect'}}]) && $('lan-when').value === 'connect', 'choosing every connection ' + JSON.stringify(calls));
+    tabAssert(document.activeElement === $('lan-address'), 'saving the choice took focus from the address');
+    break;
+  }
+  case 'newer': {
+    // A value this page doesn't know shows, and acts, as the default.
+    const newer = {...statuses.account, settings: {...statuses.account.settings, lan_scan: 'a newer mode'}};
+    load(newer.settings);
+    render(newer);
+    tabAssert($('lan-when').value === 'start', 'a newer value shows ' + $('lan-when').value);
+    await open();
+    tabAssert(JSON.stringify(calls) === JSON.stringify([['/api/scan', {}]]), 'a newer value did not scan on opening ' + JSON.stringify(calls));
+    break;
+  }
+  default: throw new Error('unknown when scenario ' + scenario);
   }
 }
 

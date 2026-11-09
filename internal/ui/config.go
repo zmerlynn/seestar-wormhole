@@ -27,6 +27,15 @@ type Settings struct {
 	// account route for any other value, including an older file's none.
 	Route      string `json:"route,omitempty"`
 	LANAddress string `json:"lan_address,omitempty"`
+	// LANSerial is the serial number a scan saw at LANAddress when it was
+	// saved, or "". A connect scans for it, when LANScan says to, and uses
+	// the address that answers with it, LANAddress first. It is never
+	// shown or logged.
+	LANSerial string `json:"lan_serial,omitempty"`
+	// LANScan is when a connect to LANSerial scans: "start", "connect" or
+	// "off" (see [landiscovery.Mode]). Empty, or any other value, is
+	// start; a value this version doesn't know is kept until changed.
+	LANScan string `json:"lan_scan,omitempty"`
 	// RouteEstablished opens Copy, Browse and Free up space at launch: the
 	// account route has connected, or an address on this network passed
 	// Test and was saved. Only those two saves set it; every other save

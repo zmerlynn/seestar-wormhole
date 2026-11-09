@@ -129,7 +129,8 @@ func TestMountEndpoint(t *testing.T) {
 // Copying follows a selected telescope across runs and endpoints. With no
 // device on either target, only the same endpoint in the same run is the
 // same telescope: on this network always run 0, and through the account a
-// reconnect may reuse the endpoint for another telescope.
+// reconnect may reuse the endpoint for another telescope. On this network
+// the same scanned serial at a new address is the same telescope too.
 func TestSameTelescope(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -143,6 +144,10 @@ func TestSameTelescope(t *testing.T) {
 		{"device only on one", Target{Endpoint: atA, Run: 1}, Target{Endpoint: atA, Device: "synthetic-a", Run: 1}, false},
 		{"no device, same run", Target{Endpoint: atA, Run: 1}, Target{Endpoint: atA, Run: 1}, true},
 		{"no device, next run", Target{Endpoint: atA, Run: 1}, Target{Endpoint: atA, Run: 2}, false},
+		{"same serial, new address", Target{Endpoint: atA, Serial: "synthetic-sn"}, Target{Endpoint: atB, Serial: "synthetic-sn"}, true},
+		{"other serial, new address", Target{Endpoint: atA, Serial: "synthetic-sn"}, Target{Endpoint: atB, Serial: "synthetic-sn2"}, false},
+		{"serial only on one", Target{Endpoint: atA, Serial: "synthetic-sn"}, Target{Endpoint: atB}, false},
+		{"same serial through the account", Target{Endpoint: atA, Run: 1, Serial: "synthetic-sn"}, Target{Endpoint: atB, Run: 1, Serial: "synthetic-sn"}, false},
 	} {
 		if got := tc.t.sameTelescope(tc.u); got != tc.want {
 			t.Errorf("%s: sameTelescope = %v", tc.name, got)

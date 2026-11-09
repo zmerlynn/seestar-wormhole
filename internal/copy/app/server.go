@@ -25,6 +25,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 )
 
@@ -39,7 +40,7 @@ const testTimeout = 30 * time.Second
 // and target takes the host's status lock inside mu, so neither of those
 // is held around admit.
 type server struct {
-	ctx      context.Context // the app's lifetime; browse's sessions live in it
+	ctx      context.Context // the app's lifetime; each route's lives in it
 	addr     netip.AddrPort  // the listener's
 	version  string
 	stateDir string // the default history folder; Settings may choose another
@@ -73,6 +74,12 @@ type server struct {
 	file     *settingsFile
 	browse   *browse.Handler // without statuses until a folder is saved
 	sessions *browse.Sessions
+	// route is the lifetime of every Browse pool made for where the
+	// telescope is now, in ctx; a change of route ends it with endRoute,
+	// which closes those pools, even a retired one whose download still
+	// holds its session.
+	route    context.Context
+	endRoute context.CancelFunc
 	// view counts what Browse shows, for the page, which loads its frame
 	// again once it moved: each new pool moves it, and so does each new
 	// endpoint status finds, such as a route's run connecting.
@@ -146,6 +153,8 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	if o.Remover != nil {
 		s.free.remover = o.Remover
 	}
+	s.free.resolve = o.Resolve
+	s.route, s.endRoute = context.WithCancel(ctx)
 	s.browse, s.sessions = s.newBrowse(file.settings)
 	return s
 }
@@ -167,9 +176,18 @@ func (s *server) resolve(set Settings) (Settings, Target, error) {
 // reaches the target. Once a folder is saved it also shows the folder's
 // records and what the selection leaves out; before that, Browse shows
 // the telescope's files without statuses.
-// It is called holding s.mu, or before the server is shared.
+// It is called holding s.mu, or before the server is shared. The new
+// pool moves what Browse shows, so the page loads its frame again.
 func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 	s.view++
+	return s.browseFor(set)
+}
+
+// browseFor is newBrowse without moving what Browse shows: each opening
+// of Browse's page gets one, so that the opening is a run of its own for
+// the scan on this network, with its own sessions. It is called holding
+// s.mu, or before the server is shared.
+func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 	folder, log := set.Folder, s.log
 	// Every pool, old or new, numbers its outcomes from the Mount's one
 	// sequence, so an old pool's late failure can't reopen what a new
@@ -180,7 +198,11 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 		},
 		Seq: s.rep.next,
 	}
-	sessions := browse.NewSessions(s.ctx, s.dial, log, rep)
+	// The pool's dials share one run for the scan on this network.
+	run := &landiscovery.Run{}
+	sessions := browse.NewSessions(s.route, func(ctx context.Context) (remote.Session, error) {
+		return s.dial(landiscovery.WithRun(ctx, run))
+	}, log, rep)
 	var records func() (map[string]state.Record, error)
 	var sel engine.Selector
 	if s.setUp() {
@@ -286,17 +308,21 @@ var errNotSetUp = errors.New("save the copy settings first")
 // endpointChanged follows a change of where the telescope is, which the
 // caller made holding s.admit: the previews, and a check that failed, go
 // back to Start, as their proof was taken elsewhere, a copy once that
-// couldn't reach the telescope shows as off, and browse gets a new pool,
-// so no request
-// reaches the old endpoint through a session already open there.
+// couldn't reach the telescope shows as off, and browse gets a new pool
+// on a new route, so no request reaches the old endpoint through a session
+// already open there. The old pool closes before this returns; ending the
+// old route closes every other pool made on it too, including one a
+// download's save dialog still holds.
 func (s *server) endpointChanged() {
 	s.mu.Lock()
 	s.free.clear()
 	s.preview.discard()
 	s.copy.moved()
-	old := s.sessions
+	old, end := s.sessions, s.endRoute
+	s.route, s.endRoute = context.WithCancel(s.ctx)
 	s.browse, s.sessions = s.newBrowse(s.file.settings)
 	s.mu.Unlock()
+	end()
 	if old != nil {
 		old.Close()
 	}
@@ -321,8 +347,21 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.api(w, r, strings.TrimPrefix(r.URL.Path, "/copy/api/"))
 	case strings.HasPrefix(r.URL.Path, "/browse/"):
 		s.mu.Lock()
+		var old *browse.Sessions
+		if site := r.Header.Get("Sec-Fetch-Site"); r.URL.Path == "/browse/" && r.Method == http.MethodGet &&
+			(site == "" || site == "same-origin" || site == "none") {
+			// Opening Browse is a new run for the scan on this network,
+			// with new sessions: the old page's are retired, and a
+			// download still holding one finishes first. Another site's
+			// request, which Browse refuses, opens nothing.
+			old = s.sessions
+			s.browse, s.sessions = s.browseFor(s.file.settings)
+		}
 		h, sessions := s.browse, s.sessions
 		s.mu.Unlock()
+		if old != nil {
+			old.Retire()
+		}
 		// A window's webview may not save a download itself, so the app
 		// does, with the window's save dialog.
 		var serve http.Handler = h
@@ -794,13 +833,20 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 
 // saveFile asks where to save the device's file p and saves it there. It
 // answers 204 in every case, so the page stays where it is; a failed save
-// is shown in the window's message, unless the app is stopping.
+// is shown in the window's message, unless the app is stopping. It takes
+// its lease from sessions, the opening of Browse the download was asked
+// in, before the dialog: an opening of Browse while the dialog is open
+// retires that pool, and the lease keeps its session until the save ends.
 func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
 	name := path.Base(p)
-	dst, err := s.native.SaveFile(name)
-	var alert string
+	var dst, alert string
+	lease, err := sessions.Get(r.Context())
+	if err == nil {
+		defer lease.Release()
+		dst, err = s.native.SaveFile(name)
+	}
 	if err == nil && dst != "" {
-		alert, err = s.saveTo(r.Context(), sessions, p, dst)
+		alert, err = s.saveTo(r.Context(), lease, p, dst)
 		if err == nil {
 			s.log.Info("file saved", "path", p, "to", dst)
 		}
@@ -826,18 +872,18 @@ func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *brow
 // errReservedName is a save to the folder lock's name in the images folder.
 var errReservedName = errors.New("the name is kept for the copy lock")
 
-// saveTo saves the device's file p to dst, as [browse.Save] does. A save
-// into the saved images folder holds the folder's lock, so it never lands
-// during a pass of copying or a delete, and writes through the folder's
-// root; it refuses the folder lock's own name. A failure the window words
-// itself comes with the alert to show.
-func (s *server) saveTo(ctx context.Context, sessions *browse.Sessions, p, dst string) (alert string, err error) {
+// saveTo saves the device's file p to dst through lease, as [browse.Save]
+// does. A save into the saved images folder holds the folder's lock, so it
+// never lands during a pass of copying or a delete, and writes through the
+// folder's root; it refuses the folder lock's own name. A failure the
+// window words itself comes with the alert to show.
+func (s *server) saveTo(ctx context.Context, lease *browse.Lease, p, dst string) (alert string, err error) {
 	s.mu.Lock()
 	folder := s.file.settings.Folder
 	s.mu.Unlock()
 	top, rel, inside := within(folder, dst)
 	if !inside {
-		return "", browse.Save(ctx, sessions, p, dst)
+		return "", browse.Save(ctx, lease, p, dst)
 	}
 	if plan.Reserved(filepath.ToSlash(rel)) {
 		return "That name is kept for the copy lock. Choose another name or folder.", errReservedName
@@ -855,7 +901,7 @@ func (s *server) saveTo(ctx context.Context, sessions *browse.Sessions, p, dst s
 		return "", err
 	}
 	defer lock.Close()
-	return "", browse.SaveIn(ctx, sessions, p, root, rel)
+	return "", browse.SaveIn(ctx, lease, p, root, rel)
 }
 
 // within reports whether the file dst is inside folder, after resolving

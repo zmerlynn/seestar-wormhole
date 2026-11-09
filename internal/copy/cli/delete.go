@@ -14,8 +14,12 @@ import (
 )
 
 type deleteOptions struct {
-	profile       profileFlag
-	endpoint      string
+	profile  profileFlag
+	endpoint string
+	// follow follows a saved telescope by its serial at the endpoint the
+	// profile filled.
+	follow        *follow
+	scan          scanFlag
 	dest          string
 	destSet       bool
 	historyDir    string
@@ -65,7 +69,7 @@ last removal, and exits 1 if a sync pass or another delete holds it.
 --dest and --history-dir, except with --ignore-state, and --endpoint, where
 they are not given. The app's Copy patterns and Free up space options are
 never applied: give the selection, the proof and --older-than here.
-Durations use Go units, such as 36h, or whole days, such as 7d.
+` + followHelp + `Durations use Go units, such as 36h, or whole days, such as 7d.
 Logs and errors go to stderr.
 Exit 0 when the run finishes, however many files it kept, or is stopped;
 1 on a runtime failure or failed files; 2 on a usage error.`,
@@ -75,6 +79,9 @@ Exit 0 when the run finishes, however many files it kept, or is stopped;
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+				return err
+			}
+			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {
 				return err
 			}
 			o.destSet = o.profile.present(cmd.Flags(), "dest")
@@ -91,6 +98,7 @@ Exit 0 when the run finishes, however many files it kept, or is stopped;
 	}
 	f := c.Flags()
 	o.profile.register(f)
+	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state and copies prove each file; never created (required unless --ignore-state)")
 	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: the per-user config folder's seestar-copy)")
@@ -156,6 +164,16 @@ var dialRemover = func(ctx context.Context, endpoint string, log *slog.Logger) (
 	return r, nil
 }
 
+// dialRemoverAs is dialRemover for a telescope followed by its serial: its
+// errors call it name, never its address.
+var dialRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
+	r, err := remote.DialRemoverVia(ctx, name, remote.TCP(endpoint), log)
+	if err != nil {
+		return nil, err
+	}
+	return r, nil
+}
+
 // runDelete resolves the history folder and runs the deletion. A dry run is
 // read-only: the program turns the guard on before it calls this.
 func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
@@ -167,11 +185,15 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 		}
 	}
 	_, err := engine.RunDelete(ctx, engine.DeleteOptions{
-		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
+		Endpoint: o.follow.label(o.endpoint), Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
 		OlderThan: o.olderThan, Selector: o.selector, DryRun: o.dryRun,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return dial(ctx, endpoint, log) },
-		OpenRemover: func(ctx context.Context, endpoint string) (remote.Remover, error) {
-			return dialRemover(ctx, endpoint, log)
+		// Endpoint is a label when o.follow is set; the dials use the
+		// real one.
+		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
+			return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
+		},
+		OpenRemover: func(ctx context.Context, _ string) (remote.Remover, error) {
+			return followDial(ctx, o.follow, o.endpoint, log, dialRemover, dialRemoverAs)
 		},
 	}, log)
 	return err

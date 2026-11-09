@@ -22,8 +22,12 @@ import (
 )
 
 type findOptions struct {
-	profile   profileFlag
-	endpoint  string
+	profile  profileFlag
+	endpoint string
+	// follow follows a saved telescope by its serial at the endpoint the
+	// profile filled.
+	follow    *follow
+	scan      scanFlag
 	selection selectionFlags
 	// selector is set by validate from selection.
 	selector      engine.Selector
@@ -61,7 +65,7 @@ size or mtime) or new (not recorded).
 --no-default-excludes from the app's Copy settings, and --endpoint from its
 connection, where they are not given; a --dest it fills gives statuses as a
 given one does.
-find never writes: not to the telescope, not to --dest, not to the state.
+` + followHelp + `find never writes: not to the telescope, not to --dest, not to the state.
 Durations use Go units, such as 36h or 90m, or whole days, such as 7d.
 Logs and errors go to stderr.
 Exit 0 when the listing is complete, 1 when it fails or is stopped, 2 on a
@@ -71,6 +75,9 @@ usage error.`,
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+				return err
+			}
+			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {
 				return err
 			}
 			o.destSet = o.profile.present(cmd.Flags(), "dest")
@@ -87,6 +94,7 @@ usage error.`,
 	}
 	f := c.Flags()
 	o.profile.register(f)
+	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	o.selection.register(f)
 	f.Var((*ageValue)(&o.olderThan), "older-than", "list only files whose device time is at least this old (default: no limit)")
@@ -177,9 +185,9 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		}
 		log.Info("listing done", args...)
 	}()
-	sess, err := dial(ctx, o.endpoint, log)
+	sess, err := followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
 	if err != nil {
-		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.endpoint, err))
+		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.follow.label(o.endpoint), err))
 	}
 	defer sess.Close()
 	entries, left, err := o.selector.Walk(ctx, sess)

@@ -21,6 +21,9 @@ let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '
 // The route shown on Connection, a LAN action in flight, the last LAN Test,
 // and the selected tab.
 let routeChoice = 'account', lanPending = '', lanReach = null, currentTab = 'connection';
+// The LAN scan: whether one runs, whether one has run, what it found, and
+// whether the On this network panel was shown or just opened by the user.
+let lanScanning = false, lanScanned = false, lanFound = [], lanShown = false, lanOpened = false;
 const tabNames = ['connection', 'copy', 'browse', 'free', 'activity'];
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const copyLostCopy = "Couldn't read the status of Copy and Free up space. They show their last known state until it can be read again.";
@@ -308,7 +311,8 @@ function controls() {
   }
 }
 // The route choice is locked while the Telescope Network route runs and while copying
-// or deleting runs; the LAN form is too.
+// or deleting runs; the LAN form is too. When to scan stays open while
+// copying, which takes it at its next connection.
 function routeControls(blocked) {
   if (active) routeChoice = 'account';
   const busy = !!state?.copy_busy;
@@ -319,9 +323,81 @@ function routeControls(blocked) {
   $('account-route').hidden = routeChoice !== 'account';
   $('lan-route').hidden = routeChoice !== 'lan';
   $('lan-options').disabled = blocked || active || busy || !!lanPending;
+  $('lan-when').disabled = blocked || active || !!pending || !!lanPending;
   text('lan-test', lanPending === 'test' ? 'Testing…' : 'Test');
   text('lan-save', lanPending === 'save' ? 'Saving…' : 'Save');
+  if (lanPending !== 'when' && $('lan-when').value !== lanWhen()) $('lan-when').value = lanWhen();
+  $('lan-scan').disabled = lanScanning;
+  text('lan-scan', lanScanning ? 'Scanning…' : lanScanned ? 'Scan again' : 'Scan');
   connectionLine();
+  lanAutoScan();
+}
+// On this network scans by itself when the user opens it, and when it is
+// shown with no address saved. A form locked by a run doesn't scan, and
+// neither does one set never to scan.
+function lanAutoScan() {
+  const shown = !!state && !$('lan-route').hidden;
+  const opened = shown && !lanShown;
+  lanShown = shown;
+  if (opened && !$('lan-options').disabled && lanWhen() !== 'off' && (lanOpened || !state.settings?.lan_address)) lanScan();
+  if (shown) lanOpened = false;
+}
+function lanScanResult(message, tone = '') {
+  text('lan-scan-result', message);
+  if (tone) $('lan-scan-result').setAttribute('data-tone', tone);
+  else $('lan-scan-result').removeAttribute('data-tone');
+}
+// lanRows lists what the scan found: a telescope's name, model and flags,
+// and a button per address that fills it in. The scan's answer has no
+// serial; Saved marks the telescope saved here.
+function lanRows() {
+  $('lan-found').replaceChildren(...lanFound.map(t => {
+    const li = document.createElement('li');
+    const name = document.createElement('span');
+    const flags = [t.model, t.busy ? 'busy: the phone app may refuse to connect' : '', t.saved ? 'saved' : ''].filter(Boolean);
+    name.textContent = (t.name || 'Seestar') + (flags.length ? ' (' + flags.join(', ') + ')' : '');
+    li.append(name, document.createElement('br'));
+    for (const address of t.addresses || []) {
+      const pick = document.createElement('button');
+      pick.type = 'button';
+      pick.className = 'small';
+      pick.textContent = address;
+      pick.setAttribute('aria-label', 'Use ' + address + ' for ' + (t.name || 'Seestar'));
+      pick.addEventListener('click', () => lanPick(t, address));
+      li.append(pick);
+    }
+    return li;
+  }));
+}
+// Picking a row fills the address in; Test and Save work as for a typed one.
+function lanPick(t, address) {
+  if ($('lan-options').disabled) return;
+  $('lan-address').value = address;
+  lanReach = null;
+  lanError('');
+  lanResult('Picked ' + (t.name || 'Seestar') + ' at ' + address + '. Test or Save to use it.');
+  $('lan-address').focus();
+}
+// Scan asks this network for Seestars the way the phone app does.
+async function lanScan() {
+  if (lanScanning) return;
+  lanScanning = true;
+  lanScanResult('Looking for telescopes on this network…');
+  controls();
+  try {
+    const r = await api('scan', {});
+    lanFound = r.telescopes || [];
+    lanRows();
+    const n = lanFound.length;
+    if (r.message) lanScanResult(r.message, r.blocked ? 'error' : '');
+    else lanScanResult(n === 1 ? 'Found 1 telescope. Pick its address to fill it in.' : 'Found ' + n + ' telescopes. Pick an address to fill it in.');
+  } catch (e) {
+    lanScanResult(e.message || lostCopy, 'error');
+  } finally {
+    lanScanning = false;
+    lanScanned = true;
+    controls();
+  }
 }
 // The header's line and dot: the proxy's status on the Telescope Network route, and
 // the saved address and its last Test on this network. The dot is green
@@ -385,13 +461,20 @@ async function lanTest() {
   lanResult('Connecting to ' + (typed.includes(':') ? typed : typed + ':445') + '…');
   controls();
   let focus = '', r = null;
+  // The scan request goes straight to the typed address too, so a Save
+  // after it saves which telescope answered there; not when set never to
+  // scan.
+  const probe = typed && lanWhen() !== 'off' ? api('scan', {address: typed}).catch(() => null) : Promise.resolve(null);
   try {
-    r = await api('test', {address: typed}, '/copy/api/');
+    let seen;
+    [r, seen] = await Promise.all([api('test', {address: typed}, '/copy/api/'), probe]);
     lanReach = {typed, address: r.address, ok: r.ok};
     // Test saves nothing: until Save, the copy tabs use the saved route.
     const saved = state?.settings?.route === 'lan' ? state.settings.lan_address : '';
     const unsaved = r.ok && !sameEndpoint(r.address, saved) ? ' Save to use this address for Copy, Browse and Free up space.' : '';
-    lanResult(r.message + unsaved, r.ok ? 'ok' : 'error');
+    const t = seen?.telescopes?.[0];
+    const named = t ? ' It answered as ' + (t.name || 'a Seestar') + (t.model ? ' (' + t.model + ')' : '') + '.' : '';
+    lanResult(r.message + named + unsaved, r.ok ? 'ok' : 'error');
   } catch (e) {
     if (e.fields?.address) {
       lanResult('');
@@ -399,6 +482,7 @@ async function lanTest() {
       focus = 'lan-address';
     } else lanResult(e.message || lostCopy, 'error');
   } finally {
+    await probe;
     lanPending = '';
     controls();
     if (focus) $(focus).focus();
@@ -439,6 +523,40 @@ async function lanSave() {
     return;
   }
   lanResult('Saved. ' + address + ' is reachable.', 'ok');
+}
+// lanWhen is when a connect scans for the saved telescope: the saved
+// lan_scan, and start, the default, for none or one this page doesn't know.
+function lanWhen() {
+  const when = state?.settings?.lan_scan;
+  return when === 'connect' || when === 'off' ? when : 'start';
+}
+function lanWhenResult(message, tone = '') {
+  text('lan-when-result', message);
+  if (tone) $('lan-when-result').setAttribute('data-tone', tone);
+  else $('lan-when-result').removeAttribute('data-tone');
+}
+// Choosing when to scan saves it at once; a refused choice goes back.
+// Saving disables the select, which takes focus from it: it gets focus
+// back unless another control took it meanwhile.
+async function lanWhenSave() {
+  if (lanPending) return;
+  const select = $('lan-when'), when = select.value;
+  const focused = document.activeElement === select;
+  lanPending = 'when';
+  lanWhenResult('');
+  controls();
+  try {
+    await api('lan-scan', {settings: {lan_scan: when}});
+    await refresh();
+    lanWhenResult('Saved.', 'ok');
+  } catch (e) {
+    lanWhenResult(e.message || lostCopy, 'error');
+  } finally {
+    lanPending = '';
+    controls();
+    const lost = !document.activeElement || document.activeElement === document.body;
+    if (focused && lost && !select.disabled && !$('lan-route').hidden) select.focus();
+  }
 }
 // Tabs: only the enabled ones can be selected; Arrow, Home and End move
 // among them and focus follows, as in seestar-copy.
@@ -504,7 +622,10 @@ function copyNotice() {
 // or the account's Connect.
 function goReach() {
   const reach = state?.copy_reach;
-  if (reach === 'no_lan_address') routeChoice = 'lan';
+  if (reach === 'no_lan_address') {
+    routeChoice = 'lan';
+    lanOpened = true;
+  }
   selectTab('connection');
   controls();
   const target = $(reach === 'no_lan_address' ? 'lan-address' : 'start');
@@ -1556,6 +1677,7 @@ for (const [id, tab] of Object.entries(chipTabs)) $(id).addEventListener('click'
 $('tabs').addEventListener('keydown', tabKey);
 for (const id of ['route-account', 'route-lan']) $(id).addEventListener('change', () => {
   if ($(id).checked) routeChoice = $(id).value;
+  lanOpened = routeChoice === 'lan';
   controls();
 });
 $('lan-form').addEventListener('submit', e => {
@@ -1563,6 +1685,8 @@ $('lan-form').addEventListener('submit', e => {
   if (!$('lan-options').disabled) lanSave();
 });
 $('lan-test').addEventListener('click', lanTest);
+$('lan-scan').addEventListener('click', lanScan);
+$('lan-when').addEventListener('change', lanWhenSave);
 $('copy-reach-go').addEventListener('click', goReach);
 $('copy-form').addEventListener('submit', e => {
   e.preventDefault();

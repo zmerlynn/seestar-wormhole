@@ -1,7 +1,7 @@
 # File command reference
 
 Use this page when you script `seestar-wormhole-cli`'s file commands, `sync`,
-`find`, `browse` and `delete`, or need an exact flag, rule or log line. [Copy images](../copying.md#from-the-command-line) has a first run.
+`find`, `browse`, `delete` and `scan`, or need an exact flag, rule or log line. [Copy images](../copying.md#from-the-command-line) has a first run.
 
 - [sync](#sync): flags, endpoint, [performance](#performance), destination
   layout, [selection](#selection) and [dry run](#dry-run)
@@ -19,6 +19,7 @@ Use this page when you script `seestar-wormhole-cli`'s file commands, `sync`,
 - [delete](#delete): [proof modes](#proof-modes),
   [how delete decides](#how-delete-decides), [emptied folders](#emptied-folders)
   and [the check-then-remove race](#the-check-then-remove-race)
+- [scan](#scan): the telescopes on this network
 - [Help, licenses and releases](#help-licenses-and-releases), which the
   [connection command reference](connection-cli.md) covers for every command
 
@@ -58,6 +59,7 @@ deletes anything in the destination either, except its own
 | `--workers` | `4` | Files copied at once, `1` to `64`. All of them share one SMB session. |
 | `--history-dir` | the per-user config folder's `seestar-copy` | The copy history folder, which holds the state file. See [location](selection-and-history.md#location). It must not be empty when given. Earlier releases called it `--state-dir`, which is now refused. |
 | `--profile` | none: no saved settings are read | `default` fills the flags not given from the app's saved settings. Only `default` exists. See [use the app's saved settings](#use-the-apps-saved-settings). |
+| `--scan` | the app's saved choice, `start` without one | When to scan this network for the telescope `--profile default` saved there: `start`, `connect` or `off`. See [use the app's saved settings](#use-the-apps-saved-settings). Any other value exits 2. It is checked even when nothing is scanned. |
 | `--log-format` | `text` | `text` or `json` log lines on stderr. See [logs](#logs). |
 | `--log-level` | `info` | The lowest level logged: `debug`, `info`, `warn` or `error`. |
 
@@ -130,6 +132,35 @@ by default, and something must be serving it: the app connected with
 commands never start a connection. With no usable `config.json`, no saved
 address, or that service off, `--endpoint` is not filled and is required as
 usual; if nothing listens, the run fails with exit 1.
+
+On this network, an address the app saved from a scan is saved with the
+telescope's serial number, [`lan_serial`](app-settings.md#configjson-version-1).
+When `--endpoint` was filled from it, a connect can
+[scan this network](#scan) for that serial and connect, on the same port,
+to an address the telescope answered from, the saved address first; an
+address that doesn't connect doesn't end the search. If another telescope
+answers at the saved address, it isn't used, even if it answers there only
+while the saved address is being connected; a connection already made there
+is closed. If no reply carries the serial, the saved address is tried.
+
+`--scan` chooses when a connect scans. Without it, the app's choice under
+**On this network**, [`lan_scan`](app-settings.md#configjson-version-1), is
+used, and `start` when there is none:
+
+| `--scan` | When a connect scans |
+| --- | --- |
+| `start` | The run's first connect scans. Later connects, such as each pass of a `sync` with `--interval` and a reconnect, go to the address that scan connected to, and scan again, once, only when that connect fails, with the same rules. A run is one command. |
+| `connect` | Every connect scans. |
+| `off` | No connect scans: the saved address is dialed as it is, and nothing is logged about a scan. A telescope that moved isn't followed. |
+
+`delete` keeps the address it first connected at for the rest of the run,
+whatever `--scan` says. Nothing is saved; the app saves a new address the
+next time it connects. A given `--endpoint`, or an address saved without a
+serial, is dialed as it is, without a scan, whatever `--scan` says; the
+value is still checked, and one other than `start`, `connect` or `off`
+exits 2. Errors call a telescope reached through its saved serial `the
+saved telescope`, not its address, under every `--scan`. The scan's records
+are in [logs](#logs).
 
 At the start of the run, one `INFO` record, `saved settings`, names the
 filled flags and none of their values, such as
@@ -478,8 +509,12 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | INFO | `listing done` | see [find logs](#find-logs) | A `find` listing finished. |
 | ERROR | `listing failed` | `source`, `op`, `phase`, `reason`, as `listing done`, and `error` | The connection or a listing failed in `find`. |
 | ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
-| ERROR | `sync failed`, `find failed`, `browse failed` or `delete failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
+| ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
+| INFO | `found the saved telescope at another address on this network` | `model` when the reply had one, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). Logged again only when the outcome changes. No address, name or serial is logged. |
+| WARN | `the saved telescope wasn't seen in a scan of this network; tried its saved address` | none | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
+| WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `replies` | As above, but another serial answered from the saved address, which isn't used, and no reply carried the saved serial; the connect fails. |
+| WARN | `found the saved telescope on this network, but it didn't connect where it answered` | `model`, `replies` | As above, but no address that answered with the serial connected; the connect fails. Also logged when another serial answered from the saved address too. |
 | WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
 Each pass that runs ends with one summary line, whose keys are below. A later
@@ -522,7 +557,7 @@ counted, in a `diagnostics_lost` line when stderr recovers.
 | --- | --- |
 | 0 | Stopped by a signal; a `--once` or `--dry-run` pass with no failed files; or help printed. |
 | 1 | A runtime failure: the destination or state could not be opened or locked (including another copy or delete holding the [folder lock](selection-and-history.md#the-folder-lock) at the first pass), leftover temporary files could not be removed, a `--once` or `--dry-run` pass failed (`connect to ...` or `list the share: ...`), a `--once` or `--dry-run` pass had failed files (`failed files: N`), output could not be written, or log lines were lost (`diagnostics_lost`). |
-| 2 | A usage error: an unknown or invalid flag, including `--state-dir` and `--version`, a missing `--endpoint` or `--dest`, an empty `--history-dir`, `--dry-run` with `--interval`, a positional argument, or a refused `--profile`. |
+| 2 | A usage error: an unknown or invalid flag, including `--state-dir` and `--version`, a missing `--endpoint` or `--dest`, an empty `--history-dir`, `--dry-run` with `--interval`, a positional argument, a refused `--profile`, or a bad `--scan`. |
 
 Without `--once` or `--dry-run`, failed passes and failed files do not end
 sync: it logs them and tries again on the next pass.
@@ -629,6 +664,7 @@ seestar-wormhole-cli find --endpoint 127.0.0.1:4445 --format jsonl > share.jsonl
 | `--dest` | none | A destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
 | `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](selection-and-history.md#location). Only with `--dest`, and it must not be empty when given. |
 | `--profile` | none | As for sync: `default` fills the destination, history, endpoint and selection not given. |
+| `--scan` | as for sync | As for sync. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 
 `--older-than` takes a Go duration, such as `36h` or `90m`, or a whole number
@@ -767,7 +803,7 @@ time=2026-11-09T09:00:01.502Z level=INFO msg="listing done" files=212 folders=9 
 | --- | --- |
 | 0 | The listing is complete. |
 | 1 | The state could not be read, the connection or a listing failed (`connect to ...` or `list the share: ...`), the output could not be written, or a signal stopped find before it wrote the whole listing. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--format` or `--older-than`, an empty `--dest` or `--history-dir`, `--history-dir` without `--dest`, a positional argument, or a refused `--profile`. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--format` or `--older-than`, an empty `--dest` or `--history-dir`, `--history-dir` without `--dest`, a positional argument, a refused `--profile`, or a bad `--scan`. |
 
 ## browse
 
@@ -809,6 +845,7 @@ the port browse listens on.
 | `--dest` | none | As for find: a destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
 | `--history-dir` | as for sync | As for find: the folder that holds the state file of `--dest`. Only with `--dest`, and it must not be empty when given. |
 | `--profile` | none | As for sync: `default` fills the destination, history and endpoint not given, and the selection with a destination. |
+| `--scan` | as for sync | As for sync. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--exclude`, `--no-default-excludes`, `--include` | as for sync | The [selection](#selection) whose left-out files and folders show [`left out`](#left-out-in-browse). Only with `--dest`. |
 
@@ -962,7 +999,7 @@ time=2026-11-09T09:01:12.950Z level=INFO msg="session closed" endpoint=127.0.0.1
 | --- | --- |
 | 0 | Stopped by a signal. |
 | 1 | Browse could not start or keep serving: the address could not be listened on, the state of `--dest` could not be read when browse started, the URL could not be written to stdout, or the HTTP server stopped with an error. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--history-dir`, `--history-dir` or a selection flag without `--dest`, a bad pattern, a positional argument, or a refused `--profile`. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, a bad `--listen`, an empty `--dest` or `--history-dir`, `--history-dir` or a selection flag without `--dest`, a bad pattern, a positional argument, a refused `--profile`, or a bad `--scan`. |
 
 ## delete
 
@@ -996,6 +1033,7 @@ seestar-wormhole-cli delete --endpoint 127.0.0.1:4445 --ignore-state --include '
 | `--dest` | none; required, except with `--ignore-state`, which refuses it | The destination whose [state](#the-state-file), and by default whose local copies, prove that a file was copied. It is never created. It must be the destination of **this** telescope; see [what the proof does not show](#what-the-proof-does-not-show). |
 | `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](selection-and-history.md#location). Refused with `--ignore-state`, and it must not be empty when given. |
 | `--profile` | none | As for sync, but `default` fills only the destination and history, not with `--ignore-state`, and the endpoint; never the selection, proof or age. |
+| `--scan` | as for sync | As for sync. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--trust-state` | off | Prove a file by its state record alone, without reading the local copy. Use it when the copies were moved out of `--dest` or the drive is offline. |
 | `--ignore-state` | off | Read no state, and delete every selected file that is old enough, whether or not it was copied. Needs at least one `--include`. |
@@ -1166,11 +1204,77 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | --- | --- |
 | 0 | The run or preview finished with no failed file, however many it kept; or a signal stopped it. |
 | 1 | The state could not be read; `--dest` is missing in `hash` mode; with `--force`, the [folder lock](selection-and-history.md#the-folder-lock) is held or can't be taken; the connection or listing failed (`connect to ...` or `list the share: ...`); a removal failed on the device, which ends the run (`deletion failed`); or a local copy could not be read (`failed files: N`). A rerun lists the share again and carries on. |
-| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, `--dest` missing without `--ignore-state`, `--trust-state` with `--ignore-state`, `--ignore-state` without `--include` or with `--dest` or `--history-dir`, `--force` with `--dry-run`, a bad `--older-than`, an empty `--history-dir`, a positional argument, or a refused `--profile`. |
+| 2 | A usage error: an unknown or invalid flag, a missing `--endpoint`, `--dest` missing without `--ignore-state`, `--trust-state` with `--ignore-state`, `--ignore-state` without `--include` or with `--dest` or `--history-dir`, `--force` with `--dry-run`, a bad `--older-than`, an empty `--history-dir`, a positional argument, a refused `--profile`, or a bad `--scan`. |
 
 > **Warning.** With `--ignore-state`, delete removes whatever is selected,
 > whether or not it was copied. With `--older-than 0` as well, that includes
 > a file the telescope is still writing. Preview first, without `--force`.
+
+## scan
+
+```sh
+seestar-wormhole-cli scan [--format text|json]
+```
+
+`scan` lists the Seestars on this network, as the phone app finds them. It
+sends the phone app's scan request to UDP port 4720 on the directed
+broadcast address of each up IPv4 interface that can broadcast, three times
+2 seconds apart, and lists every telescope that answers within 6 seconds.
+Loopback and point-to-point (VPN) interfaces are skipped, and so are replies
+from this computer's own addresses, such as a proxy here that answers for
+the phone app. A reply needs a serial number; replies with the same serial
+are one telescope with every address it answered from. scan never shows a
+serial number, and never reads the reply's password.
+
+A telescope found here can be given to the other file commands as
+`--endpoint ADDRESS:445`. scan connects to nothing and reads no saved
+settings: it has no `--endpoint` or `--profile`.
+
+### scan flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--format` | `text` | `text` or `json`. Any other value exits 2 with `rule="use text or json"`. |
+| `--log-format` | `text` | As for sync. |
+| `--log-level` | `info` | As for sync. |
+
+### scan output
+
+The text format writes one line per address, telescope by telescope in the
+order they first answered: the address, `busy` or `-`, the name (the reply's `ssid`) and the model.
+`busy` means the telescope reports as many clients as the phone app allows,
+8; the phone app may refuse to connect, but copying still works. The name and
+model are quoted as [find's paths](#text-format) are, and an empty one is
+`""`, so each line has four fields.
+
+```text
+192.0.2.10 - S50_Garden "Seestar S50"
+198.51.100.23 busy "Seestar S30" "Seestar S30"
+```
+
+The JSON format writes one object on one line, with `telescopes` and
+`replies`, the number of replies accepted:
+
+```json
+{"telescopes":[{"name":"S50_Garden","model":"Seestar S50","addresses":["192.0.2.10"],"busy":false}],"replies":3}
+```
+
+In both formats, bytes of a name or model that are not UTF-8 become U+FFFD.
+A scan keeps at most 64 telescopes and 8 addresses for each; further
+replies are only counted.
+
+### scan logs and exit codes
+
+`scan` logs `scanned this network` at INFO with `replies` and `telescopes`,
+and `no telescope answered` at WARN when the list is empty. On macOS that
+warning adds where to allow Local Network access, which macOS may be
+blocking. It logs no address, name or serial.
+
+| Code | Meaning |
+| --- | --- |
+| 0 | The scan ran, even if nothing answered. |
+| 1 | It couldn't scan: no interface to scan from, a send the system refused, or stdout failed. When sends fail with "no route to host" and nothing answers, `scan failed` says `sending was refused (no route to host)`, and on macOS where to allow Local Network access. |
+| 2 | A usage error: an unknown or invalid flag, a bad `--format`, or a positional argument. |
 
 ## Help, licenses and releases
 

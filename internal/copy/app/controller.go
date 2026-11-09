@@ -20,6 +20,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
 
 // The copy loop's options that Settings doesn't hold are the CLI's
@@ -159,18 +160,20 @@ func (c *controller) start(set Settings, t Target) error {
 		return errBusy
 	}
 	ctx, cancel := context.WithCancel(c.parent)
+	// Copying is one run for the scan on this network, every pass of it.
+	ctx = landiscovery.WithRun(ctx, &landiscovery.Run{})
 	done := make(chan struct{})
 	c.cancel, c.done, c.stopping = cancel, done, false
 	c.bound, c.pass, c.ended = t, false, nil
 	interval := time.Duration(set.IntervalMinutes) * time.Minute
 	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, once: set.Once, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
-		Endpoint: set.Address, Dest: set.Folder, StateDir: set.historyDir(c.stateDir), Selector: sel, Interval: interval, Once: set.Once,
+		Endpoint: t.logged(), Dest: set.Folder, StateDir: set.historyDir(c.stateDir), Selector: sel, Interval: interval, Once: set.Once,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: c.dialPass, Hooks: c.hooks(ctx), CheckNow: c.checkNow, Recreate: true,
 	}
 	c.mu.Unlock()
-	c.log.Info("copying started", "endpoint", set.Address, "dest", set.Folder)
+	c.log.Info("copying started", "endpoint", t.logged(), "dest", set.Folder)
 	// The loop is over, and done closes, on every exit, a recovered panic's
 	// included, so Quit and the next start never wait on a dead loop.
 	go func() {

@@ -28,7 +28,7 @@ const copySave = (page) => page.locator('#f-save');
 
 // chooseLAN picks the route on this network on Connection.
 async function chooseLAN(page) {
-  await page.getByLabel('On this network').check();
+  await page.getByRole('radio', { name: 'On this network', exact: true }).check();
   await expect(field(page, 'Telescope address')).toBeVisible();
 }
 
@@ -161,7 +161,7 @@ test('Connection says what each route and the address are for', async ({ page, s
   await chooseLAN(page);
   await expect(page.locator('#route-purpose')).toBeVisible();
   await expect(field(page, 'Telescope address')).toHaveAccessibleDescription(
-    "Your Seestar's address on this network, with an optional port. Port 445 is the default. Copy, Browse and Free up space read the telescope's files at this address.");
+    "Pick a telescope above, or type its address on this network, with an optional port. Port 445 is the default. Copy, Browse and Free up space read the telescope's files at this address.");
 });
 
 // countTests counts the page's Test requests.
@@ -289,6 +289,8 @@ test('a click held across a status poll still clicks', async ({ page, startApp }
   await openApp(page, app.url);
   await chooseLAN(page);
   await field(page, 'Telescope address').fill(share);
+  // The scan's list and Scan button above put Test below the fold.
+  await page.locator('#lan-test').scrollIntoViewIfNeeded();
   const box = await page.locator('#lan-test').boundingBox();
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();

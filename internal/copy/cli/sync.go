@@ -20,8 +20,12 @@ import (
 const maxWorkers = 64
 
 type syncOptions struct {
-	profile   profileFlag
-	endpoint  string
+	profile  profileFlag
+	endpoint string
+	// follow follows a saved telescope by its serial at the endpoint the
+	// profile filled.
+	follow    *follow
+	scan      scanFlag
 	dest      string
 	selection selectionFlags
 	// selector is set by validate from selection.
@@ -72,7 +76,7 @@ exclude skips.
 from its connection. A flag given always wins, and one --exclude or
 --include replaces the whole saved list. Without --profile, no saved
 settings are read.
-Durations use Go units, such as 30s, 5m or 1h30m.
+` + followHelp + `Durations use Go units, such as 30s, 5m or 1h30m.
 Logs and errors go to stderr; help goes to stdout.
 Exit 0 when stopped or after a clean --once or --dry-run pass, 1 on a runtime
 failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
@@ -81,6 +85,9 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+				return err
+			}
+			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {
 				return err
 			}
 			o.historyDirSet = o.profile.present(cmd.Flags(), "history-dir")
@@ -97,6 +104,7 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 	}
 	f := c.Flags()
 	o.profile.register(f)
+	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder, created if missing (required)")
 	o.selection.register(f)
@@ -176,6 +184,12 @@ var dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.
 	return remote.Dial(ctx, endpoint, log)
 }
 
+// dialAs is dial for a telescope followed by its serial: its errors call
+// it name, never its address.
+var dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
+	return remote.DialVia(ctx, name, remote.TCP(endpoint), log)
+}
+
 // runSync resolves the history folder and runs the sync. A dry run is
 // read-only: the program turns the guard on before it calls this.
 func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
@@ -184,9 +198,13 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		return err
 	}
 	return engine.RunSync(ctx, engine.SyncOptions{
-		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, Selector: o.selector,
+		Endpoint: o.follow.label(o.endpoint), Dest: o.dest, StateDir: stateDir, Selector: o.selector,
 		Interval: o.interval, Once: o.once, DryRun: o.dryRun,
 		ReadyAge: o.readyAge, FirstPassAge: o.firstPassAge, Workers: o.workers,
-		Dial: func(ctx context.Context, endpoint string) (remote.Session, error) { return dial(ctx, endpoint, log) },
+		// Endpoint is a label when o.follow is set; the dial uses the
+		// real one.
+		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
+			return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
+		},
 	}, log)
 }

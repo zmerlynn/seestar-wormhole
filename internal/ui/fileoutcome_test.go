@@ -974,9 +974,15 @@ func TestFailuresPerOp(t *testing.T) {
 	e.fail(stepSaveAs, errSynthetic)
 	e.get("/browse/file?path=" + trailFile + "&download=1")
 	e.reported(diagnostic.SourceBrowse, diagnostic.OpSaveFile, 1)
+	// The download connected before its dialog; a new opening of Browse
+	// connects again.
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 1); o.Failed() {
+		t.Fatalf("connect = %+v", o)
+	}
 	e.fail(stepDial, errSynthetic)
+	e.get("/browse/")
 	e.browse()
-	e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 1)
+	e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2)
 	if got, want := e.failing(), []string{"browse/save_file", "browse/connect"}; !slices.Equal(got, want) {
 		t.Fatalf("failing = %v, want %v", got, want)
 	}
@@ -986,7 +992,7 @@ func TestFailuresPerOp(t *testing.T) {
 	}
 	// The connect's outcome is sent after its waiters wake, so the
 	// listing can answer before the trail has it.
-	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2); o.Failed() {
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 3); o.Failed() {
 		t.Fatalf("connect = %+v", o)
 	}
 	if got, want := e.failing(), []string{"browse/save_file"}; !slices.Equal(got, want) {
@@ -1251,6 +1257,11 @@ func TestTrailPrivacySentinels(t *testing.T) {
 	e.mustPost("/copy/api/folder", `{"folder":""}`, 500)
 	e.get("/browse/file?path=" + trailFile + "&download=1")
 	e.reported(diagnostic.SourceBrowse, diagnostic.OpSaveFile, 1)
+	// The download connected before its dialog. Wait for both successful
+	// Browse connects before injecting the next connection failure.
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2); o.Failed() {
+		t.Fatalf("connect before dialog = %+v", o)
+	}
 	folder, _ := json.Marshal(e.folder + "-other")
 	e.post("/copy/api/settings", `{"folder":`+string(folder)+`,"interval":"5","files_at_once":"4","excludes":[],"includes":[],"skip_built_in":true,"start_copying":false}`)
 	e.reported(diagnostic.SourceCopy, diagnostic.OpSaveSettings, 2)
@@ -1258,7 +1269,7 @@ func TestTrailPrivacySentinels(t *testing.T) {
 	e.lan("192.0.2.11")
 	e.browse()
 	// The connect's outcome can reach the trail after the listing answers.
-	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 2); !o.Failed() {
+	if o := e.reported(diagnostic.SourceBrowse, diagnostic.OpConnect, 3); !o.Failed() {
 		t.Fatalf("connect = %+v", o)
 	}
 	e.s.controller.log.addCatalog(cloudhttp.Catalog{Pairs: []cloudhttp.CatalogPair{{Model: "S30", Serial: "SERIAL-SENTINEL"}}, Count: 1, Complete: true})

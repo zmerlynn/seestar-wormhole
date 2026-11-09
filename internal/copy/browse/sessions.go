@@ -107,13 +107,18 @@ type Lease struct {
 	released bool
 }
 
-// NewSessions returns an empty pool. dial opens a session; the context it is
-// given is the session's whole lifetime. log gets the pool's lines; the
-// caller adds the endpoint to it. rep gets each dial's outcome, except one
-// that ends as the pool closes.
+// NewSessions returns an empty pool, which closes as Close does once ctx
+// ends, even when retired with a session still leased. dial opens a
+// session; the context it is given is the session's whole lifetime. log
+// gets the pool's lines; the caller adds the endpoint to it. rep gets each
+// dial's outcome, except one that ends as the pool closes.
 func NewSessions(ctx context.Context, dial func(context.Context) (remote.Session, error), log *slog.Logger, rep Reporter) *Sessions {
 	ctx, stop := context.WithCancel(ctx)
-	return &Sessions{ctx: ctx, stop: stop, dial: dial, log: log, rep: rep}
+	p := &Sessions{ctx: ctx, stop: stop, dial: dial, log: log, rep: rep}
+	// The pool's own end cancels ctx too, which unregisters this from
+	// the parent; Close then changes nothing.
+	context.AfterFunc(ctx, p.Close)
+	return p
 }
 
 // Get returns a lease on the current session, dialing one if there is none.
@@ -256,10 +261,11 @@ func (p *Sessions) armIdle(s *session) {
 }
 
 // retire detaches s if it is still current and ok, called under p.mu,
-// agrees, then closes it outside the lock.
+// agrees, then closes it outside the lock. A retired pool's session (see
+// [Sessions.Retire]) is its last, so detaching it ends the pool.
 func (p *Sessions) retire(s *session, reason string, ok func() bool) {
 	p.mu.Lock()
-	if p.closed || p.cur != s || !ok() {
+	if p.cur != s || !ok() {
 		p.mu.Unlock()
 		return
 	}
@@ -268,8 +274,12 @@ func (p *Sessions) retire(s *session, reason string, ok func() bool) {
 		s.idle.Stop()
 		s.idle = nil
 	}
+	closed := p.closed
 	p.mu.Unlock()
 	p.end(s, reason)
+	if closed {
+		p.stop()
+	}
 }
 
 // end closes a detached session and ends its context, even if Close panics.
@@ -288,15 +298,28 @@ func (p *Sessions) closeSession(s remote.Session) {
 
 // Close closes the current session and cancels a dial in progress. Later
 // Gets fail without dialing, a dial that still succeeds is closed, and Fail
-// and Release change nothing. Close may be called more than once.
+// and Release change nothing. Close may be called more than once, and
+// after Retire.
 func (p *Sessions) Close() {
+	p.shut(false)
+}
+
+// shut is Close, or Retire when leased. A Close after Retire closes a
+// session still leased at once.
+func (p *Sessions) shut(leased bool) {
 	p.mu.Lock()
-	if p.closed {
+	if p.closed && (leased || p.cur == nil) {
 		p.mu.Unlock()
 		return
 	}
 	p.closed = true
 	s := p.cur
+	if leased && s != nil && s.leases > 0 {
+		// The last Release ends s and the pool. No dial is in progress
+		// while a session is current.
+		p.mu.Unlock()
+		return
+	}
 	p.cur = nil
 	if s != nil && s.idle != nil {
 		s.idle.Stop()
@@ -307,6 +330,15 @@ func (p *Sessions) Close() {
 		p.end(s, "stopped")
 	}
 	p.stop()
+}
+
+// Retire ends the pool as Close does, except that a session leased now
+// stays open until its last lease is released, so a download in progress
+// finishes; that release closes it. Later Gets fail without dialing, a
+// dial in progress is canceled at once, and Retire after Close, or again,
+// changes nothing.
+func (p *Sessions) Retire() {
+	p.shut(true)
 }
 
 // Session is the leased session.
@@ -330,12 +362,13 @@ func (l *Lease) Fail(err error) {
 }
 
 // Release ends the lease. The last release on the current session arms its
-// idle timer; a lease whose session is no longer current changes nothing.
+// idle timer, or, once the pool is retired, closes it and ends the pool; a
+// lease whose session is no longer current changes nothing.
 func (l *Lease) Release() {
 	p := l.p
 	p.mu.Lock()
-	defer p.mu.Unlock()
 	if l.released {
+		p.mu.Unlock()
 		return
 	}
 	l.released = true
@@ -343,11 +376,22 @@ func (l *Lease) Release() {
 	if l.grace != nil {
 		l.grace.Stop()
 	}
-	if p.closed || p.cur != l.s {
+	if p.cur != l.s {
+		p.mu.Unlock()
 		return
 	}
 	l.s.leases--
-	if l.s.leases == 0 {
-		p.armIdle(l.s)
+	if l.s.leases > 0 {
+		p.mu.Unlock()
+		return
 	}
+	if !p.closed {
+		p.armIdle(l.s)
+		p.mu.Unlock()
+		return
+	}
+	p.cur = nil
+	p.mu.Unlock()
+	p.end(l.s, "stopped")
+	p.stop()
 }

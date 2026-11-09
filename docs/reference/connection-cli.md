@@ -10,7 +10,8 @@ proxy's wire behavior and local policy to the v1 specification.
 - [proxy](#proxy): listeners and flags
 - [discovery](#discovery): scan replies without a cloud session
 - [sync, find, browse and delete](#file-commands): copy, list, browse and
-  delete the telescope's images
+  delete the telescope's images, and scan lists the telescopes on this
+  network
 - [licenses](#licenses)
 - [Global command behavior](#global-command-behavior) and [exit codes](#exit-codes)
 - [Availability and busy devices](#availability-and-busy-devices)
@@ -197,6 +198,7 @@ seestar-wormhole-cli sync --endpoint HOST:PORT --dest DIR [flags]
 seestar-wormhole-cli find --endpoint HOST:PORT [flags]
 seestar-wormhole-cli browse --endpoint HOST:PORT [flags]
 seestar-wormhole-cli delete --endpoint HOST:PORT --dest DIR [flags]
+seestar-wormhole-cli scan [--format text|json]
 ```
 
 The file commands copy images from the telescope's SMB share, list it, serve a
@@ -205,7 +207,9 @@ read-only page over it, and delete what is safely copied. The
 exit codes. They need no cloud session and no credentials: `--endpoint` is the
 share's address, such as a running proxy's SMB port (`127.0.0.1:4445` by
 default) or the telescope on this network. Earlier releases shipped them as a
-separate `seestar-copy-cli`.
+separate `seestar-copy-cli`. `scan` lists the telescopes that answer the
+phone app's scan request on this network, to find an address for
+`--endpoint`; see [scan](files-cli.md#scan).
 
 The app's executable, `seestar-wormhole`, has the same file commands. On
 Windows its exit codes don't reach scripts, so scripts use
@@ -239,7 +243,7 @@ validates other supplied flags.
 See the [versioning policy](../versioning.md) for the release contract.
 
 Operational flags are local to their command (`ui`, `proxy`, `discovery`,
-`sync`, `find`, `browse` or `delete`); they are not root options.
+`sync`, `find`, `browse`, `delete` or `scan`); they are not root options.
 `--version` is available at the root and on `proxy` and `discovery`.
 Long flags use double dashes, with the value as
 `--flag value` or `--flag=value`. The only operational short flag is `-p` for
@@ -580,6 +584,32 @@ In trail entries:
 - A file-tool operation writes a line when it first fails, when its failure
   changes `phase` or `reason`, and when it next succeeds. Repeats of the same
   failure stay in memory, in the UI's status `failures` and the copied summary.
+- Scans of this network are `connection` lines with one of these `code`
+  values, a message that names at most the telescope's model and the reply
+  count, and no `phase` or `reason`:
+  - `scan_listed`: **On this network** scanned, with the reply count.
+  - `scan_probed`: **Test** sent the scan request to the typed address.
+  - `scan_failed`: a scan couldn't run, such as with no network to scan.
+  - `scan_moved`: a connect's scan found the saved serial at another
+    address, which connected and was saved.
+  - `scan_moved_unsaved`: as `scan_moved`, but the new address wasn't saved:
+    the settings changed meanwhile, a connection is running, or the save
+    failed. The copier still uses it.
+  - `scan_unreached`: a connect's scan found the saved serial, but no
+    address it answered from accepted file sharing, including when
+    another telescope also answered at the saved address.
+  - `scan_not_seen`: a connect's scan didn't see the saved serial, so the
+    saved address was tried, whether or not it connected.
+  - `scan_other_telescope`: another telescope answers at the saved address
+    and the scan didn't see the saved serial anywhere; the saved address
+    isn't used, and the connect fails.
+
+  A connect scans as `lan_scan` in
+  [`config.json`](app-settings.md#configjson-version-1) says: by default
+  once per run (starting copying, opening Browse, each preview or Free up
+  space check), and again only when a connect fails; with `connect`, on
+  every connect; with `off`, never, so none of the connect codes above is
+  recorded, and `scan_probed` neither.
 - File-tool lines carry a fixed message and the classified `phase` and
   `reason`. They leave out paths, file and folder names, endpoints and error
   text. Connection lines keep their telescope text, including the selected
@@ -871,6 +901,14 @@ LAN discovery uses the [shared responder](#lan-discovery).
 For build/runtime coverage, see [status](../status.md).
 
 ## LAN discovery
+
+This section is about answering scans: the proxy and `discovery` stand in
+for the telescope so the phone app finds it. Sending scans is the other
+side: the app's **On this network** and the [scan](files-cli.md#scan)
+command send the phone app's `scan_iscope` request to UDP port 4720 and list
+the telescopes that answer. They skip replies from this computer's own
+addresses, so a proxy here doesn't list itself; a proxy on another
+computer answers like a telescope, with the serial it stands in for.
 
 For the proxy, enable `--lan-discovery` with a literal LAN IPv4 bind or
 `0.0.0.0`. The [discovery command](#discovery) uses the same responder without

@@ -210,6 +210,11 @@ func displaySerial(serial string) string {
 	return quoted[1 : len(quoted)-1]
 }
 
+// ModelLabel is a model as logs and lists show it: escaped and capped as
+// displayModel does. A model from any source, a LAN scan's included, is
+// shown this way.
+func ModelLabel(model string) string { return displayModel(model) }
+
 // displayModel uses Go's ASCII string escaping for model labels.
 // The 64-character limit includes escapes and a truncation marker. Wire values
 // remain untouched for selection. Dropping whole runes preserves whole escapes.

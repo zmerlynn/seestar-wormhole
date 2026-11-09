@@ -1,0 +1,369 @@
+package ui
+
+import (
+	"encoding/json/v2"
+	"errors"
+	"net"
+	"net/netip"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"testing"
+	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
+	"golang.org/x/net/ipv4"
+)
+
+// lanNet is a network of telescopes with no sockets behind it: each send
+// is answered by the telescopes it reaches.
+type lanNet struct {
+	mu      sync.Mutex
+	answers map[netip.Addr][3]string // serial, ssid, model by address
+	clients int
+	sendErr error
+	sent    []netip.Addr
+	listens int // sockets opened: one per scan or probe
+}
+
+func (n *lanNet) scans() int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.listens
+}
+
+func (n *lanNet) set(answers map[netip.Addr][3]string) {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	n.answers = answers
+}
+
+func (n *lanNet) sends() []netip.Addr {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return append([]netip.Addr(nil), n.sent...)
+}
+
+// useLAN makes the app's scanner scan n, from a computer at 192.0.2.5/24.
+func useLAN(t *testing.T, n *lanNet) {
+	t.Helper()
+	saved := lanScanner
+	t.Cleanup(func() { lanScanner = saved })
+	lanScanner = &landiscovery.Scanner{
+		Interfaces: lanInterfaces{},
+		Listen: func() (landiscovery.Conn, error) {
+			n.mu.Lock()
+			n.listens++
+			n.mu.Unlock()
+			return &lanConn{n: n, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}, nil
+		},
+		Interval: 20 * time.Millisecond,
+		Window:   200 * time.Millisecond,
+	}
+}
+
+type lanInterfaces struct{}
+
+var lanIfaces = []net.Interface{{Index: 1, Name: "lo", Flags: net.FlagUp | net.FlagLoopback}, {Index: 2, Name: "en0", Flags: net.FlagUp | net.FlagBroadcast}}
+
+func (lanInterfaces) List() ([]net.Interface, error) { return lanIfaces, nil }
+func (lanInterfaces) ByIndex(i int) (*net.Interface, error) {
+	return &lanIfaces[i-1], nil
+}
+func (lanInterfaces) Addrs(iface *net.Interface) ([]net.Addr, error) {
+	if iface.Index == 1 {
+		return []net.Addr{&net.IPNet{IP: net.IPv4(127, 0, 0, 1), Mask: net.CIDRMask(8, 32)}}, nil
+	}
+	return []net.Addr{&net.IPNet{IP: net.IPv4(192, 0, 2, 5), Mask: net.CIDRMask(24, 32)}}, nil
+}
+
+type lanDatagram struct {
+	b    []byte
+	from netip.Addr
+}
+
+type lanConn struct {
+	n        *lanNet
+	mu       sync.Mutex
+	deadline time.Time
+	closed   bool
+	in       chan lanDatagram
+	wake     chan struct{}
+}
+
+func (c *lanConn) ReadFrom(b []byte) (int, net.Addr, error) {
+	for {
+		c.mu.Lock()
+		deadline, closed := c.deadline, c.closed
+		c.mu.Unlock()
+		if closed {
+			return 0, nil, net.ErrClosed
+		}
+		wait := time.Hour
+		if !deadline.IsZero() {
+			if wait = time.Until(deadline); wait <= 0 {
+				return 0, nil, os.ErrDeadlineExceeded
+			}
+		}
+		timer := time.NewTimer(wait)
+		select {
+		case d := <-c.in:
+			timer.Stop()
+			return copy(b, d.b), net.UDPAddrFromAddrPort(netip.AddrPortFrom(d.from, landiscovery.Port)), nil
+		case <-timer.C:
+		case <-c.wake:
+			timer.Stop()
+		}
+	}
+}
+
+func (c *lanConn) WriteTo(b []byte, _ *ipv4.ControlMessage, to net.Addr) (int, error) {
+	target := to.(*net.UDPAddr).AddrPort().Addr()
+	c.n.mu.Lock()
+	defer c.n.mu.Unlock()
+	c.n.sent = append(c.n.sent, target)
+	if c.n.sendErr != nil {
+		return 0, c.n.sendErr
+	}
+	for address, a := range c.n.answers {
+		if target == address || target == netip.MustParseAddr("192.0.2.255") {
+			reply := `{"jsonrpc":"2.0","method":"scan_iscope","result":{"sn":"` + a[0] + `","ssid":"` + a[1] + `","product_model":"` + a[2] +
+				`","tcp_client_num":` + strconv.Itoa(c.n.clients) + `,"connect_lock":false,"password":"0123456789abcdef0123456789abcdef"},"code":0,"id":1}`
+			select {
+			case c.in <- lanDatagram{[]byte(reply), address}:
+			default:
+			}
+		}
+	}
+	return len(b), nil
+}
+
+func (c *lanConn) SetReadDeadline(t time.Time) error {
+	c.mu.Lock()
+	c.deadline = t
+	c.mu.Unlock()
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func (c *lanConn) Close() error {
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
+	select {
+	case c.wake <- struct{}{}:
+	default:
+	}
+	return nil
+}
+
+func twoTelescopes() *lanNet {
+	return &lanNet{answers: map[netip.Addr][3]string{
+		netip.MustParseAddr("192.0.2.20"): {"SERIAL-A", "S50_A", "Seestar S50"},
+		netip.MustParseAddr("192.0.2.40"): {"SERIAL-B", "S30_B", "Seestar S30"},
+	}}
+}
+
+func scanPost(t *testing.T, s *server, body string) scanView {
+	t.Helper()
+	w := doPost(s, "/api/scan", body)
+	if w.Code != 200 {
+		t.Fatalf("scan = %d %s", w.Code, w.Body)
+	}
+	for _, secret := range []string{"SERIAL-", "password", "0123456789abcdef"} {
+		if strings.Contains(w.Body.String(), secret) {
+			t.Fatalf("scan answer carries %q: %s", secret, w.Body)
+		}
+	}
+	var v scanView
+	if err := json.Unmarshal(w.Body.Bytes(), &v); err != nil {
+		t.Fatal(err)
+	}
+	return v
+}
+
+// trailText is Activity's lines and gui.log, which must name no address,
+// name or serial.
+func trailText(t *testing.T, s *server) string {
+	t.Helper()
+	events, _, _, _ := s.controller.log.trail()
+	b, _ := json.Marshal(events)
+	disk, _ := os.ReadFile(filepath.Join(s.storage.root, "gui.log"))
+	text := string(b) + string(disk)
+	for _, private := range []string{"192.0.2.", "SERIAL-", "S50_A", "S30_B", "0123456789abcdef"} {
+		if strings.Contains(text, private) {
+			t.Fatalf("the trail names %q: %s", private, text)
+		}
+	}
+	return text
+}
+
+func TestScanListsTelescopes(t *testing.T) {
+	n := twoTelescopes()
+	useLAN(t, n)
+	s := testServer(t)
+	s.controller.log = &eventLog{storage: s.storage}
+	v := scanPost(t, s, `{}`)
+	if !v.OK || v.Replies != 6 || v.Blocked || v.Message != "" || len(v.Telescopes) != 2 {
+		t.Fatalf("scan %+v", v)
+	}
+	byName := map[string]scanTelescope{}
+	for _, row := range v.Telescopes {
+		byName[row.Name] = row
+	}
+	if a := byName["S50_A"]; a.Model != "Seestar S50" || len(a.Addresses) != 1 || a.Addresses[0] != "192.0.2.20" || a.Busy || a.Saved {
+		t.Fatalf("row %+v", a)
+	}
+	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_listed"`) || !strings.Contains(text, "Scanned this network: 6 replies.") {
+		t.Fatalf("trail %s", text)
+	}
+
+	n.clients = landiscovery.BusyClients
+	if v := scanPost(t, s, `{}`); !v.Telescopes[0].Busy {
+		t.Fatalf("busy telescope not marked: %+v", v)
+	}
+}
+
+func TestScanMessages(t *testing.T) {
+	saved := hostOS
+	t.Cleanup(func() { hostOS = saved })
+	for _, goos := range []string{"darwin", "linux", "windows"} {
+		hostOS = goos
+		s := testServer(t)
+
+		useLAN(t, &lanNet{})
+		v := scanPost(t, s, `{}`)
+		if v.Blocked || !strings.HasPrefix(v.Message, scanNone) || strings.Contains(v.Message, "System Settings") != (goos == "darwin") {
+			t.Fatalf("%s silence: %+v", goos, v)
+		}
+
+		useLAN(t, &lanNet{sendErr: &net.OpError{Op: "write", Net: "udp", Err: os.NewSyscallError("sendto", syscall.EHOSTUNREACH)}})
+		v = scanPost(t, s, `{}`)
+		// Only on macOS is no route to host a Local Network denial.
+		if want := scanNoRoute; !v.Blocked || (goos == "darwin") != strings.HasPrefix(v.Message, scanBlocked) ||
+			(goos != "darwin" && v.Message != want) || strings.Contains(v.Message, "System Settings") != (goos == "darwin") {
+			t.Fatalf("%s blocked: %+v", goos, v)
+		}
+
+		useLAN(t, &lanNet{sendErr: errors.New("synthetic send failure")})
+		if v = scanPost(t, s, `{}`); v.Message != scanFailed {
+			t.Fatalf("%s failed: %+v", goos, v)
+		}
+	}
+	useLAN(t, &lanNet{})
+	lanScanner.Interfaces = noInterfaces{}
+	if v := scanPost(t, testServer(t), `{}`); v.Message != scanNoInterface {
+		t.Fatalf("no interface: %+v", v)
+	}
+}
+
+type noInterfaces struct{ lanInterfaces }
+
+func (noInterfaces) List() ([]net.Interface, error) { return lanIfaces[:1], nil }
+
+func TestScanTypedAddress(t *testing.T) {
+	n := twoTelescopes()
+	useLAN(t, n)
+	s := testServer(t)
+	v := scanPost(t, s, `{"address":"192.0.2.40:445"}`)
+	if len(v.Telescopes) != 1 || v.Telescopes[0].Name != "S30_B" || v.Message != "" {
+		t.Fatalf("probe %+v", v)
+	}
+	for _, sent := range n.sends() {
+		if sent != netip.MustParseAddr("192.0.2.40") {
+			t.Fatalf("probe sent to %s", sent)
+		}
+	}
+	// Nothing answering a typed address is for Test to explain.
+	if v := scanPost(t, s, `{"address":"192.0.2.77"}`); len(v.Telescopes) != 0 || v.Message != "" {
+		t.Fatalf("silent probe %+v", v)
+	}
+	// A name is only tested, never scanned.
+	before := len(n.sends())
+	if v := scanPost(t, s, `{"address":"seestar.example.invalid"}`); len(v.Telescopes) != 0 || len(n.sends()) != before {
+		t.Fatalf("name probe %+v", v)
+	}
+	if w := doPost(s, "/api/scan", `{"address":"192.0.2.1:99999"}`); w.Code != 400 || !strings.Contains(w.Body.String(), `"lan_address"`) {
+		t.Fatalf("bad address = %d %s", w.Code, w.Body)
+	}
+}
+
+// Saving an address a scan saw saves its serial with it; the page never
+// gets the serial back.
+func TestSaveRouteKeepsScannedSerial(t *testing.T) {
+	useLAN(t, twoTelescopes())
+	s, _ := copyServer(t)
+	scanPost(t, s, `{}`)
+	saved := func() Settings {
+		t.Helper()
+		got, err := loadSettings(s.storage)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.20"); err != nil {
+		t.Fatal(err)
+	}
+	if got := saved(); got.LANAddress != "192.0.2.20:445" || got.LANSerial != "SERIAL-A" {
+		t.Fatalf("saved %+v", got)
+	}
+	if w := serve(s, request(s, "GET", "/api/status", "")); strings.Contains(w.Body.String(), "SERIAL-A") {
+		t.Fatalf("status carries the serial: %s", w.Body)
+	}
+	if v := scanPost(t, s, `{}`); !(v.Telescopes[0].Saved != v.Telescopes[1].Saved) {
+		t.Fatalf("the saved telescope isn't marked once: %+v", v)
+	}
+	// The same address again, with nothing scanned since a restart, keeps it.
+	s.lan = lanState{}
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.20:445"); err != nil {
+		t.Fatal(err)
+	}
+	if got := saved(); got.LANSerial != "SERIAL-A" {
+		t.Fatalf("resave lost the serial: %+v", got)
+	}
+	// The account route keeps it for a switch back.
+	if err := s.saveRoute(t.Context(), routeAccount, ""); err != nil {
+		t.Fatal(err)
+	}
+	if got := saved(); got.LANSerial != "SERIAL-A" || got.LANAddress != "192.0.2.20:445" {
+		t.Fatalf("account route dropped the address: %+v", got)
+	}
+	// An address no scan saw has no serial.
+	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.21"); err != nil {
+		t.Fatal(err)
+	}
+	if got := saved(); got.LANSerial != "" {
+		t.Fatalf("another address kept the serial: %+v", got)
+	}
+}
+
+func TestLANSerialIsOptional(t *testing.T) {
+	st := testStorage(t)
+	old := testSettings()
+	old.Route, old.LANAddress, old.RouteEstablished = routeLAN, "192.0.2.20:445", true
+	if err := st.write("config.json", old); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(filepath.Join(st.root, "config.json"))
+	if strings.Contains(string(b), "lan_serial") {
+		t.Fatalf("an empty serial was written: %s", b)
+	}
+	got, err := loadSettings(st)
+	if err != nil || got.LANSerial != "" || got.LANAddress != old.LANAddress {
+		t.Fatalf("%+v %v", got, err)
+	}
+	old.LANSerial = "SERIAL-A"
+	if err := st.write("config.json", old); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := loadSettings(st); err != nil || got.LANSerial != "SERIAL-A" {
+		t.Fatalf("%+v %v", got, err)
+	}
+}

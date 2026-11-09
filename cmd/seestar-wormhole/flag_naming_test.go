@@ -90,7 +90,7 @@ func TestRootUsageErrorLabel(t *testing.T) {
 // new spelling; proxy's own --state-dir is another folder and still parses.
 func TestRetiredStateDir(t *testing.T) {
 	files := fileArgs(t)
-	for _, name := range fileCommandNames {
+	for _, name := range copyCommandNames {
 		for _, form := range [][]string{{"--state-dir", "PRIVATE_VALUE"}, {"--state-dir=PRIVATE_VALUE"}, {"--state-dir"}} {
 			args := append(append([]string{}, files[name]...), form...)
 			code, record, logs := usageExit(t, args...)

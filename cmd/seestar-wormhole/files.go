@@ -13,14 +13,20 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// fileCommandNames are the commands mounted from internal/copy/cli.
-var fileCommandNames = []string{"sync", "find", "browse", "delete"}
+// copyCommandNames are the file commands that reach a telescope's share,
+// take --profile and once took --state-dir.
+var copyCommandNames = []string{"sync", "find", "browse", "delete"}
+
+// fileCommandNames are the commands mounted from internal/copy/cli: the
+// copy commands and scan.
+var fileCommandNames = append(slices.Clone(copyCommandNames), "scan")
 
 // fileSources are the diagnostic sources of the file commands, named on
 // their failure records.
 var fileSources = map[string]string{
 	"sync": diagnostic.SourceCopy, "find": diagnostic.SourceFind,
 	"browse": diagnostic.SourceBrowse, "delete": diagnostic.SourceDelete,
+	"scan": diagnostic.SourceScan,
 }
 
 func fileCommand(name string) bool { return slices.Contains(fileCommandNames, name) }
