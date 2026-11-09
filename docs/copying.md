@@ -45,7 +45,7 @@ whether to start copying when the app opens. [Using the UI](ui.md#copy) has ever
 **Browse** shows the telescope's files one folder at a time, with its `.jpg`
 images, `.txt` logs and FITS headers, and, once Copy's folder is saved, marks
 which are copied, changed, new or left out. It changes nothing on the telescope; **Save** saves a file you
-pick. See [Browse](ui.md#browse).
+pick, once Copy's folder is saved. See [Browse](ui.md#browse).
 
 **Free up space** deletes images from the telescope once they are safely
 copied. Copy first, make your own backup or export of the folder, then

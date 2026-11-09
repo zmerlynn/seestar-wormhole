@@ -459,16 +459,29 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if old != nil {
 			old.Retire()
 		}
-		// A window's webview may not save a download itself, so the app
-		// does, with the window's save dialog.
-		var serve http.Handler = h
-		if s.native.SaveFile != nil {
-			serve = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if p, ok := h.Download(w, r); ok {
-					s.saveFile(w, r, sessions, p)
+		// Saving a file waits for its telescope's folder: the file may
+		// belong in it. A window's webview may not save a download
+		// itself, so the app does, with the window's save dialog; without
+		// a window the browser saves what Browse sends.
+		serve := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			p, ok := h.Download(w, r)
+			switch {
+			case !ok:
+			case !s.hasFolder():
+				if s.native.SaveFile == nil {
+					http.Error(w, noFolderAlert, http.StatusConflict)
+					return
 				}
-			})
-		}
+				if s.native.Alert != nil {
+					s.native.Alert(noFolderAlert)
+				}
+				w.WriteHeader(http.StatusNoContent)
+			case s.native.SaveFile != nil:
+				s.saveFile(w, r, sessions, p)
+			default:
+				h.ServeHTTP(w, r)
+			}
+		})
 		http.StripPrefix("/browse", serve).ServeHTTP(w, r)
 	default:
 		http.Error(w, "Not found", http.StatusNotFound)
@@ -1110,19 +1123,6 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *browse.Sessions, p string) {
 	name := path.Base(p)
 	var dst, alert string
-	// Once another telescope has a folder, a save waits for this one's:
-	// the file may belong in it. Before any folder is saved, a save goes
-	// anywhere, as before.
-	s.mu.Lock()
-	waits := s.file.exists && s.file.settings.claimed() && s.folderAt(s.current()) == ""
-	s.mu.Unlock()
-	if waits {
-		if s.native.Alert != nil {
-			s.native.Alert(noFolderAlert)
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
 	lease, err := sessions.Get(r.Context())
 	if err == nil {
 		defer lease.Release()
@@ -1150,6 +1150,13 @@ func (s *server) saveFile(w http.ResponseWriter, r *http.Request, sessions *brow
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+// hasFolder reports whether the telescope the target is now has a folder.
+func (s *server) hasFolder() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.folderAt(s.current()) != ""
 }
 
 // noFolderAlert answers a save before the telescope's folder is chosen.

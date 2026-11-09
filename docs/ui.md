@@ -319,10 +319,11 @@ is using this folder. Try saving it again.** and saves nothing. A file named
 `.seestar-wormhole.lock`, in any letter case, can't be saved at the top of
 that folder: **That name is kept for the copy lock. Choose another name or
 folder.** A save anywhere else takes no lock. A save into any telescope's
-folder takes that folder's lock. Once another telescope has a folder, a save
-waits for this one's: until it is chosen, **Save** says **This telescope has
-no folder yet. Choose one in Copy, then save the file again.** and saves
-nothing.
+folder takes that folder's lock. A save waits for the telescope's folder,
+the first telescope's too: until it is chosen, **Save** says **This
+telescope has no folder yet. Choose one in Copy, then save the file again.**
+and saves nothing; in a browser, the download fails with that message.
+Listing and viewing files need no folder.
 
 ### Free up space
 

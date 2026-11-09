@@ -510,6 +510,42 @@ func TestSaveFileWaitsForFolder(t *testing.T) {
 	}
 }
 
+// Saving a file waits for its telescope's folder, the first telescope's
+// too, in the window and in the browser: no dialog, no file and no
+// download until Copy has one. Listing and viewing need none.
+func TestDownloadWaitsForFolder(t *testing.T) {
+	first := t.TempDir()
+	for _, tc := range []struct {
+		name string
+		set  *Settings
+		key  string
+	}{
+		{"first telescope, nothing saved", nil, keyA},
+		{"first telescope, no folder saved", &Settings{Version: 1, IntervalMinutes: 10, FilesAtOnce: 4}, keyA},
+		{"second telescope", claimedAt(first, map[string]string{keyA: first}), keyB},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e := newAppEnv(t, tc.set)
+			e.key = tc.key
+			w := e.serve("GET", xURL, "")
+			if w.Code != http.StatusConflict || strings.TrimSpace(w.Body.String()) != noFolderAlert {
+				t.Errorf("browser download = %d %q", w.Code, w.Body)
+			}
+			if w := e.serve("GET", strings.TrimSuffix(xURL, "&download=1"), ""); w.Code != 200 || w.Body.String() != "x" {
+				t.Errorf("view = %d %q", w.Code, w.Body)
+			}
+			f := &fakeNative{answer: filepath.Join(t.TempDir(), "x.txt")}
+			e.s.native = f.native()
+			if w := e.serve("GET", xURL, ""); w.Code != http.StatusNoContent || len(f.saves) != 0 || !slices.Equal(f.alerts, []string{noFolderAlert}) {
+				t.Errorf("save = %d, dialogs %q, alerts %q", w.Code, f.saves, f.alerts)
+			}
+			if _, err := os.Stat(f.answer); err == nil {
+				t.Error("saved before the folder was chosen")
+			}
+		})
+	}
+}
+
 // No log or Activity line names a telescope's folder, its serial or its
 // address, whatever Copy, Test, Save, the offer and Free up space do.
 func TestTelescopeFoldersStayOutOfLogs(t *testing.T) {
