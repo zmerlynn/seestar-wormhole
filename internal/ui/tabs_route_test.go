@@ -80,6 +80,37 @@ func TestLANFormPage(t *testing.T) {
 	}
 }
 
+// The LAN form's choice of when to scan, with the server's own statuses
+// for each choice and its own replies.
+func TestLANWhenPage(t *testing.T) {
+	s, _ := copyServer(t)
+	statuses := map[string]jsontext.Value{}
+	for _, when := range []string{"start", "connect", "off"} {
+		if w := serve(s, request(s, "POST", "/api/lan-scan", `{"settings":{"lan_scan":"`+when+`"}}`)); w.Code != 200 {
+			t.Fatalf("lan-scan %s = %d %s", when, w.Code, w.Body)
+		}
+		statuses[when] = jsontext.Value(serve(s, request(s, "GET", "/api/status", "")).Body.String())
+	}
+	account, _ := copyServer(t)
+	statuses["account"] = jsontext.Value(serve(account, request(account, "GET", "/api/status", "")).Body.String())
+	if strings.Contains(string(statuses["account"]), "lan_scan") || !strings.Contains(string(statuses["off"]), `"lan_scan":"off"`) {
+		t.Fatalf("statuses %s", statuses)
+	}
+	replies := map[string]jsontext.Value{}
+	w := serve(s, request(s, "POST", "/copy/api/test", `{"address":"192.0.2.20"}`))
+	replies["192.0.2.20"] = jsontext.Value(`{"status":` + strconv.Itoa(w.Code) + `,"body":` + w.Body.String() + `}`)
+	locked, _ := json.Marshal(map[string]string{"code": "route_locked", "message": errorCopy("route_locked")})
+	replies["locked"] = locked
+	replies["scans"] = scanReplies(t, s)
+	encodedStatuses, _ := json.Marshal(statuses)
+	encoded, _ := json.Marshal(replies)
+	for _, scenario := range []string{"off", "choose", "newer"} {
+		t.Run(scenario, func(t *testing.T) {
+			runPageRegression(t, "tabs-route-test.js", "checkLANWhen("+string(encodedStatuses)+","+string(encoded)+","+strconv.Quote(scenario)+")")
+		})
+	}
+}
+
 // scanReplies is the server's own /api/scan answers, by typed address or
 // "" for a scan of the whole network: two telescopes, a blocked scan on a
 // Mac, and silence.

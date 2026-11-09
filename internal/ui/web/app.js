@@ -324,18 +324,20 @@ function routeControls(blocked) {
   $('lan-options').disabled = blocked || active || busy || !!lanPending;
   text('lan-test', lanPending === 'test' ? 'Testing…' : 'Test');
   text('lan-save', lanPending === 'save' ? 'Saving…' : 'Save');
+  if (lanPending !== 'when' && $('lan-when').value !== lanWhen()) $('lan-when').value = lanWhen();
   $('lan-scan').disabled = lanScanning;
   text('lan-scan', lanScanning ? 'Scanning…' : lanScanned ? 'Scan again' : 'Scan');
   connectionLine();
   lanAutoScan();
 }
 // On this network scans by itself when the user opens it, and when it is
-// shown with no address saved. A form locked by a run doesn't scan.
+// shown with no address saved. A form locked by a run doesn't scan, and
+// neither does one set never to scan.
 function lanAutoScan() {
   const shown = !!state && !$('lan-route').hidden;
   const opened = shown && !lanShown;
   lanShown = shown;
-  if (opened && !$('lan-options').disabled && (lanOpened || !state.settings?.lan_address)) lanScan();
+  if (opened && !$('lan-options').disabled && lanWhen() !== 'off' && (lanOpened || !state.settings?.lan_address)) lanScan();
   if (shown) lanOpened = false;
 }
 function lanScanResult(message, tone = '') {
@@ -458,8 +460,9 @@ async function lanTest() {
   controls();
   let focus = '', r = null;
   // The scan request goes straight to the typed address too, so a Save
-  // after it saves which telescope answered there.
-  const probe = typed ? api('scan', {address: typed}).catch(() => null) : Promise.resolve(null);
+  // after it saves which telescope answered there; not when set never to
+  // scan.
+  const probe = typed && lanWhen() !== 'off' ? api('scan', {address: typed}).catch(() => null) : Promise.resolve(null);
   try {
     let seen;
     [r, seen] = await Promise.all([api('test', {address: typed}, '/copy/api/'), probe]);
@@ -518,6 +521,35 @@ async function lanSave() {
     return;
   }
   lanResult('Saved. ' + address + ' is reachable.', 'ok');
+}
+// lanWhen is when a connect scans for the saved telescope: the saved
+// lan_scan, and start, the default, for none or one this page doesn't know.
+function lanWhen() {
+  const when = state?.settings?.lan_scan;
+  return when === 'connect' || when === 'off' ? when : 'start';
+}
+function lanWhenResult(message, tone = '') {
+  text('lan-when-result', message);
+  if (tone) $('lan-when-result').setAttribute('data-tone', tone);
+  else $('lan-when-result').removeAttribute('data-tone');
+}
+// Choosing when to scan saves it at once; a refused choice goes back.
+async function lanWhenSave() {
+  if (lanPending) return;
+  const when = $('lan-when').value;
+  lanPending = 'when';
+  lanWhenResult('');
+  controls();
+  try {
+    await api('lan-scan', {settings: {lan_scan: when}});
+    await refresh();
+    lanWhenResult('Saved.', 'ok');
+  } catch (e) {
+    lanWhenResult(e.message || lostCopy, 'error');
+  } finally {
+    lanPending = '';
+    controls();
+  }
 }
 // Tabs: only the enabled ones can be selected; Arrow, Home and End move
 // among them and focus follows, as in seestar-copy.
@@ -1647,6 +1679,7 @@ $('lan-form').addEventListener('submit', e => {
 });
 $('lan-test').addEventListener('click', lanTest);
 $('lan-scan').addEventListener('click', lanScan);
+$('lan-when').addEventListener('change', lanWhenSave);
 $('copy-reach-go').addEventListener('click', goReach);
 $('copy-form').addEventListener('submit', e => {
   e.preventDefault();
