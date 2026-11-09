@@ -314,21 +314,26 @@ func TestNewFollow(t *testing.T) {
 	}
 }
 
+// fakeSession is what fakeDial connects: where it connected.
+type fakeSession string
+
+func (fakeSession) Close() error { return nil }
+
 // fakeDial answers at the addresses in up and gets no answer elsewhere.
 // Its labeled form records the name it was given in names.
-func fakeDial(calls *[]string, up ...string) func(context.Context, string, *slog.Logger) (string, error) {
-	return func(_ context.Context, endpoint string, _ *slog.Logger) (string, error) {
+func fakeDial(calls *[]string, up ...string) func(context.Context, string, *slog.Logger) (fakeSession, error) {
+	return func(_ context.Context, endpoint string, _ *slog.Logger) (fakeSession, error) {
 		*calls = append(*calls, endpoint)
 		if slices.Contains(up, endpoint) {
-			return "session at " + endpoint, nil
+			return fakeSession("session at " + endpoint), nil
 		}
 		return "", &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
 	}
 }
 
-func fakeDialAs(names *[]string, calls *[]string, up ...string) func(context.Context, string, string, *slog.Logger) (string, error) {
+func fakeDialAs(names *[]string, calls *[]string, up ...string) func(context.Context, string, string, *slog.Logger) (fakeSession, error) {
 	d := fakeDial(calls, up...)
-	return func(ctx context.Context, name, endpoint string, log *slog.Logger) (string, error) {
+	return func(ctx context.Context, name, endpoint string, log *slog.Logger) (fakeSession, error) {
 		*names = append(*names, name)
 		return d(ctx, endpoint, log)
 	}
@@ -342,7 +347,7 @@ func TestFollowDial(t *testing.T) {
 	log := diagnostic.Logger("text", &logs, slog.LevelInfo)
 	f := newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}, none)
 	var calls, plain, names []string
-	follow := func(f *follow, endpoint string, up ...string) (string, error) {
+	follow := func(f *follow, endpoint string, up ...string) (fakeSession, error) {
 		calls, plain, names = nil, nil, nil
 		return followDial(ctx, f, endpoint, log, fakeDial(&plain, up...), fakeDialAs(&names, &calls, up...))
 	}

@@ -9,10 +9,11 @@ import (
 	"sync"
 )
 
-// ErrOtherTelescope is a connect to a telescope saved with its serial that
-// found another telescope answering at the saved address and the saved one
-// nowhere. The saved address is not used.
-var ErrOtherTelescope = errors.New("another telescope answers at the saved address, and the saved telescope wasn't found on this network")
+// ErrOtherTelescope is a connect to a telescope saved with its serial
+// whose saved address advertised another serial in the scan, so that
+// address wasn't used, and no other address connected. It stays true when
+// the saved serial also answered, from that address or elsewhere.
+var ErrOtherTelescope = errors.New("the saved address advertised a different telescope and cannot be used for this target")
 
 // Resolved is how [Follow] reached a telescope. Endpoint is the endpoint it
 // connected to, or the saved one when none connected; Moved reports that it
@@ -34,13 +35,24 @@ type Resolved struct {
 // Every connect scans: it dials each address that answers the scan with
 // serial, on endpoint's port, as the replies arrive, the saved address
 // first when it is among those waiting, and stops the scan once one
-// connects. An address whose dial fails doesn't end the search. When the
-// scan found serial nowhere it dials endpoint as it is, unless another
-// serial answered from the saved address: that address is never used for
-// this telescope. When serial answered but no address connected, it
-// returns the last dial's error. Without a serial or a scanner it dials
-// endpoint alone, without scanning.
-func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dial func(context.Context, string) (T, error)) (T, Resolved, error) {
+// connects. An address whose dial fails doesn't end the search.
+//
+// Once another serial has answered from the saved address, that address
+// is never used for this telescope: a connection to it made while that
+// reply arrived is released and the search goes on, within the same scan.
+// A connection to another address is kept over the saved one only if the
+// saved address hasn't answered with serial by the time it connects;
+// otherwise the saved address is dialed too, and whichever connection
+// loses is released. release owns every connection Follow doesn't return.
+//
+// When the scan found serial nowhere it dials endpoint as it is, unless
+// another serial answered from the saved address: then it fails with
+// [ErrOtherTelescope]. When serial answered but no address connected, it
+// returns the last dial's error, or ErrOtherTelescope when the only
+// address was the disqualified saved one. A nil error always comes with a
+// connection from dial. Without a serial or a scanner it dials endpoint
+// alone, without scanning.
+func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dial func(context.Context, string) (T, error), release func(T)) (T, Resolved, error) {
 	var zero T
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil || serial == "" || s == nil {
@@ -65,6 +77,35 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		<-finished
 	}
 	var pending []netip.Addr
+	// collect moves what the scan has found so far into pending.
+	collect := func() {
+		for {
+			select {
+			case a := <-w.found:
+				pending = append(pending, a)
+			default:
+				return
+			}
+		}
+	}
+	// takeSaved removes the saved address from pending, and reports
+	// whether it was there and may be used.
+	takeSaved := func() bool {
+		i := slices.Index(pending, saved)
+		if i < 0 {
+			return false
+		}
+		pending = slices.Delete(pending, i, i+1)
+		return !w.conflicted()
+	}
+	// done ends a successful search at address.
+	done := func(v T, address netip.Addr) (T, Resolved, error) {
+		stop()
+		r := w.resolved(endpoint, result.Replies)
+		r.Endpoint = net.JoinHostPort(address.String(), port)
+		r.Moved = address != saved
+		return v, r, nil
+	}
 	var last error
 	scanning := true
 	for {
@@ -76,50 +117,77 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 				scanning = false
 			case <-ctx.Done():
 				stop()
-				return zero, Resolved{Endpoint: endpoint, Replies: result.Replies}, ctx.Err()
+				return zero, w.resolved(endpoint, result.Replies), ctx.Err()
 			}
 		}
-	drain:
-		for {
-			select {
-			case a := <-w.found:
-				pending = append(pending, a)
-			default:
-				break drain
-			}
-		}
+		collect()
 		if len(pending) == 0 {
 			if scanning {
 				continue
 			}
 			break
 		}
-		i := max(slices.Index(pending, saved), 0)
-		address := pending[i]
-		pending = slices.Delete(pending, i, i+1)
-		if address == saved && w.conflicted() {
+		var address netip.Addr
+		if slices.Contains(pending, saved) {
+			if !takeSaved() {
+				continue
+			}
+			address = saved
+		} else {
+			address, pending = pending[0], pending[1:]
+		}
+		v, err := dial(ctx, net.JoinHostPort(address.String(), port))
+		if err != nil {
+			last = err
+			if ctx.Err() != nil {
+				stop()
+				return zero, w.resolved(endpoint, result.Replies), err
+			}
 			continue
 		}
-		next := net.JoinHostPort(address.String(), port)
-		v, err := dial(ctx, next)
-		if err == nil {
-			stop()
-			return v, Resolved{Endpoint: next, Moved: address != saved, Seen: w.telescope(), Replies: result.Replies}, nil
+		if address == saved {
+			// Another serial may have answered from it during the dial.
+			if w.conflicted() {
+				release(v)
+				continue
+			}
+			return done(v, saved)
 		}
-		last = err
-		if ctx.Err() != nil {
-			stop()
-			return zero, Resolved{Endpoint: endpoint, Seen: w.telescope(), Replies: result.Replies}, err
+		// The saved address may have answered with serial during this
+		// dial; it is still preferred.
+		collect()
+		if !takeSaved() {
+			return done(v, address)
 		}
+		u, err := dial(ctx, net.JoinHostPort(saved.String(), port))
+		switch {
+		case err != nil:
+			if ctx.Err() != nil {
+				release(v)
+				stop()
+				return zero, w.resolved(endpoint, result.Replies), err
+			}
+			return done(v, address)
+		case w.conflicted():
+			release(u)
+			return done(v, address)
+		}
+		release(v)
+		return done(u, saved)
 	}
-	r := Resolved{Endpoint: endpoint, Seen: w.telescope(), Conflict: w.conflicted(), Replies: result.Replies}
+	r := w.resolved(endpoint, result.Replies)
 	switch {
 	case ctx.Err() != nil:
 		return zero, r, ctx.Err()
-	case r.Seen != nil:
+	case last != nil:
 		return zero, r, last
 	case r.Conflict:
 		return zero, r, ErrOtherTelescope
+	case r.Seen != nil:
+		// Every address that answered with serial is dialed or, being the
+		// saved one, disqualified, so this isn't reached; a nil error
+		// without a connection must not be.
+		return zero, r, errors.New("the saved telescope answered, but no address was dialed")
 	}
 	r.NotSeen = true
 	v, err := dial(ctx, endpoint)
@@ -160,10 +228,11 @@ func (w *watcher) observe(t Telescope, from netip.Addr) {
 	w.found <- from
 }
 
-func (w *watcher) telescope() *Telescope {
+// resolved is a Resolved at endpoint with what the scan saw so far.
+func (w *watcher) resolved(endpoint string, replies int) Resolved {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.seen
+	return Resolved{Endpoint: endpoint, Seen: w.seen, Conflict: w.conflict, Replies: replies}
 }
 
 func (w *watcher) conflicted() bool {

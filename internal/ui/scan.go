@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/netip"
 	"sync"
@@ -260,7 +261,7 @@ type following struct {
 // share one scan: the others wait for it and dial where it connected, and
 // search on their own only if that fails. Activity names the model the
 // scan saw and the reply count, never an address, a name or the serial.
-func lanFollow[T any](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
+func lanFollow[T io.Closer](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
 	key := t.Endpoint + "\x00" + t.Serial
 	h.lan.mu.Lock()
 	if h.lan.follows == nil {
@@ -300,9 +301,9 @@ func lanFollow[T any](ctx context.Context, h *server, t copyapp.Target, dial fun
 
 // lanSearch is one search for t, the scan and its dials, and what it
 // saves and records.
-func lanSearch[T any](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
+func lanSearch[T io.Closer](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
 	gen := h.controller.routeGeneration()
-	v, r, err := landiscovery.Follow(ctx, lanScanner, t.Endpoint, t.Serial, dial)
+	v, r, err := landiscovery.Follow(ctx, lanScanner, t.Endpoint, t.Serial, dial, func(v T) { v.Close() })
 	if ctx.Err() != nil {
 		return v, t, err
 	}

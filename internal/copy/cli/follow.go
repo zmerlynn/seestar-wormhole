@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"sync"
 
@@ -56,7 +57,7 @@ func newFollow(s Saved, changed func(string) bool) *follow {
 // saved one, follows the telescope and dials with as, whose errors call it
 // lanName. The log records the model a scan saw and its reply count,
 // never an address, a name or the serial.
-func followDial[T any](ctx context.Context, f *follow, endpoint string, log *slog.Logger,
+func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, log *slog.Logger,
 	d func(context.Context, string, *slog.Logger) (T, error), as func(context.Context, string, string, *slog.Logger) (T, error)) (T, error) {
 	if f == nil || endpoint != f.saved {
 		return d(ctx, endpoint, log)
@@ -68,7 +69,7 @@ func followDial[T any](ctx context.Context, f *follow, endpoint string, log *slo
 	if pinned != "" {
 		return dial(ctx, pinned)
 	}
-	v, r, err := landiscovery.Follow(ctx, lanScanner, f.saved, f.serial, dial)
+	v, r, err := landiscovery.Follow(ctx, lanScanner, f.saved, f.serial, dial, func(v T) { v.Close() })
 	if ctx.Err() != nil {
 		return v, err
 	}
