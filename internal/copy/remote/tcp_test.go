@@ -8,6 +8,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/oserror"
 )
 
 // refusedEndpoint is a loopback endpoint nothing listens on.
@@ -29,8 +31,9 @@ func TestTCPErrorsNameNoAddress(t *testing.T) {
 	if err == nil {
 		t.Fatal("dialed a closed port")
 	}
+	// Windows refuses with its own Winsock error, which oserror matches.
 	op, ok := errors.AsType[*net.OpError](err)
-	if !ok || op.Op != "dial" || !errors.Is(err, syscall.ECONNREFUSED) {
+	if !ok || op.Op != "dial" || !oserror.Is(err, syscall.ECONNREFUSED) {
 		t.Fatalf("error %#v lost what failed", err)
 	}
 	if strings.Contains(err.Error(), "127.0.0.1") || strings.Contains(err.Error(), port) {
@@ -40,7 +43,7 @@ func TestTCPErrorsNameNoAddress(t *testing.T) {
 	// Through DialVia, as a serial-bound connect makes it.
 	_, err = DialVia(t.Context(), "the saved telescope", TCP(endpoint), nil)
 	if err == nil || strings.Contains(err.Error(), "127.0.0.1") || strings.Contains(err.Error(), port) ||
-		!strings.Contains(err.Error(), "the saved telescope") || !errors.Is(err, syscall.ECONNREFUSED) {
+		!strings.Contains(err.Error(), "the saved telescope") || !oserror.Is(err, syscall.ECONNREFUSED) {
 		t.Fatalf("DialVia error %q", err)
 	}
 }
