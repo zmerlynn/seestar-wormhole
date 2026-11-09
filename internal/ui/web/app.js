@@ -311,7 +311,8 @@ function controls() {
   }
 }
 // The route choice is locked while the Telescope Network route runs and while copying
-// or deleting runs; the LAN form is too.
+// or deleting runs; the LAN form is too. When to scan stays open while
+// copying, which takes it at its next connection.
 function routeControls(blocked) {
   if (active) routeChoice = 'account';
   const busy = !!state?.copy_busy;
@@ -322,6 +323,7 @@ function routeControls(blocked) {
   $('account-route').hidden = routeChoice !== 'account';
   $('lan-route').hidden = routeChoice !== 'lan';
   $('lan-options').disabled = blocked || active || busy || !!lanPending;
+  $('lan-when').disabled = blocked || active || !!pending || !!lanPending;
   text('lan-test', lanPending === 'test' ? 'Testing…' : 'Test');
   text('lan-save', lanPending === 'save' ? 'Saving…' : 'Save');
   if (lanPending !== 'when' && $('lan-when').value !== lanWhen()) $('lan-when').value = lanWhen();

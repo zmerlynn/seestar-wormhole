@@ -101,6 +101,7 @@ async function checkRouteChoice(statuses, scenario) {
     routeChoice = 'lan';
     render({...statuses.account, active: true, cancel: true, status: 'Connecting to your Seestar…'});
     tabAssert($('route-choice').disabled && !$('route-help').hidden && shown('account') && $('lan-options').disabled, 'the choice is open while the account route runs');
+    tabAssert($('lan-when').disabled, 'when to scan is open while the account route runs');
     tabAssert($('connection-text').textContent === 'Connecting to your Seestar…' && $('connection-dot').getAttribute('data-tone') === 'busy', 'header line while connecting');
     render({...statuses.account, active: true, ready: true, status: 'Connected to your Seestar'});
     tabAssert($('connection-text').textContent === 'Connected to your Seestar' && $('connection-dot').getAttribute('data-tone') === 'on', 'header line when connected');
@@ -118,6 +119,8 @@ async function checkRouteChoice(statuses, scenario) {
     routeChoice = 'lan';
     render({...statuses.lan, copy_busy: true});
     tabAssert($('route-choice').disabled && !$('route-help').hidden && $('lan-options').disabled && shown('lan'), 'the choice or LAN form is open while copying');
+    // When to scan stays open: copying takes it at its next connection.
+    for (let e = $('lan-when'); e; e = e.parentElement) tabAssert(!e.disabled, 'when to scan is disabled while copying by ' + e.id);
     render(statuses.lan);
     tabAssert(!$('route-choice').disabled && !$('lan-options').disabled, 'the choice stays locked after copying');
     break;

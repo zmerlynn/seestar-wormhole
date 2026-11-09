@@ -770,3 +770,28 @@ func TestBrowseReopenDuringADial(t *testing.T) {
 		t.Fatalf("dials %q", calls)
 	}
 }
+
+// When to scan can be saved while copying runs: copying takes it at its
+// next connection.
+func TestScanSettingServerAllowsCopy(t *testing.T) {
+	s, l, _ := scanModeServer(t, "start")
+	l.gate, l.entered = make(chan struct{}), make(chan struct{})
+	set := copyapp.DefaultSettings()
+	set.Folder = filepath.Join(t.TempDir(), "copy")
+	s.copy = copyapp.NewMount(t.Context(), copyMountOptions(s, copyapp.MountOptions{Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Settings: &set, Log: slog.New(slog.NewTextHandler(io.Discard, nil))}))
+	t.Cleanup(s.copy.Quit)
+	if w := doPost(s, "/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
+		t.Fatalf("start %d %s", w.Code, w.Body)
+	}
+	<-l.entered
+	if !s.copy.Busy() {
+		t.Fatal("copy isn't active")
+	}
+	if w := doPost(s, "/api/lan-scan", `{"settings":{"lan_scan":"off"}}`); w.Code != 200 {
+		t.Fatalf("setting during Copy %d %s", w.Code, w.Body)
+	}
+	got, err := loadSettings(s.storage)
+	if err != nil || got.LANScan != "off" {
+		t.Fatalf("setting didn't persist: mode=%q err=%v", got.LANScan, err)
+	}
+}
