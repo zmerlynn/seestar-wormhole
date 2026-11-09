@@ -40,7 +40,7 @@ const testTimeout = 30 * time.Second
 // and target takes the host's status lock inside mu, so neither of those
 // is held around admit.
 type server struct {
-	ctx      context.Context // the app's lifetime; browse's sessions live in it
+	ctx      context.Context // the app's lifetime; each route's lives in it
 	addr     netip.AddrPort  // the listener's
 	version  string
 	stateDir string // the default history folder; Settings may choose another
@@ -74,6 +74,12 @@ type server struct {
 	file     *settingsFile
 	browse   *browse.Handler // without statuses until a folder is saved
 	sessions *browse.Sessions
+	// route is the lifetime of every Browse pool made for where the
+	// telescope is now, in ctx; a change of route ends it with endRoute,
+	// which closes those pools, even a retired one whose download still
+	// holds its session.
+	route    context.Context
+	endRoute context.CancelFunc
 	// view counts what Browse shows, for the page, which loads its frame
 	// again once it moved: each new pool moves it, and so does each new
 	// endpoint status finds, such as a route's run connecting.
@@ -148,6 +154,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 		s.free.remover = o.Remover
 	}
 	s.free.resolve = o.Resolve
+	s.route, s.endRoute = context.WithCancel(ctx)
 	s.browse, s.sessions = s.newBrowse(file.settings)
 	return s
 }
@@ -193,7 +200,7 @@ func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 	}
 	// The pool's dials share one run for the scan on this network.
 	run := &landiscovery.Run{}
-	sessions := browse.NewSessions(s.ctx, func(ctx context.Context) (remote.Session, error) {
+	sessions := browse.NewSessions(s.route, func(ctx context.Context) (remote.Session, error) {
 		return s.dial(landiscovery.WithRun(ctx, run))
 	}, log, rep)
 	var records func() (map[string]state.Record, error)
@@ -301,17 +308,21 @@ var errNotSetUp = errors.New("save the copy settings first")
 // endpointChanged follows a change of where the telescope is, which the
 // caller made holding s.admit: the previews, and a check that failed, go
 // back to Start, as their proof was taken elsewhere, a copy once that
-// couldn't reach the telescope shows as off, and browse gets a new pool,
-// so no request
-// reaches the old endpoint through a session already open there.
+// couldn't reach the telescope shows as off, and browse gets a new pool
+// on a new route, so no request reaches the old endpoint through a session
+// already open there. The old pool closes before this returns; ending the
+// old route closes every other pool made on it too, including one a
+// download's save dialog still holds.
 func (s *server) endpointChanged() {
 	s.mu.Lock()
 	s.free.clear()
 	s.preview.discard()
 	s.copy.moved()
-	old := s.sessions
+	old, end := s.sessions, s.endRoute
+	s.route, s.endRoute = context.WithCancel(s.ctx)
 	s.browse, s.sessions = s.newBrowse(s.file.settings)
 	s.mu.Unlock()
+	end()
 	if old != nil {
 		old.Close()
 	}

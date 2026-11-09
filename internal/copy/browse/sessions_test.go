@@ -573,3 +573,34 @@ func TestRetiredSessionEnds(t *testing.T) {
 		})
 	}
 }
+
+// A pool closes as its context ends, retired with a lease or not; the
+// lease's release then changes nothing.
+func TestParentEndClosesPool(t *testing.T) {
+	for _, retired := range []bool{false, true} {
+		t.Run(map[bool]string{false: "current", true: "retired"}[retired], func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				d := &dialer{fsys: fstest.MapFS{}}
+				ctx, cancel := context.WithCancel(context.Background())
+				log, _ := newLog()
+				p := NewSessions(ctx, d.dial, log, Reporter{})
+				l := mustGet(t, p, context.Background())
+				if retired {
+					p.Retire()
+				}
+				cancel()
+				synctest.Wait()
+				if s := d.session(0); s.n("Close") != 1 || s.ctx.Err() == nil {
+					t.Fatal("the context ended with the leased session open")
+				}
+				if _, err := p.Get(context.Background()); !errors.Is(err, errStopped) {
+					t.Fatalf("Get after the context ended = %v", err)
+				}
+				l.Release()
+				if s := d.session(0); s.n("Close") != 1 {
+					t.Fatalf("closed %d times", s.n("Close"))
+				}
+			})
+		})
+	}
+}

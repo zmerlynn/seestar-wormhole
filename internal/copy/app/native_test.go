@@ -471,3 +471,144 @@ func TestLeasedDownloadSurvivesBrowseReopen(t *testing.T) {
 		t.Fatalf("data %q, err %v, %d closes", b, err, held.closes.Load())
 	}
 }
+
+// endedSession is a countedSession that tells when it first closes.
+type endedSession struct {
+	countedSession
+	ended chan struct{}
+	once  sync.Once
+}
+
+func (s *endedSession) Close() error {
+	err := s.countedSession.Close()
+	s.once.Do(func() { close(s.ended) })
+	return err
+}
+
+// A download's session lasts while its save dialog is open, across Browse
+// opening again, but no longer than its route or the Mount: a change of
+// route or a Quit ends it, reopened or not, and the save then writes
+// nothing. A save after a reopening alone reads the source it was asked
+// for, not the new opening's.
+func TestDialogLifetimes(t *testing.T) {
+	for _, scenario := range []string{"cancel", "dialog-error", "route", "reopen-route", "shutdown", "reopen-shutdown", "reopen-save"} {
+		t.Run(scenario, func(t *testing.T) {
+			reopen := strings.HasPrefix(scenario, "reopen-")
+			e, _ := newNativeEnv(t)
+			var mu sync.Mutex
+			var made []*endedSession
+			var dials []context.Context
+			e.s.dial = func(ctx context.Context) (remote.Session, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				text := "replacement source"
+				if len(made) == 0 {
+					text = "original source"
+				}
+				s := &endedSession{
+					countedSession: countedSession{Session: remote.NewFake(fstest.MapFS{"source.txt": {Data: []byte(text)}})},
+					ended:          make(chan struct{}),
+				}
+				made, dials = append(made, s), append(dials, ctx)
+				return s, nil
+			}
+			dst := filepath.Join(t.TempDir(), "chosen.txt")
+			entered, release := make(chan struct{}), make(chan struct{})
+			var once sync.Once
+			unblock := func() { once.Do(func() { close(release) }) }
+			defer unblock()
+			e.s.native = Native{SaveFile: func(string) (string, error) {
+				close(entered)
+				<-release
+				switch scenario {
+				case "cancel":
+					return "", nil
+				case "dialog-error":
+					return "", errors.New("the dialog failed")
+				}
+				return dst, nil
+			}}
+			if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
+				t.Fatal(w.Code)
+			}
+			done := make(chan int, 1)
+			go func() { done <- e.serve("GET", "/browse/file?path=source.txt&download=1", "").Code }()
+			select {
+			case <-entered:
+			case <-time.After(10 * time.Second):
+				t.Fatal("no save dialog")
+			}
+			mu.Lock()
+			original, originalCtx := made[0], dials[0]
+			mu.Unlock()
+			if original.closes.Load() != 0 {
+				t.Fatal("the dialog's session closed as it opened")
+			}
+			if reopen {
+				if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
+					t.Fatal(w.Code)
+				}
+				if original.closes.Load() != 0 {
+					t.Fatal("the reopening closed the dialog's session")
+				}
+			}
+			if scenario == "reopen-save" {
+				if w := e.serve("GET", "/browse/api/list", ""); w.Code != 200 {
+					t.Fatal(w.Code)
+				}
+				mu.Lock()
+				n := len(made)
+				mu.Unlock()
+				if n != 2 {
+					t.Fatalf("%d sessions, want the new opening's own", n)
+				}
+			}
+			switch scenario {
+			case "route", "reopen-route", "shutdown", "reopen-shutdown":
+				if strings.HasSuffix(scenario, "route") {
+					e.move("192.0.2.99:445")
+				} else {
+					e.m.Quit()
+				}
+				if originalCtx.Err() == nil {
+					t.Fatal("the dialog's session outlived its context")
+				}
+				select {
+				case <-original.ended:
+				case <-time.After(10 * time.Second):
+					t.Fatal("the dialog's session stayed open")
+				}
+			}
+			unblock()
+			select {
+			case code := <-done:
+				if code != http.StatusNoContent {
+					t.Fatal(code)
+				}
+			case <-time.After(10 * time.Second):
+				t.Fatal("the save didn't end")
+			}
+			b, err := os.ReadFile(dst)
+			if scenario == "reopen-save" {
+				if err != nil || string(b) != "original source" || original.closes.Load() != 1 || originalCtx.Err() == nil {
+					t.Fatalf("saved %q, err %v, %d closes, context %v", b, err, original.closes.Load(), originalCtx.Err())
+				}
+			} else if !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("saved %q, err %v", b, err)
+			}
+			e.m.Quit()
+			mu.Lock()
+			defer mu.Unlock()
+			for i, s := range made {
+				select {
+				case <-s.ended:
+				case <-time.After(10 * time.Second):
+					t.Fatalf("session %d stayed open after Quit", i)
+				}
+				if n := s.closes.Load(); n != 1 || dials[i].Err() == nil {
+					t.Errorf("session %d: %d closes, context %v", i, n, dials[i].Err())
+				}
+			}
+		})
+	}
+}

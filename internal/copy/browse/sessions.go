@@ -107,13 +107,18 @@ type Lease struct {
 	released bool
 }
 
-// NewSessions returns an empty pool. dial opens a session; the context it is
-// given is the session's whole lifetime. log gets the pool's lines; the
-// caller adds the endpoint to it. rep gets each dial's outcome, except one
-// that ends as the pool closes.
+// NewSessions returns an empty pool, which closes as Close does once ctx
+// ends, even when retired with a session still leased. dial opens a
+// session; the context it is given is the session's whole lifetime. log
+// gets the pool's lines; the caller adds the endpoint to it. rep gets each
+// dial's outcome, except one that ends as the pool closes.
 func NewSessions(ctx context.Context, dial func(context.Context) (remote.Session, error), log *slog.Logger, rep Reporter) *Sessions {
 	ctx, stop := context.WithCancel(ctx)
-	return &Sessions{ctx: ctx, stop: stop, dial: dial, log: log, rep: rep}
+	p := &Sessions{ctx: ctx, stop: stop, dial: dial, log: log, rep: rep}
+	// The pool's own end cancels ctx too, which unregisters this from
+	// the parent; Close then changes nothing.
+	context.AfterFunc(ctx, p.Close)
+	return p
 }
 
 // Get returns a lease on the current session, dialing one if there is none.
