@@ -164,6 +164,27 @@ func TestSaveUnwritable(t *testing.T) {
 	onlyFile(t, dir, []byte("old"))
 }
 
+// A create that fails in a folder that isn't there says the folder is
+// missing, whatever the system answered; in one that is there, the
+// create's own error stands.
+func TestMissingFolder(t *testing.T) {
+	dir := t.TempDir()
+	other := errors.New("synthetic")
+	if err := missingFolder(filepath.Join(dir, "gone"), other); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("missing folder: %v", err)
+	}
+	if err := missingFolder(dir, other); err != other {
+		t.Errorf("folder there: %v", err)
+	}
+	notExist := &fs.PathError{Op: "open", Path: "x", Err: fs.ErrNotExist}
+	if err := missingFolder(filepath.Join(dir, "gone"), notExist); err != notExist {
+		t.Errorf("not-exist kept: %v", err)
+	}
+	if err := missingFolder(filepath.Join(dir, "gone"), nil); err != nil {
+		t.Errorf("no error: %v", err)
+	}
+}
+
 // TestDownload checks that Download leaves only a checked GET with
 // download=1 to its caller, and serves or refuses every other request as
 // ServeHTTP does.

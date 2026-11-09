@@ -32,10 +32,25 @@ func Save(ctx context.Context, lease *Lease, p, dst string, hold Hold) error {
 	readonly.Check("browse.Save")
 	dir, base := filepath.Dir(dst), filepath.Base(dst)
 	return save(ctx, lease, p, hold, func() (*os.File, error) {
-		return os.CreateTemp(dir, "."+base+".*.tmp")
+		f, err := os.CreateTemp(dir, "."+base+".*.tmp")
+		return f, missingFolder(dir, err)
 	}, func(tmp string) error {
 		return os.Rename(tmp, dst)
 	}, func(tmp string) { os.Remove(tmp) })
+}
+
+// missingFolder is err, from creating a file in dir, or the error that
+// dir doesn't exist when it doesn't, so a save to a folder that isn't
+// there says "not found" on every system: Windows has answered such a
+// create with an error that reads as a file where a folder should be.
+func missingFolder(dir string, err error) error {
+	if err == nil || errors.Is(err, fs.ErrNotExist) {
+		return err
+	}
+	if _, serr := os.Stat(dir); errors.Is(serr, fs.ErrNotExist) {
+		return serr
+	}
+	return err
 }
 
 // SaveIn is [Save] to rel, a path relative to root, with the temporary
