@@ -318,6 +318,9 @@ func TestClearHistoryDirInsideRefused(t *testing.T) {
 	if w.Code != 409 || !strings.Contains(w.Body.String(), "inside the destination") {
 		t.Errorf("clear = %d %s; want 409, inside the destination", w.Code, w.Body)
 	}
+	if strings.Contains(w.Body.String(), folder) || strings.Contains(w.Body.String(), link) {
+		t.Errorf("clear names a folder: %s", w.Body)
+	}
 	if after := folderTree(t, folder); !maps.Equal(after, before) {
 		t.Errorf("clear changed the images folder: %v, was %v", after, before)
 	}

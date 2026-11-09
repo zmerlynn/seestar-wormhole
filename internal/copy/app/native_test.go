@@ -175,7 +175,7 @@ func TestSaveFileFails(t *testing.T) {
 	f.alerts = nil
 	f.answer = filepath.Join(t.TempDir(), "gone.txt")
 	e.serve("GET", strings.Replace(xURL, "x.txt", "gone.txt", 1), "")
-	if len(f.alerts) != 1 || f.alerts[0] != "Couldn't save gone.txt: file does not exist. Try saving it again." {
+	if len(f.alerts) != 1 || f.alerts[0] != "Couldn't save gone.txt: not found. Try saving it again." {
 		t.Errorf("alerts %q", f.alerts)
 	}
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"io"
-	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -920,7 +919,7 @@ func (s *server) copyAction(w http.ResponseWriter, action string) {
 	if err != nil {
 		localhttp.Respond(w, http.StatusConflict, struct {
 			Error string `json:"error"`
-		}{"Couldn't " + verb + ": " + err.Error() + "."})
+		}{"Couldn't " + verb + ": " + reason(err) + "."})
 		return
 	}
 	localhttp.Respond(w, http.StatusOK, s.copyView())
@@ -968,7 +967,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 				s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpSaveOptions, Seq: seq})
 			}
 			s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpPreview, Err: err, Seq: seq})
-			conflict("Couldn't preview: " + err.Error() + ".")
+			conflict("Couldn't preview: " + reason(err) + ".")
 		}
 		t, terr := s.target()
 		if err := s.ready(t, terr); err != nil {
@@ -1036,7 +1035,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			return
 		} else if err != nil {
 			s.rep.send(Outcome{Source: diagnostic.SourceDelete, Op: diagnostic.OpDelete, Err: classified(err), Seq: seq})
-			conflict("Couldn't delete: " + err.Error() + ".")
+			conflict("Couldn't delete: " + reason(err) + ".")
 			return
 		}
 	case "stop":
@@ -1122,7 +1121,7 @@ func (s *server) chooseFolder(w http.ResponseWriter, in input) {
 		s.log.Error("folder picker", "err", err)
 		localhttp.Respond(w, http.StatusInternalServerError, struct {
 			Error string `json:"error"`
-		}{"Couldn't open the folder picker: " + err.Error() + ". Type the folder's full path instead."})
+		}{"Couldn't open the folder picker: " + reason(err) + ". Type the folder's full path instead."})
 		return
 	}
 	localhttp.Respond(w, http.StatusOK, struct {
@@ -1280,14 +1279,73 @@ func within(folder, dst string) (top, rel string, ok bool) {
 // maxDays caps Only files older than N days: 100 years.
 const maxDays = 36500
 
-// reason is err's text without the path a file error names.
+// reason is a short text for err that names no folder, file, address,
+// host or serial, for logs, Activity and the page's error messages: err's
+// own text when that is [safeText], as this app's errors and the
+// telescope connection's are; else the class of a system or network
+// failure, such as "permission denied"; else the first safe text in err's
+// chain, such as a sentinel a dependency wrapped with a path; and
+// otherwise "operation failed".
 func reason(err error) string {
-	var pe *fs.PathError
-	var le *os.LinkError
-	if errors.As(err, &pe) {
-		err = pe.Err
-	} else if errors.As(err, &le) {
-		err = le.Err
+	if err == nil {
+		return "none"
 	}
-	return err.Error()
+	if t := err.Error(); safeText(t) {
+		return t
+	}
+	if c := diagnostic.Class(err); c != "operation_failed" {
+		if t, ok := classText[c]; ok {
+			return t
+		}
+		return strings.ReplaceAll(c, "_", " ")
+	}
+	if t, ok := safeCause(err); ok {
+		return t
+	}
+	return "operation failed"
+}
+
+// classText reads better than a class with its underscores as spaces.
+var classText = map[string]string{
+	"no_space": "no space left", "read_only": "read-only file system",
+	"not_found": "not found", "not_a_directory": "not a folder",
+	"dns_not_found": "host not found", "timeout": "timed out",
+}
+
+// safeCause is the text of the first error in err's chain whose text is
+// [safeText].
+func safeCause(err error) (string, bool) {
+	if err == nil {
+		return "", false
+	}
+	if t := err.Error(); safeText(t) {
+		return t, true
+	}
+	switch u := err.(type) {
+	case interface{ Unwrap() error }:
+		return safeCause(u.Unwrap())
+	case interface{ Unwrap() []error }:
+		for _, e := range u.Unwrap() {
+			if t, ok := safeCause(e); ok {
+				return t, true
+			}
+		}
+	}
+	return "", false
+}
+
+// safeText reports whether t has none of what a path, an address, a host
+// name or a serial is written with: a digit, a slash, a backslash, an at
+// or a percent sign, or a dot or a colon that doesn't end a sentence or a
+// clause.
+func safeText(t string) bool {
+	if t == "" || strings.ContainsAny(t, "0123456789/\\@%") {
+		return false
+	}
+	for i := 0; i < len(t)-1; i++ {
+		if (t[i] == '.' || t[i] == ':') && t[i+1] != ' ' {
+			return false
+		}
+	}
+	return true
 }

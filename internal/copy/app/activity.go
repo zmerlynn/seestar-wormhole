@@ -168,18 +168,34 @@ func (h withoutFolder) WithGroup(name string) slog.Handler {
 }
 
 // public is a without its private attributes, and false when a is one.
+// An error, under any key, becomes its [reason], and a text under an
+// error's key is kept only when it is [safeText]: an error's own text may
+// name a folder, a file, an address, a host or a serial.
 func public(a slog.Attr) (slog.Attr, bool) {
 	if private[a.Key] {
 		return a, false
 	}
-	if a.Value.Kind() != slog.KindGroup {
-		return a, true
-	}
-	var kept []slog.Attr
-	for _, g := range a.Value.Group() {
-		if g, ok := public(g); ok {
-			kept = append(kept, g)
+	a.Value = a.Value.Resolve()
+	switch a.Value.Kind() {
+	case slog.KindGroup:
+		var kept []slog.Attr
+		for _, g := range a.Value.Group() {
+			if g, ok := public(g); ok {
+				kept = append(kept, g)
+			}
+		}
+		return slog.Attr{Key: a.Key, Value: slog.GroupValue(kept...)}, true
+	case slog.KindAny:
+		if err, ok := a.Value.Any().(error); ok {
+			return slog.String(a.Key, reason(err)), true
+		}
+	case slog.KindString:
+		if errorKey[a.Key] && !safeText(a.Value.String()) {
+			return slog.String(a.Key, "operation failed"), true
 		}
 	}
-	return slog.Attr{Key: a.Key, Value: slog.GroupValue(kept...)}, true
+	return a, true
 }
+
+// errorKey are the keys a log gives an error's text.
+var errorKey = map[string]bool{"err": true, "error": true}
