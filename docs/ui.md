@@ -236,7 +236,14 @@ can't change while copying runs:
   this telescope.**, a folder inside one with **This folder is inside
   another telescope's folder. Choose a folder outside it.**, and a folder
   that holds one with **Another telescope's folder is inside this folder.
-  Choose a folder that doesn't hold it.** Through Telescope Network, a
+  Choose a folder that doesn't hold it.** It compares the folders on disk
+  too, so a symbolic link or another spelling doesn't get past it; a folder
+  through a link that doesn't resolve is refused with **This folder's links
+  can't be followed, so it can't be checked against the other telescopes'
+  folders. Choose another folder.** If a link changes later so that the
+  saved folders meet, Copy, its preview, Free up space and clearing the
+  history refuse with **this telescope's folder is now another telescope's,
+  or inside or around it; choose another in Copy**. Through Telescope Network, a
   folder can't be saved for a telescope not yet known: **Connect to the
   telescope first: its folder is chosen once it is known.**
 - **Copy history folder**, empty by default. Empty is the default

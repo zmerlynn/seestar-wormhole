@@ -214,6 +214,10 @@ func settingsAt(set Settings, t Target) Settings {
 // folder yet, while another telescope has one.
 var errNoFolder = errors.New("this telescope has no folder yet; choose one in Copy")
 
+// errFolderShared refuses them for a telescope whose saved folder is now,
+// on disk, another telescope's, or inside or around it.
+var errFolderShared = errors.New("this telescope's folder is now another telescope's, or inside or around it; choose another in Copy")
+
 // ready checks, holding s.mu, that the telescope of t, the target now,
 // which failed with err, has a folder, and gives Folder to the first
 // telescope known, so a later one can't take it too. A telescope not
@@ -224,7 +228,12 @@ func (s *server) ready(t Target, err error) error {
 	if err != nil {
 		t = Target{Telescope: t.Telescope}
 	}
-	if s.folderAt(t) != "" {
+	if folder := s.folderAt(t); folder != "" {
+		// A link changed since the folder was saved may have made it
+		// another telescope's.
+		if s.file.settings.overlap(t.Telescope, folder) != "" {
+			return errFolderShared
+		}
 		s.claim(t.Telescope)
 		return nil
 	}

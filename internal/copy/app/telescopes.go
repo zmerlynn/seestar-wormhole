@@ -3,9 +3,13 @@ package app
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
+	"io/fs"
 	"maps"
+	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 )
 
@@ -134,9 +138,15 @@ const (
 	folderContains = "Another telescope's folder is inside this folder. Choose a folder that doesn't hold it."
 )
 
+// folderUnresolved is the message for a folder whose symbolic links don't
+// resolve, so it can't be told apart from another telescope's.
+const folderUnresolved = "This folder's links can't be followed, so it can't be checked against the other telescopes' folders. Choose another folder."
+
 // overlap checks folder, for the telescope keyed key, against every other
 // telescope's folder: it may be none of them, nor inside one, nor hold
-// one. It returns the message for the first that clashes, or "".
+// one, by its text or on disk, through a symbolic link or another
+// spelling of a folder that exists. It returns the message for the first
+// that clashes, or "".
 func (s Settings) overlap(key, folder string) string {
 	if !s.claimed() {
 		return ""
@@ -145,16 +155,104 @@ func (s Settings) overlap(key, folder string) string {
 		if k == key || t.Folder == "" {
 			continue
 		}
-		switch {
-		case samePath(folder, t.Folder):
-			return folderTaken
-		case under(folder, t.Folder):
-			return folderInside
-		case under(t.Folder, folder):
-			return folderContains
+		if msg := relate(folder, t.Folder); msg != "" {
+			return msg
 		}
 	}
 	return ""
+}
+
+// relate is the message for folder a against another telescope's folder
+// b: the same folder, inside it or holding it, or "" for neither. Each is
+// compared as written, with its symbolic links resolved, and by
+// [os.SameFile] for the parts that exist. A link that doesn't resolve
+// fails closed.
+func relate(a, b string) string {
+	if msg := relateText(a, b); msg != "" {
+		return msg
+	}
+	ra, err := resolved(a)
+	if err != nil {
+		return folderUnresolved
+	}
+	rb, err := resolved(b)
+	if err != nil {
+		return folderUnresolved
+	}
+	if msg := relateText(ra, rb); msg != "" {
+		return msg
+	}
+	switch inside(ra, rb) {
+	case 0:
+		return folderTaken
+	case 1:
+		return folderInside
+	}
+	if inside(rb, ra) == 1 {
+		return folderContains
+	}
+	return ""
+}
+
+// relateText is relate by the text of a and b alone.
+func relateText(a, b string) string {
+	switch {
+	case samePath(a, b):
+		return folderTaken
+	case under(a, b):
+		return folderInside
+	case under(b, a):
+		return folderContains
+	}
+	return ""
+}
+
+// inside reports by [os.SameFile] whether the folder b, which must exist,
+// is a or one of a's folders: 0 for a itself, 1 for a folder above it,
+// and -1 for neither, or when b doesn't exist.
+func inside(a, b string) int {
+	want, err := os.Stat(b)
+	if err != nil {
+		return -1
+	}
+	depth := 0
+	for d := filepath.Clean(a); ; depth++ {
+		if fi, err := os.Stat(d); err == nil && os.SameFile(want, fi) {
+			return min(depth, 1)
+		}
+		up := filepath.Dir(d)
+		if up == d {
+			return -1
+		}
+		d = up
+	}
+}
+
+// resolved is the absolute folder p with the symbolic links of its
+// deepest part that exists resolved, and the rest, which doesn't exist
+// yet, as written. It fails for a link that doesn't resolve.
+func resolved(p string) (string, error) {
+	p = filepath.Clean(p)
+	var rest []string
+	for d := p; ; {
+		_, err := os.Lstat(d)
+		if err == nil {
+			real, err := filepath.EvalSymlinks(d)
+			if err != nil {
+				return "", err
+			}
+			slices.Reverse(rest)
+			return filepath.Join(append([]string{real}, rest...)...), nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return "", err
+		}
+		up := filepath.Dir(d)
+		if up == d {
+			return p, nil
+		}
+		rest, d = append(rest, filepath.Base(d)), up
+	}
 }
 
 // others are the folders of every telescope but the one keyed key.

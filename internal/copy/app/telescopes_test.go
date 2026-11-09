@@ -179,6 +179,129 @@ func TestOverlap(t *testing.T) {
 	}
 }
 
+// A folder is another telescope's on disk too: through a symbolic link to
+// it, to a folder above it or inside it, and with a part not made yet.
+// A link that doesn't resolve fails closed.
+func TestOverlapOnDisk(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := filepath.Join(base, "images", "A")
+	if err := os.MkdirAll(filepath.Join(a, "sub"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := func(name, to string) string {
+		p := filepath.Join(base, name)
+		if err := os.Symlink(to, p); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	alias := link("alias", a)
+	up := link("up", filepath.Join(base, "images"))
+	sub := link("sub", filepath.Join(a, "sub"))
+	dangling := link("dangling", filepath.Join(base, "gone"))
+	set := *claimedAt(a, map[string]string{keyA: a})
+	for folder, want := range map[string]string{
+		alias:                                 folderTaken,
+		alias + string(filepath.Separator):    folderTaken,
+		filepath.Join(alias, "new-child"):     folderInside,
+		filepath.Join(alias, "new", "deeper"): folderInside,
+		filepath.Join(up, "A"):                folderTaken,
+		filepath.Join(up, "A", "sub"):         folderInside,
+		up:                                    folderContains,
+		sub:                                   folderInside,
+		filepath.Join(sub, "..", "..", "B"):   "", // .. is the text's, before links
+		filepath.Join(base, "images", "B"):    "",
+		filepath.Join(up, "B", "new"):         "",
+		dangling:                              folderUnresolved,
+		filepath.Join(dangling, "child"):      folderUnresolved,
+		string(filepath.Separator):            folderContains,
+	} {
+		if got := set.overlap(keyB, folder); got != want {
+			t.Errorf("%q: %q, want %q", folder, got, want)
+		}
+	}
+	// The other telescope's folder saved through a link is the folder.
+	set = *claimedAt(alias, map[string]string{keyA: alias})
+	for folder, want := range map[string]string{
+		a:                         folderTaken,
+		filepath.Join(a, "x"):     folderInside,
+		filepath.Join(base, "B"):  "",
+		filepath.Join(base, "im"): "",
+	} {
+		if got := set.overlap(keyB, folder); got != want {
+			t.Errorf("against a link, %q: %q, want %q", folder, got, want)
+		}
+	}
+}
+
+// Save refuses another telescope's folder reached through a link, and a
+// folder not made yet beneath one.
+func TestSaveRefusesLinkedFolders(t *testing.T) {
+	base := t.TempDir()
+	a := filepath.Join(base, "A")
+	if err := os.Mkdir(a, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	alias := filepath.Join(base, "alias")
+	if err := os.Symlink(a, alias); err != nil {
+		t.Fatal(err)
+	}
+	for _, folder := range []string{alias, filepath.Join(alias, "new-child")} {
+		e := newAppEnv(t, claimedAt(a, map[string]string{keyA: a}))
+		e.key = keyB
+		w := e.post("/copy/api/settings", saveInput(folder))
+		if got := decode[fieldErrors](t, w); w.Code != 400 || got.Fields["folder"] == "" || strings.Contains(got.Fields["folder"], base) {
+			t.Errorf("%s: %d %+v", folder, w.Code, got)
+		}
+		if len(e.saves()) != 0 {
+			t.Errorf("%s: saved", folder)
+		}
+	}
+}
+
+// A folder saved apart from another telescope's that a link changed
+// later to be the same is refused as copying, a preview, Free up space or
+// a clear of the history begins.
+func TestLinkChangedAfterSave(t *testing.T) {
+	base := t.TempDir()
+	a, b := filepath.Join(base, "A"), filepath.Join(base, "B")
+	if err := os.Mkdir(a, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(b, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(b, link); err != nil {
+		t.Fatal(err)
+	}
+	e := newAppEnv(t, claimedAt(a, map[string]string{keyA: a, keyB: link}))
+	e.key = keyB
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(a, link); err != nil {
+		t.Fatal(err)
+	}
+	for _, call := range []struct{ path, body string }{
+		{"/copy/api/copy", `{"action":"start"}`},
+		{"/copy/api/copy", `{"action":"preview"}`},
+		{"/copy/api/delete", `{"action":"find","days":"0"}`},
+		{"/copy/api/clear", `{}`},
+	} {
+		w := e.post(call.path, call.body)
+		if w.Code != http.StatusConflict || !strings.Contains(w.Body.String(), errFolderShared.Error()) || strings.Contains(w.Body.String(), base) {
+			t.Errorf("%s %s = %d %s", call.path, call.body, w.Code, w.Body)
+		}
+	}
+	if e.s.copy.on() {
+		t.Error("copying started into another telescope's folder")
+	}
+}
+
 func TestSuggested(t *testing.T) {
 	first := filepath.Join(abs("/home/u"), "Seestar")
 	for name, want := range map[string]string{
