@@ -16,7 +16,11 @@ const DefaultProfile = "default"
 // Saved is what a profile holds for the file commands. A zero member is
 // one it doesn't set, and fills no flag.
 type Saved struct {
+	// Dest is the folder of the telescope saved in the app. NoFolder is
+	// true when that telescope has none yet while another has one: a
+	// command that would fill --dest then fails until one is chosen.
 	Dest       string
+	NoFolder   bool
 	HistoryDir string
 	Endpoint   string
 	// LANSerial is the serial the app saved with Endpoint on this
@@ -73,10 +77,25 @@ func (p *profileFlag) load(flags *pflag.FlagSet, load LoadProfile) (Saved, bool,
 // not given with fillSaved.
 func (p *profileFlag) fill(flags *pflag.FlagSet, load LoadProfile, fillSaved func(Saved, func(string) bool) []string) error {
 	s, ok, err := p.load(flags, load)
-	if ok {
-		p.filled = fillSaved(s, flags.Changed)
+	if !ok {
+		return err
 	}
-	return err
+	if s.NoFolder && !flags.Changed("dest") && takesDest(flags) {
+		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder}
+	}
+	p.filled = fillSaved(s, flags.Changed)
+	return nil
+}
+
+// errNoFolder is --profile's rule when the telescope saved in the app has
+// no folder yet. It names neither the telescope nor a folder.
+const errNoFolder = "the telescope saved in the app has no folder yet; choose one on the app's Copy tab, or give --dest"
+
+// takesDest reports whether the command uses a local folder: all do but
+// delete with --ignore-state.
+func takesDest(flags *pflag.FlagSet) bool {
+	ignore, err := flags.GetBool("ignore-state")
+	return err != nil || !ignore
 }
 
 // present reports whether the flag name was given or filled: what a rule

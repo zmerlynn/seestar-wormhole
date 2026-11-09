@@ -235,3 +235,67 @@ func TestDefaultProfileFillsFlags(t *testing.T) {
 		}
 	}
 }
+
+// The profile's folder is that of the telescope config.json saves: by its
+// serial on either route, or its address saved without one. A telescope
+// with no folder while another has one is a usage error that names
+// neither, unless --dest is given.
+func TestDefaultProfileTelescopeFolder(t *testing.T) {
+	root := savedConfigRoot(t)
+	useProfileRoot(t, root, nil)
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/A","telescopes":{
+"serial:SYNTH-A":{"folder":"/synthetic/A"},"address:192.0.2.8:445":{"folder":"/synthetic/B"}}}`)
+	lan := func(address, serial string) ui.Settings {
+		return ui.Settings{Version: 1, Bind: "127.0.0.2", Idle: "2m", Ports: []proxyrun.Port{{Local: 1445, Device: 445}},
+			Route: "lan", LANAddress: address, LANSerial: serial}
+	}
+	account := ui.Settings{Version: 1, Bind: "127.0.0.2", Idle: "2m", Serial: "SYNTH-A", Ports: []proxyrun.Port{{Local: 1445, Device: 445}}}
+	for _, tc := range []struct {
+		name     string
+		config   ui.Settings
+		dest     string
+		noFolder bool
+	}{
+		{"lan serial", lan("192.0.2.7", "SYNTH-A"), "/synthetic/A", false},
+		{"account serial", account, "/synthetic/A", false},
+		{"lan address", lan("192.0.2.8", ""), "/synthetic/B", false},
+		{"lan serial without a folder", lan("192.0.2.8", "SYNTH-C"), "", true},
+		{"lan address without a folder", lan("192.0.2.9", ""), "", true},
+	} {
+		b, err := json.Marshal(tc.config)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeSavedConfig(t, root, b)
+		if got, err := loadDefaultProfile(); err != nil || got.Dest != tc.dest || got.NoFolder != tc.noFolder {
+			t.Errorf("%s = %+v, %v", tc.name, got, err)
+		}
+	}
+
+	// The last config.json's telescope has no folder.
+	before := profileFiles(t, root)
+	for _, cmd := range copyCommandNames {
+		code, record, logs := usageExit(t, cmd, "--profile", "default")
+		if code != 2 || record.Option != "--profile" || !strings.Contains(record.Rule, "has no folder yet") || !strings.Contains(record.Rule, "--dest") ||
+			strings.Contains(logs, "synthetic") || strings.Contains(logs, "192.0.2") || strings.Contains(logs, "SYNTH-") {
+			t.Errorf("%s: exit %d %+v\n%s", cmd, code, record, logs)
+		}
+		// A given --dest wins.
+		if o, err := parse([]string{cmd, "--profile", "default", "--dest", t.TempDir()}, io.Discard); err != nil || o.file == nil {
+			t.Errorf("%s --dest: %v", cmd, err)
+		}
+	}
+	if after := profileFiles(t, root); !maps.Equal(after, before) {
+		t.Errorf("the state folder changed: %v, was %v", after, before)
+	}
+
+	// Before any telescope has a folder of its own, copy.json's folder is
+	// the saved telescope's, whatever it is.
+	if err := os.Remove(filepath.Join(root, "copy.json")); err != nil {
+		t.Fatal(err)
+	}
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/A"}`)
+	if got, err := loadDefaultProfile(); err != nil || got.Dest != "/synthetic/A" || got.NoFolder {
+		t.Errorf("an older copy.json = %+v, %v", got, err)
+	}
+}
