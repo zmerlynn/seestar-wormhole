@@ -198,7 +198,31 @@ The first time you open Copy, **Copy settings** is open: choose the folder for
 your images, with **Choose…** in the app's window or by typing its full path,
 then **Save**. Saving doesn't start copying: a notice above the
 buttons says copying starts when you press **Start copying**, and that
-**Preview** shows what it would copy first. After that, Copy shows what
+**Preview** shows what it would copy first.
+
+Each telescope has its own folder. When Copy reaches a telescope with no
+folder while another has one, **Copy settings** is open again and says
+**This telescope has no folder yet. Each telescope has its own: choose one
+for its images, then press Save. Copying starts when you press Start
+copying.** The folder field suggests a folder beside the first telescope's,
+named `<model> <serial>`, or `<model or Seestar> <host> <port>` for an
+address saved without a serial; the other settings are shared and keep
+their values. **Start copying** and **Preview** answer **this telescope has
+no folder yet; choose one in Copy** until it is saved. Through Telescope
+Network with no telescope saved, the telescope is known only once the
+connection is up, and Copy says **Connect to the telescope to choose its
+folder. Each telescope has its own, and this one is known once it's
+connected.** When the connection reaches another telescope, the folder
+field shows that telescope's folder, or the one suggested for it.
+
+When a scan or Test hears a serial number at an address that has its own
+folder, and that telescope has none, Copy says **This telescope's address is
+now known as** the model and serial, names the address's folder and offers
+**Use the address's folder**. Nothing changes until you press it; it then
+saves that folder for the telescope, with its copy history, and Copy opens.
+See [more than one telescope](copying.md#more-than-one-telescope).
+
+After that, Copy shows what
 copying is doing, with
 **Start copying**, **Preview**, **Check now** and **Stop copying**, and below
 them a summary of the settings, such as "Copying to ~/Seestar every 5 min,
@@ -206,7 +230,15 @@ skipping logs and system files." **Change…** opens the settings, which you
 can't change while copying runs:
 
 - **Folder for your images.** Images are copied there in the same folders as
-  on the telescope. Each folder has its own copy history.
+  on the telescope. Each folder has its own copy history, and each telescope
+  its own folder. **Save** refuses another telescope's folder with
+  **Another telescope copies to this folder. Choose a folder of its own for
+  this telescope.**, a folder inside one with **This folder is inside
+  another telescope's folder. Choose a folder outside it.**, and a folder
+  that holds one with **Another telescope's folder is inside this folder.
+  Choose a folder that doesn't hold it.** Through Telescope Network, a
+  folder can't be saved for a telescope not yet known: **Connect to the
+  telescope first: its folder is chosen once it is known.**
 - **Copy history folder**, empty by default. Empty is the default
   [history location](reference/selection-and-history.md#location), the one
   `seestar-wormhole-cli sync` uses without `--history-dir`, so the app and
@@ -276,8 +308,9 @@ shows as [`left out`](reference/files-cli.md#left-out-in-browse). After a Save
 that changes the folder or the selection, or a change of how the telescope
 is reached, Browse loads again at the share's top when it is next shown, so
 an error from before goes without a retry. Browse opens once a route is
-saved: until Copy's folder is saved it lists the telescope's files without
-statuses, and the first Save loads it again with them. In the app's
+saved: until Copy's folder is saved for this telescope it lists the
+telescope's files without statuses, and the Save loads it again with them.
+Statuses are always those of the connected telescope's folder. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.
 A save into Copy's saved folder, or a folder inside it, takes the folder's
 [folder lock](reference/selection-and-history.md#the-folder-lock) until the file is in place:
@@ -285,12 +318,20 @@ while a check or a delete holds it, the save says **Another copy or delete
 is using this folder. Try saving it again.** and saves nothing. A file named
 `.seestar-wormhole.lock`, in any letter case, can't be saved at the top of
 that folder: **That name is kept for the copy lock. Choose another name or
-folder.** A save anywhere else takes no lock.
+folder.** A save anywhere else takes no lock. A save into any telescope's
+folder takes that folder's lock. Once another telescope has a folder, a save
+waits for this one's: until it is chosen, **Save** says **This telescope has
+no folder yet. Choose one in Copy, then save the file again.** and saves
+nothing.
 
 ### Free up space
 
-Until Copy's folder is saved, Free up space says to choose it, with **Go to
-Copy**. **Preview what to delete** lists, per folder, the files that are copied and
+Until Copy's folder is saved for this telescope, Free up space says to
+choose it, with **Go to Copy**, and **Preview what to delete** answers **this
+telescope has no folder yet; choose one in Copy**. It always proves copies
+in the connected telescope's folder. A preview stays bound to the telescope
+and folder it checked: its delete goes only to that telescope, and only
+while the connection still reaches it. **Preview what to delete** lists, per folder, the files that are copied and
 safe to delete, as `delete` [proves it](reference/files-cli.md#proof-modes), and
 nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
 files older than** N days (7 by default; 0 means any age) keeps recent

@@ -66,12 +66,14 @@ and left untouched. A failed load never overwrites existing state.
 
 `version` is required and must be `1`. Missing members take these defaults,
 and members this version doesn't know are kept when it saves. The file is
-written when you save Copy settings or preview Free up space with changed
-options, never on load.
+written when you save Copy settings, preview Free up space with changed
+options, accept an address's folder for a telescope, or when Copy first uses
+a telescope's folder after an upgrade, never on load.
 
 | Member | Default and meaning |
 |---|---|
-| `folder` | `Seestar` in your home folder. |
+| `folder` | `Seestar` in your home folder. The first telescope's folder, which an older app uses for every telescope; see `telescopes`. |
+| `telescopes` | Absent. Each telescope's folder, keyed `serial:<serial>` for a telescope known by its serial number, through either route, or `address:<host:port>` for an address on this network saved without one, as the address is saved. Each entry is `{"folder": "<absolute path>"}`; members this version doesn't know are kept. Until an entry has a folder, every telescope's folder is `folder`, and the first telescope Copy uses, the one saved on the Connection tab, is written in with it; after that a telescope without an entry has no folder and is asked for one. Two entries never hold the same folder or one inside another. |
 | `history_dir` | `""`: the default [history location](selection-and-history.md#location), as `--history-dir`'s default. Otherwise **Copy history folder**, an absolute path outside `folder`. A relative path or a value that isn't a string refuses the file. |
 | `interval_minutes` | `5` |
 | `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
@@ -89,6 +91,13 @@ again, and Free up space cannot use the chosen folder's history to prove those
 copies safe.
 
 The telescope's address is not in it; it comes from the route in `config.json`.
+`telescopes` names a telescope only by its key, which also chooses the
+folder `--profile default` fills; see
+[use the app's saved settings](files-cli.md#use-the-apps-saved-settings).
+
+`telescopes` needs no new version: an older app reads `folder` and keeps
+`telescopes` when it saves, so after a downgrade every telescope copies into
+the first telescope's folder until the newer app is back.
 
 A copy.json this version can't read, such as one with another version, a
 member of the wrong type or `files_at_once` out of range, doesn't stop the app.

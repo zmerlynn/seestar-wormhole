@@ -110,7 +110,7 @@ statuses, as a given one does.
 
 | Saved | sync | find | browse | delete |
 | --- | --- | --- | --- | --- |
-| Folder for your images, `folder` | `--dest` | `--dest` | `--dest` | `--dest`, not with `--ignore-state` |
+| The saved telescope's folder, from `telescopes` or `folder` | `--dest` | `--dest` | `--dest` | `--dest`, not with `--ignore-state` |
 | **Copy history folder**, `history_dir` | `--history-dir` | `--history-dir` | `--history-dir` | `--history-dir`, not with `--ignore-state` |
 | The connection | `--endpoint` | `--endpoint` | `--endpoint` | `--endpoint` |
 | **Leave out** and **Only copy**, `excludes` and `includes` | `--exclude`, `--include` | the same | the same, with a destination | never |
@@ -118,6 +118,15 @@ statuses, as a given one does.
 | `interval_minutes` | `--interval` | | | |
 | `once: true` | `--once` | | | |
 | **Files at once**, `files_at_once` | `--workers` | | | |
+
+The folder is that of the telescope `config.json` saves, keyed as the app
+keys it: by `lan_serial` on this network, or by the address when it was
+saved without one, and by the saved `serial` through the account; see
+[`telescopes`](app-settings.md#copyjson-version-1). Until any telescope has
+a folder of its own, and without a usable `config.json`, it is `folder`. If
+the saved telescope has no folder while another has one, a command that
+would fill `--dest` exits 2 for `--profile`; a given `--dest`, or delete
+with `--ignore-state`, runs as usual.
 
 delete takes only where to act: Free up space's patterns, its age and
 **Trust the copy history** are never applied, so give the selection, the
@@ -174,6 +183,7 @@ checks. Each refusal exits 2 with `option=--profile`:
 | No per-user config folder | `no per-user config folder for the default profile; give the flags` |
 | No `copy.json` | `no saved Copy settings; save them on the app's Copy tab, or give the flags` |
 | A `copy.json` the app refuses | `use a valid saved copy.json in the app's state folder` |
+| The saved telescope has no folder yet, and `--dest` is not given | `the telescope saved in the app has no folder yet; choose one on the app's Copy tab, or give --dest` |
 
 ### Performance
 
