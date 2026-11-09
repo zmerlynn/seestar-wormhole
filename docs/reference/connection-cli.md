@@ -596,11 +596,13 @@ In trail entries:
     the settings changed meanwhile, a connection is running, or the save
     failed. The copier still uses it.
   - `scan_unreached`: a connect's scan found the saved serial, but no
-    address it answered from accepted file sharing.
+    address it answered from accepted file sharing, including when
+    another telescope also answered at the saved address.
   - `scan_not_seen`: a connect's scan didn't see the saved serial, so the
-    saved address was tried.
+    saved address was tried, whether or not it connected.
   - `scan_other_telescope`: another telescope answers at the saved address
-    and the scan didn't find the saved one; the saved address isn't used.
+    and the scan didn't see the saved serial anywhere; the saved address
+    isn't used, and the connect fails.
 - File-tool lines carry a fixed message and the classified `phase` and
   `reason`. They leave out paths, file and folder names, endpoints and error
   text. Connection lines keep their telescope text, including the selected

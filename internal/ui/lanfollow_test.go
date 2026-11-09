@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"encoding/json/v2"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -609,5 +610,33 @@ func TestConcurrentConnectsRespectRouteSave(t *testing.T) {
 	now, _ := s.copyTarget()
 	if got.LANAddress != "192.0.2.20:445" || now.Endpoint != got.LANAddress || calls != 3 || n.scans() != 1 {
 		t.Fatalf("saved %s, target %s, dials %d, scans %d", got.LANAddress, now.Endpoint, calls, n.scans())
+	}
+}
+
+// Another serial answering at the saved address while the saved one
+// answers elsewhere and doesn't connect there is recorded as a sighting
+// that didn't connect, not as another telescope in its place.
+func TestConflictWithSightingIsRecordedAsUnreached(t *testing.T) {
+	useLAN(t, &lanNet{answers: map[netip.Addr][3]string{
+		netip.MustParseAddr("192.0.2.20"): {"SERIAL-B", "Other", "Seestar S30"},
+		netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"},
+	}})
+	s := testServer(t)
+	s.controller.log = &eventLog{storage: s.storage}
+	if err := s.controller.persistRoute(routeLAN, "192.0.2.20:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	target, _ := s.copyTarget()
+	var dialed []string
+	_, _, err := lanSearch(t.Context(), s, target, func(_ context.Context, endpoint string) (probe, error) {
+		dialed = append(dialed, endpoint)
+		return "", errors.New("refused")
+	})
+	if err == nil || !slices.Equal(dialed, []string{"192.0.2.30:445"}) {
+		t.Fatalf("err %v, dialed %q", err, dialed)
+	}
+	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_unreached"`) || strings.Contains(text, "scan_other_telescope") ||
+		strings.Contains(text, "192.0.2.") || strings.Contains(text, "SERIAL-") {
+		t.Errorf("trail: %s", text)
 	}
 }

@@ -322,7 +322,7 @@ func lanSearch[T io.Closer](ctx context.Context, h *server, t copyapp.Target, di
 		t.Endpoint = r.Endpoint
 	case r.NotSeen:
 		h.controller.recordScan(scanNotSeen, "The saved telescope wasn't seen in a scan of this network; tried its saved address.")
-	case r.Conflict:
+	case r.Conflict && r.Seen == nil:
 		h.controller.recordScan(scanOther, "Another telescope answers at the saved address, and a scan of this network didn't find the saved one ("+replies(r.Replies)+"). Scan, then Test and Save it again.")
 	case err != nil && r.Seen != nil:
 		h.controller.recordScan(scanUnreached, "Found the telescope"+modelSuffix(r.Seen)+" on this network ("+replies(r.Replies)+"), but it didn't connect where it answered.")

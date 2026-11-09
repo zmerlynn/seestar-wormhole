@@ -138,8 +138,9 @@ When `--endpoint` was filled from it, every connect
 [scans this network](#scan) for that serial and connects, on the same port,
 to an address the telescope answered from, the saved address first; an
 address that doesn't connect doesn't end the search. If another telescope
-answers at the saved address, it isn't used. If no reply carries the serial,
-the saved address is tried. `delete` keeps the address it first connected at
+answers at the saved address, it isn't used, even if it answers there only
+while the saved address is being connected; a connection already made there
+is closed. If no reply carries the serial, the saved address is tried. `delete` keeps the address it first connected at
 for the rest of the run. Nothing is saved; the app saves a new address the
 next time it connects. A given `--endpoint`, or an address saved without a
 serial, is dialed as it is, without a scan. Errors call a telescope reached
@@ -496,9 +497,9 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
 | INFO | `found the saved telescope at another address on this network` | `model` when the reply had one, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). Logged again only when the outcome changes. No address, name or serial is logged. |
-| WARN | `the saved telescope wasn't seen in a scan of this network; tried its saved address` | none | As above, but no reply carried the saved serial, so the saved address was dialed. Logged again only when the outcome changes. |
-| WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `replies` | As above, but another serial answered from the saved address, which isn't used; the connect fails. |
-| WARN | `found the saved telescope on this network, but it didn't connect where it answered` | `model`, `replies` | As above, but no address that answered with the serial connected; the connect fails. |
+| WARN | `the saved telescope wasn't seen in a scan of this network; tried its saved address` | none | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
+| WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `replies` | As above, but another serial answered from the saved address, which isn't used, and no reply carried the saved serial; the connect fails. |
+| WARN | `found the saved telescope on this network, but it didn't connect where it answered` | `model`, `replies` | As above, but no address that answered with the serial connected; the connect fails. Also logged when another serial answered from the saved address too. |
 | WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
 Each pass that runs ends with one summary line, whose keys are below. A later

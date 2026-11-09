@@ -100,11 +100,11 @@ func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, lo
 	switch {
 	case err == nil && r.Moved:
 		once("moved\x00"+r.Endpoint, slog.LevelInfo, "found the saved telescope at another address on this network", modelKeys(r)...)
-	case err == nil && r.NotSeen:
+	case r.NotSeen:
 		once("not seen", slog.LevelWarn, "the saved telescope wasn't seen in a scan of this network; tried its saved address")
 	case err == nil:
 		f.last = ""
-	case r.Conflict:
+	case r.Conflict && r.Seen == nil:
 		log.Warn("another telescope answers at the saved address, and a scan of this network didn't find the saved one", "replies", r.Replies)
 	case r.Seen != nil:
 		log.Warn("found the saved telescope on this network, but it didn't connect where it answered", modelKeys(r)...)

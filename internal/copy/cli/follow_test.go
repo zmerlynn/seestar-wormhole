@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"strings"
 	"syscall"
@@ -11,6 +13,7 @@ import (
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // A followed telescope that a scan found, at its saved address or at
@@ -75,5 +78,44 @@ func TestFollowedConnectFailureNamesNoAddress(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+// A scan that doesn't see the saved serial is logged as such when the
+// saved address it falls back to doesn't connect either.
+func TestFollowNotSeenFallbackFailureIsLogged(t *testing.T) {
+	useLAN(t, &lanNet{})
+	var logs bytes.Buffer
+	f := newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}, none)
+	var calls, plain, names []string
+	_, err := followDial(t.Context(), f, f.saved, diagnostic.Logger("text", &logs, slog.LevelInfo),
+		fakeDial(&plain), fakeDialAs(&names, &calls))
+	if err == nil || len(calls) != 1 || calls[0] != "192.0.2.7:445" {
+		t.Fatalf("err %v, calls %q", err, calls)
+	}
+	if !strings.Contains(logs.String(), `level=WARN msg="the saved telescope wasn't seen in a scan of this network; tried its saved address"`) {
+		t.Errorf("logs: %s", logs.String())
+	}
+}
+
+// Another serial answering at the saved address while the saved one
+// answers elsewhere, and doesn't connect there, is logged as a sighting
+// that didn't connect, not as a telescope the scan didn't find.
+func TestFollowConflictWithSightingIsLoggedAsUnreached(t *testing.T) {
+	useLAN(t, &lanNet{answers: map[netip.Addr][3]string{
+		netip.MustParseAddr("192.0.2.20"): {"SERIAL-B", "Other", "Seestar S30"},
+		netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"},
+	}})
+	var logs bytes.Buffer
+	f := newFollow(Saved{Endpoint: "192.0.2.20:445", LANSerial: "SERIAL-A"}, none)
+	var calls, plain, names []string
+	_, err := followDial(t.Context(), f, f.saved, diagnostic.Logger("text", &logs, slog.LevelInfo),
+		fakeDial(&plain), fakeDialAs(&names, &calls))
+	if err == nil || len(calls) != 1 || calls[0] != "192.0.2.30:445" {
+		t.Fatalf("err %v, calls %q", err, calls)
+	}
+	if strings.Contains(logs.String(), "didn't find the saved one") ||
+		!strings.Contains(logs.String(), `level=WARN msg="found the saved telescope on this network, but it didn't connect where it answered" model="Seestar S50"`) {
+		t.Errorf("logs: %s", logs.String())
 	}
 }
