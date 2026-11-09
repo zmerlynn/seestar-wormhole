@@ -39,7 +39,8 @@ func TestFailuresNameNothing(t *testing.T) {
 	}{
 		{&os.PathError{Op: "open", Path: file, Err: os.ErrPermission}, "permission denied"},
 		{&os.PathError{Op: "create", Path: file, Err: syscall.ENOSPC}, "no space left"},
-		{&os.LinkError{Op: "rename", Old: file + ".tmp", New: file, Err: syscall.EXDEV}, "invalid cross-device link"},
+		// The system's own text, which differs: Linux's "invalid cross-device link", macOS's "cross-device link".
+		{&os.LinkError{Op: "rename", Old: file + ".tmp", New: file, Err: syscall.EXDEV}, syscall.EXDEV.Error()},
 		{fmt.Errorf("history %s: %w", file, state.ErrLocked), state.ErrLocked.Error()},
 		{fmt.Errorf("lock %s: %w", private, state.ErrFolderLocked), state.ErrFolderLocked.Error()},
 		{&net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.IPv4(192, 0, 2, 77), Port: 445}, Err: syscall.ECONNREFUSED}, "connection refused"},
