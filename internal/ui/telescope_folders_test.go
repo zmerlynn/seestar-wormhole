@@ -373,6 +373,28 @@ func TestHeardSerialOffersFolder(t *testing.T) {
 	}
 }
 
+// An acceptance while copying is on is refused, and changes nothing: the
+// copier's telescope would move under it. The pass is held in its dial,
+// so copying stays on for as long as the test needs.
+func TestHeardSerialAcceptanceRefusedWhileCopying(t *testing.T) {
+	h := newHeardEnv(t)
+	saves := h.saveCount()
+	h.hear("SYNTH-HEARD-1")
+	h.set(&h.holdDial, make(chan struct{}))
+	if code, body := h.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
+		t.Fatalf("start copying = %d %s", code, body)
+	}
+	if code, body := h.post("/copy/api/adopt", `{}`); code != 409 || !strings.Contains(body, "Stop copying") {
+		t.Errorf("adopt while copying = %d %s", code, body)
+	}
+	if h.savedSerial() != "" || h.saveCount() != saves || h.offer() == nil {
+		t.Error("an acceptance while copying changed something")
+	}
+	if code, body := h.post("/copy/api/copy", `{"action":"stop"}`); code != 200 {
+		t.Fatalf("stop copying = %d %s", code, body)
+	}
+}
+
 // An acceptance whose serial can't be saved changes nothing; one whose
 // serial is saved but whose folder isn't leaves the folder at the address,
 // offered again to the telescope saved with its serial.
@@ -380,30 +402,12 @@ func TestHeardSerialAcceptanceFails(t *testing.T) {
 	h := newHeardEnv(t)
 	saves := h.saveCount()
 	h.hear("SYNTH-HEARD-1")
-	// Copying is on: the copier's telescope would move under it.
-	if code, body := h.post("/copy/api/copy", `{"action":"start"}`); code != 200 {
-		t.Fatalf("start copying = %d %s", code, body)
-	}
-	if code, body := h.post("/copy/api/adopt", `{}`); code != 409 || !strings.Contains(body, "Stop copying") {
-		t.Errorf("adopt while copying = %d %s", code, body)
-	}
 	h.mu.Lock()
 	h.knowErr = errors.New("synthetic")
 	h.mu.Unlock()
-	if code, body := h.post("/copy/api/copy", `{"action":"stop"}`); code != 200 {
-		t.Fatalf("stop copying = %d %s", code, body)
+	if code, body := h.post("/copy/api/adopt", `{}`); code != 409 || !strings.Contains(body, "Couldn't save settings") {
+		t.Errorf("adopt with no serial saved = %d %s", code, body)
 	}
-	if h.savedSerial() != "" || h.saveCount() != saves {
-		t.Fatal("an acceptance while copying changed something")
-	}
-	// Once the pass ends, an acceptance whose serial can't be saved.
-	h.until("the pass to end", func() bool {
-		code, body := h.post("/copy/api/adopt", `{}`)
-		if code != 409 || !strings.Contains(body, "Stop copying") && !strings.Contains(body, "Couldn't save settings") {
-			t.Fatalf("adopt with no serial saved = %d %s", code, body)
-		}
-		return strings.Contains(body, "Couldn't save settings")
-	})
 	if h.savedSerial() != "" || h.saveCount() != saves || h.offer() == nil {
 		t.Fatal("a failed acceptance changed something")
 	}
