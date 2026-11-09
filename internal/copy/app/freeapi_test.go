@@ -9,11 +9,14 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // The delete API checks its input and its preview, and Find saves the
@@ -355,5 +358,45 @@ func TestFreeFindPatternsGuard(t *testing.T) {
 				t.Fatalf("deleted %s, which the saved %s protect", kept, field)
 			}
 		})
+	}
+}
+
+// A preview's outcome is reported before the check has stopped, so a
+// caller that starts the next check on the outcome alone is refused as
+// busy: it has to wait for the Mount to be idle.
+func TestPreviewOutcomeComesBeforeIdle(t *testing.T) {
+	e := newAppEnv(t, savedAt(t.TempDir()))
+	reported, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	defer once.Do(func() { close(release) })
+	var first atomic.Bool
+	e.s.rep.report = func(o Outcome) {
+		if o.Source == diagnostic.SourceDelete && o.Op == diagnostic.OpPreview && first.CompareAndSwap(false, true) {
+			close(reported)
+			<-release
+		}
+	}
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":false}`); w.Code != 200 {
+		t.Fatalf("find = %d %s", w.Code, w.Body)
+	}
+	select {
+	case <-reported:
+	case <-time.After(10 * time.Second):
+		t.Fatal("no outcome")
+	}
+	if !e.s.free.running() {
+		t.Fatal("the check stopped before its outcome")
+	}
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":false}`); w.Code != 409 {
+		t.Errorf("a check after the outcome, before idle = %d %s, want 409", w.Code, w.Body)
+	}
+	once.Do(func() { close(release) })
+	for deadline := time.Now().Add(10 * time.Second); e.s.free.running(); time.Sleep(time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the check never stopped")
+		}
+	}
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":false}`); w.Code != 200 {
+		t.Errorf("a check once idle = %d %s", w.Code, w.Body)
 	}
 }
