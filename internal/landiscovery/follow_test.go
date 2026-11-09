@@ -144,17 +144,24 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 	type script struct {
 		during, then []datagram
 		down         string
+		cancel       bool // the saved address's dial is canceled
 	}
 	run := func(t *testing.T, sc script) (*session, Resolved, error, map[string]*session) {
 		s, c := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.30"))
 		sessions := map[string]*session{}
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		got, r, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			switch ep {
 			case "192.0.2.30:445":
 				c.deliver(t, sc.during...)
 			case "192.0.2.20:445":
 				if sc.then != nil {
 					c.deliver(t, sc.then...)
+				}
+				if sc.cancel {
+					cancel()
+					return nil, ctx.Err()
 				}
 			}
 			if ep == sc.down {
@@ -178,6 +185,13 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 		other := sessions["192.0.2.30:445"]
 		if err != nil || got == nil || got != other || other.closed.Load() || !r.Moved || r.Endpoint != "192.0.2.30:445" {
 			t.Fatalf("got %v %+v %v, sessions %v", got, r, err, sessions)
+		}
+	})
+	t.Run("the saved address's dial is canceled", func(t *testing.T) {
+		got, _, err, sessions := run(t, script{during: []datagram{answer("SERIAL-A", "192.0.2.20")}, cancel: true})
+		other := sessions["192.0.2.30:445"]
+		if !errors.Is(err, context.Canceled) || got != nil || other == nil || !other.closed.Load() {
+			t.Fatalf("got %v %v, sessions %v", got, err, sessions)
 		}
 	})
 	t.Run("another serial answers at the saved address during its dial", func(t *testing.T) {
