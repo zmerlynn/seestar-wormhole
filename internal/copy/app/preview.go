@@ -13,6 +13,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
 
 // The Copy tab's preview states, as the page names them. Idle shows no
@@ -92,6 +93,8 @@ func (p *previewer) start(set Settings, t Target) error {
 		return errBusy
 	}
 	ctx, cancel := context.WithCancel(p.parent)
+	// A preview is one run for the scan on this network.
+	ctx = landiscovery.WithRun(ctx, &landiscovery.Run{})
 	done := make(chan struct{})
 	p.cancel, p.done = cancel, done
 	p.st = previewStatus{state: pvRunning, endpoint: set.Address, lan: t.onLAN()}

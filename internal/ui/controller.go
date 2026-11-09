@@ -12,6 +12,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
@@ -432,6 +433,27 @@ func (c *controller) persistRoute(route, address, serial string) error {
 		// The caller has tested the address.
 		s.LANAddress, s.LANSerial, s.RouteEstablished = address, serial, true
 	}
+	return c.persistLocked(s)
+}
+
+// persistLANScan saves when to scan for the telescope on this network
+// onto the last saved settings. It is refused, as persistRoute is, while a
+// run is active, whose save at its ready boundary would carry the old
+// value.
+func (c *controller) persistLANScan(mode landiscovery.Mode) error {
+	c.saveMu.Lock()
+	defer c.saveMu.Unlock()
+	c.mu.Lock()
+	running := c.done != nil
+	c.mu.Unlock()
+	if running {
+		return &ActionError{Code: "route_locked"}
+	}
+	s := c.lastSaved
+	if s.Version == 0 {
+		s = defaultSettings()
+	}
+	s.LANScan = string(mode)
 	return c.persistLocked(s)
 }
 

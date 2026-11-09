@@ -13,6 +13,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
 
 // The refusals of a Free up space action.
@@ -91,6 +92,9 @@ func (f *freer) run(st freeStatus, o engine.DeleteOptions, stop chan struct{}, i
 		return errStale
 	}
 	ctx, cancel := context.WithCancel(f.parent)
+	// A check is one run for the scan on this network; a delete never
+	// scans, as it goes only to the target its check reached.
+	ctx = landiscovery.WithRun(ctx, &landiscovery.Run{})
 	done := make(chan struct{})
 	f.cancel, f.stop, f.done, f.st = cancel, stop, done, st
 	o.Stop = stop

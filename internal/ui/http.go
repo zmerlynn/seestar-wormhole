@@ -9,6 +9,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"io"
@@ -231,6 +232,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}, func() error {
 			s.mu.Lock()
 			in.Settings.Route, in.Settings.LANAddress, in.Settings.LANSerial = routeAccount, s.settings.LANAddress, s.settings.LANSerial
+			in.Settings.LANScan = s.settings.LANScan
 			s.mu.Unlock()
 			if err := s.controller.start(in.Settings, in.Password); err != nil {
 				return err
@@ -249,6 +251,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/api/password/save":
 		s.mu.Lock()
 		in.Settings.Route, in.Settings.LANAddress, in.Settings.LANSerial = s.settings.Route, s.settings.LANAddress, s.settings.LANSerial
+		in.Settings.LANScan = s.settings.LANScan
 		s.mu.Unlock()
 		if _, _, err = in.Settings.validate(); err == nil {
 			generation := s.controller.credentials.nextGeneration()
@@ -277,6 +280,13 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		err = s.saveRoute(r.Context(), in.Settings.Route, in.Settings.LANAddress)
+	case "/api/lan-scan":
+		mode, ok := landiscovery.ParseMode(in.Settings.LANScan)
+		if !ok {
+			fail(http.StatusBadRequest)
+			return
+		}
+		err = s.controller.persistLANScan(mode)
 	case "/api/scan":
 		var scan scanInput
 		if json.Unmarshal(b, &scan) != nil {
@@ -489,6 +499,22 @@ func SavedLANSerial(s Settings) string {
 		return ""
 	}
 	return s.LANSerial
+}
+
+// SavedLANScan is when to scan for the serial saved with this network's
+// address, as saved: see [Settings.LANScan].
+func SavedLANScan(s Settings) string {
+	if s.Route != routeLAN {
+		return ""
+	}
+	return s.LANScan
+}
+
+// lanScan is when the copier's connects scan for the saved serial now.
+func (s *server) lanScan() landiscovery.Mode {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return landiscovery.ModeOf(s.settings.LANScan)
 }
 
 // lanEndpoint is this network's saved address, normalized.

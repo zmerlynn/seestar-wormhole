@@ -20,6 +20,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
 
 // The copy loop's options that Settings doesn't hold are the CLI's
@@ -159,6 +160,8 @@ func (c *controller) start(set Settings, t Target) error {
 		return errBusy
 	}
 	ctx, cancel := context.WithCancel(c.parent)
+	// Copying is one run for the scan on this network, every pass of it.
+	ctx = landiscovery.WithRun(ctx, &landiscovery.Run{})
 	done := make(chan struct{})
 	c.cancel, c.done, c.stopping = cancel, done, false
 	c.bound, c.pass, c.ended = t, false, nil

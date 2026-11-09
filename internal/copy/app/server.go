@@ -25,6 +25,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 )
 
@@ -73,6 +74,9 @@ type server struct {
 	file     *settingsFile
 	browse   *browse.Handler // without statuses until a folder is saved
 	sessions *browse.Sessions
+	// browseRun is Browse's run for the scan on this network: a new one
+	// with each pool and each load of Browse's page.
+	browseRun *landiscovery.Run
 	// view counts what Browse shows, for the page, which loads its frame
 	// again once it moved: each new pool moves it, and so does each new
 	// endpoint status finds, such as a route's run connecting.
@@ -181,7 +185,13 @@ func (s *server) newBrowse(set Settings) (*browse.Handler, *browse.Sessions) {
 		},
 		Seq: s.rep.next,
 	}
-	sessions := browse.NewSessions(s.ctx, s.dial, log, rep)
+	s.browseRun = &landiscovery.Run{}
+	sessions := browse.NewSessions(s.ctx, func(ctx context.Context) (remote.Session, error) {
+		s.mu.Lock()
+		run := s.browseRun
+		s.mu.Unlock()
+		return s.dial(landiscovery.WithRun(ctx, run))
+	}, log, rep)
 	var records func() (map[string]state.Record, error)
 	var sel engine.Selector
 	if s.setUp() {
@@ -323,6 +333,10 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case strings.HasPrefix(r.URL.Path, "/browse/"):
 		s.mu.Lock()
 		h, sessions := s.browse, s.sessions
+		if r.URL.Path == "/browse/" && r.Method == http.MethodGet {
+			// Opening Browse is a new run for the scan on this network.
+			s.browseRun = &landiscovery.Run{}
+		}
 		s.mu.Unlock()
 		// A window's webview may not save a download itself, so the app
 		// does, with the window's save dialog.

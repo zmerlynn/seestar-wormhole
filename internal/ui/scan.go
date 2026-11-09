@@ -153,6 +153,10 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 			return scanView{OK: true, Telescopes: []scanTelescope{}}, nil
 		}
 		probe = ip.Unmap()
+		if s.lanScan() == landiscovery.ScanOff {
+			// Nothing goes on the network unasked: only Test checks it.
+			return scanView{OK: true, Telescopes: []scanTelescope{}}, nil
+		}
 	}
 	// A probe has its own socket and stops at the first answer, so it
 	// doesn't wait behind a scan.
@@ -246,6 +250,35 @@ func (s *server) serialFor(route, address string) string {
 // lanName is what error text calls a telescope saved with its serial on
 // this network, in place of the address a scan found it at.
 const lanName = copyapp.SavedLabel
+
+// lanConnect connects to t, a target on this network saved with its
+// serial, with dial, as the saved LANScan says: off dials t's endpoint
+// alone; connect follows the telescope (see [lanFollow]); start follows
+// it once in the run ctx carries (see [landiscovery.InRun]) and dials
+// where it connected after that, following it again when that fails. A
+// connect outside a run follows the telescope. It returns the target it
+// reached.
+func lanConnect[T io.Closer](ctx context.Context, h *server, t copyapp.Target, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
+	mode := h.lanScan()
+	run := landiscovery.RunFrom(ctx)
+	switch {
+	case mode == landiscovery.ScanOff:
+		v, err := dial(ctx, t.Endpoint)
+		return v, t, err
+	case mode == landiscovery.ScanConnect || run == nil:
+		return lanFollow(ctx, h, t, dial)
+	}
+	// The run remembers the telescope by its serial alone: once a scan
+	// saved a new address, the next connect's target carries it.
+	v, at, _, err := landiscovery.InRun(ctx, run, t.Serial, dial, func(ctx context.Context) (T, string, error) {
+		v, reached, err := lanFollow(ctx, h, t, dial)
+		return v, reached.Endpoint, err
+	})
+	if err == nil {
+		t.Endpoint = at
+	}
+	return v, t, err
+}
 
 // following is one search for a saved telescope in progress. done closes
 // when it ends; endpoint is where it connected, or "".
