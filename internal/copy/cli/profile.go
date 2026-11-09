@@ -23,8 +23,12 @@ type Saved struct {
 	// network, or "". It is never shown or logged; a run that dials the
 	// filled Endpoint follows the telescope by it when it moved.
 	LANSerial string
-	Excludes  []string
-	Includes  []string
+	// LANScan is when the app scans for the telescope saved with
+	// LANSerial: start, connect or off, or "" (start). --scan overrides
+	// it.
+	LANScan  string
+	Excludes []string
+	Includes []string
 	// NoDefaultExcludes is true when the saved settings don't skip what
 	// the built-in patterns match.
 	NoDefaultExcludes bool

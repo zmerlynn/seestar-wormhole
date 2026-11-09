@@ -6,18 +6,24 @@ import (
 	"log/slog"
 	"sync"
 
+	"github.com/spf13/pflag"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
 
 // followHelp is the help paragraph on following a telescope by its serial.
-const followHelp = `An --endpoint filled on this network follows the telescope: when the app
-saved it from a scan, each connect scans this network for its serial number
-and uses the address that answers with it and accepts the connection, the
-saved address first. If the scan doesn't see the telescope, the saved
-address is tried; if another telescope answers there instead, it is not
-used. A new address is used without saving it. delete keeps the address it
-first connected at for the rest of the run.
+const followHelp = `An --endpoint filled on this network follows the telescope when the app
+saved it from a scan: a scan of this network looks for its serial number and
+uses the address that answers with it and accepts the connection, the saved
+address first. If the scan doesn't see the telescope, the saved address is
+tried; if another telescope answers there instead, it is not used. A new
+address is used without saving it. --scan says when to scan, overriding the
+app's setting: start (the default) scans once per run, at its first connect,
+and again only when a connect fails; connect scans before every connect; off
+never scans and dials the saved address. A given --endpoint, or one saved
+without a serial, is dialed as it is, whatever --scan says. delete keeps the
+address it first connected at for the rest of the run.
 `
 
 // lanScanner scans this network for a saved telescope, and runs scan.
@@ -29,14 +35,17 @@ var lanScanner = &landiscovery.Scanner{}
 const lanName = "the saved telescope"
 
 // follow is how a run reaches a telescope the app saved on this network
-// with its serial, at the endpoint --profile default filled: each connect
+// with its serial, at the endpoint --profile default filled: a connect
 // scans for the serial and dials where it answers (see
-// [landiscovery.Follow]). It saves nothing: the app follows the telescope
-// the same way and saves a new address when it connects there. With pin,
-// the first address that connects is the run's from then on, unscanned.
+// [landiscovery.Follow]), when mode says to. It saves nothing: the app
+// follows the telescope the same way and saves a new address when it
+// connects there. With pin, the first address that connects is the run's
+// from then on, unscanned.
 type follow struct {
 	saved, serial string
+	mode          landiscovery.Mode
 	pin           bool
+	run           landiscovery.Run // the run's scan, in start mode
 
 	mu     sync.Mutex
 	pinned string // the address a pinned follow connected at, or ""
@@ -50,7 +59,30 @@ func newFollow(s Saved, changed func(string) bool) *follow {
 	if changed("endpoint") || s.Endpoint == "" || s.LANSerial == "" {
 		return nil
 	}
-	return &follow{saved: s.Endpoint, serial: s.LANSerial}
+	return &follow{saved: s.Endpoint, serial: s.LANSerial, mode: landiscovery.ModeOf(s.LANScan)}
+}
+
+// scanFlag is --scan, which overrides when a follow scans.
+type scanFlag struct{ value string }
+
+func (s *scanFlag) register(f *pflag.FlagSet) {
+	f.StringVar(&s.value, "scan", "", "when to scan this network for the telescope --profile default saved there: start, connect or off (default: the app's setting, start if none)")
+}
+
+// apply checks --scan when given and sets f's mode to it. It is checked
+// without a follow too, though nothing is scanned then.
+func (s *scanFlag) apply(flags *pflag.FlagSet, f *follow) error {
+	if !flags.Changed("scan") {
+		return nil
+	}
+	m, ok := landiscovery.ParseMode(s.value)
+	if !ok {
+		return &diagnostic.OptionError{Option: "--scan", Rule: "use start, connect or off"}
+	}
+	if f != nil {
+		f.mode = m
+	}
+	return nil
 }
 
 // label is what logs and error text call endpoint, a run's --endpoint:
@@ -65,9 +97,12 @@ func (f *follow) label(endpoint string) string {
 }
 
 // followDial dials endpoint with d, or, when f is set and endpoint is its
-// saved one, follows the telescope and dials with as, whose errors call it
-// lanName. The log records the model a scan saw and its reply count,
-// never an address, a name or the serial.
+// saved one, reaches the telescope as f's mode says and dials with as,
+// whose errors call it lanName: off dials the saved address; connect
+// follows the telescope; start follows it once per run and dials where
+// it connected after that, following it again when that fails. The log
+// records the model a scan saw and its reply count, never an address, a
+// name or the serial.
 func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, log *slog.Logger,
 	d func(context.Context, string, *slog.Logger) (T, error), as func(context.Context, string, string, *slog.Logger) (T, error)) (T, error) {
 	if f == nil || endpoint != f.saved {
@@ -77,12 +112,26 @@ func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, lo
 	f.mu.Lock()
 	pinned := f.pinned
 	f.mu.Unlock()
-	if pinned != "" {
+	switch {
+	case pinned != "":
 		return dial(ctx, pinned)
+	case f.mode == landiscovery.ScanOff:
+		return dial(ctx, f.saved)
+	case f.mode == landiscovery.ScanConnect:
+		v, _, err := followSearch(ctx, f, log, dial)
+		return v, err
 	}
+	v, _, _, err := landiscovery.InRun(ctx, &f.run, f.saved+"\x00"+f.serial, dial,
+		func(ctx context.Context) (T, string, error) { return followSearch(ctx, f, log, dial) })
+	return v, err
+}
+
+// followSearch is one search for f's telescope, which scans, and what it
+// logs. It returns the address it connected at.
+func followSearch[T io.Closer](ctx context.Context, f *follow, log *slog.Logger, dial func(context.Context, string) (T, error)) (T, string, error) {
 	v, r, err := landiscovery.Follow(ctx, lanScanner, f.saved, f.serial, dial, func(v T) { v.Close() })
 	if ctx.Err() != nil {
-		return v, err
+		return v, r.Endpoint, err
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -90,7 +139,7 @@ func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, lo
 		f.pinned = r.Endpoint
 	}
 	// once logs a search's outcome when it differs from the last one
-	// logged, since every connect of a long sync searches.
+	// logged, since every connect of a long sync may search.
 	once := func(state string, level slog.Level, msg string, keys ...any) {
 		if state != f.last {
 			f.last = state
@@ -109,7 +158,7 @@ func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, lo
 	case r.Seen != nil:
 		log.Warn("found the saved telescope on this network, but it didn't connect where it answered", modelKeys(r)...)
 	}
-	return v, err
+	return v, r.Endpoint, err
 }
 
 func modelKeys(r landiscovery.Resolved) []any {

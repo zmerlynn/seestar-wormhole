@@ -197,9 +197,22 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 	}
 	writeSavedConfig(t, root, b)
 	got, err := loadDefaultProfile()
-	if err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "SYNTHETIC_LAN_SERIAL" {
+	if err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "SYNTHETIC_LAN_SERIAL" || got.LANScan != "" {
 		t.Errorf("this network = %+v, %v", got, err)
 	}
+	// The profile carries when to scan as saved; the CLI reads a value it
+	// doesn't know as start.
+	for _, scan := range []string{"start", "connect", "off", "a newer mode"} {
+		s.LANScan = scan
+		if b, err = json.Marshal(s); err != nil {
+			t.Fatal(err)
+		}
+		writeSavedConfig(t, root, b)
+		if got, err = loadDefaultProfile(); err != nil || got.LANScan != scan {
+			t.Errorf("lan_scan %q = %+v, %v", scan, got, err)
+		}
+	}
+	s.LANScan = ""
 	s.LANSerial = ""
 	if b, err = json.Marshal(s); err != nil {
 		t.Fatal(err)

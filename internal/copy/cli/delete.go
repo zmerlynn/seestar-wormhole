@@ -19,6 +19,7 @@ type deleteOptions struct {
 	// follow follows a saved telescope by its serial at the endpoint the
 	// profile filled.
 	follow        *follow
+	scan          scanFlag
 	dest          string
 	destSet       bool
 	historyDir    string
@@ -80,6 +81,9 @@ Exit 0 when the run finishes, however many files it kept, or is stopped;
 			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
 				return err
 			}
+			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {
+				return err
+			}
 			o.destSet = o.profile.present(cmd.Flags(), "dest")
 			o.historyDirSet = o.profile.present(cmd.Flags(), "history-dir")
 			if err := o.validate(); err != nil {
@@ -94,6 +98,7 @@ Exit 0 when the run finishes, however many files it kept, or is stopped;
 	}
 	f := c.Flags()
 	o.profile.register(f)
+	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state and copies prove each file; never created (required unless --ignore-state)")
 	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: the per-user config folder's seestar-copy)")

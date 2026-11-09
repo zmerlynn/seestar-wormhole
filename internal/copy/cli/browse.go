@@ -24,6 +24,7 @@ type browseOptions struct {
 	// follow follows a saved telescope by its serial at the endpoint the
 	// profile filled.
 	follow    *follow
+	scan      scanFlag
 	listen    string
 	addr      netip.AddrPort // set by validate from listen
 	open      bool
@@ -76,6 +77,9 @@ a usage error.`,
 			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
 				return err
 			}
+			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {
+				return err
+			}
 			o.destSet = o.profile.present(cmd.Flags(), "dest")
 			o.historyDirSet = o.profile.present(cmd.Flags(), "history-dir")
 			if err := o.validate(); err != nil {
@@ -95,6 +99,7 @@ a usage error.`,
 	}
 	f := c.Flags()
 	o.profile.register(f)
+	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.listen, "listen", "127.0.0.1:0", "IP address and port to serve the page on; port 0 picks a free one")
 	f.BoolVar(&o.open, "open", false, "also open the page in the default browser")

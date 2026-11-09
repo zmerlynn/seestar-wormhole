@@ -25,6 +25,7 @@ type syncOptions struct {
 	// follow follows a saved telescope by its serial at the endpoint the
 	// profile filled.
 	follow    *follow
+	scan      scanFlag
 	dest      string
 	selection selectionFlags
 	// selector is set by validate from selection.
@@ -86,6 +87,9 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
 				return err
 			}
+			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {
+				return err
+			}
 			o.historyDirSet = o.profile.present(cmd.Flags(), "history-dir")
 			o.intervalSet = cmd.Flags().Changed("interval")
 			if err := o.validate(); err != nil {
@@ -100,6 +104,7 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 	}
 	f := c.Flags()
 	o.profile.register(f)
+	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder, created if missing (required)")
 	o.selection.register(f)

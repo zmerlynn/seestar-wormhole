@@ -39,6 +39,7 @@ func loadDefaultProfile() (cli.Saved, error) {
 	if config, err := ui.LoadSettings(root); err == nil {
 		saved.Endpoint, _ = ui.SavedCopyEndpoint(config)
 		saved.LANSerial = ui.SavedLANSerial(config)
+		saved.LANScan = ui.SavedLANScan(config)
 	}
 	return saved, nil
 }

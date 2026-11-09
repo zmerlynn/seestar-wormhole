@@ -345,7 +345,8 @@ func TestFollowDial(t *testing.T) {
 	useLAN(t, n)
 	var logs bytes.Buffer
 	log := diagnostic.Logger("text", &logs, slog.LevelInfo)
-	f := newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}, none)
+	// connect mode: every connect scans.
+	f := newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A", LANScan: "connect"}, none)
 	var calls, plain, names []string
 	follow := func(f *follow, endpoint string, up ...string) (fakeSession, error) {
 		calls, plain, names = nil, nil, nil
@@ -362,7 +363,8 @@ func TestFollowDial(t *testing.T) {
 	if !strings.Contains(logs.String(), `level=INFO msg="found the saved telescope at another address on this network" model="Seestar S50" replies=`) {
 		t.Errorf("logs: %s", logs.String())
 	}
-	// Every connect scans again, and a repeated outcome isn't logged again.
+	// In connect mode every connect scans again, and a repeated outcome
+	// isn't logged again.
 	logs.Reset()
 	if got, err = follow(f, "192.0.2.7:445", "192.0.2.20:445"); err != nil || !slices.Equal(calls, []string{"192.0.2.20:445"}) || n.scans() != 2 {
 		t.Errorf("the next dial = %q, %v; calls %q scans %d", got, err, calls, n.scans())
