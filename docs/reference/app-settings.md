@@ -67,8 +67,10 @@ and left untouched. A failed load never overwrites existing state.
 `version` is required and must be `1`. Missing members take these defaults,
 and members this version doesn't know are kept when it saves. The file is
 written when you save Copy settings, preview Free up space with changed
-options, accept an address's folder for a telescope, or when Copy first uses
-a telescope's folder after an upgrade, never on load.
+options, or accept an address's folder for a telescope. After an upgrade,
+the saved telescope's folder is also recorded before its first Copy,
+preview, Free up space check, history clear, or connection change. Loading
+alone never writes the file.
 
 | Member | Default and meaning |
 |---|---|

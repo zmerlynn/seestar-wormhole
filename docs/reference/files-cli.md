@@ -123,8 +123,9 @@ The folder is that of the telescope `config.json` saves, keyed as the app
 keys it: by `lan_serial` on this network, or by the address when it was
 saved without one, and by the saved `serial` through the account; see
 [`telescopes`](app-settings.md#copyjson-version-1). Until any telescope has
-a folder of its own, and without a usable `config.json`, it is `folder`. If
-the saved telescope has no folder while another has one, a command that
+a folder of its own, the destination is `folder`. After that, a usable
+`config.json` must identify a telescope with a saved folder, or you must
+give `--dest`. If the saved telescope has no folder while another has one, a command that
 would fill `--dest` exits 2 for `--profile`; a given `--dest`, or delete
 with `--ignore-state`, runs as usual. browse instead fills only
 `--endpoint` and lists without statuses.

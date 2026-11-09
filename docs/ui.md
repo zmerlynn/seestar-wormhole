@@ -246,9 +246,10 @@ can't change while copying runs:
   folders. Choose another folder.** If a link changes later so that the
   saved folders meet, Copy, its preview, Free up space and clearing the
   history refuse with **this telescope's folder is now another telescope's,
-  or inside or around it; choose another in Copy**. Through Telescope Network, a
-  folder can't be saved for a telescope not yet known: **Connect to the
-  telescope first: its folder is chosen once it is known.**
+  or inside or around it; choose another in Copy**. Once another telescope
+  has a folder, Telescope Network must identify this telescope before you
+  can save its folder: **Connect to the telescope first: its folder is
+  chosen once it is known.**
 - **Copy history folder**, empty by default. Empty is the default
   [history location](reference/selection-and-history.md#location), the one
   `seestar-wormhole-cli sync` uses without `--history-dir`, so the app and

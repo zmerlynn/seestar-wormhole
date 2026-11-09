@@ -17,8 +17,9 @@ var defaultProfileRoot = func() (string, error) { return ui.StateRoot("") }
 // with the serial saved with it on this network, and the folder of the
 // telescope config.json saves. It writes and locks nothing. Without
 // copy.json there is nothing to fill, so it is refused; without a usable
-// config.json the endpoint stays unfilled and the folder is copy.json's
-// folder, the first telescope's.
+// config.json the endpoint stays unfilled, and the folder is copy.json's
+// folder only until any telescope has a folder of its own: after that,
+// none is filled, and NoFolder is set.
 func loadDefaultProfile() (cli.Saved, error) {
 	root, err := defaultProfileRoot()
 	if err != nil {
