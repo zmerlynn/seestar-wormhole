@@ -225,8 +225,8 @@ func TestCopyFailures(t *testing.T) {
 		want  string
 		is    error
 	}{
-		{name: "short read", size: 3, fault: remote.Fault{After: 1, ReadErr: io.EOF}, want: "download: short read: got 1 of 3 bytes"},
-		{name: "smaller than listed", size: 4, want: "download: short read: got 3 of 4 bytes"},
+		{name: "short read", size: 3, fault: remote.Fault{After: 1, ReadErr: io.EOF}, want: "download: the device sent 1 of its 3 bytes", is: remote.ErrShort},
+		{name: "smaller than listed", size: 4, want: "download: the device sent 3 of its 4 bytes", is: remote.ErrShort},
 		{name: "longer than listed", size: 2, want: "download: stopped after 0 of 2 bytes", is: errTooLong},
 		{name: "read error", size: 3, fault: remote.Fault{After: 2, ReadErr: errRead}, want: "download: stopped after 2 of 3 bytes", is: errRead},
 		{name: "open error", size: 3, fault: remote.Fault{OpenErr: errOpen}, want: "open on the device", is: errOpen},
@@ -479,7 +479,7 @@ func TestHashExactly(t *testing.T) {
 		wantErr error
 	}{
 		{name: "exact", ctx: t.Context(), size: 3, want: sumABC},
-		{name: "short", ctx: t.Context(), size: 4, want: "short read: got 3 of 4 bytes"},
+		{name: "short", ctx: t.Context(), size: 4, want: "the device sent 3 of its 4 bytes", wantErr: remote.ErrShort},
 		{name: "long", ctx: t.Context(), size: 2, want: "stopped after 0 of 2 bytes", wantErr: errTooLong},
 		{name: "canceled", ctx: canceled, size: 3, want: "stopped after 0 of 3 bytes", wantErr: context.Canceled},
 	} {

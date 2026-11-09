@@ -204,7 +204,7 @@ func hashExactly(ctx context.Context, w io.Writer, src io.WriterTo, size int64) 
 		return "", fmt.Errorf("stopped after %d of %d bytes: %w", size-lw.left, size, err)
 	}
 	if lw.left != 0 {
-		return "", fmt.Errorf("short read: got %d of %d bytes", size-lw.left, size)
+		return "", &remote.ShortError{Got: size - lw.left, Size: size}
 	}
 	return hex.EncodeToString(h.Sum(nil)), nil
 }

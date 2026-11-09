@@ -1436,8 +1436,9 @@ func within(folder, dst string) (top, rel string, ok bool) {
 const maxDays = 36500
 
 // reason is a short text for err that names no folder, file, address,
-// host or serial, for logs, Activity and the page's error messages: err's
-// own text when that is [safeText], as this app's errors and the
+// host or serial, for logs, Activity and the page's error messages: a
+// transfer that ended early is [remote.ErrShort], without its byte
+// counts; else err's own text when that is [safeText], as this app's errors and the
 // telescope connection's are; else the class of a system or network
 // failure, such as "permission denied"; else the first safe text in err's
 // chain, such as a sentinel a dependency wrapped with a path; and
@@ -1445,6 +1446,9 @@ const maxDays = 36500
 func reason(err error) string {
 	if err == nil {
 		return "none"
+	}
+	if errors.Is(err, remote.ErrShort) {
+		return remote.ErrShort.Error()
 	}
 	if t := err.Error(); safeText(t) {
 		return t

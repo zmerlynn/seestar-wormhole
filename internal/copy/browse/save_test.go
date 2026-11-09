@@ -79,7 +79,9 @@ func TestSaveFailures(t *testing.T) {
 		{name: "connection lost", path: fitPath, fault: &remote.Fault{After: 50, ReadErr: lost},
 			want: func(err error) bool { return errors.Is(err, lost) }},
 		{name: "short", path: fitPath, fault: &remote.Fault{After: 50, ReadErr: io.EOF},
-			want: func(err error) bool { return err.Error() == "the device sent 50 of its 200 bytes" }},
+			want: func(err error) bool {
+				return err.Error() == "the device sent 50 of its 200 bytes" && errors.Is(err, remote.ErrShort)
+			}},
 		{name: "canceled", path: fitPath, want: func(err error) bool { return errors.Is(err, context.Canceled) },
 			ctx: func(ctx context.Context) context.Context {
 				ctx, cancel := context.WithCancel(ctx)

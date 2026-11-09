@@ -3,7 +3,6 @@ package browse
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"math/rand/v2"
@@ -12,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 )
 
 // Hold runs a save's rename, the one step that puts the file at its
@@ -92,7 +92,7 @@ func save(ctx context.Context, lease *Lease, p string, hold Hold, create func() 
 		return err
 	}
 	if n != size {
-		return fmt.Errorf("the device sent %d of its %d bytes", n, size)
+		return &remote.ShortError{Got: n, Size: size}
 	}
 	if err := out.Close(); err != nil {
 		return err
