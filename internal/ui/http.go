@@ -391,6 +391,9 @@ func (s *server) changeRoute(moves func() bool, commit func() error) error {
 	if errors.Is(err, copyapp.ErrBusy) {
 		return &ActionError{Code: "route_locked"}
 	}
+	if errors.Is(err, copyapp.ErrClaim) {
+		return &ActionError{Code: "folder_claim"}
+	}
 	return err
 }
 

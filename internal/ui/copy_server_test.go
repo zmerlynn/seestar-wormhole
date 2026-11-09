@@ -566,3 +566,31 @@ func TestQuitStopsCopy(t *testing.T) {
 		t.Error("copying is still on after Quit")
 	}
 }
+
+// A route change is refused, with a fixed message, while copy can't save
+// the first telescope's folder as its own.
+func TestRouteRefusedWhenClaimFails(t *testing.T) {
+	s := testServer(t)
+	s.settings.Serial = "SN-TEST-1"
+	saved := copyapp.DefaultSettings()
+	saved.Folder = filepath.Join(t.TempDir(), "FOLDER-SENTINEL")
+	s.copy = copyapp.NewMount(context.Background(), copyapp.MountOptions{
+		Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(), Version: "synthetic",
+		Log:    slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Target: s.copyTarget,
+		Dial: func(context.Context, copyapp.Target) (remote.Session, error) {
+			return remote.NewFake(fstest.MapFS{}), nil
+		},
+		Reach:    func(context.Context, string) error { return nil },
+		Settings: &saved,
+		Save:     func(copyapp.Settings) error { return errors.New("synthetic write failure") },
+	})
+	t.Cleanup(s.copy.Quit)
+	w := serve(s, request(s, "POST", "/api/route", `{"settings":{"route":"lan","lan_address":"192.0.2.10"}}`))
+	if w.Code != 400 || !strings.Contains(w.Body.String(), `"code":"folder_claim"`) || strings.Contains(w.Body.String(), "SENTINEL") {
+		t.Errorf("route = %d %s", w.Code, w.Body)
+	}
+	if s.settings.Route == routeLAN {
+		t.Error("a refused change saved the route")
+	}
+}

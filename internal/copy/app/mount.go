@@ -230,7 +230,9 @@ var ErrBusy = errors.New("copying or Free up space is running")
 // can start. It is refused with ErrBusy, without calling commit, while a
 // pass of copying, a preview, or a Free up space check or delete runs, and
 // also while copying is on if moves reports that the change takes the
-// copier to another route or address. Once commit has run, even if it
+// copier to another route or address, and with ErrClaim, also without
+// calling commit, when the telescope saved before couldn't keep Folder as
+// its own. Once commit has run, even if it
 // failed partway, the copy and Free up space previews go back to Start and
 // Browse gets a new session pool. moves and commit may take the caller's
 // locks, but must not call back into the Mount.
@@ -242,10 +244,14 @@ func (m *Mount) Change(moves func() bool, commit func() error) error {
 		return ErrBusy
 	}
 	// The telescope saved before keeps Folder: a change may make another
-	// telescope the first one known.
+	// telescope the first one known. Without that save the change is
+	// refused, with ErrClaim, before commit.
 	s.mu.Lock()
-	s.claim(s.current().Telescope)
+	err := s.claim(s.current().Telescope)
 	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
 	defer s.endpointChanged()
 	return commit()
 }

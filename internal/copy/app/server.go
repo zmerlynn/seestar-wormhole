@@ -234,8 +234,7 @@ func (s *server) ready(t Target, err error) error {
 		if s.file.settings.overlap(t.Telescope, folder) != "" {
 			return errFolderShared
 		}
-		s.claim(t.Telescope)
-		return nil
+		return s.claim(t.Telescope)
 	}
 	switch {
 	case !s.file.exists || !s.file.settings.claimed():
@@ -257,23 +256,31 @@ func (s *server) wantsStart() bool {
 	return s.folderAt(t) != "" || err != nil && t.Telescope == "" && s.file.settings.claimed()
 }
 
+// ErrClaim refuses copying, a preview, Free up space, a clear of the
+// history or a change of route when the first telescope's folder, until
+// now every telescope's, couldn't be saved as its own: going on would
+// leave the folder free for the next telescope too.
+var ErrClaim = errors.New("couldn't save this telescope's folder; try again")
+
 // claim saves Folder as the folder of the telescope keyed key when no
 // telescope has a folder of its own yet: as copying, a preview, Free up
 // space, a clear of the history or a change of route begins, and never
-// just because the file was read. A failure is logged only: the folder
-// stays every telescope's until a save succeeds. It is called holding
-// s.mu.
-func (s *server) claim(key string) {
+// just because the file was read. A failed save refuses the action with
+// [ErrClaim], and the folder stays every telescope's. It is called
+// holding s.mu.
+func (s *server) claim(key string) error {
 	if !s.file.exists {
-		return
+		return nil
 	}
 	set, ok := s.file.settings.claim(key)
 	if !ok {
-		return
+		return nil
 	}
 	if err := s.file.save(set); err != nil {
 		s.log.Warn("couldn't save this telescope's folder", "err", reason(err))
+		return ErrClaim
 	}
+	return nil
 }
 
 // newBrowse builds a browse handler with its own session pool, which

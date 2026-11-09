@@ -894,3 +894,57 @@ func TestFollowRefusesAnotherKey(t *testing.T) {
 		t.Errorf("follow = %v, canceled %v", err, canceled)
 	}
 }
+
+// A route change, copying, a preview, Free up space and a clear of the
+// history are all refused, and nothing moves, while the first telescope's
+// folder can't be saved as its own; and so still after a restart.
+func TestClaimFailureRefuses(t *testing.T) {
+	a := t.TempDir()
+	saved := savedAt(a)
+	for _, restart := range []bool{false, true} {
+		e := newAppEnv(t, saved)
+		e.key = keyA
+		e.saveErr = errors.New("synthetic settings write failure")
+		changed := false
+		err := e.m.Change(func() bool { return true }, func() error {
+			e.set(func() { e.key = keyB })
+			changed = true
+			return nil
+		})
+		if !errors.Is(err, ErrClaim) || changed {
+			t.Fatalf("restart %v: Change = %v, committed %v", restart, err, changed)
+		}
+		for _, req := range [][2]string{
+			{"/copy/api/copy", `{"action":"start"}`},
+			{"/copy/api/copy", `{"action":"preview"}`},
+			{"/copy/api/delete", `{"action":"find","days":"0"}`},
+			{"/copy/api/clear", `{}`},
+		} {
+			w := e.post(req[0], req[1])
+			if w.Code == 200 || !strings.Contains(w.Body.String(), ErrClaim.Error()) {
+				t.Errorf("restart %v: %s %s = %d %s", restart, req[0], req[1], w.Code, w.Body)
+			}
+			if strings.Contains(w.Body.String(), a) {
+				t.Errorf("restart %v: %s answer holds the folder", restart, req[0])
+			}
+		}
+		if e.s.copy.on() || e.s.preview.running() || e.s.free.running() {
+			t.Errorf("restart %v: something started", restart)
+		}
+		// A keeps the folder; the settings still have it as every
+		// telescope's.
+		if !e.status().SetUp {
+			t.Errorf("restart %v: A lost its folder", restart)
+		}
+		e.s.mu.Lock()
+		claimed := e.s.file.settings.claimed()
+		e.s.mu.Unlock()
+		if claimed || len(e.saves()) != 0 {
+			t.Errorf("restart %v: claimed %v, saves %d", restart, claimed, len(e.saves()))
+		}
+		if strings.Contains(e.logs.String(), a) {
+			t.Errorf("restart %v: log holds the folder: %s", restart, e.logs.String())
+		}
+		e.m.Quit()
+	}
+}
