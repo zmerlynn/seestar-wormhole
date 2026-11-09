@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
+	"errors"
 	"log/slog"
 	"maps"
 	"net/http"
@@ -13,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
@@ -576,5 +578,59 @@ func TestWithoutFolder(t *testing.T) {
 		if !strings.Contains(got, s) {
 			t.Errorf("log lacks %q: %s", s, got)
 		}
+	}
+}
+
+// Copying started for one telescope ends before any dial, and writes no
+// history, once the target at the same address is another telescope's:
+// its folder isn't the one copying writes to.
+func TestCopyEndsAtAnotherKey(t *testing.T) {
+	a := t.TempDir()
+	e := newAppEnv(t, claimedAt(a, map[string]string{keyA: a}))
+	e.key = keyA
+	target := e.s.copy.target
+	e.s.copy.target = func() (Target, error) {
+		t, err := target()
+		t.Telescope = keyB
+		return t, err
+	}
+	if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
+		t.Fatalf("start = %d %s", w.Code, w.Body)
+	}
+	e.s.copy.mu.Lock()
+	done := e.s.copy.done
+	e.s.copy.mu.Unlock()
+	if done != nil {
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("copying followed another telescope")
+		}
+	}
+	e.d.mu.Lock()
+	dialed := len(e.d.endpoints)
+	e.d.mu.Unlock()
+	if dialed != 0 {
+		t.Errorf("dialed %d times for another telescope", dialed)
+	}
+	// The pass holds the folder's lock before it follows the target.
+	if entries, err := os.ReadDir(a); err != nil || len(entries) > 1 || len(entries) == 1 && entries[0].Name() != plan.LockName {
+		t.Errorf("the folder holds %v, %v", entries, err)
+	}
+	if v := e.s.copy.view(time.Now()); v.On {
+		t.Errorf("copying = %+v", v)
+	}
+}
+
+// The controller's own check: a pass for a telescope bound at one key
+// refuses, and ends copying, at another key at the same address.
+func TestFollowRefusesAnotherKey(t *testing.T) {
+	e := newAppEnv(t, claimedAt(t.TempDir(), map[string]string{}))
+	e.key = keyB
+	e.s.copy.bound = Target{Endpoint: testEndpoint, Telescope: keyA}
+	canceled := false
+	e.s.copy.cancel = func() { canceled = true }
+	if _, err := e.s.copy.follow(testEndpoint); !errors.Is(err, errOtherTelescope) || !canceled {
+		t.Errorf("follow = %v, canceled %v", err, canceled)
 	}
 }
