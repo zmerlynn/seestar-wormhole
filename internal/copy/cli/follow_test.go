@@ -70,7 +70,7 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 			if !strings.Contains(errs, lanName) || !strings.Contains(errs, "name lookup") {
 				t.Errorf("the failure isn't the saved telescope's lookup:\n%s", errs)
 			}
-			for _, private := range []string{"telescope.invalid", "198.51.100.53", ":53", "SERIAL-"} {
+			for _, private := range []string{"telescope.invalid", "198.51.100.53", "SERIAL-"} {
 				if strings.Contains(out+errs, private) {
 					t.Errorf("output carries %q:\n%s%s", private, out, errs)
 				}

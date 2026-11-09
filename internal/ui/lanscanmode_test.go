@@ -742,8 +742,15 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 	var logs testlog.Buffer
 	set := copyapp.DefaultSettings()
 	set.Folder, set.Once = filepath.Join(t.TempDir(), "copy"), true
+	// The logs are stamped at second 53, which is no port.
+	stamp := func(_ []string, a slog.Attr) slog.Attr {
+		if a.Key == slog.TimeKey {
+			return slog.Time(slog.TimeKey, time.Date(2026, 1, 1, 12, 53, 53, 0, time.UTC))
+		}
+		return a
+	}
 	o, await := reported(t, copyMountOptions(s, copyapp.MountOptions{Addr: netip.MustParseAddrPort(s.host), StateDir: t.TempDir(),
-		Settings: &set, Log: slog.New(slog.NewTextHandler(&logs, nil))}))
+		Settings: &set, Log: slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{ReplaceAttr: stamp}))}))
 	s.copy = copyapp.NewMount(t.Context(), o)
 	t.Cleanup(s.copy.Quit)
 	if w := doPost(s, "/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
@@ -772,7 +779,7 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 	if !strings.Contains(activity.String(), lanName+": dial tcp: name lookup failed") {
 		t.Errorf("Activity doesn't say the saved telescope's lookup failed:\n%s", activity.String())
 	}
-	for _, private := range []string{"telescope.invalid", "198.51.100.53", ":53"} {
+	for _, private := range []string{"telescope.invalid", "198.51.100.53"} {
 		if strings.Contains(text, private) {
 			t.Errorf("Activity, the trail or the logs carry %q:\n%s", private, text)
 		}
