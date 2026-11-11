@@ -276,8 +276,18 @@ can't change while copying runs:
   default. Through Telescope Network, copying shares the connection with
   the Seestar app and seestar_alp; if they are slow to respond while copying,
   lower it to 1 or 2.
+- **What to copy**: **FITS files only**, which copies `.fit` and `.fits`
+  files in any folder and leaves the telescope's JPG previews and other files
+  on it; **Everything**; or **Custom**, which shows **Only copy**. It is not
+  saved but read from **Only copy**'s patterns: exactly `*.fit` and `*.fits`,
+  in either order and ignoring blank lines and spaces around a line, is FITS
+  files only, none is Everything, and anything else is Custom. Picking FITS
+  files only or Everything fills or empties Only copy; Custom keeps its
+  patterns to edit. A first setup, with no copy settings saved, starts on
+  FITS files only; saved settings keep what they copy.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
   `--exclude` and `--include`; see [selection](reference/selection-and-history.md#selection).
+  Leave out and the built-in patterns apply whatever **What to copy** says.
 - **Skip the telescope's logs, scratch and system files**, on by default: the
   [built-in patterns](reference/selection-and-history.md#built-in-patterns).
 - **Start copying when the app opens**, off by default. Through Telescope
@@ -315,7 +325,8 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 
 Browse is `seestar-wormhole-cli browse`'s page for the share, with the saved
 folder's [statuses](reference/files-cli.md#statuses). What the settings leave out
-shows as [`left out`](reference/files-cli.md#left-out-in-browse). After a Save
+shows as [`left out`](reference/files-cli.md#left-out-in-browse): with **FITS
+files only**, that is every file but the `.fit` and `.fits` files. After a Save
 that changes the folder or the selection, or a change of how the telescope
 is reached, Browse loads again at the share's top when it is next shown, so
 an error from before goes without a retry. Browse opens once a route is
