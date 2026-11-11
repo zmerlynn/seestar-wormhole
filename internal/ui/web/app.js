@@ -829,8 +829,39 @@ function copyFill(s) {
   $('f-files').value = String(s.files_at_once);
   $('f-ex').value = s.excludes.join('\n');
   $('f-in').value = s.includes.join('\n');
+  $('f-what').value = copyWhat(s.includes);
+  renderWhat();
   $('f-skip').checked = s.skip_built_in;
   $('f-start').checked = s.start_copying;
+}
+// What to copy is derived from Only copy's saved patterns, never saved
+// itself: compared as a set, exactly as saved, they are FITS files only
+// when they are exactly fitsIncludes, Everything when there are none, and
+// otherwise Custom. Selection keeps spaces in a pattern, so a blank or
+// spaced entry is Custom; Save drops blank lines typed in the box.
+const fitsIncludes = ['*.fit', '*.fits'];
+function copyWhat(includes) {
+  const set = new Set(includes);
+  if (!set.size) return 'all';
+  return set.size === fitsIncludes.length && fitsIncludes.every(p => set.has(p)) ? 'fits' : 'custom';
+}
+// Only copy shows for Custom only, and the help for FITS files only.
+function renderWhat() {
+  const what = $('f-what').value;
+  $('f-in-box').hidden = what !== 'custom';
+  $('f-what-help').hidden = what !== 'fits';
+}
+// Picking FITS files only or Everything fills or empties Only copy, and
+// drops its error; Custom keeps its patterns to edit.
+function whatChange() {
+  const what = $('f-what').value;
+  if (what !== 'custom') {
+    $('f-in').value = what === 'fits' ? fitsIncludes.join('\n') : '';
+    put('f-in-err', '');
+    $('f-in-err').hidden = true;
+    $('f-in').removeAttribute('aria-invalid');
+  }
+  renderWhat();
 }
 // The interval counts only while copying repeats. Copy once disables it,
 // showing and sending its last valid value, kept for a later return to
@@ -1878,6 +1909,7 @@ $('f-folder').addEventListener('input', renderHistory);
 $('f-hist').addEventListener('input', renderHistory);
 $('f-int').addEventListener('input', intervalInput);
 $('f-repeat').addEventListener('change', repeatChange);
+$('f-what').addEventListener('change', whatChange);
 $('f-choose').addEventListener('click', () => copyChoose('folder'));
 $('f-hchoose').addEventListener('click', () => copyChoose('history_dir'));
 $('copy-steps-go').addEventListener('click', goSetup);

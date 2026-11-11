@@ -163,10 +163,11 @@ type Mount struct {
 }
 
 // NewMount returns a Mount whose controllers live in ctx until Quit.
-// Nothing runs until Start.
+// Nothing runs until Start. Without saved settings, the page's first setup
+// starts from [firstSettings].
 func NewMount(ctx context.Context, o MountOptions) *Mount {
 	ctx, cancel := context.WithCancel(ctx)
-	file := &settingsFile{settings: DefaultSettings(), write: o.Save}
+	file := &settingsFile{settings: firstSettings(), write: o.Save}
 	if o.Settings != nil {
 		file.settings, file.exists = *o.Settings, true
 	}

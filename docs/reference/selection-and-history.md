@@ -146,6 +146,15 @@ a file if it matches the file's path or the path of any folder above it:
 --include 'MyWorks/**/*.fit' # FITS files anywhere in MyWorks
 ```
 
+To use the app's **FITS files only** selection from the command line, give
+both patterns below. They match case-insensitively and also select every file
+inside a matching folder; excludes still win:
+
+```sh
+seestar-wormhole-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar \
+  --include '*.fit' --include '*.fits'
+```
+
 Excludes always win, whatever the order of the flags. An include never
 brings back a file or folder that an exclude matches, built-in or given:
 `--include x --exclude x` selects nothing, and `--include '/log'` selects

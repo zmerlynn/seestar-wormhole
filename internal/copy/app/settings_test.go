@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -63,5 +64,67 @@ func TestSettingsFileSave(t *testing.T) {
 	mem := &settingsFile{settings: DefaultSettings()}
 	if e := mem.save(want); e != nil || !mem.exists || !reflect.DeepEqual(mem.settings, want) {
 		t.Errorf("an in-memory save = %v, %+v", e, mem.settings)
+	}
+}
+
+// The first setup, with no settings saved, starts on FITS files only and
+// saves the includes the page sends. Saved settings show as saved, an
+// empty Only copy included, and DefaultSettings, which a saved file's
+// absent members take, still copies everything.
+func TestFirstSetupStartsOnFITSOnly(t *testing.T) {
+	type status struct {
+		SetUp    bool `json:"set_up"`
+		Settings struct {
+			Includes []string `json:"includes"`
+		} `json:"settings"`
+	}
+	e := newAppEnv(t, nil)
+	if v := decode[status](t, e.serve("GET", "/copy/api/status", "")); v.SetUp || !reflect.DeepEqual(v.Settings.Includes, []string{"*.fit", "*.fits"}) {
+		t.Errorf("first setup = %+v; want FITS files only", v)
+	}
+	in := strings.Replace(goodInput, `"includes":[]`, `"includes":["*.fits","*.fit"]`, 1)
+	if w := e.post("/copy/api/settings", in); w.Code != 200 {
+		t.Fatalf("save = %d %s", w.Code, w.Body)
+	}
+	if s := e.saves(); len(s) != 1 || !reflect.DeepEqual(s[0].Includes, []string{"*.fits", "*.fit"}) {
+		t.Errorf("saved %+v", s)
+	}
+
+	e = newAppEnv(t, savedAt(abs("/data/Seestar")))
+	if v := decode[status](t, e.serve("GET", "/copy/api/status", "")); !v.SetUp || v.Settings.Includes == nil || len(v.Settings.Includes) != 0 {
+		t.Errorf("saved with everything = %+v", v)
+	}
+	if got := DefaultSettings().Includes; len(got) != 0 {
+		t.Errorf("DefaultSettings().Includes = %q; want none", got)
+	}
+}
+
+// FITS files only selects a .fit or .fits file in any folder, in any case,
+// and leaves out an ordinary JPG and a FITS file the built-ins exclude.
+// A saved pattern keeps its spaces, so " *.fit", which the page shows as
+// Custom, selects no .fit file.
+func TestFITSOnlySelection(t *testing.T) {
+	for _, tc := range []struct {
+		includes []string
+		path     string
+		out      bool
+	}{
+		{firstSettings().Includes, "MyWorks/M 31/a.fit", false},
+		{firstSettings().Includes, "a.FITS", false},
+		{firstSettings().Includes, "MyWorks/M 31/a.jpg", true},
+		{firstSettings().Includes, "MyWorks/notes.txt", true},
+		{firstSettings().Includes, "log/hidden.fit", true},
+		{[]string{" *.fit", "*.fits"}, "MyWorks/a.fit", true},
+		{[]string{" *.fit", "*.fits"}, "MyWorks/a.FITS", false},
+	} {
+		set := firstSettings()
+		set.Includes = tc.includes
+		sel, err := selector(set)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := sel.LeavesOut(tc.path, false); got != tc.out {
+			t.Errorf("%q leaves out %s = %v; want %v", tc.includes, tc.path, got, tc.out)
+		}
 	}
 }

@@ -71,6 +71,8 @@ async function checkCopySetup(st) {
   copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
   copyAssert($('b-frame').src === '/browse/', 'Browse waited for settings');
+  // A first setup starts on FITS files only, with Only copy hidden.
+  copyAssert($('f-what').value === 'fits' && $('f-in').value === '*.fit\n*.fits' && $('f-in-box').hidden && !$('f-what-help').hidden, 'the first setup is not on FITS files only: ' + $('f-what').value);
   // A field error goes under its field and takes focus.
   const calls = [];
   api = async (action, body, base) => {
@@ -93,7 +95,7 @@ async function checkCopySetup(st) {
   $('f-folder').value = st.saved.settings.folder;
   $('f-ex').value = 'Video';
   await copySave();
-  copyAssert(sent && sent.folder === st.saved.settings.folder && sent.interval === '5' && sent.files_at_once === '4' && sent.excludes.join() === 'Video' && sent.includes.length === 0, 'Save sent ' + JSON.stringify(sent));
+  copyAssert(sent && sent.folder === st.saved.settings.folder && sent.interval === '5' && sent.files_at_once === '4' && sent.excludes.join() === 'Video' && sent.includes.join() === '*.fit,*.fits', 'Save sent ' + JSON.stringify(sent));
   // The Save names the telescope, and its folder, the page showed.
   copyAssert(st.before.telescope.token && sent.token === st.before.telescope.token, 'Save sent token ' + sent.token);
   copyAssert($('f-folder-err').hidden && !$('f-folder').getAttribute('aria-invalid'), 'the old error stayed');
@@ -126,6 +128,68 @@ async function checkCopySetup(st) {
   render(st.locked);
   copyRender(running);
   copyAssert($('copy-chip').hidden, 'the copy chip shows without a route');
+}
+
+async function checkCopyWhat(st) {
+  copyFixture(st, st.unlocked);
+  // What to copy is derived from Only copy's patterns.
+  // Saved patterns are compared exactly as saved, since selection keeps
+  // their spaces; Save drops blank lines typed in the box.
+  for (const [includes, want] of [
+    [[], 'all'],
+    [[''], 'custom'],
+    [['  '], 'custom'],
+    [['*.fit', '*.fits'], 'fits'],
+    [['*.fits', '*.fit'], 'fits'],
+    [['', '*.fit', '  ', '*.fits', ''], 'custom'],
+    [[' *.fit ', '*.fits'], 'custom'],
+    [[' *.fit', '*.fits'], 'custom'],
+    [['*.fit\t', '*.fits'], 'custom'],
+    [['*.fit', '*.fits', '*.fit'], 'fits'],
+    [['*.fit', '*.fits', '*.jpg'], 'custom'],
+    [['*.fit'], 'custom'],
+    [['*.FIT', '*.fits'], 'custom'],
+    [['*.tif'], 'custom']
+  ]) {
+    copyAssert(copyWhat(includes) === want, JSON.stringify(includes) + ' is ' + copyWhat(includes) + ', not ' + want);
+  }
+  // A saved file shows its derived option, and Only copy only for Custom.
+  for (const [includes, want] of [[[], 'all'], [['*.fits', '*.fit'], 'fits'], [['*.jpg'], 'custom']]) {
+    copyFilled = false;
+    copyRender({...st.after, settings: {...st.after.settings, includes}});
+    copyAssert($('f-what').value === want && $('f-in').value === includes.join('\n'), JSON.stringify(includes) + ' loaded as ' + $('f-what').value);
+    copyAssert($('f-in-box').hidden === (want !== 'custom') && $('f-what-help').hidden === (want !== 'fits'), want + ' showed the wrong fields');
+  }
+  // Each pick fills or empties Only copy, and Save sends it; the saved
+  // patterns show their own option, so Custom saved as the FITS pair comes
+  // back as FITS files only.
+  let sent = null;
+  api = async (action, body) => {
+    if (action === 'settings') {
+      sent = body;
+      return {...st.saved, settings: {...st.saved.settings, includes: body.includes}};
+    }
+    return st.after;
+  };
+  openCopyForm();
+  $('f-in').value = '*.jpg\n*.png';
+  for (const [what, want, saved] of [['custom', '*.jpg,*.png', 'custom'], ['fits', '*.fit,*.fits', 'fits'], ['custom', '*.fit,*.fits', 'fits'], ['all', '', 'all'], ['fits', '*.fit,*.fits', 'fits']]) {
+    $('f-what').value = what;
+    $('f-what').dispatchEvent({type: 'change'});
+    copyAssert($('f-in-box').hidden === (what !== 'custom') && $('f-what-help').hidden === (what !== 'fits'), what + ' showed the wrong fields');
+    await copySave();
+    copyAssert(sent && sent.includes.join() === want, what + ' sent ' + JSON.stringify(sent?.includes));
+    copyAssert($('f-what').value === saved, what + ' saved as ' + $('f-what').value);
+    openCopyForm();
+  }
+  // Picking FITS files only or Everything drops an Only copy error.
+  $('f-what').value = 'custom';
+  $('f-what').dispatchEvent({type: 'change'});
+  showErrors({includes: 'Bad pattern.'});
+  copyAssert(!$('f-in-err').hidden && $('f-in').getAttribute('aria-invalid') === 'true', 'the Only copy error is not shown');
+  $('f-what').value = 'all';
+  $('f-what').dispatchEvent({type: 'change'});
+  copyAssert($('f-in-err').hidden && !$('f-in').getAttribute('aria-invalid') && $('f-in').value === '', 'Everything kept the Only copy error');
 }
 
 async function checkActivityMerge(st) {

@@ -39,6 +39,12 @@ func TestCopySetupPage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkCopySetup("+copyPageStatuses(t)+")")
 }
 
+// What to copy shows the option Only copy's patterns make, shows Only copy
+// for Custom only, and each pick fills or empties it for Save.
+func TestCopyWhatPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkCopyWhat("+copyPageStatuses(t)+")")
+}
+
 // Activity merges the connection's events and copy's activity, newest
 // first, each tagged; the diagnostic holds both settings and the log path.
 func TestActivityMergePage(t *testing.T) {
