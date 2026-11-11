@@ -61,7 +61,7 @@ func TestRetrySettingsAccountDraft(t *testing.T) {
 	}
 	after := read()
 	next.Remember = true
-	if saved, err := loadSettings(s.storage); err != nil || !reflect.DeepEqual(saved, next) {
+	if saved, _, err := loadSettings(s.storage); err != nil || !reflect.DeepEqual(saved, next) {
 		t.Fatalf("retry did not save its controller-owned snapshot: got %+v, err %v", saved, err)
 	}
 	for _, account := range []string{"different", "same", "normalized owner"} {

@@ -418,7 +418,7 @@ the picker focused without another account request. Outside this step, including
 a changed account, it reverts to **Find on my account**. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
 The selection-step help replaces that line; only one picker help line appears at a time.
 
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This bound also applies to saved settings and received picker choices. An invalid saved serial refuses loading without rewriting the file. See the [connection command reference](reference/connection-cli.md#device-selection) for selection rules.
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This bound also applies to saved settings and received picker choices. An invalid saved serial loads as none saved, with a warning in `gui.log` that doesn't name it. See the [connection command reference](reference/connection-cli.md#device-selection) for selection rules.
 
 **Enter manually…** reveals **Serial number** and **Model (optional)** below
 the picker for manual entry. Connect follows the revealed fields in visual and

@@ -27,7 +27,7 @@ func TestFirstRunPhoneAndSavedExposure(t *testing.T) {
 	if err := st.writeBytes("config.json", []byte(`{"version":1,"bind":"127.0.0.1","idle":"0"}`)); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadSettings(st)
+	loaded, _, err := loadSettings(st)
 	if err != nil || loaded.Discovery || loaded.Bind != "127.0.0.1" || len(loaded.Ports) != 0 {
 		t.Fatalf("upgrade widened settings: %+v %v", loaded, err)
 	}
@@ -78,7 +78,7 @@ func TestHTTPAccountInputPreparation(t *testing.T) {
 	if w := doPost(s, "/api/password/save", body); w.Code != 200 {
 		t.Fatalf("save: %s", w.Body)
 	}
-	saved, err := loadSettings(s.storage)
+	saved, _, err := loadSettings(s.storage)
 	if err != nil || saved.Email != "Mixed.Case+Tag@Example.Invalid" {
 		t.Fatalf("normalization: %q %v", saved.Email, err)
 	}

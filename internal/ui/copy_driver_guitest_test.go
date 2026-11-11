@@ -16,7 +16,7 @@ func TestPrepareCopyScenarioOpensTheTabs(t *testing.T) {
 	if err := prepareCopyScenario(root); err != nil {
 		t.Fatal(err)
 	}
-	settings, err := LoadSettings(root)
+	settings, _, err := LoadSettings(root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func TestPrepareCopyScenarioOpensTheTabs(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer st.directory.Close()
-	_, set, err := loadCopySettings(st)
+	_, set, _, err := loadCopySettings(st)
 	if err != nil {
 		t.Fatal(err)
 	}

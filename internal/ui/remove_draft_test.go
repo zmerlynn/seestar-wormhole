@@ -27,7 +27,7 @@ func TestRemoveDoesNotSaveUnstartedDraft(t *testing.T) {
 			if w := doPost(s, "/api/forget", string(b)); w.Code != 200 {
 				t.Fatal("removal did not succeed")
 			}
-			got, err := loadSettings(s.storage)
+			got, _, err := loadSettings(s.storage)
 			if err != nil {
 				t.Fatal("successful Remove persisted invalid draft and made config unloadable")
 			}

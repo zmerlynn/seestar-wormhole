@@ -289,3 +289,21 @@ func TestSavedPhoneDiscoveryAndExplicitOverride(t *testing.T) {
 		}
 	}
 }
+
+// A bad saved value loads as its fallback for runProxy to log; a flag
+// still overrides it.
+func TestSavedConfigFallbacks(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedConfig(t, root, []byte(`{"version":1,"idle":"soon","serial":"bad serial","model":"S50"}`))
+	o, err := parse([]string{"proxy", "--config", "--state-dir", root}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.idle != 0 || o.serial != "" || o.model != "S50" || len(o.settingsFallbacks) != 2 || o.settingsFallbacks[0].Setting != "idle" || o.settingsFallbacks[1].Setting != "serial" {
+		t.Fatalf("options = %+v", o)
+	}
+	o, err = parse([]string{"proxy", "--config", "--state-dir", root, "--serial=SYNTHETIC_SERIAL"}, io.Discard)
+	if err != nil || o.serial != "SYNTHETIC_SERIAL" {
+		t.Fatalf("override = %+v, %v", o, err)
+	}
+}

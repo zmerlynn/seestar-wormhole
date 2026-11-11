@@ -31,7 +31,7 @@ func FuzzSettings(f *testing.F) {
 		if err := os.WriteFile(path, b, 0600); err != nil {
 			t.Fatal(err)
 		}
-		s, err := loadSettings(st)
+		s, _, err := loadSettings(st)
 		if err != nil {
 			if !st.settingsRefused {
 				t.Fatal("refusal did not latch")
@@ -55,7 +55,7 @@ func FuzzSettings(f *testing.F) {
 		if err := st.write("config.json", s); err != nil {
 			t.Fatal(err)
 		}
-		round, err := loadSettings(st)
+		round, _, err := loadSettings(st)
 		if err != nil {
 			t.Fatal("accepted settings cannot survive a save")
 		}

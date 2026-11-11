@@ -165,7 +165,7 @@ func TestRouteEstablishedSurvivesRelaunch(t *testing.T) {
 	// relaunched reports whether the tabs open at the next launch.
 	relaunched := func(e *routeEnv) bool {
 		e.t.Helper()
-		loaded, err := loadSettings(e.s.storage)
+		loaded, _, err := loadSettings(e.s.storage)
 		return err == nil && routeSavedIn(loaded)
 	}
 	// savePassword saves a password with a draft that claims a route.
@@ -255,7 +255,7 @@ func TestRouteEstablishedSurvivesRelaunch(t *testing.T) {
 		if code, body := e.post("/api/retry-storage", `{}`); code != 200 {
 			t.Fatalf("retry = %d %s", code, body)
 		}
-		if _, err := loadSettings(e.s.storage); err != nil {
+		if _, _, err := loadSettings(e.s.storage); err != nil {
 			t.Fatalf("the retry saved nothing: %v", err)
 		}
 		if e.copyStatus().Unlocked || relaunched(e) {

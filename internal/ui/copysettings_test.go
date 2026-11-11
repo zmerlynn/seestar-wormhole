@@ -32,7 +32,7 @@ func TestCopySettingsVersionOneFixture(t *testing.T) {
 	if err := st.writeBytes(copyName, body); err != nil {
 		t.Fatal(err)
 	}
-	_, got, err := loadCopySettings(st)
+	_, got, _, err := loadCopySettings(st)
 	if err != nil || got == nil {
 		t.Fatalf("load = %v, %v", got, err)
 	}
@@ -55,7 +55,7 @@ func TestCopySettingsOnce(t *testing.T) {
 	if err := st.writeBytes(copyName, []byte(`{"version":1,"once":true}`)); err != nil {
 		t.Fatal(err)
 	}
-	c, got, err := loadCopySettings(st)
+	c, got, _, err := loadCopySettings(st)
 	if err != nil || got == nil || !got.Once {
 		t.Fatalf("once = %+v, %v", got, err)
 	}
@@ -63,7 +63,7 @@ func TestCopySettingsOnce(t *testing.T) {
 	if err := c.save(*got); err != nil {
 		t.Fatal(err)
 	}
-	if _, again, err := loadCopySettings(st); err != nil || again == nil || again.Once {
+	if _, again, _, err := loadCopySettings(st); err != nil || again == nil || again.Once {
 		t.Errorf("after saving it off = %+v, %v", again, err)
 	}
 }
@@ -75,7 +75,7 @@ func TestCopySettingsFilesAtOnce(t *testing.T) {
 		if err := st.writeBytes(copyName, []byte(`{"version":1,"files_at_once":`+strconv.Itoa(n)+`}`)); err != nil {
 			t.Fatal(err)
 		}
-		if _, got, err := loadCopySettings(st); err != nil || got == nil || got.FilesAtOnce != n {
+		if _, got, _, err := loadCopySettings(st); err != nil || got == nil || got.FilesAtOnce != n {
 			t.Errorf("files_at_once %d = %+v, %v", n, got, err)
 		}
 	}
@@ -87,7 +87,7 @@ func TestCopySettingsAbsentMembersDefault(t *testing.T) {
 		if err := st.writeBytes(copyName, []byte(body)); err != nil {
 			t.Fatal(err)
 		}
-		_, got, err := loadCopySettings(st)
+		_, got, _, err := loadCopySettings(st)
 		if want := copyapp.DefaultSettings(); err != nil || got == nil || !reflect.DeepEqual(*got, want) {
 			t.Errorf("%s = %+v, %v; want %+v", body, got, err, want)
 		}
@@ -102,7 +102,7 @@ func TestCopySettingsFreePatterns(t *testing.T) {
 		if err := st.writeBytes(copyName, []byte(body)); err != nil {
 			t.Fatal(err)
 		}
-		if _, got, err := loadCopySettings(st); err != nil || got == nil || got.FreeExcludes == nil || len(got.FreeExcludes) != 0 || got.FreeIncludes == nil || len(got.FreeIncludes) != 0 {
+		if _, got, _, err := loadCopySettings(st); err != nil || got == nil || got.FreeExcludes == nil || len(got.FreeExcludes) != 0 || got.FreeIncludes == nil || len(got.FreeIncludes) != 0 {
 			t.Errorf("%s = %+v, %v", body, got, err)
 		}
 	}
@@ -110,7 +110,7 @@ func TestCopySettingsFreePatterns(t *testing.T) {
 	if err := st.writeBytes(copyName, []byte(body)); err != nil {
 		t.Fatal(err)
 	}
-	c, set, err := loadCopySettings(st)
+	c, set, _, err := loadCopySettings(st)
 	if err != nil || set == nil {
 		t.Fatalf("load = %+v, %v", set, err)
 	}
@@ -122,7 +122,7 @@ func TestCopySettingsFreePatterns(t *testing.T) {
 	if err := c.save(*set); err != nil {
 		t.Fatal(err)
 	}
-	_, again, err := loadCopySettings(st)
+	_, again, _, err := loadCopySettings(st)
 	if err != nil || again == nil || !reflect.DeepEqual(again.FreeExcludes, []string{"/MyWorks/M 31", "*.mp4"}) || len(again.FreeIncludes) != 0 {
 		t.Errorf("after a save = %+v, %v", again, err)
 	}
@@ -135,7 +135,7 @@ func TestCopySettingsFreePatterns(t *testing.T) {
 // No copy.json is no settings yet, and loading doesn't create one.
 func TestCopySettingsMissing(t *testing.T) {
 	st := testStorage(t)
-	c, got, err := loadCopySettings(st)
+	c, got, _, err := loadCopySettings(st)
 	if err != nil || got != nil || c == nil {
 		t.Fatalf("load = %v, %+v, %v", c, got, err)
 	}
@@ -147,7 +147,7 @@ func TestCopySettingsMissing(t *testing.T) {
 	if err := c.save(set); err != nil {
 		t.Fatal(err)
 	}
-	if _, again, err := loadCopySettings(st); err != nil || again == nil || !reflect.DeepEqual(*again, set) {
+	if _, again, _, err := loadCopySettings(st); err != nil || again == nil || !reflect.DeepEqual(*again, set) {
 		t.Errorf("after a save = %+v, %v", again, err)
 	}
 }
@@ -160,7 +160,7 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 	if err := st.writeBytes(copyName, []byte(body)); err != nil {
 		t.Fatal(err)
 	}
-	c, set, err := loadCopySettings(st)
+	c, set, _, err := loadCopySettings(st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 // refusedBodies are copy.json bodies this version refuses.
 var refusedBodies = []string{`{"version":2,"future":{"keep":[1,2]}}`, `{"version":1,"interval_minutes":"5"}`, `[1]`, `{"version":1`,
 	`{}`, `{"folder":"/synthetic/Seestar"}`, `null`,
-	`{"version":1,"files_at_once":0}`, `{"version":1,"files_at_once":5}`, `{"version":1,"files_at_once":-1}`, `{"version":1,"files_at_once":2.5}`,
+	`{"version":1,"files_at_once":2.5}`,
 	`{"version":1,"history_dir":"synthetic/history"}`, `{"version":1,"history_dir":7}`}
 
 // A chosen copy history folder loads as saved and survives a save.
@@ -198,14 +198,14 @@ func TestCopySettingsHistoryDir(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "history")
 	b, _ := json.Marshal(dir)
 	st := testStorageWith(t, `{"version":1,"folder":"/synthetic/Seestar","history_dir":`+string(b)+`}`)
-	c, set, err := loadCopySettings(st)
+	c, set, _, err := loadCopySettings(st)
 	if err != nil || set == nil || set.HistoryDir != dir {
 		t.Fatalf("load = %+v, %v; want history_dir %s", set, err, dir)
 	}
 	if err := c.save(*set); err != nil {
 		t.Fatal(err)
 	}
-	if _, again, err := loadCopySettings(st); err != nil || again == nil || again.HistoryDir != dir {
+	if _, again, _, err := loadCopySettings(st); err != nil || again == nil || again.HistoryDir != dir {
 		t.Errorf("after a save = %+v, %v", again, err)
 	}
 }
@@ -238,7 +238,7 @@ type v51File struct {
 func TestCopySettingsHistoryDirSurvivesOlderApp(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "history")
 	st := testStorage(t)
-	c, _, err := loadCopySettings(st)
+	c, _, _, err := loadCopySettings(st)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +256,7 @@ func TestCopySettingsHistoryDirSurvivesOlderApp(t *testing.T) {
 	if err := st.write(copyName, old); err != nil {
 		t.Fatal(err)
 	}
-	_, got, err := loadCopySettings(st)
+	_, got, _, err := loadCopySettings(st)
 	if err != nil || got == nil || got.HistoryDir != dir || got.IntervalMinutes != 9 {
 		t.Errorf("after the older app's save = %+v, %v; want history_dir %s, interval 9", got, err, dir)
 	}
@@ -328,7 +328,7 @@ func refusedStart(t *testing.T, ctx context.Context, body string, drive func(c *
 func TestCopySettingsRefusedOpensWithoutCopy(t *testing.T) {
 	for _, body := range refusedBodies {
 		t.Run(body, func(t *testing.T) {
-			if _, _, err := loadCopySettings(testStorageWith(t, body)); err == nil {
+			if _, _, _, err := loadCopySettings(testStorageWith(t, body)); err == nil {
 				t.Fatal("load accepted it")
 			}
 			refusedStart(t, t.Context(), body, func(c *runtimeClient, quit func(), root string) {
@@ -437,19 +437,19 @@ func TestLoadCopySettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := testStorageWith(t, `{"version":1,"folder":"/synthetic/Seestar","history_dir":`+string(quoted)+`,"future":true}`)
-	set, err := LoadCopySettings(st.root)
+	set, _, err := LoadCopySettings(st.root)
 	if err != nil || set.Folder != "/synthetic/Seestar" || set.HistoryDir != history || set.FilesAtOnce != copyapp.MaxFilesAtOnce || !set.SkipBuiltIn {
 		t.Errorf("= %+v, %v", set, err)
 	}
 	for _, body := range refusedBodies {
-		if _, err := LoadCopySettings(testStorageWith(t, body).root); err == nil || errors.Is(err, ErrNoCopySettings) {
+		if _, _, err := LoadCopySettings(testStorageWith(t, body).root); err == nil || errors.Is(err, ErrNoCopySettings) {
 			t.Errorf("%s: %v; want a refusal", body, err)
 		}
 	}
-	if _, err := LoadCopySettings(testStorage(t).root); !errors.Is(err, ErrNoCopySettings) {
+	if _, _, err := LoadCopySettings(testStorage(t).root); !errors.Is(err, ErrNoCopySettings) {
 		t.Errorf("no copy.json: %v", err)
 	}
-	if _, err := LoadCopySettings(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, ErrNoCopySettings) {
+	if _, _, err := LoadCopySettings(filepath.Join(t.TempDir(), "missing")); !errors.Is(err, ErrNoCopySettings) {
 		t.Errorf("no state folder: %v", err)
 	}
 }

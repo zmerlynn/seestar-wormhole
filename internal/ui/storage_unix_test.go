@@ -26,7 +26,7 @@ func TestPrivateStorageModesAndRefusals(t *testing.T) {
 	if err := os.Chmod(path, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadSettings(st); err == nil {
+	if _, _, err := loadSettings(st); err == nil {
 		t.Fatal("public settings read")
 	}
 	if err := st.write("config.json", defaultSettings()); err == nil {
@@ -38,7 +38,7 @@ func TestPrivateStorageModesAndRefusals(t *testing.T) {
 	if err := os.Symlink(sentinel, path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadSettings(st); err == nil {
+	if _, _, err := loadSettings(st); err == nil {
 		t.Fatal("symlink read")
 	}
 	if err := st.write("config.json", defaultSettings()); err == nil {

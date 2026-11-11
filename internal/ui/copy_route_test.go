@@ -1069,7 +1069,7 @@ func TestRouteReload(t *testing.T) {
 			t.Fatal(err)
 		}
 		t.Cleanup(func() { st.directory.Close() })
-		loaded, err := loadSettings(st)
+		loaded, _, err := loadSettings(st)
 		if err != nil {
 			t.Fatal(err)
 		}

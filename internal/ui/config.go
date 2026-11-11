@@ -4,6 +4,7 @@ import (
 	"encoding/json/jsontext"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
@@ -95,30 +96,73 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 	}
 	return ports, idle, nil
 }
-func loadSettings(s *storage) (Settings, error) {
-	settings := Settings{Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{}}
+
+// defaultBind is config.json's bind when the member is absent.
+const defaultBind = "127.0.0.1"
+
+func loadSettings(s *storage) (Settings, []diagnostic.Fallback, error) {
+	settings := Settings{Bind: defaultBind, Idle: "0", Ports: []proxyrun.Port{}}
 	// Decode a fresh struct: absent members have documented defaults; unknown
 	// members are retained by JSON v2 within this schema version.
 	if err := s.read("config.json", &settings); err != nil {
 		if !os.IsNotExist(err) {
 			s.settingsRefused = true
 		}
-		return Settings{}, err
+		return Settings{}, nil, err
 	}
+	fallbacks := settings.fallBack()
 	if _, _, err := settings.validate(); err != nil {
 		s.settingsRefused = true
-		return Settings{}, err
+		return Settings{}, nil, err
 	}
 	s.settingsUnknown = settings
-	return settings, nil
+	return settings, fallbacks, nil
+}
+
+// fallBack replaces the saved values a load tolerates, so that one bad
+// value doesn't refuse the whole file. It leaves the version and the ports
+// for validate to refuse.
+func (s *Settings) fallBack() []diagnostic.Fallback {
+	var fallbacks []diagnostic.Fallback
+	replace := func(setting, fallback string) {
+		fallbacks = append(fallbacks, diagnostic.Fallback{File: "config.json", Setting: setting, Fallback: fallback})
+	}
+	if idle, err := time.ParseDuration(s.Idle); err != nil || idle < 0 {
+		s.Idle = "0"
+		replace("idle", "0")
+	}
+	if strings.TrimSpace(s.Bind) == "" {
+		s.Bind = defaultBind
+		replace("bind", defaultBind)
+	}
+	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
+		s.Discovery = false
+		replace("discovery", "off")
+	}
+	if s.Serial != "" && !cloudhttp.ValidSerial(s.Serial) {
+		s.Serial = ""
+		replace("serial", "none")
+	}
+	if s.Model != "" && !cloudhttp.ValidModel(s.Model) {
+		s.Model = ""
+		replace("model", "none")
+	}
+	if s.Email != "" {
+		if _, err := cloud.EmailCredentials(s.Email, "validation-only"); err != nil {
+			s.Email = ""
+			replace("email", "none")
+		}
+	}
+	return fallbacks
 }
 
 // LoadSettings reads the UI's saved settings without writing files or taking ui.lock.
-// The root is also the installation identity root for a headless run.
-func LoadSettings(root string) (Settings, error) {
+// The root is also the installation identity root for a headless run. The
+// fallbacks are the saved values it replaced, for the caller to log.
+func LoadSettings(root string) (Settings, []diagnostic.Fallback, error) {
 	d, err := privatefile.ReadDirectory(root)
 	if err != nil {
-		return Settings{}, errStorage
+		return Settings{}, nil, errStorage
 	}
 	defer d.Close()
 	return loadSettings(&storage{root: root, directory: d})

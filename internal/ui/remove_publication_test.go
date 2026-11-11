@@ -72,7 +72,7 @@ func TestHTTPNewSaveSupersedesRemovePublication(t *testing.T) {
 		if p := s.controller.credentials.state(a.Email); !p.Saved || p.Code != "password_saved" {
 			t.Error("older Remove replaced newer Save", p)
 		}
-		disk, err := loadSettings(s.storage)
+		disk, _, err := loadSettings(s.storage)
 		if err != nil || !disk.Remember || disk.Idle != a.Idle {
 			t.Error("older Remove lost saved selection", err)
 		}

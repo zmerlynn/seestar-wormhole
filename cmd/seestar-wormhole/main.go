@@ -68,7 +68,10 @@ type options struct {
 	serial, model, stateDir   string
 	config                    bool
 	savedEmail                string
-	name                      string
+	// settingsFallbacks are the saved values --config replaced, logged
+	// once the logger starts.
+	settingsFallbacks []diagnostic.Fallback
+	name              string
 	// fileName is the file command parsed, and file that command once it
 	// validated.
 	fileName string
@@ -231,6 +234,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	startup := newStartupLogging(o, logOutput)
 	logger := startup.logger
 	defer func() { result = errors.Join(result, startup.finish(result)) }()
+	diagnostic.LogFallbacks(logger, o.settingsFallbacks)
 	var err error
 	phase = "tcp_state_query"
 	if err := checkTCPState(ctx); err != nil {

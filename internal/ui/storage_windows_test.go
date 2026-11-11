@@ -33,7 +33,7 @@ func TestPrivateStorageWindows(t *testing.T) {
 	if !bytes.Equal(old, want) {
 		t.Fatal("reader lost the original contents")
 	}
-	got, err := loadSettings(st)
+	got, _, err := loadSettings(st)
 	if err != nil || got.Email != defaultSettings().Email {
 		t.Fatalf("replacement not visible: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestPrivateStorageWindows(t *testing.T) {
 // copy.json goes through the same private storage as config.json.
 func TestCopySettingsPrivateWindows(t *testing.T) {
 	st := testStorage(t)
-	c, _, err := loadCopySettings(st)
+	c, _, _, err := loadCopySettings(st)
 	if err != nil {
 		t.Fatal(err)
 	}

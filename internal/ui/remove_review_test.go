@@ -65,7 +65,7 @@ func TestReviewHTTPNewSaveAfterPendingRemove(t *testing.T) {
 		if !p.Saved || p.Code != "password_saved" {
 			t.Error("older Remove overrode newer completed Save", p.Saved, p.Code)
 		}
-		got, err := loadSettings(s.storage)
+		got, _, err := loadSettings(s.storage)
 		if err != nil || !got.Remember {
 			t.Error("saved selection lost on disk", err)
 		}

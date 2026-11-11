@@ -47,14 +47,14 @@ func TestNewSaveSupersedesRunRetry(t *testing.T) {
 		if s.controller.view().SaveFailed {
 			t.Fatal("newer save left an obsolete run retry available")
 		}
-		first, err := loadSettings(s.storage)
+		first, _, err := loadSettings(s.storage)
 		if err != nil || first.Email != newer.Email || !first.Remember {
 			t.Fatal("new save failed")
 		}
 		if w := doPost(s, "/api/retry-storage", `{}`); w.Code != 200 && w.Code != 400 {
 			t.Fatal(w.Body.String())
 		}
-		last, err := loadSettings(s.storage)
+		last, _, err := loadSettings(s.storage)
 		if err != nil || last.Email != newer.Email || !last.Remember {
 			t.Fatal("older run retry overwrote newer successful explicit save and association")
 		}

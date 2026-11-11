@@ -302,7 +302,7 @@ func TestSaveRouteKeepsScannedSerial(t *testing.T) {
 	scanPost(t, s, `{}`)
 	saved := func() Settings {
 		t.Helper()
-		got, err := loadSettings(s.storage)
+		got, _, err := loadSettings(s.storage)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -355,7 +355,7 @@ func TestLANSerialIsOptional(t *testing.T) {
 	if strings.Contains(string(b), "lan_serial") {
 		t.Fatalf("an empty serial was written: %s", b)
 	}
-	got, err := loadSettings(st)
+	got, _, err := loadSettings(st)
 	if err != nil || got.LANSerial != "" || got.LANAddress != old.LANAddress {
 		t.Fatalf("%+v %v", got, err)
 	}
@@ -363,7 +363,7 @@ func TestLANSerialIsOptional(t *testing.T) {
 	if err := st.write("config.json", old); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := loadSettings(st); err != nil || got.LANSerial != "SERIAL-A" {
+	if got, _, err := loadSettings(st); err != nil || got.LANSerial != "SERIAL-A" {
 		t.Fatalf("%+v %v", got, err)
 	}
 }

@@ -82,7 +82,7 @@ func TestExplicitPasswordSaveAssociationRelaunch(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
-	saved, err := loadSettings(s.storage)
+	saved, _, err := loadSettings(s.storage)
 	if err != nil || !saved.Remember || saved.Email != testSettings().Email {
 		t.Fatalf("association: %+v %v", saved, err)
 	}
@@ -292,7 +292,7 @@ func TestPasswordSaveStorageFailureAndRetry(t *testing.T) {
 	if w := doPost(s, "/api/retry-storage", `{}`); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
-	saved, err := loadSettings(s.storage)
+	saved, _, err := loadSettings(s.storage)
 	if err != nil || !saved.Remember {
 		t.Fatal("association retry failed", err)
 	}
@@ -315,7 +315,7 @@ func TestStorageRetryKeepsSnapshotAfterAnotherAttempt(t *testing.T) {
 	if w := doPost(s, "/api/retry-storage", `{}`); w.Code != 200 {
 		t.Fatal(w.Body.String())
 	}
-	loaded, err := loadSettings(s.storage)
+	loaded, _, err := loadSettings(s.storage)
 	if err != nil || loaded.Email != original.Email {
 		t.Fatalf("retry saved later failed edits: %+v %v", loaded, err)
 	}

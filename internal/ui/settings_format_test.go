@@ -28,7 +28,7 @@ func TestSettingsVersionOneFixture(t *testing.T) {
 	if err := st.writeBytes("config.json", body); err != nil {
 		t.Fatal(err)
 	}
-	got, err := LoadSettings(st.root)
+	got, _, err := LoadSettings(st.root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestSettingsAbsentMemberDefaults(t *testing.T) {
 	if err := st.writeBytes("config.json", []byte(`{"version":1}`)); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loadSettings(st)
+	got, _, err := loadSettings(st)
 	want := Settings{Version: 1, Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{}}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Fatalf("settings = %+v, %v; want %+v", got, err, want)
@@ -69,7 +69,7 @@ func TestSettingsFutureMembersSurviveConnect(t *testing.T) {
 			t.Fatal(err)
 		}
 		var err error
-		s.settings, err = loadSettings(s.storage)
+		s.settings, _, err = loadSettings(s.storage)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,7 +154,7 @@ func TestSettingsRefusedFileCannotBeSaved(t *testing.T) {
 			if err == nil || err.Error() != "Could not load saved settings safely.\n\n"+filepath.Join(s.storage.root, "config.json")+"\n\nCheck this file, then reopen seestar-wormhole." {
 				t.Errorf("startup did not explain refusal: %v", err)
 			}
-			if _, err := loadSettings(s.storage); err == nil || actionError(err).Code != "settings" {
+			if _, _, err := loadSettings(s.storage); err == nil || actionError(err).Code != "settings" {
 				t.Errorf("expected invalid-settings error, got %v", err)
 			}
 			// Connect, password save/removal, and retry share this save callback.
