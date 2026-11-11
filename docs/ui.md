@@ -364,14 +364,16 @@ Listing and viewing files need no folder.
 
 Until Copy's folder is saved for this telescope, Free up space says to
 choose it, with **Go to Copy**, and **Preview what to delete** answers **this
-telescope has no folder yet; choose one in Copy**. It always proves copies
-in the connected telescope's folder. A preview stays bound to the telescope
-and folder it checked: its delete goes only to that telescope, and only
-while the connection still reaches it. **Preview what to delete** lists, per folder, the files that are copied and
-safe to delete, as `delete` [proves it](reference/files-cli.md#proof-modes), and
-nothing is deleted until you confirm. Uncheck a folder to keep it. **Only
-files older than** N days (7 by default; 0 means any age) keeps recent
-sessions on the telescope. **Before deleting, check** chooses the proof:
+telescope has no folder yet; choose one in Copy**. When checking copies or
+copy history, it uses the connected telescope's folder. A preview stays bound
+to the telescope and folder it checked: its delete goes only to that
+telescope, and only while the connection still reaches it. **Preview what to
+delete** lists, per folder, the files selected for deletion under **Before
+deleting, check**, using `delete`'s
+[proof modes](reference/files-cli.md#proof-modes). Nothing is deleted until
+you confirm. Uncheck a folder to keep it. **Only files older than** N days
+(7 by default; 0 means any age) keeps recent sessions on the telescope.
+**Before deleting, check** chooses the proof:
 **That my copy matches**, the default, checks each copy itself; **Only the
 copy history (copies moved or drive offline)** checks only the app's record
 of each copy, as `--trust-state` does; and **Nothing: delete what's selected,
@@ -399,13 +401,15 @@ that changed or went away since the preview is kept. When nothing is
 checked, only a file that went away since the preview, or changes while it
 is being deleted, is kept; one changed between the preview and the confirm
 is deleted, as with `delete --ignore-state`. **Stop** ends a delete
-that is running. The delete holds the folder's
-[folder lock](reference/selection-and-history.md#the-folder-lock) from before it lists the
-folders until its last removal, and runs between Copy's checks: while a
-check, a `sync` or another delete holds the lock, it stops at once with
-**Another copy or delete is using this folder.** and deletes nothing. A
-preview takes no lock, and neither does a delete that checks nothing, as
-`delete --ignore-state`.
+that is running. When checking copies or copy history, the delete holds the
+folder's [folder lock](reference/selection-and-history.md#the-folder-lock)
+from before it lists the folders until its last removal, and runs between
+Copy's checks. While a check, a `sync` or another delete holds the lock, it
+stops at once with **Another copy or delete is using this folder.** and
+deletes nothing. A preview takes no lock. With **Nothing**, a delete also
+takes no lock and can remove files that a running Copy pass has not opened
+yet. Stop copying first, or keep those files out of the deletion, as with
+[`delete --ignore-state`](reference/files-cli.md#delete-and-sync).
 
 ## Stopping and quitting
 
