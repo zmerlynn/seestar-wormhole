@@ -87,6 +87,28 @@ func TestSavedConfigOptions(t *testing.T) {
 	}
 }
 
+// A headless run forwards the app's added ports; -p still replaces one.
+func TestSavedConfigAddedPorts(t *testing.T) {
+	root := savedConfigRoot(t)
+	s := ui.Settings{Version: 1, Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{{Local: 1445, Device: 445}, {Local: 5000, Device: 5000}, {Local: 6000, Device: 6000}}}
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSavedConfig(t, root, b)
+	o, err := parse([]string{"proxy", "--config", "--state-dir", root, "-p", "6001:6000"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[uint16]uint16{}
+	for _, p := range o.ports {
+		got[p.Device] = p.Local
+	}
+	if got[445] != 1445 || got[5000] != 5000 || got[6000] != 6001 || got[4700] != 4700 {
+		t.Fatalf("ports=%v", got)
+	}
+}
+
 func TestSavedConfigCredentials(t *testing.T) {
 	for _, tc := range []struct {
 		name   string

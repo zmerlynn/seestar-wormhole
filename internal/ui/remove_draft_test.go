@@ -21,7 +21,7 @@ func TestRemoveDoesNotSaveUnstartedDraft(t *testing.T) {
 			draft := working
 			draft.Idle = "17m"
 			if invalid {
-				draft.Ports = []proxyrun.Port{{Device: 999}}
+				draft.Ports = []proxyrun.Port{{Local: 5000, Device: 0}}
 			}
 			b, _ := json.Marshal(input{Settings: draft})
 			if w := doPost(s, "/api/forget", string(b)); w.Code != 200 {

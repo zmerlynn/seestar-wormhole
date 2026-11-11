@@ -78,14 +78,15 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 			return nil, 0, &ActionError{Code: "email", Field: "email"}
 		}
 	}
-	seen := make(map[uint16]bool)
+	// Ports holds standard-service overrides and added ports alike, under
+	// the rules of -p.
+	var overrides []proxyrun.Port
 	for _, p := range s.Ports {
-		if !guiPort(p.Device) || seen[p.Device] {
+		if overrides, err = proxyrun.AddPort(overrides, p); err != nil {
 			return nil, 0, &ActionError{Code: "ports", Field: "ports"}
 		}
-		seen[p.Device] = true
 	}
-	ports, err := proxyrun.MergePorts(s.Ports)
+	ports, err := proxyrun.MergePorts(overrides)
 	if err != nil {
 		return nil, 0, &ActionError{Code: "ports", Field: "ports"}
 	}
@@ -124,12 +125,3 @@ func LoadSettings(root string) (Settings, error) {
 }
 
 func (s Settings) lazy() bool { d, _ := time.ParseDuration(s.Idle); return d > 0 }
-
-// The GUI edits only the ten standard services. CLI mappings remain unrestricted.
-func guiPort(remote uint16) bool {
-	switch remote {
-	case 4700, 80, 4800, 4804, 4801, 4554, 4555, 4350, 4361, 445:
-		return true
-	}
-	return false
-}
