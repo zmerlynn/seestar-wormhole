@@ -69,7 +69,7 @@ type options struct {
 	config                    bool
 	savedEmail                string
 	// settingsFallbacks are the saved values --config replaced, logged
-	// once the logger starts.
+	// before credentials are read.
 	settingsFallbacks []diagnostic.Fallback
 	name              string
 	// fileName is the file command parsed, and file that command once it
@@ -187,6 +187,10 @@ func runParsedWithConfigRuntime(ctx context.Context, o options, out, logs io.Wri
 		return runFiles(ctx, o, out, logs)
 	}
 	if o.config {
+		// Logged now, past the startup buffer, so that a later startup
+		// failure doesn't lose them.
+		level, _ := diagnostic.Level(o.level)
+		diagnostic.LogFallbacks(diagnostic.Logger(o.format, logs, level), o.settingsFallbacks)
 		credentials, err := savedCredentials(ctx, o.savedEmail, os.LookupEnv, config.keychainPassword)
 		if err != nil {
 			logCommandArgumentError(o, logs, err)
@@ -234,7 +238,6 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	startup := newStartupLogging(o, logOutput)
 	logger := startup.logger
 	defer func() { result = errors.Join(result, startup.finish(result)) }()
-	diagnostic.LogFallbacks(logger, o.settingsFallbacks)
 	var err error
 	phase = "tcp_state_query"
 	if err := checkTCPState(ctx); err != nil {

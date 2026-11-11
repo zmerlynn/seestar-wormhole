@@ -307,3 +307,69 @@ func TestSavedConfigFallbacks(t *testing.T) {
 		t.Fatalf("override = %+v, %v", o, err)
 	}
 }
+
+// proxy --config logs each fallback once, before credentials, so that a
+// startup that fails later still says which saved value it replaced.
+func TestSavedConfigFallbackWarningsSurviveStartupFailure(t *testing.T) {
+	refused := errors.New("synthetic session construction boundary")
+	for _, tc := range []struct {
+		name, body, setting string
+		listen              func(string, string) (net.Listener, error)
+		want                func(error) bool
+	}{
+		{"credential rejection", `{"version":1,"email":"PRIVATE-not-an-email"}`, "email",
+			func(string, string) (net.Listener, error) { t.Fatal("listener opened"); return nil, nil },
+			func(err error) bool { return err != nil }},
+		{"bind failure", `{"version":1,"email":"saved@example.invalid","serial":"PRIVATE serial"}`, "serial",
+			func(string, string) (net.Listener, error) { return nil, errors.New("synthetic bind failure") },
+			func(err error) bool { return err != nil && !errors.Is(err, refused) }},
+		{"session construction", `{"version":1,"email":"saved@example.invalid","serial":"PRIVATE serial"}`, "serial",
+			func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
+			func(err error) bool { return errors.Is(err, refused) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := savedConfigRoot(t)
+			writeSavedConfig(t, root, []byte(tc.body))
+			t.Setenv("SEESTAR_EMAIL", "")
+			if err := os.Unsetenv("SEESTAR_EMAIL"); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("SEESTAR_PASSWORD", "synthetic-password")
+			o, err := parse([]string{"proxy", "--config", "--state-dir", root}, io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var logs bytes.Buffer
+			err = runParsedWithConfigRuntime(t.Context(), o, io.Discard, &logs,
+				func(context.Context, proxy.Config) (commandSession, error) {
+					t.Fatal("config dispatch used environment-only session constructor")
+					return nil, nil
+				},
+				tc.listen, listenCommandDiscovery, configRuntime{
+					keychainPassword: func(context.Context, string) (string, error) {
+						t.Fatal("keychain read")
+						return "", nil
+					},
+					newSession: func(context.Context, proxy.Config, cloud.Credentials) (*proxy.Session, error) {
+						return nil, refused
+					},
+				})
+			if !tc.want(err) {
+				t.Fatalf("err = %v, logs = %s", err, &logs)
+			}
+			var warnings []map[string]any
+			for line := range strings.Lines(logs.String()) {
+				var record map[string]any
+				if json.Unmarshal([]byte(line), &record) == nil && record["msg"] == "settings_fallback" {
+					warnings = append(warnings, record)
+				}
+			}
+			if len(warnings) != 1 || warnings[0]["level"] != "WARN" || warnings[0]["file"] != "config.json" || warnings[0]["setting"] != tc.setting || warnings[0]["fallback"] != "none" {
+				t.Fatalf("warnings = %v, logs = %s", warnings, &logs)
+			}
+			if strings.Contains(logs.String(), "PRIVATE") {
+				t.Fatalf("log names the saved value: %s", &logs)
+			}
+		})
+	}
+}
