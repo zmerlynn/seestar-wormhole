@@ -54,9 +54,10 @@ for how the app and `seestar-wormhole-cli` share them.
 
 These defaults differ from the UI's first-run phone setup.
 
-Each `ports` override has lowercase numeric `local` and `device` members, from
-0 to 65535. A `local` of 0 turns the service off; a `device` that isn't a
-standard service adds a port. An older app refuses a file with added ports.
+Each `ports` entry has lowercase numeric members: `local` is 0–65535 and
+`device` is 1–65535. A `local` of 0 turns forwarding off; a nonstandard
+`device` adds a port. An older app refuses a file containing 32323 or an added
+port.
 
 A newer app, telescope or account could save a value this version refuses.
 A bad value in one of these settings doesn't refuse the file. It loads as a
