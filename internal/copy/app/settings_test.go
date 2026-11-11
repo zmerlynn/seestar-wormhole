@@ -98,3 +98,33 @@ func TestFirstSetupStartsOnFITSOnly(t *testing.T) {
 		t.Errorf("DefaultSettings().Includes = %q; want none", got)
 	}
 }
+
+// FITS files only selects a .fit or .fits file in any folder, in any case,
+// and leaves out an ordinary JPG and a FITS file the built-ins exclude.
+// A saved pattern keeps its spaces, so " *.fit", which the page shows as
+// Custom, selects no .fit file.
+func TestFITSOnlySelection(t *testing.T) {
+	for _, tc := range []struct {
+		includes []string
+		path     string
+		out      bool
+	}{
+		{firstSettings().Includes, "MyWorks/M 31/a.fit", false},
+		{firstSettings().Includes, "a.FITS", false},
+		{firstSettings().Includes, "MyWorks/M 31/a.jpg", true},
+		{firstSettings().Includes, "MyWorks/notes.txt", true},
+		{firstSettings().Includes, "log/hidden.fit", true},
+		{[]string{" *.fit", "*.fits"}, "MyWorks/a.fit", true},
+		{[]string{" *.fit", "*.fits"}, "MyWorks/a.FITS", false},
+	} {
+		set := firstSettings()
+		set.Includes = tc.includes
+		sel, err := selector(set)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := sel.LeavesOut(tc.path, false); got != tc.out {
+			t.Errorf("%q leaves out %s = %v; want %v", tc.includes, tc.path, got, tc.out)
+		}
+	}
+}

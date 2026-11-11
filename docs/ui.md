@@ -277,15 +277,15 @@ can't change while copying runs:
   the Seestar app and seestar_alp; if they are slow to respond while copying,
   lower it to 1 or 2.
 - **What to copy**: **FITS files only**, which copies `.fit` and `.fits` files
-  in any folder and leaves the telescope's JPG previews and other files on it;
-  **Everything**; or **Custom**, which shows **Only copy**. It is not saved
-  but read from **Only copy**'s saved patterns: exactly `*.fit` and `*.fits`,
-  ignoring order and duplicates, is FITS files only; an empty list is
-  Everything; anything else is Custom. Save discards blank lines; spaces in a
-  nonblank pattern are significant. Picking FITS files only or Everything
-  fills or empties Only copy; Custom keeps its patterns to edit. A first
-  setup, with no copy settings saved, starts on FITS files only; saved
-  settings keep what they copy.
+  in any folder and leaves the telescope's JPG previews and other files on it
+  (exclusions still apply); **Everything**; or **Custom**, which shows **Only
+  copy**. It is not saved but read from **Only copy**'s saved patterns:
+  exactly `*.fit` and `*.fits`, ignoring order and duplicates, is FITS files
+  only; an empty list is Everything; anything else is Custom. Save discards
+  blank lines; spaces in a nonblank pattern are significant. Picking FITS
+  files only or Everything fills or empties Only copy; Custom keeps its
+  patterns to edit. A first setup, with no copy settings saved, starts on FITS
+  files only; saved settings keep what they copy.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
   `--exclude` and `--include`; see [selection](reference/selection-and-history.md#selection).
   Leave out and the built-in patterns apply whatever **What to copy** says.
@@ -327,11 +327,12 @@ is checking or deleting, or while a `sync` holds the folder's lock.
 Browse is `seestar-wormhole-cli browse`'s page for the share, with the saved
 folder's [statuses](reference/files-cli.md#statuses). What the settings leave out
 shows as [`left out`](reference/files-cli.md#left-out-in-browse): with **FITS
-files only**, that is every file but the `.fit` and `.fits` files. After a Save
-that changes the folder or the selection, or a change of how the telescope
-is reached, Browse loads again at the share's top when it is next shown, so
-an error from before goes without a retry. Browse opens once a route is
-saved: until Copy's folder is saved for this telescope it lists the
+files only**, a file is selected when its name or an ancestor folder's name
+matches `*.fit` or `*.fits`, unless an exclusion applies. Other files show as
+left out. After a Save that changes the folder or the selection, or a change
+of how the telescope is reached, Browse loads again at the share's top when it
+is next shown, so an error from before goes without a retry. Browse opens once
+a route is saved: until Copy's folder is saved for this telescope it lists the
 telescope's files without statuses, and the Save loads it again with them.
 Statuses are always those of the connected telescope's folder. In the app's
 window, a file's **Save** asks where to save it; in a browser, it downloads.

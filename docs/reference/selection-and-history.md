@@ -146,8 +146,9 @@ a file if it matches the file's path or the path of any folder above it:
 --include 'MyWorks/**/*.fit' # FITS files anywhere in MyWorks
 ```
 
-To copy FITS files only, as the app's **FITS files only** does, and leave the
-JPG previews and other files:
+To use the app's **FITS files only** selection from the command line, give
+both patterns below. They match case-insensitively and also select every file
+inside a matching folder; excludes still win:
 
 ```sh
 seestar-wormhole-cli sync --endpoint 127.0.0.1:4445 --dest ~/Seestar \
