@@ -133,13 +133,18 @@ async function checkCopySetup(st) {
 async function checkCopyWhat(st) {
   copyFixture(st, st.unlocked);
   // What to copy is derived from Only copy's patterns.
+  // Saved patterns are compared exactly as saved, since selection keeps
+  // their spaces; Save drops blank lines typed in the box.
   for (const [includes, want] of [
     [[], 'all'],
-    [[''], 'all'],
+    [[''], 'custom'],
+    [['  '], 'custom'],
     [['*.fit', '*.fits'], 'fits'],
     [['*.fits', '*.fit'], 'fits'],
-    [['', '*.fit', '  ', '*.fits', ''], 'fits'],
-    [[' *.fit ', '*.fits'], 'fits'],
+    [['', '*.fit', '  ', '*.fits', ''], 'custom'],
+    [[' *.fit ', '*.fits'], 'custom'],
+    [[' *.fit', '*.fits'], 'custom'],
+    [['*.fit\t', '*.fits'], 'custom'],
     [['*.fit', '*.fits', '*.fit'], 'fits'],
     [['*.fit', '*.fits', '*.jpg'], 'custom'],
     [['*.fit'], 'custom'],

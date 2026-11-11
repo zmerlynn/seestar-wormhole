@@ -834,13 +834,14 @@ function copyFill(s) {
   $('f-skip').checked = s.skip_built_in;
   $('f-start').checked = s.start_copying;
 }
-// What to copy is derived from Only copy, never saved: its patterns,
-// trimmed and without blank lines, compared as a set, are FITS files only
+// What to copy is derived from Only copy's saved patterns, never saved
+// itself: compared as a set, exactly as saved, they are FITS files only
 // when they are exactly fitsIncludes, Everything when there are none, and
-// otherwise Custom. Matching ignores case, so the text is compared as is.
+// otherwise Custom. Selection keeps spaces in a pattern, so a blank or
+// spaced entry is Custom; Save drops blank lines typed in the box.
 const fitsIncludes = ['*.fit', '*.fits'];
 function copyWhat(includes) {
-  const set = new Set(includes.map(line => line.trim()).filter(Boolean));
+  const set = new Set(includes);
   if (!set.size) return 'all';
   return set.size === fitsIncludes.length && fitsIncludes.every(p => set.has(p)) ? 'fits' : 'custom';
 }

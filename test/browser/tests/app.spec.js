@@ -723,6 +723,15 @@ test('What to copy fills or empties Only copy, and a reload shows the option the
   await open();
   await expect(what).toHaveValue('custom');
   await expect(only).toHaveValue('*.FIT\n*.fits');
+  // A pattern keeps its spaces, as selection does, so ' *.fit', which
+  // selects no ordinary .fit file, comes back as Custom.
+  await only.fill(' *.fit\n*.fits');
+  await save();
+  expect(readJSON(app.copyFile).includes).toEqual([' *.fit', '*.fits']);
+  await openCopy(page, app.url);
+  await open();
+  await expect(what).toHaveValue('custom');
+  await expect(only).toHaveValue(' *.fit\n*.fits');
   // Picking an option fills Only copy, and Custom then keeps it.
   await what.selectOption('FITS files only');
   await expect(only).toBeHidden();

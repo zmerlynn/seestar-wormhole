@@ -276,15 +276,16 @@ can't change while copying runs:
   default. Through Telescope Network, copying shares the connection with
   the Seestar app and seestar_alp; if they are slow to respond while copying,
   lower it to 1 or 2.
-- **What to copy**: **FITS files only**, which copies `.fit` and `.fits`
-  files in any folder and leaves the telescope's JPG previews and other files
-  on it; **Everything**; or **Custom**, which shows **Only copy**. It is not
-  saved but read from **Only copy**'s patterns: exactly `*.fit` and `*.fits`,
-  in either order and ignoring blank lines and spaces around a line, is FITS
-  files only, none is Everything, and anything else is Custom. Picking FITS
-  files only or Everything fills or empties Only copy; Custom keeps its
-  patterns to edit. A first setup, with no copy settings saved, starts on
-  FITS files only; saved settings keep what they copy.
+- **What to copy**: **FITS files only**, which copies `.fit` and `.fits` files
+  in any folder and leaves the telescope's JPG previews and other files on it;
+  **Everything**; or **Custom**, which shows **Only copy**. It is not saved
+  but read from **Only copy**'s saved patterns: exactly `*.fit` and `*.fits`,
+  ignoring order and duplicates, is FITS files only; an empty list is
+  Everything; anything else is Custom. Save discards blank lines; spaces in a
+  nonblank pattern are significant. Picking FITS files only or Everything
+  fills or empties Only copy; Custom keeps its patterns to edit. A first
+  setup, with no copy settings saved, starts on FITS files only; saved
+  settings keep what they copy.
 - **Leave out** and **Only copy**: one pattern per line, as `sync`'s
   `--exclude` and `--include`; see [selection](reference/selection-and-history.md#selection).
   Leave out and the built-in patterns apply whatever **What to copy** says.
