@@ -465,13 +465,24 @@ network. It needs **All networks** or a local network IPv4 address. See
 
 ### Services and ports
 
-The **Services** table has ten fixed rows. Leave a **Local port** empty to turn
+The **Services** table has eleven fixed rows. Leave a **Local port** empty to turn
 that service off. Each enabled local port must be unique and between 1 and
 65535. The phone setup maps local port 80 to Seestar port 80; the computer-only
 setup uses local port 8080 instead. **File sharing for other apps (SMB)** uses
 local port 4445 for Seestar port 445. It is for Finder, rclone, other SMB apps
 and `seestar-wormhole-cli`'s file commands, including their `--profile default`
-endpoint through the account: Copy, Browse and Free up space don't need it. For other mappings, use the
+endpoint through the account: Copy, Browse and Free up space don't need it.
+**Alpaca (NINA and other astronomy apps)** forwards Seestar port 32323, the
+telescope's Alpaca server; see [NINA and other Alpaca clients](clients.md#nina-and-other-alpaca-clients).
+The proxy doesn't inspect Alpaca requests, so an Alpaca app can change the
+telescope's site and time.
+
+**Add a port** forwards another Seestar port. Enter the **Seestar port**; the
+**Local port** starts as the same number, and you can change it. **Remove**
+takes the row out. An added port can't be one of the **Services** rows, and
+its local port must be unique. A local port below 1024 may need permission;
+the page links the port permissions guide. **Ports forwarded to your Seestar**
+lists added ports as **Added**. For other options, use the
 [command line](reference/connection-cli.md#port-mappings).
 
 ## Activity

@@ -99,8 +99,9 @@ See [the device port map](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/
 | 4445 | 445 | SMB |
 | 8080 | 80 | HTTP |
 | 4350, 4554, 4555, 4801, 4800, 4804, 4361 | Same port | Other device services, including imaging on 4800 |
+| 32323 | 32323 | The telescope's Alpaca server, for NINA and other astronomy apps; not inspected |
 
-All ten default local ports are unprivileged. `-p 1445:445 -p 80:80` replaces
+All eleven default local ports are unprivileged. `-p 1445:445 -p 80:80` replaces
 only SMB and HTTP; other defaults remain. `-p 0:445` disables SMB.
 A device port outside the default set adds a listener.
 
@@ -391,6 +392,9 @@ Protection inspects client-to-device CRLF JSON requests on device ports
 [**4400 and 4700–4702**](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/ports.md#framing-per-port-family), including remapped local listeners. Port 4400 is not
 enabled by default. Other ports, including 4350, 4800, 4801, and 4804, stay
 byte-transparent. Device-to-client bytes stay unchanged.
+
+Alpaca on 32323, forwarded by default, is not inspected either, so an Alpaca
+client can change the telescope's site and time. `-p 0:32323` turns it off.
 
 See [the site and host-clock setters](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#user-location), [the time setter](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#setting-the-time-pi_set_time), [mount time](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#mount-time), [set_setting](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/device-state-and-settings.md#writing-set_setting) for the wire rules.
 

@@ -55,8 +55,8 @@ for how the app and `seestar-wormhole-cli` share them.
 These defaults differ from the UI's first-run phone setup.
 
 Each `ports` override has lowercase numeric `local` and `device` members, from
-0 to 65535. A `local` of 0 turns the service off; `device` must name a standard
-service.
+0 to 65535. A `local` of 0 turns the service off; a `device` that isn't a
+standard service adds a port. An older app refuses a file with added ports.
 
 Unknown members survive a save. Reads are limited to 64 KiB and never rewrite
 the file. A missing or unsupported version, including a newer one, is refused
