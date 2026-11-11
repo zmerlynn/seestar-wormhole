@@ -68,7 +68,8 @@ function settings() {
   return {
     version: 1, bind: $('listen').value === 'other' ? $('bind').value.trim() : $('listen').value,
     discovery: $('discovery').checked, idle: $('mode').value === 'eager' ? '0' : Number($('idle').value) + 'm',
-    serial: $('serial').value, model: $('model').value, ports: services.map(([device]) => ({device, local: Number($('port-' + device).value)})),
+    serial: $('serial').value, model: $('model').value,
+    ports: [...services.map(([device]) => ({device, local: Number($('port-' + device).value)})), ...addedRows().map(r => ({device: Number(r.remote.value), local: Number(r.local.value)}))],
     email: accountEmail(), remember_password: usingSaved()
   };
 }
@@ -85,8 +86,25 @@ function portValues(s) {
   for (const p of s.ports || []) ports[p.device] = p.local;
   return ports;
 }
+// standard reports whether a telescope port is one of the Services rows.
+function standard(device) {
+  return services.some(([remote]) => remote === Number(device));
+}
+function portInput(label) {
+  const input = document.createElement('input');
+  input.type = 'number';
+  input.min = '1';
+  input.max = '65535';
+  input.step = '1';
+  input.setAttribute('aria-label', label);
+  input.setAttribute('aria-describedby', 'ports-help ports-error');
+  return input;
+}
+// The running table lists the Services rows, then any added port, labeled
+// Added.
 function portsTable(id, ports, editable = false) {
-  const key = JSON.stringify(services.map(([remote]) => ports[remote] || 'Off'));
+  const rows = editable ? services : [...services, ...Object.keys(ports).filter(d => !standard(d)).map(d => [Number(d), 'Added'])];
+  const key = JSON.stringify(rows.map(([remote]) => [remote, ports[remote] || 'Off']));
   if (!editable && $(id).portsKey === key) return;
   const table = document.createElement('table');
   const head = table.createTHead().insertRow();
@@ -96,17 +114,11 @@ function portsTable(id, ports, editable = false) {
     head.append(th);
   }
   const body = table.createTBody();
-  for (const [remote, purpose] of services) {
+  for (const [remote, purpose] of rows) {
     const row = body.insertRow(), local = row.insertCell();
     if (editable) {
-      const input = document.createElement('input');
+      const input = portInput('Local port for ' + purpose);
       input.id = 'port-' + remote;
-      input.type = 'number';
-      input.min = '1';
-      input.max = '65535';
-      input.step = '1';
-      input.setAttribute('aria-label', 'Local port for ' + purpose);
-      input.setAttribute('aria-describedby', 'ports-help ports-error');
       input.value = ports[remote] || '';
       input.addEventListener('input', () => {clearField('ports'); customGoal();});
       local.append(input);
@@ -116,6 +128,78 @@ function portsTable(id, ports, editable = false) {
   }
   $(id).replaceChildren(table);
   if (!editable) $(id).portsKey = key;
+}
+// Added ports are telescope ports beyond the Services rows, kept in the
+// order added. A row's local port follows its Seestar port until the local
+// port is edited.
+function addedRows() {
+  return [...$('added-ports').querySelectorAll('tbody tr')].map(row => ({row, remote: row.querySelector('.added-remote'), local: row.querySelector('.added-local')}));
+}
+function addedEdited() {
+  clearField('ports');
+  controls();
+}
+function labelAddedRows() {
+  addedRows().forEach(({row, remote, local}, i) => {
+    const name = 'added port ' + (i + 1);
+    remote.setAttribute('aria-label', 'Seestar port for ' + name);
+    local.setAttribute('aria-label', 'Local port for ' + name);
+    row.querySelector('button').setAttribute('aria-label', 'Remove ' + name);
+  });
+  $('added-ports').hidden = !addedRows().length;
+}
+function addPortRow(device = 0, port = device) {
+  let table = $('added-ports').querySelector('table');
+  if (!table) {
+    table = document.createElement('table');
+    const head = table.createTHead().insertRow();
+    for (const name of ['Seestar port', 'Local port', '']) {
+      const th = document.createElement('th');
+      th.textContent = name;
+      head.append(th);
+    }
+    table.createTBody();
+    $('added-ports').replaceChildren(table);
+  }
+  const row = table.tBodies[0].insertRow();
+  const remote = portInput(''), local = portInput('');
+  remote.className = 'added-remote';
+  local.className = 'added-local';
+  remote.value = device || '';
+  local.value = port || '';
+  let follows = local.value === remote.value;
+  remote.addEventListener('input', () => {
+    if (follows) local.value = remote.value;
+    addedEdited();
+  });
+  local.addEventListener('input', () => {
+    follows = false;
+    addedEdited();
+  });
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'small';
+  remove.textContent = 'Remove';
+  remove.addEventListener('click', () => {
+    row.remove();
+    labelAddedRows();
+    addedEdited();
+    $('add-port').focus();
+  });
+  row.insertCell().append(remote);
+  row.insertCell().append(local);
+  row.insertCell().append(remove);
+  labelAddedRows();
+  return remote;
+}
+function addedTable(s) {
+  $('added-ports').replaceChildren();
+  for (const p of s.ports || []) if (!standard(p.device)) addPortRow(p.device, p.local);
+  labelAddedRows();
+}
+// lowAddedPort reports an added row whose local port may need permission.
+function lowAddedPort() {
+  return addedRows().some(({local}) => local.value && local.validity.valid && Number(local.value) < 1024);
 }
 function goalFor(s) {
   const ports = portValues(s);
@@ -133,6 +217,7 @@ function load(s) {
   // The server projects parsed duration to minutes, including old compound durations.
   $('idle').value = s.idle_minutes || 2;
   portsTable('ports', portValues(s), true);
+  addedTable(s);
   currentGoal = goalFor(s);
   $('goal').value = currentGoal;
   // An older file has no route: the Telescope Network route.
@@ -148,7 +233,13 @@ function usingSaved() {
 }
 function clearField(field) {
   $(field).removeAttribute('aria-invalid');
-  if (field === 'ports') for (const [remote] of services) $('port-' + remote)?.removeAttribute('aria-invalid');
+  if (field === 'ports') {
+    for (const [remote] of services) $('port-' + remote)?.removeAttribute('aria-invalid');
+    for (const {remote, local} of addedRows()) {
+      remote.removeAttribute('aria-invalid');
+      local.removeAttribute('aria-invalid');
+    }
+  }
   if (field === 'bind') $('listen').removeAttribute('aria-invalid');
   $(field + '-error').hidden = true;
   delete fieldErrors[field];
@@ -234,10 +325,39 @@ function validate() {
       return false;
     }
   }
+  if (!validateAdded()) return false;
   if ($('mode').value === 'idle' && !(Number($('idle').value) > 0)) {
     actionError = 'idle';
     fieldError('idle',fieldCopy.idle,'idle',true);
     return false;
+  }
+  return true;
+}
+// validateAdded checks the added rows under -p's rules, naming the row: a
+// Seestar port not in the Services rows and given once, a local port used
+// once, and at most 128 mappings.
+function validateAdded() {
+  const locals = new Set(services.map(([remote]) => Number($('port-' + remote).value)).filter(Boolean));
+  const devices = new Set();
+  const bad = (input, message) => {
+    actionError = 'ports';
+    fieldError('ports', message, 'ports');
+    input.setAttribute('aria-invalid', 'true');
+    input.focus();
+    return false;
+  };
+  for (const [i, {remote, local}] of addedRows().entries()) {
+    const name = 'Added port ' + (i + 1) + ': ';
+    if (services.length + i + 1 > 128) return bad(remote, name + 'at most 128 ports can be forwarded.');
+    if (!remote.value || !remote.validity.valid) return bad(remote, name + 'enter a Seestar port from 1 to 65535.');
+    const device = Number(remote.value);
+    if (standard(device)) return bad(remote, name + 'Seestar port ' + device + ' is in the table above. Set its local port there.');
+    if (devices.has(device)) return bad(remote, name + 'Seestar port ' + device + ' is already added.');
+    if (!local.value || !local.validity.valid) return bad(local, name + 'enter a local port from 1 to 65535.');
+    const port = Number(local.value);
+    if (locals.has(port)) return bad(local, name + 'local port ' + port + ' is already in use.');
+    devices.add(device);
+    locals.add(port);
   }
   return true;
 }
@@ -272,7 +392,7 @@ function controls() {
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const failureCode = actionError || (!active && state?.failure?.code) || '';
   const code = failureCode === 'selection_multiple' ? '' : failureCode;
-  $('port-permissions').hidden = code !== 'http_permission';
+  $('port-permissions').hidden = code !== 'http_permission' && !lowAddedPort();
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
   if (shownErrorCode !== code) {
@@ -1698,6 +1818,10 @@ function applyGoal(goal) {
   controls();
 }
 $('goal').addEventListener('change', () => applyGoal($('goal').value));
+$('add-port').addEventListener('click', () => {
+  addPortRow().focus();
+  addedEdited();
+});
 function customGoal() {
   currentGoal = 'custom';
   $('goal').value = 'custom';
