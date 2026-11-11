@@ -440,8 +440,8 @@ func TestPassDuringChange(t *testing.T) {
 			}()
 			<-admitted
 			var got string
+			c.check()
 			until("the next pass", func() bool {
-				c.check()
 				select {
 				case got = <-reached:
 					return true

@@ -105,29 +105,15 @@ func (e *copyEnv) waitOff() {
 	}
 }
 
-// next presses Check now until the next pass has started, since a press
-// before the loop's wait is dropped, then waits for that pass to end.
+// next presses Check now, waits for the next pass to start, then waits
+// for that pass to end.
 func (e *copyEnv) next() copyView {
 	e.t.Helper()
-	e.mu.Lock()
-	before := e.dials
-	e.mu.Unlock()
-	passes := func() int {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		return e.dials
-	}
-	// A press is received only by a wait, so press again only if no pass
-	// started for a while.
-	deadline := time.Now().Add(10 * time.Second)
-	for started := false; !started; {
+	before := e.dialCount()
+	e.c.check()
+	for deadline := time.Now().Add(10 * time.Second); e.dialCount() == before; time.Sleep(time.Millisecond) {
 		if time.Now().After(deadline) {
 			e.t.Fatal("Check now started no pass")
-		}
-		e.c.check()
-		for i := 0; i < 50 && !started; i++ {
-			time.Sleep(time.Millisecond)
-			started = passes() > before
 		}
 	}
 	return e.wait(stUpToDate, stFailures, stUnreachable, stListFail)
@@ -531,15 +517,8 @@ func TestCopyFolderBusyBetweenPasses(t *testing.T) {
 	lock := holdFolder(t, e.set.Folder)
 	e.files["MyWorks/b.jpg"] = image("b")
 	dials := e.dialCount()
-	deadline := time.Now().Add(10 * time.Second)
-	var v copyView
-	for {
-		e.c.check()
-		time.Sleep(5 * time.Millisecond)
-		if v = e.c.view(time.Now()); v.State == stListFail || time.Now().After(deadline) {
-			break
-		}
-	}
+	e.c.check()
+	v := e.wait(stListFail)
 	if v.State != stListFail || !v.On || v.Title != "Another copy or delete is using this folder." ||
 		!strings.HasPrefix(v.Text, "No files were copied. Trying again at ") || v.Chip != "Copying is on" {
 		t.Fatalf("a pass with the folder busy: %+v", v)
