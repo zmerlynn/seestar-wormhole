@@ -257,6 +257,12 @@ async function checkFreePreview(st) {
   renderFree(preview);
   freeCount();
   copyAssert($('x-go').disabled && $('x-go').textContent === 'Delete 0 files…', 'nothing checked still deletes');
+  renderFree({...preview, id: 8, title: '3 files (6 B) are selected to delete.', ignore: true});
+  freeAsk();
+  copyAssert($('x-cbody').textContent.endsWith(" These files weren't checked against your copies. Any you haven't copied are gone for good."), 'unchecked confirm: ' + $('x-cbody').textContent);
+  renderFree({...preview, id: 9});
+  freeAsk();
+  copyAssert(!$('x-cbody').textContent.includes("weren't checked"), 'a checked confirm warns: ' + $('x-cbody').textContent);
 }
 
 // Choose… shows only with the window's folder picker. A pick fills the
@@ -368,11 +374,19 @@ async function checkFreeFolder(st) {
   selectTab('free');
   const folder = st.after.settings.folder;
   copyAssert($('x-folder-text').textContent === 'Copies in: ' + folder, 'proof folder: ' + $('x-folder-text').textContent);
-  $('x-trust').checked = true;
-  $('x-trust').dispatchEvent({type: 'change'});
+  copyAssert($('x-none-warn').hidden && !$('x-folder-go').hidden, 'checking copies warns or hides the folder link');
+  $('x-proof').value = 'state';
+  $('x-proof').dispatchEvent({type: 'change'});
   copyAssert($('x-folder-text').textContent === 'Copy history for: ' + folder, 'record folder: ' + $('x-folder-text').textContent);
-  $('x-trust').checked = false;
-  $('x-trust').dispatchEvent({type: 'change'});
+  copyAssert($('x-none-warn').hidden, 'checking the copy history warns');
+  $('x-proof').value = 'none';
+  $('x-proof').dispatchEvent({type: 'change'});
+  copyAssert($('x-folder-text').textContent === "Your copies aren't checked.", 'unchecked folder: ' + $('x-folder-text').textContent);
+  copyAssert(!$('x-none-warn').hidden && $('x-folder-go').hidden, 'checking nothing does not warn');
+  copyAssert($('x-intro').textContent.startsWith("Free up space deletes what's selected"), 'unchecked intro: ' + $('x-intro').textContent);
+  $('x-proof').value = 'hash';
+  $('x-proof').dispatchEvent({type: 'change'});
+  copyAssert($('x-none-warn').hidden && $('x-folder-text').textContent === 'Copies in: ' + folder, 'back to checking copies kept the warning');
   $('x-folder-go').dispatchEvent({type: 'click'});
   copyAssert(currentTab === 'copy' && document.activeElement === $('tab-copy'), 'the folder link did not open Copy');
 }

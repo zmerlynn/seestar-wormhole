@@ -12,7 +12,7 @@ const button = (page, name) => page.getByRole('button', { name, exact: true });
 const title = (page) => page.locator('#x-title');
 const deleteButton = (page) => page.locator('#x-go');
 const days = (page) => page.locator('#x-days');
-const trust = (page) => page.getByLabel(/My copies have moved or the drive is offline/);
+const proof = (page) => page.getByLabel('Before deleting, check');
 
 // copying is a saved route to the fixture and copy settings that copy to
 // the app's folder.
@@ -121,7 +121,7 @@ test('a different preview closes an open confirm dialog', async ({ page, startAp
 
 test("a settings save keeps the preview unless it changes the folder: Copy's patterns are not Free up space's", async ({ page, startApp }) => {
   const app = await copied(page, startApp);
-  await trust(page).check();
+  await proof(page).selectOption('Only the copy history (copies moved or drive offline)');
   await expect(page.locator('#x-intro')).toHaveText("Free up space uses this app's saved copy records. Your copies will not be checked.");
   await find(page, /^7 files \(\d.*\) match the saved copy records\.$/);
   await expect(page.locator('#x-sub')).toHaveText('Any age · Your copies were not checked.');
@@ -146,7 +146,64 @@ test("a settings save keeps the preview unless it changes the folder: Copy's pat
   await expect(page.locator('#x-changed')).toHaveText('Settings or copy history changed. Preview again before deleting.');
   await expect(button(page, 'Preview what to delete')).toBeVisible();
   await expect(deleteButton(page)).toBeHidden();
-  await expect(trust(page)).toBeChecked();
+  await expect(proof(page)).toHaveValue('state');
+});
+
+test('Before deleting, check saves each choice, and Nothing previews and deletes files never copied', async ({ page, startApp }) => {
+  // Copying never starts: no file on the telescope has been copied.
+  const app = await startApp(copying(false));
+  await openCopy(page, app.url);
+  await tab(page, 'Free up space').click();
+  const warn = page.locator('#x-none-warn');
+  await expect(proof(page)).toHaveValue('hash');
+  await expect(warn).toBeHidden();
+  await find(page, /^Nothing to delete yet\./);
+
+  await proof(page).selectOption('Nothing: delete what\'s selected, copied or not');
+  await expect(warn).toHaveText("Files you haven't copied are deleted too, and can't be recovered.");
+  await expect(warn).toBeVisible();
+  await expect(page.locator('#x-folder-text')).toHaveText("Your copies aren't checked.");
+  await expect(page.locator('#x-intro')).toHaveText("Free up space deletes what's selected from the telescope, whether or not it was copied.");
+  await find(page, /^7 files \(\d.*\) are selected to delete\.$/);
+  await expect(page.locator('#x-sub')).toHaveText("Any age · Copies not checked: files you haven't copied are deleted too.");
+  expect(readJSON(app.copyFile)).toMatchObject({ trust_state: false, ignore_state: true });
+
+  // The confirm says the files weren't checked; the fixture is read-only,
+  // so the delete it sends is refused there.
+  const deletes = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/copy/api/delete') && r.postDataJSON().action === 'delete') deletes.push(r.postDataJSON());
+  });
+  await page.locator('#x-groups tr').first().getByRole('checkbox').uncheck();
+  await deleteButton(page).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.locator('#x-cbody')).toHaveText(/ These files weren't checked against your copies\. Any you haven't copied are gone for good\.$/);
+  await page.locator('#x-cgo').click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('#x-done')).toBeVisible({ timeout: 30000 });
+  expect(deletes.length).toBe(1);
+
+  // A reload shows the choice saved, and its warning.
+  await page.reload();
+  await expect(page.locator('#quit')).toBeEnabled();
+  await tab(page, 'Free up space').click();
+  await page.locator('#x-done').click();
+  await expect(proof(page)).toHaveValue('none');
+  await expect(warn).toBeVisible();
+
+  for (const [label, value, want] of [
+    ['Only the copy history (copies moved or drive offline)', 'state', { trust_state: true, ignore_state: false }],
+    ['That my copy matches', 'hash', { trust_state: false, ignore_state: false }],
+  ]) {
+    await proof(page).selectOption(label);
+    await expect(warn).toBeHidden();
+    await find(page, /^Nothing to delete yet\./);
+    expect(readJSON(app.copyFile)).toMatchObject(want);
+    await page.reload();
+    await expect(page.locator('#quit')).toBeEnabled();
+    await tab(page, 'Free up space').click();
+    await expect(proof(page)).toHaveValue(value);
+  }
 });
 
 test('Keep on the telescope and Only free up select what a preview deletes, and are saved', async ({ page, startApp }) => {

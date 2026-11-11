@@ -210,7 +210,9 @@
 <label class="check strong">Only files older than <input type="number" id="x-days" min="0" aria-describedby="x-days-help x-days-err"> days</label>
 <p class="help" id="x-days-help">0 means any age.<span id="x-restack"> Recent sessions stay on the telescope so you can restack them.</span></p>
 <p class="error" id="x-days-err" role="alert" hidden></p>
-<label class="check"><input type="checkbox" id="x-trust"> <span><b>My copies have moved or the drive is offline</b><br><span class="muted">Checks only this app's record of each copy, not the copy itself. Leave this off if your images are still in your folder.</span></span></label>
+<label for="x-proof">Before deleting, check</label>
+<select id="x-proof"><option value="hash">That my copy matches</option><option value="state">Only the copy history (copies moved or drive offline)</option><option value="none">Nothing: delete what's selected, copied or not</option></select>
+<p class="notice err" id="x-none-warn" hidden>Files you haven't copied are deleted too, and can't be recovered.</p>
 <p class="help" id="x-patterns-help">These patterns are separate from Copy's Leave out and Only copy, which don't change what is deleted.</p>
 <details class="help" id="x-always"><summary>Always kept</summary><ul>
 <li>The telescope's log and scratch folders: <code>/log</code>, <code>/tmp_stitch</code>, <code>/batch_stack_tmp</code></li>

@@ -1194,7 +1194,7 @@ const freeShows = {
 const freeBox = {checkfail: 'notice err', failed: 'notice err', nothing: 'notice', stopped: 'notice', done: 'notice ok'};
 // The shown state and stage, the preview's id, options and groups with
 // their boxes.
-let freeShown = {state: '', stage: '', id: 0, kept: '', groups: [], boxes: [], trust: false};
+let freeShown = {state: '', stage: '', id: 0, kept: '', groups: [], boxes: [], trust: false, ignore: false};
 let freePressed = null; // as pressed, for this tab
 // byteSize words a byte count as the server does: decimal units, with one
 // decimal below 100.
@@ -1211,18 +1211,23 @@ function byteSize(n) {
 const fileCount = n => n === 1 ? '1 file' : n.toLocaleString('en-US') + ' files';
 function freeFill(s) {
   $('x-days').value = String(s.older_than_days);
-  $('x-trust').checked = s.trust_state;
+  $('x-proof').value = s.ignore_state ? 'none' : s.trust_state ? 'state' : 'hash';
   $('x-ex').value = s.free_excludes.join('\n');
   $('x-in').value = s.free_includes.join('\n');
   freeIntro();
 }
 // freeIntro words the Start text for the options as set, and names the
-// saved folder whose copies, or copy history, the check uses.
+// saved folder whose copies, or copy history, the check uses, or says
+// that nothing is checked, with its warning.
 function freeIntro() {
-  const trust = $('x-trust').checked;
-  put('x-intro', trust ? "Free up space uses this app's saved copy records. Your copies will not be checked."
-    : 'Free up space deletes files from the telescope only after they have been copied here, and checks that your copy still matches.');
-  put('x-folder-text', copySaved && (trust ? 'Copy history for: ' : 'Copies in: ') + copySaved.folder);
+  const proof = $('x-proof').value;
+  put('x-intro', {
+    state: "Free up space uses this app's saved copy records. Your copies will not be checked.",
+    none: "Free up space deletes what's selected from the telescope, whether or not it was copied."
+  }[proof] || 'Free up space deletes files from the telescope only after they have been copied here, and checks that your copy still matches.');
+  put('x-folder-text', copySaved && (proof === 'none' ? "Your copies aren't checked." : (proof === 'state' ? 'Copy history for: ' : 'Copies in: ') + copySaved.folder));
+  $('x-folder-go').hidden = proof === 'none';
+  $('x-none-warn').hidden = proof !== 'none';
   $('x-restack').hidden = !(Number($('x-days').value) > 0);
 }
 // freeErrors puts each message under its option, as showErrors does for
@@ -1297,6 +1302,7 @@ function renderFree(v) {
   if (st === 'preview' && v.id !== freeShown.id) {
     freeShown.id = v.id;
     freeShown.trust = v.trust;
+    freeShown.ignore = v.ignore;
     freeShown.groups = v.groups;
     freeShown.boxes = v.groups.map(g => {
       const box = document.createElement('input');
@@ -1380,7 +1386,7 @@ async function freePress(event, body) {
 }
 function freeFind(event) {
   return freePress(event, {
-    action: 'find', days: $('x-days').value, trust: $('x-trust').checked,
+    action: 'find', days: $('x-days').value, trust: $('x-proof').value === 'state', ignore: $('x-proof').value === 'none',
     free_excludes: lines($('x-ex').value), free_includes: lines($('x-in').value)
   });
 }
@@ -1391,7 +1397,8 @@ function freeAsk() {
   const bytes = groups.reduce((a, g) => a + g.bytes, 0);
   put('x-ctitle', 'Delete ' + fileCount(n) + ' from the telescope?');
   put('x-cbody', 'This frees ' + byteSize(bytes) + ". It can't be undone: the telescope keeps no trash. Each file is checked again just before it's deleted." +
-    (freeShown.trust ? ' Your copies were not checked.' : ''));
+    (freeShown.trust ? ' Your copies were not checked.' : '') +
+    (freeShown.ignore ? " These files weren't checked against your copies. Any you haven't copied are gone for good." : ''));
   put('x-cgo', 'Delete ' + fileCount(n));
   $('x-confirm').showModal();
 }
@@ -1933,7 +1940,7 @@ $('h-confirm').addEventListener('close', () => $('h-clear').focus());
 $('x-find').addEventListener('click', freeFind);
 $('x-days').addEventListener('keydown', e => e.key === 'Enter' && freeFind(e));
 $('x-days').addEventListener('input', freeIntro);
-$('x-trust').addEventListener('change', freeIntro);
+$('x-proof').addEventListener('change', freeIntro);
 $('x-cancel').addEventListener('click', e => freePress(e, {action: 'cancel'}));
 $('x-stop').addEventListener('click', e => freePress(e, {action: 'stop'}));
 $('x-change').addEventListener('click', e => freePress(e, {action: 'reset'}));
