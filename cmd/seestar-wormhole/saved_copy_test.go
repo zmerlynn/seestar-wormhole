@@ -371,6 +371,7 @@ func TestProfileFallbackWarningsBeforeOptionRefusal(t *testing.T) {
 // A file command that validated logs its profile's warnings when it runs;
 // a failure at run time must not log them again.
 func TestProfileFallbackWarningsOnceOnRunFailure(t *testing.T) {
+	noReadOnlyGuard(t)
 	writeFallbackProfile(t)
 	var logs bytes.Buffer
 	err := runWithListener(t.Context(), []string{"find", "--profile", "default", "--endpoint", "127.0.0.1:1"}, io.Discard, &logs, nil, nil)
