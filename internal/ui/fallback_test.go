@@ -27,7 +27,13 @@ func checkFallback(t *testing.T, fallbacks []diagnostic.Fallback, file, setting,
 	if len(fallbacks) != 1 || fallbacks[0] != (diagnostic.Fallback{File: file, Setting: setting, Fallback: fallback}) {
 		t.Fatalf("fallbacks = %+v", fallbacks)
 	}
-	log := fallbackLog(t, fallbacks)
+	checkFallbackLog(t, fallbackLog(t, fallbacks), file, setting, fallback, private)
+}
+
+// checkFallbackLog asserts log is one warning naming the setting and its
+// fallback, and that none of its fields but the time holds private.
+func checkFallbackLog(t *testing.T, log, file, setting, fallback, private string) {
+	t.Helper()
 	lines := strings.Split(strings.TrimSpace(log), "\n")
 	if len(lines) != 1 {
 		t.Fatalf("log = %q; want one line", log)
@@ -39,9 +45,30 @@ func checkFallback(t *testing.T, fallbacks []diagnostic.Fallback, file, setting,
 	if line["level"] != "WARN" || line["msg"] != "settings_fallback" || line["file"] != file || line["setting"] != setting || line["fallback"] != fallback {
 		t.Fatalf("log line = %v", line)
 	}
-	if strings.Contains(log, private) {
+	// The time is left out: its digits can match a numeric value.
+	delete(line, "time")
+	fields, err := json.Marshal(line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(fields), private) {
 		t.Fatalf("log names the saved value: %s", log)
 	}
+}
+
+// A timestamp holding a saved number's digits isn't a leak of it.
+func TestFallbackLogIgnoresTime(t *testing.T) {
+	var line map[string]any
+	log := fallbackLog(t, []diagnostic.Fallback{{File: copyName, Setting: "files_at_once", Fallback: "4"}})
+	if err := json.Unmarshal([]byte(log), &line); err != nil {
+		t.Fatal(err)
+	}
+	line["time"] = "2057-01-01T00:00:00.000Z"
+	fixed, err := json.Marshal(line)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checkFallbackLog(t, string(fixed), copyName, "files_at_once", "4", "57")
 }
 
 // A bad config.json value loads as its fallback and is logged, not shown.
