@@ -3,6 +3,7 @@
 // own patterns, and what a settings save or a history clear does to the
 // preview. The confirmed delete is tested in the Samba job. What a check is
 // looking at uses synthetic states.
+const fs = require('fs');
 const { test, expect, lan, tab, field, openCopy, fakeStatus, readJSON } = require('./app');
 
 const upToDate = /^Up to date\. Next check at \d\d:\d\d\.$/;
@@ -150,8 +151,10 @@ test("a settings save keeps the preview unless it changes the folder: Copy's pat
 });
 
 test('Before deleting, check saves each choice, and Nothing previews and deletes files never copied', async ({ page, startApp }) => {
-  // Copying never starts: no file on the telescope has been copied.
+  // Copying never starts: no file on the telescope has been copied, and
+  // the folder is empty.
   const app = await startApp(copying(false));
+  fs.mkdirSync(app.folder, { recursive: true });
   await openCopy(page, app.url);
   await tab(page, 'Free up space').click();
   const warn = page.locator('#x-none-warn');
