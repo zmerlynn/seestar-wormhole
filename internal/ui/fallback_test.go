@@ -2,7 +2,9 @@ package ui
 
 import (
 	"bytes"
+	"context"
 	"encoding/json/v2"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -10,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/testlog"
 )
 
 // fallbackLog is the warning a load's fallbacks log, as the app writes it.
@@ -168,5 +171,59 @@ func TestCopySettingsFallbacks(t *testing.T) {
 	}
 	if _, _, fallbacks, err := loadCopySettings(testStorageWith(t, `{"version":1,"files_at_once":4}`)); err != nil || len(fallbacks) != 0 {
 		t.Fatalf("in range = %v, %v", fallbacks, err)
+	}
+}
+
+// The app logs each fallback in both files once in its log, without the
+// saved value.
+func TestAppLogsFallbacks(t *testing.T) {
+	useLAN(t, &lanNet{})
+	st := testStorage(t)
+	for name, body := range map[string]string{
+		"config.json": `{"version":1,"bind":"127.0.0.9","discovery":true,"serial":"PRIVATE serial","email":"PRIVATE-not-an-email"}`,
+		copyName:      `{"version":1,"files_at_once":57}`,
+	} {
+		if err := st.writeBytes(name, []byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var logs testlog.Buffer
+	err := runUIPresented(t.Context(), st.root, io.Discard, &logs, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(_ context.Context, _ string, closeWindow func(), _ <-chan struct{}) error {
+		closeWindow()
+		return nil
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[[2]string]string{
+		{"config.json", "discovery"}: "off", {"config.json", "serial"}: "none", {"config.json", "email"}: "none",
+		{copyName, "files_at_once"}: "4",
+	}
+	got := map[[2]string]string{}
+	warnings := 0
+	for line := range strings.Lines(logs.String()) {
+		var record map[string]any
+		if json.Unmarshal([]byte(line), &record) != nil || record["msg"] != "settings_fallback" {
+			continue
+		}
+		warnings++
+		file, _ := record["file"].(string)
+		setting, _ := record["setting"].(string)
+		fallback, _ := record["fallback"].(string)
+		if record["level"] != "WARN" {
+			t.Fatalf("level = %v", record["level"])
+		}
+		got[[2]string{file, setting}] = fallback
+	}
+	if warnings != len(want) || len(got) != len(want) {
+		t.Fatalf("warnings = %d %v; want %v; logs = %s", warnings, got, want, logs.String())
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("%v fallback = %q; want %q", k, got[k], v)
+		}
+	}
+	if strings.Contains(logs.String(), "PRIVATE") || strings.Contains(logs.String(), "127.0.0.9") {
+		t.Fatalf("log names a saved value: %s", logs.String())
 	}
 }

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 	"github.com/zmerlynn/seestar-wormhole/internal/ui"
@@ -304,5 +305,26 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/A"}`)
 	if got, err := loadDefaultProfile(); err != nil || got.Dest != "/synthetic/A" || got.NoFolder {
 		t.Errorf("an older copy.json = %+v, %v", got, err)
+	}
+}
+
+// The default profile carries copy.json's fallbacks, then config.json's,
+// for the command to log, and reading them writes neither file.
+func TestDefaultProfileFallbacks(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedConfig(t, root, []byte(`{"version":1,"serial":"PRIVATE serial","ports":[{"device":445,"local":1445}]}`))
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/Seestar","files_at_once":57}`)
+	useProfileRoot(t, root, nil)
+	before := profileFiles(t, root)
+	got, err := loadDefaultProfile()
+	want := []diagnostic.Fallback{
+		{File: "copy.json", Setting: "files_at_once", Fallback: "4"},
+		{File: "config.json", Setting: "serial", Fallback: "none"},
+	}
+	if err != nil || got.Workers != 4 || got.Endpoint != "127.0.0.1:1445" || !reflect.DeepEqual(got.Fallbacks, want) {
+		t.Fatalf("= %+v, %v; want fallbacks %+v", got, err, want)
+	}
+	if after := profileFiles(t, root); !maps.Equal(after, before) {
+		t.Errorf("the state folder changed: %v, was %v", after, before)
 	}
 }

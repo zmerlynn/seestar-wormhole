@@ -289,3 +289,24 @@ func TestProfileNoFolder(t *testing.T) {
 		}
 	}
 }
+
+// A command run with --profile default logs each saved value the load
+// replaced, once, in its own log.
+func TestProfileLogsFallbacks(t *testing.T) {
+	dev := newDevice()
+	dev.set("MyWorks/a.fit", "abc", findT0)
+	dev.use(t)
+	useProfile(t, Saved{Endpoint: "h:445", Fallbacks: []diagnostic.Fallback{
+		{File: "copy.json", Setting: "files_at_once", Fallback: "4"},
+		{File: "config.json", Setting: "serial", Fallback: "none"},
+	}})
+	code, _, logs := find(t, "--profile", "default")
+	if code != exitOK || strings.Count(logs, "settings_fallback") != 2 {
+		t.Fatalf("exit %d\n%s", code, logs)
+	}
+	for _, want := range []string{"file=copy.json setting=files_at_once fallback=4", "file=config.json setting=serial fallback=none"} {
+		if strings.Count(logs, "level=WARN msg=settings_fallback "+want) != 1 {
+			t.Fatalf("no warning %q:\n%s", want, logs)
+		}
+	}
+}
