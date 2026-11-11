@@ -108,7 +108,8 @@ Zero idle duration eagerly acquires and holds the session; a positive duration
 opens on client demand and releases when idle. Stop with Ctrl+C.
 Credentials use SEESTAR_EMAIL and SEESTAR_PASSWORD from the environment.
 With --config, load saved UI settings and read the OS keychain if no password is set.
-The app cannot change the device's site, clock or time zone through the proxy.
+The Seestar app cannot change the device's site, clock or time zone through the proxy.
+Alpaca on 32323 is not inspected, so an Alpaca client can change site and time.
 Durations use Go units, e.g. 2m or 1h30m, and must be nonnegative (no d unit).
 Logs and errors go to stderr; help and version go to stdout.
 Exit 0 on orderly release, 2 on usage/configuration errors,
