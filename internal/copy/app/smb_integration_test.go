@@ -194,3 +194,73 @@ func TestSMBFreeUpSpace(t *testing.T) {
 		t.Errorf("left on the share: %q, want %q", left, want)
 	}
 }
+
+// TestSMBFreeUpSpaceUnchecked previews and deletes, through the real SMB
+// client, files that were never copied, with Free up space checking
+// nothing: the unchecked folder stays.
+func TestSMBFreeUpSpaceUnchecked(t *testing.T) {
+	endpoint := os.Getenv("SEESTAR_COPY_SMB_ENDPOINT")
+	if endpoint == "" {
+		t.Fatal("SEESTAR_COPY_SMB_ENDPOINT must name the Samba fixture (host:port)")
+	}
+	ctx := t.Context()
+	r, err := remote.DialScratch(ctx, endpoint)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = r.Close() })
+	if err := remote.FillScratch(ctx, r, "app-unchecked", map[string]string{
+		"app-unchecked/A/a.fit": "a", "app-unchecked/B/b.fit": "b",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	set := DefaultSettings()
+	set.Address, set.Folder, set.OlderThanDays, set.IgnoreState = endpoint, filepath.Join(t.TempDir(), "Seestar"), 0, true
+	set.FreeIncludes = []string{"/app-unchecked"}
+	f := newFreer(ctx, t.TempDir(), slog.New(slog.NewTextHandler(io.Discard, nil)), func(ctx context.Context, tg Target) (remote.Session, error) {
+		return remote.DialScratch(ctx, tg.Endpoint)
+	})
+	f.remover = func(ctx context.Context, tg Target) (remote.Remover, error) {
+		return remote.DialScratch(ctx, tg.Endpoint)
+	}
+	t.Cleanup(f.quit)
+	wait := func(states ...string) freeView {
+		t.Helper()
+		for deadline := time.Now().Add(time.Minute); ; time.Sleep(10 * time.Millisecond) {
+			v := f.view()
+			if slices.Contains(states, v.State) {
+				return v
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("state %q, want one of %q: %+v", v.State, states, v)
+			}
+		}
+	}
+	if err := f.find(set, Target{Endpoint: set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	v := wait(frPreview, frNothing, frCheckFail)
+	if v.State != frPreview || v.Title != "2 files (2 B) are selected to delete." || !v.Ignore {
+		t.Fatalf("preview: %+v", v)
+	}
+	if err := f.confirm(v.ID, []string{"app-unchecked/A"}, Target{Endpoint: set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	if v := wait(frDone, frStopped, frFailed); v.State != frDone || v.Title != "Deleted 1 file and removed 1 empty folder." {
+		t.Errorf("done: %+v", v)
+	}
+	dirs, err := r.ReadDir(ctx, "app-unchecked")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var left []string
+	for _, d := range dirs {
+		left = append(left, d.Path)
+	}
+	if want := []string{"app-unchecked/B"}; !slices.Equal(left, want) {
+		t.Errorf("left on the share: %q, want %q", left, want)
+	}
+	if _, err := os.Stat(set.Folder); !os.IsNotExist(err) {
+		t.Errorf("the copy folder was touched: %v", err)
+	}
+}
