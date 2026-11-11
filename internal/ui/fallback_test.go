@@ -6,8 +6,6 @@ import (
 	"encoding/json/v2"
 	"io"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 
@@ -86,7 +84,7 @@ func TestSettingsFallbacks(t *testing.T) {
 	} {
 		t.Run(tc.setting+" "+tc.private, func(t *testing.T) {
 			st := testStorage(t)
-			if err := os.WriteFile(filepath.Join(st.root, "config.json"), []byte(tc.body), 0600); err != nil {
+			if err := st.writeBytes("config.json", []byte(tc.body)); err != nil {
 				t.Fatal(err)
 			}
 			s, fallbacks, err := loadSettings(st)
@@ -131,7 +129,7 @@ func TestSettingsStillRefused(t *testing.T) {
 		`{"version":1,"ports":[{"local":80,"device":0}]}`,
 	} {
 		st := testStorage(t)
-		if err := os.WriteFile(filepath.Join(st.root, "config.json"), []byte(body), 0600); err != nil {
+		if err := st.writeBytes("config.json", []byte(body)); err != nil {
 			t.Fatal(err)
 		}
 		if _, _, err := loadSettings(st); err == nil || !st.settingsRefused {
