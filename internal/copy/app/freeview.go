@@ -66,8 +66,9 @@ type freeView struct {
 	Recheck  bool          `json:"recheck,omitzero"` // Deleting: the checked files are listed again first
 	ID       int           `json:"id,omitzero"`      // the preview's
 	Groups   []folderGroup `json:"groups,omitempty"`
-	Trust    bool          `json:"trust,omitzero"` // the preview's proof is the records alone
-	Kept     string        `json:"kept,omitempty"` // "Kept: …" or the Done counts
+	Trust    bool          `json:"trust,omitzero"`  // the preview's proof is the records alone
+	Ignore   bool          `json:"ignore,omitzero"` // the preview checked no copy
+	Kept     string        `json:"kept,omitempty"`  // "Kept: …" or the Done counts
 	KeptList []failure     `json:"kept_list,omitempty"`
 }
 
@@ -131,12 +132,18 @@ func (st *freeStatus) view() freeView {
 				}
 			}
 		}, true)
-		v.Groups, v.ID, v.Trust = groups, st.id, st.set.TrustState
+		v.Groups, v.ID, v.Trust, v.Ignore = groups, st.id, st.set.TrustState, st.set.IgnoreState
 		v.Title = fmt.Sprintf("%s (%s) are copied and safe to delete.", many(n, "file", "files"), size(float64(bytes)))
 		if n == 1 {
 			v.Title = "1 file (" + size(float64(bytes)) + ") is copied and safe to delete."
 		}
-		if st.set.TrustState {
+		switch {
+		case st.set.IgnoreState:
+			v.Title = fmt.Sprintf("%s (%s) are selected to delete.", many(n, "file", "files"), size(float64(bytes)))
+			if n == 1 {
+				v.Title = "1 file (" + size(float64(bytes)) + ") is selected to delete."
+			}
+		case st.set.TrustState:
 			v.Title = fmt.Sprintf("%s (%s) match the saved copy records.", many(n, "file", "files"), size(float64(bytes)))
 			if n == 1 {
 				v.Title = "1 file (" + size(float64(bytes)) + ") matches the saved copy records."
@@ -146,9 +153,13 @@ func (st *freeStatus) view() freeView {
 		if days > 0 {
 			age = "Only files older than " + count(days, "day", "days")
 		}
-		v.Sub = age + " · your copies checked"
-		if st.set.TrustState {
+		switch {
+		case st.set.IgnoreState:
+			v.Sub = age + " · Copies not checked: files you haven't copied are deleted too."
+		case st.set.TrustState:
 			v.Sub = age + " · Your copies were not checked."
+		default:
+			v.Sub = age + " · your copies checked"
 		}
 		v.Kept, v.KeptList = keptSummary(st.preview.Files, days)
 	case frNothing:
@@ -157,9 +168,15 @@ func (st *freeStatus) view() freeView {
 		if st.set.TrustState {
 			copied = "once the copy history shows them copied"
 		}
-		if days > 0 {
+		switch {
+		case st.set.IgnoreState:
+			v.Title = "Nothing matches what's selected."
+			if days > 0 {
+				v.Text = "Files become eligible once they're older than " + count(days, "day", "days") + "."
+			}
+		case days > 0:
 			v.Text = "Files become eligible " + copied + " and older than " + count(days, "day", "days") + "."
-		} else {
+		default:
 			v.Text = "Files become eligible " + copied + "."
 		}
 		v.Kept, v.KeptList = keptSummary(st.preview.Files, days)
@@ -241,7 +258,7 @@ func groupByFolder(files iter.Seq2[string, int64], keepFiles bool) []folderGroup
 
 // noDest is what to do when the folder is missing and the copies prove
 // the files.
-const noDest = "If your copies have moved or the drive is offline, turn on \"My copies have moved or the drive is offline\" and preview again."
+const noDest = "If your copies have moved or the drive is offline, choose \"Only the copy history\" under \"Before deleting, check\" and preview again."
 
 // keptSummary words the files a preview keeps: "Kept: 40 newer than 7
 // days, 12 not copied yet", and each file with its reason.

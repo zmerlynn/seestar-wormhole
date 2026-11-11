@@ -235,6 +235,10 @@ func TestFreeIgnoreState(t *testing.T) {
 	if got := folders(v); v.State != frPreview || !slices.Equal(got, want) {
 		t.Fatalf("preview %+v\ngroups %q\nwant %q", v, got, want)
 	}
+	if v.Title != "2 files (6 B) are selected to delete." || !v.Ignore || v.Trust ||
+		v.Sub != "Only files older than 1 day · Copies not checked: files you haven't copied are deleted too." {
+		t.Errorf("preview wording: %+v", v)
+	}
 	if !slices.Equal(v.KeptList, []failure{{"MyWorks/M 31/recent.jpg", "newer than 1 day"}}) {
 		t.Errorf("kept list %+v", v.KeptList)
 	}
