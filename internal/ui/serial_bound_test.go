@@ -39,17 +39,15 @@ func TestSerialBoundSettings(t *testing.T) {
 			}
 			path := filepath.Join(st.root, "config.json")
 			before, _ := os.Stat(path)
-			loaded, err := loadSettings(st)
+			loaded, fallbacks, err := loadSettings(st)
 			if tc.valid {
-				if err != nil || loaded.Serial != tc.serial {
-					t.Fatalf("saved validation=%v", err)
+				if err != nil || loaded.Serial != tc.serial || len(fallbacks) != 0 {
+					t.Fatalf("saved validation=%v fallbacks=%v", err, fallbacks)
 				}
 			} else {
-				if err == nil || actionError(err).Code != "serial" || !st.settingsRefused {
-					t.Fatalf("saved refusal=%v refused=%v", err, st.settingsRefused)
-				}
-				if err := st.writeBytes("config.json", []byte(`{"version":1}`)); err == nil {
-					t.Fatal("refused settings overwritten")
+				// A bad saved serial loads as none saved; typing it stays strict.
+				if err != nil || st.settingsRefused || loaded.Serial != "" || len(fallbacks) != 1 || fallbacks[0].Setting != "serial" {
+					t.Fatalf("saved fallback=%v refused=%v serial=%q fallbacks=%v", err, st.settingsRefused, loaded.Serial, fallbacks)
 				}
 				// Manual submission fails before credentials, persistence or a run.
 				c := testController(nil)

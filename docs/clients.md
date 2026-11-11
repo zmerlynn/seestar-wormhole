@@ -31,15 +31,18 @@ an issue.
 
 ## NINA and other Alpaca clients
 
-Point them at seestar_alp's own Alpaca server. It runs on your computer and
-reaches the telescope through the proxy.
+The telescope has its own Alpaca server, on port 32323, when Alpaca is
+enabled in the telescope's settings. The proxy forwards 32323 by default, so
+point NINA at this computer's address and port 32323. Alpaca discovery
+doesn't pass through the proxy, so enter the address and port by hand. NINA
+has been reported working this way; we haven't tested it ourselves.
 
-The telescope's built-in Alpaca server, on port 32323 when it is enabled in
-the telescope's settings, isn't forwarded by default; `-p 32323:32323` adds
-it. Alpaca discovery doesn't pass through the proxy, so enter the address and
-port by hand. The built-in server answered Alpaca management requests
-through the proxy (S50 Pro, firmware 9.75, October 31, 2026); neither route
-has been tested with NINA.
+The proxy doesn't inspect Alpaca requests, so an Alpaca client can change
+the telescope's site and time. See [site protection](reference/connection-cli.md#site-protection).
+`-p 0:32323` turns the port off.
+
+seestar_alp's own Alpaca server is the other route. It runs on your computer
+and reaches the telescope through the proxy's control port.
 
 ## Your own scripts
 

@@ -100,7 +100,7 @@ func TestArgumentHelpAndMissingValues(t *testing.T) {
 
 func TestArgumentMappingLimit(t *testing.T) {
 	var args []string
-	for i := range 118 {
+	for i := range 117 {
 		args = append(args, "--port", fmt.Sprintf("%d:%d", 10000+i, 20000+i))
 	}
 	if o, err := parse(append([]string{"proxy"}, args...), io.Discard); err != nil || len(o.ports) != 128 {

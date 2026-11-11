@@ -14,6 +14,7 @@ class TestElement {
   getAttribute(name) {return this.attributes[name] ?? null;}
   setAttribute(name, value) {this.attributes[name] = value;}
   querySelector() {return new TestElement();}
+  querySelectorAll() {return [];}
   closest() {return null;}
   createTHead() {const e=new TestElement();this.append(e);return e;}
   createTBody() {const e=new TestElement();this.append(e);return e;}

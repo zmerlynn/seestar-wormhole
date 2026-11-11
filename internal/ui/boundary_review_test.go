@@ -34,7 +34,7 @@ func TestReviewLaterExplicitSaveBeforeRunBoundary(t *testing.T) {
 		}
 		close(arm)
 		synctest.Wait()
-		got, err := loadSettings(s.storage)
+		got, _, err := loadSettings(s.storage)
 		s.controller.stop()
 		synctest.Wait()
 		s.controller.quit()

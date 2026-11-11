@@ -54,13 +54,30 @@ for how the app and `seestar-wormhole-cli` share them.
 
 These defaults differ from the UI's first-run phone setup.
 
-Each `ports` override has lowercase numeric `local` and `device` members, from
-0 to 65535. A `local` of 0 turns the service off; `device` must name a standard
-service.
+Each `ports` entry has lowercase numeric members: `local` is 0–65535 and
+`device` is 1–65535. A `local` of 0 turns forwarding off; a nonstandard
+`device` adds a port. An older app refuses a file containing 32323 or an added
+port.
+
+A newer app, telescope or account could save a value this version refuses.
+A bad value in one of these settings doesn't refuse the file. It loads as a
+fallback, and the next save writes the fallback:
+
+| Bad value | Loads as |
+|---|---|
+| `discovery` `true` with a `bind` discovery can't use | `false` |
+| `serial` or `email` that isn't valid | Empty, as if none were saved |
+
+Each fallback logs one warning, `settings_fallback`, naming the file, the
+setting and the fallback, never the saved value: the app's in `gui.log`,
+`proxy --config`'s in its log. Entering a bad value in the app is still an
+error on that field.
 
 Unknown members survive a save. Reads are limited to 64 KiB and never rewrite
-the file. A missing or unsupported version, including a newer one, is refused
-and left untouched. A failed load never overwrites existing state.
+the file. Any other bad value, such as an `idle`, `bind`, `model` or port the
+app refuses, a missing or unsupported version, including a newer one, a member
+of the wrong type, or a file that doesn't parse is refused and left untouched.
+A failed load never overwrites existing state.
 
 ## copy.json version 1
 
@@ -82,7 +99,7 @@ alone never writes the file.
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. |
 | `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
 | `start_copying` | `false` |
-| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range refuses the file. |
+| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range loads as the nearest of them, and a `settings_fallback` warning names the setting and the fallback, never the saved value, in `gui.log` or the `--profile default` command's log. |
 | `older_than_days` | `7` |
 | `trust_state` | `false` |
 | `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
@@ -102,7 +119,7 @@ folder `--profile default` fills; see
 the first telescope's folder until the newer app is back.
 
 A copy.json this version can't read, such as one with another version, a
-member of the wrong type or `files_at_once` out of range, doesn't stop the app.
+member of the wrong type or a relative `history_dir`, doesn't stop the app.
 The Connection tab and the proxy work, but **Copy**, **Browse** and **Free up
 space** stay off for that run, a note under the tabs names the file, and
 Activity records **Copy settings couldn't be loaded safely; Copy, Browse and

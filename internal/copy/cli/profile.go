@@ -39,6 +39,9 @@ type Saved struct {
 	Interval          time.Duration
 	Once              bool
 	Workers           int
+	// Fallbacks are the saved values the load replaced, logged when the
+	// command runs.
+	Fallbacks []diagnostic.Fallback
 }
 
 // LoadProfile reads the default profile, without writing any file. A
@@ -48,9 +51,10 @@ type LoadProfile func() (Saved, error)
 
 // profileFlag is --profile, and the flags it filled.
 type profileFlag struct {
-	name   string
-	set    bool
-	filled []string
+	name      string
+	set       bool
+	filled    []string
+	fallbacks []diagnostic.Fallback
 	// statuses is set by a command that runs without a local folder,
 	// only without the statuses one gives, as browse does: a saved
 	// telescope without a folder fills no --dest there, and is no error.
@@ -88,6 +92,7 @@ func (p *profileFlag) fill(flags *pflag.FlagSet, load LoadProfile, fillSaved fun
 		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder}
 	}
 	p.filled = fillSaved(s, flags.Changed)
+	p.fallbacks = s.Fallbacks
 	return nil
 }
 
@@ -108,9 +113,11 @@ func (p *profileFlag) present(flags *pflag.FlagSet, name string) bool {
 	return flags.Changed(name) || slices.Contains(p.filled, "--"+name)
 }
 
-// log records which flags the profile filled, never their values.
+// log records which flags the profile filled, never their values, and
+// the saved values its load replaced.
 func (p *profileFlag) log(log *slog.Logger) {
 	if p.set {
+		diagnostic.LogFallbacks(log, p.fallbacks)
 		log.Info("saved settings", "profile", p.name, "filled", strings.Join(p.filled, ","))
 	}
 }

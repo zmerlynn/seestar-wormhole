@@ -25,7 +25,7 @@ func loadDefaultProfile() (cli.Saved, error) {
 	if err != nil {
 		return cli.Saved{}, &argumentError{Option: "--profile", Rule: "no per-user config folder for the default profile; give the flags"}
 	}
-	set, err := ui.LoadCopySettings(root)
+	set, fallbacks, err := ui.LoadCopySettings(root)
 	if errors.Is(err, ui.ErrNoCopySettings) {
 		return cli.Saved{}, &argumentError{Option: "--profile", Rule: "no saved Copy settings; save them on the app's Copy tab, or give the flags"}
 	} else if err != nil {
@@ -33,13 +33,14 @@ func loadDefaultProfile() (cli.Saved, error) {
 	}
 	saved := cli.Saved{
 		Dest: set.Folder, HistoryDir: set.HistoryDir, Excludes: set.Excludes, Includes: set.Includes,
-		NoDefaultExcludes: !set.SkipBuiltIn, Once: set.Once, Workers: set.FilesAtOnce,
+		NoDefaultExcludes: !set.SkipBuiltIn, Once: set.Once, Workers: set.FilesAtOnce, Fallbacks: fallbacks,
 	}
 	if set.IntervalMinutes > 0 {
 		saved.Interval = time.Duration(set.IntervalMinutes) * time.Minute
 	}
 	key := ""
-	if config, err := ui.LoadSettings(root); err == nil {
+	if config, fallbacks, err := ui.LoadSettings(root); err == nil {
+		saved.Fallbacks = append(saved.Fallbacks, fallbacks...)
 		saved.Endpoint, _ = ui.SavedCopyEndpoint(config)
 		saved.LANSerial = ui.SavedLANSerial(config)
 		saved.LANScan = ui.SavedLANScan(config)

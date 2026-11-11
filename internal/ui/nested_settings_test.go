@@ -15,7 +15,7 @@ func TestReviewNestedFuturePortMember(t *testing.T) {
 	if err := s.storage.writeBytes("config.json", fixture); err != nil {
 		t.Fatal(err)
 	}
-	loaded, err := loadSettings(s.storage)
+	loaded, _, err := loadSettings(s.storage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestPagePortEditsKeepUnknownMembersByDevice(t *testing.T) {
 	if err := s.storage.writeBytes("config.json", fixture); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := loadSettings(s.storage); err != nil {
+	if _, _, err := loadSettings(s.storage); err != nil {
 		t.Fatal(err)
 	}
 	draft := testSettings()
@@ -50,7 +50,7 @@ func TestPagePortEditsKeepUnknownMembersByDevice(t *testing.T) {
 	if err := s.saveSettings(draft); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loadSettings(s.storage)
+	got, _, err := loadSettings(s.storage)
 	if err != nil {
 		t.Fatal(err)
 	}

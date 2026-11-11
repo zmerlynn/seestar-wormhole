@@ -97,7 +97,7 @@ func TestStartModeScansOncePerRun(t *testing.T) {
 				t.Fatalf("calls %q", calls)
 			}
 			// The scan saved the new address; the run keeps it.
-			if got, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.30:445" {
+			if got, _, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.30:445" {
 				t.Fatalf("saved %+v", got)
 			}
 			// Another run scans again, once.
@@ -217,14 +217,14 @@ func TestOffModeNeverScansUnasked(t *testing.T) {
 // know reads as start and is kept until changed.
 func TestLANScanSetting(t *testing.T) {
 	s, _, _ := scanModeServer(t, "")
-	if got, _ := loadSettings(s.storage); got.LANScan != "" || s.lanScan() != landiscovery.ScanStart {
+	if got, _, _ := loadSettings(s.storage); got.LANScan != "" || s.lanScan() != landiscovery.ScanStart {
 		t.Fatalf("default %q, %s", got.LANScan, s.lanScan())
 	}
 	for _, mode := range []string{"off", "connect", "start"} {
 		if w := doPost(s, "/api/lan-scan", `{"settings":{"lan_scan":"`+mode+`"}}`); w.Code != 200 {
 			t.Fatalf("%s = %d %s", mode, w.Code, w.Body)
 		}
-		got, _ := loadSettings(s.storage)
+		got, _, _ := loadSettings(s.storage)
 		if got.LANScan != mode || string(s.lanScan()) != mode || got.LANAddress != "192.0.2.10:445" || got.LANSerial != "SERIAL-A" || got.Route != routeLAN {
 			t.Fatalf("%s saved %+v", mode, got)
 		}
@@ -238,7 +238,7 @@ func TestLANScanSetting(t *testing.T) {
 			t.Fatalf("%q = %d %s", bad, w.Code, w.Body)
 		}
 	}
-	if got, _ := loadSettings(s.storage); got.LANScan != "start" {
+	if got, _, _ := loadSettings(s.storage); got.LANScan != "start" {
 		t.Fatalf("a refused value changed it: %+v", got)
 	}
 
@@ -247,7 +247,7 @@ func TestLANScanSetting(t *testing.T) {
 	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.11"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := loadSettings(s.storage); got.LANScan != "off" {
+	if got, _, _ := loadSettings(s.storage); got.LANScan != "off" {
 		t.Fatalf("a route save dropped it: %+v", got)
 	}
 
@@ -259,7 +259,7 @@ func TestLANScanSetting(t *testing.T) {
 	if err := s.storage.writeBytes("config.json", b); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loadSettings(s.storage)
+	got, _, err := loadSettings(s.storage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -435,7 +435,7 @@ func TestLANScanLockedWhileConnected(t *testing.T) {
 	if w := doPost(s, "/api/start", string(in)); w.Code != 200 {
 		t.Fatalf("start = %d %s", w.Code, w.Body)
 	}
-	if got, _ := loadSettings(s.storage); got.LANScan != "off" {
+	if got, _, _ := loadSettings(s.storage); got.LANScan != "off" {
 		t.Fatalf("starting dropped it: %+v", got)
 	}
 	w := doPost(s, "/api/lan-scan", `{"settings":{"lan_scan":"connect"}}`)
@@ -444,7 +444,7 @@ func TestLANScanLockedWhileConnected(t *testing.T) {
 	}
 	close(release)
 	s.controller.quit()
-	if got, _ := loadSettings(s.storage); got.LANScan != "off" {
+	if got, _, _ := loadSettings(s.storage); got.LANScan != "off" {
 		t.Fatalf("a locked change saved: %+v", got)
 	}
 }
@@ -551,7 +551,7 @@ func TestModeChangeDuringASearch(t *testing.T) {
 		t.Fatalf("scans %d, want 2", n.scans())
 	}
 	// The older search saved nothing over the explicit save.
-	if got, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.40:445" {
+	if got, _, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.40:445" {
 		t.Fatalf("saved %q", got.LANAddress)
 	}
 	if err := connect(); err != nil {
@@ -637,7 +637,7 @@ func TestNewRunDoesNotJoinAnOlderSearch(t *testing.T) {
 	if at != "192.0.2.40:445" || n.scans() != 2 {
 		t.Fatalf("the newer run kept %q, %d scans", at, n.scans())
 	}
-	if saved, _ := loadSettings(s.storage); saved.LANAddress != "192.0.2.40:445" {
+	if saved, _, _ := loadSettings(s.storage); saved.LANAddress != "192.0.2.40:445" {
 		t.Fatalf("saved %q", saved.LANAddress)
 	}
 }
@@ -713,7 +713,7 @@ func TestSerialBoundHostnameIsValid(t *testing.T) {
 	if err := s.controller.persistLANScan("off"); err != nil {
 		t.Fatal(err)
 	}
-	got, err := loadSettings(s.storage)
+	got, _, err := loadSettings(s.storage)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -892,7 +892,7 @@ func TestScanSettingServerAllowsCopy(t *testing.T) {
 	if w := doPost(s, "/api/lan-scan", `{"settings":{"lan_scan":"off"}}`); w.Code != 200 {
 		t.Fatalf("setting during Copy %d %s", w.Code, w.Body)
 	}
-	got, err := loadSettings(s.storage)
+	got, _, err := loadSettings(s.storage)
 	if err != nil || got.LANScan != "off" {
 		t.Fatalf("setting didn't persist: mode=%q err=%v", got.LANScan, err)
 	}

@@ -108,7 +108,8 @@ Zero idle duration eagerly acquires and holds the session; a positive duration
 opens on client demand and releases when idle. Stop with Ctrl+C.
 Credentials use SEESTAR_EMAIL and SEESTAR_PASSWORD from the environment.
 With --config, load saved UI settings and read the OS keychain if no password is set.
-The app cannot change the device's site, clock or time zone through the proxy.
+The Seestar app cannot change the device's site, clock or time zone through the proxy.
+Alpaca on 32323 is not inspected, so an Alpaca client can change site and time.
 Durations use Go units, e.g. 2m or 1h30m, and must be nonnegative (no d unit).
 Logs and errors go to stderr; help and version go to stdout.
 Exit 0 on orderly release, 2 on usage/configuration errors,
@@ -130,7 +131,7 @@ or 1 on other runtime errors including failed release.`,
 	f.BoolVar(&o.config, "config", false, "read saved UI settings and share its installation identity; environment password or OS keychain")
 	registerSharedOptions(f, o, &proxyLogs)
 	f.StringVar(&o.bind, "bind", defaultBind, "local bind address (use 0.0.0.0 for a container)")
-	f.VarP(&o.ports, "port", "p", "override a device listener with local:device; local 0 disables; repeatable (defaults 4700:4700, SMB 4445:445, HTTP 8080:80; 4350:4350,4554:4554,4555:4555,4801:4801,4800:4800,4804:4804,4361:4361)")
+	f.VarP(&o.ports, "port", "p", "override a device listener with local:device; local 0 disables; repeatable (defaults 4700:4700, SMB 4445:445, HTTP 8080:80; 4350:4350,4554:4554,4555:4555,4801:4801,4800:4800,4804:4804,4361:4361; Alpaca 32323:32323)")
 	f.IntVar(&o.pauseThreshold, "pause-threshold", p2ptunnel.DefaultConfig().HighWater, "per-channel PAUSE pressure in bytes (2..8388608; RESUME below 80%)")
 	f.DurationVar(&o.idle, "idle", 0, "release after this idle duration; zero holds eagerly")
 	f.BoolVar(&o.lanDiscovery, "lan-discovery", false, "answer UDP 4720 discovery on the bind address LAN (off by default)")

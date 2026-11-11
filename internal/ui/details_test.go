@@ -19,7 +19,7 @@ func TestEffectiveDiagnosticSettings(t *testing.T) {
 	run := testSettings()
 	run.Bind, run.Discovery, run.Idle = "PRIVATE_ADDRESS", false, "1h30m"
 	run.Serial, run.Model, run.Email = "", "", "PRIVATE_EMAIL@example.invalid"
-	run.Ports = []proxyrun.Port{{Device: 80}, {Device: 445, Local: 1234}}
+	run.Ports = []proxyrun.Port{{Device: 80}, {Device: 445, Local: 1234}, {Device: 5000, Local: 5001}}
 	s.controller.runSettings = run
 	w := httptest.NewRecorder()
 	s.ServeHTTP(w, request(s, "GET", "/api/status", ""))
@@ -30,7 +30,7 @@ func TestEffectiveDiagnosticSettings(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != s.version || got.Effective.Listen != "other" || got.Effective.Discovery || got.Effective.Idle.Mode != "on_demand" || got.Effective.Idle.Minutes != 90 || got.Effective.Ports[80] != 0 || got.Effective.Ports[445] != 1234 || len(got.Effective.Ports) != 10 || got.Effective.Ports[4700] != 4700 {
+	if got.Version != s.version || got.Effective.Listen != "other" || got.Effective.Discovery || got.Effective.Idle.Mode != "on_demand" || got.Effective.Idle.Minutes != 90 || got.Effective.Ports[80] != 0 || got.Effective.Ports[445] != 1234 || len(got.Effective.Ports) != 12 || got.Effective.Ports[4700] != 4700 || got.Effective.Ports[32323] != 32323 || got.Effective.Ports[5000] != 5001 {
 		t.Fatalf("effective: %+v", got)
 	}
 	b, _ := json.Marshal(got.Effective)

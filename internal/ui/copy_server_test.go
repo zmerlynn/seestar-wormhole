@@ -322,7 +322,7 @@ func TestRouteSave(t *testing.T) {
 	if err := s.storage.writeBytes("config.json", []byte(`{"version":1,"bind":"0.0.0.0","idle":"0","discovery":true,"email":"synthetic@example.invalid","future":{"kept":true}}`)); err != nil {
 		t.Fatal(err)
 	}
-	saved, err := loadSettings(s.storage)
+	saved, _, err := loadSettings(s.storage)
 	if err != nil {
 		t.Fatal(err)
 	}

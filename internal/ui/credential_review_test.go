@@ -140,7 +140,7 @@ func TestReviewNewSaveSupersedesDeleteBeforeGate(t *testing.T) {
 		if p := s.controller.credentials.state(a.Email); !p.Saved || p.Code != "password_saved" {
 			t.Error("newer Save association or feedback lost")
 		}
-		disk, err := loadSettings(s.storage)
+		disk, _, err := loadSettings(s.storage)
 		if err != nil || !disk.Remember {
 			t.Error("newer Save association lost on disk", err)
 		}

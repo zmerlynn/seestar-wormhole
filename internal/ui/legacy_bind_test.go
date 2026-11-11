@@ -10,7 +10,7 @@ func TestOSResolvedBindLoads(t *testing.T) {
 	if err := st.writeBytes("config.json", []byte(`{"version":1,"bind":"localhost","idle":"0"}`)); err != nil {
 		t.Fatal(err)
 	}
-	s, err := loadSettings(st)
+	s, _, err := loadSettings(st)
 	if err != nil {
 		t.Fatal("valid OS-resolved bind rejected")
 	}

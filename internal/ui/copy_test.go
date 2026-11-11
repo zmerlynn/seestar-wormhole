@@ -8,7 +8,7 @@ import (
 
 func TestPortErrorsExplainAcceptedSyntax(t *testing.T) {
 	want := "Use ports 1–65535, with no duplicates. Leave a port empty to turn off its service."
-	for _, ports := range [][]proxyrun.Port{{{Device: 999}}, {{Local: 1234, Device: 80}, {Local: 1234, Device: 445}}, {{Device: 80}, {Device: 80}}} {
+	for _, ports := range [][]proxyrun.Port{{{Local: 5000, Device: 0}}, {{Local: 1234, Device: 80}, {Local: 1234, Device: 445}}, {{Device: 80}, {Device: 80}}} {
 		s := testSettings()
 		s.Ports = ports
 		_, _, err := s.validate()

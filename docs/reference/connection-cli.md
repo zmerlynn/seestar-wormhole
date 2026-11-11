@@ -38,7 +38,9 @@ seestar-wormhole-cli proxy
 
 For the desktop controls, see [Using the UI](../ui.md).
 
-The app cannot set the device's site, clock or time zone through the proxy.
+The Seestar app's inspected control requests cannot set the device's site,
+clock or time zone through the proxy. Alpaca on 32323 is not inspected, so an
+Alpaca client can change site and time.
 See [site protection](#site-protection). The command takes no positional arguments. It forwards TCP through one shared
 remote session. Clients can issue device commands and read files; there is no
 local authentication or read-only command whitelist. Local connections are
@@ -99,8 +101,9 @@ See [the device port map](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/
 | 4445 | 445 | SMB |
 | 8080 | 80 | HTTP |
 | 4350, 4554, 4555, 4801, 4800, 4804, 4361 | Same port | Other device services, including imaging on 4800 |
+| 32323 | 32323 | The telescope's Alpaca server, for NINA and other astronomy apps; not inspected |
 
-All ten default local ports are unprivileged. `-p 1445:445 -p 80:80` replaces
+All eleven default local ports are unprivileged. `-p 1445:445 -p 80:80` replaces
 only SMB and HTTP; other defaults remain. `-p 0:445` disables SMB.
 A device port outside the default set adds a listener.
 
@@ -277,7 +280,7 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. Invalid saved serials refuse loading without rewriting the file. Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning that doesn't name it; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
@@ -379,10 +382,10 @@ TCP clients receive closure, without diagnostic text inserted into their stream.
 
 ## Site protection
 
-The app cannot set the device's site, clock or time zone through the proxy.
-Protection is unconditional and has no flag. The device keeps its stored site
-and maintains its own clock. To change the site on purpose, connect the app
-to the device without the proxy.
+The proxy blocks site, clock and time-zone setters in the Seestar app's
+inspected control requests. This protection is unconditional and has no flag;
+it does not cover Alpaca on 32323, as described below. To change the site
+using the Seestar app, connect it to the device without the proxy.
 
 The proxy sends no requests of its own at startup and does not read the site.
 Client forwarding follows normal session admission without a site-read gate.
@@ -391,6 +394,9 @@ Protection inspects client-to-device CRLF JSON requests on device ports
 [**4400 and 4700–4702**](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/ports.md#framing-per-port-family), including remapped local listeners. Port 4400 is not
 enabled by default. Other ports, including 4350, 4800, 4801, and 4804, stay
 byte-transparent. Device-to-client bytes stay unchanged.
+
+Alpaca on 32323, forwarded by default, is not inspected either, so an Alpaca
+client can change the telescope's site and time. `-p 0:32323` turns it off.
 
 See [the site and host-clock setters](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#user-location), [the time setter](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#setting-the-time-pi_set_time), [mount time](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/time-and-location.md#mount-time), [set_setting](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/control/device-state-and-settings.md#writing-set_setting) for the wire rules.
 

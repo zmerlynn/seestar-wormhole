@@ -67,7 +67,7 @@ func TestCopySettingsTelescopes(t *testing.T) {
 	if err := st.writeBytes(copyName, []byte(body)); err != nil {
 		t.Fatal(err)
 	}
-	c, set, err := loadCopySettings(st)
+	c, set, _, err := loadCopySettings(st)
 	if err != nil || set == nil {
 		t.Fatalf("load = %+v, %v", set, err)
 	}
@@ -99,7 +99,7 @@ func TestCopySettingsTelescopes(t *testing.T) {
 	if err := st.writeBytes(copyName, []byte(`{"version":1,"folder":"/synthetic/Seestar"}`)); err != nil {
 		t.Fatal(err)
 	}
-	if _, set, err := loadCopySettings(st); err != nil || set == nil || set.Telescopes != nil || set.FolderFor("serial:SYNTH0001") != "/synthetic/Seestar" {
+	if _, set, _, err := loadCopySettings(st); err != nil || set == nil || set.Telescopes != nil || set.FolderFor("serial:SYNTH0001") != "/synthetic/Seestar" {
 		t.Errorf("older file = %+v, %v", set, err)
 	}
 }

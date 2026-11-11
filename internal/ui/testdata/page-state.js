@@ -76,7 +76,7 @@
       assert(!custom.hidden && custom.classList.contains('help') && !custom.classList.contains('error') && !custom.hasAttribute('aria-invalid') && !$('goal').hasAttribute('aria-invalid'), 'Custom is styled as an error');
       assert($('goal').getAttribute('aria-describedby') === 'goal-help custom-help', 'Use with help association missing');
       assert(discovery.previousElementSibling === $('discovery').closest('label') && discovery.classList.contains('help') && parseFloat(getComputedStyle(discovery).marginLeft) > 0, 'discovery help detached or not indented');
-      assert($('ports-error').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING && $('port-permissions').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING, 'port recovery follows the ten-row table');
+      assert($('ports-error').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING && $('port-permissions').compareDocumentPosition($('ports')) & Node.DOCUMENT_POSITION_FOLLOWING, 'port recovery follows the port table');
       assert($('services-title').tagName === 'H2' && $('services-title').textContent === 'Services' && $('ports').getAttribute('aria-labelledby') === 'services-title', 'Services heading missing');
       assert(document.querySelector('label[for="serial"]').textContent === 'Serial number', 'Serial label');
       assert(document.querySelector('label[for="model"]').textContent === 'Model (optional)', 'Model label');
@@ -276,10 +276,10 @@
       render({...status(), effective: {...status().effective, listen: 'all_networks', idle: {mode: 'keep_connected'}, ports: {80:80,445:1234}}, active: true, discovery_started: true});
       assert($('run-summary').textContent === 'Listening on all networks · Seestar app discovery on · Keep connected', 'running summary inaccurate');
       const rows = $('running-ports').querySelectorAll('tbody tr');
-      assert(rows.length === 10 && !$('running-ports').querySelector('input'), 'running ports must use read-only table');
+      assert(rows.length === 11 && !$('running-ports').querySelector('input'), 'running ports must use read-only table');
       assert(Array.from($('running-ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous running port headings');
       assert(!$('running-ports-box').open && $('running-ports-box').querySelector('summary').textContent === 'Ports forwarded to your Seestar' && $('phone-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'running ports must sit closed below the Seestar app steps');
-      assert(rows[1].cells[0].textContent === '80' && rows[9].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
+      assert(rows[1].cells[0].textContent === '80' && rows[10].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
       assert($('phone-steps').querySelector('p').textContent === "On your phone, open the Seestar app and select your Seestar from the LAN tab.", 'phone instructions omit the LAN tab');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
       assert(!$('copy-steps').hidden && $('copy-port').textContent === '1234' && $('copy-steps').querySelector('h2').textContent === 'Copying files' && $('phone-steps').compareDocumentPosition($('copy-steps')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'copying help missing, wrong port or misplaced');
@@ -312,7 +312,7 @@
     await check('Structured ports and validation', async () => {
       $('password').value = 'synthetic-password';
       const rows = $('ports').querySelectorAll('tbody tr');
-      assert(rows.length === 10 && rows[0].cells[1].textContent === '4700' && rows[9].cells[2].textContent === 'File sharing for other apps (SMB)', 'port rows or order');
+      assert(rows.length === 11 && rows[0].cells[1].textContent === '4700' && rows[9].cells[1].textContent === '32323' && rows[9].cells[2].textContent === 'Alpaca (NINA and other astronomy apps)' && rows[10].cells[2].textContent === 'File sharing for other apps (SMB)', 'port rows or order');
       assert([...$('ports').querySelectorAll('input')].every(input => input.type === 'number' && input.min === '1' && input.max === '65535'), 'port number bounds');
       for (const value of ['0', '-1', '65536', '1.5']) {
         $('port-80').value = value;
@@ -333,7 +333,60 @@
       assert(connected && fieldErrors.ports === 'ports' && !$('ports-error').hidden, 'server mapping semantics became lost controls');
       $('port-80').value = '';
       assert(validate() && settings().ports.find(p => p.device === 80).local === 0, 'empty local did not disable service');
-      assert(settings().ports.length === 10 && settings().ports.every(p => typeof p.local === 'number' && typeof p.device === 'number'), 'ports became text');
+      assert(settings().ports.length === 11 && settings().ports.every(p => typeof p.local === 'number' && typeof p.device === 'number'), 'ports became text');
+    });
+    await check('Added ports', async () => {
+      $('password').value = 'synthetic-password';
+      const input = (e, value) => {e.value = value; e.dispatchEvent(new Event('input'));};
+      const refused = (e, message) => {
+        assert(!validate() && $('ports-error').textContent === message && e.getAttribute('aria-invalid') === 'true' && document.activeElement === e, 'not refused: ' + message);
+        e.dispatchEvent(new Event('input'));
+        assert($('ports-error').hidden && !e.hasAttribute('aria-invalid'), 'added port error persists during edit');
+      };
+      assert($('added-ports').hidden && !addedRows().length && $('add-port').textContent === 'Add a port' && $('ports').compareDocumentPosition($('add-port')) & Node.DOCUMENT_POSITION_FOLLOWING, 'Add a port missing below the Services table');
+      $('add-port').click();
+      let rows = addedRows();
+      assert(rows.length === 1 && !$('added-ports').hidden && document.activeElement === rows[0].remote && rows[0].remote.getAttribute('aria-label') === 'Seestar port for added port 1' && rows[0].local.getAttribute('aria-label') === 'Local port for added port 1' && rows[0].row.querySelector('button').getAttribute('aria-label') === 'Remove added port 1', 'Add a port row');
+      refused(rows[0].remote, 'Added port 1: enter a Seestar port from 1 to 65535.');
+      input(rows[0].remote, '5000');
+      assert(rows[0].local.value === '5000', 'local port did not start as the Seestar port');
+      input(rows[0].local, '5001');
+      input(rows[0].remote, '5002');
+      assert(rows[0].local.value === '5001', 'an edited local port followed the Seestar port');
+      $('add-port').click();
+      rows = addedRows();
+      input(rows[1].remote, '4700');
+      refused(rows[1].remote, 'Added port 2: Seestar port 4700 is in the table above. Set its local port there.');
+      input(rows[1].remote, '5002');
+      refused(rows[1].remote, 'Added port 2: Seestar port 5002 is already added.');
+      input(rows[1].remote, '6000');
+      input(rows[1].local, '');
+      refused(rows[1].local, 'Added port 2: enter a local port from 1 to 65535.');
+      input(rows[1].local, '5001');
+      refused(rows[1].local, 'Added port 2: local port 5001 is already in use.');
+      input(rows[1].local, $('port-445').value);
+      refused(rows[1].local, 'Added port 2: local port ' + $('port-445').value + ' is already in use.');
+      input(rows[1].local, '800');
+      assert(validate() && !$('port-permissions').hidden, 'a local port below 1024 hid the permissions guide');
+      input(rows[1].local, '6000');
+      assert(validate() && $('port-permissions').hidden, 'the permissions guide stayed for 6000');
+      const sent = settings().ports;
+      assert(sent.length === 13 && sent[11].device === 5002 && sent[11].local === 5001 && sent[12].device === 6000 && sent[12].local === 6000, 'added ports not sent in order: ' + JSON.stringify(sent));
+      rows[0].row.querySelector('button').click();
+      rows = addedRows();
+      assert(rows.length === 1 && rows[0].remote.value === '6000' && rows[0].remote.getAttribute('aria-label') === 'Seestar port for added port 1' && document.activeElement === $('add-port'), 'Remove');
+      applyGoal('phone');
+      assert(addedRows().length === 1, 'a goal change dropped the added ports');
+      let body;
+      api = async (action, b) => {if (action === 'start') body = b; return status();};
+      await act('start');
+      assert(body && body.settings.ports.length === 12 && body.settings.ports[11].device === 6000 && body.settings.ports[11].local === 6000, 'Connect did not save the added port');
+      load({...setup, ports: [{device: 445, local: 1445}, {device: 7000, local: 7001}]});
+      rows = addedRows();
+      assert(rows.length === 1 && rows[0].remote.value === '7000' && rows[0].local.value === '7001' && $('port-445').value === '1445', 'saved added port not loaded');
+      render({...status(), active: true, effective: {...status().effective, ports: {80: 80, 7000: 7001}}});
+      const running = $('running-ports').querySelectorAll('tbody tr');
+      assert(running.length === 12 && running[11].cells[0].textContent === '7001' && running[11].cells[1].textContent === '7000' && running[11].cells[2].textContent === 'Added', 'running table lacks the added port');
     });
     await check('Field errors clear on edit and email normalization', async () => {
       assert($('email').type === 'text' && $('email').inputMode === 'email' && $('email').autocomplete === 'username', 'browser email validity still active');

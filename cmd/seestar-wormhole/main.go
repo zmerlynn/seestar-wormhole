@@ -68,7 +68,12 @@ type options struct {
 	serial, model, stateDir   string
 	config                    bool
 	savedEmail                string
-	name                      string
+	// settingsFallbacks are the saved values --config or --profile
+	// replaced. A refused option logs them with its error; otherwise
+	// proxy dispatch logs and clears them, and a file command logs its
+	// profile's when it runs.
+	settingsFallbacks []diagnostic.Fallback
+	name              string
 	// fileName is the file command parsed, and file that command once it
 	// validated.
 	fileName string
@@ -184,6 +189,11 @@ func runParsedWithConfigRuntime(ctx context.Context, o options, out, logs io.Wri
 		return runFiles(ctx, o, out, logs)
 	}
 	if o.config {
+		// Logged now, past the startup buffer, so that a later startup
+		// failure doesn't lose them.
+		level, _ := diagnostic.Level(o.level)
+		diagnostic.LogFallbacks(diagnostic.Logger(o.format, logs, level), o.settingsFallbacks)
+		o.settingsFallbacks = nil // consumed before a credential refusal is logged
 		credentials, err := savedCredentials(ctx, o.savedEmail, os.LookupEnv, config.keychainPassword)
 		if err != nil {
 			logCommandArgumentError(o, logs, err)
@@ -469,7 +479,11 @@ func mainExitCodeWithRunner(args []string, out, logOutput io.Writer, notify func
 	return commandExitCode(o, err)
 }
 
+// logCommandArgumentError logs err, after the settings fallbacks not yet
+// logged.
 func logCommandArgumentError(o options, out io.Writer, err error) {
+	level, _ := diagnostic.Level(o.level)
+	diagnostic.LogFallbacks(diagnostic.Logger(o.format, out, level), o.settingsFallbacks)
 	switch o.command {
 	case commandUI:
 		logConfigurationError(out, "ui", err)

@@ -22,12 +22,12 @@ func testStorage(t *testing.T) *storage {
 }
 func TestSettingsStorage(t *testing.T) {
 	st := testStorage(t)
-	for _, body := range []string{`{`, `{"version":99}`, `{}`, `null`, `{"version":1,"idle":"-1s"}`, `{"version":1,"idle":120}`, `{"version":1,"ports":[{"local":"80","device":80}]}`, `{"version":1,"ports":["4445:80"]}`, `{"version":1,"serial":"\n"}`, `{"version":1,"email":"invalid"}`, `{"version":1,"version":1}`, strings.Repeat(" ", localhttp.MaxJSON+1)} {
+	for _, body := range []string{`{`, `{"version":99}`, `{}`, `null`, `{"version":1,"idle":"-1s"}`, `{"version":1,"idle":120}`, `{"version":1,"ports":[{"local":"80","device":80}]}`, `{"version":1,"ports":["4445:80"]}`, `{"version":1,"version":1}`, strings.Repeat(" ", localhttp.MaxJSON+1)} {
 		path := filepath.Join(st.root, "config.json")
 		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := loadSettings(st); err == nil {
+		if _, _, err := loadSettings(st); err == nil {
 			t.Fatalf("bad settings accepted: %.100q", body)
 		}
 	}
@@ -50,7 +50,7 @@ func TestHeadlessSettingsReadOnly(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadSettings(st.root); err != nil {
+	if _, _, err := LoadSettings(st.root); err != nil {
 		t.Fatalf("load while UI holds lock: %v", err)
 	}
 	after, _ := os.Stat(filepath.Join(st.root, "config.json"))
@@ -62,7 +62,7 @@ func TestHeadlessSettingsReadOnly(t *testing.T) {
 		t.Fatalf("unexpected files: %v", entries)
 	}
 	missing := filepath.Join(t.TempDir(), "absent")
-	if _, err := LoadSettings(missing); err == nil {
+	if _, _, err := LoadSettings(missing); err == nil {
 		t.Fatal("missing root accepted")
 	}
 	if _, err := os.Lstat(missing); !os.IsNotExist(err) {
@@ -72,7 +72,7 @@ func TestHeadlessSettingsReadOnly(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(st.root, "config.json"), []byte(body), 0600); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := LoadSettings(st.root); err == nil {
+		if _, _, err := LoadSettings(st.root); err == nil {
 			t.Fatal("invalid headless config accepted")
 		}
 	}

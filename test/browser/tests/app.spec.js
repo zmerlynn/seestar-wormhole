@@ -1053,6 +1053,95 @@ test('Copy history folder is empty for the default, refuses a relative path, and
   expect(readJSON(app.copyFile)).toMatchObject({ version: 1, folder: '/nowhere', history_dir: chosen, later: { kept: true } });
 });
 
+// remoteAdvanced opens the remote route's Advanced, with its Services table
+// and added ports.
+async function remoteAdvanced(page) {
+  await page.getByLabel('Remotely through Telescope Network').check();
+  await page.locator('#advanced summary').click();
+  await expect(page.locator('#ports input').first()).toBeVisible();
+}
+const addedRow = (page, n) => ({
+  remote: field(page, `Seestar port for added port ${n}`),
+  local: field(page, `Local port for added port ${n}`),
+  remove: page.getByRole('button', { name: `Remove added port ${n}`, exact: true }),
+});
+
+test('Add a port adds, edits, removes and saves a row', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid', ports: [{ local: 7001, device: 7000 }] } });
+  await openApp(page, app.url);
+  await remoteAdvanced(page);
+  // The saved added port loads as a row of its own.
+  await expect(page.locator('#ports tbody tr')).toHaveCount(11);
+  await expect(addedRow(page, 1).remote).toHaveValue('7000');
+  await expect(addedRow(page, 1).local).toHaveValue('7001');
+
+  await page.getByRole('button', { name: 'Add a port', exact: true }).click();
+  const second = addedRow(page, 2);
+  await expect(second.remote).toBeFocused();
+  // The local port starts as the Seestar port, and keeps an edit.
+  await second.remote.fill('5000');
+  await expect(second.local).toHaveValue('5000');
+  await second.local.fill('5001');
+  await second.remote.fill('5002');
+  await expect(second.local).toHaveValue('5001');
+
+  // Removing the first row renumbers the second.
+  await addedRow(page, 1).remove.click();
+  await expect(page.getByRole('button', { name: 'Add a port', exact: true })).toBeFocused();
+  await expect(addedRow(page, 1).remote).toHaveValue('5002');
+  await expect(addedRow(page, 2).remote).toHaveCount(0);
+
+  // Connect sends the row in ports, and the running table lists it.
+  await field(page, 'Password').fill('synthetic-password');
+  const start = page.waitForRequest((r) => r.url().endsWith('/api/start'));
+  await page.locator('#start').click();
+  const sent = (await start).postDataJSON().settings.ports;
+  expect(sent).toHaveLength(12);
+  expect(sent[11]).toEqual({ device: 5002, local: 5001 });
+  await expect(page.locator('#running')).toBeVisible();
+  await page.locator('#running-ports-box summary').click();
+  const added = page.locator('#running-ports tbody tr').filter({ hasText: 'Added' });
+  await expect(added).toHaveCount(1);
+  await expect(added.locator('td')).toHaveText(['5001', '5002', 'Added']);
+  await page.locator('#start').click();
+  await expect(page.locator('#settings')).toBeVisible();
+});
+
+test('an added port names its row in errors and shows the permissions guide below 1024', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid' } });
+  await openApp(page, app.url);
+  await remoteAdvanced(page);
+  await field(page, 'Password').fill('synthetic-password');
+  await page.getByRole('button', { name: 'Add a port', exact: true }).click();
+  const row = addedRow(page, 1);
+  const error = page.locator('#ports-error');
+  let starts = 0;
+  page.on('request', (r) => { if (r.url().endsWith('/api/start')) starts++; });
+
+  // A standard service belongs in the table above.
+  await row.remote.fill('4700');
+  await page.locator('#start').click();
+  await expect(error).toHaveText('Added port 1: Seestar port 4700 is in the table above. Set its local port there.');
+  await expect(row.remote).toHaveAttribute('aria-invalid', 'true');
+  await expect(row.remote).toBeFocused();
+
+  // A local port another row uses.
+  await row.remote.fill('5000');
+  await expect(error).toBeHidden();
+  await row.local.fill('4445');
+  await page.locator('#start').click();
+  await expect(error).toHaveText('Added port 1: local port 4445 is already in use.');
+  await expect(row.local).toBeFocused();
+
+  // Below 1024, the permissions guide shows with the field.
+  await expect(page.locator('#port-permissions')).toBeHidden();
+  await row.local.fill('800');
+  await expect(page.locator('#port-permissions')).toBeVisible();
+  await row.local.fill('5000');
+  await expect(page.locator('#port-permissions')).toBeHidden();
+  expect(starts).toBe(0);
+});
+
 for (const colorScheme of ['light', 'dark']) {
   test(`app screenshots in ${colorScheme}`, async ({ page, startApp }, testInfo) => {
     await page.emulateMedia({ colorScheme });

@@ -156,7 +156,7 @@ func TestCopierFollowsTelescope(t *testing.T) {
 	if calls := l.take(); !slices.Equal(calls, []string{"dial-as " + lanName + " 192.0.2.30:445"}) {
 		t.Fatalf("calls %q", calls)
 	}
-	got, _ := loadSettings(s.storage)
+	got, _, _ := loadSettings(s.storage)
 	if got.LANAddress != "192.0.2.30:445" || got.LANSerial != "SERIAL-A" {
 		t.Fatalf("saved %+v", got)
 	}
@@ -287,7 +287,7 @@ func TestPersistMovedChecksIdentity(t *testing.T) {
 	gen := s.controller.routeGeneration()
 	unchanged := func(what string) {
 		t.Helper()
-		got, _ := loadSettings(s.storage)
+		got, _, _ := loadSettings(s.storage)
 		target, _ := s.copyTarget()
 		if got.LANAddress != "192.0.2.20:445" || got.LANSerial != "SERIAL-A" || target.Endpoint != "192.0.2.20:445" {
 			t.Fatalf("%s: saved %+v target %+v", what, got, target)
@@ -332,7 +332,7 @@ func TestSilentProbeClearsSerial(t *testing.T) {
 	if err := s.saveRoute(t.Context(), routeLAN, "192.0.2.20"); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.20:445" || got.LANSerial != "" {
+	if got, _, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.20:445" || got.LANSerial != "" {
 		t.Fatalf("saved %+v", got)
 	}
 
@@ -439,7 +439,7 @@ func TestFreeSpaceDeletesWherePreviewed(t *testing.T) {
 		t.Fatalf("find = %d", code)
 	}
 	id, _ := waitFree(t, s, "preview")
-	if got, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.30:445" {
+	if got, _, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.30:445" {
 		t.Fatalf("the preview's address wasn't saved: %+v", got)
 	}
 
@@ -607,7 +607,7 @@ func TestConcurrentConnectsRespectRouteSave(t *testing.T) {
 	}
 	close(gate)
 	wg.Wait()
-	got, _ := loadSettings(s.storage)
+	got, _, _ := loadSettings(s.storage)
 	now, _ := s.copyTarget()
 	if got.LANAddress != "192.0.2.20:445" || now.Endpoint != got.LANAddress || calls != 3 || n.scans() != 1 {
 		t.Fatalf("saved %s, target %s, dials %d, scans %d", got.LANAddress, now.Endpoint, calls, n.scans())
@@ -671,7 +671,7 @@ func TestWaiterSearchKeepsItsGeneration(t *testing.T) {
 	if err := <-second; err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.20:445" || calls != 3 || n.scans() != 2 {
+	if got, _, _ := loadSettings(s.storage); got.LANAddress != "192.0.2.20:445" || calls != 3 || n.scans() != 2 {
 		t.Fatalf("saved %s, dials %d, scans %d", got.LANAddress, calls, n.scans())
 	}
 	if text := trailText(t, s); strings.Contains(text, `"code":"scan_moved"`) {

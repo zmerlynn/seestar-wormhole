@@ -17,11 +17,11 @@ func loadProxySettings(o *options, flags *pflag.FlagSet) error {
 	if err != nil {
 		return &argumentError{Option: "--config", Rule: "use the UI's private state directory with saved config.json"}
 	}
-	s, err := ui.LoadSettings(root)
+	s, fallbacks, err := ui.LoadSettings(root)
 	if err != nil {
 		return &argumentError{Option: "--config", Rule: "use a valid saved config.json in the UI's private state directory"}
 	}
-	o.stateDir, o.savedEmail = root, s.Email
+	o.stateDir, o.savedEmail, o.settingsFallbacks = root, s.Email, fallbacks
 	if !flags.Changed("bind") {
 		o.bind = s.Bind
 	}

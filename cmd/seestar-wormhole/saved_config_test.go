@@ -87,6 +87,28 @@ func TestSavedConfigOptions(t *testing.T) {
 	}
 }
 
+// A headless run forwards the app's added ports; -p still replaces one.
+func TestSavedConfigAddedPorts(t *testing.T) {
+	root := savedConfigRoot(t)
+	s := ui.Settings{Version: 1, Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{{Local: 1445, Device: 445}, {Local: 5000, Device: 5000}, {Local: 6000, Device: 6000}}}
+	b, err := json.Marshal(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSavedConfig(t, root, b)
+	o, err := parse([]string{"proxy", "--config", "--state-dir", root, "-p", "6001:6000"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[uint16]uint16{}
+	for _, p := range o.ports {
+		got[p.Device] = p.Local
+	}
+	if got[445] != 1445 || got[5000] != 5000 || got[6000] != 6001 || got[4700] != 4700 {
+		t.Fatalf("ports=%v", got)
+	}
+}
+
 func TestSavedConfigCredentials(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -265,5 +287,115 @@ func TestSavedPhoneDiscoveryAndExplicitOverride(t *testing.T) {
 		if o.lanDiscovery == disable {
 			t.Fatalf("saved discovery / explicit override lost: %+v", o)
 		}
+	}
+}
+
+// A bad saved value loads as its fallback for runProxy to log; a flag
+// still overrides it.
+func TestSavedConfigFallbacks(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedConfig(t, root, []byte(`{"version":1,"idle":"10m","serial":"bad serial","model":"S50","email":"not-an-email"}`))
+	o, err := parse([]string{"proxy", "--config", "--state-dir", root}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if o.idle != 10*time.Minute || o.serial != "" || o.model != "S50" || o.savedEmail != "" || len(o.settingsFallbacks) != 2 || o.settingsFallbacks[0].Setting != "serial" || o.settingsFallbacks[1].Setting != "email" {
+		t.Fatalf("options = %+v", o)
+	}
+	o, err = parse([]string{"proxy", "--config", "--state-dir", root, "--serial=SYNTHETIC_SERIAL"}, io.Discard)
+	if err != nil || o.serial != "SYNTHETIC_SERIAL" {
+		t.Fatalf("override = %+v, %v", o, err)
+	}
+}
+
+// proxy --config logs each fallback once, before credentials, so that a
+// startup that fails later still says which saved value it replaced.
+func TestSavedConfigFallbackWarningsSurviveStartupFailure(t *testing.T) {
+	refused := errors.New("synthetic session construction boundary")
+	for _, tc := range []struct {
+		name, body, setting string
+		listen              func(string, string) (net.Listener, error)
+		want                func(error) bool
+	}{
+		{"credential rejection", `{"version":1,"email":"PRIVATE-not-an-email"}`, "email",
+			func(string, string) (net.Listener, error) { t.Fatal("listener opened"); return nil, nil },
+			func(err error) bool { return err != nil }},
+		{"bind failure", `{"version":1,"email":"saved@example.invalid","serial":"PRIVATE serial"}`, "serial",
+			func(string, string) (net.Listener, error) { return nil, errors.New("synthetic bind failure") },
+			func(err error) bool { return err != nil && !errors.Is(err, refused) }},
+		{"session construction", `{"version":1,"email":"saved@example.invalid","serial":"PRIVATE serial"}`, "serial",
+			func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
+			func(err error) bool { return errors.Is(err, refused) }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := savedConfigRoot(t)
+			writeSavedConfig(t, root, []byte(tc.body))
+			t.Setenv("SEESTAR_EMAIL", "")
+			if err := os.Unsetenv("SEESTAR_EMAIL"); err != nil {
+				t.Fatal(err)
+			}
+			t.Setenv("SEESTAR_PASSWORD", "synthetic-password")
+			o, err := parse([]string{"proxy", "--config", "--state-dir", root}, io.Discard)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var logs bytes.Buffer
+			err = runParsedWithConfigRuntime(t.Context(), o, io.Discard, &logs,
+				func(context.Context, proxy.Config) (commandSession, error) {
+					t.Fatal("config dispatch used environment-only session constructor")
+					return nil, nil
+				},
+				tc.listen, listenCommandDiscovery, configRuntime{
+					keychainPassword: func(context.Context, string) (string, error) {
+						t.Fatal("keychain read")
+						return "", nil
+					},
+					newSession: func(context.Context, proxy.Config, cloud.Credentials) (*proxy.Session, error) {
+						return nil, refused
+					},
+				})
+			if !tc.want(err) {
+				t.Fatalf("err = %v, logs = %s", err, &logs)
+			}
+			var warnings []map[string]any
+			for line := range strings.Lines(logs.String()) {
+				var record map[string]any
+				if json.Unmarshal([]byte(line), &record) == nil && record["msg"] == "settings_fallback" {
+					warnings = append(warnings, record)
+				}
+			}
+			if len(warnings) != 1 || warnings[0]["level"] != "WARN" || warnings[0]["file"] != "config.json" || warnings[0]["setting"] != tc.setting || warnings[0]["fallback"] != "none" {
+				t.Fatalf("warnings = %v, logs = %s", warnings, &logs)
+			}
+			if strings.Contains(logs.String(), "PRIVATE") {
+				t.Fatalf("log names the saved value: %s", &logs)
+			}
+		})
+	}
+}
+
+// A saved config that loads with a fallback and is then refused by option
+// validation still logs its one warning, with no listener or session.
+func TestSavedConfigFallbackWarningBeforeOptionRefusal(t *testing.T) {
+	for _, flags := range [][]string{
+		{"--idle=-1s"}, {"--pause-threshold=1"}, {"-p", "32323:5000"},
+	} {
+		t.Run(strings.Join(flags, " "), func(t *testing.T) {
+			root := savedConfigRoot(t)
+			writeSavedConfig(t, root, []byte(`{"version":1,"serial":"PRIVATE serial"}`))
+			var logs bytes.Buffer
+			err := runWithListener(t.Context(), append([]string{"proxy", "--config", "--state-dir", root}, flags...), io.Discard, &logs,
+				func(context.Context, proxy.Config) (commandSession, error) {
+					t.Fatal("session constructed")
+					return nil, nil
+				},
+				func(string, string) (net.Listener, error) { t.Fatal("listener opened"); return nil, nil })
+			if commandExitCode(options{command: commandProxy}, err) != 2 {
+				t.Fatalf("expected configuration refusal, got %v", err)
+			}
+			if strings.Count(logs.String(), `"msg":"settings_fallback"`) != 1 || !strings.Contains(logs.String(), `"setting":"serial"`) || strings.Contains(logs.String(), "PRIVATE") {
+				t.Fatalf("want one value-free serial warning; err=%v logs=%s", err, &logs)
+			}
+		})
 	}
 }

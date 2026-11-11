@@ -314,7 +314,12 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		}
 		return errors.New("Could not load saved settings safely.\n\n" + settingsPath + "\n\nCheck this file, then reopen seestar-wormhole.")
 	}
-	settings, err := loadSettings(st)
+	// A saved value a load replaced is logged, never the value itself.
+	logFallbacks := func(fallbacks []diagnostic.Fallback) {
+		diagnostic.LogFallbacks(diagnostic.Logger("json", logs, slog.LevelWarn), fallbacks)
+	}
+	settings, fallbacks, err := loadSettings(st)
+	logFallbacks(fallbacks)
 	routeSaved := err == nil && routeSavedIn(settings)
 	if os.IsNotExist(err) {
 		settings = defaultSettings()
@@ -324,7 +329,8 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	// A copy.json this version can't read leaves Copy, Browse and Free
 	// up space off for this run and is never written; the proxy needs
 	// none of it.
-	copyFile, copySaved, err := loadCopySettings(st)
+	copyFile, copySaved, fallbacks, err := loadCopySettings(st)
+	logFallbacks(fallbacks)
 	copyRefused := err != nil
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {

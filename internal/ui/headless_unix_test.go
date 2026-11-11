@@ -17,7 +17,7 @@ func TestHeadlessSettingsPrivateFiles(t *testing.T) {
 	if err := os.Chmod(path, 0644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadSettings(st.root); err == nil {
+	if _, _, err := LoadSettings(st.root); err == nil {
 		t.Fatal("public config accepted")
 	}
 	if err := os.Remove(path); err != nil {
@@ -30,7 +30,7 @@ func TestHeadlessSettingsPrivateFiles(t *testing.T) {
 	if err := os.Symlink(target, path); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadSettings(st.root); err == nil {
+	if _, _, err := LoadSettings(st.root); err == nil {
 		t.Fatal("symlink config accepted")
 	}
 	if err := os.Remove(path); err != nil {
@@ -42,7 +42,7 @@ func TestHeadlessSettingsPrivateFiles(t *testing.T) {
 	if err := os.Chmod(st.root, 0755); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := LoadSettings(st.root); err == nil {
+	if _, _, err := LoadSettings(st.root); err == nil {
 		t.Fatal("public root accepted")
 	}
 }

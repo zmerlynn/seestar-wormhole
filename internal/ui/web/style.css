@@ -202,11 +202,11 @@ select {
 #copy-steps a {
   white-space:nowrap;
 }
-#ports input {
+#ports input,#added-ports input {
   min-width:5rem;
 }
 /* The Services table scrolls in its own box rather than the page. */
-#ports {
+#ports,#added-ports {
   overflow-x:auto;
 }
 

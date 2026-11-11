@@ -100,7 +100,7 @@ func TestRemoveSupersedesPendingHTTPSave(t *testing.T) {
 			t.Fatal(w.Body.String())
 		}
 		synctest.Wait()
-		got, err := loadSettings(s.storage)
+		got, _, err := loadSettings(s.storage)
 		if err != nil || got.Remember {
 			t.Fatal("older HTTP Save persisted a removed association", err)
 		}
