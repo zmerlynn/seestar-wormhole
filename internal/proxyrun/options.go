@@ -27,18 +27,31 @@ func ParsePort(existing []Port, s string) ([]Port, error) {
 		return nil, &diagnostic.OptionError{Option: "--port", Rule: "local port must be 0..65535"}
 	}
 	b, e := strconv.ParseUint(parts[1], 10, 16)
-	if e != nil || b == 0 {
+	if e != nil {
 		return nil, &diagnostic.OptionError{Option: "--port", Rule: "device port must be 1..65535"}
 	}
-	for _, p := range existing {
-		if p.Device == uint16(b) {
+	return AddPort(existing, Port{Local: uint16(a), Device: uint16(b)})
+}
+
+// AddPort appends p to existing under the rules of -p: at most 128
+// mappings, each device port 1..65535 given once, and each nonzero local
+// port used once.
+func AddPort(existing []Port, p Port) ([]Port, error) {
+	if len(existing) >= 128 {
+		return nil, &diagnostic.OptionError{Option: "--port", Rule: "at most 128 mappings are allowed"}
+	}
+	if p.Device == 0 {
+		return nil, &diagnostic.OptionError{Option: "--port", Rule: "device port must be 1..65535"}
+	}
+	for _, v := range existing {
+		if v.Device == p.Device {
 			return nil, &diagnostic.OptionError{Option: "--port", Rule: "device ports must be unique"}
 		}
-		if a != 0 && p.Local == uint16(a) {
+		if p.Local != 0 && v.Local == p.Local {
 			return nil, &diagnostic.OptionError{Option: "--port", Rule: "local ports must be unique"}
 		}
 	}
-	return append(existing, Port{Local: uint16(a), Device: uint16(b)}), nil
+	return append(existing, p), nil
 }
 
 // MergePorts applies only explicit overrides to the standard service defaults.
