@@ -131,7 +131,7 @@ with `--ignore-state`, runs as usual. browse instead fills only
 `--endpoint` and lists without statuses.
 
 delete takes only where to act: Free up space's patterns, its age and
-**Trust the copy history** are never applied, so give the selection, the
+**Before deleting, check** are never applied, so give the selection, the
 proof and `--older-than` on the command line. `start_copying` is ignored.
 
 The endpoint comes from the saved connection alone. On this network it is

@@ -68,6 +68,41 @@ func TestCopySettingsOnce(t *testing.T) {
 	}
 }
 
+// Free up space's proof loads as saved and survives a save; ignore_state
+// wins over trust_state, and a wrong type refuses the file.
+func TestCopySettingsIgnoreState(t *testing.T) {
+	for _, c := range []struct {
+		body          string
+		trust, ignore bool
+	}{
+		{`{"version":1}`, false, false},
+		{`{"version":1,"trust_state":true}`, true, false},
+		{`{"version":1,"ignore_state":true}`, false, true},
+		{`{"version":1,"trust_state":true,"ignore_state":true}`, false, true},
+		{`{"version":1,"trust_state":true,"ignore_state":false}`, true, false},
+	} {
+		st := testStorageWith(t, c.body)
+		cs, got, _, err := loadCopySettings(st)
+		if err != nil || got == nil || got.TrustState != c.trust || got.IgnoreState != c.ignore {
+			t.Errorf("%s = %+v, %v", c.body, got, err)
+			continue
+		}
+		if err := cs.save(*got); err != nil {
+			t.Fatal(err)
+		}
+		var saved map[string]any
+		if err := st.read(copyName, &saved); err != nil {
+			t.Fatal(err)
+		}
+		if saved["trust_state"] != c.trust || saved["ignore_state"] != c.ignore {
+			t.Errorf("%s saved trust_state %v, ignore_state %v", c.body, saved["trust_state"], saved["ignore_state"])
+		}
+	}
+	if _, _, _, err := loadCopySettings(testStorageWith(t, `{"version":1,"ignore_state":"yes"}`)); err == nil {
+		t.Error("a string ignore_state loaded")
+	}
+}
+
 // Files at once loads from 1 to 4 as saved.
 func TestCopySettingsFilesAtOnce(t *testing.T) {
 	st := testStorage(t)
@@ -179,7 +214,7 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 	want := map[string]any{
 		"version": 1.0, "folder": "/synthetic/Other", "history_dir": "", "interval_minutes": 9.0, "excludes": []any{}, "includes": []any{},
 		"skip_built_in": true, "start_copying": false, "once": false, "files_at_once": 1.0, "older_than_days": 7.0, "trust_state": false,
-		"free_excludes": []any{}, "free_includes": []any{},
+		"ignore_state": false, "free_excludes": []any{}, "free_includes": []any{},
 		"future_object": map[string]any{"enabled": true, "limit": 17.0}, "future_array": []any{1.0, "two", map[string]any{"three": nil}}, "future_flag": false,
 	}
 	if !reflect.DeepEqual(got, want) {

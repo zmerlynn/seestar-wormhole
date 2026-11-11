@@ -30,10 +30,13 @@ type Settings struct {
 	Once bool `json:"once"`
 	// The Free up space options. Its patterns are its own: Excludes and
 	// Includes select only what Copy copies.
-	OlderThanDays int      `json:"older_than_days"`
-	TrustState    bool     `json:"trust_state"`
-	FreeExcludes  []string `json:"free_excludes"` // Keep on the telescope
-	FreeIncludes  []string `json:"free_includes"` // Only free up
+	OlderThanDays int  `json:"older_than_days"`
+	TrustState    bool `json:"trust_state"`
+	// IgnoreState checks nothing: whatever is selected is deleted. A save
+	// writes it or TrustState true, never both; on load it wins.
+	IgnoreState  bool     `json:"ignore_state"`
+	FreeExcludes []string `json:"free_excludes"` // Keep on the telescope
+	FreeIncludes []string `json:"free_includes"` // Only free up
 	// Telescopes are each telescope's folder, by its key: see SerialKey
 	// and AddressKey. Folder stays the first telescope's, which an older
 	// app reads. Until one has a folder here, Folder is every telescope's.

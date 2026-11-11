@@ -610,6 +610,7 @@ type input struct {
 	// The delete API's: Find's options, and Delete's preview and folders.
 	Days         string   `json:"days"`
 	Trust        bool     `json:"trust"`
+	Ignore       bool     `json:"ignore"`
 	FreeExcludes []string `json:"free_excludes"` // the box's lines
 	FreeIncludes []string `json:"free_includes"`
 	ID           int      `json:"id"`
@@ -941,7 +942,7 @@ func (s *server) save(w http.ResponseWriter, in input) {
 	}
 	set = set.withFolder(t.Telescope, folder)
 	// The Free up space options are saved by Find, not by this form.
-	set.OlderThanDays, set.TrustState = old.OlderThanDays, old.TrustState
+	set.OlderThanDays, set.TrustState, set.IgnoreState = old.OlderThanDays, old.TrustState, old.IgnoreState
 	set.FreeExcludes, set.FreeIncludes = old.FreeExcludes, old.FreeIncludes
 	if err := s.file.save(set); err != nil {
 		s.mu.Unlock()
@@ -1107,10 +1108,11 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			return
 		}
 		set, old := s.file.settings, s.file.settings
-		set.OlderThanDays, set.TrustState = days, in.Trust
+		// The menu chooses one proof: checking nothing wins.
+		set.OlderThanDays, set.TrustState, set.IgnoreState = days, in.Trust && !in.Ignore, in.Ignore
 		set.FreeExcludes, set.FreeIncludes = excludes, includes
 		saved := false
-		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState ||
+		if set.OlderThanDays != old.OlderThanDays || set.TrustState != old.TrustState || set.IgnoreState != old.IgnoreState ||
 			!slices.Equal(set.FreeExcludes, old.FreeExcludes) || !slices.Equal(set.FreeIncludes, old.FreeIncludes) {
 			if err := s.file.save(set); err != nil {
 				s.mu.Unlock()
