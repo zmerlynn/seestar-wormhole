@@ -38,7 +38,9 @@ seestar-wormhole-cli proxy
 
 For the desktop controls, see [Using the UI](../ui.md).
 
-The app cannot set the device's site, clock or time zone through the proxy.
+The Seestar app's inspected control requests cannot set the device's site,
+clock or time zone through the proxy. Alpaca on 32323 is not inspected, so an
+Alpaca client can change site and time.
 See [site protection](#site-protection). The command takes no positional arguments. It forwards TCP through one shared
 remote session. Clients can issue device commands and read files; there is no
 local authentication or read-only command whitelist. Local connections are
@@ -380,10 +382,10 @@ TCP clients receive closure, without diagnostic text inserted into their stream.
 
 ## Site protection
 
-The app cannot set the device's site, clock or time zone through the proxy.
-Protection is unconditional and has no flag. The device keeps its stored site
-and maintains its own clock. To change the site on purpose, connect the app
-to the device without the proxy.
+The proxy blocks site, clock and time-zone setters in the Seestar app's
+inspected control requests. This protection is unconditional and has no flag;
+it does not cover Alpaca on 32323, as described below. To change the site
+using the Seestar app, connect it to the device without the proxy.
 
 The proxy sends no requests of its own at startup and does not read the site.
 Client forwarding follows normal session admission without a site-read gate.
