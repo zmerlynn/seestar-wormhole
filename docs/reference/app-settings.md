@@ -58,15 +58,14 @@ Each `ports` override has lowercase numeric `local` and `device` members, from
 0 to 65535. A `local` of 0 turns the service off; a `device` that isn't a
 standard service adds a port. An older app refuses a file with added ports.
 
-A bad value doesn't refuse the file. It loads as a fallback, and the next
-save writes the fallback:
+A newer app, telescope or account could save a value this version refuses.
+A bad value in one of these settings doesn't refuse the file. It loads as a
+fallback, and the next save writes the fallback:
 
 | Bad value | Loads as |
 |---|---|
-| `idle` that doesn't parse or is negative | `"0"` |
-| `bind` empty | IPv4 loopback, as when it is missing |
 | `discovery` `true` with a `bind` discovery can't use | `false` |
-| `serial`, `model` or `email` that isn't valid | Empty, as if none were saved |
+| `serial` or `email` that isn't valid | Empty, as if none were saved |
 
 Each fallback logs one warning, `settings_fallback`, naming the file, the
 setting and the fallback, never the saved value: the app's in `gui.log`,
@@ -74,9 +73,10 @@ setting and the fallback, never the saved value: the app's in `gui.log`,
 error on that field.
 
 Unknown members survive a save. Reads are limited to 64 KiB and never rewrite
-the file. A missing or unsupported version, including a newer one, a member of
-the wrong type, or a file that doesn't parse is refused and left untouched. A
-failed load never overwrites existing state.
+the file. Any other bad value, such as an `idle`, `bind`, `model` or port the
+app refuses, a missing or unsupported version, including a newer one, a member
+of the wrong type, or a file that doesn't parse is refused and left untouched.
+A failed load never overwrites existing state.
 
 ## copy.json version 1
 

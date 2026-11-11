@@ -22,7 +22,7 @@ func testStorage(t *testing.T) *storage {
 }
 func TestSettingsStorage(t *testing.T) {
 	st := testStorage(t)
-	for _, body := range []string{`{`, `{"version":99}`, `{}`, `null`, `{"version":1,"idle":120}`, `{"version":1,"ports":[{"local":"80","device":80}]}`, `{"version":1,"ports":["4445:80"]}`, `{"version":1,"version":1}`, strings.Repeat(" ", localhttp.MaxJSON+1)} {
+	for _, body := range []string{`{`, `{"version":99}`, `{}`, `null`, `{"version":1,"idle":"-1s"}`, `{"version":1,"idle":120}`, `{"version":1,"ports":[{"local":"80","device":80}]}`, `{"version":1,"ports":["4445:80"]}`, `{"version":1,"version":1}`, strings.Repeat(" ", localhttp.MaxJSON+1)} {
 		path := filepath.Join(st.root, "config.json")
 		if err := os.WriteFile(path, []byte(body), 0600); err != nil {
 			t.Fatal(err)

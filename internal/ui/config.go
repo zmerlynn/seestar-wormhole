@@ -96,12 +96,8 @@ func (s Settings) validate() ([]proxyrun.Port, time.Duration, error) {
 	}
 	return ports, idle, nil
 }
-
-// defaultBind is config.json's bind when the member is absent.
-const defaultBind = "127.0.0.1"
-
 func loadSettings(s *storage) (Settings, []diagnostic.Fallback, error) {
-	settings := Settings{Bind: defaultBind, Idle: "0", Ports: []proxyrun.Port{}}
+	settings := Settings{Bind: "127.0.0.1", Idle: "0", Ports: []proxyrun.Port{}}
 	// Decode a fresh struct: absent members have documented defaults; unknown
 	// members are retained by JSON v2 within this schema version.
 	if err := s.read("config.json", &settings); err != nil {
@@ -119,21 +115,13 @@ func loadSettings(s *storage) (Settings, []diagnostic.Fallback, error) {
 	return settings, fallbacks, nil
 }
 
-// fallBack replaces the saved values a load tolerates, so that one bad
-// value doesn't refuse the whole file. It leaves the version and the ports
-// for validate to refuse.
+// fallBack replaces the saved values a load tolerates: those a newer app
+// or a new device or account format could save that this one refuses. It
+// leaves every other value for validate to refuse.
 func (s *Settings) fallBack() []diagnostic.Fallback {
 	var fallbacks []diagnostic.Fallback
 	replace := func(setting, fallback string) {
 		fallbacks = append(fallbacks, diagnostic.Fallback{File: "config.json", Setting: setting, Fallback: fallback})
-	}
-	if idle, err := time.ParseDuration(s.Idle); err != nil || idle < 0 {
-		s.Idle = "0"
-		replace("idle", "0")
-	}
-	if strings.TrimSpace(s.Bind) == "" {
-		s.Bind = defaultBind
-		replace("bind", defaultBind)
 	}
 	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
 		s.Discovery = false
@@ -142,10 +130,6 @@ func (s *Settings) fallBack() []diagnostic.Fallback {
 	if s.Serial != "" && !cloudhttp.ValidSerial(s.Serial) {
 		s.Serial = ""
 		replace("serial", "none")
-	}
-	if s.Model != "" && !cloudhttp.ValidModel(s.Model) {
-		s.Model = ""
-		replace("model", "none")
 	}
 	if s.Email != "" {
 		if _, err := cloud.EmailCredentials(s.Email, "validation-only"); err != nil {

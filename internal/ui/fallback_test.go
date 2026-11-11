@@ -50,12 +50,8 @@ func TestSettingsFallbacks(t *testing.T) {
 		setting, body, fallback, private string
 		check                            func(Settings) bool
 	}{
-		{"idle", `{"version":1,"idle":"soon"}`, "0", "soon", func(s Settings) bool { return s.Idle == "0" && !s.lazy() }},
-		{"idle", `{"version":1,"idle":"-17m"}`, "0", "-17m", func(s Settings) bool { return s.Idle == "0" }},
-		{"bind", `{"version":1,"bind":"  "}`, defaultBind, `"  "`, func(s Settings) bool { return s.Bind == defaultBind }},
 		{"discovery", `{"version":1,"bind":"127.0.0.9","discovery":true}`, "off", "127.0.0.9", func(s Settings) bool { return !s.Discovery && s.Bind == "127.0.0.9" }},
 		{"serial", `{"version":1,"serial":"secret serial\n"}`, "none", "secret serial", func(s Settings) bool { return s.Serial == "" }},
-		{"model", `{"version":1,"model":"secret\nmodel"}`, "none", "secret", func(s Settings) bool { return s.Model == "" }},
 		{"email", `{"version":1,"email":"private-not-an-email"}`, "none", "private-not-an-email", func(s Settings) bool { return s.Email == "" }},
 	} {
 		t.Run(tc.setting+" "+tc.private, func(t *testing.T) {
@@ -89,8 +85,8 @@ func TestSettingsFallbacks(t *testing.T) {
 	}
 }
 
-// A good config.json has no fallbacks; a bad version or a file that
-// doesn't parse is still refused.
+// A good config.json has no fallbacks; a bad version, a file that doesn't
+// parse, and a bad idle, bind, model or port are still refused.
 func TestSettingsStillRefused(t *testing.T) {
 	st := testStorage(t)
 	if err := st.writeBytes("config.json", []byte(`{"version":1,"idle":"10m","serial":"S50ABC"}`)); err != nil {
@@ -99,7 +95,11 @@ func TestSettingsStillRefused(t *testing.T) {
 	if _, fallbacks, err := loadSettings(st); err != nil || len(fallbacks) != 0 {
 		t.Fatalf("good settings = %v, %v", fallbacks, err)
 	}
-	for _, body := range []string{`{"version":2,"idle":"soon"}`, `{"idle":"soon"}`, `{"version":1,"idle":"soon"`, `{"version":1,"idle":120}`} {
+	for _, body := range []string{
+		`{"version":2,"email":"private-not-an-email"}`, `{"email":"private-not-an-email"}`, `{"version":1,"email":"private-not-an-email"`, `{"version":1,"idle":120}`,
+		`{"version":1,"idle":"soon"}`, `{"version":1,"idle":"-17m"}`, `{"version":1,"bind":"  "}`, `{"version":1,"model":"secret\nmodel"}`,
+		`{"version":1,"ports":[{"local":80,"device":0}]}`,
+	} {
 		st := testStorage(t)
 		if err := os.WriteFile(filepath.Join(st.root, "config.json"), []byte(body), 0600); err != nil {
 			t.Fatal(err)
