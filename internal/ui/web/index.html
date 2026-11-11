@@ -159,14 +159,19 @@
 <label class="check strong">Files at once <input type="number" id="f-files" min="1" max="4" aria-describedby="f-files-help f-files-err"></label>
 <p class="error" id="f-files-err" role="alert" hidden></p>
 <p class="help" id="f-files-help">Copying runs this many files at once, 1 to 4. Through Telescope Network, copying shares the connection with the Seestar app and seestar_alp: if they are slow to respond while copying, lower this to 1 or 2.</p>
+<label for="f-what">What to copy</label>
+<select id="f-what" aria-describedby="f-what-help"><option value="fits">FITS files only</option><option value="all">Everything</option><option value="custom">Custom</option></select>
+<p class="help" id="f-what-help">Copies .fit and .fits files; leaves the telescope's JPG previews and other files.</p>
 <label for="f-ex">Leave out</label>
 <textarea id="f-ex" spellcheck="false" aria-describedby="f-ex-help f-ex-err"></textarea>
 <p class="error" id="f-ex-err" role="alert" hidden></p>
 <p class="help" id="f-ex-help">One pattern per line, in .gitignore syntax; case is ignored. A name like <code>Video</code> matches at any depth; one starting with <code>/</code> is a path from the top of the share. For example: <code>Video</code>, <code>/Preview</code>.</p>
+<div id="f-in-box" hidden>
 <label for="f-in">Only copy</label>
 <textarea id="f-in" spellcheck="false" aria-describedby="f-in-help f-in-err"></textarea>
 <p class="error" id="f-in-err" role="alert" hidden></p>
 <p class="help" id="f-in-help">Leave empty to copy everything not left out. For example: <code>/MyWorks</code>.</p>
+</div>
 <label class="check"><input type="checkbox" id="f-skip"> <span><b>Skip the telescope's logs, scratch and system files</b> (recommended)<br><span class="muted mono" id="f-builtin"></span></span></label>
 <label class="check"><input type="checkbox" id="f-start"> <span><b>Start copying when the app opens</b><br><span class="muted">Through Telescope Network, copying starts once the connection is ready. With the check for new files off, it copies once each time the app opens.</span></span></label>
 <div class="actions"><button class="primary" type="submit" id="f-save">Save</button><button type="button" id="f-cancel">Cancel</button></div>

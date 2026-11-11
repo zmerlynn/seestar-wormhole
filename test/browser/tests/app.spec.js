@@ -538,6 +538,7 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
   await field(page, 'Folder for your images').fill(app.folder);
   await page.locator('#f-int').fill('30');
   await field(page, 'Leave out').fill('Video\n\n/Preview');
+  await page.getByLabel('What to copy').selectOption('Custom');
   await field(page, 'Only copy').fill('MyWorks');
   await page.getByLabel(/Skip the telescope's logs/).uncheck();
   await page.getByLabel('Start copying when the app opens').uncheck();
@@ -646,6 +647,7 @@ test('Copy settings field errors show under each field and nothing is saved', as
   await page.getByRole('button', { name: 'Change…' }).click();
   await page.locator('#f-int').fill('0');
   await field(page, 'Leave out').fill('Video\n\n[Pp]review\n!Video');
+  await page.getByLabel('What to copy').selectOption('Custom');
   await field(page, 'Only copy').fill('MyWorks/ ');
   await copySave(page).click();
 
@@ -664,6 +666,71 @@ test('Copy settings field errors show under each field and nothing is saved', as
   await expect(page.locator('#f-int-err')).toBeHidden();
   await expect(page.locator('#f-ex-err')).toBeHidden();
   await expect(page.locator('#f-int')).not.toHaveAttribute('aria-invalid', 'true');
+});
+
+// What to copy is never saved: it is the option Only copy's patterns make,
+// and each pick fills or empties Only copy.
+test('What to copy fills or empties Only copy, and a reload shows the option the saved patterns make', async ({ page, startApp }) => {
+  const files = setUp('/nowhere');
+  files['copy.json'].includes = [];
+  const app = await startApp(files);
+  await openCopy(page, app.url);
+  const what = page.getByLabel('What to copy');
+  const only = field(page, 'Only copy');
+  const open = async () => {
+    await page.getByRole('button', { name: 'Change…' }).click();
+    await expect(field(page, 'Folder for your images')).toBeFocused();
+  };
+  const save = async () => {
+    await copySave(page).click();
+    await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  };
+  // A saved empty Only copy is Everything, and saves as it was.
+  await open();
+  await expect(what).toHaveValue('all');
+  await expect(only).toBeHidden();
+  await expect(page.locator('#f-what-help')).toBeHidden();
+  await field(page, 'Folder for your images').fill(app.folder);
+  await save();
+  const saved = readJSON(app.copyFile);
+  expect(saved).toMatchObject({ version: 1, includes: [] });
+
+  for (const [option, value, includes, shown] of [
+    ['FITS files only', 'fits', ['*.fit', '*.fits'], 'fits'],
+    ['Custom', 'custom', ['*.fit', '*.fits'], 'fits'],
+    ['Everything', 'all', [], 'all'],
+  ]) {
+    await open();
+    await what.selectOption(option);
+    if (value === 'custom') await expect(only).toHaveValue(includes.join('\n'));
+    await save();
+    expect(readJSON(app.copyFile), option).toEqual({ ...saved, includes });
+    await openCopy(page, app.url);
+    await open();
+    await expect(what, option).toHaveValue(shown);
+    await expect(only).toBeVisible({ visible: shown === 'custom' });
+    await page.getByRole('button', { name: 'Cancel' }).click();
+  }
+  // Custom keeps what is typed, and the patterns' case is their own.
+  await open();
+  await what.selectOption('Custom');
+  await expect(only).toBeVisible();
+  await expect(only).toHaveValue('');
+  await only.fill('*.FIT\n*.fits');
+  await save();
+  expect(readJSON(app.copyFile).includes).toEqual(['*.FIT', '*.fits']);
+  await openCopy(page, app.url);
+  await open();
+  await expect(what).toHaveValue('custom');
+  await expect(only).toHaveValue('*.FIT\n*.fits');
+  // Picking an option fills Only copy, and Custom then keeps it.
+  await what.selectOption('FITS files only');
+  await expect(only).toBeHidden();
+  await what.selectOption('Custom');
+  await expect(only).toHaveValue('*.fit\n*.fits');
+  await what.selectOption('Everything');
+  await what.selectOption('Custom');
+  await expect(only).toHaveValue('');
 });
 
 test('Files at once defaults to 4, saves 1 to 4 and refuses anything else', async ({ page, startApp }) => {
