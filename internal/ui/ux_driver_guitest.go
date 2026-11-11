@@ -108,7 +108,7 @@ func (d *guiTestDriver) uxSetup() error {
 	return nil
 }
 func (d *guiTestDriver) uxRunning() error {
-	if err := d.probe(`check(el('running-ports').querySelectorAll('tbody tr').length===10 && !el('running-ports').querySelector('input') && el('run-summary').textContent.startsWith('Listening on ') && !document.getElementById('computer-steps'),{rows:el('running-ports').querySelectorAll('tbody tr').length,summary:el('run-summary').textContent})`); err != nil {
+	if err := d.probe(`check(el('running-ports').querySelectorAll('tbody tr').length===11 && !el('running-ports').querySelector('input') && el('run-summary').textContent.startsWith('Listening on ') && !document.getElementById('computer-steps'),{rows:el('running-ports').querySelectorAll('tbody tr').length,summary:el('run-summary').textContent})`); err != nil {
 		return err
 	}
 	switch d.scenario {

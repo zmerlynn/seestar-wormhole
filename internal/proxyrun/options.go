@@ -56,7 +56,7 @@ func AddPort(existing []Port, p Port) ([]Port, error) {
 
 // MergePorts applies only explicit overrides to the standard service defaults.
 func MergePorts(ports []Port) ([]Port, error) {
-	defaults := []Port{{Local: 4700, Device: 4700}, {Local: 4445, Device: 445}, {Local: 8080, Device: 80}, {Local: 4350, Device: 4350}, {Local: 4554, Device: 4554}, {Local: 4555, Device: 4555}, {Local: 4801, Device: 4801}, {Local: 4800, Device: 4800}, {Local: 4804, Device: 4804}, {Local: 4361, Device: 4361}}
+	defaults := []Port{{Local: 4700, Device: 4700}, {Local: 4445, Device: 445}, {Local: 8080, Device: 80}, {Local: 4350, Device: 4350}, {Local: 4554, Device: 4554}, {Local: 4555, Device: 4555}, {Local: 4801, Device: 4801}, {Local: 4800, Device: 4800}, {Local: 4804, Device: 4804}, {Local: 4361, Device: 4361}, {Local: 32323, Device: 32323}}
 	overrides := ports
 	ports = nil
 	for _, p := range defaults {

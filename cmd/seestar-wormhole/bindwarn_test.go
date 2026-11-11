@@ -177,7 +177,7 @@ func TestListenerStartupBindWarnings(t *testing.T) {
 			var forwards []proxy.Forward
 			var wantListeners []string
 			// Port zero asks the OS for unused ports, avoiding fixed-port conflicts.
-			for _, p := range (mappings{{Local: 0, Device: 4700}, {Local: 0, Device: 80}, {Local: 0, Device: 445}, {Local: 0, Device: 4350}, {Local: 0, Device: 4554}, {Local: 0, Device: 4555}, {Local: 0, Device: 4800}, {Local: 0, Device: 4801}, {Local: 0, Device: 4804}, {Local: 0, Device: 4361}}) {
+			for _, p := range (mappings{{Local: 0, Device: 4700}, {Local: 0, Device: 80}, {Local: 0, Device: 445}, {Local: 0, Device: 4350}, {Local: 0, Device: 4554}, {Local: 0, Device: 4555}, {Local: 0, Device: 4800}, {Local: 0, Device: 4801}, {Local: 0, Device: 4804}, {Local: 0, Device: 4361}, {Local: 0, Device: 32323}}) {
 				l, err := net.Listen("tcp", net.JoinHostPort(tc.bind, "0"))
 				if err != nil {
 					t.Fatalf("startup with inspection failure=%v: err=%v", tc.fail, err)

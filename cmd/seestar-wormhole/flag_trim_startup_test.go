@@ -62,11 +62,11 @@ func TestLANHTTPStartupWarning(t *testing.T) {
 		listeners     int
 		allInterfaces bool
 	}{
-		{"defaults", nil, 1, "8080", 10, false},
-		{"http-80", []string{"--port", "80:80"}, 0, "80", 10, false},
-		{"http-disabled", []string{"--port", "0:80"}, 1, "", 9, false},
-		{"all-interfaces-disabled", []string{"--lan-discovery-all-interfaces=false"}, 1, "8080", 10, false},
-		{"all-interfaces", []string{"--lan-discovery-all-interfaces"}, 1, "8080", 10, true},
+		{"defaults", nil, 1, "8080", 11, false},
+		{"http-80", []string{"--port", "80:80"}, 0, "80", 11, false},
+		{"http-disabled", []string{"--port", "0:80"}, 1, "", 10, false},
+		{"all-interfaces-disabled", []string{"--lan-discovery-all-interfaces=false"}, 1, "8080", 11, false},
+		{"all-interfaces", []string{"--lan-discovery-all-interfaces"}, 1, "8080", 11, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())

@@ -15,9 +15,9 @@ func TestPortOverrides(t *testing.T) {
 		count int
 		http  uint16
 	}{
-		{nil, 10, 8080}, {[]string{"--port", "80:80"}, 10, 80},
-		{[]string{"--port", "0:80", "--port", "0:445"}, 8, 0},
-		{[]string{"--port", "9000:9001"}, 11, 8080},
+		{nil, 11, 8080}, {[]string{"--port", "80:80"}, 11, 80},
+		{[]string{"--port", "0:80", "--port", "0:445"}, 9, 0},
+		{[]string{"--port", "9000:9001"}, 12, 8080},
 	} {
 		o, err := parse(append([]string{"proxy"}, tc.args...), io.Discard)
 		if err != nil || len(o.ports) != tc.count {

@@ -36,7 +36,7 @@ func TestE2EHelpDoesNotOpenSession(t *testing.T) {
 // Keep the proxy's literal default listeners disabled: these tests exercise the
 // real bootstrap and runtime dispatch without opening sockets for forwarding.
 func dispatchProxyArgs() []string {
-	return []string{"--port=0:4700", "--port=0:445", "--port=0:80", "--port=0:4350", "--port=0:4554", "--port=0:4555", "--port=0:4801", "--port=0:4800", "--port=0:4804", "--port=0:4361"}
+	return []string{"--port=0:4700", "--port=0:445", "--port=0:80", "--port=0:4350", "--port=0:4554", "--port=0:4555", "--port=0:4801", "--port=0:4800", "--port=0:4804", "--port=0:4361", "--port=0:32323"}
 }
 
 type rootFlagPermutation struct {

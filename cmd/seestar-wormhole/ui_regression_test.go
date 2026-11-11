@@ -100,7 +100,7 @@ func TestNoListenersCannotArmLazyRun(t *testing.T) {
 			return nil, errors.New("unexpected")
 		},
 		func(context.Context) error { return nil })
-	s := ui.Settings{Version: 1, Bind: "127.0.0.1", Idle: "2m", Ports: []proxyrun.Port{{Local: 0, Device: 4700}, {Local: 0, Device: 445}, {Local: 0, Device: 80}, {Local: 0, Device: 4350}, {Local: 0, Device: 4554}, {Local: 0, Device: 4555}, {Local: 0, Device: 4801}, {Local: 0, Device: 4800}, {Local: 0, Device: 4804}, {Local: 0, Device: 4361}}}
+	s := ui.Settings{Version: 1, Bind: "127.0.0.1", Idle: "2m", Ports: []proxyrun.Port{{Local: 0, Device: 4700}, {Local: 0, Device: 445}, {Local: 0, Device: 80}, {Local: 0, Device: 4350}, {Local: 0, Device: 4554}, {Local: 0, Device: 4555}, {Local: 0, Device: 4801}, {Local: 0, Device: 4800}, {Local: 0, Device: 4804}, {Local: 0, Device: 4361}, {Local: 0, Device: 32323}}}
 	if err := runner(t.Context(), s, cloud.Credentials{}, status, nil); err == nil {
 		t.Fatal("no-listener run unexpectedly succeeded")
 	}
