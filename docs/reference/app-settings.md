@@ -101,13 +101,16 @@ alone never writes the file.
 | `start_copying` | `false` |
 | `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range loads as the nearest of them, and a `settings_fallback` warning names the setting and the fallback, never the saved value, in `gui.log` or the `--profile default` command's log. |
 | `older_than_days` | `7` |
-| `trust_state` | `false` |
+| `trust_state` | `false`; **Only the copy history** under **Before deleting, check**. |
+| `ignore_state` | `false`; **Nothing** under **Before deleting, check**. A save writes at most one of it and `trust_state` true; on load, `ignore_state` wins. |
 | `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
 
 Older versions keep `history_dir` when saving but use the default history
 folder. After a downgrade, files moved out of the images folder can be copied
 again, and Free up space cannot use the chosen folder's history to prove those
 copies safe.
+
+An older app ignores `ignore_state` and falls back to checking copies.
 
 The telescope's address is not in it; it comes from the route in `config.json`.
 `telescopes` names a telescope only by its key, which also chooses the
