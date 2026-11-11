@@ -96,7 +96,7 @@ alone never writes the file.
 | `history_dir` | `""`: the default [history location](selection-and-history.md#location), as `--history-dir`'s default. Otherwise **Copy history folder**, an absolute path outside `folder`. A relative path or a value that isn't a string refuses the file. |
 | `interval_minutes` | `5` |
 | `once` | `false`; `true` when **Check for new files every** is off: Start copying checks once, then stops. |
-| `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. A first setup saves `includes` as `["*.fit", "*.fits"]`, **FITS files only**. **What to copy** is read from `includes`; nothing else is saved for it. |
+| `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. With no `copy.json`, the form starts with `includes` set to `["*.fit", "*.fits"]`, **FITS files only**; Save writes the chosen patterns. **What to copy** is read from `includes`; nothing else is saved for it. |
 | `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
 | `start_copying` | `false` |
 | `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range loads as the nearest of them, and a `settings_fallback` warning names the setting and the fallback, never the saved value, in `gui.log` or the `--profile default` command's log. |
