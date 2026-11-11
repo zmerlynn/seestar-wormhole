@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -327,4 +328,54 @@ func TestDefaultProfileFallbacks(t *testing.T) {
 	if after := profileFiles(t, root); !maps.Equal(after, before) {
 		t.Errorf("the state folder changed: %v, was %v", after, before)
 	}
+}
+
+// writeFallbackProfile saves a profile whose load falls back twice: copy.json's
+// files_at_once and config.json's serial.
+func writeFallbackProfile(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedConfig(t, root, []byte(`{"version":1,"serial":"PRIVATE serial","ports":[{"device":445,"local":1445}]}`))
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/Seestar","files_at_once":57}`)
+	useProfileRoot(t, root, nil)
+}
+
+// checkProfileWarnings fails unless logs hold exactly the profile's two
+// value-free fallback warnings.
+func checkProfileWarnings(t *testing.T, err error, logs *bytes.Buffer) {
+	t.Helper()
+	s := logs.String()
+	if strings.Count(s, "settings_fallback") != 2 || !strings.Contains(s, "setting=files_at_once") || !strings.Contains(s, "setting=serial") || strings.Contains(s, "PRIVATE") {
+		t.Fatalf("want two value-free warnings; err=%v logs=%s", err, logs)
+	}
+}
+
+// A profile that loads with fallbacks and is then refused by the command's
+// own validation still logs each warning once.
+func TestProfileFallbackWarningsBeforeOptionRefusal(t *testing.T) {
+	for _, args := range [][]string{
+		{"find", "--format=invalid"}, {"sync", "--workers=0"},
+		{"browse", "--listen=localhost:0"}, {"delete", "--older-than=-1s"},
+	} {
+		t.Run(args[0], func(t *testing.T) {
+			writeFallbackProfile(t)
+			var logs bytes.Buffer
+			err := runWithListener(t.Context(), append(args, "--profile", "default"), io.Discard, &logs, nil, nil)
+			if commandExitCode(options{command: commandFiles}, err) != 2 {
+				t.Fatalf("expected configuration refusal, got %v", err)
+			}
+			checkProfileWarnings(t, err, &logs)
+		})
+	}
+}
+
+// A file command that validated logs its profile's warnings when it runs;
+// a failure at run time must not log them again.
+func TestProfileFallbackWarningsOnceOnRunFailure(t *testing.T) {
+	writeFallbackProfile(t)
+	var logs bytes.Buffer
+	err := runWithListener(t.Context(), []string{"find", "--profile", "default", "--endpoint", "127.0.0.1:1"}, io.Discard, &logs, nil, nil)
+	if commandExitCode(options{command: commandFiles}, err) != 1 {
+		t.Fatalf("expected a run failure, got %v", err)
+	}
+	checkProfileWarnings(t, err, &logs)
 }

@@ -373,3 +373,29 @@ func TestSavedConfigFallbackWarningsSurviveStartupFailure(t *testing.T) {
 		})
 	}
 }
+
+// A saved config that loads with a fallback and is then refused by option
+// validation still logs its one warning, with no listener or session.
+func TestSavedConfigFallbackWarningBeforeOptionRefusal(t *testing.T) {
+	for _, flags := range [][]string{
+		{"--idle=-1s"}, {"--pause-threshold=1"}, {"-p", "32323:5000"},
+	} {
+		t.Run(strings.Join(flags, " "), func(t *testing.T) {
+			root := savedConfigRoot(t)
+			writeSavedConfig(t, root, []byte(`{"version":1,"serial":"PRIVATE serial"}`))
+			var logs bytes.Buffer
+			err := runWithListener(t.Context(), append([]string{"proxy", "--config", "--state-dir", root}, flags...), io.Discard, &logs,
+				func(context.Context, proxy.Config) (commandSession, error) {
+					t.Fatal("session constructed")
+					return nil, nil
+				},
+				func(string, string) (net.Listener, error) { t.Fatal("listener opened"); return nil, nil })
+			if commandExitCode(options{command: commandProxy}, err) != 2 {
+				t.Fatalf("expected configuration refusal, got %v", err)
+			}
+			if strings.Count(logs.String(), `"msg":"settings_fallback"`) != 1 || !strings.Contains(logs.String(), `"setting":"serial"`) || strings.Contains(logs.String(), "PRIVATE") {
+				t.Fatalf("want one value-free serial warning; err=%v logs=%s", err, &logs)
+			}
+		})
+	}
+}
