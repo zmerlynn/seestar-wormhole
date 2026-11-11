@@ -5,7 +5,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { test, expect, share, refused, env, lan, tab, field, openCopy, fakeStatus, longPath, copyViews } = require('./app');
+const { test, expect, share, refused, env, lan, readJSON, tab, field, openCopy, fakeStatus, longPath, copyViews } = require('./app');
 
 // The browse tree has 7 files, all older than the first pass's age.
 const copiedAll = /^Copied 7 files \(\d.* in .*\.$/;
@@ -31,6 +31,9 @@ test('Start copying after the first Save runs a pass, and the settings are locke
   const app = await startApp({ 'config.json': lan() });
   await openCopy(page, app.url);
   await field(page, 'Folder for your images').fill(app.folder);
+  // This pass copies everything; a first setup copying FITS files only is
+  // its own test.
+  await page.getByLabel('What to copy').selectOption('Everything');
   await button(page, 'Save').click();
 
   await expect(title(page)).toHaveText(off);
@@ -74,6 +77,27 @@ test('Start copying after the first Save runs a pass, and the settings are locke
   await expect(title(page)).toHaveText(off);
   // The last pass's summary stays.
   await expect(page.locator('#c-summary')).toHaveText(copiedAll);
+});
+
+test('A first setup copies FITS files only, and leaves the JPG previews and other files', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  await openCopy(page, app.url);
+  const what = page.getByLabel('What to copy');
+  await expect(what).toHaveValue('fits');
+  await expect(what).toHaveAccessibleDescription("Copies .fit and .fits files; leaves the telescope's JPG previews and other files.");
+  await expect(field(page, 'Only copy')).toBeHidden();
+  await field(page, 'Folder for your images').fill(app.folder);
+  await button(page, 'Save').click();
+  await expect(title(page)).toHaveText(off);
+  expect(readJSON(app.copyFile).includes).toEqual(['*.fit', '*.fits']);
+
+  await button(page, 'Start copying').click();
+  await expect(title(page)).toHaveText(upToDate, { timeout: 30000 });
+  await expect(page.locator('#c-summary')).toHaveText(/^Copied 1 file \(\d.* in .*\.$/);
+  expect(fs.readFileSync(path.join(app.folder, 'MyWorks/M 31/Stacked_M 31.fit')).length).toBe(5760);
+  for (const f of ['Stacked_M 31.jpg', 'Stacked_M 31_thn.jpg', '00-notes.txt', 'empty.txt', 'MyWorks/M 31/Notes/log.txt']) {
+    expect(fs.existsSync(path.join(app.folder, f)), f).toBe(false);
+  }
 });
 
 test('Clear history forgets the folder, and the next pass copies nothing again', async ({ page, startApp }) => {

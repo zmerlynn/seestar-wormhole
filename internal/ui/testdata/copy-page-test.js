@@ -71,6 +71,8 @@ async function checkCopySetup(st) {
   copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
   copyAssert($('b-frame').src === '/browse/', 'Browse waited for settings');
+  // A first setup starts on FITS files only, with Only copy hidden.
+  copyAssert($('f-what').value === 'fits' && $('f-in').value === '*.fit\n*.fits' && $('f-in-box').hidden && !$('f-what-help').hidden, 'the first setup is not on FITS files only: ' + $('f-what').value);
   // A field error goes under its field and takes focus.
   const calls = [];
   api = async (action, body, base) => {
@@ -93,7 +95,7 @@ async function checkCopySetup(st) {
   $('f-folder').value = st.saved.settings.folder;
   $('f-ex').value = 'Video';
   await copySave();
-  copyAssert(sent && sent.folder === st.saved.settings.folder && sent.interval === '5' && sent.files_at_once === '4' && sent.excludes.join() === 'Video' && sent.includes.length === 0, 'Save sent ' + JSON.stringify(sent));
+  copyAssert(sent && sent.folder === st.saved.settings.folder && sent.interval === '5' && sent.files_at_once === '4' && sent.excludes.join() === 'Video' && sent.includes.join() === '*.fit,*.fits', 'Save sent ' + JSON.stringify(sent));
   // The Save names the telescope, and its folder, the page showed.
   copyAssert(st.before.telescope.token && sent.token === st.before.telescope.token, 'Save sent token ' + sent.token);
   copyAssert($('f-folder-err').hidden && !$('f-folder').getAttribute('aria-invalid'), 'the old error stayed');

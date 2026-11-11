@@ -60,6 +60,16 @@ func DefaultSettings() Settings {
 	return s
 }
 
+// firstSettings is what the app's first setup, with no settings saved,
+// starts from: DefaultSettings with Only copy set to FITS files only, as
+// the page's What to copy names them. A saved file's absent members still
+// take DefaultSettings', so this changes no file.
+func firstSettings() Settings {
+	s := DefaultSettings()
+	s.Includes = []string{"*.fit", "*.fits"}
+	return s
+}
+
 // historyDir is the copy history folder s chooses, or def, the file
 // commands' default, when it chooses none.
 func (s Settings) historyDir(def string) string {
