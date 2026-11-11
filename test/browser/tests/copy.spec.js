@@ -88,7 +88,7 @@ test('A first setup copies FITS files only, and leaves the JPG previews and othe
   await expect(field(page, 'Only copy')).toBeHidden();
   await field(page, 'Folder for your images').fill(app.folder);
   await button(page, 'Save').click();
-  await expect(title(page)).toHaveText(off);
+  await expect(page.locator('#c-next')).toBeVisible();
   expect(readJSON(app.copyFile).includes).toEqual(['*.fit', '*.fits']);
 
   await button(page, 'Start copying').click();
