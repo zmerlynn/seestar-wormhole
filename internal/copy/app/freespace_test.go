@@ -216,6 +216,50 @@ func TestFreePreviewAndDelete(t *testing.T) {
 	}
 }
 
+// With IgnoreState, a preview checks no copy: a file never copied is
+// deleted too, with no copy folder at all and no lock taken, while Keep on
+// the telescope, Only free up, the age and the built-in patterns still
+// hold.
+func TestFreeIgnoreState(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/M 31/a.jpg", "MyWorks/M 42/b.jpg", "MyWorks/Keep/k.jpg", "MyWorks/.hidden", "MyWorks/M 31/part.tmp", "Other/o.jpg")
+	e.put("MyWorks/M 31/recent.jpg", time.Now().Add(-time.Hour))
+	var logged strings.Builder
+	e.f.log = slog.New(slog.NewTextHandler(&logged, nil))
+	e.set.IgnoreState, e.set.OlderThanDays = true, 1
+	e.set.FreeExcludes, e.set.FreeIncludes = []string{"/MyWorks/Keep"}, []string{"/MyWorks"}
+	v := e.preview()
+	want := []string{
+		"MyWorks/M 31 MyWorks/M 31 3 B", "  MyWorks/M 31/a.jpg 3 B",
+		"MyWorks/M 42 MyWorks/M 42 3 B", "  MyWorks/M 42/b.jpg 3 B",
+	}
+	if got := folders(v); v.State != frPreview || !slices.Equal(got, want) {
+		t.Fatalf("preview %+v\ngroups %q\nwant %q", v, got, want)
+	}
+	if !slices.Equal(v.KeptList, []failure{{"MyWorks/M 31/recent.jpg", "newer than 1 day"}}) {
+		t.Errorf("kept list %+v", v.KeptList)
+	}
+	if err := e.f.confirm(v.ID, []string{"MyWorks/M 31", "MyWorks/M 42"}, Target{Endpoint: e.set.Address}); err != nil {
+		t.Fatal(err)
+	}
+	if d := e.wait(frDone, frStopped, frFailed); d.State != frDone {
+		t.Fatalf("done: %+v", d)
+	}
+	for p, want := range map[string]bool{
+		"MyWorks/M 31/a.jpg": false, "MyWorks/M 42/b.jpg": false, "MyWorks/M 42": false,
+		"MyWorks/M 31/recent.jpg": true, "MyWorks/Keep/k.jpg": true, "MyWorks/.hidden": true, "MyWorks/M 31/part.tmp": true, "Other/o.jpg": true,
+	} {
+		if e.has(p) != want {
+			t.Errorf("%s on the share: %v, want %v", p, !want, want)
+		}
+	}
+	if _, err := os.Lstat(e.set.Folder); !os.IsNotExist(err) {
+		t.Errorf("the copy folder: %v", err)
+	}
+	if n := strings.Count(logged.String(), "msg=\"deletion starting\" proof=none "); n != 2 {
+		t.Errorf("%d start lines with proof=none:\n%s", n, logged.String())
+	}
+}
+
 // watcher is a share that calls seen after each folder its walk decides on.
 type watcher struct {
 	*remote.FakeDir

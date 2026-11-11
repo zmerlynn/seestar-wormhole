@@ -63,6 +63,32 @@ func TestFreeAPI(t *testing.T) {
 	if set := last(); set.OlderThanDays != 0 || !set.TrustState {
 		t.Errorf("a settings save changed the options: %+v", set)
 	}
+	// Checking nothing is saved alone, wins over trust, and a settings
+	// save keeps it.
+	for e.s.free.running() {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true,"ignore":true}`); w.Code != 200 {
+		t.Errorf("find ignoring state: %d %s", w.Code, w.Body)
+	}
+	if set := last(); set.TrustState || !set.IgnoreState {
+		t.Errorf("saved proof: %+v", set)
+	}
+	if w := e.post("/copy/api/settings", goodInput); w.Code != 200 {
+		t.Fatalf("save: %d %s", w.Code, w.Body)
+	}
+	if set := last(); set.TrustState || !set.IgnoreState {
+		t.Errorf("a settings save changed the proof: %+v", set)
+	}
+	for e.s.free.running() {
+		time.Sleep(5 * time.Millisecond)
+	}
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true}`); w.Code != 200 {
+		t.Errorf("find trusting state: %d %s", w.Code, w.Body)
+	}
+	if set := last(); !set.TrustState || set.IgnoreState {
+		t.Errorf("saved proof: %+v", set)
+	}
 
 	// Find checks and saves its own patterns, which a settings save keeps.
 	idle := func() {

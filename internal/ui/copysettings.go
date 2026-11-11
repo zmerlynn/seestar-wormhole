@@ -55,6 +55,11 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, []diagnostic.
 		f.FilesAtOnce = clamped
 		fallbacks = append(fallbacks, diagnostic.Fallback{File: copyName, Setting: "files_at_once", Fallback: strconv.Itoa(clamped)})
 	}
+	// Checking nothing wins over checking only the copy history, as the
+	// menu that saves them chooses one.
+	if f.IgnoreState {
+		f.TrustState = false
+	}
 	if f.Excludes == nil {
 		f.Excludes = []string{}
 	}
