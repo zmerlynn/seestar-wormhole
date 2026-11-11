@@ -168,12 +168,13 @@ func TestCopyCheckDuringPass(t *testing.T) {
 		wrapSync(t, func(o *engine.SyncOptions) {
 			dial := o.Dial
 			o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+				sess, err := dial(ctx, endpoint)
 				once.Do(func() {
 					for range 3 {
 						e.c.check()
 					}
 				})
-				return dial(ctx, endpoint)
+				return sess, err
 			}
 		})
 		if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
@@ -989,4 +990,36 @@ func TestCopyAPI(t *testing.T) {
 	if len(got.Activity) == 0 || got.Activity[0].Text != "copying stopped" || got.Seq != len(got.Activity) {
 		t.Errorf("activity %+v", got)
 	}
+}
+
+func TestCopyPendingPressDoesNotSurviveRestart(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCopyEnv(t, fstest.MapFS{})
+		var once sync.Once
+		wrapSync(t, func(o *engine.SyncOptions) {
+			dial := o.Dial
+			o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+				once.Do(func() {
+					e.c.check()
+					e.c.stop()
+				})
+				return dial(ctx, endpoint)
+			}
+		})
+		if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if e.c.on() {
+			t.Fatal("first run did not stop")
+		}
+		before := e.dialCount()
+		if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if got := e.dialCount() - before; got != 1 {
+			t.Errorf("restart ran %d passes, want exactly 1; pending press replayed", got)
+		}
+	})
 }
