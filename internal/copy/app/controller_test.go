@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"testing"
 	"testing/fstest"
+	"testing/synctest"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/copier"
@@ -104,32 +105,116 @@ func (e *copyEnv) waitOff() {
 	}
 }
 
-// next presses Check now until the next pass has started, since a press
-// before the loop's wait is dropped, then waits for that pass to end.
+// next presses Check now, waits for the next pass to start, then waits
+// for that pass to end.
 func (e *copyEnv) next() copyView {
 	e.t.Helper()
-	e.mu.Lock()
-	before := e.dials
-	e.mu.Unlock()
-	passes := func() int {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		return e.dials
-	}
-	// A press is received only by a wait, so press again only if no pass
-	// started for a while.
-	deadline := time.Now().Add(10 * time.Second)
-	for started := false; !started; {
+	before := e.dialCount()
+	e.c.check()
+	for deadline := time.Now().Add(10 * time.Second); e.dialCount() == before; time.Sleep(time.Millisecond) {
 		if time.Now().After(deadline) {
 			e.t.Fatal("Check now started no pass")
 		}
-		e.c.check()
-		for i := 0; i < 50 && !started; i++ {
-			time.Sleep(time.Millisecond)
-			started = passes() > before
-		}
 	}
 	return e.wait(stUpToDate, stFailures, stUnreachable, stListFail)
+}
+
+// wrapSync lets change edit the options of each copy or preview until t
+// ends.
+func wrapSync(t *testing.T, change func(*engine.SyncOptions)) {
+	old := runSync
+	runSync = func(ctx context.Context, o engine.SyncOptions, log *slog.Logger) error {
+		change(&o)
+		return old(ctx, o, log)
+	}
+	t.Cleanup(func() { runSync = old })
+}
+
+// A press of Check now once a pass has ended, before the loop waits for
+// the next, starts the next pass: here it is pressed as the first pass
+// ends, once the page says up to date.
+func TestCopyCheckAfterPassEnds(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+		var once sync.Once
+		wrapSync(t, func(o *engine.SyncOptions) {
+			passDone := o.Hooks.PassDone
+			o.Hooks.PassDone = func(sum engine.Summary) {
+				passDone(sum)
+				once.Do(func() {
+					if v := e.c.view(time.Now()); v.State != stUpToDate {
+						t.Errorf("state %q as the first pass ended, want %q", v.State, stUpToDate)
+					}
+					e.c.check()
+				})
+			}
+		})
+		if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if n := e.dialCount(); n != 2 {
+			t.Errorf("%d passes, want 2", n)
+		}
+	})
+}
+
+// Presses of Check now during a pass are one press: one more pass follows
+// that pass, and the loop then waits the interval for the next.
+func TestCopyCheckDuringPass(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+		var once sync.Once
+		wrapSync(t, func(o *engine.SyncOptions) {
+			dial := o.Dial
+			o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+				sess, err := dial(ctx, endpoint)
+				once.Do(func() {
+					for range 3 {
+						e.c.check()
+					}
+				})
+				return sess, err
+			}
+		})
+		if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if n := e.dialCount(); n != 2 {
+			t.Errorf("%d passes after presses during the first, want 2", n)
+		}
+		time.Sleep(time.Duration(e.set.IntervalMinutes) * time.Minute)
+		synctest.Wait()
+		if n := e.dialCount(); n != 3 {
+			t.Errorf("%d passes after the interval, want 3", n)
+		}
+	})
+}
+
+// A press of Check now while copying stops, or while it is off, does
+// nothing: the next start runs one pass, then waits.
+func TestCopyCheckWhileOff(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCopyEnv(t, fstest.MapFS{"MyWorks/a.jpg": image("abc")})
+		e.c.check()
+		for i := 1; i <= 2; i++ {
+			if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+				t.Fatal(err)
+			}
+			synctest.Wait()
+			if n := e.dialCount(); n != i {
+				t.Errorf("start %d: %d passes in all, want %d", i, n, i)
+			}
+			e.c.stop()
+			e.c.check()
+			synctest.Wait()
+			if e.c.on() {
+				t.Fatal("copying did not stop")
+			}
+			e.c.check()
+		}
+	})
 }
 
 func (e *copyEnv) locked() bool {
@@ -433,15 +518,8 @@ func TestCopyFolderBusyBetweenPasses(t *testing.T) {
 	lock := holdFolder(t, e.set.Folder)
 	e.files["MyWorks/b.jpg"] = image("b")
 	dials := e.dialCount()
-	deadline := time.Now().Add(10 * time.Second)
-	var v copyView
-	for {
-		e.c.check()
-		time.Sleep(5 * time.Millisecond)
-		if v = e.c.view(time.Now()); v.State == stListFail || time.Now().After(deadline) {
-			break
-		}
-	}
+	e.c.check()
+	v := e.wait(stListFail)
 	if v.State != stListFail || !v.On || v.Title != "Another copy or delete is using this folder." ||
 		!strings.HasPrefix(v.Text, "No files were copied. Trying again at ") || v.Chip != "Copying is on" {
 		t.Fatalf("a pass with the folder busy: %+v", v)
@@ -912,4 +990,36 @@ func TestCopyAPI(t *testing.T) {
 	if len(got.Activity) == 0 || got.Activity[0].Text != "copying stopped" || got.Seq != len(got.Activity) {
 		t.Errorf("activity %+v", got)
 	}
+}
+
+func TestCopyPendingPressDoesNotSurviveRestart(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		e := newCopyEnv(t, fstest.MapFS{})
+		var once sync.Once
+		wrapSync(t, func(o *engine.SyncOptions) {
+			dial := o.Dial
+			o.Dial = func(ctx context.Context, endpoint string) (remote.Session, error) {
+				once.Do(func() {
+					e.c.check()
+					e.c.stop()
+				})
+				return dial(ctx, endpoint)
+			}
+		})
+		if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if e.c.on() {
+			t.Fatal("first run did not stop")
+		}
+		before := e.dialCount()
+		if err := e.c.start(e.set, Target{Endpoint: e.set.Address}); err != nil {
+			t.Fatal(err)
+		}
+		synctest.Wait()
+		if got := e.dialCount() - before; got != 1 {
+			t.Errorf("restart ran %d passes, want exactly 1; pending press replayed", got)
+		}
+	})
 }

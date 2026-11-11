@@ -275,21 +275,25 @@ func TestSummaryErr(t *testing.T) {
 	}
 }
 
-// CheckNow ends a wait at once; a press while a pass runs finds no wait
-// and is dropped, and the interval still ends a wait.
+// CheckNow ends a wait at once; presses during a pass are one press,
+// which starts the next pass as that pass ends; and the interval still
+// ends a wait.
 func TestCheckNow(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		check := make(chan struct{})
+		check := make(chan struct{}, 1)
 		o := syncOptions(t, fstest.MapFS{}, nil)
 		o.Once, o.CheckNow = false, check
 		var passes atomic.Int32
-		var taken atomic.Bool
+		var press atomic.Bool
 		o.Hooks.PassDone = func(Summary) {
 			passes.Add(1)
-			select {
-			case check <- struct{}{}:
-				taken.Store(true)
-			default:
+			if press.Swap(false) {
+				for range 3 {
+					select {
+					case check <- struct{}{}:
+					default:
+					}
+				}
 			}
 		}
 		ctx, cancel := context.WithCancel(t.Context())
@@ -299,22 +303,16 @@ func TestCheckNow(t *testing.T) {
 		if got := passes.Load(); got != 1 {
 			t.Errorf("passes before Check now: got %d, want 1", got)
 		}
-		select {
-		case check <- struct{}{}:
-		default:
-			t.Error("the wait did not take Check now")
-		}
+		press.Store(true)
+		check <- struct{}{}
 		synctest.Wait()
-		if got := passes.Load(); got != 2 {
-			t.Errorf("passes after Check now: got %d, want 2", got)
-		}
-		if taken.Load() {
-			t.Error("a press during a pass was taken")
+		if got := passes.Load(); got != 3 {
+			t.Errorf("passes after Check now and presses during the pass it started: got %d, want 3", got)
 		}
 		time.Sleep(o.Interval)
 		synctest.Wait()
-		if got := passes.Load(); got != 3 {
-			t.Errorf("passes after the interval: got %d, want 3", got)
+		if got := passes.Load(); got != 4 {
+			t.Errorf("passes after the interval: got %d, want 4", got)
 		}
 		cancel()
 		if err := <-done; err != nil {

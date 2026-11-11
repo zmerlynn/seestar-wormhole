@@ -86,7 +86,6 @@ type controller struct {
 	// admitting, if set, runs as a pass is about to take admit; tests
 	// hold a change of target there.
 	admitting func()
-	checkNow  chan struct{}
 	// rep, if set, reports each pass and how the loop ended: a [Mount]'s.
 	rep *reporter
 
@@ -98,6 +97,9 @@ type controller struct {
 	bound    Target // the loop's target, which a pass follows
 	pass     bool   // a pass has dialed, or is dialing, and is not done
 	ended    error  // why the loop ended itself, if it did
+	// checkNow is the loop's Check now, which holds one press: each
+	// start makes its own, so a press never outlives its loop.
+	checkNow chan struct{}
 	st       status
 }
 
@@ -140,10 +142,9 @@ func newController(parent context.Context, stateDir string, log *slog.Logger, di
 	act := &activity{}
 	return &controller{
 		parent: parent, stateDir: stateDir, activity: act,
-		log:      slog.New(withoutFolder{newTee(log.Handler(), act, "copy")}),
-		dial:     dial,
-		checkNow: make(chan struct{}),
-		st:       status{state: stOff},
+		log:  slog.New(withoutFolder{newTee(log.Handler(), act, "copy")}),
+		dial: dial,
+		st:   status{state: stOff},
 	}
 }
 
@@ -165,6 +166,7 @@ func (c *controller) start(set Settings, t Target) error {
 	done := make(chan struct{})
 	c.cancel, c.done, c.stopping = cancel, done, false
 	c.bound, c.pass, c.ended = t, false, nil
+	c.checkNow = make(chan struct{}, 1)
 	interval := time.Duration(set.IntervalMinutes) * time.Minute
 	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, once: set.Once, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
@@ -310,8 +312,15 @@ func (c *controller) stop() {
 	c.cancel()
 }
 
-// check starts the next pass now, if the loop is waiting for it.
+// check starts the next pass now if the loop is waiting for it, or as
+// soon as the running pass ends. Presses before then are one press; one
+// while copying is off, stopping or quitting does nothing.
 func (c *controller) check() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.done == nil || c.stopping || c.quitting {
+		return
+	}
 	select {
 	case c.checkNow <- struct{}{}:
 	default:

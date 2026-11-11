@@ -45,9 +45,10 @@ type SyncOptions struct {
 	// Hooks report the passes' progress; a dry run calls only Listed,
 	// ToCopy and Decided.
 	Hooks Hooks
-	// CheckNow ends a wait between passes early when a send on it is
-	// received. Only a wait receives: send without blocking, so that a
-	// press during a pass, or a second one, is dropped. Nil never wakes.
+	// CheckNow starts the next pass early: a wait between passes ends
+	// when it receives, and a send during a pass is received once the pass
+	// ends. Give it a capacity of one and send without blocking, so that
+	// presses before the next pass are one press. Nil never wakes.
 	CheckNow <-chan struct{}
 	// Recreate, before each pass after the first, creates Dest again if
 	// it is missing and reopens it there, while the state stays open (and
