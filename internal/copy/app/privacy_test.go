@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
+	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
 
 // errValuer is a log value that resolves to an error.
@@ -48,6 +49,9 @@ func TestFailuresNameNoFolder(t *testing.T) {
 		{refused, refused.Error()},
 		{fmt.Errorf("dial 192.0.2.77:445: %w", lookup), lookup.Error()},
 		{fmt.Errorf("telescope at %s: %w", private, errors.New("synthetic")), "synthetic"},
+		// Each port's failure with its own reason.
+		{&landiscovery.PortsError{Endpoints: [2]string{"192.0.2.77:445", "192.0.2.77:4445"}, Errs: [2]error{refused, &os.PathError{Op: "mount", Path: file, Err: os.ErrPermission}}},
+			"192.0.2.77:445: " + refused.Error() + "; 192.0.2.77:4445: permission denied"},
 	} {
 		if got := reason(c.err); got != c.want {
 			t.Errorf("reason(%v) = %q, want %q", c.err, got, c.want)

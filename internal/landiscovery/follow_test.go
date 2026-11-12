@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -309,4 +312,81 @@ func TestFollowFailsClosedWhenOthersFill(t *testing.T) {
 	if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 {
 		t.Fatalf("got %v %v, dials %d", got, err, dials)
 	}
+}
+
+// bothRefused reports whether err is a refusal on 445 then 4445 at host,
+// naming both.
+func bothRefused(err error, host string) bool {
+	pe, ok := errors.AsType[*PortsError](err)
+	return ok && errors.Is(err, syscall.ECONNREFUSED) && pe.Endpoint() == host+":445" &&
+		strings.Contains(err.Error(), host+":445: ") && strings.Contains(err.Error(), "; "+host+":4445: ")
+}
+
+// A failure on both ports names each, and is classified as the one that
+// got further: the second when the first didn't connect and the second
+// did, or when the second was canceled; otherwise the first.
+func TestPortsError(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	timeout := &net.OpError{Op: "dial", Net: "tcp", Err: os.ErrDeadlineExceeded}
+	denied := fmt.Errorf("mount: %w", os.ErrPermission)
+	for _, c := range []struct {
+		name   string
+		errs   [2]error
+		second bool
+	}{
+		{"both refused", [2]error{refused, refused}, false},
+		{"refused, then the share denied", [2]error{refused, denied}, true},
+		{"the share denied, then refused", [2]error{denied, refused}, false},
+		{"no answer, then refused", [2]error{timeout, refused}, false},
+		{"refused, then canceled", [2]error{refused, fmt.Errorf("dial: %w", context.Canceled)}, true},
+		{"refused, then out of time", [2]error{refused, context.DeadlineExceeded}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := &PortsError{[2]string{"192.0.2.20:445", "192.0.2.20:4445"}, c.errs}
+			want, endpoint := c.errs[0], "192.0.2.20:445"
+			if c.second {
+				want, endpoint = c.errs[1], "192.0.2.20:4445"
+			}
+			if !errors.Is(e, want) || e.Endpoint() != endpoint || errors.Unwrap(e) != want {
+				t.Errorf("unwraps to %v at %s", errors.Unwrap(e), e.Endpoint())
+			}
+			if got := e.Error(); got != "192.0.2.20:445: "+c.errs[0].Error()+"; 192.0.2.20:4445: "+c.errs[1].Error() {
+				t.Errorf("%q", got)
+			}
+		})
+	}
+}
+
+// Follow's failure on both ports keeps the second's failure when it got
+// further, and its cancellation.
+func TestFollowKeepsTheFurtherFailure(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	t.Run("the proxy's share", func(t *testing.T) {
+		s, _ := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.20"))
+		denied := errors.New("proxy share permission denied")
+		_, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.20:445" {
+				return nil, refused
+			}
+			return nil, denied
+		}, release)
+		if !errors.Is(err, denied) || errors.Is(err, syscall.ECONNREFUSED) || !strings.Contains(err.Error(), "192.0.2.20:445: ") {
+			t.Fatal(err)
+		}
+	})
+	t.Run("canceled on 4445", func(t *testing.T) {
+		s, _ := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.20"))
+		ctx, cancel := context.WithCancel(t.Context())
+		_, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.20:445" {
+				return nil, refused
+			}
+			cancel()
+			<-ctx.Done()
+			return nil, fmt.Errorf("dial %s: %w", ep, ctx.Err())
+		}, release)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+	})
 }

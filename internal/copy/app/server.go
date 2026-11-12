@@ -902,7 +902,9 @@ func (s *server) testLAN(ctx context.Context, endpoint string) ([]remote.Entry, 
 // and reports a serial heard at endpoint's host, a failed Test of
 // endpoint is followed by a Test of the proxy's SMB port at that host,
 // all within one testTimeout; heard runs alongside the first Test. It
-// returns the endpoint that passed, or endpoint with its failure.
+// returns the endpoint that passed, or endpoint with its failure; when
+// both fail, a [landiscovery.PortsError] naming both, with the endpoint
+// whose failure got further.
 func (s *server) testTyped(ctx context.Context, endpoint string, heard func(context.Context) bool) (string, []remote.Entry, error) {
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
@@ -930,10 +932,12 @@ func (s *server) testTyped(ctx context.Context, endpoint string, heard func(cont
 	host, _, _ := net.SplitHostPort(endpoint)
 	proxied := net.JoinHostPort(host, landiscovery.ProxySMBPort)
 	s.log.Info("test trying the proxy's SMB port", "endpoint", proxied, "err", err)
-	if proxiedEntries, proxiedErr := test(proxied); proxiedErr == nil {
+	proxiedEntries, proxiedErr := test(proxied)
+	if proxiedErr == nil {
 		return proxied, proxiedEntries, nil
 	}
-	return endpoint, entries, err
+	both := &landiscovery.PortsError{Endpoints: [2]string{endpoint, proxied}, Errs: [2]error{err, proxiedErr}}
+	return both.Endpoint(), nil, both
 }
 
 // reachLAN is testLAN for a route's Save: it checks only that the
@@ -1522,10 +1526,14 @@ const maxDays = 36500
 // which names the telescope's address or host name; else the class of a
 // system failure, such as "permission denied"; else the first safe text
 // in err's chain, such as a sentinel a dependency wrapped with a path;
-// and otherwise "operation failed".
+// and otherwise "operation failed". A failure on two ports is each
+// endpoint with its own reason.
 func reason(err error) string {
 	if err == nil {
 		return "none"
+	}
+	if both, ok := errors.AsType[*landiscovery.PortsError](err); ok {
+		return both.Endpoints[0] + ": " + reason(both.Errs[0]) + "; " + both.Endpoints[1] + ": " + reason(both.Errs[1])
 	}
 	if errors.Is(err, remote.ErrShort) {
 		return remote.ErrShort.Error()

@@ -618,7 +618,7 @@ func TestFollow(t *testing.T) {
 		s, _ := network(100*time.Millisecond, reply{"SERIAL-A", "192.0.2.30"})
 		dial, tried := dialer()
 		_, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
-		if err != refused || r.Moved || r.NotSeen || r.Seen == nil || r.Endpoint != "192.0.2.20:445" ||
+		if !bothRefused(err, "192.0.2.30") || r.Moved || r.NotSeen || r.Seen == nil || r.Endpoint != "192.0.2.20:445" ||
 			!slices.Equal(tried(), []string{"192.0.2.30:445", "192.0.2.30:4445"}) {
 			t.Fatalf("%+v %v tried %v", r, err, tried())
 		}
@@ -636,7 +636,7 @@ func TestFollow(t *testing.T) {
 		s, _ := network(100*time.Millisecond, reply{"SERIAL-A", "192.0.2.20"})
 		dial, tried := dialer()
 		_, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
-		if err != refused || r.Moved || r.Endpoint != "192.0.2.20:445" || !slices.Equal(tried(), []string{"192.0.2.20:445", "192.0.2.20:4445"}) {
+		if !bothRefused(err, "192.0.2.20") || r.Moved || r.Endpoint != "192.0.2.20:445" || !slices.Equal(tried(), []string{"192.0.2.20:445", "192.0.2.20:4445"}) {
 			t.Fatalf("%+v %v tried %v", r, err, tried())
 		}
 	})

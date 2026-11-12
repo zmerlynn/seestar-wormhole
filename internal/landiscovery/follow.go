@@ -28,6 +28,40 @@ func smbPorts(port string) []string {
 	return []string{port}
 }
 
+// PortsError is a failure to connect to one address on two ports:
+// Errs[i] is the failure at Endpoints[i], tried in that order. It names
+// both, and unwraps to the one that got further (see [PortsError.Endpoint]).
+type PortsError struct {
+	Endpoints [2]string
+	Errs      [2]error
+}
+
+func (e *PortsError) Error() string {
+	return e.Endpoints[0] + ": " + e.Errs[0].Error() + "; " + e.Endpoints[1] + ": " + e.Errs[1].Error()
+}
+
+func (e *PortsError) Unwrap() error { return e.Errs[e.further()] }
+
+// Endpoint is the endpoint whose failure got further: the second when it
+// was canceled or ran out of time, so the connect's end is reported, or
+// when the first didn't connect and the second did before it failed;
+// otherwise the first.
+func (e *PortsError) Endpoint() string { return e.Endpoints[e.further()] }
+
+func (e *PortsError) further() int {
+	if errors.Is(e.Errs[1], context.Canceled) || errors.Is(e.Errs[1], context.DeadlineExceeded) ||
+		unconnected(e.Errs[0]) && !unconnected(e.Errs[1]) {
+		return 1
+	}
+	return 0
+}
+
+// unconnected reports whether err is a failure to open a connection.
+func unconnected(err error) bool {
+	op, ok := errors.AsType[*net.OpError](err)
+	return ok && op.Op == "dial"
+}
+
 // ErrOtherTelescope is a connect to a telescope saved with its serial
 // where every address it could use advertised another serial in the scan,
 // so none was used: the saved address, when the serial wasn't seen
@@ -121,19 +155,22 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		}
 	}
 	// dialAt dials address on each of endpoint's ports in turn (see
-	// [smbPorts]), and returns the port that connected. A failure is the
-	// first dial's. An address another serial answered from during the
-	// first dial isn't dialed again.
+	// [smbPorts]), and returns the port that connected. When both fail,
+	// the failure is a [PortsError]. An address another serial answered
+	// from during the first dial isn't dialed again.
 	ports := smbPorts(port)
 	dialAt := func(address netip.Addr) (T, string, error) {
-		v, err := dial(ctx, net.JoinHostPort(address.String(), ports[0]))
+		first := net.JoinHostPort(address.String(), ports[0])
+		v, err := dial(ctx, first)
 		if err == nil || len(ports) == 1 || ctx.Err() != nil || w.disqualified(address) {
 			return v, ports[0], err
 		}
-		if v, otherErr := dial(ctx, net.JoinHostPort(address.String(), ports[1])); otherErr == nil {
+		second := net.JoinHostPort(address.String(), ports[1])
+		v, otherErr := dial(ctx, second)
+		if otherErr == nil {
 			return v, ports[1], nil
 		}
-		return zero, ports[0], err
+		return zero, ports[0], &PortsError{[2]string{first, second}, [2]error{err, otherErr}}
 	}
 	var last error
 	scanning := true
