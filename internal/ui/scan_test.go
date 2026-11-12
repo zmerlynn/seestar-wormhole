@@ -405,28 +405,31 @@ func TestLANSerialIsOptional(t *testing.T) {
 // The largest scan the app keeps, every telescope with a long name and
 // model, leaves gui.log within its limit and taking lines.
 func TestScanLeavesTheLogAppendable(t *testing.T) {
-	n := &lanNet{answers: make(map[netip.Addr][3]string)}
-	const most = 64 // the telescopes a scan keeps
-	for i := range most {
-		n.answers[netip.AddrFrom4([4]byte{192, 0, 2, byte(20 + i)})] = [3]string{fmt.Sprintf("S%02d", i), strings.Repeat("星", 400), strings.Repeat("型", 400)}
-	}
-	useLAN(t, n)
-	s := testServer(t)
-	s.controller.log = &eventLog{storage: s.storage}
-	if v, err := s.scan(t.Context(), ""); err != nil || len(v.Telescopes) != most {
-		t.Fatalf("scan %d telescopes, %v", len(v.Telescopes), err)
-	}
-	s.controller.log.add("App opened.")
-	info, err := os.Stat(filepath.Join(s.storage.root, "gui.log"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, _, failed := s.controller.log.snapshot(); info.Size() > logLimit || failed {
-		t.Fatalf("gui.log is %d bytes of %d; an append failed: %v", info.Size(), logLimit, failed)
-	}
-	if text := trailText(t, s); !strings.Contains(text, "App opened.") {
-		t.Fatalf("trail %s", text)
-	}
+	// The bubble's clock keeps a busy machine from ending the scan early.
+	synctest.Test(t, func(t *testing.T) {
+		n := &lanNet{answers: make(map[netip.Addr][3]string)}
+		const most = 64 // the telescopes a scan keeps
+		for i := range most {
+			n.answers[netip.AddrFrom4([4]byte{192, 0, 2, byte(20 + i)})] = [3]string{fmt.Sprintf("S%02d", i), strings.Repeat("星", 400), strings.Repeat("型", 400)}
+		}
+		useLAN(t, n)
+		s := testServer(t)
+		s.controller.log = &eventLog{storage: s.storage}
+		if v, err := s.scan(t.Context(), ""); err != nil || len(v.Telescopes) != most {
+			t.Fatalf("scan %d telescopes, %v", len(v.Telescopes), err)
+		}
+		s.controller.log.add("App opened.")
+		info, err := os.Stat(filepath.Join(s.storage.root, "gui.log"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, failed := s.controller.log.snapshot(); info.Size() > logLimit || failed {
+			t.Fatalf("gui.log is %d bytes of %d; an append failed: %v", info.Size(), logLimit, failed)
+		}
+		if text := trailText(t, s); !strings.Contains(text, "App opened.") {
+			t.Fatalf("trail %s", text)
+		}
+	})
 }
 
 // The page's probe of a typed address and Test's serial hook share one
