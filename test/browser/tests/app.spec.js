@@ -1255,14 +1255,26 @@ test('port rows show their own errors as you edit, and a refusal on its row', as
   await clean(row.local);
   expect(starts).toBe(0);
 
-  // A refusal naming a port shows on that row as well as under the table.
-  const message = 'Another program is using local port 5001.';
-  await page.route('**/api/start', (route) => route.fulfill({ status: 400, json: { code: 'port_conflict', field: 'ports', service: 5000, local: 5001, message } }));
+  // A refusal naming a port shows on that row as well as under the table,
+  // and focuses the row's field.
+  let refusal = { code: 'port_conflict', field: 'ports', service: 5000, local: 5001, message: 'Another program is using local port 5001.' };
+  await page.route('**/api/start', (route) => route.fulfill({ status: 400, json: refusal }));
   await page.locator('#start').click();
-  await expect(page.locator('#ports-error')).toHaveText(message);
-  await shows(row.local, message);
+  await expect(page.locator('#ports-error')).toHaveText(refusal.message);
+  await shows(row.local, refusal.message);
+  await expect(row.local).toBeFocused();
   await row.local.fill('5002');
   await clean(row.local);
+  refusal = { code: 'port_conflict', field: 'ports', service: 445, local: 4445, message: 'Another program is using local port 4445.' };
+  await page.locator('#start').click();
+  await shows(page.locator('#port-445'), refusal.message);
+  await expect(page.locator('#port-445')).toBeFocused();
+  // A refusal of another field that names a port shows on its row as well.
+  refusal = { code: 'bind', field: 'bind', service: 5000, local: 5002, message: 'Could not listen on this address.' };
+  await page.locator('#start').click();
+  await expect(page.locator('#bind-error')).toHaveText(refusal.message);
+  await shows(row.local, refusal.message);
+  await clean(page.locator('#port-445'));
 });
 
 test('a local port that follows its Seestar port is the duplicate it makes', async ({ page, startApp }) => {

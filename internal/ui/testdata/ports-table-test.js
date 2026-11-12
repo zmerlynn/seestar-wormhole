@@ -131,6 +131,19 @@ async function checkPortRefusal() {
   portsAssert(portMessage(local) === 'Another program is using local port 7000.' && !portMessage(servicePort(4700)), 'added row');
   portsEdit(local, '7001');
   portsAssert(!portMessage(local), 'edit clears');
+  // A refusal of another field that names a port shows on its row as well.
+  const bind = 'Could not listen on this address.';
+  fail({code: 'bind', field: 'bind', service: 7000, local: 7001, message: bind});
+  portsAssert(portMessage(local) === bind && !$('bind-error').hidden, 'named bind refusal: ' + portMessage(local));
+  portsEdit(local, '7002');
+  // A refusal at Connect focuses the field of the row it names.
+  $('password').value = 'synthetic-password';
+  for (const [service, input] of [[4700, servicePort(4700)], [7000, local]]) {
+    const message = 'Another program is using local port ' + input.value + '.';
+    api = async () => {throw {code: 'port_conflict', field: 'ports', service, local: Number(input.value), message};};
+    await act('password/save');
+    portsAssert(portMessage(input) === message && document.activeElement === input, service + ' refusal not focused on its row');
+  }
 }
 
 // A local port below 1024 shows the permissions guide by its row while

@@ -251,14 +251,16 @@ function addedTable(s) {
 // rowFailure is a refusal the server named a port for, shown on that
 // port's row until the ports are edited or checked again.
 let rowFailure = null;
-// portFailure shows a refusal of a port on its row as well: the Services
-// row with its Seestar port, or the added row with it.
+// portFailure shows a refusal of a port on its row as well, whatever field
+// it names: the Services row with its Seestar port, or the added row with
+// it. It returns that row's local port.
 function portFailure(e, message) {
-  if (e.field !== 'ports' || !e.service) return;
+  if (!e.service) return null;
   const row = [...serviceRows, ...added].find(r => r.device() === e.service);
-  if (!row) return;
+  if (!row) return null;
   rowFailure = {input: row.local, message};
   checkPorts();
+  return row.local;
 }
 // attribute sets or removes (null) an attribute only when it changes.
 function attribute(element, name, value) {
@@ -397,13 +399,14 @@ function fieldError(field, message, code, focus = false) {
     target.focus();
   }
 }
+// fail returns the local port of the row a refusal names, if any.
 function fail(e, focus = false) {
   const code = e.code || 'controls';
   actionError = code;
   // A lost server is said once, above every tab.
   alertText(e.field || code === 'controls' ? '' : (e.message || fieldCopy[code] || lostCopy));
   if (e.field) fieldError(e.field, e.message || fieldCopy[code] || 'Check this setting.', code, focus);
-  portFailure(e, e.message || fieldCopy[code] || 'Check this setting.');
+  const row = portFailure(e, e.message || fieldCopy[code] || 'Check this setting.');
   if (code === 'password_remove') {
     retryRemoval = true;
   }
@@ -411,6 +414,7 @@ function fail(e, focus = false) {
     connected = false;
     controlsLost = copyOld = true;
   }
+  return row;
 }
 function validate() {
   clearErrors();
@@ -1834,7 +1838,7 @@ async function act(action) {
   if (action === 'forget') say('Removing saved password…');
   if (action === 'quit') say('Quitting — releasing the Seestar session…');
   controls();
-  let errorField = '', focusTarget = '';
+  let errorField = '', focusTarget = '', errorRow = null;
   try {
     const typed = usingSaved() ? '' : $('password').value;
     await api(action, {
@@ -1887,7 +1891,7 @@ async function act(action) {
       } catch (_) {
       }
     }
-    fail(e);
+    errorRow = fail(e);
     errorField = e.field || '';
   } finally {
     if (pending === action) pending = '';
@@ -1895,7 +1899,9 @@ async function act(action) {
     if (errorField && !$('options').disabled) {
       let field = errorField === 'bind' && $('listen').value !== 'other' ? 'listen' : errorField;
       if (field === 'password' && $('password').disabled) field = 'forget';
-      if (!$(field).disabled) $(field).focus();
+      // A refusal of the ports that names a row focuses that row's field.
+      const target = field === 'ports' && errorRow ? errorRow : $(field);
+      if (!target.disabled) target.focus();
     } else if (focusTarget && !$(focusTarget).disabled && !$(focusTarget).hidden) $(focusTarget).focus();
     else if (action === 'start' && active && !$('start').disabled) $('start').focus();
   }
