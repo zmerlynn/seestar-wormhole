@@ -185,8 +185,8 @@ func scanHint(goos string) string {
 }
 
 // scan scans this network, or asks address alone when one is given, and
-// lists what answered. Activity records the reply count and names each
-// telescope that answered, with its addresses.
+// lists what answered. Activity records the reply count, then a line
+// naming each telescope that answered, with its addresses.
 func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 	var probe netip.Addr
 	if address != "" {
@@ -253,7 +253,12 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 		s.controller.recordScan(scanFailedCode, what+": the scan failed.")
 		view.Message = scanFailed
 	default:
-		s.controller.recordScan(code, fmt.Sprintf("%s: %s%s.", what, replies(result.Replies), found(result.Telescopes)))
+		// A line for the count and one for each telescope, so none
+		// outgrows the log.
+		s.controller.recordScan(code, what+": "+replies(result.Replies)+".")
+		for _, t := range result.Telescopes {
+			s.controller.recordScan(code, "Found "+t.Label()+" at "+joinAddrs(t.Addresses)+".")
+		}
 		if !probe.IsValid() && result.Blocked {
 			view.Message = blockedMessage(hostOS)
 		} else if !probe.IsValid() && len(result.Telescopes) == 0 {
@@ -261,24 +266,6 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 		}
 	}
 	return view, nil
-}
-
-// found names each telescope in ts and its addresses, after a colon, or
-// is "" for none.
-func found(ts []landiscovery.Telescope) string {
-	var b strings.Builder
-	for i, t := range ts {
-		if i == 0 {
-			b.WriteString(": ")
-		} else {
-			b.WriteString("; ")
-		}
-		b.WriteString(t.Label())
-		if len(t.Addresses) > 0 {
-			b.WriteString(" at " + joinAddrs(t.Addresses))
-		}
-	}
-	return b.String()
 }
 
 func replies(n int) string {

@@ -3,6 +3,7 @@ package ui
 import (
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -220,8 +221,13 @@ func TestScanListsTelescopes(t *testing.T) {
 	if a := byName["S50_A"]; a.Model != "Seestar S50" || len(a.Addresses) != 1 || a.Addresses[0] != "192.0.2.20" || a.Busy || a.Saved {
 		t.Fatalf("row %+v", a)
 	}
-	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_listed"`) || !strings.Contains(text, "Scanned this network: 6 replies: S50_A (Seestar S50, serial SERIAL-A) at 192.0.2.20; S30_B (Seestar S30, serial SERIAL-B) at 192.0.2.40.") {
-		t.Fatalf("trail %s", text)
+	// A line for the count, then one for each telescope, in the order
+	// they answered.
+	text := trailText(t, s)
+	for _, line := range []string{"Scanned this network: 6 replies.", "Found S50_A (Seestar S50, serial SERIAL-A) at 192.0.2.20.", "Found S30_B (Seestar S30, serial SERIAL-B) at 192.0.2.40."} {
+		if !strings.Contains(text, `"message":"`+line+`","code":"scan_listed"`) {
+			t.Fatalf("trail lacks %q: %s", line, text)
+		}
 	}
 
 	n.clients = landiscovery.BusyClients
@@ -386,5 +392,32 @@ func TestLANSerialIsOptional(t *testing.T) {
 	}
 	if got, _, err := loadSettings(st); err != nil || got.LANSerial != "SERIAL-A" {
 		t.Fatalf("%+v %v", got, err)
+	}
+}
+
+// The largest scan the app keeps, every telescope with a long name and
+// model, leaves gui.log within its limit and taking lines.
+func TestScanLeavesTheLogAppendable(t *testing.T) {
+	n := &lanNet{answers: make(map[netip.Addr][3]string)}
+	const most = 64 // the telescopes a scan keeps
+	for i := range most {
+		n.answers[netip.AddrFrom4([4]byte{192, 0, 2, byte(20 + i)})] = [3]string{fmt.Sprintf("S%02d", i), strings.Repeat("星", 400), strings.Repeat("型", 400)}
+	}
+	useLAN(t, n)
+	s := testServer(t)
+	s.controller.log = &eventLog{storage: s.storage}
+	if v, err := s.scan(t.Context(), ""); err != nil || len(v.Telescopes) != most {
+		t.Fatalf("scan %d telescopes, %v", len(v.Telescopes), err)
+	}
+	s.controller.log.add("App opened.")
+	info, err := os.Stat(filepath.Join(s.storage.root, "gui.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, failed := s.controller.log.snapshot(); info.Size() > logLimit || failed {
+		t.Fatalf("gui.log is %d bytes of %d; an append failed: %v", info.Size(), logLimit, failed)
+	}
+	if text := trailText(t, s); !strings.Contains(text, "App opened.") {
+		t.Fatalf("trail %s", text)
 	}
 }

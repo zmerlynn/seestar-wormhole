@@ -598,8 +598,10 @@ In trail entries:
   values, a message that names the telescopes the scan saw, each with its
   name, model, serial and addresses, the saved address, and the reply
   count, and no `phase` or `reason`:
-  - `scan_listed`: **On this network** scanned, with the reply count.
-  - `scan_probed`: **Test** sent the scan request to the typed address.
+  - `scan_listed`: **On this network** scanned: a line with the reply
+    count, then a line for each telescope that answered.
+  - `scan_probed`: **Test** sent the scan request to the typed address,
+    with lines as `scan_listed`.
   - `scan_failed`: a scan couldn't run, such as with no network to scan.
   - `scan_moved`: a connect's scan found the saved serial at another
     address, which connected and was saved.
