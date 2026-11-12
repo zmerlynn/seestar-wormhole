@@ -205,3 +205,56 @@ func TestOldHistoryStaysWithHistoryDir(t *testing.T) {
 		t.Errorf("the explicit folder was not used: %v", err)
 	}
 }
+
+// An open browse follows the history to its new folder when another
+// process moves it, and keeps reading the new history when an older
+// installation then makes the old folder again: a record added to the new
+// history shows on the next listing.
+func TestOldHistoryBrowseFollowsMove(t *testing.T) {
+	config := configFolder(t)
+	dest := t.TempDir()
+	oldRoot := filepath.Join(config, "seestar-copy")
+	writeFindState(t, dest, oldRoot)
+	statusDevice(t)
+	b := startBrowse(t, "--dest", dest)
+	if code, body := b.get(t, "api/list?path=MyWorks"); code != 200 || !strings.Contains(body, `"status":"copied"`) {
+		t.Fatalf("list with the old history: %d %s", code, body)
+	}
+	if _, err := os.Stat(oldRoot); err != nil {
+		t.Fatalf("browse moved the old history: %v", err)
+	}
+	// Another process's move, outside this one's read-only guard.
+	def := filepath.Join(config, "seestar-wormhole", "copy-history")
+	if err := os.MkdirAll(filepath.Dir(def), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(oldRoot, def); err != nil {
+		t.Fatal(err)
+	}
+	writeFindState(t, dest, oldRoot)
+	if code, body := b.get(t, "api/list?path=MyWorks"); code != 200 {
+		t.Fatalf("list with both folders: %d %s", code, body)
+	}
+	path, err := state.Path(def, dest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = f.WriteString(`{"path":"MyWorks/d.fit","size":3,"mtime":"2026-11-01T05:04:05.1234567Z","sha256":"` + strings.Repeat("0", 64) + `","at":"2026-11-01T07:00:00Z","how":"copied"}` + "\n")
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `"path":"MyWorks/d.fit","type":"file","size":3,"mtime":"2026-11-01T05:04:05.1234567Z","status":"copied"`
+	if code, body := b.get(t, "api/list?path=MyWorks"); code != 200 || !strings.Contains(body, want) {
+		t.Errorf("list after the new history's record: %d %s", code, body)
+	}
+	if code := b.end(); code != 0 {
+		t.Errorf("browse exit %d", code)
+	}
+}

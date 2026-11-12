@@ -192,19 +192,10 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 		if _, err := state.Load(stateDir, o.dest, log); err != nil {
 			return err
 		}
-		file, err := state.Path(stateDir, o.dest)
-		if err != nil {
-			return err
-		}
-		// Each load reads the folder a read finds then: a sync may move the
-		// old default folder while the page is open.
-		records = browse.CacheRecords(file, func() (map[string]state.Record, error) {
-			stateDir, err := state.ReadHistoryDir(o.historyDir)
-			if err != nil {
-				return nil, err
-			}
-			return state.Load(stateDir, o.dest, log)
-		})
+		// Each lookup reads the folder a read finds then: a sync may move
+		// the old default folder while the page is open.
+		records = browse.CacheRecords(func() (string, error) { return state.ReadHistoryDir(o.historyDir) }, o.dest,
+			func(dir string) (map[string]state.Record, error) { return state.Load(dir, o.dest, log) })
 	}
 	ln, err := net.Listen("tcp", o.addr.String())
 	if err != nil {

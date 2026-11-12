@@ -357,14 +357,10 @@ func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 		if sel, err = selector(set); err != nil {
 			log.Warn("browse shows nothing as left out", "err", err)
 		}
-		// Each load reads the folder a read finds then: Copy may move the
+		// Each lookup reads the folder a read finds then: Copy may move the
 		// old default folder while the page is open.
-		records = func() (map[string]state.Record, error) {
-			return state.Load(set.historyToRead(s.stateDir), folder, log)
-		}
-		if file, err := state.Path(set.historyToRead(s.stateDir), folder); err == nil {
-			records = browse.CacheRecords(file, records)
-		}
+		records = browse.CacheRecords(func() (string, error) { return set.historyToRead(s.stateDir), nil }, folder,
+			func(dir string) (map[string]state.Record, error) { return state.Load(dir, folder, log) })
 	}
 	h := browse.NewHandler(browse.Config{
 		Addr: s.addr, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true, Reporter: rep,

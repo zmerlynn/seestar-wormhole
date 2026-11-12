@@ -293,3 +293,84 @@ func TestOldHistoryMoveInActivity(t *testing.T) {
 		t.Errorf("the log names a folder:\n%s", logs)
 	}
 }
+
+// Browse follows the history to its new folder when Copy moves it, and
+// keeps reading the new history when an older installation then makes the
+// old folder again: a file a later pass copies shows as copied.
+func TestOldHistoryBrowseFollowsMove(t *testing.T) {
+	e, folder, base, _ := oldHistoryEnv(t)
+	oldDir := filepath.Join(base, "seestar-copy")
+	share := historyShare(t, "MyWorks/a.jpg")
+	e.d.dir = share
+	if v := e.copyOnce(folder, oldDir); v.State != stDone {
+		t.Fatalf("copy into the old history: %+v", v)
+	}
+	if w := e.post("/copy/api/settings", historySave(folder, "")); w.Code != 200 {
+		t.Fatalf("save: %d %s", w.Code, w.Body)
+	}
+	status := func(name string) string {
+		t.Helper()
+		w := e.serve("GET", "/browse/api/list?path=MyWorks", "")
+		if w.Code != 200 {
+			t.Fatalf("list = %d %s", w.Code, w.Body)
+		}
+		for _, en := range decode[struct {
+			Entries []struct {
+				Path   string `json:"path"`
+				Status string `json:"status"`
+			} `json:"entries"`
+		}](t, w).Entries {
+			if en.Path == "MyWorks/"+name {
+				return en.Status
+			}
+		}
+		t.Fatalf("list has no %s: %s", name, w.Body)
+		return ""
+	}
+	if got := status("a.jpg"); got != "copied" {
+		t.Errorf("a.jpg with the old history: %s", got)
+	}
+	// A pass moves the history and copies b.jpg.
+	addShare(t, share, "MyWorks/b.jpg")
+	copyAgain := func() {
+		t.Helper()
+		if w := e.post("/copy/api/copy", `{"action":"start"}`); w.Code != 200 {
+			t.Fatalf("start copying: %d %s", w.Code, w.Body)
+		}
+		if v := e.waitCopy(stDone, stCantWrite, stInUse); v.State != stDone {
+			t.Fatalf("copy: %+v", v)
+		}
+	}
+	copyAgain()
+	if got := status("b.jpg"); got != "copied" {
+		t.Errorf("b.jpg after the move: %s", got)
+	}
+	// An older installation makes the old folder again.
+	st, err := state.Open(oldDir, folder, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	st.Close()
+	if got := status("b.jpg"); got != "copied" {
+		t.Errorf("b.jpg with both folders: %s", got)
+	}
+	addShare(t, share, "MyWorks/c.jpg")
+	copyAgain()
+	if got := status("c.jpg"); got != "copied" {
+		t.Errorf("c.jpg copied into the new history: %s", got)
+	}
+}
+
+// addShare adds paths to share, each old enough to free.
+func addShare(t *testing.T, share string, paths ...string) {
+	t.Helper()
+	for _, p := range paths {
+		name := filepath.Join(share, filepath.FromSlash(p))
+		if err := os.WriteFile(name, []byte("abc"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(name, ancient, ancient); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
