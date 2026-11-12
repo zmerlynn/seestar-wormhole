@@ -360,16 +360,36 @@ func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 		if sel, err = selector(set); err != nil {
 			log.Warn("browse shows nothing as left out", "err", err)
 		}
-		history := set.historyDir(s.stateDir)
-		records = func() (map[string]state.Record, error) { return state.Load(history, folder, log) }
-		if file, err := state.Path(history, folder); err == nil {
-			records = browse.CacheRecords(file, records)
-		}
+		// Each lookup reads the folder a read finds then: Copy may move the
+		// old default folder while the page is open.
+		records = browse.CacheRecords(func() (string, error) { return set.historyToRead(s.stateDir), nil }, folder,
+			func(dir string) (map[string]state.Record, error) { return state.Load(dir, folder, log) })
 	}
 	h := browse.NewHandler(browse.Config{
 		Addr: s.addr, Sessions: sessions, Records: records, Selector: sel, Log: log, InApp: true, Reporter: rep,
 	})
 	return h, sessions
+}
+
+// errHistoryMove is a run that writes refused because the old default copy
+// history folder couldn't be moved. It names both folders in words: no
+// page text or log line names a folder.
+var errHistoryMove = errors.New("couldn't move the copy history from seestar-copy in your config folder to copy-history in seestar-wormhole's settings folder; stop any other copy, such as an older seestar-copy-cli, and try again, or move the folder by hand")
+
+// moveHistory moves the old default copy history folder to the default
+// before Copy, Free up space or Clear history uses it, when set chooses no
+// folder; a folder set chooses, even the default, is never moved to. The
+// move is logged to copying's log, so Activity shows it without the
+// folders. A failure is logged and returned as errHistoryMove.
+func (s *server) moveHistory(set Settings) error {
+	if set.HistoryDir != "" {
+		return nil
+	}
+	if err := state.MoveOldHistory(s.stateDir, s.copy.log); err != nil {
+		s.log.Warn("move the copy history", "err", err)
+		return errHistoryMove
+	}
+	return nil
 }
 
 // errStarted refuses the start as the app opens once copying has started.
@@ -411,6 +431,9 @@ func (s *server) startCopyingSeq(opening bool) (seq uint64, err error) {
 		return 0, noTarget{terr}
 	}
 	set := settingsAt(s.file.settings, t)
+	if err := s.moveHistory(set); err != nil {
+		return 0, err
+	}
 	if err := s.copy.start(set, t); err != nil {
 		return 0, err
 	}
@@ -641,7 +664,7 @@ func (s *server) status(w http.ResponseWriter) {
 	// The telescope's folder's state file, as sync names it.
 	var history string
 	if setUp {
-		history, _ = state.Path(set.historyDir(s.stateDir), folder)
+		history, _ = state.Path(set.historyToRead(s.stateDir), folder)
 	}
 	lines, seq := s.copy.activity.lines()
 	localhttp.Respond(w, http.StatusOK, struct {
@@ -1184,6 +1207,9 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			saved = true
 		}
 		if err = terr; err == nil {
+			err = s.moveHistory(set)
+		}
+		if err == nil {
 			err = s.free.find(settingsAt(set, t), t)
 		}
 		if err != nil {
@@ -1258,7 +1284,9 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	case !s.free.forget():
 		err = errors.New("wait for Free up space to finish")
 	default:
-		err = state.Remove(history, folder)
+		if err = s.moveHistory(s.file.settings); err == nil {
+			err = state.Remove(history, folder)
+		}
 		s.preview.discard()
 	}
 	// The outcome is numbered under s.mu, which orders clears, and

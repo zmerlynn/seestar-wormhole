@@ -100,7 +100,7 @@ usage error.`,
 	f.Var((*ageValue)(&o.olderThan), "older-than", "list only files whose device time is at least this old (default: no limit)")
 	f.StringVar(&o.format, "format", "text", "output format: text or jsonl")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state gives each file a status; never created")
-	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: the per-user config folder's seestar-copy)")
+	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: copy-history in the per-user config folder's seestar-wormhole)")
 	return c
 }
 
@@ -141,7 +141,7 @@ func (o *findOptions) validate() error {
 func runFind(ctx context.Context, o findOptions, out io.Writer, log *slog.Logger) error {
 	var records map[string]state.Record
 	if o.destSet {
-		stateDir, err := state.HistoryDir(o.historyDir)
+		stateDir, err := state.ReadHistoryDir(o.historyDir)
 		if err != nil {
 			return err
 		}

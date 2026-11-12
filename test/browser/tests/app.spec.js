@@ -74,7 +74,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   for (const box of await page.locator('#copy-form input:not(#f-hist), #copy-form textarea').all()) {
     expect(await box.getAttribute('placeholder')).toBeNull();
   }
-  await expect(field(page, 'Copy history folder')).toHaveAttribute('placeholder', /[/\\]seestar-copy$/);
+  await expect(field(page, 'Copy history folder')).toHaveAttribute('placeholder', /[/\\]seestar-wormhole[/\\]copy-history$/);
   await expect(page.locator('#f-ex-help')).toContainText('For example: Video, /Preview.');
   await expect(page.locator('#f-cancel')).toBeHidden();
   // Browse shows the telescope's files before the folder is saved,
@@ -717,13 +717,18 @@ test('Copy settings field errors show under each field and nothing is saved', as
   await expect(page.locator('#f-saved')).toHaveText('');
   expect(readJSON(app.copyFile)).toEqual(files['copy.json']);
 
+  // The first field in error takes the focus: Only copy is above Leave out.
   await page.locator('#f-int').fill('10');
-  await field(page, 'Leave out').fill('Video\n\n[Pp]review\nMyWorks/**/*.mp4');
   await copySave(page).click();
   await expect(field(page, 'Only copy')).toBeFocused();
   await expect(page.locator('#f-int-err')).toBeHidden();
-  await expect(page.locator('#f-ex-err')).toBeHidden();
+  await expect(page.locator('#f-ex-err')).toBeVisible();
   await expect(page.locator('#f-int')).not.toHaveAttribute('aria-invalid', 'true');
+
+  await field(page, 'Leave out').fill('Video\n\n[Pp]review\nMyWorks/**/*.mp4');
+  await copySave(page).click();
+  await expect(field(page, 'Only copy')).toBeFocused();
+  await expect(page.locator('#f-ex-err')).toBeHidden();
 });
 
 // What to copy is never saved: it is the option Only copy's patterns make,
@@ -773,6 +778,10 @@ test('What to copy fills or empties Only copy, and a reload shows the option the
   await open();
   await what.selectOption('Custom');
   await expect(only).toBeVisible();
+  // Only copy sits under What to copy, above Leave out, as the tab
+  // order goes too.
+  expect(await page.evaluate(() => ['f-what', 'f-in', 'f-ex'].map(id => document.getElementById(id))
+    .every((el, i, all) => i === 0 || all[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(only).toHaveValue('');
   await only.fill('*.FIT\n*.fits');
   await save();
@@ -1115,7 +1124,7 @@ test('Copy history shows its file, with a Copy button, and an edited folder says
   await openCopy(page, app.url);
   await page.getByText('Copy history', { exact: true }).click();
   const history = page.locator('#h-path');
-  await expect(history).toHaveText(/^\/.*[/\\]seestar-copy[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
+  await expect(history).toHaveText(/^\/.*[/\\]seestar-wormhole[/\\]copy-history[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
   const first = await history.textContent();
   await page.locator('#h-clip').click();
   await expect(page.locator('#h-clip')).toHaveText('Copied');
@@ -1150,7 +1159,7 @@ test('Copy history folder is empty for the default, refuses a relative path, and
   await openCopy(page, app.url);
   await page.getByText('Copy history', { exact: true }).click();
   const history = page.locator('#h-path');
-  await expect(history).toHaveText(/^\/.*[/\\]seestar-copy[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
+  await expect(history).toHaveText(/^\/.*[/\\]seestar-wormhole[/\\]copy-history[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
   const first = await history.textContent();
   await page.getByRole('button', { name: 'Change…' }).click();
   const hist = field(page, 'Copy history folder');
@@ -1204,8 +1213,9 @@ test('Add a port adds, edits, removes and saves a row', async ({ page, startApp 
   const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid', ports: [{ local: 7001, device: 7000 }] } });
   await openApp(page, app.url);
   await remoteAdvanced(page);
+  // The Services rows are in Seestar port order.
+  await expect(page.locator('#ports tbody td:nth-child(2)')).toHaveText(['80', '445', '4350', '4361', '4554', '4555', '4700', '4800', '4801', '4804', '32323']);
   // The saved added port loads as a row of its own.
-  await expect(page.locator('#ports tbody tr')).toHaveCount(11);
   await expect(addedRow(page, 1).remote).toHaveValue('7000');
   await expect(addedRow(page, 1).local).toHaveValue('7001');
 
@@ -1241,40 +1251,186 @@ test('Add a port adds, edits, removes and saves a row', async ({ page, startApp 
   await expect(page.locator('#settings')).toBeVisible();
 });
 
-test('an added port names its row in errors and shows the permissions guide below 1024', async ({ page, startApp }) => {
+test('added rows put the local port first and rows using another local port are shaded', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid', ports: [{ local: 7001, device: 7000 }] } });
+  await openApp(page, app.url);
+  await remoteAdvanced(page);
+  await expect(page.locator('#added-ports th')).toHaveText(['Local port', 'Seestar port', '']);
+  await expect(page.locator('#added-ports tbody tr').first().locator('td').nth(0).locator('input')).toHaveValue('7001');
+  await expect(page.locator('#added-ports tbody tr').first().locator('td').nth(1).locator('input')).toHaveValue('7000');
+  await expect(page.locator('#ports-shade-help')).toHaveText('Shaded rows use a different port on this computer than on the Seestar.');
+
+  const serviceRow = (port) => page.locator('#ports tbody tr').filter({ has: page.locator(`#port-${port}`) });
+  // SMB is 4445 on this computer; Seestar control and the firmware updater
+  // use their own ports.
+  await expect(serviceRow(445)).toHaveClass('remapped');
+  await expect(serviceRow(4700)).not.toHaveClass('remapped');
+  await expect(page.locator('#added-ports tbody tr').first()).toHaveClass('remapped');
+  const shade = await serviceRow(445).locator('td').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+  const plain = await serviceRow(4700).locator('td').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+  expect(shade).not.toBe(plain);
+  // The shading follows edits, and an off row isn't shaded.
+  await page.locator('#port-4700').fill('4701');
+  await expect(serviceRow(4700)).toHaveClass('remapped');
+  await page.locator('#port-445').fill('');
+  await expect(serviceRow(445)).not.toHaveClass('remapped');
+  await addedRow(page, 1).local.fill('7000');
+  await expect(page.locator('#added-ports tbody tr').first()).not.toHaveClass('remapped');
+});
+
+test('port rows show their own errors as you edit, and a refusal on its row', async ({ page, startApp }) => {
   const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid' } });
   await openApp(page, app.url);
   await remoteAdvanced(page);
   await field(page, 'Password').fill('synthetic-password');
   await page.getByRole('button', { name: 'Add a port', exact: true }).click();
   const row = addedRow(page, 1);
-  const error = page.locator('#ports-error');
   let starts = 0;
   page.on('request', (r) => { if (r.url().endsWith('/api/start')) starts++; });
+  // shows checks the field's own error, which its description includes.
+  const shows = async (input, message) => {
+    await expect(input).toHaveAttribute('aria-invalid', 'true');
+    await expect(input).toHaveAccessibleDescription(new RegExp(message.replace(/[.()]/g, '\\$&')));
+    const id = (await input.getAttribute('aria-describedby')).split(' ').pop();
+    await expect(page.locator('#' + id)).toHaveText(message);
+    await expect(page.locator('#' + id)).toBeVisible();
+    await expect(page.locator('#' + id)).toHaveAttribute('role', 'alert');
+  };
+  const clean = async (input) => {
+    await expect(input).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(input).not.toHaveAttribute('aria-describedby', /port-error/);
+  };
 
-  // A standard service belongs in the table above.
-  await row.remote.fill('4700');
-  await page.locator('#start').click();
-  await expect(error).toHaveText('Added port 1: Seestar port 4700 is in the table above. Set its local port there.');
-  await expect(row.remote).toHaveAttribute('aria-invalid', 'true');
-  await expect(row.remote).toBeFocused();
-
-  // A local port another row uses.
+  // A Services row's Seestar port is refused, naming the row.
+  await row.remote.fill('445');
+  await shows(row.remote, 'Seestar port 445 is the File sharing for other apps (SMB) row above. Set its local port there.');
+  await row.remote.fill('32323');
+  await shows(row.remote, 'Seestar port 32323 is the Alpaca (NINA and other astronomy apps) row above. Set its local port there.');
   await row.remote.fill('5000');
-  await expect(error).toBeHidden();
+  await clean(row.remote);
+  // A local port is required.
+  await row.local.fill('');
+  await shows(row.local, 'Enter a local port from 1 to 65535.');
+  // A local port another row uses: the error is on the row that duplicates.
   await row.local.fill('4445');
+  await shows(row.local, 'Local port 4445 is already used by File sharing for other apps (SMB).');
+  await clean(page.locator('#port-445'));
+  await expect(page.locator('#ports-error')).toBeHidden();
+  // Connect focuses the field in error and sends nothing.
   await page.locator('#start').click();
-  await expect(error).toHaveText('Added port 1: local port 4445 is already in use.');
   await expect(row.local).toBeFocused();
+  await row.local.fill('5001');
+  await clean(row.local);
+  expect(starts).toBe(0);
 
-  // Below 1024, the permissions guide shows with the field.
-  await expect(page.locator('#port-permissions')).toBeHidden();
-  await row.local.fill('800');
-  await expect(page.locator('#port-permissions')).toBeVisible();
-  await row.local.fill('5000');
-  await expect(page.locator('#port-permissions')).toBeHidden();
+  // A refusal naming a port shows on that row as well as under the table,
+  // and focuses the row's field.
+  let refusal = { code: 'port_conflict', field: 'ports', service: 5000, local: 5001, message: 'Another program is using local port 5001.' };
+  await page.route('**/api/start', (route) => route.fulfill({ status: 400, json: refusal }));
+  await page.locator('#start').click();
+  await expect(page.locator('#ports-error')).toHaveText(refusal.message);
+  await shows(row.local, refusal.message);
+  await expect(row.local).toBeFocused();
+  await row.local.fill('5002');
+  await clean(row.local);
+  refusal = { code: 'port_conflict', field: 'ports', service: 445, local: 4445, message: 'Another program is using local port 4445.' };
+  await page.locator('#start').click();
+  await shows(page.locator('#port-445'), refusal.message);
+  await expect(page.locator('#port-445')).toBeFocused();
+  // A refusal of another field that names a port shows on its row as well.
+  refusal = { code: 'bind', field: 'bind', service: 5000, local: 5002, message: 'Could not listen on this address.' };
+  await page.locator('#start').click();
+  await expect(page.locator('#bind-error')).toHaveText(refusal.message);
+  await shows(row.local, refusal.message);
+  await clean(page.locator('#port-445'));
+});
+
+test('a local port that follows its Seestar port is the duplicate it makes', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid' } });
+  await openApp(page, app.url);
+  await remoteAdvanced(page);
+  await field(page, 'Password').fill('synthetic-password');
+  let starts = 0;
+  page.on('request', (r) => { if (r.url().endsWith('/api/start')) starts++; });
+  const add = page.getByRole('button', { name: 'Add a port', exact: true });
+  // SMB is edited first; the added row's Local port then follows its
+  // Seestar port onto the same number.
+  await page.locator('#port-445').fill('5000');
+  await add.click();
+  await addedRow(page, 1).remote.fill('5000');
+  await expect(addedRow(page, 1).local).toHaveValue('5000');
+  await expect(addedRow(page, 1).local).toHaveAttribute('aria-invalid', 'true');
+  await expect(addedRow(page, 1).local).toHaveAccessibleDescription(/Local port 5000 is already used by File sharing for other apps \(SMB\)\./);
+  await expect(page.locator('#port-445')).not.toHaveAttribute('aria-invalid', 'true');
+  await page.locator('#start').click();
+  await expect(addedRow(page, 1).local).toBeFocused();
+  // The same between added rows.
+  await addedRow(page, 1).local.fill('6000');
+  await add.click();
+  await addedRow(page, 2).remote.fill('6000');
+  await expect(addedRow(page, 2).local).toHaveAccessibleDescription(/Local port 6000 is already used by added port 1\./);
+  await expect(addedRow(page, 1).local).not.toHaveAttribute('aria-invalid', 'true');
+  await page.locator('#start').click();
+  await expect(addedRow(page, 2).local).toBeFocused();
   expect(starts).toBe(0);
 });
+
+for (const off of [false, true]) {
+  test(`the page forwards at most 128 ports${off ? ', counting a Services row that is off' : ''}`, async ({ page, startApp }) => {
+    // 117 added ports and the 11 Services rows make 128.
+    const ports = Array.from({ length: 117 }, (_, i) => ({ local: 30000 + i, device: 30000 + i }));
+    const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid', ports } });
+    await openApp(page, app.url);
+    await remoteAdvanced(page);
+    await field(page, 'Password').fill('synthetic-password');
+    await expect(addedRow(page, 117).remote).toHaveValue('30116');
+    if (off) await page.locator('#port-80').fill('');
+    let starts = 0;
+    page.on('request', (r) => { if (r.url().endsWith('/api/start')) starts++; });
+    await page.getByRole('button', { name: 'Add a port', exact: true }).click();
+    const row = addedRow(page, 118);
+    await row.remote.fill('30117');
+    await page.locator('#start').click();
+    await expect(row.remote).toHaveAttribute('aria-invalid', 'true');
+    await expect(row.remote).toHaveAccessibleDescription(/At most 128 ports can be forwarded\./);
+    await expect(row.remote).toBeFocused();
+    expect(starts).toBe(0);
+    await row.remove.click();
+    for (const n of [1, 117]) await expect(addedRow(page, n).remote).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#added-ports [aria-invalid="true"], #ports [aria-invalid="true"]')).toHaveCount(0);
+  });
+}
+
+for (const os of ['linux', 'darwin', 'windows']) {
+  test(`a local port below 1024 shows the permissions guide by its row ${os === 'linux' ? 'on Linux' : 'not on ' + os}`, async ({ page, startApp }) => {
+    if (os !== 'linux') {
+      await page.route('**/api/status', async (route) => {
+        const response = await route.fetch();
+        route.fulfill({ response, json: { ...(await response.json()), os } });
+      });
+    }
+    const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid' } });
+    await openApp(page, app.url);
+    await remoteAdvanced(page);
+    const guide = (input) => page.locator('#ports, #added-ports').locator('tr').filter({ has: input }).getByRole('link', { name: 'Port permissions guide' });
+    const local80 = page.locator('#port-80');
+    await local80.fill('80');
+    if (os === 'linux') {
+      await expect(guide(local80)).toBeVisible();
+      await expect(local80).toHaveAccessibleDescription(/Linux needs permission for a port below 1024\. Port permissions guide/);
+    } else await expect(guide(local80)).toBeHidden();
+    await local80.fill('8080');
+    await expect(guide(local80)).toBeHidden();
+    await page.getByRole('button', { name: 'Add a port', exact: true }).click();
+    const row = addedRow(page, 1);
+    await row.remote.fill('800');
+    if (os === 'linux') await expect(guide(row.local)).toBeVisible();
+    else await expect(guide(row.local)).toBeHidden();
+    await row.local.fill('8000');
+    await expect(guide(row.local)).toBeHidden();
+    await expect(page.locator('#port-permissions')).toBeHidden();
+  });
+}
 
 for (const colorScheme of ['light', 'dark']) {
   test(`app screenshots in ${colorScheme}`, async ({ page, startApp }, testInfo) => {

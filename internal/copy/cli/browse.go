@@ -108,7 +108,7 @@ a usage error.`,
 	f.BoolVar(&o.open, "open", false, "also open the page in the default browser")
 	o.selection.register(f)
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state gives each file a status; never created")
-	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: the per-user config folder's seestar-copy)")
+	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: copy-history in the per-user config folder's seestar-wormhole)")
 	return c
 }
 
@@ -184,7 +184,7 @@ func warnOpen(log *slog.Logger, err error) {
 func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Logger) error {
 	var records func() (map[string]state.Record, error)
 	if o.destSet {
-		stateDir, err := state.HistoryDir(o.historyDir)
+		stateDir, err := state.ReadHistoryDir(o.historyDir)
 		if err != nil {
 			return err
 		}
@@ -192,11 +192,10 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 		if _, err := state.Load(stateDir, o.dest, log); err != nil {
 			return err
 		}
-		file, err := state.Path(stateDir, o.dest)
-		if err != nil {
-			return err
-		}
-		records = browse.CacheRecords(file, func() (map[string]state.Record, error) { return state.Load(stateDir, o.dest, log) })
+		// Each lookup reads the folder a read finds then: a sync may move
+		// the old default folder while the page is open.
+		records = browse.CacheRecords(func() (string, error) { return state.ReadHistoryDir(o.historyDir) }, o.dest,
+			func(dir string) (map[string]state.Record, error) { return state.Load(dir, o.dest, log) })
 	}
 	ln, err := net.Listen("tcp", o.addr.String())
 	if err != nil {

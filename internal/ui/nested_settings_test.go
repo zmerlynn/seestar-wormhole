@@ -30,7 +30,7 @@ func TestReviewNestedFuturePortMember(t *testing.T) {
 	if err = json.Unmarshal(b, &got); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(b), `"future_flag":true`) {
+	if !strings.Contains(compact(b), `"future_flag":true`) {
 		t.Fatal("unknown nested port member lost during rewrite")
 	}
 }
@@ -54,7 +54,7 @@ func TestPagePortEditsKeepUnknownMembersByDevice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.Ports[0].Local != 8080 || !strings.Contains(string(got.Ports[0].Unknown), `"future_http":[1,2]`) || got.Ports[1].Local != 2445 || !strings.Contains(string(got.Ports[1].Unknown), `"future_flag":{"keep":true}`) {
+	if got.Ports[0].Local != 8080 || !strings.Contains(compact(got.Ports[0].Unknown), `"future_http":[1,2]`) || got.Ports[1].Local != 2445 || !strings.Contains(compact(got.Ports[1].Unknown), `"future_flag":{"keep":true}`) {
 		t.Fatal("known edits lost or future fields moved between services")
 	}
 	effective, _, err := got.validate()

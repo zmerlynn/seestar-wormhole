@@ -129,9 +129,9 @@ func writeAttr(b *strings.Builder, prefix string, a slog.Attr) {
 }
 
 // private are the keys of the attributes no copy log or Activity line
-// keeps: a telescope's folder and a file's destination. The page shows
-// them.
-var private = map[string]bool{"dest": true, "to": true}
+// keeps: a telescope's folder, a file's destination and the folders a
+// copy history move names. The page shows them.
+var private = map[string]bool{"dest": true, "from": true, "to": true}
 
 // withoutFolder is a slog.Handler that passes each record to next without
 // its private attributes, at any group.

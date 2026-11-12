@@ -199,15 +199,40 @@ case is not folded. Each destination has its own state file, which is never
 kept inside the destination; a `--history-dir` inside the destination is
 refused.
 
-The default `--history-dir` is the `seestar-copy` folder in the per-user config
-folder, the one earlier releases' `seestar-copy-cli` used, so an upgrade keeps
-its history:
+The default `--history-dir` is the `copy-history` folder in the app's settings
+folder, `seestar-wormhole` in the per-user config folder:
 
-| Platform | Default state folder |
+| Platform | Default history folder |
 | --- | --- |
-| Linux | `$XDG_CONFIG_HOME/seestar-copy`, or `~/.config/seestar-copy` |
-| macOS | `~/Library/Application Support/seestar-copy` |
-| Windows | `%AppData%\seestar-copy` |
+| Linux | `$XDG_CONFIG_HOME/seestar-wormhole/copy-history`, or `~/.config/seestar-wormhole/copy-history` |
+| macOS | `~/Library/Application Support/seestar-wormhole/copy-history` |
+| Windows | `%AppData%\seestar-wormhole\copy-history` |
+
+Earlier releases, and the old `seestar-copy-cli`, kept the history in the
+`seestar-copy` folder in the same per-user config folder. The first run that
+writes with the default folder moves `seestar-copy` to `copy-history`, once,
+if `copy-history` doesn't exist yet, so an upgrade keeps its history: a `sync`
+or `delete` that isn't a dry run, or the app's Copy, Free up space or **Clear
+history**. It first creates `seestar-wormhole`, private to you as the app
+creates it, and logs `moved the copy history`; the app shows that line,
+without the folders, in its **Activity** tab. A run that only reads, `find`,
+`browse` or a dry run, and the app's Preview, Browse and History path, reads
+`seestar-copy` in place until then, and creates or moves nothing. A
+`--history-dir` or **Copy history folder** is used as it is, even one that
+names `copy-history`: nothing is moved to it or from it. If both folders
+exist, `copy-history` is used and `seestar-copy` is left alone; delete it
+once you no longer need it.
+
+If the move fails, for example while an older release holds the history open
+on Windows, the run stops with an error that names both folders. Stop any other
+copy and try again, or move the folder by hand. The old folder is never used
+instead.
+
+After the move, an older app or `seestar-copy-cli` finds no history in
+`seestar-copy`, so it copies again the files you moved out of your folder.
+Without a **Copy history folder** or `--history-dir`, its Free up space or
+`delete` then can't prove copies from that history. To go back, move
+`copy-history` back to `seestar-copy` first.
 
 The app's Copy uses the same default, whatever the app's `--state-dir` says,
 so the app and `sync` share one history for a folder. The app's **Copy

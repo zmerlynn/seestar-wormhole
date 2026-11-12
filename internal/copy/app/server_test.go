@@ -89,9 +89,15 @@ type appEnv struct {
 // whose target is testEndpoint and whose Save records what it is given.
 func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 	t.Helper()
+	return newAppEnvIn(t, saved, t.TempDir())
+}
+
+// newAppEnvIn is newAppEnv with stateDir as the default history folder.
+func newAppEnvIn(t *testing.T, saved *Settings, stateDir string) *appEnv {
+	t.Helper()
 	e := &appEnv{t: t, d: &dials{}, endpoint: testEndpoint}
 	m := NewMount(context.Background(), MountOptions{
-		Addr: testAddr, StateDir: t.TempDir(), Version: "v9.9.9",
+		Addr: testAddr, StateDir: stateDir, Version: "v9.9.9",
 		Log: slog.New(slog.NewTextHandler(&e.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Target: func() (Target, error) {
 			e.mu.Lock()

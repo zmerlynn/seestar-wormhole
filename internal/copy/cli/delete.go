@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
-	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
@@ -101,7 +100,7 @@ Exit 0 when the run finishes, however many files it kept, or is stopped;
 	o.scan.register(f)
 	f.StringVar(&o.endpoint, "endpoint", "", "SMB host:port of the telescope or a proxy (required)")
 	f.StringVar(&o.dest, "dest", "", "local mirror folder whose state and copies prove each file; never created (required unless --ignore-state)")
-	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: the per-user config folder's seestar-copy)")
+	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history of --dest (default: copy-history in the per-user config folder's seestar-wormhole)")
 	f.BoolVar(&o.trustState, "trust-state", false, "prove a file by its state record alone, without reading the local copy")
 	f.BoolVar(&o.ignoreState, "ignore-state", false, "read no state, and delete whatever is selected, copied or not; needs --include")
 	f.Var((*ageValue)(&o.olderThan), "older-than", "delete only files whose device time is at least this old; 0 for no limit")
@@ -170,7 +169,7 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 	var stateDir string
 	if !o.ignoreState {
 		var err error
-		if stateDir, err = state.HistoryDir(o.historyDir); err != nil {
+		if stateDir, err = historyDir(o.historyDir, o.dryRun, log); err != nil {
 			return err
 		}
 	}

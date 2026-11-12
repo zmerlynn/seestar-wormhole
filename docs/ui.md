@@ -293,15 +293,15 @@ can't change while copying runs:
 - **What to copy**: **FITS files only**, which copies `.fit` and `.fits` files
   in any folder and leaves the telescope's JPG previews and other files on it
   (exclusions still apply); **Everything**; or **Custom**, which shows **Only
-  copy**. It is not saved but read from **Only copy**'s saved patterns:
+  copy** under it. It is not saved but read from **Only copy**'s saved patterns:
   exactly `*.fit` and `*.fits`, ignoring order and duplicates, is FITS files
   only; an empty list is Everything; anything else is Custom. Save discards
   blank lines; spaces in a nonblank pattern are significant. Picking FITS
   files only or Everything fills or empties Only copy; Custom keeps its
   patterns to edit. A first setup, with no copy settings saved, starts on FITS
   files only; saved settings keep what they copy.
-- **Leave out** and **Only copy**: one pattern per line, as `sync`'s
-  `--exclude` and `--include`; see [selection](reference/selection-and-history.md#selection).
+- **Only copy** and **Leave out**: one pattern per line, as `sync`'s
+  `--include` and `--exclude`; see [selection](reference/selection-and-history.md#selection).
   Leave out and the built-in patterns apply whatever **What to copy** says.
 - **Skip the telescope's logs, scratch and system files**, on by default: the
   [built-in patterns](reference/selection-and-history.md#built-in-patterns).
@@ -507,10 +507,11 @@ network. It needs **All networks** or a local network IPv4 address. See
 
 ### Services and ports
 
-The **Services** table has eleven fixed rows. Leave a **Local port** empty to turn
-that service off. Each enabled local port must be unique and between 1 and
-65535. The phone setup maps local port 80 to Seestar port 80; the computer-only
-setup uses local port 8080 instead. **File sharing for other apps (SMB)** uses
+The **Services** table has eleven fixed rows, in Seestar port order. Leave a
+**Local port** empty to turn that service off. Each enabled local port must be
+unique and between 1 and 65535. A row is shaded when its local port differs
+from its Seestar port. The phone setup maps local port 80 to Seestar port 80;
+the computer-only setup uses local port 8080 instead. **File sharing for other apps (SMB)** uses
 local port 4445 for Seestar port 445. It is for Finder, rclone, other SMB apps
 and `seestar-wormhole-cli`'s file commands, including their `--profile default`
 endpoint through the account: Copy, Browse and Free up space don't need it.
@@ -522,9 +523,15 @@ telescope's site and time.
 **Add a port** forwards another Seestar port. Enter the **Seestar port**; the
 **Local port** starts as the same number, and you can change it. **Remove**
 takes the row out. An added port can't be one of the **Services** rows, and
-its local port must be unique. A local port below 1024 may need permission;
-the page links the port permissions guide. **Ports forwarded to your Seestar**
-lists added ports as **Added**. For other options, use the
+it needs a local port. A local port used by another row is an error on the row
+you changed last. Each problem shows under its field as you type, and a port
+that Connect couldn't open shows on its row too.
+
+Only Linux needs permission for a local port below 1024; there the page shows
+the [port permissions guide](phone-app.md#port-80-and-permissions) under that
+field. macOS and Windows need none, though macOS may refuse port 80 on one
+specific address; the guide explains. **Ports forwarded to your Seestar** lists
+added ports as **Added**. For other options, use the
 [command line](reference/connection-cli.md#port-mappings).
 
 ## Activity

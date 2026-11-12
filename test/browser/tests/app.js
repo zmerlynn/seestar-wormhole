@@ -4,7 +4,7 @@
 // folder SEESTAR_WORMHOLE_BROWSER_STATE names, with no account and no
 // proxy, and prints the page's private URL. Each app gets its own home and
 // config folder in the test's output folder, so copy's state folder,
-// home/config/seestar-copy, is fresh unless two apps share a home.
+// home/config/seestar-wormhole/copy-history, is fresh unless two apps share a home.
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
@@ -16,7 +16,7 @@ const share = '127.0.0.1:14450';
 const refused = '127.0.0.1:1';
 
 // env is the environment of a program run with home as its home folder,
-// so that copy's state folder is home/config/seestar-copy.
+// so that copy's state folder is home/config/seestar-wormhole/copy-history.
 const env = (home) => ({ ...process.env, HOME: home, XDG_CONFIG_HOME: path.join(home, 'config') });
 
 // lan is config.json for a saved route on this network: Test passed and

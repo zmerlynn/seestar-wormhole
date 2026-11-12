@@ -6,6 +6,7 @@ class TestElement {
   set outerHTML(_) {throw new Error('HTML insertion is forbidden');}
   insertAdjacentHTML() {throw new Error('HTML insertion is forbidden');}
   append(...children) {for (let child of children) {if (typeof child === 'string') {const node = new TestElement(); node.textContent = child; child = node;} if (child.parentElement) child.parentElement.children = child.parentElement.children.filter(e => e !== child); child.parentElement = this; this.children.push(child);}}
+  remove() {if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(e => e !== this); this.parentElement = null;}
   replaceChildren(...children) {this.children = children; this.value = '';}
   addEventListener(name, callback) {this.listeners ||= {}; (this.listeners[name] ||= []).push(callback);}
   dispatchEvent(event) {for (const callback of this.listeners?.[event.type] || []) callback(event); if (event.type === 'change' && this.onchange) this.onchange(event);}
