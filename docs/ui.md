@@ -65,10 +65,11 @@ only the telescope's files, for Copy, Browse and Free up space.
   An address picked from a scan is saved with the telescope's serial
   number. Copy, Browse and Free up space then scan for that serial and use
   the address that answers with it and accepts file sharing, the saved
-  address first; a new address is saved, and Activity says so, naming only
-  the model. Another telescope answering at the saved address is never
-  used. When the scan doesn't see the telescope, the saved address is
-  tried, and Activity says it wasn't seen. Free up space deletes only at
+  address first; a new address is saved, and Activity says so, naming the
+  telescope, its model and serial, and both addresses. Another telescope
+  answering at the saved address is never used. When the scan doesn't see
+  the telescope, the saved address is tried, and Activity says it wasn't
+  seen. Free up space deletes only at
   the address its preview connected to; if that changes or stops
   answering, preview again.
   **Scan for the saved telescope** chooses when they scan, and is saved as
@@ -446,7 +447,7 @@ the picker focused without another account request. Outside this step, including
 a changed account, it reverts to **Find on my account**. Its associated help reads **Connect uses your only telescope, or asks which one if there are several.**
 The selection-step help replaces that line; only one picker help line appears at a time.
 
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This bound also applies to saved settings and received picker choices. An invalid saved serial loads as none saved, with a warning in `gui.log` that doesn't name it. See the [connection command reference](reference/connection-cli.md#device-selection) for selection rules.
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This bound also applies to saved settings and received picker choices. An invalid saved serial loads as none saved, with a warning in `gui.log` that names it. See the [connection command reference](reference/connection-cli.md#device-selection) for selection rules.
 
 **Enter manually…** reveals **Serial number** and **Model (optional)** below
 the picker for manual entry. Connect follows the revealed fields in visual and
@@ -524,12 +525,20 @@ settings files, `config.json` and `copy.json`.
 
 **Copy diagnostic summary** copies one JSON object with the program name,
 version, error code, connection and copy settings, the events, the current
-failures, and the log's path. The connection settings, and the failure and
-file-tool events, leave out addresses, paths, file names, credentials and
-tokens. The summary still includes your telescopes' full serial numbers (in
-connection and account-catalog events), your copy folder and history folder,
-your patterns, and the private log's path. Remove what you don't want to
-share before you post it.
+failures, and the log's path. It names your telescope: the connection
+settings include the route, the account telescope's serial and model, and
+the address and serial saved on this network, and the events name each
+telescope a scan found, with its name, model, serial and address. It also
+includes your telescopes' full serial numbers in connection and
+account-catalog events, your copy folder and history folder, your patterns,
+and the private log's path. It leaves out your password, the account email
+and tokens. Remove what you don't want to share before you post it.
+
+Logs, Activity and errors name the telescope too: its name, model, serial
+number, LAN address and host name, as a scan, Test or connect saw them. A
+failed connection or name lookup names the address or host and the DNS
+server it asked. A log or summary you share shows the telescope's serial,
+name and LAN address.
 Lifecycle events include the selected telescope model and full serial with the
 same representation and model display cap as status. Each Connect that reads the account
 catalog also records its telescope list, even for a single telescope:

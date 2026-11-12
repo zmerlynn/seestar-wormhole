@@ -48,7 +48,7 @@ for how the app and `seestar-wormhole-cli` share them.
 | `remember_password` | `false` |
 | `route` | Empty, meaning **Remotely through Telescope Network**. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means Telescope Network. |
 | `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
-| `lan_serial` | Empty. The serial number a scan of this network saw at `lan_address` when it was saved, or that a scan or Test heard there when you chose **Use the address's folder** for it. Copy, Browse and Free up space, and `--profile default` on the command line, scan for it when `lan_scan` says and use the address that answers with it, `lan_address` first; the app saves a new address here, unless a Save came since. An address where another serial answers is never used; when no reply carries it, `lan_address` is tried. Absent or empty, the saved address is used as it is, without a scan. It is never shown in the app or logged. |
+| `lan_serial` | Empty. The serial number a scan of this network saw at `lan_address` when it was saved, or that a scan or Test heard there when you chose **Use the address's folder** for it. Copy, Browse and Free up space, and `--profile default` on the command line, scan for it when `lan_scan` says and use the address that answers with it, `lan_address` first; the app saves a new address here, unless a Save came since. An address where another serial answers is never used; when no reply carries it, `lan_address` is tried. Absent or empty, the saved address is used as it is, without a scan. Logs, Activity and the diagnostic summary name it. |
 | `lan_scan` | Empty, meaning `"start"`. When a connect scans this network for `lan_serial`, chosen under **On this network** > **Scan for the saved telescope**: `"start"` once per run (starting copying, opening Browse, each Copy preview and each Free up space check, and each command-line command), and again only when a connect fails; `"connect"` before every connect; `"off"` never, and the app then sends no scan request it wasn't asked for. Any other value is treated as `"start"` and kept until a new choice is saved. `--scan` overrides it for one command. It can't be changed while connected through Telescope Network. |
 | `route_established` | `false`. `true` once a connection through Telescope Network is ready or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
 
@@ -69,7 +69,8 @@ fallback, and the next save writes the fallback:
 | `serial` or `email` that isn't valid | Empty, as if none were saved |
 
 Each fallback logs one warning, `settings_fallback`, naming the file, the
-setting and the fallback, never the saved value: the app's in `gui.log`,
+setting and the fallback, and, for `serial`, the saved value in `value`; an
+email's is never logged: the app's in `gui.log`,
 `proxy --config`'s in its log. Entering a bad value in the app is still an
 error on that field.
 

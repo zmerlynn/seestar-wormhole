@@ -188,11 +188,12 @@ produce a final JSON `discovery failed` record with `phase`, an existing
 [reason value](#status-and-reason-values), and `cleanup_reason=none`.
 Orderly shutdown has no failure record.
 
-Lifecycle records are the shared `lan_discovery_started` (INFO, `port` and
-`all_interfaces`), `lan_discovery_synthesized` (WARN, `fields` and
-`envelope_fields`), `lan_discovery_refused`, and
+Lifecycle records are the shared `lan_discovery_started` (INFO, `port`,
+`all_interfaces`, and the advertised `serial`, `model` and `name`; `proxy`
+logs them as the `telescope` group), `lan_discovery_synthesized` (WARN,
+`fields` and `envelope_fields`), `lan_discovery_refused`, and
 `lan_discovery_delivery_failed`; see [logs](#logs) for the latter records and
-logging-loss handling. No serial, name, model, or credentials are logged.
+logging-loss handling. No credentials are logged.
 
 ## File commands
 
@@ -280,7 +281,7 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning that doesn't name it; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning; a serial's names it in `value`, an email's doesn't; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
@@ -591,7 +592,8 @@ In trail entries:
   changes `phase` or `reason`, and when it next succeeds. Repeats of the same
   failure stay in memory, in the UI's status `failures` and the copied summary.
 - Scans of this network are `connection` lines with one of these `code`
-  values, a message that names at most the telescope's model and the reply
+  values, a message that names the telescopes the scan saw, each with its
+  name, model, serial and addresses, the saved address, and the reply
   count, and no `phase` or `reason`:
   - `scan_listed`: **On this network** scanned, with the reply count.
   - `scan_probed`: **Test** sent the scan request to the typed address.
@@ -618,7 +620,9 @@ In trail entries:
   recorded, and `scan_probed` neither.
 - File-tool lines carry a fixed message and the classified `phase` and
   `reason`. They leave out paths, file and folder names, endpoints and error
-  text. Connection lines keep their telescope text, including the selected
+  text; in Activity, starting copying names the address, and a connection
+  error names the address dialed.
+  Connection lines keep their telescope text, including the selected
   telescope's full serial, and catalog lines list the account's serials.
 
 ```json
