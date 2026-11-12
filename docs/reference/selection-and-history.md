@@ -214,10 +214,12 @@ writes with the default folder moves `seestar-copy` to `copy-history`, once,
 if `copy-history` doesn't exist yet, so an upgrade keeps its history: a `sync`
 or `delete` that isn't a dry run, or the app's Copy, Free up space or **Clear
 history**. It first creates `seestar-wormhole`, private to you as the app
-creates it, and logs `moved the copy history`. A run that only reads, `find`,
+creates it, and logs `moved the copy history`; the app shows that line,
+without the folders, in its **Activity** tab. A run that only reads, `find`,
 `browse` or a dry run, and the app's Preview, Browse and History path, reads
 `seestar-copy` in place until then, and creates or moves nothing. A
-`--history-dir` or **Copy history folder** is never moved. If both folders
+`--history-dir` or **Copy history folder** is used as it is, even one that
+names `copy-history`: nothing is moved to it or from it. If both folders
 exist, `copy-history` is used and `seestar-copy` is left alone; delete it
 once you no longer need it.
 
