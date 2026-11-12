@@ -19,16 +19,14 @@ const (
 	ProxySMBPort = "4445"
 )
 
-// OtherSMBPort is the other of SMBPort and ProxySMBPort, when port is one
-// of them.
-func OtherSMBPort(port string) (string, bool) {
-	switch port {
-	case SMBPort:
-		return ProxySMBPort, true
-	case ProxySMBPort:
-		return SMBPort, true
+// smbPorts is the ports to dial, in order, at an address that answered
+// with the serial of a telescope saved on port: SMBPort then ProxySMBPort
+// when port is either, or else port alone.
+func smbPorts(port string) []string {
+	if port == SMBPort || port == ProxySMBPort {
+		return []string{SMBPort, ProxySMBPort}
 	}
-	return "", false
+	return []string{port}
 }
 
 // ErrOtherTelescope is a connect to a telescope saved with its serial
@@ -58,11 +56,11 @@ type Resolved struct {
 
 // Follow connects to a telescope saved as endpoint (host:port) with serial.
 // Every connect scans: it dials each address that answers the scan with
-// serial, on endpoint's port, as the replies arrive, the saved address
-// first when it is among those waiting, and stops the scan once one
-// connects. When endpoint's port is SMBPort or ProxySMBPort and the dial
-// fails, it dials the other of the two at the same address next, within
-// the same ctx. An address whose dials fail doesn't end the search.
+// serial as the replies arrive, the saved address first when it is among
+// those waiting, and stops the scan once one connects. When endpoint's
+// port is SMBPort or ProxySMBPort, it dials SMBPort at each address, then
+// ProxySMBPort when that fails, within the same ctx; any other port is
+// dialed alone. An address whose dials fail doesn't end the search.
 //
 // Once another serial has answered from the saved address, that address
 // is never used for this telescope: a connection to it made while that
@@ -125,19 +123,19 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		pending = slices.Delete(pending, i, i+1)
 		return !w.conflicted()
 	}
-	// dialAt dials address on endpoint's port, then on the other SMB
-	// port, and returns the port that connected. A failure is the first
-	// dial's.
+	// dialAt dials address on each of endpoint's ports in turn (see
+	// [smbPorts]), and returns the port that connected. A failure is the
+	// first dial's.
+	ports := smbPorts(port)
 	dialAt := func(address netip.Addr) (T, string, error) {
-		v, err := dial(ctx, net.JoinHostPort(address.String(), port))
-		other, ok := OtherSMBPort(port)
-		if err == nil || !ok || ctx.Err() != nil {
-			return v, port, err
+		v, err := dial(ctx, net.JoinHostPort(address.String(), ports[0]))
+		if err == nil || len(ports) == 1 || ctx.Err() != nil {
+			return v, ports[0], err
 		}
-		if v, otherErr := dial(ctx, net.JoinHostPort(address.String(), other)); otherErr == nil {
-			return v, other, nil
+		if v, otherErr := dial(ctx, net.JoinHostPort(address.String(), ports[1])); otherErr == nil {
+			return v, ports[1], nil
 		}
-		return zero, port, err
+		return zero, ports[0], err
 	}
 	// done ends a successful search at address, on port at.
 	done := func(v T, address netip.Addr, at string) (T, Resolved, error) {

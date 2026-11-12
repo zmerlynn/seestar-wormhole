@@ -648,12 +648,31 @@ func TestFollow(t *testing.T) {
 			t.Fatalf("%v tried %v", err, tried())
 		}
 	})
+	// Saved on the proxy's port, 445 is still tried first.
 	t.Run("a follow keeps the working port", func(t *testing.T) {
 		s, _ := network(time.Minute, reply{"SERIAL-A", "192.0.2.30"})
-		dial, tried := dialer("192.0.2.30:445", "192.0.2.30:4445")
+		dial, tried := dialer("192.0.2.30:4445")
 		got, r, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.30:4445" || !r.Moved || r.Endpoint != "192.0.2.30:4445" ||
-			!slices.Equal(tried(), []string{"192.0.2.30:4445"}) {
+			!slices.Equal(tried(), []string{"192.0.2.30:445", "192.0.2.30:4445"}) {
+			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
+		}
+	})
+	t.Run("saved on the proxy's port, 445 answers", func(t *testing.T) {
+		s, _ := network(time.Minute, reply{"SERIAL-A", "192.0.2.20"})
+		dial, tried := dialer("192.0.2.20:445", "192.0.2.20:4445")
+		got, r, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
+		if err != nil || got != "session@192.0.2.20:445" || !r.Moved || r.Endpoint != "192.0.2.20:445" ||
+			!slices.Equal(tried(), []string{"192.0.2.20:445"}) {
+			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
+		}
+	})
+	t.Run("saved on the proxy's port, only it answers", func(t *testing.T) {
+		s, _ := network(time.Minute, reply{"SERIAL-A", "192.0.2.20"})
+		dial, tried := dialer("192.0.2.20:4445")
+		got, r, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
+		if err != nil || got != "session@192.0.2.20:4445" || r.Moved || r.Endpoint != "192.0.2.20:4445" ||
+			!slices.Equal(tried(), []string{"192.0.2.20:445", "192.0.2.20:4445"}) {
 			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
 		}
 	})

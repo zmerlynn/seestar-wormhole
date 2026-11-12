@@ -147,12 +147,12 @@ usual; if nothing listens, the run fails with exit 1.
 On this network, an address the app saved from a scan is saved with the
 telescope's serial number, [`lan_serial`](app-settings.md#configjson-version-1).
 When `--endpoint` was filled from it, a connect can
-[scan this network](#scan) for that serial and connect, on the same port,
-to an address the telescope answered from, the saved address first; an
-address that doesn't connect doesn't end the search. When the saved port is
-445 or 4445, the SMB port of a seestar-wormhole proxy that answers scans for
-its telescope, an address that refuses it is tried on the other of the two
-next, within the same connect. An `--endpoint` given on the command line is
+[scan this network](#scan) for that serial and connect to an address the
+telescope answered from, the saved address first; an address that doesn't
+connect doesn't end the search. When the saved port is 445 or 4445, the SMB
+port of a seestar-wormhole proxy that answers scans for its telescope, each
+address is tried on 445 and then on 4445, within the same connect; another
+saved port is tried alone. An `--endpoint` given on the command line is
 dialed as given. If another telescope
 answers at the saved address, it isn't used, even if it answers there only
 while the saved address is being connected; a connection already made there
