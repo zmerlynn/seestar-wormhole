@@ -182,7 +182,7 @@ func scanPost(t *testing.T, s *server, body string) scanView {
 	if w.Code != 200 {
 		t.Fatalf("scan = %d %s", w.Code, w.Body)
 	}
-	for _, secret := range []string{"SERIAL-", "password", "0123456789abcdef"} {
+	for _, secret := range []string{"password", "0123456789abcdef"} {
 		if strings.Contains(w.Body.String(), secret) {
 			t.Fatalf("scan answer carries %q: %s", secret, w.Body)
 		}
@@ -223,8 +223,11 @@ func TestScanListsTelescopes(t *testing.T) {
 	for _, row := range v.Telescopes {
 		byName[row.Name] = row
 	}
-	if a := byName["S50_A"]; a.Model != "Seestar S50" || len(a.Addresses) != 1 || a.Addresses[0] != "192.0.2.20" || a.Busy || a.Saved {
+	if a := byName["S50_A"]; a.Model != "Seestar S50" || a.Serial != "SERIAL-A" || len(a.Addresses) != 1 || a.Addresses[0] != "192.0.2.20" || a.Busy || a.Saved {
 		t.Fatalf("row %+v", a)
+	}
+	if b := byName["S30_B"]; b.Serial != "SERIAL-B" {
+		t.Fatalf("row %+v", b)
 	}
 	// A line for the count, then one for each telescope, in the order
 	// they answered.
@@ -329,8 +332,7 @@ func TestSerialAt(t *testing.T) {
 	}
 }
 
-// Saving an address a scan saw saves its serial with it; the page never
-// gets the serial back.
+// Saving an address a scan saw saves its serial with it.
 func TestSaveRouteKeepsScannedSerial(t *testing.T) {
 	useLAN(t, twoTelescopes())
 	s, _ := copyServer(t)

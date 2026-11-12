@@ -189,6 +189,7 @@ func (s *server) serialAt(ctx context.Context, host string) bool {
 type scanTelescope struct {
 	Name      string   `json:"name"`
 	Model     string   `json:"model"`
+	Serial    string   `json:"serial"`
 	Addresses []string `json:"addresses"`
 	Busy      bool     `json:"busy"`
 	Saved     bool     `json:"saved"`
@@ -283,7 +284,7 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 	saved := s.settings.LANSerial
 	s.mu.Unlock()
 	for _, t := range result.Telescopes {
-		row := scanTelescope{Name: t.Name, Model: t.Model, Busy: t.Busy(), Saved: saved != "" && t.Serial == saved}
+		row := scanTelescope{Name: t.Name, Model: t.Model, Serial: t.Serial, Busy: t.Busy(), Saved: saved != "" && t.Serial == saved}
 		for _, a := range t.Addresses {
 			row.Addresses = append(row.Addresses, a.String())
 		}

@@ -470,8 +470,7 @@ function lanScanResult(message, tone = '') {
 }
 // lanRows lists what the scan found, a row per telescope with its name,
 // model, status and a button per address that fills it in, in columns
-// aligned across rows. The scan's answer has no serial; saved marks the
-// telescope saved here.
+// aligned across rows. Saved marks the telescope saved here.
 function lanRows() {
   $('lan-found').replaceChildren(...lanFound.map(t => {
     const li = document.createElement('li');

@@ -262,7 +262,7 @@ async function checkLANForm(statuses, replies, scenario) {
     tabAssert(pick.textContent === '192.0.2.20' && pick.attributes['aria-label'] === 'Use 192.0.2.20 for S50_A', 'address button');
     pick.dispatchEvent({type: 'click'});
     tabAssert($('lan-address').value === '192.0.2.20' && $('lan-result').textContent === 'Picked S50_A at 192.0.2.20. Test or Save to use it.' && document.activeElement === $('lan-address'), 'picking a row');
-    tabAssert(!JSON.stringify(replies.scans.list).includes('SERIAL-'), 'the fixture carries a serial');
+    tabAssert(JSON.stringify(replies.scans.list[''].body.telescopes.map(t => t.serial).sort()) === JSON.stringify(['SERIAL-A', 'SERIAL-B']), 'the scan list lacks a serial ' + JSON.stringify(replies.scans.list['']));
     // Scan again asks again; a blocked scan says Local Network is off.
     scans = replies.scans.blocked;
     $('lan-scan').dispatchEvent({type: 'click'});
