@@ -113,7 +113,8 @@ type Resolved struct {
 // doesn't return.
 //
 // When the scan found serial nowhere it dials endpoint as it is, unless
-// another serial answered from the saved address: then it fails with
+// another serial answered from the saved address, or more than maxOthers
+// addresses answered with other serials: then it fails with
 // [ErrOtherTelescope]. When serial answered but no address connected, it
 // returns the last dial's error, or ErrOtherTelescope when no address it
 // answered from could be used. A nil error always comes with a connection
@@ -295,9 +296,12 @@ func follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		return zero, r, ctx.Err()
 	case last != nil:
 		return zero, r, last
-	case r.Conflict || r.Seen != nil:
+	case w.disqualified(saved) || r.Seen != nil:
 		// Every address that answered with serial was dialed or
 		// disqualified, so with no dial failing, each was disqualified.
+		// Without serial, the saved address is disqualified when another
+		// serial answered from it, or from more addresses than the
+		// watcher keeps, so it can't tell.
 		return zero, r, ErrOtherTelescope
 	}
 	r.NotSeen = true

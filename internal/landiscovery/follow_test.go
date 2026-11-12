@@ -296,22 +296,31 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 }
 
 // Past maxOthers addresses answering with other serials, Follow can't tell
-// which addresses are disqualified, and uses none.
+// which addresses are disqualified, and uses none: not where serial
+// answered, nor the saved address when it answered nowhere.
 func TestFollowFailsClosedWhenOthersFill(t *testing.T) {
-	var replies []datagram
-	for i := range maxOthers + 1 {
-		replies = append(replies, datagram{replyBytes(fmt.Sprintf("OTHER-%d", i), "S50_X", "Seestar S50", 0), netip.AddrFrom4([4]byte{198, 51, byte(i >> 8), byte(i)})})
-	}
-	replies = append(replies, answer("SERIAL-A", "192.0.2.30"))
-	s, c := observedScan(time.Second, replies...)
-	c.in = make(chan datagram, len(replies)) // more than it usually buffers
-	dials := 0
-	got, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
-		dials++
-		return &session{endpoint: ep}, nil
-	}, release)
-	if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 {
-		t.Fatalf("got %v %v, dials %d", got, err, dials)
+	for _, seen := range []bool{true, false} {
+		t.Run(fmt.Sprint("serial seen ", seen), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				var replies []datagram
+				for i := range maxOthers + 1 {
+					replies = append(replies, datagram{replyBytes(fmt.Sprintf("OTHER-%d", i), "S50_X", "Seestar S50", 0), netip.AddrFrom4([4]byte{198, 51, byte(i >> 8), byte(i)})})
+				}
+				if seen {
+					replies = append(replies, answer("SERIAL-A", "192.0.2.30"))
+				}
+				s, c := observedScan(time.Second, replies...)
+				c.in = make(chan datagram, len(replies)) // more than it usually buffers
+				dials := 0
+				got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+					dials++
+					return &session{endpoint: ep}, nil
+				}, release)
+				if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 || r.Conflict || r.NotSeen || r.Replies != len(replies) {
+					t.Fatalf("got %v %+v %v, dials %d", got, r, err, dials)
+				}
+			})
+		})
 	}
 }
 
