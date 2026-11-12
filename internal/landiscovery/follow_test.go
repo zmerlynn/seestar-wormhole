@@ -139,7 +139,7 @@ func TestFollowConflictDuringSavedDial(t *testing.T) {
 // dialed is still preferred: it is dialed too, and the other connection is
 // released if it connects.
 func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
-	// dial connects everywhere but at down; dialing first, it delivers
+	// dial connects everywhere but at down's ports; dialing first, it delivers
 	// during, and dialing second, the saved address, it delivers then.
 	type script struct {
 		during, then []datagram
@@ -164,7 +164,7 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 					return nil, ctx.Err()
 				}
 			}
-			if ep == sc.down {
+			if host, _, _ := net.SplitHostPort(ep); host == sc.down {
 				return nil, errors.New("refused")
 			}
 			sessions[ep] = &session{endpoint: ep}
@@ -181,7 +181,7 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 		}
 	})
 	t.Run("the saved address doesn't connect", func(t *testing.T) {
-		got, r, err, sessions := run(t, script{during: []datagram{answer("SERIAL-A", "192.0.2.20")}, down: "192.0.2.20:445"})
+		got, r, err, sessions := run(t, script{during: []datagram{answer("SERIAL-A", "192.0.2.20")}, down: "192.0.2.20"})
 		other := sessions["192.0.2.30:445"]
 		if err != nil || got == nil || got != other || other.closed.Load() || !r.Moved || r.Endpoint != "192.0.2.30:445" {
 			t.Fatalf("got %v %+v %v, sessions %v", got, r, err, sessions)

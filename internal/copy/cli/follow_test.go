@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"os"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -167,7 +168,7 @@ func TestFollowConflictWithSightingIsLoggedAsUnreached(t *testing.T) {
 	f := newFollow(Saved{Endpoint: "192.0.2.20:445", LANSerial: "SERIAL-A"}, none)
 	var calls []string
 	_, err := followDial(t.Context(), f, f.saved, diagnostic.Logger("text", &logs, slog.LevelInfo), fakeDial(&calls))
-	if err == nil || len(calls) != 1 || calls[0] != "192.0.2.30:445" {
+	if err == nil || !slices.Equal(calls, []string{"192.0.2.30:445", "192.0.2.30:4445"}) {
 		t.Fatalf("err %v, calls %q", err, calls)
 	}
 	if strings.Contains(logs.String(), "didn't find the saved one") ||

@@ -10,6 +10,27 @@ import (
 	"sync"
 )
 
+// SMBPort is the telescope's file-sharing port, and ProxySMBPort the port
+// a seestar-wormhole proxy forwards it on by default. A proxy with
+// discovery on answers scans for the telescope, so an address that
+// answers with a serial may be either.
+const (
+	SMBPort      = "445"
+	ProxySMBPort = "4445"
+)
+
+// OtherSMBPort is the other of SMBPort and ProxySMBPort, when port is one
+// of them.
+func OtherSMBPort(port string) (string, bool) {
+	switch port {
+	case SMBPort:
+		return ProxySMBPort, true
+	case ProxySMBPort:
+		return SMBPort, true
+	}
+	return "", false
+}
+
 // ErrOtherTelescope is a connect to a telescope saved with its serial
 // whose saved address advertised another serial in the scan, so that
 // address wasn't used, and no other address connected. It stays true when
@@ -18,7 +39,7 @@ var ErrOtherTelescope = errors.New("the saved address advertised a different tel
 
 // Resolved is how [Follow] reached a telescope. Endpoint is the endpoint it
 // connected to, or the saved one when none connected; Moved reports that it
-// is not the saved address. Seen is the telescope as the scan saw it when
+// is not the saved address and port. Seen is the telescope as the scan saw it when
 // the serial answered, so it can be named, with the addresses it answered
 // from. NotSeen reports that the scan
 // found the serial nowhere and the saved address was dialed without that
@@ -39,7 +60,9 @@ type Resolved struct {
 // Every connect scans: it dials each address that answers the scan with
 // serial, on endpoint's port, as the replies arrive, the saved address
 // first when it is among those waiting, and stops the scan once one
-// connects. An address whose dial fails doesn't end the search.
+// connects. When endpoint's port is SMBPort or ProxySMBPort and the dial
+// fails, it dials the other of the two at the same address next, within
+// the same ctx. An address whose dials fail doesn't end the search.
 //
 // Once another serial has answered from the saved address, that address
 // is never used for this telescope: a connection to it made while that
@@ -102,12 +125,26 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		pending = slices.Delete(pending, i, i+1)
 		return !w.conflicted()
 	}
-	// done ends a successful search at address.
-	done := func(v T, address netip.Addr) (T, Resolved, error) {
+	// dialAt dials address on endpoint's port, then on the other SMB
+	// port, and returns the port that connected. A failure is the first
+	// dial's.
+	dialAt := func(address netip.Addr) (T, string, error) {
+		v, err := dial(ctx, net.JoinHostPort(address.String(), port))
+		other, ok := OtherSMBPort(port)
+		if err == nil || !ok || ctx.Err() != nil {
+			return v, port, err
+		}
+		if v, otherErr := dial(ctx, net.JoinHostPort(address.String(), other)); otherErr == nil {
+			return v, other, nil
+		}
+		return zero, port, err
+	}
+	// done ends a successful search at address, on port at.
+	done := func(v T, address netip.Addr, at string) (T, Resolved, error) {
 		stop()
 		r := w.resolved(endpoint, result.Replies)
-		r.Endpoint = net.JoinHostPort(address.String(), port)
-		r.Moved = address != saved
+		r.Endpoint = net.JoinHostPort(address.String(), at)
+		r.Moved = address != saved || at != port
 		return v, r, nil
 	}
 	var last error
@@ -140,7 +177,7 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		} else {
 			address, pending = pending[0], pending[1:]
 		}
-		v, err := dial(ctx, net.JoinHostPort(address.String(), port))
+		v, at, err := dialAt(address)
 		if err != nil {
 			last = err
 			if ctx.Err() != nil {
@@ -155,15 +192,15 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 				release(v)
 				continue
 			}
-			return done(v, saved)
+			return done(v, saved, at)
 		}
 		// The saved address may have answered with serial during this
 		// dial; it is still preferred.
 		collect()
 		if !takeSaved() {
-			return done(v, address)
+			return done(v, address, at)
 		}
-		u, err := dial(ctx, net.JoinHostPort(saved.String(), port))
+		u, savedAt, err := dialAt(saved)
 		switch {
 		case err != nil:
 			if ctx.Err() != nil {
@@ -171,13 +208,13 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 				stop()
 				return zero, w.resolved(endpoint, result.Replies), err
 			}
-			return done(v, address)
+			return done(v, address, at)
 		case w.conflicted():
 			release(u)
-			return done(v, address)
+			return done(v, address, at)
 		}
 		release(v)
-		return done(u, saved)
+		return done(u, saved, savedAt)
 	}
 	r := w.resolved(endpoint, result.Replies)
 	switch {

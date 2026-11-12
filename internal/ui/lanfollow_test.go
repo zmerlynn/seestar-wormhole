@@ -220,7 +220,7 @@ func TestCopierFollowsTelescope(t *testing.T) {
 	if err := dial(stale); err == nil {
 		t.Fatal("seen but unreachable connected")
 	}
-	if calls := l.take(); !slices.Equal(calls, []string{"dial 192.0.2.30:445"}) {
+	if calls := l.take(); !slices.Equal(calls, []string{"dial 192.0.2.30:445", "dial 192.0.2.30:4445"}) {
 		t.Fatalf("unreached calls %q", calls)
 	}
 	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_unreached"`) {
@@ -728,7 +728,7 @@ func TestConflictWithSightingIsRecordedAsUnreached(t *testing.T) {
 		dialed = append(dialed, endpoint)
 		return "", errors.New("refused")
 	})
-	if err == nil || !slices.Equal(dialed, []string{"192.0.2.30:445"}) {
+	if err == nil || !slices.Equal(dialed, []string{"192.0.2.30:445", "192.0.2.30:4445"}) {
 		t.Fatalf("err %v, dialed %q", err, dialed)
 	}
 	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_unreached"`) || strings.Contains(text, "scan_other_telescope") ||

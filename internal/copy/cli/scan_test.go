@@ -406,7 +406,7 @@ func TestFollowDial(t *testing.T) {
 	// tried, and the error is the dial's.
 	logs.Reset()
 	f = newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-B"}, none)
-	if _, err = follow(f, "192.0.2.7:445", "192.0.2.7:445"); !errors.Is(err, syscall.ECONNREFUSED) || !slices.Equal(calls, []string{"192.0.2.40:445"}) {
+	if _, err = follow(f, "192.0.2.7:445", "192.0.2.7:445"); !errors.Is(err, syscall.ECONNREFUSED) || !slices.Equal(calls, []string{"192.0.2.40:445", "192.0.2.40:4445"}) {
 		t.Errorf("seen: %v; calls %q", err, calls)
 	}
 	if !strings.Contains(logs.String(), `didn't connect where it answered" telescope="S30 B (Seestar S30, serial SERIAL-B)" saved=192.0.2.7:445 addresses=[192.0.2.40] replies=`) {
