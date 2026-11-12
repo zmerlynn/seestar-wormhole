@@ -49,6 +49,13 @@ only the telescope's files, for Copy, Browse and Free up space.
   enter its [address](copying.md#find-the-telescopes-address) yourself, with an
   optional port (445 by default); its help says
   that Copy, Browse and Free up space read the telescope's files there.
+  An address without a port that answered a scan with a serial number,
+  such as one picked from the list, is tried on port 445 and then on 4445,
+  the SMB port of a seestar-wormhole proxy that answers scans for its
+  telescope, within the same wait; when 4445 answers, Test says so, and
+  Save saves that port, such as `192.0.2.10:4445`. An address typed with a
+  port is tried on that port only, and one that answered no scan on 445
+  only.
   **Test** checks that it answers file sharing and saves nothing: when it
   passes for an address other than the saved one, it says to **Save**. Test
   also sends the scan request to that address alone, except under **Never**,
@@ -65,7 +72,8 @@ only the telescope's files, for Copy, Browse and Free up space.
   An address picked from a scan is saved with the telescope's serial
   number. Copy, Browse and Free up space then scan for that serial and use
   the address that answers with it and accepts file sharing, the saved
-  address first; a new address is saved, and Activity says so, naming the
+  address first, on the saved port, or on 445 and then 4445 when the saved
+  port is one of the two; a new address or port is saved, and Activity says so, naming the
   telescope, its model and serial, and both addresses. Another telescope
   answering at the saved address is never used. When the scan doesn't see
   the telescope, the saved address is tried, and Activity says it wasn't

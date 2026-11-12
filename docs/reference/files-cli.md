@@ -149,7 +149,11 @@ telescope's serial number, [`lan_serial`](app-settings.md#configjson-version-1).
 When `--endpoint` was filled from it, a connect can
 [scan this network](#scan) for that serial and connect, on the same port,
 to an address the telescope answered from, the saved address first; an
-address that doesn't connect doesn't end the search. If another telescope
+address that doesn't connect doesn't end the search. When the saved port is
+445 or 4445, the SMB port of a seestar-wormhole proxy that answers scans for
+its telescope, an address that refuses it is tried on the other of the two
+next, within the same connect. An `--endpoint` given on the command line is
+dialed as given. If another telescope
 answers at the saved address, it isn't used, even if it answers there only
 while the saved address is being connected; a connection already made there
 is closed. If no reply carries the serial, the saved address is tried.
@@ -523,7 +527,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
 | ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
-| INFO | `found the telescope at another address on this network` | `telescope`, `saved`, `endpoint`, `addresses`, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). `telescope` is its name, model and serial as the reply gave them, such as `S50_Garden (Seestar S50, serial 4ab1c2d3)`; `saved` is the saved address, `endpoint` the one it connected to, and `addresses` where it answered. Logged again only when the outcome changes. |
+| INFO | `found the telescope at another address on this network` | `telescope`, `saved`, `endpoint`, `addresses`, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address or port other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). `telescope` is its name, model and serial as the reply gave them, such as `S50_Garden (Seestar S50, serial 4ab1c2d3)`; `saved` is the saved address, `endpoint` the one it connected to, and `addresses` where it answered. Logged again only when the outcome changes. |
 | WARN | `the telescope wasn't seen in a scan of this network; tried its saved address` | `serial`, `saved`, `replies` | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
 | WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `serial`, `saved`, `other`, `replies` | As above, but another serial answered from the saved address, which isn't used, and no reply carried the saved serial; the connect fails. `other` names the telescope that answered there. |
 | WARN | `found the telescope on this network, but it didn't connect where it answered` | `telescope`, `saved`, `addresses`, `other` when another serial answered from the saved address, `replies` | As above, but no address that answered with the serial connected; the connect fails. |

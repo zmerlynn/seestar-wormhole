@@ -210,7 +210,10 @@ read-only page over it, and delete what is safely copied. The
 [file command reference](files-cli.md) has their flags, rules, logs and
 exit codes. They need no cloud session and no credentials: `--endpoint` is the
 share's address, such as a running proxy's SMB port (`127.0.0.1:4445` by
-default) or the telescope on this network. Earlier releases shipped them as a
+default) or the telescope on this network, and is dialed as given. With
+`--profile default`, a telescope saved by its serial is followed on this
+network, on port 445 and then 4445 when the saved port is one of the two;
+see [use the app's saved settings](files-cli.md#use-the-apps-saved-settings). Earlier releases shipped them as a
 separate `seestar-copy-cli`. `scan` lists the telescopes that answer the
 phone app's scan request on this network, to find an address for
 `--endpoint`; see [scan](files-cli.md#scan).
