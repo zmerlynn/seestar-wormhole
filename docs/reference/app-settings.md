@@ -28,11 +28,13 @@ To use another existing installation root, run
 | `webview-<random>/` | Windows only: a fresh private engine profile for each launch; see [engine data](#engine-data). |
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
 
-The copy history and its locks are not in the state directory. By default they
-are in the file commands' default [history location](selection-and-history.md#location),
-`copy-history` in the default state directory above, whatever `--state-dir`
-says. Earlier releases kept them in `seestar-copy` beside `seestar-wormhole`;
-the first Copy, Free up space or **Clear history** moves that folder to
+By default, the copy history and its locks are in the file commands' default
+[history location](selection-and-history.md#location), `copy-history` inside
+the default state directory above. Changing the app's `--state-dir` does not
+change that history location.
+
+Earlier releases kept them in `seestar-copy` beside `seestar-wormhole`; the
+first Copy, Free up space or **Clear history** moves that folder to
 `copy-history` once. See [selection and copy history](selection-and-history.md)
 for how the app and `seestar-wormhole-cli` share them.
 
