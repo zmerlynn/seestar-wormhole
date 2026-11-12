@@ -153,10 +153,12 @@ func TestCopyStateIsShared(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(base, "seestar-copy") + string(filepath.Separator); !strings.HasPrefix(history, want) {
+	if want := filepath.Join(base, "seestar-wormhole", "copy-history") + string(filepath.Separator); !strings.HasPrefix(history, want) {
 		t.Errorf("copy history %q, want it under %q", history, want)
 	}
-	if _, err := os.Stat(filepath.Join(root, "seestar-copy")); !os.IsNotExist(err) {
-		t.Errorf("a copy state folder appeared beside the app's settings: %v", err)
+	for _, name := range []string{"seestar-copy", "copy-history"} {
+		if _, err := os.Stat(filepath.Join(root, name)); !os.IsNotExist(err) {
+			t.Errorf("a copy state folder %s appeared in the test's settings folder: %v", name, err)
+		}
 	}
 }

@@ -51,7 +51,7 @@ func copyState() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, "seestar-copy"), nil
+	return filepath.Join(base, "seestar-wormhole", "copy-history"), nil
 }
 
 // CopyRecorded reports whether folder's copy history has path.
