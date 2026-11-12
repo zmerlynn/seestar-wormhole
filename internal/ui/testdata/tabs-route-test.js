@@ -254,9 +254,11 @@ async function checkLANForm(statuses, replies, scenario) {
     // a button that fills it in.
     const found = $('lan-found').children;
     tabAssert(found.length === 2 && $('lan-scan-result').textContent === 'Found 2 telescopes. Pick an address to fill it in.' && $('lan-scan').textContent === 'Scan again' && !$('lan-scan').disabled, 'scan list: ' + found.length + ' ' + $('lan-scan-result').textContent);
-    const row = found.find(li => li.children[0].textContent.startsWith('S50_A'));
-    tabAssert(row && row.children[0].textContent === 'S50_A (Seestar S50)', 'row text ' + row?.children[0].textContent);
-    const pick = row.children[2];
+    // A row is the name, model, status and addresses, one cell each.
+    const row = found.find(li => li.children[0].textContent === 'S50_A');
+    tabAssert(row && JSON.stringify(row.children.slice(0, 3).map(c => [c.className, c.textContent])) === JSON.stringify([['lan-name', 'S50_A'], ['lan-model', 'Seestar S50'], ['lan-status', '']]), 'row cells ' + JSON.stringify(row?.children.map(c => c.textContent)));
+    tabAssert(row.children[3].className === 'lan-addresses' && row.children[3].children.length === 1, 'address cell');
+    const pick = row.children[3].children[0];
     tabAssert(pick.textContent === '192.0.2.20' && pick.attributes['aria-label'] === 'Use 192.0.2.20 for S50_A', 'address button');
     pick.dispatchEvent({type: 'click'});
     tabAssert($('lan-address').value === '192.0.2.20' && $('lan-result').textContent === 'Picked S50_A at 192.0.2.20. Test or Save to use it.' && document.activeElement === $('lan-address'), 'picking a row');

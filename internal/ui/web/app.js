@@ -468,16 +468,21 @@ function lanScanResult(message, tone = '') {
   if (tone) $('lan-scan-result').setAttribute('data-tone', tone);
   else $('lan-scan-result').removeAttribute('data-tone');
 }
-// lanRows lists what the scan found: a telescope's name, model and flags,
-// and a button per address that fills it in. The scan's answer has no
-// serial; Saved marks the telescope saved here.
+// lanRows lists what the scan found, a row per telescope with its name,
+// model, status and a button per address that fills it in, in columns
+// aligned across rows. The scan's answer has no serial; saved marks the
+// telescope saved here.
 function lanRows() {
   $('lan-found').replaceChildren(...lanFound.map(t => {
     const li = document.createElement('li');
-    const name = document.createElement('span');
-    const flags = [t.model, t.busy ? 'busy: the phone app may refuse to connect' : '', t.saved ? 'saved' : ''].filter(Boolean);
-    name.textContent = (t.name || 'Seestar') + (flags.length ? ' (' + flags.join(', ') + ')' : '');
-    li.append(name, document.createElement('br'));
+    const cell = (className, content) => {
+      const span = document.createElement('span');
+      span.className = className;
+      span.textContent = content;
+      return span;
+    };
+    const status = [t.busy ? 'busy' : '', t.saved ? 'saved' : ''].filter(Boolean).join(', ');
+    const addresses = cell('lan-addresses', '');
     for (const address of t.addresses || []) {
       const pick = document.createElement('button');
       pick.type = 'button';
@@ -485,8 +490,9 @@ function lanRows() {
       pick.textContent = address;
       pick.setAttribute('aria-label', 'Use ' + address + ' for ' + (t.name || 'Seestar'));
       pick.addEventListener('click', () => lanPick(t, address));
-      li.append(pick);
+      addresses.append(pick);
     }
+    li.append(cell('lan-name', t.name || 'Seestar'), cell('lan-model', t.model || ''), cell('lan-status', status), addresses);
     return li;
   }));
 }
@@ -511,7 +517,10 @@ async function lanScan() {
     lanRows();
     const n = lanFound.length;
     if (r.message) lanScanResult(r.message, r.blocked ? 'error' : '');
-    else lanScanResult(n === 1 ? 'Found 1 telescope. Pick its address to fill it in.' : 'Found ' + n + ' telescopes. Pick an address to fill it in.');
+    else {
+      const busy = lanFound.some(t => t.busy) ? ' A busy telescope may refuse the phone app; copying still works.' : '';
+      lanScanResult((n === 1 ? 'Found 1 telescope. Pick its address to fill it in.' : 'Found ' + n + ' telescopes. Pick an address to fill it in.') + busy);
+    }
   } catch (e) {
     lanScanResult(e.message || lostCopy, 'error');
   } finally {

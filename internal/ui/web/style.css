@@ -434,13 +434,34 @@ ul.lan-found {
 ul.lan-found:empty {
   display:none
 }
+/* A row per telescope: its columns are fractions of the list's width, not
+   of their contents, so they line up across rows. A narrow list puts the
+   status and addresses on a line of their own. */
 ul.lan-found li {
+  display:grid;
+  grid-template-columns:minmax(0,3fr) minmax(0,3fr) minmax(0,2fr) minmax(0,4fr);
+  column-gap:.75rem;
+  align-items:baseline;
   padding:.3rem 0;
   border-bottom:1px solid var(--border);
   overflow-wrap:anywhere
 }
+ul.lan-found li:first-child {
+  border-top:1px solid var(--border)
+}
+.lan-name {
+  font-weight:600
+}
+.lan-model,.lan-status {
+  color:var(--muted)
+}
 ul.lan-found button {
-  margin:.2rem .4rem 0 0
+  margin:.2rem .4rem .2rem 0
+}
+@media (max-width:32rem) {
+  ul.lan-found li {
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr)
+  }
 }
 /* Copy, Browse and Free up space, from seestar-copy's page. A chip is a
    button that opens its run's tab. */

@@ -41,10 +41,13 @@ only the telescope's files, for Copy, Browse and Free up space.
 - **On this network** is for a Seestar on the same network as this computer.
   When you choose it, or when it shows with no address saved, it scans this
   network, unless **Scan for the saved telescope** is **Never**, the way the phone app does, for about 6 seconds, and lists each
-  telescope that answers under **Telescopes on this network**: its name, its
-  model, **busy** when it reports as many clients as the phone app allows
-  (copying still works), and **saved** for the one saved here. Each address
-  is a button that fills it in. **Scan again** repeats the scan. When
+  telescope that answers under **Telescopes on this network**, a row each,
+  in columns: its name, its model, its status, and its addresses. The
+  status is **busy** when it reports as many clients as the phone app
+  allows (the line under the list says copying still works), and **saved**
+  for the one saved here. Each address
+  is a button that fills it in. In a narrow window, a row's status and
+  addresses go on a second line. **Scan again** repeats the scan. When
   nothing answers, or the telescope's network doesn't pass the scan through,
   enter its [address](copying.md#find-the-telescopes-address) yourself, with an
   optional port (445 by default); its help says

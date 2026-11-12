@@ -315,6 +315,64 @@ test('a click held across a status poll still clicks', async ({ page, startApp }
   await expect(lanResult(page)).toHaveText(connectedUnsaved);
 });
 
+// The scan's list is a row per telescope, its name, model, status and
+// addresses in columns that line up across rows; narrow, a row wraps but
+// stays apart from the next.
+test('the scan lists a row per telescope in aligned columns', async ({ page, startApp }) => {
+  const app = await startApp();
+  const telescopes = [
+    { name: 'S50_Garden', model: 'Seestar S50', addresses: ['192.0.2.20'], busy: false, saved: true },
+    { name: 'S30_Roof', model: 'Seestar S30', addresses: ['192.0.2.40', '192.0.2.41'], busy: true, saved: false },
+    { name: 'S50_Pro_Shed', model: 'Seestar S50 Pro', addresses: ['192.0.2.60'], busy: false, saved: false },
+  ];
+  await page.route('**/api/scan', (route) => route.fulfill({ json: { ok: true, telescopes, replies: 4, blocked: false, message: '' } }));
+  await openApp(page, app.url);
+  await chooseLAN(page);
+  const list = page.getByRole('list', { name: 'Telescopes on this network' });
+  const rows = list.getByRole('listitem');
+  await expect(rows).toHaveCount(3);
+  await expect(page.locator('#lan-scan-result')).toHaveText('Found 3 telescopes. Pick an address to fill it in. A busy telescope may refuse the phone app; copying still works.');
+  const cells = (i) => rows.nth(i).locator(':scope > span:not(.lan-addresses)').allTextContents();
+  expect(await cells(0)).toEqual(['S50_Garden', 'Seestar S50', 'saved']);
+  expect(await cells(1)).toEqual(['S30_Roof', 'Seestar S30', 'busy']);
+  expect(await cells(2)).toEqual(['S50_Pro_Shed', 'Seestar S50 Pro', '']);
+  for (const [name, address] of [['S50_Garden', '192.0.2.20'], ['S30_Roof', '192.0.2.40'], ['S30_Roof', '192.0.2.41'], ['S50_Pro_Shed', '192.0.2.60']]) {
+    await expect(list.getByRole('button', { name: `Use ${address} for ${name}`, exact: true })).toHaveText(address);
+  }
+  // boxes is each row's box and its cells' boxes.
+  const boxes = () => rows.evaluateAll((lis) => lis.map((li) => ({
+    row: li.getBoundingClientRect().toJSON(),
+    cells: [...li.children].map((c) => c.getBoundingClientRect().toJSON()),
+  })));
+  const wide = await boxes();
+  for (const { row, cells } of wide) {
+    // One line: the cells side by side, left to right, inside the row.
+    for (let i = 1; i < cells.length; i++) expect(cells[i].left).toBeGreaterThanOrEqual(cells[i - 1].right);
+    for (const c of cells) expect(c.top >= row.top && c.bottom <= row.bottom).toBe(true);
+    // Aligned: each column starts where the first row's does.
+    expect(cells.map((c) => Math.round(c.left))).toEqual(wide[0].cells.map((c) => Math.round(c.left)));
+  }
+  for (let i = 1; i < wide.length; i++) expect(wide[i].row.top).toBeGreaterThanOrEqual(wide[i - 1].row.bottom);
+
+  // Narrow, each row wraps onto two lines, still apart, with no sideways
+  // scroll.
+  await page.setViewportSize({ width: 360, height: 800 });
+  await expect(async () => {
+    const narrow = await boxes();
+    for (const { row, cells } of narrow) {
+      expect(cells[2].top).toBeGreaterThanOrEqual(cells[0].bottom);
+      for (const c of cells) expect(c.top >= row.top && c.bottom <= row.bottom && c.right <= row.right + 1).toBe(true);
+    }
+    for (let i = 1; i < narrow.length; i++) expect(narrow[i].row.top).toBeGreaterThanOrEqual(narrow[i - 1].row.bottom);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }).toPass();
+
+  // A pick fills the address in.
+  await list.getByRole('button', { name: 'Use 192.0.2.41 for S30_Roof', exact: true }).click();
+  await expect(field(page, 'Telescope address')).toHaveValue('192.0.2.41');
+  await expect(lanResult(page)).toHaveText('Picked S30_Roof at 192.0.2.41. Test or Save to use it.');
+});
+
 test('first-run field errors block saving and focus the first field', async ({ page, startApp }) => {
   const app = await startApp({ 'config.json': lan() });
   await openCopy(page, app.url);
