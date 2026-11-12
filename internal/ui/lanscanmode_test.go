@@ -562,10 +562,15 @@ func TestModeChangeDuringASearch(t *testing.T) {
 	}
 }
 
-// reachedSession is a session that knows the endpoint it was dialed at.
+// reachedSession is a session that lists the endpoint it was dialed at
+// as its root's one entry, so a wrapped session still tells it.
 type reachedSession struct {
 	remote.Session
 	endpoint string
+}
+
+func (s *reachedSession) ReadDir(context.Context, string) ([]remote.Entry, error) {
+	return []remote.Entry{{Path: s.endpoint}}, nil
 }
 
 // A run that starts after a change of mode doesn't join a search an
@@ -592,7 +597,11 @@ func TestNewRunDoesNotJoinAnOlderSearch(t *testing.T) {
 			return "", err
 		}
 		defer session.Close()
-		return session.(*reachedSession).endpoint, nil
+		reached, err := session.ReadDir(ctx, ".")
+		if err != nil {
+			return "", err
+		}
+		return reached[0].Path, nil
 	}
 	l.gate, l.entered = make(chan struct{}), make(chan struct{})
 	first := make(chan error, 1)
