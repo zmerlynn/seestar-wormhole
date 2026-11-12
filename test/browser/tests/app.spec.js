@@ -74,7 +74,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   for (const box of await page.locator('#copy-form input:not(#f-hist), #copy-form textarea').all()) {
     expect(await box.getAttribute('placeholder')).toBeNull();
   }
-  await expect(field(page, 'Copy history folder')).toHaveAttribute('placeholder', /[/\\]seestar-copy$/);
+  await expect(field(page, 'Copy history folder')).toHaveAttribute('placeholder', /[/\\]seestar-wormhole[/\\]copy-history$/);
   await expect(page.locator('#f-ex-help')).toContainText('For example: Video, /Preview.');
   await expect(page.locator('#f-cancel')).toBeHidden();
   // Browse shows the telescope's files before the folder is saved,
@@ -1066,7 +1066,7 @@ test('Copy history shows its file, with a Copy button, and an edited folder says
   await openCopy(page, app.url);
   await page.getByText('Copy history', { exact: true }).click();
   const history = page.locator('#h-path');
-  await expect(history).toHaveText(/^\/.*[/\\]seestar-copy[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
+  await expect(history).toHaveText(/^\/.*[/\\]seestar-wormhole[/\\]copy-history[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
   const first = await history.textContent();
   await page.locator('#h-clip').click();
   await expect(page.locator('#h-clip')).toHaveText('Copied');
@@ -1101,7 +1101,7 @@ test('Copy history folder is empty for the default, refuses a relative path, and
   await openCopy(page, app.url);
   await page.getByText('Copy history', { exact: true }).click();
   const history = page.locator('#h-path');
-  await expect(history).toHaveText(/^\/.*[/\\]seestar-copy[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
+  await expect(history).toHaveText(/^\/.*[/\\]seestar-wormhole[/\\]copy-history[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
   const first = await history.textContent();
   await page.getByRole('button', { name: 'Change…' }).click();
   const hist = field(page, 'Copy history folder');

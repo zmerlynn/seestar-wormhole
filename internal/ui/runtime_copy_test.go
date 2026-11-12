@@ -74,7 +74,7 @@ func newRuntimeEnv(t *testing.T, startCopying bool) *runtimeEnv {
 	}
 	e := &runtimeEnv{
 		t: t, root: filepath.Join(t.TempDir(), "state"), folder: filepath.Join(t.TempDir(), "images"),
-		copyDir: filepath.Join(base, "seestar-copy"), held: make(chan struct{}), entered: make(chan struct{}, 1),
+		copyDir: filepath.Join(base, "seestar-wormhole", "copy-history"), held: make(chan struct{}), entered: make(chan struct{}, 1),
 		files: fstest.MapFS{
 			"MyWorks/done.fit": {Data: make([]byte, 1<<10), ModTime: time.Unix(1761700000, 0), Mode: 0o644},
 			"MyWorks/held.fit": {Data: make([]byte, 64<<10), ModTime: time.Unix(1761700000, 0), Mode: 0o644},
