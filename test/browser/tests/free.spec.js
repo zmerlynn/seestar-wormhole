@@ -201,7 +201,9 @@ test('Before deleting, check saves each choice, and Nothing previews and deletes
     await proof(page).selectOption(label);
     await expect(warn).toBeHidden();
     await find(page, /^Nothing to delete yet\./);
-    expect(readJSON(app.copyFile)).toMatchObject(want);
+    // The title may still be the last preview's, shown before the reload,
+    // so wait for the save rather than read the file once.
+    await expect.poll(() => readJSON(app.copyFile)).toMatchObject(want);
     await page.reload();
     await expect(page.locator('#quit')).toBeEnabled();
     await tab(page, 'Free up space').click();
