@@ -2,8 +2,10 @@ package state
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -41,6 +43,27 @@ func folders(t *testing.T, dir string) []string {
 		}
 	}
 	return names
+}
+
+// records decodes the JSON log records in logs.
+func records(t *testing.T, logs *bytes.Buffer) []map[string]any {
+	t.Helper()
+	var got []map[string]any
+	for dec := json.NewDecoder(logs); dec.More(); {
+		var r map[string]any
+		if err := dec.Decode(&r); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, r)
+	}
+	return got
+}
+
+// withoutTime returns r without its time.
+func withoutTime(r map[string]any) map[string]any {
+	r = maps.Clone(r)
+	delete(r, slog.TimeKey)
+	return r
 }
 
 // writeOld writes a file named "history" in the old default folder.
@@ -99,7 +122,7 @@ func TestOldHistoryMoves(t *testing.T) {
 	}
 
 	var logs bytes.Buffer
-	got, err := HistoryDir("", slog.New(slog.NewTextHandler(&logs, nil)))
+	got, err := HistoryDir("", slog.New(slog.NewJSONHandler(&logs, nil)))
 	if err != nil || got != def {
 		t.Fatalf("history dir %q, %v, want %q", got, err, def)
 	}
@@ -112,9 +135,9 @@ func TestOldHistoryMoves(t *testing.T) {
 	if fi, err := os.Lstat(filepath.Dir(def)); err != nil || !fi.IsDir() {
 		t.Errorf("seestar-wormhole: %v, %v", fi, err)
 	}
-	if s := logs.String(); strings.Count(s, "msg=\"moved the copy history\"") != 1 || !strings.Contains(s, "level=INFO") ||
-		!strings.Contains(s, "from="+old) || !strings.Contains(s, "to="+def) {
-		t.Errorf("log %q, want one info record of the move", s)
+	want := map[string]any{"level": "INFO", "msg": "moved the copy history", "from": old, "to": def}
+	if got := records(t, &logs); len(got) != 1 || !maps.Equal(withoutTime(got[0]), want) {
+		t.Errorf("log %v, want one record %v", got, want)
 	}
 
 	// The move happens once; then reads and writes use the new folder.
