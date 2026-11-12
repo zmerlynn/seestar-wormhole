@@ -104,6 +104,11 @@ func TestSettingsFutureMembersSurviveConnect(t *testing.T) {
 		if got["idle"] != "3m" || got["version"] != float64(1) {
 			t.Fatalf("Connect edits missing: %s", saved)
 		}
+		// It is written indented, unknown members too, with a final newline.
+		if !bytes.HasPrefix(saved, []byte("{\n  \"discovery\": false,\n  \"version\": 1,\n")) || !bytes.HasSuffix(saved, []byte("\n}\n")) ||
+			!bytes.Contains(saved, []byte("\n  \"future_object\": {\n    \"enabled\": true,\n    \"limit\": 17\n  },\n")) {
+			t.Errorf("config.json is not indented: %s", saved)
+		}
 	})
 }
 

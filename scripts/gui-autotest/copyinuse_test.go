@@ -33,12 +33,11 @@ func TestMain(m *testing.M) {
 func fixture() int {
 	root, out := os.Args[len(os.Args)-1], os.Getenv("SEESTAR_GUITEST_OUT")
 	folder := guitest.CopyFolder(root)
-	base, err := os.UserConfigDir()
+	stateDir, err := state.DefaultDir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return 1
 	}
-	stateDir := filepath.Join(base, "seestar-copy")
 	joined := func() int {
 		if err := os.WriteFile(filepath.Join(out, "joined"), nil, 0600); err != nil {
 			fmt.Fprintln(os.Stderr, err)

@@ -363,7 +363,7 @@ func TestRouteSave(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, want := range []string{`"route":"lan"`, `"lan_address":"192.0.2.10:445"`, `"future":{"kept":true}`, `"email":"synthetic@example.invalid"`} {
-		if !strings.Contains(string(b), want) {
+		if !strings.Contains(compact(b), want) {
 			t.Errorf("config.json lacks %s: %s", want, b)
 		}
 	}

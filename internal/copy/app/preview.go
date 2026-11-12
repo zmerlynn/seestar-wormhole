@@ -102,7 +102,7 @@ func (p *previewer) start(set Settings, t Target) error {
 	// returns, so result needs no lock.
 	var result *previewStatus
 	o := engine.SyncOptions{
-		Endpoint: t.logged(), Dest: set.Folder, StateDir: set.historyDir(p.stateDir), Selector: sel, DryRun: true,
+		Endpoint: t.logged(), Dest: set.Folder, StateDir: set.historyToRead(p.stateDir), Selector: sel, DryRun: true,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: func(ctx context.Context, _ string) (sess remote.Session, err error) {
 			sess, err = establish(ctx, t, func(ctx context.Context) (remote.Session, error) {

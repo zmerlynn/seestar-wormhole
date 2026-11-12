@@ -109,4 +109,4 @@ func (c *copyStore) save(set copyapp.Settings) error {
 }
 
 // writeCopySettings is copy.json's one writer; tests replace it.
-var writeCopySettings = func(st *storage, f copyFile) error { return st.write(copyName, f) }
+var writeCopySettings = func(st *storage, f copyFile) error { return st.writeSettings(copyName, f) }

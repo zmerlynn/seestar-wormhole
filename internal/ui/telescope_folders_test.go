@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"bytes"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -90,7 +89,7 @@ func TestCopySettingsTelescopes(t *testing.T) {
 	if err := json.Unmarshal(b, &f); err != nil {
 		t.Fatal(err)
 	}
-	if f.Folder != "/synthetic/Seestar" || !bytes.Contains(f.Telescopes["serial:SYNTH0001"], []byte(`"color":"red"`)) || len(f.Telescopes) != 2 {
+	if f.Folder != "/synthetic/Seestar" || !strings.Contains(compact(f.Telescopes["serial:SYNTH0001"]), `"color":"red"`) || len(f.Telescopes) != 2 {
 		t.Errorf("copy.json = %s", b)
 	}
 

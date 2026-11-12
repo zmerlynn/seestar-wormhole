@@ -3,6 +3,8 @@ package app
 import (
 	"os"
 	"path/filepath"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
 // SettingsVersion is the only version of the copy settings this app reads
@@ -74,12 +76,24 @@ func firstSettings() Settings {
 }
 
 // historyDir is the copy history folder s chooses, or def, the file
-// commands' default, when it chooses none.
+// commands' default, when it chooses none. When it chooses none, a run
+// that writes moves the old default folder to def first, with
+// [server.moveHistory].
 func (s Settings) historyDir(def string) string {
 	if s.HistoryDir != "" {
 		return s.HistoryDir
 	}
 	return def
+}
+
+// historyToRead is the folder a read-only run reads for historyDir: the
+// folder s chooses, even one that is def, or the old default folder, in
+// place, until a run that writes moves it.
+func (s Settings) historyToRead(def string) string {
+	if s.HistoryDir != "" {
+		return s.HistoryDir
+	}
+	return state.HistoryToRead(def)
 }
 
 // settingsFile is the settings as last loaded or saved.

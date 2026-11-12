@@ -271,7 +271,7 @@ func TestLANScanSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	raw, _ := os.ReadFile(filepath.Join(s.storage.root, "config.json"))
-	if !strings.Contains(string(raw), `"lan_scan":"a newer mode"`) {
+	if !strings.Contains(compact(raw), `"lan_scan":"a newer mode"`) {
 		t.Fatalf("a newer value wasn't kept: %s", raw)
 	}
 }

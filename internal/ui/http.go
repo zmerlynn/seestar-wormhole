@@ -660,7 +660,7 @@ func (s *server) saveSettings(settings Settings) error {
 			}
 		}
 	}
-	err := s.storage.write("config.json", settings)
+	err := s.storage.writeSettings("config.json", settings)
 	s.mu.Lock()
 	// A failed clear keeps the same account's prior selection visible.
 	// Other fields still project the current account, including a successful native password save

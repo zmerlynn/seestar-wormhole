@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"io"
@@ -55,6 +56,17 @@ func (s *storage) read(name string, v any) error {
 func (s *storage) write(name string, v any) error {
 	b, err := json.Marshal(v)
 	if err != nil || len(b) > localhttp.MaxJSON {
+		return errStorage
+	}
+	return s.writeBytes(name, b)
+}
+
+// writeSettings writes a settings file, config.json or copy.json, as
+// write does but indented two spaces a level and ending in a newline, so
+// that a person can read and edit it.
+func (s *storage) writeSettings(name string, v any) error {
+	b, err := json.Marshal(v, jsontext.WithIndent("  "))
+	if b = append(b, '\n'); err != nil || len(b) > localhttp.MaxJSON {
 		return errStorage
 	}
 	return s.writeBytes(name, b)

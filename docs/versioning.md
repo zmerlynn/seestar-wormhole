@@ -122,8 +122,8 @@ firmware behind it change without notice, as above.
     `<hash>` is 64 lowercase hex digits; it never ends in `.fit`. Leftover files with exactly that form of name are
     removed at the start of each pass. See [temporary files](reference/files-cli.md#temporary-files).
 14. **The copy history.** Its location, `<history-dir>/sync/<sha256>.jsonl`, where `<sha256>` is the lowercase hex
-    SHA-256 of the absolute, cleaned `--dest`, and the default history folder, which is the one earlier releases'
-    `seestar-copy-cli` used. Its [format](reference/selection-and-history.md#format): JSON Lines, append-only; a header
+    SHA-256 of the absolute, cleaned `--dest`, and the default history folder, `copy-history` in the app's settings
+    folder, with its one-time move from `seestar-copy`, the folder earlier releases and `seestar-copy-cli` used. Its [format](reference/selection-and-history.md#format): JSON Lines, append-only; a header
     `{"v":1,"dest":"<absolute dest>"}`; then one record per line with the members `path` (share-relative, forward
     slashes), `size` (bytes), `mtime` (the device's, RFC 3339), `sha256` (lowercase hex), `at` (RFC 3339) and `how`
     (`copied`, `replaced` or `adopted`); the last record for a path wins; a record is written only after its file is

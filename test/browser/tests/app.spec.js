@@ -74,7 +74,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   for (const box of await page.locator('#copy-form input:not(#f-hist), #copy-form textarea').all()) {
     expect(await box.getAttribute('placeholder')).toBeNull();
   }
-  await expect(field(page, 'Copy history folder')).toHaveAttribute('placeholder', /[/\\]seestar-copy$/);
+  await expect(field(page, 'Copy history folder')).toHaveAttribute('placeholder', /[/\\]seestar-wormhole[/\\]copy-history$/);
   await expect(page.locator('#f-ex-help')).toContainText('For example: Video, /Preview.');
   await expect(page.locator('#f-cancel')).toBeHidden();
   // Browse shows the telescope's files before the folder is saved,
@@ -659,13 +659,18 @@ test('Copy settings field errors show under each field and nothing is saved', as
   await expect(page.locator('#f-saved')).toHaveText('');
   expect(readJSON(app.copyFile)).toEqual(files['copy.json']);
 
+  // The first field in error takes the focus: Only copy is above Leave out.
   await page.locator('#f-int').fill('10');
-  await field(page, 'Leave out').fill('Video\n\n[Pp]review\nMyWorks/**/*.mp4');
   await copySave(page).click();
   await expect(field(page, 'Only copy')).toBeFocused();
   await expect(page.locator('#f-int-err')).toBeHidden();
-  await expect(page.locator('#f-ex-err')).toBeHidden();
+  await expect(page.locator('#f-ex-err')).toBeVisible();
   await expect(page.locator('#f-int')).not.toHaveAttribute('aria-invalid', 'true');
+
+  await field(page, 'Leave out').fill('Video\n\n[Pp]review\nMyWorks/**/*.mp4');
+  await copySave(page).click();
+  await expect(field(page, 'Only copy')).toBeFocused();
+  await expect(page.locator('#f-ex-err')).toBeHidden();
 });
 
 // What to copy is never saved: it is the option Only copy's patterns make,
@@ -715,6 +720,10 @@ test('What to copy fills or empties Only copy, and a reload shows the option the
   await open();
   await what.selectOption('Custom');
   await expect(only).toBeVisible();
+  // Only copy sits under What to copy, above Leave out, as the tab
+  // order goes too.
+  expect(await page.evaluate(() => ['f-what', 'f-in', 'f-ex'].map(id => document.getElementById(id))
+    .every((el, i, all) => i === 0 || all[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(only).toHaveValue('');
   await only.fill('*.FIT\n*.fits');
   await save();
@@ -1057,7 +1066,7 @@ test('Copy history shows its file, with a Copy button, and an edited folder says
   await openCopy(page, app.url);
   await page.getByText('Copy history', { exact: true }).click();
   const history = page.locator('#h-path');
-  await expect(history).toHaveText(/^\/.*[/\\]seestar-copy[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
+  await expect(history).toHaveText(/^\/.*[/\\]seestar-wormhole[/\\]copy-history[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
   const first = await history.textContent();
   await page.locator('#h-clip').click();
   await expect(page.locator('#h-clip')).toHaveText('Copied');
@@ -1092,7 +1101,7 @@ test('Copy history folder is empty for the default, refuses a relative path, and
   await openCopy(page, app.url);
   await page.getByText('Copy history', { exact: true }).click();
   const history = page.locator('#h-path');
-  await expect(history).toHaveText(/^\/.*[/\\]seestar-copy[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
+  await expect(history).toHaveText(/^\/.*[/\\]seestar-wormhole[/\\]copy-history[/\\]sync[/\\][0-9a-f]{64}\.jsonl$/);
   const first = await history.textContent();
   await page.getByRole('button', { name: 'Change…' }).click();
   const hist = field(page, 'Copy history folder');

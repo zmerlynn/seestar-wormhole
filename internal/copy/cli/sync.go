@@ -114,7 +114,7 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 	f.DurationVar(&o.readyAge, "ready-age", 2*time.Minute, "copy a file only once its device time is at least this old")
 	f.DurationVar(&o.firstPassAge, "first-pass-age", 10*time.Minute, "on the first pass, files at least this old count as finished")
 	f.IntVar(&o.workers, "workers", 4, "files copied at once (1-64)")
-	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history (default: the per-user config folder's seestar-copy)")
+	f.StringVar(&o.historyDir, "history-dir", "", "folder for the copy history (default: copy-history in the per-user config folder's seestar-wormhole)")
 	return c
 }
 
@@ -190,10 +190,19 @@ var dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) 
 	return remote.DialVia(ctx, name, remote.TCP(endpoint), log)
 }
 
+// historyDir resolves the history folder: a run that writes moves the old
+// default folder first, and a read-only run reads it in place.
+func historyDir(explicit string, readOnly bool, log *slog.Logger) (string, error) {
+	if readOnly {
+		return state.ReadHistoryDir(explicit)
+	}
+	return state.HistoryDir(explicit, log)
+}
+
 // runSync resolves the history folder and runs the sync. A dry run is
 // read-only: the program turns the guard on before it calls this.
 func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
-	stateDir, err := state.HistoryDir(o.historyDir)
+	stateDir, err := historyDir(o.historyDir, o.dryRun, log)
 	if err != nil {
 		return err
 	}

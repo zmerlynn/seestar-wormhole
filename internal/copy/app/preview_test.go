@@ -211,14 +211,7 @@ func TestPreviewLocalNetworkHint(t *testing.T) {
 	if v := e.run(); v.State != pvFailed || v.Text != "Check that the telescope is on and on this computer's network. Preview again to retry."+lanHint {
 		t.Errorf("on this network: %+v", v)
 	}
-	if err := e.p.start(e.set, Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); err != nil {
-		t.Fatal(err)
-	}
-	e.p.mu.Lock()
-	done := e.p.done
-	e.p.mu.Unlock()
-	<-done
-	if v := e.p.view(); v.State != pvFailed || v.Text != "Check the connection and telescope status on the Connection tab. Preview again to retry." {
+	if v := e.runAt(Target{Endpoint: e.set.Address, Device: "synthetic", Run: 1}); v.State != pvFailed || v.Text != "Check the connection and telescope status on the Connection tab. Preview again to retry." {
 		t.Errorf("through the account: %+v", v)
 	}
 }

@@ -103,7 +103,7 @@ func prepareCopyScenario(root string) error {
 	defer st.directory.Close()
 	settings := defaultSettings()
 	settings.Route, settings.LANAddress, settings.RouteEstablished = routeLAN, "192.0.2.20", true
-	if err := st.write("config.json", settings); err != nil {
+	if err := st.writeSettings("config.json", settings); err != nil {
 		return err
 	}
 	set := copyapp.DefaultSettings()
