@@ -3,6 +3,7 @@ package landiscovery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"sync"
@@ -213,4 +214,99 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 			t.Fatalf("got %v %+v %v, sessions %v", got, r, err, sessions)
 		}
 	})
+}
+
+// Another serial answering from an address the telescope answered from
+// disqualifies that address too, not only the saved one: before its dial,
+// between its ports, and after it connects, up to the scan's end.
+func TestFollowConflictAtAnotherAddress(t *testing.T) {
+	t.Run("before the dial", func(t *testing.T) {
+		s, _ := observedScan(100*time.Millisecond, answer("SERIAL-B", "192.0.2.30"), answer("SERIAL-A", "192.0.2.30"))
+		dials := 0
+		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			dials++
+			return &session{endpoint: ep}, nil
+		}, release)
+		if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 || r.Conflict || r.Seen == nil || r.NotSeen {
+			t.Fatalf("got %v %+v %v, dials %d", got, r, err, dials)
+		}
+	})
+	t.Run("during the dial on 4445", func(t *testing.T) {
+		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.30"))
+		var opened *session
+		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.30:445" {
+				return nil, errors.New("445 refused")
+			}
+			c.deliver(t, answer("SERIAL-B", "192.0.2.30"))
+			opened = &session{endpoint: ep}
+			return opened, nil
+		}, release)
+		if !errors.Is(err, ErrOtherTelescope) || got != nil || opened == nil || !opened.closed.Load() || r.Moved || r.Conflict {
+			t.Fatalf("got %v %+v %v, opened %v", got, r, err, opened)
+		}
+	})
+	t.Run("at the saved address during the dial on 4445", func(t *testing.T) {
+		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.20"))
+		var opened *session
+		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.20:445" {
+				return nil, errors.New("445 refused")
+			}
+			c.deliver(t, answer("SERIAL-B", "192.0.2.20"))
+			opened = &session{endpoint: ep}
+			return opened, nil
+		}, release)
+		if !errors.Is(err, ErrOtherTelescope) || got != nil || opened == nil || !opened.closed.Load() || !r.Conflict {
+			t.Fatalf("got %v %+v %v, opened %v", got, r, err, opened)
+		}
+	})
+	t.Run("between the ports", func(t *testing.T) {
+		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.30"))
+		var tried []string
+		_, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			tried = append(tried, ep)
+			c.deliver(t, answer("SERIAL-B", "192.0.2.30"))
+			return nil, errors.New("445 refused")
+		}, release)
+		if err == nil || len(tried) != 1 {
+			t.Fatalf("%v tried %v", err, tried)
+		}
+	})
+	t.Run("the search goes on elsewhere", func(t *testing.T) {
+		s, c := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.30"))
+		sessions := map[string]*session{}
+		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.30:445" {
+				c.deliver(t, answer("SERIAL-B", "192.0.2.30"), answer("SERIAL-A", "192.0.2.31"))
+			}
+			sessions[ep] = &session{endpoint: ep}
+			return sessions[ep], nil
+		}, release)
+		first, second := sessions["192.0.2.30:445"], sessions["192.0.2.31:445"]
+		if err != nil || got == nil || got != second || second.closed.Load() || first == nil || !first.closed.Load() ||
+			r.Endpoint != "192.0.2.31:445" || !r.Moved || r.Conflict {
+			t.Fatalf("got %v %+v %v, sessions %v", got, r, err, sessions)
+		}
+	})
+}
+
+// Past maxOthers addresses answering with other serials, Follow can't tell
+// which addresses are disqualified, and uses none.
+func TestFollowFailsClosedWhenOthersFill(t *testing.T) {
+	var replies []datagram
+	for i := range maxOthers + 1 {
+		replies = append(replies, datagram{replyBytes(fmt.Sprintf("OTHER-%d", i), "S50_X", "Seestar S50", 0), netip.AddrFrom4([4]byte{198, 51, byte(i >> 8), byte(i)})})
+	}
+	replies = append(replies, answer("SERIAL-A", "192.0.2.30"))
+	s, c := observedScan(time.Second, replies...)
+	c.in = make(chan datagram, len(replies)) // more than it usually buffers
+	dials := 0
+	got, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		dials++
+		return &session{endpoint: ep}, nil
+	}, release)
+	if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 {
+		t.Fatalf("got %v %v, dials %d", got, err, dials)
+	}
 }

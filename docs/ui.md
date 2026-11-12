@@ -77,8 +77,8 @@ only the telescope's files, for Copy, Browse and Free up space.
   the address that answers with it and accepts file sharing, the saved
   address first, on the saved port, or on 445 and then 4445 when the saved
   port is one of the two; a new address or port is saved, and Activity says so, naming the
-  telescope, its model and serial, and both addresses. Another telescope
-  answering at the saved address is never used. When the scan doesn't see
+  telescope, its model and serial, and both addresses. An address another
+  telescope answers at, the saved one or any other, is never used. When the scan doesn't see
   the telescope, the saved address is tried, and Activity says it wasn't
   seen. Free up space deletes only at
   the address its preview connected to; if that changes or stops
