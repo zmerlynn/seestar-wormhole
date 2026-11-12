@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/spf13/pflag"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
@@ -110,9 +111,13 @@ func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, lo
 }
 
 // followSearch is one search for f's telescope, which scans, and what it
-// logs. It returns the address it connected at.
+// logs. It returns the address it connected at. Closing the connection it
+// returns releases the search's context.
 func followSearch[T io.Closer](ctx context.Context, f *follow, log *slog.Logger, dial func(context.Context, string) (T, error)) (T, string, error) {
-	v, r, err := landiscovery.Follow(ctx, lanScanner, f.saved, f.serial, dial, func(v T) { v.Close() })
+	v, r, cancel, err := landiscovery.Follow(ctx, lanScanner, f.saved, f.serial, dial, func(v T) { v.Close() })
+	if err == nil {
+		v = remote.OnClose(v, cancel)
+	}
 	if ctx.Err() != nil {
 		return v, r.Endpoint, err
 	}

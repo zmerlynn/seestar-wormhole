@@ -483,3 +483,42 @@ func TestFakeFileCloseClosesUnderlyingFile(t *testing.T) {
 		t.Errorf("underlying file closed %d times, want 1", n)
 	}
 }
+
+// OnClose calls done after the session's own Close, and keeps a Remover a
+// Remover.
+func TestOnClose(t *testing.T) {
+	var order []string
+	done := func() { order = append(order, "done") }
+	var s Session = &closeOrder{NewFake(fstest.MapFS{}), &order}
+	s = OnClose(s, done)
+	if len(order) != 0 {
+		t.Fatalf("before Close: %q", order)
+	}
+	if err := s.Close(); err != nil || !slices.Equal(order, []string{"close", "done"}) {
+		t.Fatalf("%v %q", err, order)
+	}
+	d, err := NewFakeDir(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	var asSession Session = d
+	if _, ok := OnClose(asSession, func() { called = true }).(Remover); !ok {
+		t.Fatal("a Remover held as a Session lost its remove calls")
+	}
+	r := OnClose[Remover](d, func() { called = true })
+	if err := r.Close(); err != nil || !called {
+		t.Fatalf("%v, done called %v", err, called)
+	}
+}
+
+// closeOrder is a session that records its Close in order.
+type closeOrder struct {
+	Session
+	order *[]string
+}
+
+func (s *closeOrder) Close() error {
+	*s.order = append(*s.order, "close")
+	return s.Session.Close()
+}

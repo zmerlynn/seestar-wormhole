@@ -96,7 +96,7 @@ func answer(serial, from string) datagram {
 func TestFollowConflictBeforeMatchingReply(t *testing.T) {
 	s, _ := observedScan(100*time.Millisecond, answer("SERIAL-B", "192.0.2.20"), answer("SERIAL-A", "192.0.2.20"))
 	dials := 0
-	got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+	got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 		dials++
 		return &session{endpoint: ep}, nil
 	}, release)
@@ -112,7 +112,7 @@ func TestFollowConflictDuringSavedDial(t *testing.T) {
 	t.Run("nothing else answers", func(t *testing.T) {
 		s, c := observedScan(time.Second, answer("SERIAL-A", "192.0.2.20"))
 		var sessions []*session
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			c.deliver(t, answer("SERIAL-B", "192.0.2.20"))
 			sessions = append(sessions, &session{endpoint: ep})
 			return sessions[len(sessions)-1], nil
@@ -125,7 +125,7 @@ func TestFollowConflictDuringSavedDial(t *testing.T) {
 	t.Run("the telescope answers elsewhere", func(t *testing.T) {
 		s, c := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.20"))
 		sessions := map[string]*session{}
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			if ep == "192.0.2.20:445" {
 				c.deliver(t, answer("SERIAL-B", "192.0.2.20"), answer("SERIAL-A", "192.0.2.30"))
 			}
@@ -156,7 +156,7 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 		sessions := map[string]*session{}
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		got, r, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			switch ep {
 			case "192.0.2.30:445":
 				c.deliver(t, sc.during...)
@@ -227,7 +227,7 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 	t.Run("before the dial", func(t *testing.T) {
 		s, _ := observedScan(100*time.Millisecond, answer("SERIAL-B", "192.0.2.30"), answer("SERIAL-A", "192.0.2.30"))
 		dials := 0
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			dials++
 			return &session{endpoint: ep}, nil
 		}, release)
@@ -238,7 +238,7 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 	t.Run("during the dial on 4445", func(t *testing.T) {
 		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.30"))
 		var opened *session
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			if ep == "192.0.2.30:445" {
 				return nil, errors.New("445 refused")
 			}
@@ -253,7 +253,7 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 	t.Run("at the saved address during the dial on 4445", func(t *testing.T) {
 		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.20"))
 		var opened *session
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			if ep == "192.0.2.20:445" {
 				return nil, errors.New("445 refused")
 			}
@@ -268,7 +268,7 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 	t.Run("between the ports", func(t *testing.T) {
 		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.30"))
 		var tried []string
-		_, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		_, _, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			tried = append(tried, ep)
 			c.deliver(t, answer("SERIAL-B", "192.0.2.30"))
 			return nil, errors.New("445 refused")
@@ -280,7 +280,7 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 	t.Run("the search goes on elsewhere", func(t *testing.T) {
 		s, c := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.30"))
 		sessions := map[string]*session{}
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			if ep == "192.0.2.30:445" {
 				c.deliver(t, answer("SERIAL-B", "192.0.2.30"), answer("SERIAL-A", "192.0.2.31"))
 			}
@@ -312,7 +312,7 @@ func TestFollowFailsClosedWhenOthersFill(t *testing.T) {
 				s, c := observedScan(time.Second, replies...)
 				c.in = make(chan datagram, len(replies)) // more than it usually buffers
 				dials := 0
-				got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+				got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 					dials++
 					return &session{endpoint: ep}, nil
 				}, release)
@@ -374,7 +374,7 @@ func TestFollowKeepsTheFurtherFailure(t *testing.T) {
 	t.Run("the proxy's share", func(t *testing.T) {
 		s, _ := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.20"))
 		denied := errors.New("proxy share permission denied")
-		_, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		_, _, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			if ep == "192.0.2.20:445" {
 				return nil, refused
 			}
@@ -387,7 +387,7 @@ func TestFollowKeepsTheFurtherFailure(t *testing.T) {
 	t.Run("canceled on 4445", func(t *testing.T) {
 		s, _ := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.20"))
 		ctx, cancel := context.WithCancel(t.Context())
-		_, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+		_, _, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
 			if ep == "192.0.2.20:445" {
 				return nil, refused
 			}
@@ -411,7 +411,7 @@ func TestFollowConnectTimeout(t *testing.T) {
 			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
 			start := time.Now()
 			var second time.Duration
-			_, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+			_, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
 				if ep == "192.0.2.20:445" {
 					time.Sleep(20 * time.Second)
 					return nil, refused
@@ -431,7 +431,7 @@ func TestFollowConnectTimeout(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
 			var bound context.Context
-			got, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+			got, _, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
 				time.Sleep(ConnectTimeout - time.Second)
 				bound = ctx
 				return &session{endpoint: ep}, nil
@@ -449,7 +449,7 @@ func TestFollowConnectTimeout(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
 			var opened *session
-			got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+			got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
 				time.Sleep(ConnectTimeout + time.Second)
 				opened = &session{endpoint: ep}
 				return opened, nil
@@ -463,7 +463,7 @@ func TestFollowConnectTimeout(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
 			ctx, cancel := context.WithCancel(t.Context())
-			_, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+			_, _, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
 				time.AfterFunc(time.Second, cancel)
 				<-ctx.Done()
 				return nil, ctx.Err()
@@ -472,5 +472,56 @@ func TestFollowConnectTimeout(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	})
+}
+
+// trackedParent counts the contexts waiting on it to end. context
+// registers a child through a parent's AfterFunc method when the parent
+// shows it no cancelCtx of its own, as Value's nil does.
+type trackedParent struct {
+	context.Context
+	waiting atomic.Int32
+}
+
+func (p *trackedParent) Value(any) any { return nil }
+
+func (p *trackedParent) AfterFunc(f func()) func() bool {
+	p.waiting.Add(1)
+	stop := context.AfterFunc(p.Context, func() { p.waiting.Add(-1); f() })
+	return func() bool {
+		if stop() {
+			p.waiting.Add(-1)
+			return true
+		}
+		return false
+	}
+}
+
+// A connection Follow returns keeps its context past ConnectTimeout, and
+// the cancel returned with it ends that context and leaves nothing
+// waiting on ctx.
+func TestFollowReturnsItsCancel(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		parent := &trackedParent{Context: t.Context()}
+		for range 3 {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			var bound context.Context
+			got, _, cancel, err := Follow(parent, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				bound = ctx
+				return &session{endpoint: ep}, nil
+			}, release)
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(ConnectTimeout + time.Second)
+			if bound.Err() != nil || parent.waiting.Load() != 1 {
+				t.Fatalf("open: context %v, %d waiting", bound.Err(), parent.waiting.Load())
+			}
+			release(got)
+			cancel()
+			if bound.Err() == nil || parent.waiting.Load() != 0 {
+				t.Fatalf("closed: context %v, %d waiting", bound.Err(), parent.waiting.Load())
+			}
+		}
 	})
 }

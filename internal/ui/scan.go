@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
 
@@ -447,8 +448,12 @@ func lanFollow[T io.Closer](ctx context.Context, h *server, t copyapp.Target, ge
 // lanSearch is one search for t, the scan and its dials, and what it
 // saves and records. It saves a new address only when no explicit save
 // came after gen, the routeGeneration its connect was made under.
+// Closing the connection it returns releases the search's context.
 func lanSearch[T io.Closer](ctx context.Context, h *server, t copyapp.Target, gen uint64, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
-	v, r, err := landiscovery.Follow(ctx, lanScanner, t.Endpoint, t.Serial, dial, func(v T) { v.Close() })
+	v, r, cancel, err := landiscovery.Follow(ctx, lanScanner, t.Endpoint, t.Serial, dial, func(v T) { v.Close() })
+	if err == nil {
+		v = remote.OnClose(v, cancel)
+	}
 	if ctx.Err() != nil {
 		return v, t, err
 	}

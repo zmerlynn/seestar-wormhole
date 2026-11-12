@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"testing/fstest"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/readonly"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
@@ -180,4 +181,23 @@ func TestFollowConflictWithSightingIsLoggedAsUnreached(t *testing.T) {
 // tcpAddr is endpoint as a dial error names it.
 func tcpAddr(endpoint string) net.Addr {
 	return net.TCPAddrFromAddrPort(netip.MustParseAddrPort(endpoint))
+}
+
+// Closing a session a scan connected ends the context it was dialed with,
+// so nothing of the connect waits on the run's.
+func TestFollowSessionCloseEndsItsContext(t *testing.T) {
+	useLAN(t, twoTelescopes())
+	f := newFollow(Saved{Endpoint: "192.0.2.20:445", LANSerial: "SERIAL-A", LANScan: "connect"}, none)
+	var bound context.Context
+	s, err := followDial(t.Context(), f, f.saved, slog.New(slog.DiscardHandler), func(ctx context.Context, _ string, _ *slog.Logger) (remote.Session, error) {
+		bound = ctx
+		return remote.NewFake(fstest.MapFS{}), nil
+	})
+	if err != nil || bound.Err() != nil {
+		t.Fatalf("%v, context %v", err, bound.Err())
+	}
+	s.Close()
+	if bound.Err() == nil {
+		t.Fatal("the closed session's context goes on")
+	}
 }

@@ -119,6 +119,43 @@ type Session interface {
 	Close() error
 }
 
+// OnClose is c, whose Close also calls done once c's own Close returns.
+// A Remover or a Session keeps its type and calls; c of any other type,
+// which only tests' fakes are, is returned as it is, without done.
+func OnClose[T io.Closer](c T, done func()) T {
+	var wrapped any
+	switch s := any(c).(type) {
+	case Remover:
+		wrapped = &closingRemover{s, done}
+	case Session:
+		wrapped = &closingSession{s, done}
+	}
+	if w, ok := wrapped.(T); ok {
+		return w
+	}
+	return c
+}
+
+type closingSession struct {
+	Session
+	done func()
+}
+
+func (s *closingSession) Close() error {
+	defer s.done()
+	return s.Session.Close()
+}
+
+type closingRemover struct {
+	Remover
+	done func()
+}
+
+func (r *closingRemover) Close() error {
+	defer r.done()
+	return r.Remover.Close()
+}
+
 // File is a remote file open for reading. WriteTo is the fast path: for the
 // SMB implementation it keeps several reads in flight, and io.Copy uses it.
 // Seek and Stat use the context the file was opened with.

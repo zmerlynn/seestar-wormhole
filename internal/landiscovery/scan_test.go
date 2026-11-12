@@ -536,7 +536,7 @@ func TestFollow(t *testing.T) {
 		s, c := network(time.Minute, reply{"SERIAL-A", "192.0.2.20"})
 		dial, tried := dialer("192.0.2.20:445")
 		start := time.Now()
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.20:445" || r.Moved || r.NotSeen || r.Seen == nil || r.Seen.Model != "Seestar S50" ||
 			!slices.Equal(tried(), []string{"192.0.2.20:445"}) || c.sentCount() == 0 {
 			t.Fatalf("got %q %+v %v tried %v sent %d", got, r, err, tried(), c.sentCount())
@@ -549,7 +549,7 @@ func TestFollow(t *testing.T) {
 	t.Run("moved telescope", func(t *testing.T) {
 		s, c := network(time.Minute, reply{"SERIAL-A", "192.0.2.30"})
 		dial, tried := dialer("192.0.2.20:445", "192.0.2.30:445")
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		// The saved address didn't answer with the serial: it isn't tried.
 		if err != nil || got != "session@192.0.2.30:445" || !r.Moved || r.Endpoint != "192.0.2.30:445" || r.Seen == nil ||
 			!slices.Equal(tried(), []string{"192.0.2.30:445"}) || !c.isClosed() {
@@ -559,7 +559,7 @@ func TestFollow(t *testing.T) {
 	t.Run("another telescope at the saved address", func(t *testing.T) {
 		s, _ := network(100*time.Millisecond, reply{"SERIAL-B", "192.0.2.20"})
 		dial, tried := dialer("192.0.2.20:445")
-		_, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		_, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if !errors.Is(err, ErrOtherTelescope) || !r.Conflict || r.Moved || r.Seen != nil || r.NotSeen || len(tried()) != 0 {
 			t.Fatalf("%+v %v tried %v", r, err, tried())
 		}
@@ -567,7 +567,7 @@ func TestFollow(t *testing.T) {
 	t.Run("another telescope elsewhere is never dialed", func(t *testing.T) {
 		s, _ := network(100*time.Millisecond, reply{"SERIAL-B", "192.0.2.30"})
 		dial, tried := dialer("192.0.2.30:445")
-		_, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		_, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if err != refused || r.Moved || r.Seen != nil || !r.NotSeen || r.Endpoint != "192.0.2.20:445" ||
 			!slices.Equal(tried(), []string{"192.0.2.20:445"}) {
 			t.Fatalf("%+v %v tried %v", r, err, tried())
@@ -576,7 +576,7 @@ func TestFollow(t *testing.T) {
 	t.Run("not seen falls back to the saved address", func(t *testing.T) {
 		s, c := network(100 * time.Millisecond)
 		dial, tried := dialer("192.0.2.20:445")
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.20:445" || !r.NotSeen || r.Moved || r.Seen != nil || c.sentCount() == 0 ||
 			!slices.Equal(tried(), []string{"192.0.2.20:445"}) {
 			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
@@ -586,14 +586,14 @@ func TestFollow(t *testing.T) {
 		s, c := network(100 * time.Millisecond)
 		c.writeErr = func(netip.Addr) error { return errors.New("no buffer space") }
 		dial, tried := dialer("192.0.2.20:445")
-		if _, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep); err != nil || !r.NotSeen || len(tried()) != 1 {
+		if _, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep); err != nil || !r.NotSeen || len(tried()) != 1 {
 			t.Fatalf("%+v %v", r, err)
 		}
 	})
 	t.Run("a failed address doesn't end the search", func(t *testing.T) {
 		s, _ := network(time.Minute, reply{"SERIAL-A", "192.0.2.30"}, reply{"SERIAL-A", "192.0.2.31"})
 		dial, tried := dialer("192.0.2.31:445")
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.31:445" || !r.Moved || !slices.Equal(tried(), []string{"192.0.2.30:445", "192.0.2.30:4445", "192.0.2.31:445"}) {
 			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
 		}
@@ -609,7 +609,7 @@ func TestFollow(t *testing.T) {
 			time.Sleep(50 * time.Millisecond)
 			return inner(ctx, endpoint)
 		}
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.20:445" || r.Moved || slices.Contains(tried(), "192.0.2.31:445") {
 			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
 		}
@@ -617,7 +617,7 @@ func TestFollow(t *testing.T) {
 	t.Run("seen but nowhere connects", func(t *testing.T) {
 		s, _ := network(100*time.Millisecond, reply{"SERIAL-A", "192.0.2.30"})
 		dial, tried := dialer()
-		_, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		_, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if !bothRefused(err, "192.0.2.30") || r.Moved || r.NotSeen || r.Seen == nil || r.Endpoint != "192.0.2.20:445" ||
 			!slices.Equal(tried(), []string{"192.0.2.30:445", "192.0.2.30:4445"}) {
 			t.Fatalf("%+v %v tried %v", r, err, tried())
@@ -626,7 +626,7 @@ func TestFollow(t *testing.T) {
 	t.Run("445 refused and the proxy's port answers", func(t *testing.T) {
 		s, _ := network(time.Minute, reply{"SERIAL-A", "192.0.2.20"})
 		dial, tried := dialer("192.0.2.20:4445")
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.20:4445" || !r.Moved || r.Endpoint != "192.0.2.20:4445" ||
 			!slices.Equal(tried(), []string{"192.0.2.20:445", "192.0.2.20:4445"}) {
 			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
@@ -635,7 +635,7 @@ func TestFollow(t *testing.T) {
 	t.Run("neither SMB port answers", func(t *testing.T) {
 		s, _ := network(100*time.Millisecond, reply{"SERIAL-A", "192.0.2.20"})
 		dial, tried := dialer()
-		_, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
+		_, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", dial, keep)
 		if !bothRefused(err, "192.0.2.20") || r.Moved || r.Endpoint != "192.0.2.20:445" || !slices.Equal(tried(), []string{"192.0.2.20:445", "192.0.2.20:4445"}) {
 			t.Fatalf("%+v %v tried %v", r, err, tried())
 		}
@@ -643,7 +643,7 @@ func TestFollow(t *testing.T) {
 	t.Run("another saved port isn't widened", func(t *testing.T) {
 		s, _ := network(100*time.Millisecond, reply{"SERIAL-A", "192.0.2.20"})
 		dial, tried := dialer("192.0.2.20:445", "192.0.2.20:4445")
-		_, _, err := Follow(t.Context(), s, "192.0.2.20:1445", "SERIAL-A", dial, keep)
+		_, _, _, err := Follow(t.Context(), s, "192.0.2.20:1445", "SERIAL-A", dial, keep)
 		if err != refused || !slices.Equal(tried(), []string{"192.0.2.20:1445"}) {
 			t.Fatalf("%v tried %v", err, tried())
 		}
@@ -652,7 +652,7 @@ func TestFollow(t *testing.T) {
 	t.Run("a follow keeps the working port", func(t *testing.T) {
 		s, _ := network(time.Minute, reply{"SERIAL-A", "192.0.2.30"})
 		dial, tried := dialer("192.0.2.30:4445")
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.30:4445" || !r.Moved || r.Endpoint != "192.0.2.30:4445" ||
 			!slices.Equal(tried(), []string{"192.0.2.30:445", "192.0.2.30:4445"}) {
 			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
@@ -661,7 +661,7 @@ func TestFollow(t *testing.T) {
 	t.Run("saved on the proxy's port, 445 answers", func(t *testing.T) {
 		s, _ := network(time.Minute, reply{"SERIAL-A", "192.0.2.20"})
 		dial, tried := dialer("192.0.2.20:445", "192.0.2.20:4445")
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.20:445" || !r.Moved || r.Endpoint != "192.0.2.20:445" ||
 			!slices.Equal(tried(), []string{"192.0.2.20:445"}) {
 			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
@@ -670,7 +670,7 @@ func TestFollow(t *testing.T) {
 	t.Run("saved on the proxy's port, only it answers", func(t *testing.T) {
 		s, _ := network(time.Minute, reply{"SERIAL-A", "192.0.2.20"})
 		dial, tried := dialer("192.0.2.20:4445")
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:4445", "SERIAL-A", dial, keep)
 		if err != nil || got != "session@192.0.2.20:4445" || r.Moved || r.Endpoint != "192.0.2.20:4445" ||
 			!slices.Equal(tried(), []string{"192.0.2.20:445", "192.0.2.20:4445"}) {
 			t.Fatalf("got %q %+v %v tried %v", got, r, err, tried())
@@ -679,7 +679,7 @@ func TestFollow(t *testing.T) {
 	t.Run("no serial saved", func(t *testing.T) {
 		s, c := network(time.Minute, reply{"SERIAL-A", "192.0.2.30"})
 		dial, _ := dialer("192.0.2.30:445")
-		if _, _, err := Follow(t.Context(), s, "192.0.2.20:445", "", dial, keep); err != refused || c.sentCount() != 0 {
+		if _, _, _, err := Follow(t.Context(), s, "192.0.2.20:445", "", dial, keep); err != refused || c.sentCount() != 0 {
 			t.Fatalf("err %v sent %d", err, c.sentCount())
 		}
 	})
@@ -689,7 +689,7 @@ func TestFollow(t *testing.T) {
 		time.AfterFunc(20*time.Millisecond, cancel)
 		dial, tried := dialer("192.0.2.20:445")
 		start := time.Now()
-		if _, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", dial, keep); !errors.Is(err, context.Canceled) || len(tried()) != 0 {
+		if _, _, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", dial, keep); !errors.Is(err, context.Canceled) || len(tried()) != 0 {
 			t.Fatalf("err %v tried %v", err, tried())
 		}
 		if time.Since(start) > 10*time.Second || !c.isClosed() {

@@ -125,12 +125,14 @@ type Resolved struct {
 // bounded by ConnectTimeout, and fails with an error that unwraps to
 // [context.DeadlineExceeded] when it runs out; ctx bounds it too. The
 // budget ends when the connect does: a returned connection's context
-// is canceled only with ctx.
-func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dial func(context.Context, string) (T, error), release func(T)) (T, Resolved, error) {
+// is canceled only with ctx, or by the cancel Follow returns with it,
+// which the caller calls once it has closed the connection. The cancel
+// is never nil.
+func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dial func(context.Context, string) (T, error), release func(T)) (T, Resolved, context.CancelFunc, error) {
 	var zero T
 	if _, _, err := net.SplitHostPort(endpoint); err != nil || serial == "" || s == nil {
 		v, err := dial(ctx, endpoint)
-		return v, Resolved{Endpoint: endpoint}, err
+		return v, Resolved{Endpoint: endpoint}, func() {}, err
 	}
 	connectCtx, cancel := context.WithCancel(ctx)
 	timer := time.AfterFunc(ConnectTimeout, cancel)
@@ -139,7 +141,7 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		if err != nil {
 			cancel()
 		}
-		return v, r, err
+		return v, r, cancel, err
 	}
 	// The budget ran out, even if a connection was made as it did.
 	if err == nil {
@@ -147,9 +149,9 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		r.Endpoint, r.Moved = endpoint, false
 	}
 	if ctx.Err() != nil {
-		return zero, r, ctx.Err()
+		return zero, r, cancel, ctx.Err()
 	}
-	return zero, r, errNoAnswer{}
+	return zero, r, cancel, errNoAnswer{}
 }
 
 // ConnectTimeout bounds a [Follow] that scans.

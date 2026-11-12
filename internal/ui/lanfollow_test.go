@@ -736,3 +736,26 @@ func TestConflictWithSightingIsRecordedAsUnreached(t *testing.T) {
 		t.Errorf("trail: %s", text)
 	}
 }
+
+// Closing a session a scan connected ends the context it was dialed with,
+// so nothing of the connect waits on the caller's.
+func TestSearchSessionCloseEndsItsContext(t *testing.T) {
+	useLAN(t, &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.20"): {"SERIAL-A", "S50_A", "Seestar S50"}}})
+	s := testServer(t)
+	if err := s.controller.persistRoute(routeLAN, "192.0.2.20:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	target, _ := s.copyTarget()
+	var bound context.Context
+	got, _, err := lanSearch(t.Context(), s, target, s.controller.routeGeneration(), func(ctx context.Context, _ string) (remote.Session, error) {
+		bound = ctx
+		return remote.NewFake(fstest.MapFS{}), nil
+	})
+	if err != nil || bound.Err() != nil {
+		t.Fatalf("%v, context %v", err, bound.Err())
+	}
+	got.Close()
+	if bound.Err() == nil {
+		t.Fatal("the closed session's context goes on")
+	}
+}
