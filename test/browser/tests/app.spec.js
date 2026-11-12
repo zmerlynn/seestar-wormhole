@@ -1308,6 +1308,32 @@ test('a local port that follows its Seestar port is the duplicate it makes', asy
   expect(starts).toBe(0);
 });
 
+for (const off of [false, true]) {
+  test(`the page forwards at most 128 ports${off ? ', counting a Services row that is off' : ''}`, async ({ page, startApp }) => {
+    // 117 added ports and the 11 Services rows make 128.
+    const ports = Array.from({ length: 117 }, (_, i) => ({ local: 30000 + i, device: 30000 + i }));
+    const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid', ports } });
+    await openApp(page, app.url);
+    await remoteAdvanced(page);
+    await field(page, 'Password').fill('synthetic-password');
+    await expect(addedRow(page, 117).remote).toHaveValue('30116');
+    if (off) await page.locator('#port-80').fill('');
+    let starts = 0;
+    page.on('request', (r) => { if (r.url().endsWith('/api/start')) starts++; });
+    await page.getByRole('button', { name: 'Add a port', exact: true }).click();
+    const row = addedRow(page, 118);
+    await row.remote.fill('30117');
+    await page.locator('#start').click();
+    await expect(row.remote).toHaveAttribute('aria-invalid', 'true');
+    await expect(row.remote).toHaveAccessibleDescription(/At most 128 ports can be forwarded\./);
+    await expect(row.remote).toBeFocused();
+    expect(starts).toBe(0);
+    await row.remove.click();
+    for (const n of [1, 117]) await expect(addedRow(page, n).remote).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(page.locator('#added-ports [aria-invalid="true"], #ports [aria-invalid="true"]')).toHaveCount(0);
+  });
+}
+
 for (const os of ['linux', 'darwin', 'windows']) {
   test(`a local port below 1024 shows the permissions guide by its row ${os === 'linux' ? 'on Linux' : 'not on ' + os}`, async ({ page, startApp }) => {
     if (os !== 'linux') {

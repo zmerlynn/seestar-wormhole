@@ -121,6 +121,27 @@ async function checkFollowedPortDuplicate() {
   portsAssert(!validate() && document.activeElement === local, 'Connect focuses the added duplicate');
 }
 
+// At most 128 ports are sent, counting every Services row, even one that is
+// off: the 118th added port is refused on its Seestar port, unsent, until
+// a row is removed.
+async function checkPortLimit() {
+  for (const off of [false, true]) {
+    portsFixture();
+    $('password').value = 'synthetic-password';
+    if (off) portsEdit(servicePort(80), '');
+    for (let i = 0; i < 117; i++) addPortRow(30000 + i);
+    portsAssert(settings().ports.length === 128 && !checkPorts(true), 'off ' + off + ': 128 ports refused');
+    const remote = addPortRow(30117);
+    portsAssert(checkPorts(true) === remote && portMessage(remote) === 'At most 128 ports can be forwarded.', 'off ' + off + ': 129 ports: ' + portMessage(remote));
+    let calls = 0;
+    api = async () => {calls++; return {};};
+    await act('password/save');
+    portsAssert(calls === 0 && document.activeElement === remote, 'off ' + off + ': 129 ports sent or unfocused');
+    addedRows()[117].row.removeButton.dispatchEvent({type: 'click'});
+    portsAssert(addedRows().length === 117 && !checkPorts(true), 'off ' + off + ': removal did not clear');
+  }
+}
+
 // A refusal naming a port shows on that port's row too, until edited.
 async function checkPortRefusal() {
   portsFixture([{device: 7000, local: 7000}]);

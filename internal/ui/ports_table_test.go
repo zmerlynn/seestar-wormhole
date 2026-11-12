@@ -30,6 +30,11 @@ func TestFollowedPortDuplicatePage(t *testing.T) {
 	runPageRegression(t, "ports-table-test.js", "checkFollowedPortDuplicate()")
 }
 
+// The page refuses a 129th port, counting Services rows that are off.
+func TestPortLimitPage(t *testing.T) {
+	runPageRegression(t, "ports-table-test.js", "checkPortLimit()")
+}
+
 // A refusal naming a port shows on its row.
 func TestPortRefusalPage(t *testing.T) {
 	runPageRegression(t, "ports-table-test.js", "checkPortRefusal()")
