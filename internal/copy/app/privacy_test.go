@@ -91,7 +91,7 @@ func TestReasonKeepsSafeText(t *testing.T) {
 			t.Errorf("reason = %q, want %q", got, s)
 		}
 	}
-	for _, s := range []string{"a.b", "x/y", `C:\x`, "fe80::1", "u@h", "SN1"} {
+	for _, s := range []string{"a.b", "x/y", `C:\x`, "/images/2026", "u@h", "folder1/image.fit"} {
 		if safeText("at " + s) {
 			t.Errorf("%q is safe", s)
 		}
