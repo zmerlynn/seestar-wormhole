@@ -209,7 +209,11 @@ function addPortRow(device = 0, port = device) {
   let follows = local.value === remote.value;
   remote.addEventListener('input', () => {
     remote.edited = ++edits;
-    if (follows) local.value = remote.value;
+    // A local port that follows claims its number as it is typed.
+    if (follows) {
+      local.value = remote.value;
+      local.edited = remote.edited;
+    }
     addedEdited();
   });
   local.addEventListener('input', () => {

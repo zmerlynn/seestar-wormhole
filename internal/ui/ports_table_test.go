@@ -25,6 +25,11 @@ func TestPortRowErrorsPage(t *testing.T) {
 	runPageRegression(t, "ports-table-test.js", "checkPortRowErrors()")
 }
 
+// A Local port that follows its Seestar port claims it when typed.
+func TestFollowedPortDuplicatePage(t *testing.T) {
+	runPageRegression(t, "ports-table-test.js", "checkFollowedPortDuplicate()")
+}
+
 // A refusal naming a port shows on its row.
 func TestPortRefusalPage(t *testing.T) {
 	runPageRegression(t, "ports-table-test.js", "checkPortRefusal()")

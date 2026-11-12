@@ -1265,6 +1265,36 @@ test('port rows show their own errors as you edit, and a refusal on its row', as
   await clean(row.local);
 });
 
+test('a local port that follows its Seestar port is the duplicate it makes', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid' } });
+  await openApp(page, app.url);
+  await remoteAdvanced(page);
+  await field(page, 'Password').fill('synthetic-password');
+  let starts = 0;
+  page.on('request', (r) => { if (r.url().endsWith('/api/start')) starts++; });
+  const add = page.getByRole('button', { name: 'Add a port', exact: true });
+  // SMB is edited first; the added row's Local port then follows its
+  // Seestar port onto the same number.
+  await page.locator('#port-445').fill('5000');
+  await add.click();
+  await addedRow(page, 1).remote.fill('5000');
+  await expect(addedRow(page, 1).local).toHaveValue('5000');
+  await expect(addedRow(page, 1).local).toHaveAttribute('aria-invalid', 'true');
+  await expect(addedRow(page, 1).local).toHaveAccessibleDescription(/Local port 5000 is already used by File sharing for other apps \(SMB\)\./);
+  await expect(page.locator('#port-445')).not.toHaveAttribute('aria-invalid', 'true');
+  await page.locator('#start').click();
+  await expect(addedRow(page, 1).local).toBeFocused();
+  // The same between added rows.
+  await addedRow(page, 1).local.fill('6000');
+  await add.click();
+  await addedRow(page, 2).remote.fill('6000');
+  await expect(addedRow(page, 2).local).toHaveAccessibleDescription(/Local port 6000 is already used by added port 1\./);
+  await expect(addedRow(page, 1).local).not.toHaveAttribute('aria-invalid', 'true');
+  await page.locator('#start').click();
+  await expect(addedRow(page, 2).local).toBeFocused();
+  expect(starts).toBe(0);
+});
+
 for (const os of ['linux', 'darwin', 'windows']) {
   test(`a local port below 1024 shows the permissions guide by its row ${os === 'linux' ? 'on Linux' : 'not on ' + os}`, async ({ page, startApp }) => {
     if (os !== 'linux') {

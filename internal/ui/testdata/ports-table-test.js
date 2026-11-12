@@ -100,6 +100,26 @@ async function checkPortRowErrors() {
   portsAssert(document.activeElement === second.local && actionError === 'ports', 'focus first error, in column order');
 }
 
+// A Local port that follows its Seestar port claims the number as it is
+// typed, so the duplicate it makes is its own error, not an earlier row's.
+async function checkFollowedPortDuplicate() {
+  portsFixture();
+  $('password').value = 'synthetic-password';
+  portsEdit(servicePort(445), '5000');
+  const remote = addPortRow(), first = addedRows()[0];
+  portsEdit(remote, '5000');
+  portsAssert(first.local.value === '5000' && portMessage(first.local) === 'Local port 5000 is already used by File sharing for other apps (SMB).', 'followed duplicate: ' + portMessage(first.local));
+  portsAssert(!portMessage(servicePort(445)), 'the Services row keeps no error');
+  portsAssert(!validate() && document.activeElement === first.local, 'Connect focuses the followed duplicate');
+  // The same between added rows.
+  portsEdit(first.local, '6000');
+  const second = addPortRow();
+  portsEdit(second, '6000');
+  const {local} = addedRows()[1];
+  portsAssert(portMessage(local) === 'Local port 6000 is already used by added port 1.' && !portMessage(first.local), 'added duplicate: ' + portMessage(first.local));
+  portsAssert(!validate() && document.activeElement === local, 'Connect focuses the added duplicate');
+}
+
 // A refusal naming a port shows on that port's row too, until edited.
 async function checkPortRefusal() {
   portsFixture([{device: 7000, local: 7000}]);
