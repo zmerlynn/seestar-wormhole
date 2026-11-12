@@ -76,8 +76,9 @@ func firstSettings() Settings {
 }
 
 // historyDir is the copy history folder s chooses, or def, the file
-// commands' default, when it chooses none. A run that writes moves the old
-// default folder there first, with [server.moveHistory].
+// commands' default, when it chooses none. When it chooses none, a run
+// that writes moves the old default folder to def first, with
+// [server.moveHistory].
 func (s Settings) historyDir(def string) string {
 	if s.HistoryDir != "" {
 		return s.HistoryDir
@@ -86,9 +87,13 @@ func (s Settings) historyDir(def string) string {
 }
 
 // historyToRead is the folder a read-only run reads for historyDir: the
-// old default folder, in place, until a run that writes moves it.
+// folder s chooses, even one that is def, or the old default folder, in
+// place, until a run that writes moves it.
 func (s Settings) historyToRead(def string) string {
-	return state.HistoryToRead(s.historyDir(def))
+	if s.HistoryDir != "" {
+		return s.HistoryDir
+	}
+	return state.HistoryToRead(def)
 }
 
 // settingsFile is the settings as last loaded or saved.

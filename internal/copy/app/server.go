@@ -377,11 +377,15 @@ func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 // page text or log line names a folder.
 var errHistoryMove = errors.New("couldn't move the copy history from seestar-copy in your config folder to copy-history in seestar-wormhole's settings folder; stop any other copy, such as an older seestar-copy-cli, and try again, or move the folder by hand")
 
-// moveHistory moves the old default copy history folder to dir before
-// Copy, Free up space or Clear history uses dir. A failure is logged and
-// returned as errHistoryMove.
-func (s *server) moveHistory(dir string) error {
-	if err := state.MoveOldHistory(dir, s.log); err != nil {
+// moveHistory moves the old default copy history folder to the default
+// before Copy, Free up space or Clear history uses it, when set chooses no
+// folder; a folder set chooses, even the default, is never moved to. A
+// failure is logged and returned as errHistoryMove.
+func (s *server) moveHistory(set Settings) error {
+	if set.HistoryDir != "" {
+		return nil
+	}
+	if err := state.MoveOldHistory(s.stateDir, s.log); err != nil {
 		s.log.Warn("move the copy history", "err", err)
 		return errHistoryMove
 	}
@@ -427,7 +431,7 @@ func (s *server) startCopyingSeq(opening bool) (seq uint64, err error) {
 		return 0, noTarget{terr}
 	}
 	set := settingsAt(s.file.settings, t)
-	if err := s.moveHistory(set.historyDir(s.stateDir)); err != nil {
+	if err := s.moveHistory(set); err != nil {
 		return 0, err
 	}
 	if err := s.copy.start(set, t); err != nil {
@@ -1151,7 +1155,7 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 			saved = true
 		}
 		if err = terr; err == nil {
-			err = s.moveHistory(set.historyDir(s.stateDir))
+			err = s.moveHistory(set)
 		}
 		if err == nil {
 			err = s.free.find(settingsAt(set, t), t)
@@ -1228,7 +1232,7 @@ func (s *server) clearHistory(w http.ResponseWriter) {
 	case !s.free.forget():
 		err = errors.New("wait for Free up space to finish")
 	default:
-		if err = s.moveHistory(history); err == nil {
+		if err = s.moveHistory(s.file.settings); err == nil {
 			err = state.Remove(history, folder)
 		}
 		s.preview.discard()

@@ -216,3 +216,53 @@ func TestOldHistoryMoveFails(t *testing.T) {
 		t.Errorf("the log has no warning for each failed move:\n%s", logs)
 	}
 }
+
+// A history folder the settings choose is used as it is, even when it is
+// the default: reads don't fall back to the old default folder, and Copy,
+// Free up space and Clear history don't move it there; Clear removes only
+// the chosen folder's history.
+func TestOldHistoryNotMovedToChosenDefault(t *testing.T) {
+	e, folder, base, old := oldHistoryEnv(t)
+	oldDir := filepath.Join(base, "seestar-copy")
+	e.d.dir = historyShare(t, "MyWorks/a.jpg")
+	// The old history records a.jpg, which has since left the folder.
+	if v := e.copyOnce(folder, oldDir); v.State != stDone {
+		t.Fatalf("copy into the old history: %+v", v)
+	}
+	if err := os.Remove(filepath.Join(folder, "MyWorks", "a.jpg")); err != nil {
+		t.Fatal(err)
+	}
+	if w := e.post("/copy/api/settings", historySave(folder, e.s.stateDir)); w.Code != 200 {
+		t.Fatalf("save: %d %s", w.Code, w.Body)
+	}
+	chosen, _ := state.Path(e.s.stateDir, folder)
+	if got := decode[struct {
+		History string `json:"history"`
+	}](t, e.serve("GET", "/copy/api/status", "")).History; got != chosen {
+		t.Errorf("history shown %q, want the chosen one %q", got, chosen)
+	}
+	if got := e.copyPreview(); !slices.Equal(got, []string{"MyWorks"}) {
+		t.Errorf("preview with the chosen history would copy %q, want MyWorks", got)
+	}
+	if v := e.copyOnce(folder, e.s.stateDir); v.State != stDone {
+		t.Fatalf("copy into the chosen history: %+v", v)
+	}
+	if records, err := state.Load(e.s.stateDir, folder, nil); err != nil || records["MyWorks/a.jpg"].Path == "" {
+		t.Errorf("the chosen history's records = %v, %v", records, err)
+	}
+	if got := e.freeFind(false); !slices.Equal(got, []string{"MyWorks"}) {
+		t.Errorf("Free up space offers %q, want MyWorks", got)
+	}
+	if w := e.post("/copy/api/clear", `{}`); w.Code != 200 {
+		t.Fatalf("clear: %d %s", w.Code, w.Body)
+	}
+	if _, err := os.Stat(chosen); !os.IsNotExist(err) {
+		t.Errorf("the chosen state file after clear: %v", err)
+	}
+	if records, err := state.Load(oldDir, folder, nil); err != nil || records["MyWorks/a.jpg"].Path == "" {
+		t.Errorf("the old history after Copy, Free up space and Clear history = %v, %v", records, err)
+	}
+	if _, err := os.Stat(old); err != nil {
+		t.Errorf("the old state file: %v", err)
+	}
+}
