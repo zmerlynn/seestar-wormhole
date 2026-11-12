@@ -93,6 +93,6 @@ func runDiscovery(ctx context.Context, o options, logs io.Writer, listen func(st
 	defer s.Close()
 	startup.output.resolve(true)
 	startup.logger.Warn("lan_discovery_synthesized", "fields", synthesized, "envelope_fields", []string{"Timestamp"})
-	startup.logger.Info("lan_discovery_started", "port", landiscovery.Port, "all_interfaces", o.lanDiscoveryAllInterfaces)
+	startup.logger.Info("lan_discovery_started", "port", landiscovery.Port, "all_interfaces", o.lanDiscoveryAllInterfaces, "serial", o.serial, "model", o.model, "name", o.name)
 	return diagnostic.Wrap("lan_discovery", "", s.Serve(ctx, m))
 }

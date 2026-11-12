@@ -3,6 +3,7 @@ package cloud
 import (
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -25,13 +26,19 @@ func TestLiteralParsers(t *testing.T) {
 	if err != nil || d.Serial() != "serial" || d.Model() != "S50 Pro" || d.Status() != 1 {
 		t.Fatalf("detail: %v", err)
 	}
-	for _, v := range []any{a, d, ids[0]} {
+	for _, v := range []any{a, ids[0]} {
 		for _, f := range []string{"%v", "%+v", "%#v", "%s"} {
 			s := fmt.Sprintf(f, v)
 			if strings.Contains(s, "secret") || strings.Contains(s, "serial") {
 				t.Fatal("format leaked")
 			}
 		}
+	}
+	// A detail names the telescope.
+	var logs strings.Builder
+	slog.New(slog.NewJSONHandler(&logs, nil)).Info("test", "device", d)
+	if !strings.Contains(logs.String(), `"device":{"serial":"serial","model":"S50 Pro",`) {
+		t.Fatalf("detail log: %s", logs.String())
 	}
 }
 
