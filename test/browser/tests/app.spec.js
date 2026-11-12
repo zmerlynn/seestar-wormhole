@@ -659,13 +659,18 @@ test('Copy settings field errors show under each field and nothing is saved', as
   await expect(page.locator('#f-saved')).toHaveText('');
   expect(readJSON(app.copyFile)).toEqual(files['copy.json']);
 
+  // The first field in error takes the focus: Only copy is above Leave out.
   await page.locator('#f-int').fill('10');
-  await field(page, 'Leave out').fill('Video\n\n[Pp]review\nMyWorks/**/*.mp4');
   await copySave(page).click();
   await expect(field(page, 'Only copy')).toBeFocused();
   await expect(page.locator('#f-int-err')).toBeHidden();
-  await expect(page.locator('#f-ex-err')).toBeHidden();
+  await expect(page.locator('#f-ex-err')).toBeVisible();
   await expect(page.locator('#f-int')).not.toHaveAttribute('aria-invalid', 'true');
+
+  await field(page, 'Leave out').fill('Video\n\n[Pp]review\nMyWorks/**/*.mp4');
+  await copySave(page).click();
+  await expect(field(page, 'Only copy')).toBeFocused();
+  await expect(page.locator('#f-ex-err')).toBeHidden();
 });
 
 // What to copy is never saved: it is the option Only copy's patterns make,
@@ -715,6 +720,10 @@ test('What to copy fills or empties Only copy, and a reload shows the option the
   await open();
   await what.selectOption('Custom');
   await expect(only).toBeVisible();
+  // Only copy sits under What to copy, above Leave out, as the tab
+  // order goes too.
+  expect(await page.evaluate(() => ['f-what', 'f-in', 'f-ex'].map(id => document.getElementById(id))
+    .every((el, i, all) => i === 0 || all[i - 1].compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING))).toBe(true);
   await expect(only).toHaveValue('');
   await only.fill('*.FIT\n*.fits');
   await save();

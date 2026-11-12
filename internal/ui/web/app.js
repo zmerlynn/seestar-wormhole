@@ -818,7 +818,7 @@ function copyError(e) {
 
 // The copy settings: a summary line, and the form Change… opens. The
 // first visit has the form open, without Cancel.
-const copyFields = {folder: 'f-folder', history_dir: 'f-hist', interval: 'f-int', files_at_once: 'f-files', excludes: 'f-ex', includes: 'f-in'};
+const copyFields = {folder: 'f-folder', history_dir: 'f-hist', interval: 'f-int', files_at_once: 'f-files', includes: 'f-in', excludes: 'f-ex'};
 const lines = value => value === '' ? [] : value.split('\n');
 function copyFill(s) {
   $('f-folder').value = s.folder;
