@@ -98,9 +98,23 @@ function portInput(label) {
   input.max = '65535';
   input.step = '1';
   input.setAttribute('aria-label', label);
-  input.setAttribute('aria-describedby', 'ports-help ports-error');
   return input;
 }
+// portCell puts a port input in a table cell with its own error below it,
+// which the input's description includes only while it shows.
+let portFields = 0;
+function portCell(cell, input) {
+  const error = document.createElement('p');
+  error.className = 'error';
+  error.id = 'port-error-' + ++portFields;
+  error.hidden = true;
+  input.portError = error;
+  cell.append(input, error);
+  input.setAttribute('aria-describedby', 'ports-help ports-error');
+}
+// The editable Services rows, as the table shows them. edits counts port
+// edits, so a duplicate local port is laid on the row edited last.
+let serviceRows = [], edits = 0;
 // The running table lists the Services rows, then any added port, labeled
 // Added.
 function portsTable(id, ports, editable = false) {
@@ -115,54 +129,61 @@ function portsTable(id, ports, editable = false) {
     head.append(th);
   }
   const body = table.createTBody();
+  if (editable) serviceRows = [];
   for (const [remote, purpose] of rows) {
     const row = body.insertRow(), local = row.insertCell();
     if (editable) {
       const input = portInput('Local port for ' + purpose);
       input.id = 'port-' + remote;
       input.value = ports[remote] || '';
-      input.addEventListener('input', () => {clearField('ports'); customGoal();});
-      local.append(input);
+      input.addEventListener('input', () => {
+        input.edited = ++edits;
+        clearField('ports');
+        customGoal();
+      });
+      portCell(local, input);
+      serviceRows.push({row, local: input, device: () => remote, name: purpose});
     } else local.textContent = ports[remote] || 'Off';
     row.insertCell().textContent = remote;
     row.insertCell().textContent = purpose;
   }
   $(id).replaceChildren(table);
-  if (!editable) $(id).portsKey = key;
+  if (editable) checkPorts();
+  else $(id).portsKey = key;
 }
 // Added ports are telescope ports beyond the Services rows, kept in the
 // order added. A row's local port follows its Seestar port until the local
 // port is edited.
+let added = [], addedBody = null;
 function addedRows() {
-  return [...$('added-ports').querySelectorAll('tbody tr')].map(row => ({row, remote: row.querySelector('.added-remote'), local: row.querySelector('.added-local')}));
+  return added;
 }
 function addedEdited() {
   clearField('ports');
   controls();
 }
 function labelAddedRows() {
-  addedRows().forEach(({row, remote, local}, i) => {
+  added.forEach(({row, remote, local}, i) => {
     const name = 'added port ' + (i + 1);
     remote.setAttribute('aria-label', 'Seestar port for ' + name);
     local.setAttribute('aria-label', 'Local port for ' + name);
-    row.querySelector('button').setAttribute('aria-label', 'Remove ' + name);
+    row.removeButton.setAttribute('aria-label', 'Remove ' + name);
   });
-  $('added-ports').hidden = !addedRows().length;
+  $('added-ports').hidden = !added.length;
 }
 function addPortRow(device = 0, port = device) {
-  let table = $('added-ports').querySelector('table');
-  if (!table) {
-    table = document.createElement('table');
+  if (!added.length) {
+    const table = document.createElement('table');
     const head = table.createTHead().insertRow();
-    for (const name of ['Seestar port', 'Local port', '']) {
+    for (const name of ['Local port', 'Seestar port', '']) {
       const th = document.createElement('th');
       th.textContent = name;
       head.append(th);
     }
-    table.createTBody();
+    addedBody = table.createTBody();
     $('added-ports').replaceChildren(table);
   }
-  const row = table.tBodies[0].insertRow();
+  const row = addedBody.insertRow();
   const remote = portInput(''), local = portInput('');
   remote.className = 'added-remote';
   local.className = 'added-local';
@@ -170,10 +191,12 @@ function addPortRow(device = 0, port = device) {
   local.value = port || '';
   let follows = local.value === remote.value;
   remote.addEventListener('input', () => {
+    remote.edited = ++edits;
     if (follows) local.value = remote.value;
     addedEdited();
   });
   local.addEventListener('input', () => {
+    local.edited = ++edits;
     follows = false;
     addedEdited();
   });
@@ -181,26 +204,101 @@ function addPortRow(device = 0, port = device) {
   remove.type = 'button';
   remove.className = 'small';
   remove.textContent = 'Remove';
+  const entry = {row, remote, local, device: () => remote.value && remote.validity.valid ? Number(remote.value) : 0};
   remove.addEventListener('click', () => {
     row.remove();
+    added = added.filter(e => e !== entry);
     labelAddedRows();
     addedEdited();
     $('add-port').focus();
   });
-  row.insertCell().append(remote);
-  row.insertCell().append(local);
+  row.removeButton = remove;
+  portCell(row.insertCell(), local);
+  portCell(row.insertCell(), remote);
   row.insertCell().append(remove);
+  added.push(entry);
   labelAddedRows();
   return remote;
 }
 function addedTable(s) {
+  added = [];
   $('added-ports').replaceChildren();
   for (const p of s.ports || []) if (!standard(p.device)) addPortRow(p.device, p.local);
   labelAddedRows();
+  checkPorts();
 }
 // lowAddedPort reports an added row whose local port may need permission.
 function lowAddedPort() {
-  return addedRows().some(({local}) => local.value && local.validity.valid && Number(local.value) < 1024);
+  return added.some(({local}) => local.value && local.validity.valid && Number(local.value) < 1024);
+}
+// rowFailure is a refusal the server named a port for, shown on that
+// port's row until the ports are edited or checked again.
+let rowFailure = null;
+// portFailure shows a refusal of a port on its row as well: the Services
+// row with its Seestar port, or the added row with it.
+function portFailure(e, message) {
+  if (e.field !== 'ports' || !e.service) return;
+  const row = [...serviceRows, ...added].find(r => r.device() === e.service);
+  if (!row) return;
+  rowFailure = {input: row.local, message};
+  checkPorts();
+}
+// attribute sets or removes (null) an attribute only when it changes.
+function attribute(element, name, value) {
+  if (element.getAttribute(name) === value) return;
+  if (value === null) element.removeAttribute(name);
+  else element.setAttribute(name, value);
+}
+// checkPorts shows each row's errors under the rules of -p, as the server
+// checks them: each added Seestar port from 1 to 65535, not a Services
+// row's and given once; each local port from 1 to 65535, required on an
+// added row, and used once, the error going on the row edited last to use
+// it; and at most 128 rows. An empty field is in error only once edited, or
+// when all is set, as at Connect. It shades each row whose local port
+// differs from its Seestar port, and returns the first field in error.
+function checkPorts(all = false) {
+  const errors = new Map(), locals = new Map(), devices = new Map(), claims = [];
+  const port = input => input.value && input.validity.valid ? Number(input.value) : 0;
+  const touched = input => all || input.edited || input.value || !input.validity.valid;
+  for (const {local, name} of serviceRows) {
+    if (!local.validity.valid) errors.set(local, 'Enter a port from 1 to 65535, or leave it empty to turn this service off.');
+    else if (local.value) claims.push([local, name]);
+  }
+  added.forEach(({remote, local}, i) => {
+    const name = 'added port ' + (i + 1), device = port(remote);
+    if (services.length + i + 1 > 128) errors.set(remote, 'At most 128 ports can be forwarded.');
+    else if (!device) {
+      if (touched(remote)) errors.set(remote, 'Enter a Seestar port from 1 to 65535.');
+    } else if (standard(device)) errors.set(remote, 'Seestar port ' + device + ' is the ' + services.find(([d]) => d === device)[1] + ' row above. Set its local port there.');
+    else if (devices.has(device)) errors.set(remote, 'Seestar port ' + device + ' is already ' + devices.get(device) + '.');
+    else devices.set(device, name);
+    if (port(local)) claims.push([local, name]);
+    else if (touched(local)) errors.set(local, 'Enter a local port from 1 to 65535.');
+  });
+  // Unedited rows claim their local ports first, then edited ones in the
+  // order edited.
+  claims.sort(([a], [b]) => (a.edited || 0) - (b.edited || 0));
+  for (const [input, name] of claims) {
+    const n = port(input);
+    if (locals.has(n)) errors.set(input, 'Local port ' + n + ' is already used by ' + locals.get(n) + '.');
+    else locals.set(n, name);
+  }
+  const rows = [...serviceRows, ...added];
+  if (rowFailure && !errors.has(rowFailure.input) && rows.some(r => r.local === rowFailure.input)) errors.set(rowFailure.input, rowFailure.message);
+  let first = null;
+  for (const {row, local, remote, device} of rows) {
+    const remapped = port(local) && device() && port(local) !== device();
+    if (row.className !== (remapped ? 'remapped' : '')) row.className = remapped ? 'remapped' : '';
+    for (const input of remote?.portError ? [local, remote] : [local]) {
+      const message = errors.get(input) || '';
+      first ||= message ? input : null;
+      if (input.portError.textContent !== message) input.portError.textContent = message;
+      input.portError.hidden = !message;
+      attribute(input, 'aria-invalid', message ? 'true' : null);
+      attribute(input, 'aria-describedby', 'ports-help ports-error' + (message ? ' ' + input.portError.id : ''));
+    }
+  }
+  return first;
 }
 function goalFor(s) {
   const ports = portValues(s);
@@ -235,11 +333,8 @@ function usingSaved() {
 function clearField(field) {
   $(field).removeAttribute('aria-invalid');
   if (field === 'ports') {
-    for (const [remote] of services) $('port-' + remote)?.removeAttribute('aria-invalid');
-    for (const {remote, local} of addedRows()) {
-      remote.removeAttribute('aria-invalid');
-      local.removeAttribute('aria-invalid');
-    }
+    rowFailure = null;
+    checkPorts();
   }
   if (field === 'bind') $('listen').removeAttribute('aria-invalid');
   $(field + '-error').hidden = true;
@@ -288,6 +383,7 @@ function fail(e, focus = false) {
   // A lost server is said once, above every tab.
   alertText(e.field || code === 'controls' ? '' : (e.message || fieldCopy[code] || lostCopy));
   if (e.field) fieldError(e.field, e.message || fieldCopy[code] || 'Check this setting.', code, focus);
+  portFailure(e, e.message || fieldCopy[code] || 'Check this setting.');
   if (code === 'password_remove') {
     retryRemoval = true;
   }
@@ -316,49 +412,18 @@ function validate() {
     fieldError('bind', 'Enter a local network address, or choose This computer only or All networks.', 'bind_empty', true);
     return false;
   }
-  for (const [remote] of services) {
-    const input = $('port-' + remote);
-    if (!input.validity.valid) {
-      actionError = 'ports';
-      fieldError('ports', input.validationMessage, 'ports');
-      input.setAttribute('aria-invalid', 'true');
-      input.focus();
-      return false;
-    }
+  const port = checkPorts(true);
+  if (port) {
+    actionError = 'ports';
+    fieldErrors.ports = 'ports';
+    $('advanced').open = true;
+    port.focus();
+    return false;
   }
-  if (!validateAdded()) return false;
   if ($('mode').value === 'idle' && !(Number($('idle').value) > 0)) {
     actionError = 'idle';
     fieldError('idle',fieldCopy.idle,'idle',true);
     return false;
-  }
-  return true;
-}
-// validateAdded checks the added rows under -p's rules, naming the row: a
-// Seestar port not in the Services rows and given once, a local port used
-// once, and at most 128 mappings.
-function validateAdded() {
-  const locals = new Set(services.map(([remote]) => Number($('port-' + remote).value)).filter(Boolean));
-  const devices = new Set();
-  const bad = (input, message) => {
-    actionError = 'ports';
-    fieldError('ports', message, 'ports');
-    input.setAttribute('aria-invalid', 'true');
-    input.focus();
-    return false;
-  };
-  for (const [i, {remote, local}] of addedRows().entries()) {
-    const name = 'Added port ' + (i + 1) + ': ';
-    if (services.length + i + 1 > 128) return bad(remote, name + 'at most 128 ports can be forwarded.');
-    if (!remote.value || !remote.validity.valid) return bad(remote, name + 'enter a Seestar port from 1 to 65535.');
-    const device = Number(remote.value);
-    if (standard(device)) return bad(remote, name + 'Seestar port ' + device + ' is in the table above. Set its local port there.');
-    if (devices.has(device)) return bad(remote, name + 'Seestar port ' + device + ' is already added.');
-    if (!local.value || !local.validity.valid) return bad(local, name + 'enter a local port from 1 to 65535.');
-    const port = Number(local.value);
-    if (locals.has(port)) return bad(local, name + 'local port ' + port + ' is already in use.');
-    devices.add(device);
-    locals.add(port);
   }
   return true;
 }
@@ -1648,7 +1713,10 @@ function render(s) {
   if (s.failure && !active && !actionError && !selectionStep) {
     const newFailure = lastFailure !== s.failure.code;
     alertText(s.failure.code === 'release' || s.failure.field ? '' : s.failure_message);
-    if (newFailure && s.failure.field) fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Local port ' + s.failure.local + ' → Seestar port ' + s.failure.service + '.' : ''),s.failure.code);
+    if (newFailure && s.failure.field) {
+      fieldError(s.failure.field,s.failure_message + (s.failure.service ? ' Local port ' + s.failure.local + ' → Seestar port ' + s.failure.service + '.' : ''),s.failure.code);
+      portFailure(s.failure, s.failure_message);
+    }
     lastFailure = s.failure.code;
 
   }

@@ -1184,39 +1184,85 @@ test('Add a port adds, edits, removes and saves a row', async ({ page, startApp 
   await expect(page.locator('#settings')).toBeVisible();
 });
 
-test('an added port names its row in errors and shows the permissions guide below 1024', async ({ page, startApp }) => {
+test('added rows put the local port first and rows using another local port are shaded', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid', ports: [{ local: 7001, device: 7000 }] } });
+  await openApp(page, app.url);
+  await remoteAdvanced(page);
+  await expect(page.locator('#added-ports th')).toHaveText(['Local port', 'Seestar port', '']);
+  await expect(page.locator('#added-ports tbody tr').first().locator('td').nth(0).locator('input')).toHaveValue('7001');
+  await expect(page.locator('#added-ports tbody tr').first().locator('td').nth(1).locator('input')).toHaveValue('7000');
+  await expect(page.locator('#ports-shade-help')).toHaveText('Shaded rows use a different port on this computer than on the Seestar.');
+
+  const serviceRow = (port) => page.locator('#ports tbody tr').filter({ has: page.locator(`#port-${port}`) });
+  // SMB is 4445 on this computer; Seestar control and the firmware updater
+  // use their own ports.
+  await expect(serviceRow(445)).toHaveClass('remapped');
+  await expect(serviceRow(4700)).not.toHaveClass('remapped');
+  await expect(page.locator('#added-ports tbody tr').first()).toHaveClass('remapped');
+  const shade = await serviceRow(445).locator('td').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+  const plain = await serviceRow(4700).locator('td').first().evaluate((e) => getComputedStyle(e).backgroundColor);
+  expect(shade).not.toBe(plain);
+  // The shading follows edits, and an off row isn't shaded.
+  await page.locator('#port-4700').fill('4701');
+  await expect(serviceRow(4700)).toHaveClass('remapped');
+  await page.locator('#port-445').fill('');
+  await expect(serviceRow(445)).not.toHaveClass('remapped');
+  await addedRow(page, 1).local.fill('7000');
+  await expect(page.locator('#added-ports tbody tr').first()).not.toHaveClass('remapped');
+});
+
+test('port rows show their own errors as you edit, and a refusal on its row', async ({ page, startApp }) => {
   const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid' } });
   await openApp(page, app.url);
   await remoteAdvanced(page);
   await field(page, 'Password').fill('synthetic-password');
   await page.getByRole('button', { name: 'Add a port', exact: true }).click();
   const row = addedRow(page, 1);
-  const error = page.locator('#ports-error');
   let starts = 0;
   page.on('request', (r) => { if (r.url().endsWith('/api/start')) starts++; });
+  // shows checks the field's own error, which its description includes.
+  const shows = async (input, message) => {
+    await expect(input).toHaveAttribute('aria-invalid', 'true');
+    await expect(input).toHaveAccessibleDescription(new RegExp(message.replace(/[.()]/g, '\\$&')));
+    const id = (await input.getAttribute('aria-describedby')).split(' ').pop();
+    await expect(page.locator('#' + id)).toHaveText(message);
+    await expect(page.locator('#' + id)).toBeVisible();
+  };
+  const clean = async (input) => {
+    await expect(input).not.toHaveAttribute('aria-invalid', 'true');
+    await expect(input).not.toHaveAttribute('aria-describedby', /port-error/);
+  };
 
-  // A standard service belongs in the table above.
-  await row.remote.fill('4700');
-  await page.locator('#start').click();
-  await expect(error).toHaveText('Added port 1: Seestar port 4700 is in the table above. Set its local port there.');
-  await expect(row.remote).toHaveAttribute('aria-invalid', 'true');
-  await expect(row.remote).toBeFocused();
-
-  // A local port another row uses.
+  // A Services row's Seestar port is refused, naming the row.
+  await row.remote.fill('445');
+  await shows(row.remote, 'Seestar port 445 is the File sharing for other apps (SMB) row above. Set its local port there.');
+  await row.remote.fill('32323');
+  await shows(row.remote, 'Seestar port 32323 is the Alpaca (NINA and other astronomy apps) row above. Set its local port there.');
   await row.remote.fill('5000');
-  await expect(error).toBeHidden();
+  await clean(row.remote);
+  // A local port is required.
+  await row.local.fill('');
+  await shows(row.local, 'Enter a local port from 1 to 65535.');
+  // A local port another row uses: the error is on the row that duplicates.
   await row.local.fill('4445');
+  await shows(row.local, 'Local port 4445 is already used by File sharing for other apps (SMB).');
+  await clean(page.locator('#port-445'));
+  await expect(page.locator('#ports-error')).toBeHidden();
+  // Connect focuses the field in error and sends nothing.
   await page.locator('#start').click();
-  await expect(error).toHaveText('Added port 1: local port 4445 is already in use.');
   await expect(row.local).toBeFocused();
-
-  // Below 1024, the permissions guide shows with the field.
-  await expect(page.locator('#port-permissions')).toBeHidden();
-  await row.local.fill('800');
-  await expect(page.locator('#port-permissions')).toBeVisible();
-  await row.local.fill('5000');
-  await expect(page.locator('#port-permissions')).toBeHidden();
+  await row.local.fill('5001');
+  await clean(row.local);
   expect(starts).toBe(0);
+
+  // A refusal naming a port shows on that row as well as under the table.
+  const message = 'Another program is using local port 5001.';
+  await page.route('**/api/start', (route) => route.fulfill({ status: 400, json: { code: 'port_conflict', field: 'ports', service: 5000, local: 5001, message } }));
+  await page.locator('#start').click();
+  await expect(page.locator('#ports-error')).toHaveText(message);
+  await shows(row.local, message);
+  await row.local.fill('5002');
+  await clean(row.local);
 });
 
 for (const colorScheme of ['light', 'dark']) {

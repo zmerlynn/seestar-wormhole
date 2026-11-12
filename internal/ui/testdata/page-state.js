@@ -316,9 +316,10 @@
       assert([...$('ports').querySelectorAll('input')].every(input => input.type === 'number' && input.min === '1' && input.max === '65535'), 'port number bounds');
       for (const value of ['0', '-1', '65536', '1.5']) {
         $('port-80').value = value;
-        assert(!validate() && !$('ports-error').hidden && $('port-80').getAttribute('aria-invalid') === 'true', 'accepted invalid local ' + value);
+        assert(!validate() && $('ports-error').hidden && !$('port-80').portError.hidden && $('port-80').getAttribute('aria-invalid') === 'true' && document.activeElement === $('port-80'), 'accepted invalid local ' + value);
+        $('port-80').value = '8080';
         $('port-80').dispatchEvent(new Event('input'));
-        assert($('ports-error').hidden && !$('port-80').hasAttribute('aria-invalid'), 'port error persists during edit');
+        assert($('port-80').portError.hidden && !$('port-80').hasAttribute('aria-invalid'), 'port error persists after a fix');
       }
       for (const action of ['start','password/save']) {
         $('port-80').value = '1.5';
@@ -327,7 +328,14 @@
         await act(action);
         assert(calls === 0 && fieldErrors.ports === 'ports' && connected && document.activeElement === $('port-80'), action + ' skipped numeric validation');
       }
+      // A duplicate local port is refused on the row edited last, unsent.
       $('port-80').value = $('port-4700').value;
+      $('port-80').dispatchEvent(new Event('input'));
+      let calls = 0;
+      api = async () => {calls++; return status();};
+      await act('password/save');
+      assert(calls === 0 && document.activeElement === $('port-80') && $('port-80').portError.textContent === 'Local port ' + $('port-4700').value + ' is already used by Seestar control.' && $('port-4700').portError.hidden, 'duplicate local port not refused on its row');
+      $('port-80').value = '8080';
       api = async () => {throw {code:'ports',field:'ports',message:'Use ports 1–65535, with no duplicates. Leave a port empty to turn off its service.'};};
       await act('password/save');
       assert(connected && fieldErrors.ports === 'ports' && !$('ports-error').hidden, 'server mapping semantics became lost controls');
@@ -338,34 +346,42 @@
     await check('Added ports', async () => {
       $('password').value = 'synthetic-password';
       const input = (e, value) => {e.value = value; e.dispatchEvent(new Event('input'));};
-      const refused = (e, message) => {
-        assert(!validate() && $('ports-error').textContent === message && e.getAttribute('aria-invalid') === 'true' && document.activeElement === e, 'not refused: ' + message);
-        e.dispatchEvent(new Event('input'));
-        assert($('ports-error').hidden && !e.hasAttribute('aria-invalid'), 'added port error persists during edit');
-      };
+      // shows checks a row's own error, which shows as the ports are edited.
+      const shows = (e, message) => assert(e.portError.textContent === message && !e.portError.hidden && e.getAttribute('aria-invalid') === 'true' && e.getAttribute('aria-describedby').split(' ').includes(e.portError.id) && $('ports-error').hidden, 'not shown: ' + message + ' (' + e.portError.textContent + ')');
+      const clean = e => assert(e.portError.hidden && !e.hasAttribute('aria-invalid'), 'error stayed: ' + e.portError.textContent);
       assert($('added-ports').hidden && !addedRows().length && $('add-port').textContent === 'Add a port' && $('ports').compareDocumentPosition($('add-port')) & Node.DOCUMENT_POSITION_FOLLOWING, 'Add a port missing below the Services table');
       $('add-port').click();
       let rows = addedRows();
       assert(rows.length === 1 && !$('added-ports').hidden && document.activeElement === rows[0].remote && rows[0].remote.getAttribute('aria-label') === 'Seestar port for added port 1' && rows[0].local.getAttribute('aria-label') === 'Local port for added port 1' && rows[0].row.querySelector('button').getAttribute('aria-label') === 'Remove added port 1', 'Add a port row');
-      refused(rows[0].remote, 'Added port 1: enter a Seestar port from 1 to 65535.');
+      assert([...$('added-ports').querySelectorAll('th')].map(th => th.textContent).join() === 'Local port,Seestar port,' && rows[0].row.cells[0].contains(rows[0].local) && rows[0].row.cells[1].contains(rows[0].remote), 'added columns not Local, Seestar, Remove');
+      clean(rows[0].remote);
+      assert(!validate() && document.activeElement === rows[0].local, 'an empty added row was not refused');
+      shows(rows[0].local, 'Enter a local port from 1 to 65535.');
+      shows(rows[0].remote, 'Enter a Seestar port from 1 to 65535.');
       input(rows[0].remote, '5000');
-      assert(rows[0].local.value === '5000', 'local port did not start as the Seestar port');
+      assert(rows[0].local.value === '5000' && !rows[0].row.classList.contains('remapped'), 'local port did not start as the Seestar port');
+      clean(rows[0].local);
       input(rows[0].local, '5001');
       input(rows[0].remote, '5002');
-      assert(rows[0].local.value === '5001', 'an edited local port followed the Seestar port');
+      assert(rows[0].local.value === '5001' && rows[0].row.classList.contains('remapped'), 'an edited local port followed the Seestar port');
       $('add-port').click();
       rows = addedRows();
-      input(rows[1].remote, '4700');
-      refused(rows[1].remote, 'Added port 2: Seestar port 4700 is in the table above. Set its local port there.');
+      input(rows[1].remote, '445');
+      shows(rows[1].remote, 'Seestar port 445 is the File sharing for other apps (SMB) row above. Set its local port there.');
       input(rows[1].remote, '5002');
-      refused(rows[1].remote, 'Added port 2: Seestar port 5002 is already added.');
+      shows(rows[1].remote, 'Seestar port 5002 is already added port 1.');
       input(rows[1].remote, '6000');
+      clean(rows[1].remote);
       input(rows[1].local, '');
-      refused(rows[1].local, 'Added port 2: enter a local port from 1 to 65535.');
+      shows(rows[1].local, 'Enter a local port from 1 to 65535.');
       input(rows[1].local, '5001');
-      refused(rows[1].local, 'Added port 2: local port 5001 is already in use.');
-      input(rows[1].local, $('port-445').value);
-      refused(rows[1].local, 'Added port 2: local port ' + $('port-445').value + ' is already in use.');
+      shows(rows[1].local, 'Local port 5001 is already used by added port 1.');
+      clean(rows[0].local);
+      input($('port-445'), '4445');
+      input(rows[1].local, '4445');
+      shows(rows[1].local, 'Local port 4445 is already used by File sharing for other apps (SMB).');
+      clean($('port-445'));
+      assert($('port-445').closest('tr').classList.contains('remapped'), 'SMB 4445 not shaded');
       input(rows[1].local, '800');
       assert(validate() && !$('port-permissions').hidden, 'a local port below 1024 hid the permissions guide');
       input(rows[1].local, '6000');

@@ -209,6 +209,14 @@ select {
 #ports,#added-ports {
   overflow-x:auto;
 }
+/* A row whose local port differs from its Seestar port. */
+tr.remapped td {
+  background:color-mix(in srgb, var(--focus) 10%, var(--surface))
+}
+td .error {
+  margin:.25rem 0 0;
+  font-size:.85rem
+}
 
 #events {
   list-style:none;
