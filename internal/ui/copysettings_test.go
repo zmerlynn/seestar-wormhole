@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -162,7 +163,7 @@ func TestCopySettingsFreePatterns(t *testing.T) {
 		t.Errorf("after a save = %+v, %v", again, err)
 	}
 	b, err := os.ReadFile(filepath.Join(st.root, copyName))
-	if err != nil || !bytes.Contains(b, []byte(`"future_flag":true`)) || !bytes.Contains(b, []byte(`"version":1,`)) {
+	if err != nil || !strings.Contains(compact(b), `"future_flag":true`) || !strings.Contains(compact(b), `"version":1,`) {
 		t.Errorf("copy.json = %s, %v", b, err)
 	}
 }
@@ -219,6 +220,40 @@ func TestCopySettingsUnknownMembersSurviveSave(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("copy.json = %s", b)
+	}
+	// It is written indented, unknown members too, with a final newline.
+	const indented = `{
+  "version": 1,
+  "folder": "/synthetic/Other",
+  "history_dir": "",
+  "interval_minutes": 9,
+  "excludes": [],
+  "includes": [],
+  "skip_built_in": true,
+  "start_copying": false,
+  "files_at_once": 1,
+  "once": false,
+  "older_than_days": 7,
+  "trust_state": false,
+  "ignore_state": false,
+  "free_excludes": [],
+  "free_includes": [],
+  "future_object": {
+    "enabled": true,
+    "limit": 17
+  },
+  "future_array": [
+    1,
+    "two",
+    {
+      "three": null
+    }
+  ],
+  "future_flag": false
+}
+`
+	if string(b) != indented {
+		t.Errorf("copy.json = %s, want %s", b, indented)
 	}
 }
 
