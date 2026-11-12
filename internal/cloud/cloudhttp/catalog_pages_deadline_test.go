@@ -102,7 +102,7 @@ func TestCatalogPageDeadlineAndCancellation(t *testing.T) {
 					if strings.Contains(logs.String(), "device_selected") {
 						t.Fatal("selected from incomplete catalog")
 					}
-					assertCatalogPagePrivacy(t, logs.String()+err.Error())
+					assertCatalogPageSecrets(t, logs.String()+err.Error())
 				})
 			})
 		}

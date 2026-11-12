@@ -504,7 +504,7 @@ func (c *controller) connected() (run Settings, device string, id uint64, ok boo
 }
 
 // connectedSerial is connected with the selected telescope's serial, which
-// keys its copy folder and is never shown or logged.
+// keys its copy folder.
 func (c *controller) connectedSerial() (run Settings, device, serial string, id uint64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

@@ -3,11 +3,16 @@ package landiscovery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -91,7 +96,7 @@ func answer(serial, from string) datagram {
 func TestFollowConflictBeforeMatchingReply(t *testing.T) {
 	s, _ := observedScan(100*time.Millisecond, answer("SERIAL-B", "192.0.2.20"), answer("SERIAL-A", "192.0.2.20"))
 	dials := 0
-	got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+	got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 		dials++
 		return &session{endpoint: ep}, nil
 	}, release)
@@ -107,7 +112,7 @@ func TestFollowConflictDuringSavedDial(t *testing.T) {
 	t.Run("nothing else answers", func(t *testing.T) {
 		s, c := observedScan(time.Second, answer("SERIAL-A", "192.0.2.20"))
 		var sessions []*session
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			c.deliver(t, answer("SERIAL-B", "192.0.2.20"))
 			sessions = append(sessions, &session{endpoint: ep})
 			return sessions[len(sessions)-1], nil
@@ -120,7 +125,7 @@ func TestFollowConflictDuringSavedDial(t *testing.T) {
 	t.Run("the telescope answers elsewhere", func(t *testing.T) {
 		s, c := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.20"))
 		sessions := map[string]*session{}
-		got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			if ep == "192.0.2.20:445" {
 				c.deliver(t, answer("SERIAL-B", "192.0.2.20"), answer("SERIAL-A", "192.0.2.30"))
 			}
@@ -139,7 +144,7 @@ func TestFollowConflictDuringSavedDial(t *testing.T) {
 // dialed is still preferred: it is dialed too, and the other connection is
 // released if it connects.
 func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
-	// dial connects everywhere but at down; dialing first, it delivers
+	// dial connects everywhere but at down's ports; dialing first, it delivers
 	// during, and dialing second, the saved address, it delivers then.
 	type script struct {
 		during, then []datagram
@@ -151,7 +156,7 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 		sessions := map[string]*session{}
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		got, r, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		got, r, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
 			switch ep {
 			case "192.0.2.30:445":
 				c.deliver(t, sc.during...)
@@ -164,7 +169,7 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 					return nil, ctx.Err()
 				}
 			}
-			if ep == sc.down {
+			if host, _, _ := net.SplitHostPort(ep); host == sc.down {
 				return nil, errors.New("refused")
 			}
 			sessions[ep] = &session{endpoint: ep}
@@ -181,7 +186,7 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 		}
 	})
 	t.Run("the saved address doesn't connect", func(t *testing.T) {
-		got, r, err, sessions := run(t, script{during: []datagram{answer("SERIAL-A", "192.0.2.20")}, down: "192.0.2.20:445"})
+		got, r, err, sessions := run(t, script{during: []datagram{answer("SERIAL-A", "192.0.2.20")}, down: "192.0.2.20"})
 		other := sessions["192.0.2.30:445"]
 		if err != nil || got == nil || got != other || other.closed.Load() || !r.Moved || r.Endpoint != "192.0.2.30:445" {
 			t.Fatalf("got %v %+v %v, sessions %v", got, r, err, sessions)
@@ -211,6 +216,312 @@ func TestFollowSavedMatchDuringOtherDial(t *testing.T) {
 		if err != nil || got == nil || got != other || other.closed.Load() || sessions["192.0.2.20:445"] != nil ||
 			!r.Moved || !r.Conflict {
 			t.Fatalf("got %v %+v %v, sessions %v", got, r, err, sessions)
+		}
+	})
+}
+
+// Another serial answering from an address the telescope answered from
+// disqualifies that address too, not only the saved one: before its dial,
+// between its ports, and after it connects, up to the scan's end.
+func TestFollowConflictAtAnotherAddress(t *testing.T) {
+	t.Run("before the dial", func(t *testing.T) {
+		s, _ := observedScan(100*time.Millisecond, answer("SERIAL-B", "192.0.2.30"), answer("SERIAL-A", "192.0.2.30"))
+		dials := 0
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			dials++
+			return &session{endpoint: ep}, nil
+		}, release)
+		if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 || r.Conflict || r.Seen == nil || r.NotSeen {
+			t.Fatalf("got %v %+v %v, dials %d", got, r, err, dials)
+		}
+	})
+	t.Run("during the dial on 4445", func(t *testing.T) {
+		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.30"))
+		var opened *session
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.30:445" {
+				return nil, errors.New("445 refused")
+			}
+			c.deliver(t, answer("SERIAL-B", "192.0.2.30"))
+			opened = &session{endpoint: ep}
+			return opened, nil
+		}, release)
+		if !errors.Is(err, ErrOtherTelescope) || got != nil || opened == nil || !opened.closed.Load() || r.Moved || r.Conflict {
+			t.Fatalf("got %v %+v %v, opened %v", got, r, err, opened)
+		}
+	})
+	t.Run("at the saved address during the dial on 4445", func(t *testing.T) {
+		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.20"))
+		var opened *session
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.20:445" {
+				return nil, errors.New("445 refused")
+			}
+			c.deliver(t, answer("SERIAL-B", "192.0.2.20"))
+			opened = &session{endpoint: ep}
+			return opened, nil
+		}, release)
+		if !errors.Is(err, ErrOtherTelescope) || got != nil || opened == nil || !opened.closed.Load() || !r.Conflict {
+			t.Fatalf("got %v %+v %v, opened %v", got, r, err, opened)
+		}
+	})
+	t.Run("between the ports", func(t *testing.T) {
+		s, c := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.30"))
+		var tried []string
+		_, _, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			tried = append(tried, ep)
+			c.deliver(t, answer("SERIAL-B", "192.0.2.30"))
+			return nil, errors.New("445 refused")
+		}, release)
+		if err == nil || len(tried) != 1 {
+			t.Fatalf("%v tried %v", err, tried)
+		}
+	})
+	t.Run("the search goes on elsewhere", func(t *testing.T) {
+		s, c := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.30"))
+		sessions := map[string]*session{}
+		got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.30:445" {
+				c.deliver(t, answer("SERIAL-B", "192.0.2.30"), answer("SERIAL-A", "192.0.2.31"))
+			}
+			sessions[ep] = &session{endpoint: ep}
+			return sessions[ep], nil
+		}, release)
+		first, second := sessions["192.0.2.30:445"], sessions["192.0.2.31:445"]
+		if err != nil || got == nil || got != second || second.closed.Load() || first == nil || !first.closed.Load() ||
+			r.Endpoint != "192.0.2.31:445" || !r.Moved || r.Conflict {
+			t.Fatalf("got %v %+v %v, sessions %v", got, r, err, sessions)
+		}
+	})
+}
+
+// Past maxOthers addresses answering with other serials, Follow can't tell
+// which addresses are disqualified, and uses none: not where serial
+// answered, nor the saved address when it answered nowhere.
+func TestFollowFailsClosedWhenOthersFill(t *testing.T) {
+	for _, seen := range []bool{true, false} {
+		t.Run(fmt.Sprint("serial seen ", seen), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				var replies []datagram
+				for i := range maxOthers + 1 {
+					replies = append(replies, datagram{replyBytes(fmt.Sprintf("OTHER-%d", i), "S50_X", "Seestar S50", 0), netip.AddrFrom4([4]byte{198, 51, byte(i >> 8), byte(i)})})
+				}
+				if seen {
+					replies = append(replies, answer("SERIAL-A", "192.0.2.30"))
+				}
+				s, c := observedScan(time.Second, replies...)
+				c.in = make(chan datagram, len(replies)) // more than it usually buffers
+				dials := 0
+				got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+					dials++
+					return &session{endpoint: ep}, nil
+				}, release)
+				if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 || r.Conflict || r.NotSeen || r.Replies != len(replies) {
+					t.Fatalf("got %v %+v %v, dials %d", got, r, err, dials)
+				}
+			})
+		})
+	}
+}
+
+// bothRefused reports whether err is a refusal on 445 then 4445 at host,
+// naming both.
+func bothRefused(err error, host string) bool {
+	pe, ok := errors.AsType[*PortsError](err)
+	return ok && errors.Is(err, syscall.ECONNREFUSED) && pe.Endpoint() == host+":445" &&
+		strings.Contains(err.Error(), host+":445: ") && strings.Contains(err.Error(), "; "+host+":4445: ")
+}
+
+// A failure on both ports names each, and is classified as the one that
+// got further: the second when the first didn't connect and the second
+// did, or when the second was canceled; otherwise the first.
+func TestPortsError(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	timeout := &net.OpError{Op: "dial", Net: "tcp", Err: os.ErrDeadlineExceeded}
+	denied := fmt.Errorf("mount: %w", os.ErrPermission)
+	for _, c := range []struct {
+		name   string
+		errs   [2]error
+		second bool
+	}{
+		{"both refused", [2]error{refused, refused}, false},
+		{"refused, then the share denied", [2]error{refused, denied}, true},
+		{"the share denied, then refused", [2]error{denied, refused}, false},
+		{"no answer, then refused", [2]error{timeout, refused}, false},
+		{"refused, then canceled", [2]error{refused, fmt.Errorf("dial: %w", context.Canceled)}, true},
+		{"refused, then out of time", [2]error{refused, context.DeadlineExceeded}, true},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := &PortsError{[2]string{"192.0.2.20:445", "192.0.2.20:4445"}, c.errs}
+			want, endpoint := c.errs[0], "192.0.2.20:445"
+			if c.second {
+				want, endpoint = c.errs[1], "192.0.2.20:4445"
+			}
+			if !errors.Is(e, want) || e.Endpoint() != endpoint || errors.Unwrap(e) != want {
+				t.Errorf("unwraps to %v at %s", errors.Unwrap(e), e.Endpoint())
+			}
+			if got := e.Error(); got != "192.0.2.20:445: "+c.errs[0].Error()+"; 192.0.2.20:4445: "+c.errs[1].Error() {
+				t.Errorf("%q", got)
+			}
+		})
+	}
+}
+
+// Follow's failure on both ports keeps the second's failure when it got
+// further, and its cancellation.
+func TestFollowKeepsTheFurtherFailure(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	t.Run("the proxy's share", func(t *testing.T) {
+		s, _ := observedScan(100*time.Millisecond, answer("SERIAL-A", "192.0.2.20"))
+		denied := errors.New("proxy share permission denied")
+		_, _, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.20:445" {
+				return nil, refused
+			}
+			return nil, denied
+		}, release)
+		if !errors.Is(err, denied) || errors.Is(err, syscall.ECONNREFUSED) || !strings.Contains(err.Error(), "192.0.2.20:445: ") {
+			t.Fatal(err)
+		}
+	})
+	t.Run("canceled on 4445", func(t *testing.T) {
+		s, _ := observedScan(time.Minute, answer("SERIAL-A", "192.0.2.20"))
+		ctx, cancel := context.WithCancel(t.Context())
+		_, _, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+			if ep == "192.0.2.20:445" {
+				return nil, refused
+			}
+			cancel()
+			<-ctx.Done()
+			return nil, fmt.Errorf("dial %s: %w", ep, ctx.Err())
+		}, release)
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+	})
+}
+
+// One ConnectTimeout spans the scan and both ports: the second port gets
+// only what the first left, and the connect fails as a timeout. A
+// connection made within it outlives it.
+func TestFollowConnectTimeout(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	t.Run("spans both ports", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			start := time.Now()
+			var second time.Duration
+			_, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				if ep == "192.0.2.20:445" {
+					time.Sleep(20 * time.Second)
+					return nil, refused
+				}
+				began := time.Now()
+				<-ctx.Done()
+				second = time.Since(began)
+				return nil, fmt.Errorf("dial %s: %w", ep, ctx.Err())
+			}, release)
+			if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || time.Since(start) != ConnectTimeout ||
+				second != ConnectTimeout-20*time.Second || r.Moved || r.Endpoint != "192.0.2.20:445" {
+				t.Fatalf("%+v %v after %v, second port %v", r, err, time.Since(start), second)
+			}
+		})
+	})
+	t.Run("a connection outlives it", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			var bound context.Context
+			got, _, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				time.Sleep(ConnectTimeout - time.Second)
+				bound = ctx
+				return &session{endpoint: ep}, nil
+			}, release)
+			if err != nil || got == nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Hour)
+			if bound.Err() != nil || got.closed.Load() {
+				t.Fatalf("the connection's context ended: %v", bound.Err())
+			}
+		})
+	})
+	t.Run("a connection as it runs out is released", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			var opened *session
+			got, r, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				time.Sleep(ConnectTimeout + time.Second)
+				opened = &session{endpoint: ep}
+				return opened, nil
+			}, release)
+			if !errors.Is(err, context.DeadlineExceeded) || got != nil || !opened.closed.Load() || r.Endpoint != "192.0.2.20:445" {
+				t.Fatalf("%v %+v %v", got, r, err)
+			}
+		})
+	})
+	t.Run("the caller's cancellation stays one", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			ctx, cancel := context.WithCancel(t.Context())
+			_, _, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				time.AfterFunc(time.Second, cancel)
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}, release)
+			if !errors.Is(err, context.Canceled) {
+				t.Fatal(err)
+			}
+		})
+	})
+}
+
+// trackedParent counts the contexts waiting on it to end. context
+// registers a child through a parent's AfterFunc method when the parent
+// shows it no cancelCtx of its own, as Value's nil does.
+type trackedParent struct {
+	context.Context
+	waiting atomic.Int32
+}
+
+func (p *trackedParent) Value(any) any { return nil }
+
+func (p *trackedParent) AfterFunc(f func()) func() bool {
+	p.waiting.Add(1)
+	stop := context.AfterFunc(p.Context, func() { p.waiting.Add(-1); f() })
+	return func() bool {
+		if stop() {
+			p.waiting.Add(-1)
+			return true
+		}
+		return false
+	}
+}
+
+// A connection Follow returns keeps its context past ConnectTimeout, and
+// the cancel returned with it ends that context and leaves nothing
+// waiting on ctx.
+func TestFollowReturnsItsCancel(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		parent := &trackedParent{Context: t.Context()}
+		for range 3 {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			var bound context.Context
+			got, _, cancel, err := Follow(parent, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				bound = ctx
+				return &session{endpoint: ep}, nil
+			}, release)
+			if err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(ConnectTimeout + time.Second)
+			if bound.Err() != nil || parent.waiting.Load() != 1 {
+				t.Fatalf("open: context %v, %d waiting", bound.Err(), parent.waiting.Load())
+			}
+			release(got)
+			cancel()
+			if bound.Err() == nil || parent.waiting.Load() != 0 {
+				t.Fatalf("closed: context %v, %d waiting", bound.Err(), parent.waiting.Load())
+			}
 		}
 	})
 }

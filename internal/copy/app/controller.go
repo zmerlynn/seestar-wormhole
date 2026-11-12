@@ -170,12 +170,12 @@ func (c *controller) start(set Settings, t Target) error {
 	interval := time.Duration(set.IntervalMinutes) * time.Minute
 	c.st = status{state: stConnecting, endpoint: set.Address, folder: set.Folder, interval: interval, once: set.Once, contact: c.st.contact, last: c.st.last}
 	o := engine.SyncOptions{
-		Endpoint: t.logged(), Dest: set.Folder, StateDir: set.historyDir(c.stateDir), Selector: sel, Interval: interval, Once: set.Once,
+		Endpoint: t.Endpoint, Dest: set.Folder, StateDir: set.historyDir(c.stateDir), Selector: sel, Interval: interval, Once: set.Once,
 		ReadyAge: readyAge, FirstPassAge: firstPassAge, Workers: set.FilesAtOnce,
 		Dial: c.dialPass, Hooks: c.hooks(ctx), CheckNow: c.checkNow, Recreate: true,
 	}
 	c.mu.Unlock()
-	c.log.Info("copying started", "folder", "this telescope's folder")
+	c.log.Info("copying started", t.logKeys()...)
 	// The loop is over, and done closes, on every exit, a recovered panic's
 	// included, so Quit and the next start never wait on a dead loop.
 	go func() {

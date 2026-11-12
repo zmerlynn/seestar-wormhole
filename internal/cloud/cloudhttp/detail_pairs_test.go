@@ -56,7 +56,7 @@ func TestDetailPairLiterals(t *testing.T) {
 			if !strings.Contains(logs.String(), "inconsistent server answer") {
 				t.Fatal("missing inconsistency diagnostic")
 			}
-			assertCatalogPagePrivacy(t, logs.String()+err.Error())
+			assertCatalogPageSecrets(t, logs.String()+err.Error())
 		}
 	}
 }

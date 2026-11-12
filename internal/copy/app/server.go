@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -53,6 +54,8 @@ type server struct {
 	dial  func(ctx context.Context, t Target) (remote.Session, error)
 	test  func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	reach func(ctx context.Context, endpoint string) error
+	// serialAt is MountOptions.SerialAt.
+	serialAt func(ctx context.Context, host string) bool
 	// target is where the telescope is for every dial and start.
 	target func() (Target, error)
 	// name is how the page names a target's telescope; see
@@ -111,7 +114,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	log = slog.New(withoutFolder{log.Handler()})
 	s := &server{
 		ctx: ctx, addr: o.Addr, version: o.Version, stateDir: o.StateDir, target: o.Target, file: file, log: log,
-		rep: &reporter{report: o.Report}, name: o.Name, knowSerial: o.KnowSerial, tokenKey: make([]byte, 32),
+		rep: &reporter{report: o.Report}, name: o.Name, knowSerial: o.KnowSerial, serialAt: o.SerialAt, tokenKey: make([]byte, 32),
 		test: func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
 			return engine.Test(ctx, endpoint, log)
 		},
@@ -868,7 +871,7 @@ func (s *server) adopt(w http.ResponseWriter, token string) {
 		conflict("Couldn't save settings: " + reason(err) + ". Try again.")
 		return
 	}
-	s.log.Info("settings saved", "telescope", "the address's folder is this telescope's now")
+	s.log.Info("settings saved", "telescope", t.Telescope, "folder", "the address's folder")
 	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpSaveSettings, Seq: seq})
 	if oldSessions != nil {
 		oldSessions.Close()
@@ -885,27 +888,79 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		localhttp.Respond(w, http.StatusBadRequest, fieldErrors{map[string]string{"address": addressError}})
 		return
 	}
-	entries, err := s.testLAN(ctx, endpoint)
-	// The address is the user's to see on the page, never in a log.
+	// An address typed without a port that answered a scan with a
+	// serial may be a proxy's, which forwards SMB on its own port.
+	var heard func(context.Context) bool
+	if _, _, err := net.SplitHostPort(strings.TrimSpace(in.Address)); err != nil && s.serialAt != nil {
+		host, _, _ := net.SplitHostPort(endpoint)
+		heard = func(ctx context.Context) bool { return s.serialAt(ctx, host) }
+	}
+	typed := endpoint
+	endpoint, entries, err := s.testTyped(ctx, endpoint, heard)
+	message := testMessage(hostOS, endpoint, entries, err)
 	if err != nil {
-		s.log.Warn("test failed", "err", err)
+		s.log.Warn("test failed", "endpoint", endpoint, "err", err)
 	} else {
-		s.log.Info("test passed")
+		s.log.Info("test passed", "endpoint", endpoint)
+		if endpoint != typed {
+			message += " It answered at " + endpoint + ", a seestar-wormhole proxy's SMB port, since port 445 didn't connect."
+		}
 	}
 	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpTest, Err: err, Canceled: ctx.Err() != nil && err != nil, Seq: s.rep.next()})
 	localhttp.Respond(w, http.StatusOK, struct {
 		OK      bool   `json:"ok"`
 		Address string `json:"address"`
 		Message string `json:"message"`
-	}{err == nil, endpoint, testMessage(hostOS, endpoint, entries, err)})
+	}{err == nil, endpoint, message})
 }
 
 // testLAN runs Test of endpoint, an address on this network, within
 // testTimeout, waiting out macOS's Local Network prompt.
 func (s *server) testLAN(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+	_, entries, err := s.testTyped(ctx, endpoint, nil)
+	return entries, err
+}
+
+// testTyped is testLAN for an address typed for Test. When heard is set
+// and reports a serial heard at endpoint's host, a failed Test of
+// endpoint is followed by a Test of the proxy's SMB port at that host,
+// all within one testTimeout; heard runs alongside the first Test. It
+// returns the endpoint that passed, or endpoint with its failure; when
+// both fail, a [landiscovery.PortsError] naming both, with the endpoint
+// whose failure got further.
+func (s *server) testTyped(ctx context.Context, endpoint string, heard func(context.Context) bool) (string, []remote.Entry, error) {
 	ctx, cancel := context.WithTimeout(ctx, testTimeout)
 	defer cancel()
-	return retryLAN(ctx, localNetworkRetry, func(ctx context.Context) ([]remote.Entry, error) { return s.test(ctx, endpoint) })
+	test := func(endpoint string) ([]remote.Entry, error) {
+		return retryLAN(ctx, localNetworkRetry, func(ctx context.Context) ([]remote.Entry, error) { return s.test(ctx, endpoint) })
+	}
+	if heard == nil {
+		entries, err := test(endpoint)
+		return endpoint, entries, err
+	}
+	answered := make(chan bool, 1)
+	go func() { answered <- heard(ctx) }()
+	entries, err := test(endpoint)
+	if err == nil || ctx.Err() != nil {
+		return endpoint, entries, err
+	}
+	select {
+	case ok := <-answered:
+		if !ok {
+			return endpoint, entries, err
+		}
+	case <-ctx.Done():
+		return endpoint, entries, err
+	}
+	host, _, _ := net.SplitHostPort(endpoint)
+	proxied := net.JoinHostPort(host, landiscovery.ProxySMBPort)
+	s.log.Info("test trying the proxy's SMB port", "endpoint", proxied, "err", err)
+	proxiedEntries, proxiedErr := test(proxied)
+	if proxiedErr == nil {
+		return proxied, proxiedEntries, nil
+	}
+	both := &landiscovery.PortsError{Endpoints: [2]string{endpoint, proxied}, Errs: [2]error{err, proxiedErr}}
+	return both.Endpoint(), nil, both
 }
 
 // reachLAN is testLAN for a route's Save: it checks only that the
@@ -1491,22 +1546,30 @@ func within(folder, dst string) (top, rel string, ok bool) {
 // maxDays caps Only files older than N days: 100 years.
 const maxDays = 36500
 
-// reason is a short text for err that names no folder, file, address,
-// host or serial, for logs, Activity and the page's error messages: a
-// transfer that ended early is [remote.ErrShort], without its byte
-// counts; else err's own text when that is [safeText], as this app's errors and the
-// telescope connection's are; else the class of a system or network
-// failure, such as "permission denied"; else the first safe text in err's
-// chain, such as a sentinel a dependency wrapped with a path; and
-// otherwise "operation failed".
+// reason is a short text for err that names no folder or file, for logs,
+// Activity and the page's error messages: a transfer that ended early is
+// [remote.ErrShort], without its byte counts; else err's own text when
+// that is [safeText], as this app's errors and the telescope
+// connection's are; else the text of a network error in err's chain,
+// which names the telescope's address or host name; else the class of a
+// system failure, such as "permission denied"; else the first safe text
+// in err's chain, such as a sentinel a dependency wrapped with a path;
+// and otherwise "operation failed". A failure on two ports is each
+// endpoint with its own reason.
 func reason(err error) string {
 	if err == nil {
 		return "none"
+	}
+	if both, ok := errors.AsType[*landiscovery.PortsError](err); ok {
+		return both.Endpoints[0] + ": " + reason(both.Errs[0]) + "; " + both.Endpoints[1] + ": " + reason(both.Errs[1])
 	}
 	if errors.Is(err, remote.ErrShort) {
 		return remote.ErrShort.Error()
 	}
 	if t := err.Error(); safeText(t) {
+		return t
+	}
+	if t, ok := networkText(err); ok {
 		return t
 	}
 	if c := diagnostic.Class(err); c != "operation_failed" {
@@ -1519,6 +1582,18 @@ func reason(err error) string {
 		return t
 	}
 	return "operation failed"
+}
+
+// networkText is the text of the first TCP or UDP error, or name lookup
+// error, in err's chain: it names an address or a host, never a folder.
+func networkText(err error) (string, bool) {
+	if op, ok := errors.AsType[*net.OpError](err); ok && (strings.HasPrefix(op.Net, "tcp") || strings.HasPrefix(op.Net, "udp")) {
+		return op.Error(), true
+	}
+	if dns, ok := errors.AsType[*net.DNSError](err); ok {
+		return dns.Error(), true
+	}
+	return "", false
 }
 
 // classText reads better than a class with its underscores as spaces.

@@ -188,11 +188,12 @@ produce a final JSON `discovery failed` record with `phase`, an existing
 [reason value](#status-and-reason-values), and `cleanup_reason=none`.
 Orderly shutdown has no failure record.
 
-Lifecycle records are the shared `lan_discovery_started` (INFO, `port` and
-`all_interfaces`), `lan_discovery_synthesized` (WARN, `fields` and
-`envelope_fields`), `lan_discovery_refused`, and
+Lifecycle records are the shared `lan_discovery_started` (INFO, `port`,
+`all_interfaces`, and the advertised `serial`, `model` and `name`; `proxy`
+logs them as the `telescope` group), `lan_discovery_synthesized` (WARN,
+`fields` and `envelope_fields`), `lan_discovery_refused`, and
 `lan_discovery_delivery_failed`; see [logs](#logs) for the latter records and
-logging-loss handling. No serial, name, model, or credentials are logged.
+logging-loss handling. No credentials are logged.
 
 ## File commands
 
@@ -209,7 +210,10 @@ read-only page over it, and delete what is safely copied. The
 [file command reference](files-cli.md) has their flags, rules, logs and
 exit codes. They need no cloud session and no credentials: `--endpoint` is the
 share's address, such as a running proxy's SMB port (`127.0.0.1:4445` by
-default) or the telescope on this network. Earlier releases shipped them as a
+default) or the telescope on this network, and is dialed as given. With
+`--profile default`, a telescope saved by its serial is followed on this
+network, on port 445 and then 4445 when the saved port is one of the two;
+see [use the app's saved settings](files-cli.md#use-the-apps-saved-settings). Earlier releases shipped them as a
 separate `seestar-copy-cli`. `scan` lists the telescopes that answer the
 phone app's scan request on this network, to find an address for
 `--endpoint`; see [scan](files-cli.md#scan).
@@ -280,7 +284,7 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning that doesn't name it; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning; a serial's names it in `value`, an email's doesn't; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
@@ -488,8 +492,9 @@ Unmatched serials or multiple pairs without a serial identify `--serial` in
 classified diagnostics. For multiple devices without a serial, the CLI prints
 an error to standard output listing every received distinct pair, one per line:
 model then **full serial**. Pass `--serial` with one of them. Incomplete-catalog, duplicate, and ambiguous
-serial refusals also list the received pairs. These lists are command output,
-not log records. Invalid serials are omitted using the command's serial rules;
+serial refusals also list the received pairs. The returned error, and any log
+record of it, names the same pairs on one line after `received telescopes:`,
+within the 4096-byte budget of the catalog message, counting any it leaves out. Invalid serials are omitted using the command's serial rules;
 all model labels use Go ASCII string escaping (without enclosing quotes) and
 are capped at 64 display characters, including escapes and a `...` truncation
 marker. Valid serial labels preserve printable ASCII verbatim without truncation; log encoders still escape their own syntax.
@@ -591,10 +596,13 @@ In trail entries:
   changes `phase` or `reason`, and when it next succeeds. Repeats of the same
   failure stay in memory, in the UI's status `failures` and the copied summary.
 - Scans of this network are `connection` lines with one of these `code`
-  values, a message that names at most the telescope's model and the reply
+  values, a message that names the telescopes the scan saw, each with its
+  name, model, serial and addresses, the saved address, and the reply
   count, and no `phase` or `reason`:
-  - `scan_listed`: **On this network** scanned, with the reply count.
-  - `scan_probed`: **Test** sent the scan request to the typed address.
+  - `scan_listed`: **On this network** scanned: a line with the reply
+    count, then a line for each telescope that answered.
+  - `scan_probed`: **Test** sent the scan request to the typed address,
+    with lines as `scan_listed`.
   - `scan_failed`: a scan couldn't run, such as with no network to scan.
   - `scan_moved`: a connect's scan found the saved serial at another
     address, which connected and was saved.
@@ -618,7 +626,9 @@ In trail entries:
   recorded, and `scan_probed` neither.
 - File-tool lines carry a fixed message and the classified `phase` and
   `reason`. They leave out paths, file and folder names, endpoints and error
-  text. Connection lines keep their telescope text, including the selected
+  text; in Activity, starting copying names the address, and a connection
+  error names the address dialed.
+  Connection lines keep their telescope text, including the selected
   telescope's full serial, and catalog lines list the account's serials.
 
 ```json

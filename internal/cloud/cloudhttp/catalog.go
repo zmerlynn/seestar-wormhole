@@ -50,16 +50,25 @@ func (c Catalog) Message() string {
 		if model == "" {
 			model = "Seestar"
 		}
-		label := model + " " + p.Serial
-		if len(prefix)+len(strings.Join(append(labels, label), ", "))+32 > 4096 {
+		labels = append(labels, model+" "+p.Serial)
+	}
+	return prefix + joinLabels(len(prefix), labels, c.Count)
+}
+
+// joinLabels joins whole labels within the 4096-byte message budget, counting
+// every one of count it leaves out.
+func joinLabels(used int, labels []string, count int) string {
+	var kept []string
+	for _, label := range labels {
+		if used+len(strings.Join(append(kept, label), ", "))+32 > 4096 {
 			break
 		}
-		labels = append(labels, label)
+		kept = append(kept, label)
 	}
-	if more := c.Count - len(labels); more > 0 {
-		labels = append(labels, fmt.Sprintf("… and %d more", more))
+	if more := count - len(kept); more > 0 {
+		kept = append(kept, fmt.Sprintf("… and %d more", more))
 	}
-	return prefix + strings.Join(labels, ", ")
+	return strings.Join(kept, ", ")
 }
 
 // SetCatalogObserver installs a synchronous observer before selection starts.

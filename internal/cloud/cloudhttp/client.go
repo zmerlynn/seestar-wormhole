@@ -76,8 +76,10 @@ func (e *AcquireError) Unwrap() []error {
 // Device selects the detail and online-link query. It contains no credentials.
 type Device struct{ Serial, Model string }
 
-func (Device) LogValue() slog.Value          { return slog.StringValue("[cloud device selection]") }
-func (Device) Format(s fmt.State, verb rune) { io.WriteString(s, "[cloud device selection]") }
+// LogValue names the telescope.
+func (d Device) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("serial", d.Serial), slog.String("model", d.Model))
+}
 
 // Client contains ephemeral environment credentials; do not copy after use.
 type Client struct {

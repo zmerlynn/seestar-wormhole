@@ -171,22 +171,6 @@ var (
 		}
 		return s, nil
 	}
-	// tcpDialAs and tcpRemoverAs dial endpoint over TCP for a telescope
-	// saved with its serial; their errors call it name, never its address.
-	tcpDialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
-		s, err := remote.DialVia(ctx, name, remote.TCP(endpoint), log)
-		if err != nil {
-			return nil, err
-		}
-		return s, nil
-	}
-	tcpRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
-		s, err := remote.DialRemoverVia(ctx, name, remote.TCP(endpoint), log)
-		if err != nil {
-			return nil, err
-		}
-		return s, nil
-	}
 	dialVia = func(ctx context.Context, name string, conn remote.Conn, log *slog.Logger) (remote.Session, error) {
 		s, err := remote.DialVia(ctx, name, conn, log)
 		if err != nil {
@@ -221,12 +205,13 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 	log := o.Log
 	follow := func(ctx context.Context, t copyapp.Target) (remote.Session, copyapp.Target, error) {
 		return lanConnect(ctx, handler, t, func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return tcpDialAs(ctx, lanName, endpoint, log)
+			return tcpDial(ctx, endpoint, log)
 		})
 	}
 	o.Target = handler.copyTarget
 	o.Name = handler.telescopeName
 	o.KnowSerial = handler.knowSerial
+	o.SerialAt = handler.serialAt
 	o.Report = handler.controller.log.addOutcome
 	o.Dial = func(ctx context.Context, t copyapp.Target) (remote.Session, error) {
 		switch {
@@ -248,10 +233,7 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 		return s, t, err
 	}
 	o.Remover = func(ctx context.Context, t copyapp.Target) (remote.Remover, error) {
-		switch {
-		case t.Run == 0 && t.Serial != "":
-			return tcpRemoverAs(ctx, lanName, t.Endpoint, log)
-		case t.Run == 0:
+		if t.Run == 0 {
 			return tcpRemover(ctx, t.Endpoint, log)
 		}
 		return removerVia(ctx, t.Endpoint, via(t.Run), log)
@@ -314,7 +296,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		}
 		return errors.New("Could not load saved settings safely.\n\n" + settingsPath + "\n\nCheck this file, then reopen seestar-wormhole.")
 	}
-	// A saved value a load replaced is logged, never the value itself.
+	// A saved value a load replaced is logged, and the serial's value too.
 	logFallbacks := func(fallbacks []diagnostic.Fallback) {
 		diagnostic.LogFallbacks(diagnostic.Logger("json", logs, slog.LevelWarn), fallbacks)
 	}

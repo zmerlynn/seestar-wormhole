@@ -401,7 +401,7 @@ func (s *Session) Observe(e session.Event, before, after session.Snapshot, now c
 }
 
 // DeviceDetail returns selected cloud identity when LANDiscovery was enabled.
-// Values are for the discovery wire, never logs; Detail redacts formatting.
+// Its log value names the telescope.
 func (s *Session) DeviceDetail() cloud.Detail { return s.deviceDetail }
 
 // ObservationDeadline requests the next unavailable or discard summary on the owner clock.

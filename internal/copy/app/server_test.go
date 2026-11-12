@@ -16,6 +16,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -927,6 +928,92 @@ func TestTestAPI(t *testing.T) {
 	}
 }
 
+// Test of an address typed without a port that answered a scan with a
+// serial tries the proxy's SMB port, 4445, when 445 fails, within one
+// deadline; an explicit port, or no serial heard, tests the address as
+// typed only.
+func TestTestTriesTheProxysPort(t *testing.T) {
+	type answer struct {
+		OK      bool   `json:"ok"`
+		Address string `json:"address"`
+		Message string `json:"message"`
+	}
+	for _, c := range []struct {
+		name, typed string
+		heard       bool
+		answers     []string // the endpoints that accept file sharing
+		tested      []string
+		ok          bool
+		address     string
+	}{
+		{"445 refused and 4445 answers", "192.0.2.10", true, []string{"192.0.2.10:4445"}, []string{"192.0.2.10:445", "192.0.2.10:4445"}, true, "192.0.2.10:4445"},
+		{"445 answers", "192.0.2.10", true, []string{"192.0.2.10:445", "192.0.2.10:4445"}, []string{"192.0.2.10:445"}, true, "192.0.2.10:445"},
+		{"neither answers", "192.0.2.10", true, nil, []string{"192.0.2.10:445", "192.0.2.10:4445"}, false, "192.0.2.10:445"},
+		{"445 refused and 4445 denies the share", "192.0.2.10", true, []string{"denied"}, []string{"192.0.2.10:445", "192.0.2.10:4445"}, false, "192.0.2.10:4445"},
+		{"an explicit port", "192.0.2.10:445", true, []string{"192.0.2.10:4445"}, []string{"192.0.2.10:445"}, false, "192.0.2.10:445"},
+		{"no serial heard", "192.0.2.10", false, []string{"192.0.2.10:4445"}, []string{"192.0.2.10:445"}, false, "192.0.2.10:445"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := newAppEnv(t, nil)
+			var mu sync.Mutex
+			var tested []string
+			var deadlines []time.Time
+			e.s.test = func(ctx context.Context, endpoint string) ([]remote.Entry, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				tested = append(tested, endpoint)
+				d, _ := ctx.Deadline()
+				deadlines = append(deadlines, d)
+				if slices.Contains(c.answers, "denied") && endpoint == "192.0.2.10:4445" {
+					return nil, fmt.Errorf("connect to %s: mount: %w", endpoint, os.ErrPermission)
+				}
+				if !slices.Contains(c.answers, endpoint) {
+					return nil, fmt.Errorf("dial %s: %w", endpoint, &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)})
+				}
+				return []remote.Entry{{Path: "MyWorks", Kind: remote.Dir}}, nil
+			}
+			var asked []string
+			e.s.serialAt = func(ctx context.Context, host string) bool {
+				mu.Lock()
+				defer mu.Unlock()
+				asked = append(asked, host)
+				return c.heard
+			}
+			got := decode[answer](t, e.post("/copy/api/test", `{"address":"`+c.typed+`"}`))
+			if got.OK != c.ok || got.Address != c.address {
+				t.Errorf("test = %+v", got)
+			}
+			if c.ok && c.address == "192.0.2.10:4445" && got.Message != "Connected. The telescope's share has the folder MyWorks. It answered at 192.0.2.10:4445, a seestar-wormhole proxy's SMB port, since port 445 didn't connect." {
+				t.Errorf("message %q", got.Message)
+			}
+			if !c.ok && c.address == "192.0.2.10:4445" {
+				if want := "Can't reach 192.0.2.10:4445. Check that the telescope is on and on this computer's network."; got.Message != want ||
+					!strings.Contains(e.logs.String(), `msg="test failed" endpoint=192.0.2.10:4445 err="192.0.2.10:445: dial tcp: connect: connection refused; 192.0.2.10:4445: permission denied"`) {
+					t.Errorf("message %q, log %q", got.Message, e.logs.String())
+				}
+			} else if !c.ok && got.Message != "192.0.2.10 answered but refused port 445. Is this the telescope's address?" {
+				t.Errorf("a failure's message %q", got.Message)
+			}
+			mu.Lock()
+			defer mu.Unlock()
+			if !slices.Equal(tested, c.tested) {
+				t.Errorf("tested %q, want %q", tested, c.tested)
+			}
+			if len(deadlines) == 2 && !deadlines[0].Equal(deadlines[1]) {
+				t.Errorf("two deadlines: %v", deadlines)
+			}
+			// A bare address is asked about alongside its first test, which
+			// may end first; an explicit port never is.
+			if c.typed != "192.0.2.10" && len(asked) > 0 || len(tested) > 1 && !slices.Equal(asked, []string{"192.0.2.10"}) {
+				t.Errorf("asked about %q", asked)
+			}
+			if c.ok && !strings.Contains(e.logs.String(), "msg=\"test passed\" endpoint="+c.address+"\n") {
+				t.Errorf("log %q", e.logs.String())
+			}
+		})
+	}
+}
+
 // listing is one browse /api/list answer's entries' names.
 func listing(t *testing.T, e *appEnv) []string {
 	t.Helper()
@@ -1191,5 +1278,38 @@ func TestAPIReadsStrictly(t *testing.T) {
 		if w := e.post("/copy/api/copy", tc.body); w.Code != tc.code {
 			t.Errorf("%q = %d, want %d", tc.body, w.Code, tc.code)
 		}
+	}
+}
+
+// A failure on 4445 that got further than 445's refusal is the one Test
+// reports, naming both; the serial hook's context ends with Test.
+func TestTestTypedKeepsTheFurtherFailure(t *testing.T) {
+	e := newAppEnv(t, nil)
+	e.s.test = func(_ context.Context, ep string) ([]remote.Entry, error) {
+		if strings.HasSuffix(ep, ":445") {
+			return nil, &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+		}
+		return nil, errors.New("proxy share permission denied")
+	}
+	ep, _, err := e.s.testTyped(t.Context(), "192.0.2.10:445", func(context.Context) bool { return true })
+	if ep != "192.0.2.10:4445" || err == nil || errors.Is(err, syscall.ECONNREFUSED) ||
+		!strings.Contains(err.Error(), "192.0.2.10:4445: proxy share permission denied") || !strings.Contains(err.Error(), "192.0.2.10:445: ") {
+		t.Fatalf("%s %v", ep, err)
+	}
+
+	started, ended := make(chan struct{}), make(chan struct{})
+	e.s.test = func(context.Context, string) ([]remote.Entry, error) { <-started; return nil, nil }
+	if _, _, err := e.s.testTyped(t.Context(), "192.0.2.10:445", func(ctx context.Context) bool {
+		close(started)
+		<-ctx.Done()
+		close(ended)
+		return false
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-ended:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the serial hook outlived Test")
 	}
 }

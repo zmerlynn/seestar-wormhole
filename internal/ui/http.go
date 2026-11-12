@@ -539,7 +539,7 @@ func SavedTelescope(s Settings) string {
 
 // telescopeName is how the Copy tab names t's telescope, in the folder it
 // suggests and the offer of an address's folder: "<model> <serial>", or
-// for an address "<model or Seestar> <host> <port>". It is never logged.
+// for an address "<model or Seestar> <host> <port>".
 func (s *server) telescopeName(t copyapp.Target) string {
 	if t.Device != "" {
 		return t.Device
@@ -706,12 +706,19 @@ func pageSettingsFor(s Settings) pageSettings {
 }
 
 // One allowlisted projection feeds both Settings and the copied summary.
-// It contains no account, device, address, credential, token, or path.
+// It names the telescope: the route, the account telescope's serial and
+// model, and the address and serial saved on this network. It contains no
+// account, credential, token, or path.
 type diagnosticSettings struct {
-	Idle      diagnosticIdle    `json:"idle"`
-	Listen    string            `json:"listen"`
-	Discovery bool              `json:"discovery"`
-	Ports     map[uint16]uint16 `json:"ports"`
+	Route      string            `json:"route"`
+	Serial     string            `json:"serial"`
+	Model      string            `json:"model"`
+	LANAddress string            `json:"lan_address"`
+	LANSerial  string            `json:"lan_serial"`
+	Idle       diagnosticIdle    `json:"idle"`
+	Listen     string            `json:"listen"`
+	Discovery  bool              `json:"discovery"`
+	Ports      map[uint16]uint16 `json:"ports"`
 }
 type diagnosticIdle struct {
 	Mode    string  `json:"mode"`
@@ -720,7 +727,8 @@ type diagnosticIdle struct {
 
 func diagnosticSettingsFor(s Settings, ports []proxyrun.Port) diagnosticSettings {
 	d, _ := time.ParseDuration(s.Idle)
-	v := diagnosticSettings{Idle: diagnosticIdle{Mode: "keep_connected", Minutes: d.Minutes()}, Listen: "other", Discovery: s.Discovery, Ports: make(map[uint16]uint16)}
+	v := diagnosticSettings{Route: s.Route, Serial: s.Serial, Model: s.Model, LANAddress: s.LANAddress, LANSerial: s.LANSerial,
+		Idle: diagnosticIdle{Mode: "keep_connected", Minutes: d.Minutes()}, Listen: "other", Discovery: s.Discovery, Ports: make(map[uint16]uint16)}
 	if d > 0 {
 		v.Idle.Mode = "on_demand"
 	}

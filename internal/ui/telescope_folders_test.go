@@ -172,9 +172,9 @@ func folderMapOf(s copyapp.Settings) map[string]string {
 	return m
 }
 
-// No line of gui.log, event, failure or Activity names a telescope's serial, its
-// address or its folder, through an address's folder, its adoption by
-// the serial heard there, and a second telescope's folder.
+// No line of gui.log, event, failure or Activity names a telescope's
+// folder, through an address's folder, its adoption by the serial heard
+// there, and a second telescope's folder. Activity names the telescopes.
 func TestTelescopeFolderPrivacy(t *testing.T) {
 	e := newTrailEnv(t)
 	e.ready() // 192.0.2.10, keyed by its address, with e.folder
@@ -227,12 +227,15 @@ func TestTelescopeFolderPrivacy(t *testing.T) {
 	}
 	escaped, _ := json.Marshal(e.folder)
 	for where, text := range map[string]string{"gui.log": string(data), "events": string(status.Events), "failures": string(status.Failures), "activity": string(copyStatus.Activity)} {
-		// The fixture's files are named for their share's host.
-		text = strings.NewReplacer("at_192.0.2.10.jpg", "", "at_192.0.2.11.jpg", "").Replace(text)
-		for _, s := range []string{"SERIAL-SENTINEL", "192.0.2.10", "192.0.2.11", filepath.ToSlash(e.folder), string(escaped[1 : len(escaped)-1])} {
+		for _, s := range []string{filepath.ToSlash(e.folder), string(escaped[1 : len(escaped)-1])} {
 			if strings.Contains(text, s) {
 				t.Errorf("%s holds %q", where, s)
 			}
+		}
+	}
+	for _, s := range []string{"SERIAL-SENTINEL-A", "SERIAL-SENTINEL-B", "192.0.2.10:445", "192.0.2.11:445"} {
+		if !strings.Contains(string(copyStatus.Activity), s) {
+			t.Errorf("activity lacks %q", s)
 		}
 	}
 }

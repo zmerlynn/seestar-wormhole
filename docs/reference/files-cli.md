@@ -147,12 +147,18 @@ usual; if nothing listens, the run fails with exit 1.
 On this network, an address the app saved from a scan is saved with the
 telescope's serial number, [`lan_serial`](app-settings.md#configjson-version-1).
 When `--endpoint` was filled from it, a connect can
-[scan this network](#scan) for that serial and connect, on the same port,
-to an address the telescope answered from, the saved address first; an
-address that doesn't connect doesn't end the search. If another telescope
-answers at the saved address, it isn't used, even if it answers there only
-while the saved address is being connected; a connection already made there
-is closed. If no reply carries the serial, the saved address is tried.
+[scan this network](#scan) for that serial and connect to an address the
+telescope answered from, the saved address first; an address that doesn't
+connect doesn't end the search. When the saved port is 445 or 4445, the SMB
+port of a seestar-wormhole proxy that answers scans for its telescope, each
+address is tried on 445 and then on 4445, within the same connect; another
+saved port is tried alone. Such a connect has 30 seconds in all, for the
+scan and every address and port it tries, and fails as timed out after
+that; a connection made within them isn't limited by them. An `--endpoint` given on the command line is
+dialed as given. An address another telescope answers at, the saved one or
+any other, isn't used, even if it answers there only while that address is
+being connected; a connection already made there is closed and the search
+goes on. If no reply carries the serial, the saved address is tried.
 
 `--scan` chooses when a connect scans. Without it, the app's choice under
 **On this network**, [`lan_scan`](app-settings.md#configjson-version-1), is
@@ -169,9 +175,9 @@ whatever `--scan` says. Nothing is saved; the app saves a new address the
 next time it connects. A given `--endpoint`, or an address saved without a
 serial, is dialed as it is, without a scan, whatever `--scan` says; the
 value is still checked, and one other than `start`, `connect` or `off`
-exits 2. Errors call a telescope reached through its saved serial `the
-saved telescope`, not its address, under every `--scan`. The scan's records
-are in [logs](#logs).
+exits 2. Errors name the address dialed, or the host name and DNS server
+of a failed lookup, under every `--scan`. The scan's records, which name
+the telescope, are in [logs](#logs).
 
 At the start of the run, one `INFO` record, `saved settings`, names the
 filled flags and none of their values, such as
@@ -526,10 +532,10 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `moved the copy history` | `from`, `to` | With the default `--history-dir`: the history folder of earlier releases, `seestar-copy`, was moved to `copy-history`; see [location](selection-and-history.md#location). Logged once, by the first sync or delete that isn't a dry run. Find, browse and dry runs never move it. |
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
-| INFO | `found the saved telescope at another address on this network` | `model` when the reply had one, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). Logged again only when the outcome changes. No address, name or serial is logged. |
-| WARN | `the saved telescope wasn't seen in a scan of this network; tried its saved address` | none | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
-| WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `replies` | As above, but another serial answered from the saved address, which isn't used, and no reply carried the saved serial; the connect fails. |
-| WARN | `found the saved telescope on this network, but it didn't connect where it answered` | `model`, `replies` | As above, but no address that answered with the serial connected; the connect fails. Also logged when another serial answered from the saved address too. |
+| INFO | `found the telescope at another address on this network` | `telescope`, `saved`, `endpoint`, `addresses`, `other` when another serial answered at the saved address, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address or port other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). `telescope` is its name, model and serial as the reply gave them, such as `S50_Garden (Seestar S50, serial 4ab1c2d3)`; `saved` is the saved address, `endpoint` the one it connected to, `addresses` where it answered, and `other` the telescope that answered at the saved address. Logged again only when the outcome changes. |
+| WARN | `the telescope wasn't seen in a scan of this network; tried its saved address` | `serial`, `saved`, `replies` | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
+| WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `serial`, `saved`, `other`, `replies` | As above, but another serial answered from the saved address, which isn't used, and no reply carried the saved serial; the connect fails. `other` names the telescope that answered there. |
+| WARN | `found the telescope on this network, but it didn't connect where it answered` | `telescope`, `saved`, `addresses`, `other` when another serial answered from the saved address, `replies` | As above, but no address that answered with the serial connected, or another serial answered at each of them too; the connect fails. |
 | WARN | `diagnostics_lost` | `rule`, `count`, `bytes` | Stderr could not take every line, and the lines were dropped rather than stall the command. Written once stderr takes lines again; the command exits 1. |
 
 Each pass that runs ends with one summary line, whose keys are below. A later
@@ -1238,8 +1244,8 @@ broadcast address of each up IPv4 interface that can broadcast, three times
 Loopback and point-to-point (VPN) interfaces are skipped, and so are replies
 from this computer's own addresses, such as a proxy here that answers for
 the phone app. A reply needs a serial number; replies with the same serial
-are one telescope with every address it answered from. scan never shows a
-serial number, and never reads the reply's password.
+are one telescope with every address it answered from. scan shows each
+telescope's serial number, and never reads the reply's password.
 
 A telescope found here can be given to the other file commands as
 `--endpoint ADDRESS:445`. scan connects to nothing and reads no saved
@@ -1256,22 +1262,22 @@ settings: it has no `--endpoint` or `--profile`.
 ### scan output
 
 The text format writes one line per address, telescope by telescope in the
-order they first answered: the address, `busy` or `-`, the name (the reply's `ssid`) and the model.
+order they first answered: the address, `busy` or `-`, the name (the reply's `ssid`), the model and the serial number.
 `busy` means the telescope reports as many clients as the phone app allows,
-8; the phone app may refuse to connect, but copying still works. The name and
-model are quoted as [find's paths](#text-format) are, and an empty one is
-`""`, so each line has four fields.
+8; the phone app may refuse to connect, but copying still works. The name,
+model and serial are quoted as [find's paths](#text-format) are, and an empty
+one is `""`, so each line has five fields.
 
 ```text
-192.0.2.10 - S50_Garden "Seestar S50"
-198.51.100.23 busy "Seestar S30" "Seestar S30"
+192.0.2.10 - S50_Garden "Seestar S50" 4ab1c2d3
+198.51.100.23 busy "Seestar S30" "Seestar S30" 7e8f9a0b
 ```
 
 The JSON format writes one object on one line, with `telescopes` and
 `replies`, the number of replies accepted:
 
 ```json
-{"telescopes":[{"name":"S50_Garden","model":"Seestar S50","addresses":["192.0.2.10"],"busy":false}],"replies":3}
+{"telescopes":[{"name":"S50_Garden","model":"Seestar S50","serial":"4ab1c2d3","addresses":["192.0.2.10"],"busy":false}],"replies":3}
 ```
 
 In both formats, bytes of a name or model that are not UTF-8 become U+FFFD.
@@ -1281,9 +1287,10 @@ replies are only counted.
 ### scan logs and exit codes
 
 `scan` logs `scanned this network` at INFO with `replies` and `telescopes`,
-and `no telescope answered` at WARN when the list is empty. On macOS that
-warning adds where to allow Local Network access, which macOS may be
-blocking. It logs no address, name or serial.
+then `found a telescope` at INFO for each, with `telescope` (its name, model
+and serial) and `addresses`, and `no telescope answered` at WARN when the
+list is empty. On macOS that warning adds where to allow Local Network
+access, which macOS may be blocking.
 
 | Code | Meaning |
 | --- | --- |

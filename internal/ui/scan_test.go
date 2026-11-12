@@ -1,8 +1,10 @@
 package ui
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"os"
@@ -12,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
@@ -27,6 +30,9 @@ type lanNet struct {
 	sendErr error
 	sent    []netip.Addr
 	listens int // sockets opened: one per scan or probe
+	// perScan, when set, answers each socket as the network was when it
+	// opened, so a scan already running doesn't see a later set.
+	perScan bool
 }
 
 func (n *lanNet) scans() int {
@@ -47,6 +53,18 @@ func (n *lanNet) sends() []netip.Addr {
 	return append([]netip.Addr(nil), n.sent...)
 }
 
+// conn is a socket on n.
+func (n *lanNet) conn() *lanConn {
+	n.mu.Lock()
+	n.listens++
+	var answers map[netip.Addr][3]string
+	if n.perScan {
+		answers = n.answers
+	}
+	n.mu.Unlock()
+	return &lanConn{n: n, answers: answers, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}
+}
+
 // useLAN makes the app's scanner scan n, from a computer at 192.0.2.5/24.
 func useLAN(t *testing.T, n *lanNet) {
 	t.Helper()
@@ -54,14 +72,9 @@ func useLAN(t *testing.T, n *lanNet) {
 	t.Cleanup(func() { lanScanner = saved })
 	lanScanner = &landiscovery.Scanner{
 		Interfaces: lanInterfaces{},
-		Listen: func() (landiscovery.Conn, error) {
-			n.mu.Lock()
-			n.listens++
-			n.mu.Unlock()
-			return &lanConn{n: n, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}, nil
-		},
-		Interval: 20 * time.Millisecond,
-		Window:   200 * time.Millisecond,
+		Listen:     func() (landiscovery.Conn, error) { return n.conn(), nil },
+		Interval:   20 * time.Millisecond,
+		Window:     200 * time.Millisecond,
 	}
 }
 
@@ -87,6 +100,7 @@ type lanDatagram struct {
 
 type lanConn struct {
 	n        *lanNet
+	answers  map[netip.Addr][3]string // n's when it opened, if n.perScan
 	mu       sync.Mutex
 	deadline time.Time
 	closed   bool
@@ -128,7 +142,11 @@ func (c *lanConn) WriteTo(b []byte, _ *ipv4.ControlMessage, to net.Addr) (int, e
 	if c.n.sendErr != nil {
 		return 0, c.n.sendErr
 	}
-	for address, a := range c.n.answers {
+	answers := c.n.answers
+	if c.answers != nil {
+		answers = c.answers
+	}
+	for address, a := range answers {
 		if target == address || target == netip.MustParseAddr("192.0.2.255") {
 			reply := `{"jsonrpc":"2.0","method":"scan_iscope","result":{"sn":"` + a[0] + `","ssid":"` + a[1] + `","product_model":"` + a[2] +
 				`","tcp_client_num":` + strconv.Itoa(c.n.clients) + `,"connect_lock":false,"password":"0123456789abcdef0123456789abcdef"},"code":0,"id":1}`
@@ -176,7 +194,7 @@ func scanPost(t *testing.T, s *server, body string) scanView {
 	if w.Code != 200 {
 		t.Fatalf("scan = %d %s", w.Code, w.Body)
 	}
-	for _, secret := range []string{"SERIAL-", "password", "0123456789abcdef"} {
+	for _, secret := range []string{"password", "0123456789abcdef"} {
 		if strings.Contains(w.Body.String(), secret) {
 			t.Fatalf("scan answer carries %q: %s", secret, w.Body)
 		}
@@ -188,17 +206,17 @@ func scanPost(t *testing.T, s *server, body string) scanView {
 	return v
 }
 
-// trailText is Activity's lines and gui.log, which must name no address,
-// name or serial.
+// trailText is Activity's lines and gui.log, which must hold no password
+// or lock-password hash.
 func trailText(t *testing.T, s *server) string {
 	t.Helper()
 	events, _, _, _ := s.controller.log.trail()
 	b, _ := json.Marshal(events)
 	disk, _ := os.ReadFile(filepath.Join(s.storage.root, "gui.log"))
 	text := string(b) + string(disk)
-	for _, private := range []string{"192.0.2.", "SERIAL-", "S50_A", "S30_B", "0123456789abcdef"} {
-		if strings.Contains(text, private) {
-			t.Fatalf("the trail names %q: %s", private, text)
+	for _, secret := range []string{"password", "0123456789abcdef"} {
+		if strings.Contains(text, secret) {
+			t.Fatalf("the trail holds %q: %s", secret, text)
 		}
 	}
 	return text
@@ -217,11 +235,19 @@ func TestScanListsTelescopes(t *testing.T) {
 	for _, row := range v.Telescopes {
 		byName[row.Name] = row
 	}
-	if a := byName["S50_A"]; a.Model != "Seestar S50" || len(a.Addresses) != 1 || a.Addresses[0] != "192.0.2.20" || a.Busy || a.Saved {
+	if a := byName["S50_A"]; a.Model != "Seestar S50" || a.Serial != "SERIAL-A" || len(a.Addresses) != 1 || a.Addresses[0] != "192.0.2.20" || a.Busy || a.Saved {
 		t.Fatalf("row %+v", a)
 	}
-	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_listed"`) || !strings.Contains(text, "Scanned this network: 6 replies.") {
-		t.Fatalf("trail %s", text)
+	if b := byName["S30_B"]; b.Serial != "SERIAL-B" {
+		t.Fatalf("row %+v", b)
+	}
+	// A line for the count, then one for each telescope, in the order
+	// they answered.
+	text := trailText(t, s)
+	for _, line := range []string{"Scanned this network: 6 replies.", "Found S50_A (Seestar S50, serial SERIAL-A) at 192.0.2.20.", "Found S30_B (Seestar S30, serial SERIAL-B) at 192.0.2.40."} {
+		if !strings.Contains(text, `"message":"`+line+`","code":"scan_listed"`) {
+			t.Fatalf("trail lacks %q: %s", line, text)
+		}
 	}
 
 	n.clients = landiscovery.BusyClients
@@ -294,8 +320,31 @@ func TestScanTypedAddress(t *testing.T) {
 	}
 }
 
-// Saving an address a scan saw saves its serial with it; the page never
-// gets the serial back.
+// Test's question of whether a serial answered at a typed address: what
+// a scan heard there, or else a probe of it, unless set never to scan.
+func TestSerialAt(t *testing.T) {
+	n := twoTelescopes()
+	useLAN(t, n)
+	s := testServer(t)
+	if !s.serialAt(t.Context(), "192.0.2.40") || len(n.sends()) == 0 {
+		t.Fatalf("a probe that heard a serial: sent %v", n.sends())
+	}
+	if serial, ok := s.lan.serial(netip.MustParseAddr("192.0.2.40")); !ok || serial != "SERIAL-B" {
+		t.Fatalf("the probe wasn't remembered: %q", serial)
+	}
+	if s.serialAt(t.Context(), "192.0.2.77") || s.serialAt(t.Context(), "seestar.example.invalid") {
+		t.Fatal("a serial where none answered")
+	}
+	s.mu.Lock()
+	s.settings.LANScan = string(landiscovery.ScanOff)
+	s.mu.Unlock()
+	before := len(n.sends())
+	if !s.serialAt(t.Context(), "192.0.2.40") || s.serialAt(t.Context(), "192.0.2.20") || len(n.sends()) != before {
+		t.Fatalf("set never to scan: sent %v", n.sends()[before:])
+	}
+}
+
+// Saving an address a scan saw saves its serial with it.
 func TestSaveRouteKeepsScannedSerial(t *testing.T) {
 	useLAN(t, twoTelescopes())
 	s, _ := copyServer(t)
@@ -313,9 +362,6 @@ func TestSaveRouteKeepsScannedSerial(t *testing.T) {
 	}
 	if got := saved(); got.LANAddress != "192.0.2.20:445" || got.LANSerial != "SERIAL-A" {
 		t.Fatalf("saved %+v", got)
-	}
-	if w := serve(s, request(s, "GET", "/api/status", "")); strings.Contains(w.Body.String(), "SERIAL-A") {
-		t.Fatalf("status carries the serial: %s", w.Body)
 	}
 	if v := scanPost(t, s, `{}`); !(v.Telescopes[0].Saved != v.Telescopes[1].Saved) {
 		t.Fatalf("the saved telescope isn't marked once: %+v", v)
@@ -366,4 +412,107 @@ func TestLANSerialIsOptional(t *testing.T) {
 	if got, _, err := loadSettings(st); err != nil || got.LANSerial != "SERIAL-A" {
 		t.Fatalf("%+v %v", got, err)
 	}
+}
+
+// The largest scan the app keeps, every telescope with a long name and
+// model, leaves gui.log within its limit and taking lines.
+func TestScanLeavesTheLogAppendable(t *testing.T) {
+	// The bubble's clock keeps a busy machine from ending the scan early.
+	synctest.Test(t, func(t *testing.T) {
+		n := &lanNet{answers: make(map[netip.Addr][3]string)}
+		const most = 64 // the telescopes a scan keeps
+		for i := range most {
+			n.answers[netip.AddrFrom4([4]byte{192, 0, 2, byte(20 + i)})] = [3]string{fmt.Sprintf("S%02d", i), strings.Repeat("星", 400), strings.Repeat("型", 400)}
+		}
+		useLAN(t, n)
+		s := testServer(t)
+		s.controller.log = &eventLog{storage: s.storage}
+		if v, err := s.scan(t.Context(), ""); err != nil || len(v.Telescopes) != most {
+			t.Fatalf("scan %d telescopes, %v", len(v.Telescopes), err)
+		}
+		s.controller.log.add("App opened.")
+		info, err := os.Stat(filepath.Join(s.storage.root, "gui.log"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, _, failed := s.controller.log.snapshot(); info.Size() > logLimit || failed {
+			t.Fatalf("gui.log is %d bytes of %d; an append failed: %v", info.Size(), logLimit, failed)
+		}
+		if text := trailText(t, s); !strings.Contains(text, "App opened.") {
+			t.Fatalf("trail %s", text)
+		}
+	})
+}
+
+// The page's probe of a typed address and Test's serial hook share one
+// probe: one socket, one result. A second probe that would hear nothing
+// can't make Test miss the serial the page's probe heard.
+func TestTestSharesThePagesProbe(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		n := twoTelescopes()
+		useLAN(t, n)
+		s := testServer(t)
+		listen := lanScanner.Listen
+		opened, resume := make(chan struct{}, 2), make(chan struct{})
+		var calls int
+		lanScanner.Listen = func() (landiscovery.Conn, error) {
+			calls++
+			opened <- struct{}{}
+			if calls == 1 {
+				<-resume
+				return listen()
+			}
+			// A second probe would hear nothing.
+			return (&lanNet{}).conn(), nil
+		}
+		scanned := make(chan scanView, 1)
+		go func() {
+			v, _ := s.scan(t.Context(), "192.0.2.40")
+			scanned <- v
+		}()
+		<-opened
+		heard := make(chan bool, 1)
+		go func() { heard <- s.serialAt(t.Context(), "192.0.2.40") }()
+		synctest.Wait()
+		close(resume)
+		if v, ok := <-scanned, <-heard; len(v.Telescopes) != 1 || !ok || len(opened) != 0 || calls != 1 {
+			t.Fatalf("page heard %+v, Test heard %v, %d probes", v.Telescopes, ok, calls)
+		}
+		if serial, _ := s.lan.serial(netip.MustParseAddr("192.0.2.40")); serial != "SERIAL-B" {
+			t.Fatalf("remembered %q", serial)
+		}
+	})
+}
+
+// A caller that stops waiting doesn't end the shared probe for another.
+func TestSharedProbeOutlivesACaller(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		n := twoTelescopes()
+		useLAN(t, n)
+		s := testServer(t)
+		listen := lanScanner.Listen
+		resume := make(chan struct{})
+		lanScanner.Listen = func() (landiscovery.Conn, error) {
+			<-resume
+			return listen()
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		scanned := make(chan error, 1)
+		go func() {
+			_, err := s.scan(ctx, "192.0.2.40")
+			scanned <- err
+		}()
+		synctest.Wait()
+		heard := make(chan bool, 1)
+		go func() { heard <- s.serialAt(t.Context(), "192.0.2.40") }()
+		synctest.Wait()
+		cancel()
+		if err := <-scanned; !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+		close(resume)
+		if !<-heard || n.scans() != 1 {
+			t.Fatalf("Test didn't hear the serial; %d probes", n.scans())
+		}
+	})
 }

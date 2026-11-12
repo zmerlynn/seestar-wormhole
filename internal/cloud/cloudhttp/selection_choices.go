@@ -16,9 +16,9 @@ type DeviceChoice struct {
 }
 
 // SelectionError adds received catalog pairs to an actionable selection failure.
-// Only Multiple permits the GUI to offer a picker. Logs must classify Unwrap,
-// rather than include choices. Generic error projections never include account data.
-// The private cause carries fixed guidance; received identities live in choices.
+// Only Multiple permits the GUI to offer a picker. Error, Format and LogValue
+// name the received telescopes by their escaped labels; nothing else from the
+// cloud reply reaches them.
 type SelectionError struct {
 	cause    error
 	choices  []DeviceChoice
@@ -27,10 +27,23 @@ type SelectionError struct {
 
 func (e *SelectionError) Unwrap() error           { return e.cause }
 func (e *SelectionError) Choices() []DeviceChoice { return append([]DeviceChoice(nil), e.choices...) }
-func (e *SelectionError) Error() string           { return e.cause.Error() }
 
-// CLIMessage explicitly includes full received pairs for account-owner stdout.
-// It must never be used for diagnostics or generic error formatting.
+// Error is the cause followed by the received telescopes on the same line,
+// within the catalog message budget.
+func (e *SelectionError) Error() string {
+	s := e.cause.Error()
+	if len(e.choices) == 0 {
+		return s
+	}
+	const received = "; received telescopes: "
+	labels := make([]string, len(e.choices))
+	for i, d := range e.choices {
+		labels[i] = d.Label
+	}
+	return s + received + joinLabels(len(s)+len(received), labels, len(labels))
+}
+
+// CLIMessage lists the received telescopes a line each for the account owner.
 func (e *SelectionError) CLIMessage() string {
 	s := e.cause.Error()
 	if len(e.choices) == 0 {
@@ -46,7 +59,6 @@ func (e *SelectionError) CLIMessage() string {
 	return s
 }
 
-// Generic formatting and logging share the sanitized message, never the list.
 func (e *SelectionError) LogValue() slog.Value          { return slog.StringValue(e.Error()) }
 func (e *SelectionError) Format(s fmt.State, verb rune) { fmt.Fprint(s, e.Error()) }
 

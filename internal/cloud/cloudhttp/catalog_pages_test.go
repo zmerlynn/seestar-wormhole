@@ -69,7 +69,7 @@ func TestCatalogPageLiterals(t *testing.T) {
 				t.Fatalf("identities=%v, want %v", pairs, tc.want)
 			}
 			assertCatalogPageRequests(t, f, len(tc.pages))
-			assertCatalogPagePrivacy(t, logs.String())
+			assertCatalogPageSecrets(t, logs.String())
 		})
 	}
 }
@@ -122,7 +122,7 @@ func TestCatalogPageSelection(t *testing.T) {
 			} else {
 				assertCatalogPageRequests(t, f, len(tc.pages))
 			}
-			assertCatalogPagePrivacy(t, logs.String())
+			assertCatalogPageSecrets(t, logs.String())
 		})
 	}
 }
@@ -153,7 +153,7 @@ func TestCatalogPageSafety(t *testing.T) {
 					t.Fatal("catalog safety failure attributed to --serial")
 				}
 				assertCatalogPageRequests(t, f, len(tc.pages))
-				assertCatalogPagePrivacy(t, logs.String()+err.Error())
+				assertCatalogPageSecrets(t, logs.String()+err.Error())
 			})
 		}
 	}
@@ -226,14 +226,13 @@ func assertCatalogPageRequests(t *testing.T, f *selectionCloud, pages int, follo
 	}
 }
 
-func assertCatalogPagePrivacy(t *testing.T, s string) {
+// assertCatalogPageSecrets checks catalog diagnostics for credentials and for
+// the raw reply text "private-secret". Telescope models and serials may appear.
+func assertCatalogPageSecrets(t *testing.T, s string) {
 	t.Helper()
-	s = withoutIdentitySerialLogs(t, s)
 	assertSelectionSecrets(t, s)
-	for _, private := range []string{"private-a", "private-b", "private-missing", "private-secret"} {
-		if strings.Contains(s, private) {
-			t.Fatal("catalog identity or input escaped diagnostics")
-		}
+	if strings.Contains(s, "private-secret") {
+		t.Fatal("raw catalog reply escaped diagnostics")
 	}
 }
 
@@ -245,7 +244,7 @@ func TestCatalogPageDiagnostics(t *testing.T) {
 		if _, _, _, err := c.devices(t.Context()); err != nil {
 			t.Fatal(err)
 		}
-		assertCatalogPagePrivacy(t, logs.String())
+		assertCatalogPageSecrets(t, logs.String())
 		var got []map[string]any
 		dec := jsontext.NewDecoder(&logs)
 		for {
@@ -271,35 +270,4 @@ func TestCatalogPageDiagnostics(t *testing.T) {
 			t.Fatalf("pagination diagnostics=%v, want %v", got, want)
 		}
 	}
-}
-
-// Selected and catalog serial fields are public log context. Check every other field,
-// record, and error for catalog data and credentials.
-func withoutIdentitySerialLogs(t *testing.T, text string) string {
-	t.Helper()
-	lines := strings.Split(text, "\n")
-	for i, line := range lines {
-		var record map[string]any
-		if json.Unmarshal([]byte(line), &record) != nil || (record["msg"] != "device_selected" && record["msg"] != "device_catalog") {
-			continue
-		}
-		if record["msg"] == "device_selected" {
-			delete(record, "serial")
-		}
-		if record["msg"] == "device_catalog" {
-			if pairs, ok := record["devices"].([]any); ok {
-				for _, pair := range pairs {
-					if fields, ok := pair.(map[string]any); ok {
-						delete(fields, "serial")
-					}
-				}
-			}
-		}
-		encoded, err := json.Marshal(record)
-		if err != nil {
-			t.Fatal(err)
-		}
-		lines[i] = string(encoded)
-	}
-	return strings.Join(lines, "\n")
 }

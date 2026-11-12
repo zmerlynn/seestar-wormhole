@@ -21,12 +21,7 @@ func assertCloudSecretSafe(t *testing.T, err error, logs string) {
 	var out bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&out, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	logger.Error("failure", "error", err)
-	text := withoutIdentitySerialLogs(t, logs) + out.String() + fmt.Sprintf("%v %+v %#v", err, err, err)
-	for _, secret := range []string{"sentinel", "SYNTHETICUID", "Example-Only", "reader@example.invalid"} {
-		if strings.Contains(text, secret) {
-			t.Fatal("secret or identity entered error/log output")
-		}
-	}
+	assertNoCloudSecrets(t, logs+out.String()+fmt.Sprintf("%v %+v %#v", err, err, err))
 	// Inspect wrapped causes as well as the public error text.
 	if e, ok := err.(interface{ Unwrap() []error }); ok {
 		for _, cause := range e.Unwrap() {
@@ -34,6 +29,24 @@ func assertCloudSecretSafe(t *testing.T, err error, logs string) {
 		}
 	} else if cause := errors.Unwrap(err); cause != nil {
 		assertCloudSecretSafe(t, cause, "")
+	}
+}
+
+// cloudSecrets are the credential, token, key, license, session, Wi-Fi and
+// account sentinels of the cloud fixtures. Telescope models and serials
+// ("synthetic-serial-sentinel") may appear in errors and logs.
+var cloudSecrets = []string{
+	"token-sentinel", "password-sentinel", "profile-sentinel", "conid-sentinel",
+	"license-sentinel", "user-sentinel", "ssid-sentinel", "SYNTHETICUID",
+	"Example-Only", "reader@example.invalid", "fixture@example.invalid", "fixture-password",
+}
+
+func assertNoCloudSecrets(t *testing.T, text string) {
+	t.Helper()
+	for _, secret := range cloudSecrets {
+		if strings.Contains(text, secret) {
+			t.Fatalf("secret %q entered error/log output", secret)
+		}
 	}
 }
 

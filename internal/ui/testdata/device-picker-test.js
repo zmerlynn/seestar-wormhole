@@ -53,7 +53,13 @@ async function checkDevicePicker() {
   fieldError('model','Choose “Find on my account” to reload telescopes, or check Serial and Model.','model');
   picker.value = ''; picker.onchange();
   assert($('serial-error').hidden && $('model-error').hidden, 'entry choice retained field error');
-  assert(!diagnostic.includes('synthetic-choice-') && !diagnostic.includes('<img') && !diagnostic.includes('devices'), 'full choices in diagnostic summary');
+  // The summary names the telescope as its lines do, but not the account's
+  // email or the raw list of choices.
+  const shown = state;
+  state = {...idle, events: [{time: '2026-01-01T00:00:00.000Z', source: 'connection', message: 'Selected Seestar S50 Pro synthetic-choice-1234.'}]};
+  copyDiagnostic();
+  assert(diagnostic.includes('Selected Seestar S50 Pro synthetic-choice-1234.') && !diagnostic.includes(original.email) && !diagnostic.includes('<img') && !diagnostic.includes('devices'), 'diagnostic summary ' + diagnostic);
+  state = shown; copyDiagnostic();
   assert($('start').parentElement === $('primary-action'), 'Connect not restored after selection step');
 
 }

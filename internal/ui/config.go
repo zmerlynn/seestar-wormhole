@@ -30,8 +30,7 @@ type Settings struct {
 	LANAddress string `json:"lan_address,omitempty"`
 	// LANSerial is the serial number a scan saw at LANAddress when it was
 	// saved, or "". A connect scans for it, when LANScan says to, and uses
-	// the address that answers with it, LANAddress first. It is never
-	// shown or logged.
+	// the address that answers with it, LANAddress first.
 	LANSerial string `json:"lan_serial,omitempty"`
 	// LANScan is when a connect to LANSerial scans: "start", "connect" or
 	// "off" (see [landiscovery.Mode]). Empty, or any other value, is
@@ -120,16 +119,16 @@ func loadSettings(s *storage) (Settings, []diagnostic.Fallback, error) {
 // leaves every other value for validate to refuse.
 func (s *Settings) fallBack() []diagnostic.Fallback {
 	var fallbacks []diagnostic.Fallback
-	replace := func(setting, fallback string) {
-		fallbacks = append(fallbacks, diagnostic.Fallback{File: "config.json", Setting: setting, Fallback: fallback})
+	replace := func(setting, fallback string, value ...string) {
+		fallbacks = append(fallbacks, diagnostic.Fallback{File: "config.json", Setting: setting, Fallback: fallback, Value: strings.Join(value, "")})
 	}
 	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
 		s.Discovery = false
 		replace("discovery", "off")
 	}
 	if s.Serial != "" && !cloudhttp.ValidSerial(s.Serial) {
+		replace("serial", "none", s.Serial)
 		s.Serial = ""
-		replace("serial", "none")
 	}
 	if s.Email != "" {
 		if _, err := cloud.EmailCredentials(s.Email, "validation-only"); err != nil {

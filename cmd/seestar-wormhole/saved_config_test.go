@@ -320,10 +320,10 @@ func TestSavedConfigFallbackWarningsSurviveStartupFailure(t *testing.T) {
 		{"credential rejection", `{"version":1,"email":"PRIVATE-not-an-email"}`, "email",
 			func(string, string) (net.Listener, error) { t.Fatal("listener opened"); return nil, nil },
 			func(err error) bool { return err != nil }},
-		{"bind failure", `{"version":1,"email":"saved@example.invalid","serial":"PRIVATE serial"}`, "serial",
+		{"bind failure", `{"version":1,"email":"saved@example.invalid","serial":"INVALID serial"}`, "serial",
 			func(string, string) (net.Listener, error) { return nil, errors.New("synthetic bind failure") },
 			func(err error) bool { return err != nil && !errors.Is(err, refused) }},
-		{"session construction", `{"version":1,"email":"saved@example.invalid","serial":"PRIVATE serial"}`, "serial",
+		{"session construction", `{"version":1,"email":"saved@example.invalid","serial":"INVALID serial"}`, "serial",
 			func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") },
 			func(err error) bool { return errors.Is(err, refused) }},
 	} {
@@ -367,8 +367,9 @@ func TestSavedConfigFallbackWarningsSurviveStartupFailure(t *testing.T) {
 			if len(warnings) != 1 || warnings[0]["level"] != "WARN" || warnings[0]["file"] != "config.json" || warnings[0]["setting"] != tc.setting || warnings[0]["fallback"] != "none" {
 				t.Fatalf("warnings = %v, logs = %s", warnings, &logs)
 			}
-			if strings.Contains(logs.String(), "PRIVATE") {
-				t.Fatalf("log names the saved value: %s", &logs)
+			// An invalid email isn't logged; an invalid serial is.
+			if strings.Contains(logs.String(), "PRIVATE") || (tc.setting == "serial") != (warnings[0]["value"] == "INVALID serial") {
+				t.Fatalf("log value: %s", &logs)
 			}
 		})
 	}
@@ -382,7 +383,7 @@ func TestSavedConfigFallbackWarningBeforeOptionRefusal(t *testing.T) {
 	} {
 		t.Run(strings.Join(flags, " "), func(t *testing.T) {
 			root := savedConfigRoot(t)
-			writeSavedConfig(t, root, []byte(`{"version":1,"serial":"PRIVATE serial"}`))
+			writeSavedConfig(t, root, []byte(`{"version":1,"serial":"INVALID serial"}`))
 			var logs bytes.Buffer
 			err := runWithListener(t.Context(), append([]string{"proxy", "--config", "--state-dir", root}, flags...), io.Discard, &logs,
 				func(context.Context, proxy.Config) (commandSession, error) {
@@ -393,8 +394,8 @@ func TestSavedConfigFallbackWarningBeforeOptionRefusal(t *testing.T) {
 			if commandExitCode(options{command: commandProxy}, err) != 2 {
 				t.Fatalf("expected configuration refusal, got %v", err)
 			}
-			if strings.Count(logs.String(), `"msg":"settings_fallback"`) != 1 || !strings.Contains(logs.String(), `"setting":"serial"`) || strings.Contains(logs.String(), "PRIVATE") {
-				t.Fatalf("want one value-free serial warning; err=%v logs=%s", err, &logs)
+			if strings.Count(logs.String(), `"msg":"settings_fallback"`) != 1 || !strings.Contains(logs.String(), `"setting":"serial"`) || !strings.Contains(logs.String(), `"value":"INVALID serial"`) {
+				t.Fatalf("want one serial warning naming it; err=%v logs=%s", err, &logs)
 			}
 		})
 	}

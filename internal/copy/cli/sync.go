@@ -184,12 +184,6 @@ var dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.
 	return remote.Dial(ctx, endpoint, log)
 }
 
-// dialAs is dial for a telescope followed by its serial: its errors call
-// it name, never its address.
-var dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
-	return remote.DialVia(ctx, name, remote.TCP(endpoint), log)
-}
-
 // historyDir resolves the history folder: a run that writes moves the old
 // default folder first, and a read-only run reads it in place.
 func historyDir(explicit string, readOnly bool, log *slog.Logger) (string, error) {
@@ -207,13 +201,13 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		return err
 	}
 	return engine.RunSync(ctx, engine.SyncOptions{
-		Endpoint: o.follow.label(o.endpoint), Dest: o.dest, StateDir: stateDir, Selector: o.selector,
+		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, Selector: o.selector,
 		Interval: o.interval, Once: o.once, DryRun: o.dryRun,
 		ReadyAge: o.readyAge, FirstPassAge: o.firstPassAge, Workers: o.workers,
-		// Endpoint is a label when o.follow is set; the dial uses the
-		// real one.
+		// When o.follow is set, the dial may reach the telescope at
+		// another address.
 		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
-			return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
+			return followDial(ctx, o.follow, o.endpoint, log, dial)
 		},
 	}, log)
 }

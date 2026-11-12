@@ -56,10 +56,13 @@ func (d Detail) Serial() string { return d.serial }
 func (d Detail) Model() string  { return d.model }
 
 // Name returns the cloud SSID.
-func (d Detail) Name() string                { return d.name }
-func (d Detail) Status() int                 { return d.status }
-func (Detail) LogValue() slog.Value          { return slog.StringValue("[cloud device]") }
-func (Detail) Format(s fmt.State, verb rune) { io.WriteString(s, "[cloud device]") }
+func (d Detail) Name() string { return d.name }
+func (d Detail) Status() int  { return d.status }
+
+// LogValue names the telescope.
+func (d Detail) LogValue() slog.Value {
+	return slog.GroupValue(slog.String("serial", d.serial), slog.String("model", d.model), slog.String("name", d.name), slog.Int("status", d.status))
+}
 
 func cloudCode(r response) error {
 	// Absent/null diagnostic codes are allowed on successful HTTP responses.

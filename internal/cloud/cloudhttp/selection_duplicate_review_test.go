@@ -54,7 +54,7 @@ func TestCatalogDuplicateRequiresModel(t *testing.T) {
 					t.Fatal("duplicate not logged")
 				}
 				assertCatalogPageRequests(t, f, len(tc.pages))
-				assertCatalogPagePrivacy(t, logs.String())
+				assertCatalogPageSecrets(t, logs.String())
 			})
 		}
 	}
@@ -76,7 +76,7 @@ func TestCatalogOverstatedTotalWithEmptyPages(t *testing.T) {
 			t.Fatalf("selection=%v error=%v, want received pair", got, err)
 		}
 		assertCatalogPageRequests(t, f, 16)
-		assertCatalogPagePrivacy(t, logs.String())
+		assertCatalogPageSecrets(t, logs.String())
 	}
 }
 
@@ -98,7 +98,7 @@ func TestCatalogCurrentBackwardAndNegativeFallback(t *testing.T) {
 			if len(f.queries) != 5 || f.queries[2] != "current=1&isContainShared=3&pageSize=100" || f.queries[3] != "current=8&isContainShared=3&pageSize=100" || f.queries[4] != tc.next || len(f.bodies) != 0 {
 				t.Fatalf("queries=%v, want literal current sequence ending in %s", f.queries, tc.next)
 			}
-			assertCatalogPagePrivacy(t, logs.String())
+			assertCatalogPageSecrets(t, logs.String())
 		})
 	}
 }

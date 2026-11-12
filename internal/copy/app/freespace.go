@@ -72,7 +72,7 @@ func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial fu
 func (f *freer) options(set Settings, t Target) (engine.DeleteOptions, error) {
 	sel, err := selector(Settings{Excludes: set.FreeExcludes, Includes: set.FreeIncludes, SkipBuiltIn: true})
 	return engine.DeleteOptions{
-		Endpoint: t.logged(), Dest: set.Folder, StateDir: set.historyDir(f.stateDir),
+		Endpoint: t.Endpoint, Dest: set.Folder, StateDir: set.historyDir(f.stateDir),
 		TrustState: set.TrustState, IgnoreState: set.IgnoreState, OlderThan: time.Duration(set.OlderThanDays) * 24 * time.Hour,
 		Selector: sel,
 	}, err

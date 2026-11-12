@@ -93,7 +93,7 @@ func TestStartModeScansOncePerRun(t *testing.T) {
 			if got := modeDials(t, s, n, ctx, 3); got != 1 {
 				t.Fatalf("a run of three connects scanned %d times", got)
 			}
-			if calls := l.take(); !slices.Equal(calls, slices.Repeat([]string{"dial-as " + lanName + " 192.0.2.30:445"}, 3)) {
+			if calls := l.take(); !slices.Equal(calls, slices.Repeat([]string{"dial 192.0.2.30:445"}, 3)) {
 				t.Fatalf("calls %q", calls)
 			}
 			// The scan saved the new address; the run keeps it.
@@ -143,7 +143,7 @@ func TestStartModeRescansAfterAFailedConnect(t *testing.T) {
 	if err := dial(); err != nil || n.scans() != 2 {
 		t.Fatalf("moved: %v, %d scans", err, n.scans())
 	}
-	if calls := l.take(); !slices.Equal(calls, []string{"dial-as " + lanName + " 192.0.2.30:445", "dial-as " + lanName + " 192.0.2.40:445"}) {
+	if calls := l.take(); !slices.Equal(calls, []string{"dial 192.0.2.30:445", "dial 192.0.2.40:445"}) {
 		t.Fatalf("moved calls %q", calls)
 	}
 	if err := dial(); err != nil || n.scans() != 2 {
@@ -157,7 +157,7 @@ func TestStartModeRescansAfterAFailedConnect(t *testing.T) {
 	if err := dial(); err == nil || n.scans() != 3 {
 		t.Fatalf("other telescope: %v, %d scans", err, n.scans())
 	}
-	if calls := l.take(); !slices.Equal(calls, []string{"dial-as " + lanName + " 192.0.2.40:445"}) {
+	if calls := l.take(); !slices.Equal(calls, []string{"dial 192.0.2.40:445"}) {
 		t.Fatalf("other telescope calls %q", calls)
 	}
 	// A failed search keeps no address: the next connect scans again
@@ -189,7 +189,7 @@ func TestOffModeNeverScansUnasked(t *testing.T) {
 			t.Fatalf("off scanned %d times", got)
 		}
 	}
-	if calls := l.take(); !slices.Equal(calls, slices.Repeat([]string{"dial-as " + lanName + " 192.0.2.10:445"}, 4)) {
+	if calls := l.take(); !slices.Equal(calls, slices.Repeat([]string{"dial 192.0.2.10:445"}, 4)) {
 		t.Fatalf("calls %q", calls)
 	}
 	// The saved address doesn't connect: still no scan.
@@ -327,7 +327,7 @@ func TestCopyStartScansOnce(t *testing.T) {
 	if n.scans() != 1 {
 		t.Fatalf("three passes scanned %d times", n.scans())
 	}
-	if calls := l.take(); slices.ContainsFunc(calls, func(c string) bool { return c != "dial-as "+lanName+" 192.0.2.30:445" }) {
+	if calls := l.take(); slices.ContainsFunc(calls, func(c string) bool { return c != "dial 192.0.2.30:445" }) {
 		t.Fatalf("calls %q", calls)
 	}
 	doPost(s, "/copy/api/copy", `{"action":"stop"}`)
@@ -511,6 +511,11 @@ func TestModeChangeDoesNotReviveRejectedAddress(t *testing.T) {
 // it waited for that search or came after it.
 func TestModeChangeDuringASearch(t *testing.T) {
 	s, l, n := scanModeServer(t, "start")
+	// The first connect's scan keeps seeing SERIAL-A at 192.0.2.30 after
+	// the move: a reply from there with SERIAL-B while it runs would
+	// rightly make it leave 192.0.2.30 for 192.0.2.40 itself, and whether
+	// one comes before its dial ends is down to timing.
+	n.perScan = true
 	o := copyMountOptions(s, copyapp.MountOptions{})
 	ctx := landiscovery.WithRun(t.Context(), &landiscovery.Run{})
 	connect := func() error {
@@ -562,10 +567,15 @@ func TestModeChangeDuringASearch(t *testing.T) {
 	}
 }
 
-// reachedSession is a session that knows the endpoint it was dialed at.
+// reachedSession is a session that lists the endpoint it was dialed at
+// as its root's one entry, so a wrapped session still tells it.
 type reachedSession struct {
 	remote.Session
 	endpoint string
+}
+
+func (s *reachedSession) ReadDir(context.Context, string) ([]remote.Entry, error) {
+	return []remote.Entry{{Path: s.endpoint}}, nil
 }
 
 // A run that starts after a change of mode doesn't join a search an
@@ -592,7 +602,11 @@ func TestNewRunDoesNotJoinAnOlderSearch(t *testing.T) {
 			return "", err
 		}
 		defer session.Close()
-		return session.(*reachedSession).endpoint, nil
+		reached, err := session.ReadDir(ctx, ".")
+		if err != nil {
+			return "", err
+		}
+		return reached[0].Path, nil
 	}
 	l.gate, l.entered = make(chan struct{}), make(chan struct{})
 	first := make(chan error, 1)
@@ -724,10 +738,9 @@ func TestSerialBoundHostnameIsValid(t *testing.T) {
 }
 
 // A telescope saved with its serial at a hostname, with scans off, whose
-// lookup fails, is named nowhere in Activity, the trail or the logs of
-// Copy or Browse, nor is the resolver: through the production dial, they
-// say the saved telescope's name lookup failed.
-func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
+// lookup fails, is named in Activity, with the resolver: through the
+// production dial, it says whose name lookup failed.
+func TestSavedHostnameLookupFailureNamesTheHost(t *testing.T) {
 	n := &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"}}}
 	useLAN(t, n)
 	noDNS(t)
@@ -780,13 +793,10 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 	for _, e := range v.Activity {
 		activity.WriteString(e.Text + "\n")
 	}
-	text := activity.String() + logs.String() + trailText(t, s)
-	if !strings.Contains(activity.String(), lanName+": dial tcp: name lookup failed") {
-		t.Errorf("Activity doesn't say the saved telescope's lookup failed:\n%s", activity.String())
-	}
-	for _, private := range []string{"telescope.invalid", "198.51.100.53"} {
-		if strings.Contains(text, private) {
-			t.Errorf("Activity, the trail or the logs carry %q:\n%s", private, text)
+	trailText(t, s)
+	for _, named := range []string{"telescope.invalid", "198.51.100.53"} {
+		if !strings.Contains(activity.String(), named) {
+			t.Errorf("Activity doesn't name %q:\n%s", named, activity.String())
 		}
 	}
 	if n.scans() != 0 {

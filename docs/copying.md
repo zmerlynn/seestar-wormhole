@@ -160,8 +160,8 @@ An address picked from a scan is saved with the telescope's serial number.
 From then on, the app scans for that serial and uses the address the
 telescope answers from, the saved one first, so a new address from the
 router is followed and saved; `--profile default` on the command line
-follows it the same way for that run. If another telescope answers at the
-saved address, it isn't used. If the scan doesn't see the telescope, the
+follows it the same way for that run. An address another telescope answers
+at, the saved one or any other, isn't used. If the scan doesn't see the telescope, the
 saved address is tried. Free up space deletes only where its preview
 connected; if the telescope has moved since, preview again.
 
@@ -174,7 +174,14 @@ telescope that moves isn't followed. On the command line, `--scan=start`,
 `--scan=connect` or `--scan=off` chooses for one run.
 
 The app takes the address alone and uses SMB port 445 unless you add another
-port. `seestar-wormhole-cli` needs the port too: `--endpoint 192.0.2.10:445`.
+port. An address without a port that answers the scan with a serial number,
+such as one picked from the list, is tried on port 445 and then on 4445, the
+SMB port of a seestar-wormhole proxy that answers scans for its telescope,
+within the same wait; Save saves the port that worked, such as
+`192.0.2.10:4445`, and following a telescope that moved keeps it. An
+address typed with a port is used on that port only.
+`seestar-wormhole-cli` needs the port: `--endpoint 192.0.2.10:445`, which
+is dialed as given.
 
 ## From the command line
 

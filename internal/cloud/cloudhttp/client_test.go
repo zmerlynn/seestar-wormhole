@@ -244,12 +244,12 @@ func TestEnvironmentAndHTTPSOnly(t *testing.T) {
 	}
 }
 
-func TestStructuredLogsRedactDevice(t *testing.T) {
+func TestStructuredLogsNameDevice(t *testing.T) {
 	var b strings.Builder
 	logger := slog.New(slog.NewJSONHandler(&b, nil))
-	logger.Info("test", "device", Device{Serial: "serial-secret", Model: "model-secret"})
-	if strings.Contains(b.String(), "secret") {
-		t.Fatal("structured log leaked device identity")
+	logger.Info("test", "device", Device{Serial: "SN-1", Model: "Seestar S50"})
+	if !strings.Contains(b.String(), `"device":{"serial":"SN-1","model":"Seestar S50"}`) {
+		t.Fatalf("structured log: %s", b.String())
 	}
 }
 

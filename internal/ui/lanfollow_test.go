@@ -25,8 +25,8 @@ import (
 )
 
 // lanTCP is the app's TCP dials on fakes: an address in up connects, any
-// other is refused. It records each dial as "dial", "dial-as", "remover"
-// or "remover-as", the name a labeled dial was given, and the endpoint.
+// other is refused. It records each dial as "dial" or "remover" and the
+// endpoint.
 type lanTCP struct {
 	mu    sync.Mutex
 	up    []string
@@ -35,7 +35,7 @@ type lanTCP struct {
 	open func(endpoint string) (remote.Session, error)
 	// remover is the remover one that connects returns.
 	remover func(endpoint string) (remote.Remover, error)
-	// gate, when set, holds a labeled dial until it is closed.
+	// gate, when set, holds a dial until it is closed.
 	gate chan struct{}
 	// entered, when set, is closed when the first gated dial begins.
 	entered     chan struct{}
@@ -47,7 +47,11 @@ func (l *lanTCP) reach(kind, endpoint string) error {
 	defer l.mu.Unlock()
 	l.calls = append(l.calls, kind+" "+endpoint)
 	if !slices.Contains(l.up, endpoint) {
-		return &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+		err := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+		if ap, perr := netip.ParseAddrPort(endpoint); perr == nil {
+			err.Addr = net.TCPAddrFromAddrPort(ap)
+		}
+		return err
 	}
 	return nil
 }
@@ -69,13 +73,11 @@ func (l *lanTCP) take() []string {
 
 // useLANTCP makes the app's TCP dials l's for the rest of the test.
 func useLANTCP(t *testing.T, l *lanTCP) {
-	saved := [...]any{tcpDial, tcpRemover, tcpDialAs, tcpRemoverAs, copyDial}
+	saved := [...]any{tcpDial, tcpRemover, copyDial}
 	t.Cleanup(func() {
 		tcpDial = saved[0].(func(context.Context, string, *slog.Logger) (remote.Session, error))
 		tcpRemover = saved[1].(func(context.Context, string, *slog.Logger) (remote.Remover, error))
-		tcpDialAs = saved[2].(func(context.Context, string, string, *slog.Logger) (remote.Session, error))
-		tcpRemoverAs = saved[3].(func(context.Context, string, string, *slog.Logger) (remote.Remover, error))
-		copyDial = saved[4].(func(context.Context, copyapp.Target) (remote.Session, error))
+		copyDial = saved[2].(func(context.Context, copyapp.Target) (remote.Session, error))
 	})
 	copyDial = nil
 	if l.open == nil {
@@ -87,7 +89,17 @@ func useLANTCP(t *testing.T, l *lanTCP) {
 		dir := t.TempDir()
 		l.remover = func(string) (remote.Remover, error) { return remote.NewFakeDir(dir) }
 	}
-	tcpDial = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Session, error) {
+	tcpDial = func(ctx context.Context, endpoint string, _ *slog.Logger) (remote.Session, error) {
+		if l.gate != nil {
+			if l.entered != nil {
+				l.enteredOnce.Do(func() { close(l.entered) })
+			}
+			select {
+			case <-l.gate:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
 		if err := l.reach("dial", endpoint); err != nil {
 			return nil, err
 		}
@@ -99,33 +111,11 @@ func useLANTCP(t *testing.T, l *lanTCP) {
 		}
 		return l.remover(endpoint)
 	}
-	tcpDialAs = func(ctx context.Context, name, endpoint string, _ *slog.Logger) (remote.Session, error) {
-		if l.gate != nil {
-			if l.entered != nil {
-				l.enteredOnce.Do(func() { close(l.entered) })
-			}
-			select {
-			case <-l.gate:
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			}
-		}
-		if err := l.reach("dial-as "+name, endpoint); err != nil {
-			return nil, err
-		}
-		return l.open(endpoint)
-	}
-	tcpRemoverAs = func(_ context.Context, name, endpoint string, _ *slog.Logger) (remote.Remover, error) {
-		if err := l.reach("remover-as "+name, endpoint); err != nil {
-			return nil, err
-		}
-		return l.remover(endpoint)
-	}
 }
 
 // The copier's dials on this network scan for a saved serial every time
-// and dial where it answers, labeled; a new address is saved. Activity
-// names the model and the reply count only. The remover never scans.
+// and dial where it answers; a new address is saved. Activity names
+// the telescope and both addresses. The remover never scans.
 func TestCopierFollowsTelescope(t *testing.T) {
 	l := &lanTCP{up: []string{"192.0.2.30:445"}}
 	useLANTCP(t, l)
@@ -153,14 +143,14 @@ func TestCopierFollowsTelescope(t *testing.T) {
 	if err := dial(stale); err != nil {
 		t.Fatalf("dial: %v", err)
 	}
-	if calls := l.take(); !slices.Equal(calls, []string{"dial-as " + lanName + " 192.0.2.30:445"}) {
+	if calls := l.take(); !slices.Equal(calls, []string{"dial 192.0.2.30:445"}) {
 		t.Fatalf("calls %q", calls)
 	}
 	got, _, _ := loadSettings(s.storage)
 	if got.LANAddress != "192.0.2.30:445" || got.LANSerial != "SERIAL-A" {
 		t.Fatalf("saved %+v", got)
 	}
-	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_moved"`) || !strings.Contains(text, "(Seestar S50)") || !strings.Contains(text, "1 reply") {
+	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_moved"`) || !strings.Contains(text, "Found S50_A (Seestar S50, serial SERIAL-A) at 192.0.2.30:445, not its saved 192.0.2.10:445, in a scan of this network (1 reply)") {
 		t.Fatalf("trail %s", text)
 	}
 	current, _ := s.copyTarget()
@@ -182,7 +172,7 @@ func TestCopierFollowsTelescope(t *testing.T) {
 	}
 	l.take()
 
-	// The remover dials the exact target, labeled, and never scans.
+	// The remover dials the exact target and never scans.
 	scans = n.scans()
 	if r, err := o.Remover(t.Context(), current); err != nil {
 		t.Fatalf("remover: %v", err)
@@ -192,11 +182,11 @@ func TestCopierFollowsTelescope(t *testing.T) {
 	if _, err := o.Remover(t.Context(), stale); err == nil {
 		t.Fatal("a remover at the old address reached the telescope")
 	}
-	if calls := l.take(); n.scans() != scans || !slices.Equal(calls, []string{"remover-as " + lanName + " 192.0.2.30:445", "remover-as " + lanName + " 192.0.2.10:445"}) {
+	if calls := l.take(); n.scans() != scans || !slices.Equal(calls, []string{"remover 192.0.2.30:445", "remover 192.0.2.10:445"}) {
 		t.Fatalf("remover calls %q, scans %d", calls, n.scans()-scans)
 	}
 
-	// Without a saved serial nothing scans, and the dial is unlabeled.
+	// Without a saved serial nothing scans.
 	if err := dial(copyapp.Target{Endpoint: "192.0.2.31:445"}); err == nil || n.scans() != scans {
 		t.Fatalf("serial-less dial: %v, scanned %t", err, n.scans() != scans)
 	}
@@ -217,7 +207,7 @@ func TestCopierFollowsTelescope(t *testing.T) {
 	if err := dial(copyapp.Target{Endpoint: "192.0.2.31:445", Serial: "SERIAL-Z"}); err != nil {
 		t.Fatalf("not seen: %v", err)
 	}
-	if calls := l.take(); !slices.Equal(calls, []string{"dial-as " + lanName + " 192.0.2.31:445"}) {
+	if calls := l.take(); !slices.Equal(calls, []string{"dial 192.0.2.31:445"}) {
 		t.Fatalf("not seen calls %q", calls)
 	}
 	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_not_seen"`) {
@@ -230,7 +220,7 @@ func TestCopierFollowsTelescope(t *testing.T) {
 	if err := dial(stale); err == nil {
 		t.Fatal("seen but unreachable connected")
 	}
-	if calls := l.take(); !slices.Equal(calls, []string{"dial-as " + lanName + " 192.0.2.30:445"}) {
+	if calls := l.take(); !slices.Equal(calls, []string{"dial 192.0.2.30:445", "dial 192.0.2.30:4445"}) {
 		t.Fatalf("unreached calls %q", calls)
 	}
 	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_unreached"`) {
@@ -395,7 +385,7 @@ func waitFree(t *testing.T, s *server, want string) (int, string) {
 // Free up space previews where the scan found the telescope and deletes
 // only there: once the telescope moves after the preview, the confirmed
 // delete fails without a scan and keeps the file, and a new preview finds
-// the telescope again. Activity names no address the scan found.
+// the telescope again. Activity names the address the delete dialed.
 func TestFreeSpaceDeletesWherePreviewed(t *testing.T) {
 	share := t.TempDir()
 	name := filepath.Join(share, "MyWorks", "a.jpg")
@@ -453,7 +443,7 @@ func TestFreeSpaceDeletesWherePreviewed(t *testing.T) {
 	if _, err := os.Stat(name); err != nil {
 		t.Fatalf("the file was deleted: %v", err)
 	}
-	if calls := l.take(); n.scans() != scans || len(calls) == 0 || slices.ContainsFunc(calls, func(c string) bool { return c != "remover-as "+lanName+" 192.0.2.30:445" }) {
+	if calls := l.take(); n.scans() != scans || len(calls) == 0 || slices.ContainsFunc(calls, func(c string) bool { return c != "remover 192.0.2.30:445" }) {
 		t.Fatalf("the confirmed delete dialed %q, scans %d", calls, n.scans()-scans)
 	}
 
@@ -468,40 +458,38 @@ func TestFreeSpaceDeletesWherePreviewed(t *testing.T) {
 	if _, err := os.Stat(name); !os.IsNotExist(err) {
 		t.Fatalf("the file wasn't deleted: %v", err)
 	}
-	if calls := l.take(); !slices.Equal(calls, []string{"remover-as " + lanName + " 192.0.2.40:445"}) {
+	if calls := l.take(); !slices.Equal(calls, []string{"remover 192.0.2.40:445"}) {
 		t.Fatalf("the delete dialed %q", calls)
 	}
 	trailText(t, s)
 	w := serve(s, request(s, "GET", "/copy/api/status", ""))
-	for _, private := range []string{"192.0.2.", "SERIAL-", "S50_A"} {
-		if strings.Contains(w.Body.String(), private) {
-			t.Fatalf("Copy's status carries %q: %s", private, w.Body)
-		}
+	if !strings.Contains(w.Body.String(), "192.0.2.30:445: connect: connection refused") {
+		t.Fatalf("Copy's status lacks the address dialed: %s", w.Body)
 	}
 }
 
-// failedWalk is a session whose listing fails naming its server, as an
-// SMB session's errors do.
+// failedWalk is a session whose listing fails with a TCP error naming
+// its server, as an SMB session's errors do.
 type failedWalk struct {
 	remote.Session
 	server string
 }
 
 func (f failedWalk) Walk(context.Context, func(string, bool) bool, func(remote.Entry)) ([]remote.Entry, error) {
-	return nil, fmt.Errorf("walk on %s: connection reset", f.server)
+	addr := net.TCPAddrFromAddrPort(netip.MustParseAddrPort(f.server))
+	return nil, fmt.Errorf("walk: %w", &net.OpError{Op: "read", Net: "tcp", Addr: addr, Err: syscall.ECONNRESET})
 }
 
 // A copy pass that fails after the scan found the telescope elsewhere
-// names no address in Activity or gui.log: the session's errors call it
-// the saved telescope, and so does the engine.
-func TestFollowedFailureNamesNoAddress(t *testing.T) {
+// names the address it connected at in Activity.
+func TestFollowedFailureNamesTheAddress(t *testing.T) {
 	l := &lanTCP{up: []string{"192.0.2.30:445"}}
 	useLANTCP(t, l)
-	tcpDialAs = func(_ context.Context, name, endpoint string, _ *slog.Logger) (remote.Session, error) {
-		if err := l.reach("dial-as "+name, endpoint); err != nil {
+	tcpDial = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Session, error) {
+		if err := l.reach("dial", endpoint); err != nil {
 			return nil, err
 		}
-		return failedWalk{remote.NewFake(fstest.MapFS{}), name}, nil
+		return failedWalk{remote.NewFake(fstest.MapFS{}), endpoint}, nil
 	}
 	useLAN(t, &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", "S50_A", "Seestar S50"}}})
 	s := testServer(t)
@@ -529,10 +517,7 @@ func TestFollowedFailureNamesNoAddress(t *testing.T) {
 	}
 	failed := false
 	for _, e := range v.Activity {
-		if strings.Contains(e.Text, "192.0.2.") || strings.Contains(e.Text, "SERIAL-") {
-			t.Errorf("Activity names it: %s", e.Text)
-		}
-		failed = failed || strings.Contains(e.Text, lanName+": connection reset")
+		failed = failed || strings.Contains(e.Text, "192.0.2.30:445: connection reset")
 	}
 	if !failed {
 		t.Errorf("no failed pass in Activity: %s", w.Body)
@@ -743,11 +728,34 @@ func TestConflictWithSightingIsRecordedAsUnreached(t *testing.T) {
 		dialed = append(dialed, endpoint)
 		return "", errors.New("refused")
 	})
-	if err == nil || !slices.Equal(dialed, []string{"192.0.2.30:445"}) {
+	if err == nil || !slices.Equal(dialed, []string{"192.0.2.30:445", "192.0.2.30:4445"}) {
 		t.Fatalf("err %v, dialed %q", err, dialed)
 	}
 	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_unreached"`) || strings.Contains(text, "scan_other_telescope") ||
-		strings.Contains(text, "192.0.2.") || strings.Contains(text, "SERIAL-") {
+		!strings.Contains(text, "Found S50_A (Seestar S50, serial SERIAL-A) on this network (6 replies), but it didn't connect where it answered, at 192.0.2.30.") {
 		t.Errorf("trail: %s", text)
+	}
+}
+
+// Closing a session a scan connected ends the context it was dialed with,
+// so nothing of the connect waits on the caller's.
+func TestSearchSessionCloseEndsItsContext(t *testing.T) {
+	useLAN(t, &lanNet{answers: map[netip.Addr][3]string{netip.MustParseAddr("192.0.2.20"): {"SERIAL-A", "S50_A", "Seestar S50"}}})
+	s := testServer(t)
+	if err := s.controller.persistRoute(routeLAN, "192.0.2.20:445", "SERIAL-A"); err != nil {
+		t.Fatal(err)
+	}
+	target, _ := s.copyTarget()
+	var bound context.Context
+	got, _, err := lanSearch(t.Context(), s, target, s.controller.routeGeneration(), func(ctx context.Context, _ string) (remote.Session, error) {
+		bound = ctx
+		return remote.NewFake(fstest.MapFS{}), nil
+	})
+	if err != nil || bound.Err() != nil {
+		t.Fatalf("%v, context %v", err, bound.Err())
+	}
+	got.Close()
+	if bound.Err() == nil {
+		t.Fatal("the closed session's context goes on")
 	}
 }

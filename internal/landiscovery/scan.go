@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -46,8 +47,8 @@ var ErrNoInterface = errors.New("LAN scan: no network interface to scan from")
 var errLocal = errors.New("LAN scan: couldn't determine this computer's addresses")
 
 // Telescope is one serial number seen in a scan, with every address that
-// answered for it. Serial identifies the telescope and is never shown or
-// logged; Name is the reply's ssid.
+// answered for it. Serial identifies the telescope; Name is the reply's
+// ssid.
 type Telescope struct {
 	Serial    string
 	Name      string
@@ -59,6 +60,27 @@ type Telescope struct {
 // Busy reports whether the telescope reported as many clients as the phone
 // app allows.
 func (t Telescope) Busy() bool { return t.Clients >= BusyClients }
+
+// Label is how logs and Activity name t: its name, or Seestar for none,
+// then its model, if any, and serial number, as "Seestar_ABC (S50, serial
+// 123)". Each is escaped as Go escapes ASCII strings, since a reply can
+// carry any text.
+func (t Telescope) Label() string {
+	name, model := escaped(t.Name), escaped(t.Model)
+	if name == "" {
+		name = "Seestar"
+	}
+	if model != "" {
+		model += ", "
+	}
+	return name + " (" + model + "serial " + escaped(t.Serial) + ")"
+}
+
+// escaped is s in Go's ASCII string escaping, without the quotes.
+func escaped(s string) string {
+	q := strconv.QuoteToASCII(s)
+	return q[1 : len(q)-1]
+}
 
 // ScanResult is what a scan heard. Replies counts the accepted replies.
 // Blocked means a send failed with "no route to host" and nothing answered:
@@ -315,18 +337,9 @@ func (s *Scanner) run(ctx context.Context, targets []target, local map[netip.Add
 	if result.Replies == 0 && blocked > 0 {
 		result.Blocked = true
 	} else if result.Replies == 0 && attempts > 0 && failed == attempts {
-		return result, fmt.Errorf("LAN scan: %w", unaddressed(sendErr))
+		return result, fmt.Errorf("LAN scan: %w", sendErr)
 	}
 	return result, ctx.Err()
-}
-
-// unaddressed is a send's error without the addresses a *net.OpError
-// names, so its text can be logged.
-func unaddressed(err error) error {
-	if op, ok := errors.AsType[*net.OpError](err); ok && op.Err != nil {
-		return fmt.Errorf("%s: %w", op.Op, op.Err)
-	}
-	return err
 }
 
 func sourceAddr(from net.Addr) (netip.Addr, bool) {

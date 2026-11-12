@@ -304,7 +304,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		go func() { discoveryErr = discovery.Serve(ctx, machine); close(discoveryDone) }()
 		// Join discovery before closing the session or returning from any branch.
 		defer func() { cancel(); discovery.Close(); <-discoveryDone }()
-		logger.Info("lan_discovery_started", "port", landiscovery.Port, "all_interfaces", o.lanDiscoveryAllInterfaces)
+		logger.Info("lan_discovery_started", "port", landiscovery.Port, "all_interfaces", o.lanDiscoveryAllInterfaces, "telescope", d)
 		warnLANHTTP(logger, o.ports)
 	}
 	// Configuration is accepted before waiting for readiness, which may spend

@@ -528,7 +528,11 @@ test('a running preview has a bar and Cancel, which moves focus to the heading a
   // Cancel goes to the app, which has no preview to drop.
   v = { ...base, preview: { state: 'running', title: 'Looking for new files…' } };
   await expect(button(page, 'Cancel')).toBeVisible();
-  v = null;
+  await page.route('**/copy/api/copy', async route => {
+    const request = route.request();
+    if (request.method() === 'POST' && request.postDataJSON().action === 'cancel') v = null;
+    await route.continue();
+  });
   await button(page, 'Cancel').click();
   await expect(page.locator('#c-preview')).toBeHidden();
   await expect(button(page, 'Cancel')).toBeHidden();
