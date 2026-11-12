@@ -84,7 +84,9 @@ only the telescope's files, for Copy, Browse and Free up space.
   the address its preview connected to; if that changes or stops
   answering, preview again.
   **Scan for the saved telescope** chooses when they scan, and is saved as
-  soon as you choose:
+  soon as you choose. Its help says that Copy, Browse and Free up space
+  look for this telescope on the network, so they still find it after the
+  router gives it a new address, and what each choice does:
   - **Once each time copying, Browse or Free up space starts**, the default:
     one scan when you start copying, for all its checks; one when Browse
     opens; one for each Copy preview and each Free up space check. Later
