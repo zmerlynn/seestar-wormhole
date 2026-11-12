@@ -30,8 +30,10 @@ To use another existing installation root, run
 
 The copy history and its locks are not in the state directory. By default they
 are in the file commands' default [history location](selection-and-history.md#location),
-`seestar-copy` beside `seestar-wormhole` in the same system folder, whatever
-`--state-dir` says. See [selection and copy history](selection-and-history.md)
+`copy-history` in the default state directory above, whatever `--state-dir`
+says. Earlier releases kept them in `seestar-copy` beside `seestar-wormhole`;
+the first Copy, Free up space or **Clear history** moves that folder to
+`copy-history` once. See [selection and copy history](selection-and-history.md)
 for how the app and `seestar-wormhole-cli` share them.
 
 ## config.json version 1
@@ -108,7 +110,9 @@ alone never writes the file.
 Older versions keep `history_dir` when saving but use the default history
 folder. After a downgrade, files moved out of the images folder can be copied
 again, and Free up space cannot use the chosen folder's history to prove those
-copies safe.
+copies safe. Older versions' default history folder is `seestar-copy`, not
+`copy-history`, so the same holds after a downgrade with an empty
+`history_dir` once the history was [moved](selection-and-history.md#location).
 
 An older app ignores `ignore_state` and falls back to checking copies.
 

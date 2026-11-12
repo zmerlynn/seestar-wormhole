@@ -57,7 +57,7 @@ deletes anything in the destination either, except its own
 | `--ready-age` | `2m` | A file is copied only once its device mtime is at least this old. Zero or more. |
 | `--first-pass-age` | `10m` | On the first pass, a file counts as finished only if its device mtime is at least this old. Zero or more. See [readiness](#readiness). |
 | `--workers` | `4` | Files copied at once, `1` to `64`. All of them share one SMB session. |
-| `--history-dir` | the per-user config folder's `seestar-copy` | The copy history folder, which holds the state file. See [location](selection-and-history.md#location). It must not be empty when given. Earlier releases called it `--state-dir`, which is now refused. |
+| `--history-dir` | `copy-history` in the per-user config folder's `seestar-wormhole` | The copy history folder, which holds the state file. See [location](selection-and-history.md#location). It must not be empty when given. Earlier releases called it `--state-dir`, which is now refused. |
 | `--profile` | none: no saved settings are read | `default` fills the flags not given from the app's saved settings. Only `default` exists. See [use the app's saved settings](#use-the-apps-saved-settings). |
 | `--scan` | the app's saved choice, `start` without one | When to scan this network for the telescope `--profile default` saved there: `start`, `connect` or `off`. See [use the app's saved settings](#use-the-apps-saved-settings). Any other value exits 2. It is checked even when nothing is scanned. |
 | `--log-format` | `text` | `text` or `json` log lines on stderr. See [logs](#logs). |
@@ -273,7 +273,9 @@ pattern that matched, and a line for each top-level folder that has no copied
 files recorded under it, so new folders stand out before a real pass.
 `--once` may be given with it; `--interval` may not.
 
-A dry run creates nothing, not even a missing destination or state folder.
+A dry run creates nothing, not even a missing destination or state folder,
+and never moves the old default history folder: while only `seestar-copy`
+exists, it reads the history there; see [location](selection-and-history.md#location).
 It takes no [lock](selection-and-history.md#locks), removes no [temporary files](#temporary-files),
 and leaves a torn final line in the state file in place; it logs that line
 and ignores it. It works on a read-only destination and state, and may run
@@ -522,6 +524,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | ERROR | `listing failed` | `source`, `op`, `phase`, `reason`, as `listing done`, and `error` | The connection or a listing failed in `find`. |
 | ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
 | ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
+| INFO | `moved the copy history` | `from`, `to` | With the default `--history-dir`: the history folder of earlier releases, `seestar-copy`, was moved to `copy-history`; see [location](selection-and-history.md#location). Logged once, by the first sync or delete that isn't a dry run. Find, browse and dry runs never move it. |
 | INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
 | INFO | `found the saved telescope at another address on this network` | `model` when the reply had one, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). Logged again only when the outcome changes. No address, name or serial is logged. |
 | WARN | `the saved telescope wasn't seen in a scan of this network; tried its saved address` | none | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
