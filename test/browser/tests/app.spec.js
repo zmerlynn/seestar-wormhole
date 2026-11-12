@@ -1265,6 +1265,37 @@ test('port rows show their own errors as you edit, and a refusal on its row', as
   await clean(row.local);
 });
 
+for (const os of ['linux', 'darwin', 'windows']) {
+  test(`a local port below 1024 shows the permissions guide by its row ${os === 'linux' ? 'on Linux' : 'not on ' + os}`, async ({ page, startApp }) => {
+    if (os !== 'linux') {
+      await page.route('**/api/status', async (route) => {
+        const response = await route.fetch();
+        route.fulfill({ response, json: { ...(await response.json()), os } });
+      });
+    }
+    const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid' } });
+    await openApp(page, app.url);
+    await remoteAdvanced(page);
+    const guide = (input) => page.locator('#ports, #added-ports').locator('tr').filter({ has: input }).getByRole('link', { name: 'Port permissions guide' });
+    const local80 = page.locator('#port-80');
+    await local80.fill('80');
+    if (os === 'linux') {
+      await expect(guide(local80)).toBeVisible();
+      await expect(local80).toHaveAccessibleDescription(/Linux needs permission for a port below 1024\. Port permissions guide/);
+    } else await expect(guide(local80)).toBeHidden();
+    await local80.fill('8080');
+    await expect(guide(local80)).toBeHidden();
+    await page.getByRole('button', { name: 'Add a port', exact: true }).click();
+    const row = addedRow(page, 1);
+    await row.remote.fill('800');
+    if (os === 'linux') await expect(guide(row.local)).toBeVisible();
+    else await expect(guide(row.local)).toBeHidden();
+    await row.local.fill('8000');
+    await expect(guide(row.local)).toBeHidden();
+    await expect(page.locator('#port-permissions')).toBeHidden();
+  });
+}
+
 for (const colorScheme of ['light', 'dark']) {
   test(`app screenshots in ${colorScheme}`, async ({ page, startApp }, testInfo) => {
     await page.emulateMedia({ colorScheme });

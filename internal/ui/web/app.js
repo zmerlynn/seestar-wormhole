@@ -17,6 +17,9 @@ if (token) {
 let initialized = false, ended = false, connected = false, pending = '', active = false;
 let lastFailure = '', state = null, statusGeneration = 0, actionError = '';
 let fieldErrors = {}, portDefaults = [], draftEmail = '';
+// hostOS is the server's operating system: only Linux needs permission for
+// a local port below 1024.
+let hostOS = '';
 let currentGoal = 'phone', retryRemoval = false, diagnostic = '', noticeCode = '';
 // The route shown on Connection, a LAN action in flight, the last LAN Test,
 // and the selected tab.
@@ -101,15 +104,29 @@ function portInput(label) {
   return input;
 }
 // portCell puts a port input in a table cell with its own error below it,
-// which the input's description includes only while it shows.
+// and for a local port the permissions help, which the input's description
+// includes only while they show.
 let portFields = 0;
-function portCell(cell, input) {
+function portCell(cell, input, local = false) {
   const error = document.createElement('p');
   error.className = 'error';
   error.id = 'port-error-' + ++portFields;
   error.hidden = true;
   input.portError = error;
   cell.append(input, error);
+  if (local) {
+    const help = document.createElement('p'), link = document.createElement('a');
+    help.className = 'help';
+    help.id = 'port-low-' + portFields;
+    help.hidden = true;
+    link.href = $('port-permissions').querySelector('a').href;
+    link.target = '_blank';
+    link.rel = 'noreferrer';
+    link.textContent = 'Port permissions guide';
+    help.append('Linux needs permission for a port below 1024. ', link);
+    input.portLow = help;
+    cell.append(help);
+  }
   input.setAttribute('aria-describedby', 'ports-help ports-error');
 }
 // The editable Services rows, as the table shows them. edits counts port
@@ -141,7 +158,7 @@ function portsTable(id, ports, editable = false) {
         clearField('ports');
         customGoal();
       });
-      portCell(local, input);
+      portCell(local, input, true);
       serviceRows.push({row, local: input, device: () => remote, name: purpose});
     } else local.textContent = ports[remote] || 'Off';
     row.insertCell().textContent = remote;
@@ -213,7 +230,7 @@ function addPortRow(device = 0, port = device) {
     $('add-port').focus();
   });
   row.removeButton = remove;
-  portCell(row.insertCell(), local);
+  portCell(row.insertCell(), local, true);
   portCell(row.insertCell(), remote);
   row.insertCell().append(remove);
   added.push(entry);
@@ -226,10 +243,6 @@ function addedTable(s) {
   for (const p of s.ports || []) if (!standard(p.device)) addPortRow(p.device, p.local);
   labelAddedRows();
   checkPorts();
-}
-// lowAddedPort reports an added row whose local port may need permission.
-function lowAddedPort() {
-  return added.some(({local}) => local.value && local.validity.valid && Number(local.value) < 1024);
 }
 // rowFailure is a refusal the server named a port for, shown on that
 // port's row until the ports are edited or checked again.
@@ -255,7 +268,8 @@ function attribute(element, name, value) {
 // added row, and used once, the error going on the row edited last to use
 // it; and at most 128 rows. An empty field is in error only once edited, or
 // when all is set, as at Connect. It shades each row whose local port
-// differs from its Seestar port, and returns the first field in error.
+// differs from its Seestar port, shows the permissions help by a local port
+// below 1024 on Linux, and returns the first field in error.
 function checkPorts(all = false) {
   const errors = new Map(), locals = new Map(), devices = new Map(), claims = [];
   const port = input => input.value && input.validity.valid ? Number(input.value) : 0;
@@ -291,11 +305,13 @@ function checkPorts(all = false) {
     if (row.className !== (remapped ? 'remapped' : '')) row.className = remapped ? 'remapped' : '';
     for (const input of remote?.portError ? [local, remote] : [local]) {
       const message = errors.get(input) || '';
+      const low = input === local && !message && hostOS === 'linux' && port(local) > 0 && port(local) < 1024;
       first ||= message ? input : null;
       if (input.portError.textContent !== message) input.portError.textContent = message;
       input.portError.hidden = !message;
+      if (input.portLow) input.portLow.hidden = !low;
       attribute(input, 'aria-invalid', message ? 'true' : null);
-      attribute(input, 'aria-describedby', 'ports-help ports-error' + (message ? ' ' + input.portError.id : ''));
+      attribute(input, 'aria-describedby', 'ports-help ports-error' + (message ? ' ' + input.portError.id : '') + (low ? ' ' + input.portLow.id : ''));
     }
   }
   return first;
@@ -458,7 +474,7 @@ function controls() {
   $('trust').hidden = active || settings().bind === '127.0.0.1' || settings().bind === '::1';
   const failureCode = actionError || (!active && state?.failure?.code) || '';
   const code = failureCode === 'selection_multiple' ? '' : failureCode;
-  $('port-permissions').hidden = code !== 'http_permission' && !lowAddedPort();
+  $('port-permissions').hidden = code !== 'http_permission';
   text('error-code', code ? 'Error code: ' + code : '');
   $('error-code').hidden = !code;
   if (shownErrorCode !== code) {
@@ -1760,6 +1776,7 @@ async function refresh() {
   const first = !initialized;
   if (first) {
     portDefaults = s.port_defaults;
+    hostOS = s.os;
     load(s.settings);
     initialized = true;
   }

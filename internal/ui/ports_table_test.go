@@ -1,6 +1,9 @@
 package ui
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The Services rows are in Seestar port order.
 func TestPortOrderPage(t *testing.T) {
@@ -25,4 +28,22 @@ func TestPortRowErrorsPage(t *testing.T) {
 // A refusal naming a port shows on its row.
 func TestPortRefusalPage(t *testing.T) {
 	runPageRegression(t, "ports-table-test.js", "checkPortRefusal()")
+}
+
+// A local port below 1024 shows the permissions help only on Linux.
+func TestLowPortHelpPage(t *testing.T) {
+	runPageRegression(t, "ports-table-test.js", "checkLowPortHelp()")
+}
+
+// The status names the server's system, for the low-port help.
+func TestStatusNamesOS(t *testing.T) {
+	saved := hostOS
+	t.Cleanup(func() { hostOS = saved })
+	for _, goos := range []string{"linux", "darwin", "windows"} {
+		hostOS = goos
+		s := testServer(t)
+		if body := serve(s, request(s, "GET", "/api/status", "")).Body.String(); !strings.Contains(body, `"os":"`+goos+`"`) {
+			t.Errorf("%s: status = %s", goos, body)
+		}
+	}
 }

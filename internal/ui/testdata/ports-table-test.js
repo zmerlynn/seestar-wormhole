@@ -4,6 +4,7 @@ const portsAssert = (ok, message) => {if (!ok) throw new Error(message);};
 function portsFixture(ports = [], os = 'linux') {
   initialized = connected = true;
   pending = '';
+  hostOS = os;
   portDefaults = [{local: 4700, device: 4700}, {local: 4445, device: 445}, {local: 8080, device: 80}, {local: 4350, device: 4350}, {local: 4554, device: 4554}, {local: 4555, device: 4555}, {local: 4801, device: 4801}, {local: 4800, device: 4800}, {local: 4804, device: 4804}, {local: 4361, device: 4361}, {local: 32323, device: 32323}];
   load({version: 1, bind: '127.0.0.1', discovery: false, idle_minutes: 0, ports, email: 'synthetic@example.invalid'});
 }
@@ -110,4 +111,27 @@ async function checkPortRefusal() {
   portsAssert(portMessage(local) === 'Another program is using local port 7000.' && !portMessage(servicePort(4700)), 'added row');
   portsEdit(local, '7001');
   portsAssert(!portMessage(local), 'edit clears');
+}
+
+// A local port below 1024 shows the permissions guide by its row while
+// edited, in both tables, only on Linux.
+async function checkLowPortHelp() {
+  for (const os of ['linux', 'darwin', 'windows']) {
+    portsFixture([], os);
+    const linux = os === 'linux';
+    const shown = input => !input.portLow.hidden && input.getAttribute('aria-describedby').split(' ').includes(input.portLow.id);
+    portsEdit(servicePort(80), '80');
+    portsAssert(shown(servicePort(80)) === linux, os + ': port 80');
+    portsAssert(!shown(servicePort(445)), os + ': 4445');
+    portsEdit(servicePort(80), '8080');
+    portsAssert(!shown(servicePort(80)), os + ': 8080');
+    const remote = addPortRow(), {local} = addedRows()[0];
+    portsEdit(remote, '800');
+    portsAssert(shown(local) === linux && !remote.portLow, os + ': added 800');
+    portsEdit(local, '8000');
+    portsAssert(!shown(local), os + ': added 8000');
+    portsEdit(local, '0');
+    portsAssert(!shown(local), os + ': an invalid port shows its error alone');
+    portsAssert($('port-permissions').hidden, os + ': the guide under the table');
+  }
 }

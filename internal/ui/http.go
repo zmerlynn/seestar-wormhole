@@ -181,6 +181,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			PortDefaults []proxyrun.Port `json:"port_defaults"`
 			Password     passwordInfo    `json:"password"`
 			Native       bool            `json:"native"`
+			OS           string          `json:"os"`
 			Events       []event         `json:"events"`
 			Failures     []opFailure     `json:"failures"`
 			LogPath      string          `json:"log_path"`
@@ -189,7 +190,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			CopyReach    string          `json:"copy_reach"`
 			CopyRefused  bool            `json:"copy_refused"`
 			Files        settingsFiles   `json:"files"`
-		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, events, failures, path, logFailed,
+		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
 			unlocked, reach, s.copyRefused, s.settingsFiles()})
 		return
 	}

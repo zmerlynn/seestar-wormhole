@@ -382,10 +382,11 @@
       shows(rows[1].local, 'Local port 4445 is already used by File sharing for other apps (SMB).');
       clean($('port-445'));
       assert($('port-445').closest('tr').classList.contains('remapped'), 'SMB 4445 not shaded');
+      // The permissions help shows by a local port below 1024 on Linux only.
       input(rows[1].local, '800');
-      assert(validate() && !$('port-permissions').hidden, 'a local port below 1024 hid the permissions guide');
+      assert(validate() && $('port-permissions').hidden && rows[1].local.portLow.hidden === (hostOS !== 'linux'), 'permissions help for 800 on ' + hostOS);
       input(rows[1].local, '6000');
-      assert(validate() && $('port-permissions').hidden, 'the permissions guide stayed for 6000');
+      assert(validate() && rows[1].local.portLow.hidden, 'the permissions help stayed for 6000');
       const sent = settings().ports;
       assert(sent.length === 13 && sent[11].device === 5002 && sent[11].local === 5001 && sent[12].device === 6000 && sent[12].local === 6000, 'added ports not sent in order: ' + JSON.stringify(sent));
       rows[0].row.querySelector('button').click();
