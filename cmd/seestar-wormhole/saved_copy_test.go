@@ -313,14 +313,14 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 // for the command to log, and reading them writes neither file.
 func TestDefaultProfileFallbacks(t *testing.T) {
 	root := savedConfigRoot(t)
-	writeSavedConfig(t, root, []byte(`{"version":1,"serial":"PRIVATE serial","ports":[{"device":445,"local":1445}]}`))
+	writeSavedConfig(t, root, []byte(`{"version":1,"serial":"INVALID serial","ports":[{"device":445,"local":1445}]}`))
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/Seestar","files_at_once":57}`)
 	useProfileRoot(t, root, nil)
 	before := profileFiles(t, root)
 	got, err := loadDefaultProfile()
 	want := []diagnostic.Fallback{
 		{File: "copy.json", Setting: "files_at_once", Fallback: "4"},
-		{File: "config.json", Setting: "serial", Fallback: "none"},
+		{File: "config.json", Setting: "serial", Fallback: "none", Value: "INVALID serial"},
 	}
 	if err != nil || got.Workers != 4 || got.Endpoint != "127.0.0.1:1445" || !reflect.DeepEqual(got.Fallbacks, want) {
 		t.Fatalf("= %+v, %v; want fallbacks %+v", got, err, want)
@@ -334,18 +334,18 @@ func TestDefaultProfileFallbacks(t *testing.T) {
 // files_at_once and config.json's serial.
 func writeFallbackProfile(t *testing.T) {
 	root := savedConfigRoot(t)
-	writeSavedConfig(t, root, []byte(`{"version":1,"serial":"PRIVATE serial","ports":[{"device":445,"local":1445}]}`))
+	writeSavedConfig(t, root, []byte(`{"version":1,"serial":"INVALID serial","ports":[{"device":445,"local":1445}]}`))
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/Seestar","files_at_once":57}`)
 	useProfileRoot(t, root, nil)
 }
 
 // checkProfileWarnings fails unless logs hold exactly the profile's two
-// value-free fallback warnings.
+// fallback warnings, the serial's naming it.
 func checkProfileWarnings(t *testing.T, err error, logs *bytes.Buffer) {
 	t.Helper()
 	s := logs.String()
-	if strings.Count(s, "settings_fallback") != 2 || !strings.Contains(s, "setting=files_at_once") || !strings.Contains(s, "setting=serial") || strings.Contains(s, "PRIVATE") {
-		t.Fatalf("want two value-free warnings; err=%v logs=%s", err, logs)
+	if strings.Count(s, "settings_fallback") != 2 || !strings.Contains(s, "setting=files_at_once") || !strings.Contains(s, `setting=serial fallback=none value="INVALID serial"`) {
+		t.Fatalf("want two warnings; err=%v logs=%s", err, logs)
 	}
 }
 

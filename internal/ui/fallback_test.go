@@ -22,11 +22,25 @@ func fallbackLog(t *testing.T, fallbacks []diagnostic.Fallback) string {
 }
 
 // checkFallback asserts one fallback for setting, logged once as a warning
-// naming the setting and its fallback, without the saved value.
+// naming the setting and its fallback, without the saved value. A serial
+// names the telescope, so its saved value is logged.
 func checkFallback(t *testing.T, fallbacks []diagnostic.Fallback, file, setting, fallback, private string) {
 	t.Helper()
-	if len(fallbacks) != 1 || fallbacks[0] != (diagnostic.Fallback{File: file, Setting: setting, Fallback: fallback}) {
+	want := diagnostic.Fallback{File: file, Setting: setting, Fallback: fallback}
+	if setting == "serial" && len(fallbacks) == 1 {
+		want.Value = fallbacks[0].Value
+		if !strings.Contains(want.Value, private) {
+			t.Fatalf("serial value = %q; want %q", want.Value, private)
+		}
+	}
+	if len(fallbacks) != 1 || fallbacks[0] != want {
 		t.Fatalf("fallbacks = %+v", fallbacks)
+	}
+	if want.Value != "" {
+		if log := fallbackLog(t, fallbacks); !strings.Contains(log, private) {
+			t.Fatalf("log lacks the serial: %s", log)
+		}
+		return
 	}
 	checkFallbackLog(t, fallbackLog(t, fallbacks), file, setting, fallback, private)
 }
@@ -79,7 +93,7 @@ func TestSettingsFallbacks(t *testing.T) {
 		check                            func(Settings) bool
 	}{
 		{"discovery", `{"version":1,"bind":"127.0.0.9","discovery":true}`, "off", "127.0.0.9", func(s Settings) bool { return !s.Discovery && s.Bind == "127.0.0.9" }},
-		{"serial", `{"version":1,"serial":"secret serial\n"}`, "none", "secret serial", func(s Settings) bool { return s.Serial == "" }},
+		{"serial", `{"version":1,"serial":"invalid serial\n"}`, "none", "invalid serial", func(s Settings) bool { return s.Serial == "" }},
 		{"email", `{"version":1,"email":"private-not-an-email"}`, "none", "private-not-an-email", func(s Settings) bool { return s.Email == "" }},
 	} {
 		t.Run(tc.setting+" "+tc.private, func(t *testing.T) {
@@ -172,13 +186,13 @@ func TestCopySettingsFallbacks(t *testing.T) {
 	}
 }
 
-// The app logs each fallback in both files once in its log, without the
-// saved value.
+// The app logs each fallback in both files once in its log. Only the
+// serial's saved value is logged with it.
 func TestAppLogsFallbacks(t *testing.T) {
 	useLAN(t, &lanNet{})
 	st := testStorage(t)
 	for name, body := range map[string]string{
-		"config.json": `{"version":1,"bind":"127.0.0.9","discovery":true,"serial":"PRIVATE serial","email":"PRIVATE-not-an-email"}`,
+		"config.json": `{"version":1,"bind":"127.0.0.9","discovery":true,"serial":"INVALID serial","email":"PRIVATE-not-an-email"}`,
 		copyName:      `{"version":1,"files_at_once":57}`,
 	} {
 		if err := st.writeBytes(name, []byte(body)); err != nil {
@@ -212,6 +226,9 @@ func TestAppLogsFallbacks(t *testing.T) {
 			t.Fatalf("level = %v", record["level"])
 		}
 		got[[2]string{file, setting}] = fallback
+		if value, _ := record["value"].(string); setting == "serial" && value != "INVALID serial" {
+			t.Errorf("serial value = %q", value)
+		}
 	}
 	if warnings != len(want) || len(got) != len(want) {
 		t.Fatalf("warnings = %d %v; want %v; logs = %s", warnings, got, want, logs.String())
