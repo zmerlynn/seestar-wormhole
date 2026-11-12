@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -388,5 +389,79 @@ func TestFollowKeepsTheFurtherFailure(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Fatal(err)
 		}
+	})
+}
+
+// One ConnectTimeout spans the scan and both ports: the second port gets
+// only what the first left, and the connect fails as a timeout. A
+// connection made within it outlives it.
+func TestFollowConnectTimeout(t *testing.T) {
+	refused := &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)}
+	t.Run("spans both ports", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			start := time.Now()
+			var second time.Duration
+			_, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				if ep == "192.0.2.20:445" {
+					time.Sleep(20 * time.Second)
+					return nil, refused
+				}
+				began := time.Now()
+				<-ctx.Done()
+				second = time.Since(began)
+				return nil, fmt.Errorf("dial %s: %w", ep, ctx.Err())
+			}, release)
+			if !errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) || time.Since(start) != ConnectTimeout ||
+				second != ConnectTimeout-20*time.Second || r.Moved || r.Endpoint != "192.0.2.20:445" {
+				t.Fatalf("%+v %v after %v, second port %v", r, err, time.Since(start), second)
+			}
+		})
+	})
+	t.Run("a connection outlives it", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			var bound context.Context
+			got, _, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				time.Sleep(ConnectTimeout - time.Second)
+				bound = ctx
+				return &session{endpoint: ep}, nil
+			}, release)
+			if err != nil || got == nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Hour)
+			if bound.Err() != nil || got.closed.Load() {
+				t.Fatalf("the connection's context ended: %v", bound.Err())
+			}
+		})
+	})
+	t.Run("a connection as it runs out is released", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			var opened *session
+			got, r, err := Follow(t.Context(), s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				time.Sleep(ConnectTimeout + time.Second)
+				opened = &session{endpoint: ep}
+				return opened, nil
+			}, release)
+			if !errors.Is(err, context.DeadlineExceeded) || got != nil || !opened.closed.Load() || r.Endpoint != "192.0.2.20:445" {
+				t.Fatalf("%v %+v %v", got, r, err)
+			}
+		})
+	})
+	t.Run("the caller's cancellation stays one", func(t *testing.T) {
+		synctest.Test(t, func(t *testing.T) {
+			s, _ := observedScan(time.Hour, answer("SERIAL-A", "192.0.2.20"))
+			ctx, cancel := context.WithCancel(t.Context())
+			_, _, err := Follow(ctx, s, "192.0.2.20:445", "SERIAL-A", func(ctx context.Context, ep string) (*session, error) {
+				time.AfterFunc(time.Second, cancel)
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}, release)
+			if !errors.Is(err, context.Canceled) {
+				t.Fatal(err)
+			}
+		})
 	})
 }

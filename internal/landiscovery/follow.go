@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"slices"
 	"sync"
+	"time"
 )
 
 // SMBPort is the telescope's file-sharing port, and ProxySMBPort the port
@@ -118,13 +119,55 @@ type Resolved struct {
 // answered from could be used. A nil error always comes with a connection
 // from dial. Without a serial or a scanner it dials endpoint alone, without
 // scanning.
+//
+// A connect that scans, from the scan's start to the last dial's end, is
+// bounded by ConnectTimeout, and fails with an error that unwraps to
+// [context.DeadlineExceeded] when it runs out; ctx bounds it too. The
+// budget ends when the connect does: a returned connection's context
+// is canceled only with ctx.
 func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dial func(context.Context, string) (T, error), release func(T)) (T, Resolved, error) {
 	var zero T
-	host, port, err := net.SplitHostPort(endpoint)
-	if err != nil || serial == "" || s == nil {
+	if _, _, err := net.SplitHostPort(endpoint); err != nil || serial == "" || s == nil {
 		v, err := dial(ctx, endpoint)
 		return v, Resolved{Endpoint: endpoint}, err
 	}
+	connectCtx, cancel := context.WithCancel(ctx)
+	timer := time.AfterFunc(ConnectTimeout, cancel)
+	v, r, err := follow(connectCtx, s, endpoint, serial, dial, release)
+	if timer.Stop() {
+		if err != nil {
+			cancel()
+		}
+		return v, r, err
+	}
+	// The budget ran out, even if a connection was made as it did.
+	if err == nil {
+		release(v)
+		r.Endpoint, r.Moved = endpoint, false
+	}
+	if ctx.Err() != nil {
+		return zero, r, ctx.Err()
+	}
+	return zero, r, errNoAnswer{}
+}
+
+// ConnectTimeout bounds a [Follow] that scans.
+const ConnectTimeout = 30 * time.Second
+
+// errNoAnswer is a Follow that ran out of ConnectTimeout. It classifies as
+// a timeout.
+type errNoAnswer struct{}
+
+func (errNoAnswer) Error() string {
+	return "connect to the telescope: no answer after " + ConnectTimeout.String()
+}
+
+func (errNoAnswer) Unwrap() error { return context.DeadlineExceeded }
+
+// follow is Follow's connect that scans, within ctx.
+func follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dial func(context.Context, string) (T, error), release func(T)) (T, Resolved, error) {
+	var zero T
+	host, port, _ := net.SplitHostPort(endpoint)
 	saved, _ := netip.ParseAddr(host) // invalid for a name
 	saved = saved.Unmap()
 	w := &watcher{serial: serial, saved: saved, found: make(chan netip.Addr, maxAddresses)}

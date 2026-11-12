@@ -152,7 +152,9 @@ telescope answered from, the saved address first; an address that doesn't
 connect doesn't end the search. When the saved port is 445 or 4445, the SMB
 port of a seestar-wormhole proxy that answers scans for its telescope, each
 address is tried on 445 and then on 4445, within the same connect; another
-saved port is tried alone. An `--endpoint` given on the command line is
+saved port is tried alone. Such a connect has 30 seconds in all, for the
+scan and every address and port it tries, and fails as timed out after
+that; a connection made within them isn't limited by them. An `--endpoint` given on the command line is
 dialed as given. An address another telescope answers at, the saved one or
 any other, isn't used, even if it answers there only while that address is
 being connected; a connection already made there is closed and the search
