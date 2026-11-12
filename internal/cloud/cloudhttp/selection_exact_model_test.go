@@ -27,7 +27,7 @@ func TestCatalogExactModelIdentity(t *testing.T) {
 			t.Fatalf("selection=%v error=%v, want exact model", got, err)
 		}
 		assertCatalogPageRequests(t, f, 1)
-		assertCatalogPagePrivacy(t, logs.String())
+		assertCatalogPageSecrets(t, logs.String())
 	}
 }
 
@@ -42,5 +42,5 @@ func TestCatalogEmptyModelCannotHideAmbiguity(t *testing.T) {
 		t.Fatalf("selection=%v error=%v, want invalid catalog without a selection", got, err)
 	}
 	assertCatalogPageRequests(t, f, 1)
-	assertCatalogPagePrivacy(t, logs.String())
+	assertCatalogPageSecrets(t, logs.String())
 }

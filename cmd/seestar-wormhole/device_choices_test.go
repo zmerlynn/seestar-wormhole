@@ -56,24 +56,23 @@ func TestDeviceChoicesCLIOutput(t *testing.T) {
 			t.Fatalf("CLI missing copyable pair %q", line)
 		}
 	}
-	if strings.Contains(logs.String(), "synthetic-choice-") || strings.Contains(logs.String(), "S50 Pro") {
-		t.Fatal("catalog identity in structured logs")
-	}
+	assertNoChoiceSecrets(t, logs.String())
 	if !strings.Contains(logs.String(), `"reason":"invalid_option"`) {
 		t.Fatal("selection lost config classification")
 	}
 }
 
-// The command returns a joined startup error even though stdout has full pairs.
+// The returned startup error names both telescopes and no account secret.
 func assertSafeReturnedSelection(t *testing.T, err error) {
 	t.Helper()
-	for _, format := range []string{"%v", "%+v", "%#v"} {
+	for _, format := range []string{"%v", "%+v"} {
 		t.Run("returned/"+format, func(t *testing.T) {
-			if strings.Contains(fmt.Sprintf(format, err), "synthetic-choice-") {
-				t.Fatal("returned error exposed full serials")
-			}
+			text := fmt.Sprintf(format, err)
+			assertChoiceIdentities(t, text)
+			assertNoChoiceSecrets(t, text)
 		})
 	}
+	t.Run("returned/%#v", func(t *testing.T) { assertNoChoiceSecrets(t, fmt.Sprintf("%#v", err)) })
 	for _, json := range []bool{false, true} {
 		name := "text"
 		if json {
@@ -86,9 +85,26 @@ func assertSafeReturnedSelection(t *testing.T, err error) {
 				handler = slog.NewJSONHandler(&output, nil)
 			}
 			slog.New(handler).Error("synthetic startup failure", "err", err)
-			if strings.Contains(output.String(), "synthetic-choice-") {
-				t.Fatal("returned error exposed full serials through slog")
-			}
+			assertChoiceIdentities(t, output.String())
+			assertNoChoiceSecrets(t, output.String())
 		})
+	}
+}
+
+func assertChoiceIdentities(t *testing.T, text string) {
+	t.Helper()
+	for _, identity := range []string{"S30 synthetic-choice-1234", "Seestar S50 Pro synthetic-choice-5678"} {
+		if !strings.Contains(text, identity) {
+			t.Fatalf("returned error does not name %q: %s", identity, text)
+		}
+	}
+}
+
+func assertNoChoiceSecrets(t *testing.T, text string) {
+	t.Helper()
+	for _, secret := range []string{"synthetic@example.invalid", "synthetic-password", "synthetic-token", "synthetic-profile"} {
+		if strings.Contains(text, secret) {
+			t.Fatalf("account secret %q escaped", secret)
+		}
 	}
 }

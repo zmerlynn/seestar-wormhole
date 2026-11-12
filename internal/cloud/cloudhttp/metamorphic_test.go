@@ -293,9 +293,9 @@ func TestCloudMetamorphicHTTP(t *testing.T) {
 						t.Fatal(e)
 					}
 				}
-				safeLogs := withoutIdentitySerialLogs(t, logs.String())
-				if strings.Contains(safeLogs, "sentinel") || strings.Contains(safeLogs, "SYNTHETICUID") {
-					t.Fatal("identity or secret entered logs")
+				assertNoCloudSecrets(t, logs.String())
+				if f.name == "devices" && !strings.Contains(logs.String(), `"serial":"synthetic-serial-sentinel"`) {
+					t.Fatalf("selection log does not name the telescope: %s", &logs)
 				}
 			})
 		}

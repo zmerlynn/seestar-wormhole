@@ -42,7 +42,7 @@ func TestCatalogCompleteness(t *testing.T) {
 					t.Fatalf("selection=%v error=%v, want received pair", got, err)
 				}
 				assertCatalogPageRequests(t, f, len(tc.pages))
-				assertCatalogPagePrivacy(t, logs.String())
+				assertCatalogPageSecrets(t, logs.String())
 			})
 		}
 	}
@@ -75,7 +75,7 @@ func TestCatalogSplitModelAmbiguity(t *testing.T) {
 					t.Fatalf("selection=%v error=%v, want requested pair", got, err)
 				}
 				assertCatalogPageRequests(t, f, 2)
-				assertCatalogPagePrivacy(t, logs.String())
+				assertCatalogPageSecrets(t, logs.String())
 			})
 		}
 	}

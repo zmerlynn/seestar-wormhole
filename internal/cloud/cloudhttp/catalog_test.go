@@ -92,31 +92,6 @@ func TestCatalogEscapingAndBounds(t *testing.T) {
 	}
 }
 
-func TestCatalogSerialPrivacyExceptionIsExact(t *testing.T) {
-	const serial = "private-secret"
-	for _, text := range []string{
-		`{"msg":"device_selected","serial":"private-secret"}`,
-		`{"msg":"device_catalog","devices":[{"model":"S30","serial":"private-secret"}]}`,
-	} {
-		if strings.Contains(withoutIdentitySerialLogs(t, text), serial) {
-			t.Fatal("documented serial field not allowed")
-		}
-	}
-	for _, text := range []string{
-		`{"msg":"other","serial":"private-secret"}`,
-		`{"msg":"device_catalog","serial":"private-secret"}`,
-		`{"msg":"device_catalog","devices":[{"model":"private-secret","serial":"allowed"}]}`,
-		`{"msg":"device_catalog","devices":[{"serial":"allowed","extra":"private-secret"}]}`,
-		`{"msg":"device_selected","extra":"private-secret"}`,
-		`{"msg":"device_catalog","extra":"private-secret"}`,
-		`private-secret`,
-	} {
-		if !strings.Contains(withoutIdentitySerialLogs(t, text), serial) {
-			t.Fatalf("privacy exception widened: %s", text)
-		}
-	}
-}
-
 func TestCatalogPartialFetch(t *testing.T) {
 	var logs bytes.Buffer
 	c := selectionClient(t, &selectionCloud{bodies: []string{`{"data":{"total":2,"items":[{"deviceSn":"synthetic-one","deviceModel":"S30","deviceStatus":1,"ssid":"synthetic"}]}}`, `{`}}, &logs, slog.LevelInfo)

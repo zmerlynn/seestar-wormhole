@@ -492,8 +492,9 @@ Unmatched serials or multiple pairs without a serial identify `--serial` in
 classified diagnostics. For multiple devices without a serial, the CLI prints
 an error to standard output listing every received distinct pair, one per line:
 model then **full serial**. Pass `--serial` with one of them. Incomplete-catalog, duplicate, and ambiguous
-serial refusals also list the received pairs. These lists are command output,
-not log records. Invalid serials are omitted using the command's serial rules;
+serial refusals also list the received pairs. The returned error, and any log
+record of it, names the same pairs on one line after `received telescopes:`,
+within the 4096-byte budget of the catalog message, counting any it leaves out. Invalid serials are omitted using the command's serial rules;
 all model labels use Go ASCII string escaping (without enclosing quotes) and
 are capped at 64 display characters, including escapes and a `...` truncation
 marker. Valid serial labels preserve printable ASCII verbatim without truncation; log encoders still escape their own syntax.

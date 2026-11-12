@@ -63,7 +63,7 @@ func TestCatalogPairSelection(t *testing.T) {
 				} else {
 					assertCatalogPageRequests(t, f, len(pages))
 				}
-				assertCatalogPagePrivacy(t, logs.String())
+				assertCatalogPageSecrets(t, logs.String())
 			})
 		}
 	}
@@ -78,7 +78,7 @@ func TestCatalogPairUnrelatedSerial(t *testing.T) {
 		t.Fatalf("selection=%v error=%v, want unique unrelated serial", got, err)
 	}
 	assertCatalogPageRequests(t, f, 1)
-	assertCatalogPagePrivacy(t, logs.String())
+	assertCatalogPageSecrets(t, logs.String())
 }
 
 func TestCatalogPairCapacity(t *testing.T) {
@@ -114,7 +114,7 @@ func TestCatalogPairCapacity(t *testing.T) {
 			t.Fatalf("count=%d error=%v, want no partial over-limit catalog", len(got), err)
 		}
 		assertCatalogPageRequests(t, f, len(pages))
-		assertCatalogPagePrivacy(t, logs.String())
+		assertCatalogPageSecrets(t, logs.String())
 	}
 }
 
@@ -134,6 +134,6 @@ func TestCatalogPairDuplicateBoundaries(t *testing.T) {
 			t.Fatal("duplicate pair not logged")
 		}
 		assertCatalogPageRequests(t, f, len(pages))
-		assertCatalogPagePrivacy(t, logs.String())
+		assertCatalogPageSecrets(t, logs.String())
 	}
 }
