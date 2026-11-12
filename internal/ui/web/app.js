@@ -110,6 +110,7 @@ let portFields = 0;
 function portCell(cell, input, local = false) {
   const error = document.createElement('p');
   error.className = 'error';
+  error.setAttribute('role', 'alert');
   error.id = 'port-error-' + ++portFields;
   error.hidden = true;
   input.portError = error;

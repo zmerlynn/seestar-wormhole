@@ -1227,6 +1227,7 @@ test('port rows show their own errors as you edit, and a refusal on its row', as
     const id = (await input.getAttribute('aria-describedby')).split(' ').pop();
     await expect(page.locator('#' + id)).toHaveText(message);
     await expect(page.locator('#' + id)).toBeVisible();
+    await expect(page.locator('#' + id)).toHaveAttribute('role', 'alert');
   };
   const clean = async (input) => {
     await expect(input).not.toHaveAttribute('aria-invalid', 'true');

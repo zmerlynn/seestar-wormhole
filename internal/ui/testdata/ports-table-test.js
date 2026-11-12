@@ -76,6 +76,7 @@ async function checkPortRowErrors() {
   portsEdit(remote, '445');
   portsAssert(portMessage(remote) === 'Seestar port 445 is the File sharing for other apps (SMB) row above. Set its local port there.', 'services port: ' + portMessage(remote));
   portsAssert(remote.getAttribute('aria-invalid') === 'true' && remote.getAttribute('aria-describedby').split(' ').includes(remote.portError.id), 'described');
+  portsAssert(remote.portError.getAttribute('role') === 'alert' && local.portError.getAttribute('role') === 'alert', 'row errors are alerts');
   portsEdit(remote, '32323');
   portsAssert(portMessage(remote).includes('Alpaca'), 'names Alpaca');
   portsEdit(remote, '7000');
