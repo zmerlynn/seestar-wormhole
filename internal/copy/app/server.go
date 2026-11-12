@@ -379,13 +379,14 @@ var errHistoryMove = errors.New("couldn't move the copy history from seestar-cop
 
 // moveHistory moves the old default copy history folder to the default
 // before Copy, Free up space or Clear history uses it, when set chooses no
-// folder; a folder set chooses, even the default, is never moved to. A
-// failure is logged and returned as errHistoryMove.
+// folder; a folder set chooses, even the default, is never moved to. The
+// move is logged to copying's log, so Activity shows it without the
+// folders. A failure is logged and returned as errHistoryMove.
 func (s *server) moveHistory(set Settings) error {
 	if set.HistoryDir != "" {
 		return nil
 	}
-	if err := state.MoveOldHistory(s.stateDir, s.log); err != nil {
+	if err := state.MoveOldHistory(s.stateDir, s.copy.log); err != nil {
 		s.log.Warn("move the copy history", "err", err)
 		return errHistoryMove
 	}

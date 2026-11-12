@@ -1,6 +1,7 @@
 package app
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -264,5 +265,31 @@ func TestOldHistoryNotMovedToChosenDefault(t *testing.T) {
 	}
 	if _, err := os.Stat(old); err != nil {
 		t.Errorf("the old state file: %v", err)
+	}
+}
+
+// The move shows once in copying's Activity, without the folders, even
+// with the app's log taking only warnings.
+func TestOldHistoryMoveInActivity(t *testing.T) {
+	e, _, base, _ := oldHistoryEnv(t)
+	e.s.log = slog.New(slog.NewTextHandler(&e.logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
+	e.s.copy.log = slog.New(withoutFolder{newTee(e.s.log.Handler(), e.s.copy.activity, "copy")})
+	for range 2 {
+		if w := e.post("/copy/api/clear", `{}`); w.Code != 200 {
+			t.Fatalf("clear: %d %s", w.Code, w.Body)
+		}
+	}
+	lines, _ := e.s.copy.activity.lines()
+	var moves []string
+	for _, l := range lines {
+		if strings.Contains(l.Text, "moved the copy history") {
+			moves = append(moves, l.Text)
+		}
+	}
+	if !slices.Equal(moves, []string{"moved the copy history"}) {
+		t.Errorf("Activity's moves = %q, want one, without the folders", moves)
+	}
+	if logs := e.logs.String(); strings.Contains(logs, base) {
+		t.Errorf("the log names a folder:\n%s", logs)
 	}
 }
