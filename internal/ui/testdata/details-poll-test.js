@@ -63,7 +63,7 @@ async function checkDetailsPoll(s, scenario) {
  checkContent(changed);
  if(scenario==='effective') {
   assert($('running-ports').children[0]!==oldPorts,'changed ports retained old table');
-  assert(String($('running-ports').children[0].children[1].children[10].children[0].textContent)==='5678','ports table stale');
+  assert(String($('running-ports').children[0].children[1].children[1].children[0].textContent)==='5678','ports table stale');
  }
  checkRepeated(changed);
  const cleared={...changed,events:[],log_path:''};render(cleared);

@@ -1146,8 +1146,9 @@ test('Add a port adds, edits, removes and saves a row', async ({ page, startApp 
   const app = await startApp({ 'config.json': { ...lan(), route: 'account', email: 'synthetic@example.invalid', ports: [{ local: 7001, device: 7000 }] } });
   await openApp(page, app.url);
   await remoteAdvanced(page);
+  // The Services rows are in Seestar port order.
+  await expect(page.locator('#ports tbody td:nth-child(2)')).toHaveText(['80', '445', '4350', '4361', '4554', '4555', '4700', '4800', '4801', '4804', '32323']);
   // The saved added port loads as a row of its own.
-  await expect(page.locator('#ports tbody tr')).toHaveCount(11);
   await expect(addedRow(page, 1).remote).toHaveValue('7000');
   await expect(addedRow(page, 1).local).toHaveValue('7001');
 

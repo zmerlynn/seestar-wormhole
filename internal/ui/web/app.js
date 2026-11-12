@@ -73,13 +73,14 @@ function settings() {
     email: accountEmail(), remember_password: usingSaved()
   };
 }
+// The Services rows, in Seestar port order.
 const services = [
-  [4700, 'Seestar control'], [80, 'Image downloads (web)'],
-  [4800, 'Main camera images'], [4804, 'Wide camera images'],
-  [4801, 'Album and files'], [4554, 'Main camera video'],
-  [4555, 'Wide camera video (some models)'], [4350, 'Firmware updater'],
-  [4361, 'Firmware upload'], [32323, 'Alpaca (NINA and other astronomy apps)'],
-  [445, 'File sharing for other apps (SMB)']
+  [80, 'Image downloads (web)'], [445, 'File sharing for other apps (SMB)'],
+  [4350, 'Firmware updater'], [4361, 'Firmware upload'],
+  [4554, 'Main camera video'], [4555, 'Wide camera video (some models)'],
+  [4700, 'Seestar control'], [4800, 'Main camera images'],
+  [4801, 'Album and files'], [4804, 'Wide camera images'],
+  [32323, 'Alpaca (NINA and other astronomy apps)']
 ];
 function portValues(s) {
   const ports = Object.fromEntries(portDefaults.map(p => [p.device, p.local]));

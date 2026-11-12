@@ -279,7 +279,7 @@
       assert(rows.length === 11 && !$('running-ports').querySelector('input'), 'running ports must use read-only table');
       assert(Array.from($('running-ports').querySelectorAll('th')).map(e => e.textContent).join('|') === 'Local port|Seestar port|Purpose', 'ambiguous running port headings');
       assert(!$('running-ports-box').open && $('running-ports-box').querySelector('summary').textContent === 'Ports forwarded to your Seestar' && $('phone-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'running ports must sit closed below the Seestar app steps');
-      assert(rows[1].cells[0].textContent === '80' && rows[10].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
+      assert(rows[0].cells[0].textContent === '80' && rows[1].cells[0].textContent === '1234' && rows[2].cells[0].textContent === 'Off', 'running table lost effective values');
       assert($('phone-steps').querySelector('p').textContent === "On your phone, open the Seestar app and select your Seestar from the LAN tab.", 'phone instructions omit the LAN tab');
       assert(!$('phone-steps').hidden && $('phone-steps').querySelector('h2').textContent === 'Using the Seestar app' && !$('phone-steps').querySelector('ol'), 'Seestar app help too prominent or missing');
       assert(!$('copy-steps').hidden && $('copy-port').textContent === '1234' && $('copy-steps').querySelector('h2').textContent === 'Copying files' && $('phone-steps').compareDocumentPosition($('copy-steps')) & Node.DOCUMENT_POSITION_FOLLOWING && $('copy-steps').compareDocumentPosition($('running-ports-box')) & Node.DOCUMENT_POSITION_FOLLOWING, 'copying help missing, wrong port or misplaced');
@@ -312,7 +312,7 @@
     await check('Structured ports and validation', async () => {
       $('password').value = 'synthetic-password';
       const rows = $('ports').querySelectorAll('tbody tr');
-      assert(rows.length === 11 && rows[0].cells[1].textContent === '4700' && rows[9].cells[1].textContent === '32323' && rows[9].cells[2].textContent === 'Alpaca (NINA and other astronomy apps)' && rows[10].cells[2].textContent === 'File sharing for other apps (SMB)', 'port rows or order');
+      assert([...rows].map(row => row.cells[1].textContent).join() === '80,445,4350,4361,4554,4555,4700,4800,4801,4804,32323' && rows[10].cells[2].textContent === 'Alpaca (NINA and other astronomy apps)' && rows[1].cells[2].textContent === 'File sharing for other apps (SMB)', 'port rows or order');
       assert([...$('ports').querySelectorAll('input')].every(input => input.type === 'number' && input.min === '1' && input.max === '65535'), 'port number bounds');
       for (const value of ['0', '-1', '65536', '1.5']) {
         $('port-80').value = value;
