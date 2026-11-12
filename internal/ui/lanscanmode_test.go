@@ -511,6 +511,11 @@ func TestModeChangeDoesNotReviveRejectedAddress(t *testing.T) {
 // it waited for that search or came after it.
 func TestModeChangeDuringASearch(t *testing.T) {
 	s, l, n := scanModeServer(t, "start")
+	// The first connect's scan keeps seeing SERIAL-A at 192.0.2.30 after
+	// the move: a reply from there with SERIAL-B while it runs would
+	// rightly make it leave 192.0.2.30 for 192.0.2.40 itself, and whether
+	// one comes before its dial ends is down to timing.
+	n.perScan = true
 	o := copyMountOptions(s, copyapp.MountOptions{})
 	ctx := landiscovery.WithRun(t.Context(), &landiscovery.Run{})
 	connect := func() error {

@@ -30,6 +30,9 @@ type lanNet struct {
 	sendErr error
 	sent    []netip.Addr
 	listens int // sockets opened: one per scan or probe
+	// perScan, when set, answers each socket as the network was when it
+	// opened, so a scan already running doesn't see a later set.
+	perScan bool
 }
 
 func (n *lanNet) scans() int {
@@ -54,8 +57,12 @@ func (n *lanNet) sends() []netip.Addr {
 func (n *lanNet) conn() *lanConn {
 	n.mu.Lock()
 	n.listens++
+	var answers map[netip.Addr][3]string
+	if n.perScan {
+		answers = n.answers
+	}
 	n.mu.Unlock()
-	return &lanConn{n: n, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}
+	return &lanConn{n: n, answers: answers, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}
 }
 
 // useLAN makes the app's scanner scan n, from a computer at 192.0.2.5/24.
@@ -93,6 +100,7 @@ type lanDatagram struct {
 
 type lanConn struct {
 	n        *lanNet
+	answers  map[netip.Addr][3]string // n's when it opened, if n.perScan
 	mu       sync.Mutex
 	deadline time.Time
 	closed   bool
@@ -134,7 +142,11 @@ func (c *lanConn) WriteTo(b []byte, _ *ipv4.ControlMessage, to net.Addr) (int, e
 	if c.n.sendErr != nil {
 		return 0, c.n.sendErr
 	}
-	for address, a := range c.n.answers {
+	answers := c.n.answers
+	if c.answers != nil {
+		answers = c.answers
+	}
+	for address, a := range answers {
 		if target == address || target == netip.MustParseAddr("192.0.2.255") {
 			reply := `{"jsonrpc":"2.0","method":"scan_iscope","result":{"sn":"` + a[0] + `","ssid":"` + a[1] + `","product_model":"` + a[2] +
 				`","tcp_client_num":` + strconv.Itoa(c.n.clients) + `,"connect_lock":false,"password":"0123456789abcdef0123456789abcdef"},"code":0,"id":1}`
