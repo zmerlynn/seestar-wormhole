@@ -1,6 +1,7 @@
 package ui
 
 import (
+	"context"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
@@ -48,6 +50,14 @@ func (n *lanNet) sends() []netip.Addr {
 	return append([]netip.Addr(nil), n.sent...)
 }
 
+// conn is a socket on n.
+func (n *lanNet) conn() *lanConn {
+	n.mu.Lock()
+	n.listens++
+	n.mu.Unlock()
+	return &lanConn{n: n, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}
+}
+
 // useLAN makes the app's scanner scan n, from a computer at 192.0.2.5/24.
 func useLAN(t *testing.T, n *lanNet) {
 	t.Helper()
@@ -55,14 +65,9 @@ func useLAN(t *testing.T, n *lanNet) {
 	t.Cleanup(func() { lanScanner = saved })
 	lanScanner = &landiscovery.Scanner{
 		Interfaces: lanInterfaces{},
-		Listen: func() (landiscovery.Conn, error) {
-			n.mu.Lock()
-			n.listens++
-			n.mu.Unlock()
-			return &lanConn{n: n, in: make(chan lanDatagram, 64), wake: make(chan struct{}, 1)}, nil
-		},
-		Interval: 20 * time.Millisecond,
-		Window:   200 * time.Millisecond,
+		Listen:     func() (landiscovery.Conn, error) { return n.conn(), nil },
+		Interval:   20 * time.Millisecond,
+		Window:     200 * time.Millisecond,
 	}
 }
 
@@ -420,4 +425,77 @@ func TestScanLeavesTheLogAppendable(t *testing.T) {
 	if text := trailText(t, s); !strings.Contains(text, "App opened.") {
 		t.Fatalf("trail %s", text)
 	}
+}
+
+// The page's probe of a typed address and Test's serial hook share one
+// probe: one socket, one result. A second probe that would hear nothing
+// can't make Test miss the serial the page's probe heard.
+func TestTestSharesThePagesProbe(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		n := twoTelescopes()
+		useLAN(t, n)
+		s := testServer(t)
+		listen := lanScanner.Listen
+		opened, resume := make(chan struct{}, 2), make(chan struct{})
+		var calls int
+		lanScanner.Listen = func() (landiscovery.Conn, error) {
+			calls++
+			opened <- struct{}{}
+			if calls == 1 {
+				<-resume
+				return listen()
+			}
+			// A second probe would hear nothing.
+			return (&lanNet{}).conn(), nil
+		}
+		scanned := make(chan scanView, 1)
+		go func() {
+			v, _ := s.scan(t.Context(), "192.0.2.40")
+			scanned <- v
+		}()
+		<-opened
+		heard := make(chan bool, 1)
+		go func() { heard <- s.serialAt(t.Context(), "192.0.2.40") }()
+		synctest.Wait()
+		close(resume)
+		if v, ok := <-scanned, <-heard; len(v.Telescopes) != 1 || !ok || len(opened) != 0 || calls != 1 {
+			t.Fatalf("page heard %+v, Test heard %v, %d probes", v.Telescopes, ok, calls)
+		}
+		if serial, _ := s.lan.serial(netip.MustParseAddr("192.0.2.40")); serial != "SERIAL-B" {
+			t.Fatalf("remembered %q", serial)
+		}
+	})
+}
+
+// A caller that stops waiting doesn't end the shared probe for another.
+func TestSharedProbeOutlivesACaller(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		n := twoTelescopes()
+		useLAN(t, n)
+		s := testServer(t)
+		listen := lanScanner.Listen
+		resume := make(chan struct{})
+		lanScanner.Listen = func() (landiscovery.Conn, error) {
+			<-resume
+			return listen()
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		scanned := make(chan error, 1)
+		go func() {
+			_, err := s.scan(ctx, "192.0.2.40")
+			scanned <- err
+		}()
+		synctest.Wait()
+		heard := make(chan bool, 1)
+		go func() { heard <- s.serialAt(t.Context(), "192.0.2.40") }()
+		synctest.Wait()
+		cancel()
+		if err := <-scanned; !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+		close(resume)
+		if !<-heard || n.scans() != 1 {
+			t.Fatalf("Test didn't hear the serial; %d probes", n.scans())
+		}
+	})
 }

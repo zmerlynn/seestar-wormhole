@@ -31,6 +31,62 @@ type lanState struct {
 	seen    map[netip.Addr]sighting
 	gen     uint64
 	follows map[followKey]*following
+	probes  map[netip.Addr]*lanProbe
+}
+
+// lanProbe is a probe of one address in flight. The page's probe of a
+// typed address and Test's serial hook share it, so the two get one
+// result rather than two that may disagree.
+type lanProbe struct {
+	done   chan struct{} // closed once result and err are set
+	result landiscovery.ScanResult
+	err    error
+}
+
+// maxProbes bounds the probes in flight.
+const maxProbes = 16
+
+// errProbes is a probe refused because maxProbes are in flight.
+var errProbes = errors.New("too many probes of typed addresses at once")
+
+// probe probes address, an IPv4 address, or joins the probe of it in
+// flight, and returns what that probe heard. The probe is numbered once
+// and remembered once, as it ends, whichever callers are still waiting;
+// it runs to its own end even when they stop waiting, and each stops
+// waiting when its ctx ends.
+func (l *lanState) probe(ctx context.Context, address netip.Addr) (landiscovery.ScanResult, error) {
+	l.mu.Lock()
+	p := l.probes[address]
+	if p == nil {
+		if len(l.probes) >= maxProbes {
+			l.mu.Unlock()
+			return landiscovery.ScanResult{}, errProbes
+		}
+		if l.probes == nil {
+			l.probes = make(map[netip.Addr]*lanProbe)
+		}
+		l.gen++
+		gen, scanner := l.gen, lanScanner
+		p = &lanProbe{done: make(chan struct{})}
+		l.probes[address] = p
+		go func() {
+			p.result, p.err = scanner.Probe(context.WithoutCancel(ctx), address)
+			if p.err == nil {
+				l.remember(gen, address, p.result)
+			}
+			l.mu.Lock()
+			delete(l.probes, address)
+			l.mu.Unlock()
+			close(p.done)
+		}()
+	}
+	l.mu.Unlock()
+	select {
+	case <-p.done:
+		return p.result, p.err
+	case <-ctx.Done():
+		return landiscovery.ScanResult{}, ctx.Err()
+	}
 }
 
 // sighting is the serial the latest scan or probe to finish, numbered gen,
@@ -107,7 +163,8 @@ func (l *lanState) serial(address netip.Addr) (string, bool) {
 // serialAt reports whether the latest scan or probe heard a serial at
 // host, an IPv4 address: Test's [copyapp.MountOptions.SerialAt]. When
 // none has heard one there and scans aren't set never, it probes host,
-// as the page's own probe beside Test does, without a line in Activity.
+// sharing the page's own probe beside Test when it is in flight, without a
+// line in Activity.
 func (s *server) serialAt(ctx context.Context, host string) bool {
 	ip, err := netip.ParseAddr(host)
 	if err != nil || !ip.Unmap().Is4() {
@@ -120,12 +177,9 @@ func (s *server) serialAt(ctx context.Context, host string) bool {
 	if s.lanScan() == landiscovery.ScanOff {
 		return false
 	}
-	gen := s.lan.begin()
-	result, err := lanScanner.Probe(ctx, ip)
-	if err != nil || ctx.Err() != nil {
+	if _, err := s.lan.probe(ctx, ip); err != nil {
 		return false
 	}
-	s.lan.remember(gen, ip, result)
 	_, ok := s.lan.serial(ip)
 	return ok
 }
@@ -207,24 +261,22 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 		}
 	}
 	// A probe has its own socket and stops at the first answer, so it
-	// doesn't wait behind a scan.
+	// doesn't wait behind a scan; Test's serial hook shares it.
 	var result landiscovery.ScanResult
 	var err error
-	var gen uint64
 	if probe.IsValid() {
-		gen = s.lan.begin()
-		result, err = lanScanner.Probe(ctx, probe)
+		result, err = s.lan.probe(ctx, probe)
 	} else {
 		s.lan.scanMu.Lock()
-		gen = s.lan.begin()
+		gen := s.lan.begin()
 		result, err = lanScanner.Scan(ctx)
 		s.lan.scanMu.Unlock()
+		if err == nil && ctx.Err() == nil {
+			s.lan.remember(gen, probe, result)
+		}
 	}
 	if ctx.Err() != nil {
 		return scanView{}, ctx.Err()
-	}
-	if err == nil {
-		s.lan.remember(gen, probe, result)
 	}
 	view := scanView{OK: true, Telescopes: []scanTelescope{}, Replies: result.Replies, Blocked: result.Blocked}
 	s.mu.Lock()
