@@ -294,6 +294,30 @@ func TestScanTypedAddress(t *testing.T) {
 	}
 }
 
+// Test's question of whether a serial answered at a typed address: what
+// a scan heard there, or else a probe of it, unless set never to scan.
+func TestSerialAt(t *testing.T) {
+	n := twoTelescopes()
+	useLAN(t, n)
+	s := testServer(t)
+	if !s.serialAt(t.Context(), "192.0.2.40") || len(n.sends()) == 0 {
+		t.Fatalf("a probe that heard a serial: sent %v", n.sends())
+	}
+	if serial, ok := s.lan.serial(netip.MustParseAddr("192.0.2.40")); !ok || serial != "SERIAL-B" {
+		t.Fatalf("the probe wasn't remembered: %q", serial)
+	}
+	if s.serialAt(t.Context(), "192.0.2.77") || s.serialAt(t.Context(), "seestar.example.invalid") {
+		t.Fatal("a serial where none answered")
+	}
+	s.mu.Lock()
+	s.settings.LANScan = string(landiscovery.ScanOff)
+	s.mu.Unlock()
+	before := len(n.sends())
+	if !s.serialAt(t.Context(), "192.0.2.40") || s.serialAt(t.Context(), "192.0.2.20") || len(n.sends()) != before {
+		t.Fatalf("set never to scan: sent %v", n.sends()[before:])
+	}
+}
+
 // Saving an address a scan saw saves its serial with it; the page never
 // gets the serial back.
 func TestSaveRouteKeepsScannedSerial(t *testing.T) {

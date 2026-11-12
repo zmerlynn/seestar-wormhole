@@ -579,7 +579,9 @@ async function lanTest() {
   lanPending = 'test';
   lanReach = null;
   lanError('');
-  lanResult('Connecting to ' + (typed.includes(':') ? typed : typed + ':445') + '…');
+  // An address without a port is tested on 445, and on the proxy's 4445
+  // too when it answered a scan; the answer says which connected.
+  lanResult('Connecting to ' + typed + '…');
   controls();
   let focus = '', r = null;
   // The scan request goes straight to the typed address too, so a Save

@@ -40,6 +40,12 @@ type MountOptions struct {
 	Test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	Reach   func(ctx context.Context, endpoint string) error
 	Remover func(ctx context.Context, t Target) (remote.Remover, error)
+	// SerialAt, if set, reports whether a scan or probe heard a
+	// telescope's serial at host, an address typed for Test without a
+	// port, and may ask host to find out. Test runs it alongside the
+	// test of port 445 and, when that fails and it reports true, tests
+	// the proxy's SMB port there too, within the same time. nil is false.
+	SerialAt func(ctx context.Context, host string) bool
 	// Settings are the copy settings saved before, or nil for none yet.
 	// Save keeps new ones, and they take effect only if it succeeds; nil
 	// keeps them in memory only. It is called with the Mount's locks

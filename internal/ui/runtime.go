@@ -211,6 +211,7 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 	o.Target = handler.copyTarget
 	o.Name = handler.telescopeName
 	o.KnowSerial = handler.knowSerial
+	o.SerialAt = handler.serialAt
 	o.Report = handler.controller.log.addOutcome
 	o.Dial = func(ctx context.Context, t copyapp.Target) (remote.Session, error) {
 		switch {
@@ -295,7 +296,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 		}
 		return errors.New("Could not load saved settings safely.\n\n" + settingsPath + "\n\nCheck this file, then reopen seestar-wormhole.")
 	}
-	// A saved value a load replaced is logged, never the value itself.
+	// A saved value a load replaced is logged, and the serial's value too.
 	logFallbacks := func(fallbacks []diagnostic.Fallback) {
 		diagnostic.LogFallbacks(diagnostic.Logger("json", logs, slog.LevelWarn), fallbacks)
 	}

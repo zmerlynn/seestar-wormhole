@@ -104,6 +104,32 @@ func (l *lanState) serial(address netip.Addr) (string, bool) {
 	return s.serial, ok && s.serial != ""
 }
 
+// serialAt reports whether the latest scan or probe heard a serial at
+// host, an IPv4 address: Test's [copyapp.MountOptions.SerialAt]. When
+// none has heard one there and scans aren't set never, it probes host,
+// as the page's own probe beside Test does, without a line in Activity.
+func (s *server) serialAt(ctx context.Context, host string) bool {
+	ip, err := netip.ParseAddr(host)
+	if err != nil || !ip.Unmap().Is4() {
+		return false
+	}
+	ip = ip.Unmap()
+	if _, ok := s.lan.serial(ip); ok {
+		return true
+	}
+	if s.lanScan() == landiscovery.ScanOff {
+		return false
+	}
+	gen := s.lan.begin()
+	result, err := lanScanner.Probe(ctx, ip)
+	if err != nil || ctx.Err() != nil {
+		return false
+	}
+	s.lan.remember(gen, ip, result)
+	_, ok := s.lan.serial(ip)
+	return ok
+}
+
 // scanTelescope is one telescope as the page lists it. Saved says whether
 // it is the one saved.
 type scanTelescope struct {
@@ -412,6 +438,16 @@ func lanSearch[T io.Closer](ctx context.Context, h *server, t copyapp.Target, ge
 // named is how Activity names t (see [landiscovery.Telescope.Label]),
 // or, when the scan didn't see it, the telescope with serial, or another
 // telescope for neither.
+func named(t *landiscovery.Telescope, serial string) string {
+	switch {
+	case t != nil:
+		return t.Label()
+	case serial != "":
+		return landiscovery.Telescope{Serial: serial}.Label()
+	}
+	return "Another telescope"
+}
+
 // joinAddrs is addrs separated by commas.
 func joinAddrs(addrs []netip.Addr) string {
 	var b strings.Builder
@@ -422,14 +458,4 @@ func joinAddrs(addrs []netip.Addr) string {
 		b.WriteString(a.String())
 	}
 	return b.String()
-}
-
-func named(t *landiscovery.Telescope, serial string) string {
-	switch {
-	case t != nil:
-		return t.Label()
-	case serial != "":
-		return landiscovery.Telescope{Serial: serial}.Label()
-	}
-	return "Another telescope"
 }
