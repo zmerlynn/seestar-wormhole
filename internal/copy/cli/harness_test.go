@@ -33,14 +33,6 @@ var errNoDevice = errors.New("no device in tests")
 func TestMain(m *testing.M) {
 	dial = func(context.Context, string, *slog.Logger) (remote.Session, error) { return nil, errNoDevice }
 	dialRemover = func(context.Context, string, *slog.Logger) (remote.Remover, error) { return nil, errNoDevice }
-	// A followed endpoint dials through whatever dial and dialRemover a
-	// test set.
-	dialAs = func(ctx context.Context, _, endpoint string, log *slog.Logger) (remote.Session, error) {
-		return dial(ctx, endpoint, log)
-	}
-	dialRemoverAs = func(ctx context.Context, _, endpoint string, log *slog.Logger) (remote.Remover, error) {
-		return dialRemover(ctx, endpoint, log)
-	}
 	os.Exit(m.Run())
 }
 

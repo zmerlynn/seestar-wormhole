@@ -20,9 +20,9 @@ type errValuer struct{ err error }
 func (v errValuer) LogValue() slog.Value { return slog.AnyValue(v.err) }
 
 // A failed Save, and errors logged under any key, in a group or through
-// a LogValuer, put no folder, serial, address or host name in the log,
-// Activity or the page's alert, and keep what failed.
-func TestFailuresNameNothing(t *testing.T) {
+// a LogValuer, put no folder in the log, Activity or the page's alert, and
+// keep what failed; a network error names the address or host it was for.
+func TestFailuresNameNoFolder(t *testing.T) {
 	const serial = "SN-SENTINEL-9"
 	private := filepath.Join(t.TempDir(), "FOLDER-SENTINEL-"+serial)
 	e, f := newNativeEnv(t)
@@ -33,6 +33,8 @@ func TestFailuresNameNothing(t *testing.T) {
 	}
 
 	file := filepath.Join(private, "a.jpg")
+	refused := &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.IPv4(192, 0, 2, 77), Port: 445}, Err: syscall.ECONNREFUSED}
+	lookup := &net.DNSError{Err: "no such host", Name: "telescope.invalid", Server: "192.0.2.53:53", IsNotFound: true}
 	for _, c := range []struct {
 		err  error
 		want string
@@ -43,9 +45,9 @@ func TestFailuresNameNothing(t *testing.T) {
 		{&os.LinkError{Op: "rename", Old: file + ".tmp", New: file, Err: syscall.EXDEV}, syscall.EXDEV.Error()},
 		{fmt.Errorf("history %s: %w", file, state.ErrLocked), state.ErrLocked.Error()},
 		{fmt.Errorf("lock %s: %w", private, state.ErrFolderLocked), state.ErrFolderLocked.Error()},
-		{&net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.IPv4(192, 0, 2, 77), Port: 445}, Err: syscall.ECONNREFUSED}, "connection refused"},
-		{&net.DNSError{Err: "no such host", Name: "telescope-sentinel.invalid", Server: "192.0.2.53:53", IsNotFound: true}, "host not found"},
-		{fmt.Errorf("telescope %s at %s: %w", serial, "192.0.2.77:445", errors.New("synthetic")), "synthetic"},
+		{refused, refused.Error()},
+		{fmt.Errorf("dial 192.0.2.77:445: %w", lookup), lookup.Error()},
+		{fmt.Errorf("telescope at %s: %w", private, errors.New("synthetic")), "synthetic"},
 	} {
 		if got := reason(c.err); got != c.want {
 			t.Errorf("reason(%v) = %q, want %q", c.err, got, c.want)
@@ -63,12 +65,10 @@ func TestFailuresNameNothing(t *testing.T) {
 		activity.WriteString(l.Text + "\n")
 	}
 	for where, text := range map[string]string{"log": e.logs.String(), "Activity": activity.String()} {
-		for _, s := range []string{"FOLDER-SENTINEL", serial, "192.0.2.77", "192.0.2.53", "telescope-sentinel"} {
-			if strings.Contains(text, s) {
-				t.Errorf("%s holds %q:\n%s", where, s, text)
-			}
+		if strings.Contains(text, "FOLDER-SENTINEL") {
+			t.Errorf("%s holds the folder:\n%s", where, text)
 		}
-		for _, s := range []string{"permission denied", "connection refused", "host not found", state.ErrLocked.Error()} {
+		for _, s := range []string{"permission denied", "192.0.2.77:445: connection refused", "lookup telescope.invalid on 192.0.2.53:53: no such host", state.ErrLocked.Error()} {
 			if !strings.Contains(text, s) {
 				t.Errorf("%s lacks %q:\n%s", where, s, text)
 			}
@@ -77,11 +77,10 @@ func TestFailuresNameNothing(t *testing.T) {
 }
 
 // What is safe to show is kept as it is: this app's errors, and the
-// telescope connection's, which name no address.
+// telescope connection's.
 func TestReasonKeepsSafeText(t *testing.T) {
 	for _, s := range []string{
 		"Not connected. Go to Connection to reconnect",
-		SavedLabel + ": dial tcp: name lookup failed",
 		errNoFolder.Error(), ErrClaim.Error(),
 	} {
 		if got := reason(fmt.Errorf("%w", errors.New(s))); got != s {

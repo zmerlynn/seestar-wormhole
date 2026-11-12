@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -845,7 +846,7 @@ func (s *server) adopt(w http.ResponseWriter, token string) {
 		conflict("Couldn't save settings: " + reason(err) + ". Try again.")
 		return
 	}
-	s.log.Info("settings saved", "telescope", "the address's folder is this telescope's now")
+	s.log.Info("settings saved", "telescope", t.Telescope, "folder", "the address's folder")
 	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpSaveSettings, Seq: seq})
 	if oldSessions != nil {
 		oldSessions.Close()
@@ -863,11 +864,10 @@ func (s *server) runTest(w http.ResponseWriter, ctx context.Context, in input) {
 		return
 	}
 	entries, err := s.testLAN(ctx, endpoint)
-	// The address is the user's to see on the page, never in a log.
 	if err != nil {
-		s.log.Warn("test failed", "err", err)
+		s.log.Warn("test failed", "endpoint", endpoint, "err", err)
 	} else {
-		s.log.Info("test passed")
+		s.log.Info("test passed", "endpoint", endpoint)
 	}
 	s.rep.send(Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpTest, Err: err, Canceled: ctx.Err() != nil && err != nil, Seq: s.rep.next()})
 	localhttp.Respond(w, http.StatusOK, struct {
@@ -1463,14 +1463,15 @@ func within(folder, dst string) (top, rel string, ok bool) {
 // maxDays caps Only files older than N days: 100 years.
 const maxDays = 36500
 
-// reason is a short text for err that names no folder, file, address,
-// host or serial, for logs, Activity and the page's error messages: a
-// transfer that ended early is [remote.ErrShort], without its byte
-// counts; else err's own text when that is [safeText], as this app's errors and the
-// telescope connection's are; else the class of a system or network
-// failure, such as "permission denied"; else the first safe text in err's
-// chain, such as a sentinel a dependency wrapped with a path; and
-// otherwise "operation failed".
+// reason is a short text for err that names no folder or file, for logs,
+// Activity and the page's error messages: a transfer that ended early is
+// [remote.ErrShort], without its byte counts; else err's own text when
+// that is [safeText], as this app's errors and the telescope
+// connection's are; else the text of a network error in err's chain,
+// which names the telescope's address or host name; else the class of a
+// system failure, such as "permission denied"; else the first safe text
+// in err's chain, such as a sentinel a dependency wrapped with a path;
+// and otherwise "operation failed".
 func reason(err error) string {
 	if err == nil {
 		return "none"
@@ -1479,6 +1480,9 @@ func reason(err error) string {
 		return remote.ErrShort.Error()
 	}
 	if t := err.Error(); safeText(t) {
+		return t
+	}
+	if t, ok := networkText(err); ok {
 		return t
 	}
 	if c := diagnostic.Class(err); c != "operation_failed" {
@@ -1491,6 +1495,18 @@ func reason(err error) string {
 		return t
 	}
 	return "operation failed"
+}
+
+// networkText is the text of the first TCP or UDP error, or name lookup
+// error, in err's chain: it names an address or a host, never a folder.
+func networkText(err error) (string, bool) {
+	if op, ok := errors.AsType[*net.OpError](err); ok && (strings.HasPrefix(op.Net, "tcp") || strings.HasPrefix(op.Net, "udp")) {
+		return op.Error(), true
+	}
+	if dns, ok := errors.AsType[*net.DNSError](err); ok {
+		return dns.Error(), true
+	}
+	return "", false
 }
 
 // classText reads better than a class with its underscores as spaces.

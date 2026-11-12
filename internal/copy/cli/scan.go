@@ -41,12 +41,12 @@ point-to-point (VPN) interfaces, and replies from this computer's own
 addresses, such as a proxy here that answers for the phone app.
 --format text, the default, writes one line per address on stdout: the
 address, busy or - (busy when the telescope reports as many clients as the
-phone app allows; copying still works), the name and the model, each
-quoted in Go string syntax if it holds a space, a quote, a backslash, a
-character that is not printable, or bytes that are not UTF-8.
+phone app allows; copying still works), the name, the model and the serial
+number, each quoted in Go string syntax if it holds a space, a quote, a
+backslash, a character that is not printable, or bytes that are not UTF-8.
 --format json writes one JSON object with the members telescopes (each
-with name, model, addresses and busy) and replies, the number of replies.
-scan never shows a telescope's serial number. A telescope found here can
+with name, model, serial, addresses and busy) and replies, the number of
+replies. The log names each telescope found. A telescope found here can
 be given to sync, find, browse and delete as --endpoint ADDRESS:445.
 On macOS, scan needs Local Network access (System Settings > Privacy &
 Security > Local Network). Without it, sending fails and scan says so.
@@ -70,16 +70,17 @@ send, 2 on a usage error.`,
 	return c
 }
 
-// scanned is a telescope as scan's JSON lists it: no serial.
+// scanned is a telescope as scan's JSON lists it.
 type scanned struct {
 	Name      string   `json:"name"`
 	Model     string   `json:"model"`
+	Serial    string   `json:"serial"`
 	Addresses []string `json:"addresses"`
 	Busy      bool     `json:"busy"`
 }
 
 // runScan scans this network and lists what answered to out. The log
-// records the reply and telescope counts only.
+// records the reply and telescope counts, and names each telescope.
 func runScan(ctx context.Context, o scanOptions, out io.Writer, log *slog.Logger) error {
 	result, err := lanScanner.Scan(ctx)
 	if err != nil {
@@ -97,11 +98,12 @@ func runScan(ctx context.Context, o scanOptions, out io.Writer, log *slog.Logger
 		Replies    int       `json:"replies"`
 	}{Telescopes: []scanned{}, Replies: result.Replies}
 	for _, t := range result.Telescopes {
-		row := scanned{Name: t.Name, Model: t.Model, Addresses: []string{}, Busy: t.Busy()}
+		row := scanned{Name: t.Name, Model: t.Model, Serial: t.Serial, Addresses: []string{}, Busy: t.Busy()}
 		for _, a := range t.Addresses {
 			row.Addresses = append(row.Addresses, a.String())
 		}
 		list.Telescopes = append(list.Telescopes, row)
+		log.Info("found a telescope", "telescope", t.Label(), "addresses", row.Addresses)
 	}
 	w := bufio.NewWriter(out)
 	if o.format == "json" {
@@ -115,7 +117,7 @@ func runScan(ctx context.Context, o scanOptions, out io.Writer, log *slog.Logger
 				busy = "busy"
 			}
 			for _, a := range t.Addresses {
-				if _, err = fmt.Fprintf(w, "%s %s %s %s\n", a, busy, quoteField(t.Name), quoteField(t.Model)); err != nil {
+				if _, err = fmt.Fprintf(w, "%s %s %s %s %s\n", a, busy, quoteField(t.Name), quoteField(t.Model), quoteField(t.Serial)); err != nil {
 					break
 				}
 			}
@@ -130,8 +132,8 @@ func runScan(ctx context.Context, o scanOptions, out io.Writer, log *slog.Logger
 	return nil
 }
 
-// quoteField is a name or model as a text line shows it: quoted as a path
-// is, and "" when empty, so a line always has four fields.
+// quoteField is a name, model or serial as a text line shows it: quoted
+// as a path is, and "" when empty, so a line always has five fields.
 func quoteField(s string) string {
 	if s == "" {
 		return `""`

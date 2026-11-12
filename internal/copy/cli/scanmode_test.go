@@ -19,14 +19,11 @@ import (
 )
 
 // modeDial is followDial for a test of f's mode: it reports what was
-// dialed, labeled, and the scans so far.
+// dialed and the scans so far.
 func modeDial(t *testing.T, n *lanNet, f *follow, log *slog.Logger, up ...string) (fakeSession, []string, int, error) {
 	t.Helper()
-	var calls, plain, names []string
-	got, err := followDial(t.Context(), f, f.saved, log, fakeDial(&plain, up...), fakeDialAs(&names, &calls, up...))
-	if plain != nil {
-		t.Fatalf("a followed endpoint dialed unlabeled: %q", plain)
-	}
+	var calls []string
+	got, err := followDial(t.Context(), f, f.saved, log, fakeDial(&calls, up...))
 	return got, calls, n.scans(), err
 }
 
@@ -53,7 +50,7 @@ func TestFollowDialStartScansOncePerRun(t *testing.T) {
 				t.Fatalf("saved %q, a later connect = %q, %v; calls %q scans %d", saved, got, err, calls, scans-before)
 			}
 		}
-		if strings.Count(logs.String(), "found the saved telescope at another address") != 1 {
+		if strings.Count(logs.String(), "found the telescope at another address") != 1 {
 			t.Errorf("logs: %s", logs.String())
 		}
 	}
@@ -95,10 +92,8 @@ func TestFollowDialStartRescansAfterAFailedConnect(t *testing.T) {
 	if !errors.Is(err, landiscovery.ErrOtherTelescope) || calls != nil || scans != 4 {
 		t.Fatalf("the connect after: %v; calls %q scans %d", err, calls, scans)
 	}
-	for _, private := range []string{"SERIAL-", "192.0.2.", "S50_A"} {
-		if strings.Contains(logs.String(), private) {
-			t.Errorf("logs carry %q: %s", private, logs.String())
-		}
+	if !strings.Contains(logs.String(), `other="other (Seestar S30, serial SERIAL-C)"`) {
+		t.Errorf("logs: %s", logs.String())
 	}
 }
 
@@ -115,7 +110,7 @@ func TestFollowDialConnectScansEachConnect(t *testing.T) {
 	}
 }
 
-// off dials the saved address, labeled, never scanning and logging
+// off dials the saved address, never scanning and logging
 // nothing, even where a scan would find the telescope moved or another
 // one at the saved address.
 func TestFollowDialOffNeverScans(t *testing.T) {
@@ -170,7 +165,7 @@ func findScans(t *testing.T, saved Saved, args ...string) (int, int, []string) {
 	dev := newDevice()
 	dev.set("a.fit", "abc", findDir)
 	dev.use(t)
-	useDialAs(t)
+	useDial(t)
 	device := dial
 	var calls []string
 	dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Session, error) {
@@ -180,13 +175,7 @@ func findScans(t *testing.T, saved Saved, args ...string) (int, int, []string) {
 		}
 		return device(ctx, endpoint, log)
 	}
-	dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
-		return dial(ctx, endpoint, log)
-	}
-	code, _, errs := invoke(t, append([]string{"find", "--profile", "default"}, args...)...)
-	if strings.Contains(errs, "192.0.2.") || strings.Contains(errs, "SERIAL-") {
-		t.Errorf("logs: %s", errs)
-	}
+	code, _, _ := invoke(t, append([]string{"find", "--profile", "default"}, args...)...)
 	return code, n.scans(), calls
 }
 

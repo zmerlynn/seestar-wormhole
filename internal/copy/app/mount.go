@@ -53,7 +53,7 @@ type MountOptions struct {
 	// <serial>" or for an address "<model> <host> <port>": the base of
 	// the folder suggested for it and the name in the offer of an
 	// address's folder. It is shown on the page and suggested as a folder
-	// name only, never logged. nil is "Seestar".
+	// name. nil is "Seestar".
 	Name func(t Target) string
 	// KnowSerial, if set, saves that the telescope saved by t's address
 	// only is the one with serial t.Heard, so that t's telescope is keyed
@@ -87,23 +87,22 @@ type Native struct {
 // Target is where copying, a preview or a delete reaches the telescope:
 // on this network its endpoint, host:port; through the account, a label
 // for display only, the telescope the connection selected and that
-// connection's run, which a reconnect changes. Device is only compared,
-// never shown or logged.
+// connection's run, which a reconnect changes. Device is only compared.
 type Target struct {
 	Endpoint string
 	Device   string // "" on this network
 	Run      uint64 // 0 on this network
 	// Serial is the serial number a scan saw at Endpoint on this network,
-	// or "". It is compared only, never shown or logged.
+	// or "".
 	Serial string
 	// Heard is the serial the latest scan or Test heard at Endpoint on
 	// this network, when the telescope is saved by its address only, or
 	// "". It only offers the address's folder to that serial (see
-	// MountOptions.KnowSerial), and is never shown or logged.
+	// MountOptions.KnowSerial).
 	Heard string
 	// Telescope is the telescope's key in the settings' telescopes (see
 	// SerialKey and AddressKey), or "" while it isn't known. It chooses
-	// the folder, and is compared only, never shown or logged. The host
+	// the folder, and is compared only. The host
 	// sets it even with an error, when it knows the telescope saved.
 	Telescope string
 }
@@ -111,17 +110,13 @@ type Target struct {
 // String is the endpoint only.
 func (t Target) String() string { return t.Endpoint }
 
-// SavedLabel is what logs and error text call a telescope on this network
-// saved with its serial, in place of its address: a scan may have found
-// it there.
-const SavedLabel = "the saved telescope"
-
-// logged is how logs, Activity and error text name t's endpoint.
-func (t Target) logged() string {
-	if t.onLAN() && t.Serial != "" {
-		return SavedLabel
+// logKeys name t in a log: its endpoint, and on this network the serial
+// it was saved with, if any.
+func (t Target) logKeys() []any {
+	if t.Serial != "" {
+		return []any{"endpoint", t.Endpoint, "serial", t.Serial}
 	}
-	return t.Endpoint
+	return []any{"endpoint", t.Endpoint}
 }
 
 // onLAN reports whether t is an address on this network.

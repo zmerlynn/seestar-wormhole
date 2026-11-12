@@ -164,16 +164,6 @@ var dialRemover = func(ctx context.Context, endpoint string, log *slog.Logger) (
 	return r, nil
 }
 
-// dialRemoverAs is dialRemover for a telescope followed by its serial: its
-// errors call it name, never its address.
-var dialRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
-	r, err := remote.DialRemoverVia(ctx, name, remote.TCP(endpoint), log)
-	if err != nil {
-		return nil, err
-	}
-	return r, nil
-}
-
 // runDelete resolves the history folder and runs the deletion. A dry run is
 // read-only: the program turns the guard on before it calls this.
 func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
@@ -185,15 +175,15 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 		}
 	}
 	_, err := engine.RunDelete(ctx, engine.DeleteOptions{
-		Endpoint: o.follow.label(o.endpoint), Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
+		Endpoint: o.endpoint, Dest: o.dest, StateDir: stateDir, TrustState: o.trustState, IgnoreState: o.ignoreState,
 		OlderThan: o.olderThan, Selector: o.selector, DryRun: o.dryRun,
-		// Endpoint is a label when o.follow is set; the dials use the
-		// real one.
+		// When o.follow is set, the dials may reach the telescope at
+		// another address.
 		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
-			return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
+			return followDial(ctx, o.follow, o.endpoint, log, dial)
 		},
 		OpenRemover: func(ctx context.Context, _ string) (remote.Remover, error) {
-			return followDial(ctx, o.follow, o.endpoint, log, dialRemover, dialRemoverAs)
+			return followDial(ctx, o.follow, o.endpoint, log, dialRemover)
 		},
 	}, log)
 	return err

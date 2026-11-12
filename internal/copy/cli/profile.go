@@ -24,8 +24,8 @@ type Saved struct {
 	HistoryDir string
 	Endpoint   string
 	// LANSerial is the serial the app saved with Endpoint on this
-	// network, or "". It is never shown or logged; a run that dials the
-	// filled Endpoint follows the telescope by it when it moved.
+	// network, or "". A run that dials the filled Endpoint follows the
+	// telescope by it when it moved.
 	LANSerial string
 	// LANScan is when the app scans for the telescope saved with
 	// LANSerial: start, connect or off, or "" (start). --scan overrides

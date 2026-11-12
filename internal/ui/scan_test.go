@@ -188,17 +188,17 @@ func scanPost(t *testing.T, s *server, body string) scanView {
 	return v
 }
 
-// trailText is Activity's lines and gui.log, which must name no address,
-// name or serial.
+// trailText is Activity's lines and gui.log, which must hold no password
+// or lock-password hash.
 func trailText(t *testing.T, s *server) string {
 	t.Helper()
 	events, _, _, _ := s.controller.log.trail()
 	b, _ := json.Marshal(events)
 	disk, _ := os.ReadFile(filepath.Join(s.storage.root, "gui.log"))
 	text := string(b) + string(disk)
-	for _, private := range []string{"192.0.2.", "SERIAL-", "S50_A", "S30_B", "0123456789abcdef"} {
-		if strings.Contains(text, private) {
-			t.Fatalf("the trail names %q: %s", private, text)
+	for _, secret := range []string{"password", "0123456789abcdef"} {
+		if strings.Contains(text, secret) {
+			t.Fatalf("the trail holds %q: %s", secret, text)
 		}
 	}
 	return text
@@ -220,7 +220,7 @@ func TestScanListsTelescopes(t *testing.T) {
 	if a := byName["S50_A"]; a.Model != "Seestar S50" || len(a.Addresses) != 1 || a.Addresses[0] != "192.0.2.20" || a.Busy || a.Saved {
 		t.Fatalf("row %+v", a)
 	}
-	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_listed"`) || !strings.Contains(text, "Scanned this network: 6 replies.") {
+	if text := trailText(t, s); !strings.Contains(text, `"code":"scan_listed"`) || !strings.Contains(text, "Scanned this network: 6 replies: S50_A (Seestar S50, serial SERIAL-A) at 192.0.2.20; S30_B (Seestar S30, serial SERIAL-B) at 192.0.2.40.") {
 		t.Fatalf("trail %s", text)
 	}
 
@@ -313,9 +313,6 @@ func TestSaveRouteKeepsScannedSerial(t *testing.T) {
 	}
 	if got := saved(); got.LANAddress != "192.0.2.20:445" || got.LANSerial != "SERIAL-A" {
 		t.Fatalf("saved %+v", got)
-	}
-	if w := serve(s, request(s, "GET", "/api/status", "")); strings.Contains(w.Body.String(), "SERIAL-A") {
-		t.Fatalf("status carries the serial: %s", w.Body)
 	}
 	if v := scanPost(t, s, `{}`); !(v.Telescopes[0].Saved != v.Telescopes[1].Saved) {
 		t.Fatalf("the saved telescope isn't marked once: %+v", v)

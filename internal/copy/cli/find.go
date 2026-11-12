@@ -185,9 +185,9 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		}
 		log.Info("listing done", args...)
 	}()
-	sess, err := followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
+	sess, err := followDial(ctx, o.follow, o.endpoint, log, dial)
 	if err != nil {
-		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.follow.label(o.endpoint), err))
+		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.endpoint, err))
 	}
 	defer sess.Close()
 	entries, left, err := o.selector.Walk(ctx, sess)

@@ -86,8 +86,8 @@ func (l *eventLog) addFailure(text string, err error) {
 }
 
 // addScan records a line about a scan of this network under code, one of
-// the scan codes. Its text names at most the telescope's model label and
-// a reply count, never an address, a name or a serial.
+// the scan codes. Its text names the telescopes, their addresses and the
+// reply count.
 func (l *eventLog) addScan(code, text string) {
 	if l == nil {
 		return

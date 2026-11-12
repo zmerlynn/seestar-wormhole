@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"github.com/spf13/pflag"
-	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
@@ -29,10 +28,6 @@ address it first connected at for the rest of the run.
 // lanScanner scans this network for a saved telescope, and runs scan.
 // Tests replace it with one on fakes.
 var lanScanner = &landiscovery.Scanner{}
-
-// lanName is what error text and logs call a telescope saved with its
-// serial on this network, in place of the address a scan found it at.
-const lanName = "the saved telescope"
 
 // follow is how a run reaches a telescope the app saved on this network
 // with its serial, at the endpoint --profile default filled: a connect
@@ -85,30 +80,18 @@ func (s *scanFlag) apply(flags *pflag.FlagSet, f *follow) error {
 	return nil
 }
 
-// label is what logs and error text call endpoint, a run's --endpoint:
-// lanName when f follows it, since a scan may have found or confirmed the
-// telescope there, and endpoint as it is otherwise. The dial hooks keep
-// the real endpoint.
-func (f *follow) label(endpoint string) string {
-	if f == nil {
-		return endpoint
-	}
-	return lanName
-}
-
 // followDial dials endpoint with d, or, when f is set and endpoint is its
-// saved one, reaches the telescope as f's mode says and dials with as,
-// whose errors call it lanName: off dials the saved address; connect
-// follows the telescope; start follows it once per run and dials where
-// it connected after that, following it again when that fails. The log
-// records the model a scan saw and its reply count, never an address, a
-// name or the serial.
+// saved one, reaches the telescope as f's mode says: off dials the saved
+// address; connect follows the telescope; start follows it once per run
+// and dials where it connected after that, following it again when that
+// fails. The log names the telescope a scan saw, the addresses and the
+// reply count.
 func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, log *slog.Logger,
-	d func(context.Context, string, *slog.Logger) (T, error), as func(context.Context, string, string, *slog.Logger) (T, error)) (T, error) {
+	d func(context.Context, string, *slog.Logger) (T, error)) (T, error) {
 	if f == nil || endpoint != f.saved {
 		return d(ctx, endpoint, log)
 	}
-	dial := func(ctx context.Context, endpoint string) (T, error) { return as(ctx, lanName, endpoint, log) }
+	dial := func(ctx context.Context, endpoint string) (T, error) { return d(ctx, endpoint, log) }
 	f.mu.Lock()
 	pinned := f.pinned
 	f.mu.Unlock()
@@ -148,23 +131,37 @@ func followSearch[T io.Closer](ctx context.Context, f *follow, log *slog.Logger,
 	}
 	switch {
 	case err == nil && r.Moved:
-		once("moved\x00"+r.Endpoint, slog.LevelInfo, "found the saved telescope at another address on this network", modelKeys(r)...)
+		once("moved\x00"+r.Endpoint, slog.LevelInfo, "found the telescope at another address on this network", telescopeKeys(f, r)...)
 	case r.NotSeen:
-		once("not seen", slog.LevelWarn, "the saved telescope wasn't seen in a scan of this network; tried its saved address")
+		once("not seen", slog.LevelWarn, "the telescope wasn't seen in a scan of this network; tried its saved address", telescopeKeys(f, r)...)
 	case err == nil:
 		f.last = ""
 	case r.Conflict && r.Seen == nil:
-		log.Warn("another telescope answers at the saved address, and a scan of this network didn't find the saved one", "replies", r.Replies)
+		log.Warn("another telescope answers at the saved address, and a scan of this network didn't find the saved one", telescopeKeys(f, r)...)
 	case r.Seen != nil:
-		log.Warn("found the saved telescope on this network, but it didn't connect where it answered", modelKeys(r)...)
+		log.Warn("found the telescope on this network, but it didn't connect where it answered", telescopeKeys(f, r)...)
 	}
 	return v, r.Endpoint, err
 }
 
-func modelKeys(r landiscovery.Resolved) []any {
-	keys := []any{"replies", r.Replies}
-	if r.Seen != nil && r.Seen.Model != "" {
-		keys = append([]any{"model", cloudhttp.ModelLabel(r.Seen.Model)}, keys...)
+// telescopeKeys name f's telescope, as the scan saw it or by its serial,
+// the saved address, the endpoint r reached, the addresses where the scan
+// saw it, the telescope that answered at the saved address instead, and
+// the scan's reply count.
+func telescopeKeys(f *follow, r landiscovery.Resolved) []any {
+	keys := []any{"serial", f.serial}
+	if r.Seen != nil {
+		keys = []any{"telescope", r.Seen.Label()}
 	}
-	return keys
+	keys = append(keys, "saved", f.saved)
+	if r.Endpoint != f.saved {
+		keys = append(keys, "endpoint", r.Endpoint)
+	}
+	if r.Seen != nil {
+		keys = append(keys, "addresses", r.Seen.Addresses)
+	}
+	if r.Other != nil {
+		keys = append(keys, "other", r.Other.Label())
+	}
+	return append(keys, "replies", r.Replies)
 }

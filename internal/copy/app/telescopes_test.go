@@ -776,8 +776,9 @@ func TestDownloadWaitsForFolder(t *testing.T) {
 	}
 }
 
-// No log or Activity line names a telescope's folder, its serial or its
-// address, whatever Copy, Test, Save, the offer and Free up space do.
+// No log or Activity line names a telescope's folder, whatever Copy,
+// Test, Save, the offer and Free up space do; they name its serial and
+// its address.
 func TestTelescopeFoldersStayOutOfLogs(t *testing.T) {
 	const serial = "SN-SENTINEL-9"
 	first := filepath.Join(t.TempDir(), "FOLDER-SENTINEL-A")
@@ -815,9 +816,12 @@ func TestTelescopeFoldersStayOutOfLogs(t *testing.T) {
 		t.Errorf("Activity lacks the start: %s", activity.String())
 	}
 	for where, text := range map[string]string{"log": e.logs.String(), "Activity": activity.String()} {
-		for _, s := range []string{"FOLDER-SENTINEL", serial, "192.0.2.10", "SN-TEST"} {
-			if strings.Contains(text, s) {
-				t.Errorf("%s holds %q:\n%s", where, s, text)
+		if strings.Contains(text, "FOLDER-SENTINEL") {
+			t.Errorf("%s holds a folder:\n%s", where, text)
+		}
+		for _, s := range []string{serial, "192.0.2.10:445"} {
+			if !strings.Contains(text, s) {
+				t.Errorf("%s lacks %q:\n%s", where, s, text)
 			}
 		}
 	}
@@ -831,12 +835,12 @@ func TestWithoutFolder(t *testing.T) {
 	log.WithGroup("g").Info("m", "to", "/w2", "endpoint", "192.0.2.10:445", "n", 2)
 	log.Info("m", slog.Group("s", "dest", "/w3", "n", 3))
 	got := out.String()
-	for _, s := range []string{"/w1", "/w2", "/w3", "192.0.2.10"} {
+	for _, s := range []string{"/w1", "/w2", "/w3"} {
 		if strings.Contains(got, s) {
 			t.Errorf("log holds %q: %s", s, got)
 		}
 	}
-	for _, s := range []string{"kept=1", "g.n=2", "s.n=3"} {
+	for _, s := range []string{"kept=1", "g.endpoint=192.0.2.10:445", "g.n=2", "s.n=3"} {
 		if !strings.Contains(got, s) {
 			t.Errorf("log lacks %q: %s", s, got)
 		}

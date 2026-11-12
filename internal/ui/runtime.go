@@ -171,22 +171,6 @@ var (
 		}
 		return s, nil
 	}
-	// tcpDialAs and tcpRemoverAs dial endpoint over TCP for a telescope
-	// saved with its serial; their errors call it name, never its address.
-	tcpDialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
-		s, err := remote.DialVia(ctx, name, remote.TCP(endpoint), log)
-		if err != nil {
-			return nil, err
-		}
-		return s, nil
-	}
-	tcpRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
-		s, err := remote.DialRemoverVia(ctx, name, remote.TCP(endpoint), log)
-		if err != nil {
-			return nil, err
-		}
-		return s, nil
-	}
 	dialVia = func(ctx context.Context, name string, conn remote.Conn, log *slog.Logger) (remote.Session, error) {
 		s, err := remote.DialVia(ctx, name, conn, log)
 		if err != nil {
@@ -221,7 +205,7 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 	log := o.Log
 	follow := func(ctx context.Context, t copyapp.Target) (remote.Session, copyapp.Target, error) {
 		return lanConnect(ctx, handler, t, func(ctx context.Context, endpoint string) (remote.Session, error) {
-			return tcpDialAs(ctx, lanName, endpoint, log)
+			return tcpDial(ctx, endpoint, log)
 		})
 	}
 	o.Target = handler.copyTarget
@@ -248,10 +232,7 @@ func copyMountOptions(handler *server, o copyapp.MountOptions) copyapp.MountOpti
 		return s, t, err
 	}
 	o.Remover = func(ctx context.Context, t copyapp.Target) (remote.Remover, error) {
-		switch {
-		case t.Run == 0 && t.Serial != "":
-			return tcpRemoverAs(ctx, lanName, t.Endpoint, log)
-		case t.Run == 0:
+		if t.Run == 0 {
 			return tcpRemover(ctx, t.Endpoint, log)
 		}
 		return removerVia(ctx, t.Endpoint, via(t.Run), log)

@@ -7,9 +7,9 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"strings"
 	"sync"
 
-	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 )
@@ -104,8 +104,8 @@ func (l *lanState) serial(address netip.Addr) (string, bool) {
 	return s.serial, ok && s.serial != ""
 }
 
-// scanTelescope is one telescope as the page lists it. It has no serial:
-// Saved says whether it is the one saved.
+// scanTelescope is one telescope as the page lists it. Saved says whether
+// it is the one saved.
 type scanTelescope struct {
 	Name      string   `json:"name"`
 	Model     string   `json:"model"`
@@ -159,7 +159,8 @@ func scanHint(goos string) string {
 }
 
 // scan scans this network, or asks address alone when one is given, and
-// lists what answered. Activity records the reply count only.
+// lists what answered. Activity records the reply count and names each
+// telescope that answered, with its addresses.
 func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 	var probe netip.Addr
 	if address != "" {
@@ -212,7 +213,7 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 	}
 	what := "Scanned this network"
 	if probe.IsValid() {
-		what = "Asked the typed address for a telescope"
+		what = "Asked " + probe.String() + " for a telescope"
 	}
 	code := scanListed
 	if probe.IsValid() {
@@ -226,7 +227,7 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 		s.controller.recordScan(scanFailedCode, what+": the scan failed.")
 		view.Message = scanFailed
 	default:
-		s.controller.recordScan(code, fmt.Sprintf("%s: %s.", what, replies(result.Replies)))
+		s.controller.recordScan(code, fmt.Sprintf("%s: %s%s.", what, replies(result.Replies), found(result.Telescopes)))
 		if !probe.IsValid() && result.Blocked {
 			view.Message = blockedMessage(hostOS)
 		} else if !probe.IsValid() && len(result.Telescopes) == 0 {
@@ -234,6 +235,24 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 		}
 	}
 	return view, nil
+}
+
+// found names each telescope in ts and its addresses, after a colon, or
+// is "" for none.
+func found(ts []landiscovery.Telescope) string {
+	var b strings.Builder
+	for i, t := range ts {
+		if i == 0 {
+			b.WriteString(": ")
+		} else {
+			b.WriteString("; ")
+		}
+		b.WriteString(t.Label())
+		if len(t.Addresses) > 0 {
+			b.WriteString(" at " + joinAddrs(t.Addresses))
+		}
+	}
+	return b.String()
 }
 
 func replies(n int) string {
@@ -267,10 +286,6 @@ func (s *server) serialFor(route, address string) string {
 	}
 	return ""
 }
-
-// lanName is what error text calls a telescope saved with its serial on
-// this network, in place of the address a scan found it at.
-const lanName = copyapp.SavedLabel
 
 // lanConnect connects to t, a target on this network saved with its
 // serial, with dial, as the saved LANScan says: off dials t's endpoint
@@ -324,8 +339,7 @@ type followKey struct {
 // It returns the target it reached. Dials for the same target under the
 // same routeGeneration gen at once share one scan: the others wait for it
 // and dial where it connected, and search on their own only if that
-// fails. Activity names the model the scan saw and the reply count, never
-// an address, a name or the serial.
+// fails. Activity names the telescope, the addresses and the reply count.
 func lanFollow[T io.Closer](ctx context.Context, h *server, t copyapp.Target, gen uint64, dial func(context.Context, string) (T, error)) (T, copyapp.Target, error) {
 	key := followKey{t.Endpoint, t.Serial, gen}
 	h.lan.mu.Lock()
@@ -378,26 +392,44 @@ func lanSearch[T io.Closer](ctx context.Context, h *server, t copyapp.Target, ge
 		t.Endpoint = r.Endpoint
 	case err == nil && r.Moved:
 		saved := h.controller.persistMoved(t.Endpoint, r.Endpoint, t.Serial, gen)
-		text := "Found the telescope" + modelSuffix(r.Seen) + " at a new address on this network (" + replies(r.Replies) + ")"
+		text := "Found " + named(r.Seen, t.Serial) + " at " + r.Endpoint + ", not its saved " + t.Endpoint + ", in a scan of this network (" + replies(r.Replies) + ")"
 		if saved {
-			h.controller.recordScan(scanMoved, text+" and saved it.")
+			h.controller.recordScan(scanMoved, text+", and saved it.")
 		} else {
 			h.controller.recordScan(scanUnsaved, text+"; the new address wasn't saved.")
 		}
 		t.Endpoint = r.Endpoint
 	case r.NotSeen:
-		h.controller.recordScan(scanNotSeen, "The saved telescope wasn't seen in a scan of this network; tried its saved address.")
+		h.controller.recordScan(scanNotSeen, named(nil, t.Serial)+" wasn't seen in a scan of this network ("+replies(r.Replies)+"); tried its saved address, "+t.Endpoint+".")
 	case r.Conflict && r.Seen == nil:
-		h.controller.recordScan(scanOther, "Another telescope answers at the saved address, and a scan of this network didn't find the saved one ("+replies(r.Replies)+"). Scan, then Test and Save it again.")
+		h.controller.recordScan(scanOther, named(r.Other, "")+" answers at the saved address, "+t.Endpoint+", and a scan of this network didn't find "+named(nil, t.Serial)+" ("+replies(r.Replies)+"). Scan, then Test and Save it again.")
 	case err != nil && r.Seen != nil:
-		h.controller.recordScan(scanUnreached, "Found the telescope"+modelSuffix(r.Seen)+" on this network ("+replies(r.Replies)+"), but it didn't connect where it answered.")
+		h.controller.recordScan(scanUnreached, "Found "+named(r.Seen, t.Serial)+" on this network ("+replies(r.Replies)+"), but it didn't connect where it answered, at "+joinAddrs(r.Seen.Addresses)+".")
 	}
 	return v, t, err
 }
 
-func modelSuffix(t *landiscovery.Telescope) string {
-	if t == nil || t.Model == "" {
-		return ""
+// named is how Activity names t (see [landiscovery.Telescope.Label]),
+// or, when the scan didn't see it, the telescope with serial, or another
+// telescope for neither.
+// joinAddrs is addrs separated by commas.
+func joinAddrs(addrs []netip.Addr) string {
+	var b strings.Builder
+	for i, a := range addrs {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(a.String())
 	}
-	return " (" + cloudhttp.ModelLabel(t.Model) + ")"
+	return b.String()
+}
+
+func named(t *landiscovery.Telescope, serial string) string {
+	switch {
+	case t != nil:
+		return t.Label()
+	case serial != "":
+		return landiscovery.Telescope{Serial: serial}.Label()
+	}
+	return "Another telescope"
 }

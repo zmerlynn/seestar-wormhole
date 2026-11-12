@@ -3,6 +3,7 @@ package landiscovery
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"net/netip"
 	"slices"
@@ -18,16 +19,19 @@ var ErrOtherTelescope = errors.New("the saved address advertised a different tel
 // Resolved is how [Follow] reached a telescope. Endpoint is the endpoint it
 // connected to, or the saved one when none connected; Moved reports that it
 // is not the saved address. Seen is the telescope as the scan saw it when
-// the serial answered, so its model can be logged. NotSeen reports that the
-// scan found the serial nowhere and the saved address was dialed without
-// that evidence. Conflict reports that another serial answered from the
-// saved address. Replies is the scan's reply count.
+// the serial answered, so it can be named, with the addresses it answered
+// from. NotSeen reports that the scan
+// found the serial nowhere and the saved address was dialed without that
+// evidence. Conflict reports that another serial answered from the saved
+// address, and Other is the first telescope that did. Replies is the
+// scan's reply count.
 type Resolved struct {
 	Endpoint string
 	Moved    bool
 	Seen     *Telescope
 	NotSeen  bool
 	Conflict bool
+	Other    *Telescope
 	Replies  int
 }
 
@@ -187,7 +191,7 @@ func Follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		// Every address that answered with serial is dialed or, being the
 		// saved one, disqualified, so this isn't reached; a nil error
 		// without a connection must not be.
-		return zero, r, errors.New("the saved telescope answered, but no address was dialed")
+		return zero, r, fmt.Errorf("serial %s answered, but no address was dialed", escaped(serial))
 	}
 	r.NotSeen = true
 	v, err := dial(ctx, endpoint)
@@ -206,19 +210,21 @@ type watcher struct {
 	seen     *Telescope
 	sent     []netip.Addr
 	conflict bool
+	other    *Telescope
 }
 
 func (w *watcher) observe(t Telescope, from netip.Addr) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	if t.Serial != w.serial {
-		if from == w.saved {
+		if from == w.saved && !w.conflict {
 			w.conflict = true
+			t.Addresses = []netip.Addr{from}
+			w.other = &t
 		}
 		return
 	}
 	if w.seen == nil {
-		t.Addresses = nil
 		w.seen = &t
 	}
 	if slices.Contains(w.sent, from) || len(w.sent) >= maxAddresses {
@@ -232,7 +238,13 @@ func (w *watcher) observe(t Telescope, from netip.Addr) {
 func (w *watcher) resolved(endpoint string, replies int) Resolved {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return Resolved{Endpoint: endpoint, Seen: w.seen, Conflict: w.conflict, Replies: replies}
+	r := Resolved{Endpoint: endpoint, Conflict: w.conflict, Other: w.other, Replies: replies}
+	if w.seen != nil {
+		seen := *w.seen
+		seen.Addresses = slices.Clone(w.sent)
+		r.Seen = &seen
+	}
+	return r
 }
 
 func (w *watcher) conflicted() bool {

@@ -204,8 +204,8 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 	}
 	addr := netip.AddrPortFrom(o.addr.Addr(), uint16(ln.Addr().(*net.TCPAddr).Port))
 	sessions := browse.NewSessions(ctx, func(ctx context.Context) (remote.Session, error) {
-		return followDial(ctx, o.follow, o.endpoint, log, dial, dialAs)
-	}, log.With("endpoint", o.follow.label(o.endpoint)), browse.Reporter{})
+		return followDial(ctx, o.follow, o.endpoint, log, dial)
+	}, log.With("endpoint", o.endpoint), browse.Reporter{})
 	srv := &http.Server{
 		Handler: browse.NewHandler(browse.Config{
 			Addr: addr, Endpoint: o.endpoint, Sessions: sessions, Records: records, Selector: o.selector, Log: log,
@@ -252,7 +252,7 @@ func runBrowse(ctx context.Context, o browseOptions, out io.Writer, log *slog.Lo
 // announce logs that browse is listening, prints the page's URL and, with
 // --open, opens it.
 func announce(o browseOptions, addr netip.AddrPort, out io.Writer, log *slog.Logger) error {
-	args := []any{"addr", addr.String(), "endpoint", o.follow.label(o.endpoint)}
+	args := []any{"addr", addr.String(), "endpoint", o.endpoint}
 	if o.destSet {
 		args = append(args, "dest", o.dest)
 	}

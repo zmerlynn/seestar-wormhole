@@ -29,10 +29,9 @@ func noDNS(t *testing.T) {
 }
 
 // A telescope saved with its serial at a hostname, with scans off, whose
-// lookup fails, is named nowhere in the logs or the error of find, sync,
-// delete or browse, nor is the resolver: the production dials say the
-// saved telescope's name lookup failed.
-func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
+// lookup fails, is named in the error of find, sync, delete and browse,
+// with the resolver: the production dials say whose name lookup failed.
+func TestSavedHostnameLookupFailureNamesTheHost(t *testing.T) {
 	commands := map[string][]string{
 		"find":   {"find", "--profile", "default"},
 		"sync":   {"sync", "--profile", "default", "--once"},
@@ -46,12 +45,12 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 			useLAN(t, n)
 			noDNS(t)
 			// The production dials, which TestMain replaces.
-			useDialAs(t)
-			dialAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Session, error) {
-				return remote.DialVia(ctx, name, remote.TCP(endpoint), log)
+			useDial(t)
+			dial = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Session, error) {
+				return remote.Dial(ctx, endpoint, log)
 			}
-			dialRemoverAs = func(ctx context.Context, name, endpoint string, log *slog.Logger) (remote.Remover, error) {
-				return remote.DialRemoverVia(ctx, name, remote.TCP(endpoint), log)
+			dialRemover = func(ctx context.Context, endpoint string, log *slog.Logger) (remote.Remover, error) {
+				return remote.DialRemover(ctx, endpoint, log)
 			}
 			useProfile(t, Saved{Endpoint: "telescope.invalid:445", LANSerial: "SERIAL-A", LANScan: "off", Dest: t.TempDir(), HistoryDir: t.TempDir()})
 			var out, errs string
@@ -67,12 +66,9 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 					t.Errorf("exit %d", code)
 				}
 			}
-			if !strings.Contains(errs, lanName) || !strings.Contains(errs, "name lookup") {
-				t.Errorf("the failure isn't the saved telescope's lookup:\n%s", errs)
-			}
-			for _, private := range []string{"telescope.invalid", "198.51.100.53", "SERIAL-"} {
-				if strings.Contains(out+errs, private) {
-					t.Errorf("output carries %q:\n%s%s", private, out, errs)
+			for _, named := range []string{"telescope.invalid", "198.51.100.53"} {
+				if !strings.Contains(out+errs, named) {
+					t.Errorf("output doesn't name %q:\n%s%s", named, out, errs)
 				}
 			}
 			if n.scans() != 0 {
@@ -83,11 +79,11 @@ func TestSavedHostnameLookupFailureNamesNoHost(t *testing.T) {
 }
 
 // A followed telescope that a scan found, at its saved address or at
-// another, but that refuses or times out the connect, is named nowhere
-// in the logs or the error of find, sync, delete or browse: they call it
-// the saved telescope.
-func TestFollowedConnectFailureNamesNoAddress(t *testing.T) {
-	failures := map[string]error{
+// another, but that refuses or times out the connect, is named in the
+// logs and the error of find, sync, delete and browse: its address, and
+// the name, model and serial it answered the scan with.
+func TestFollowedConnectFailureNamesTheTelescope(t *testing.T) {
+	failures := map[string]*net.OpError{
 		"refused":   &net.OpError{Op: "dial", Net: "tcp", Err: os.NewSyscallError("connect", syscall.ECONNREFUSED)},
 		"timed out": &net.OpError{Op: "dial", Net: "tcp", Err: os.ErrDeadlineExceeded},
 	}
@@ -101,20 +97,19 @@ func TestFollowedConnectFailureNamesNoAddress(t *testing.T) {
 	for where, saved := range map[string]string{"at the saved address": "192.0.2.20:445", "moved": "192.0.2.7:445"} {
 		for failure, failed := range failures {
 			for name, args := range commands {
-				// The subtest's name, in its temporary folders, names no address.
 				t.Run(where+" "+failure+" "+name, func(t *testing.T) {
 					t.Cleanup(readonly.Reset)
 					useLAN(t, twoTelescopes())
 					useProfile(t, Saved{Endpoint: saved, LANSerial: "SERIAL-A", Dest: t.TempDir(), HistoryDir: t.TempDir()})
-					useDialAs(t)
+					useDial(t)
 					var dialed []string
-					dialAs = func(_ context.Context, label, endpoint string, _ *slog.Logger) (remote.Session, error) {
-						dialed = append(dialed, label+" "+endpoint)
-						return nil, failed
+					dial = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Session, error) {
+						dialed = append(dialed, endpoint)
+						return nil, &net.OpError{Op: failed.Op, Net: failed.Net, Addr: tcpAddr(endpoint), Err: failed.Err}
 					}
-					dialRemoverAs = func(_ context.Context, label, endpoint string, _ *slog.Logger) (remote.Remover, error) {
-						dialed = append(dialed, label+" "+endpoint)
-						return nil, failed
+					dialRemover = func(_ context.Context, endpoint string, _ *slog.Logger) (remote.Remover, error) {
+						dialed = append(dialed, endpoint)
+						return nil, &net.OpError{Op: failed.Op, Net: failed.Net, Addr: tcpAddr(endpoint), Err: failed.Err}
 					}
 					var out, errs string
 					if name == "browse" {
@@ -130,15 +125,12 @@ func TestFollowedConnectFailureNamesNoAddress(t *testing.T) {
 						}
 					}
 					// The scan found SERIAL-A at 192.0.2.20, and only it was dialed.
-					if len(dialed) == 0 || dialed[0] != lanName+" 192.0.2.20:445" {
+					if len(dialed) == 0 || dialed[0] != "192.0.2.20:445" {
 						t.Errorf("dialed %q", dialed)
 					}
-					if !strings.Contains(errs, lanName) {
-						t.Errorf("the failure doesn't name the saved telescope:\n%s", errs)
-					}
-					for _, private := range []string{"192.0.2.", "SERIAL-", "S50_A"} {
-						if strings.Contains(out+errs, private) {
-							t.Errorf("output carries %q:\n%s%s", private, out, errs)
+					for _, named := range []string{"192.0.2.20:445", "S50_A (Seestar S50, serial SERIAL-A)"} {
+						if !strings.Contains(out+errs, named) {
+							t.Errorf("output doesn't name %q:\n%s%s", named, out, errs)
 						}
 					}
 				})
@@ -153,13 +145,12 @@ func TestFollowNotSeenFallbackFailureIsLogged(t *testing.T) {
 	useLAN(t, &lanNet{})
 	var logs bytes.Buffer
 	f := newFollow(Saved{Endpoint: "192.0.2.7:445", LANSerial: "SERIAL-A"}, none)
-	var calls, plain, names []string
-	_, err := followDial(t.Context(), f, f.saved, diagnostic.Logger("text", &logs, slog.LevelInfo),
-		fakeDial(&plain), fakeDialAs(&names, &calls))
+	var calls []string
+	_, err := followDial(t.Context(), f, f.saved, diagnostic.Logger("text", &logs, slog.LevelInfo), fakeDial(&calls))
 	if err == nil || len(calls) != 1 || calls[0] != "192.0.2.7:445" {
 		t.Fatalf("err %v, calls %q", err, calls)
 	}
-	if !strings.Contains(logs.String(), `level=WARN msg="the saved telescope wasn't seen in a scan of this network; tried its saved address"`) {
+	if !strings.Contains(logs.String(), `level=WARN msg="the telescope wasn't seen in a scan of this network; tried its saved address" serial=SERIAL-A saved=192.0.2.7:445 replies=0`) {
 		t.Errorf("logs: %s", logs.String())
 	}
 }
@@ -174,14 +165,18 @@ func TestFollowConflictWithSightingIsLoggedAsUnreached(t *testing.T) {
 	}})
 	var logs bytes.Buffer
 	f := newFollow(Saved{Endpoint: "192.0.2.20:445", LANSerial: "SERIAL-A"}, none)
-	var calls, plain, names []string
-	_, err := followDial(t.Context(), f, f.saved, diagnostic.Logger("text", &logs, slog.LevelInfo),
-		fakeDial(&plain), fakeDialAs(&names, &calls))
+	var calls []string
+	_, err := followDial(t.Context(), f, f.saved, diagnostic.Logger("text", &logs, slog.LevelInfo), fakeDial(&calls))
 	if err == nil || len(calls) != 1 || calls[0] != "192.0.2.30:445" {
 		t.Fatalf("err %v, calls %q", err, calls)
 	}
 	if strings.Contains(logs.String(), "didn't find the saved one") ||
-		!strings.Contains(logs.String(), `level=WARN msg="found the saved telescope on this network, but it didn't connect where it answered" model="Seestar S50"`) {
+		!strings.Contains(logs.String(), `level=WARN msg="found the telescope on this network, but it didn't connect where it answered" telescope="S50_A (Seestar S50, serial SERIAL-A)" saved=192.0.2.20:445 addresses=[192.0.2.30] other="Other (Seestar S30, serial SERIAL-B)"`) {
 		t.Errorf("logs: %s", logs.String())
 	}
+}
+
+// tcpAddr is endpoint as a dial error names it.
+func tcpAddr(endpoint string) net.Addr {
+	return net.TCPAddrFromAddrPort(netip.MustParseAddrPort(endpoint))
 }
