@@ -105,6 +105,32 @@ func TestFollowConflictBeforeMatchingReply(t *testing.T) {
 	}
 }
 
+// otherAt reports whether err is an [OtherTelescopeError] for SERIAL-A
+// naming the telescope with other that answered at address.
+func otherAt(err error, address, other string) bool {
+	e, ok := errors.AsType[*OtherTelescopeError](err)
+	return ok && errors.Is(err, ErrOtherTelescope) && e.Serial == "SERIAL-A" && e.Address == netip.MustParseAddr(address) &&
+		e.Other != nil && e.Other.Serial == other && e.Other.Addresses[0] == e.Address
+}
+
+// The owner's setup of 2026-11-14: the telescope saved with its serial at
+// a relay's SMB port, where the scan hears only another serial. The
+// error names both, for the pages and the logs.
+func TestFollowOtherTelescopeNamed(t *testing.T) {
+	s, _ := observedScan(100*time.Millisecond, datagram{replyBytes("TEST0002", "Relay", "Seestar S50 Pro", 0), netip.MustParseAddr("192.0.2.85")})
+	dials := 0
+	_, r, _, err := Follow(t.Context(), s, "192.0.2.85:4445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+		dials++
+		return &session{endpoint: ep}, nil
+	}, release)
+	if !otherAt(err, "192.0.2.85", "TEST0002") || dials != 0 || !r.Conflict || r.Seen != nil {
+		t.Fatalf("%+v %v, dials %d", r, err, dials)
+	}
+	if want := "another telescope, Relay (Seestar S50 Pro, serial TEST0002), answered at 192.0.2.85 instead of serial SERIAL-A"; err.Error() != want {
+		t.Errorf("error %q, want %q", err, want)
+	}
+}
+
 // Another serial answering from the saved address while it is dialed
 // disqualifies it: the connection is released, and the search goes on in
 // the same scan.
@@ -231,7 +257,7 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 			dials++
 			return &session{endpoint: ep}, nil
 		}, release)
-		if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 || r.Conflict || r.Seen == nil || r.NotSeen {
+		if !otherAt(err, "192.0.2.30", "SERIAL-B") || got != nil || dials != 0 || r.Conflict || r.Seen == nil || r.NotSeen {
 			t.Fatalf("got %v %+v %v, dials %d", got, r, err, dials)
 		}
 	})
@@ -246,7 +272,7 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 			opened = &session{endpoint: ep}
 			return opened, nil
 		}, release)
-		if !errors.Is(err, ErrOtherTelescope) || got != nil || opened == nil || !opened.closed.Load() || r.Moved || r.Conflict {
+		if !otherAt(err, "192.0.2.30", "SERIAL-B") || got != nil || opened == nil || !opened.closed.Load() || r.Moved || r.Conflict {
 			t.Fatalf("got %v %+v %v, opened %v", got, r, err, opened)
 		}
 	})
@@ -261,7 +287,7 @@ func TestFollowConflictAtAnotherAddress(t *testing.T) {
 			opened = &session{endpoint: ep}
 			return opened, nil
 		}, release)
-		if !errors.Is(err, ErrOtherTelescope) || got != nil || opened == nil || !opened.closed.Load() || !r.Conflict {
+		if !otherAt(err, "192.0.2.20", "SERIAL-B") || got != nil || opened == nil || !opened.closed.Load() || !r.Conflict {
 			t.Fatalf("got %v %+v %v, opened %v", got, r, err, opened)
 		}
 	})
@@ -318,6 +344,11 @@ func TestFollowFailsClosedWhenOthersFill(t *testing.T) {
 				}, release)
 				if !errors.Is(err, ErrOtherTelescope) || got != nil || dials != 0 || r.Conflict || r.NotSeen || r.Replies != len(replies) {
 					t.Fatalf("got %v %+v %v, dials %d", got, r, err, dials)
+				}
+				// None of the addresses remembered is one it would have used.
+				if e, ok := errors.AsType[*OtherTelescopeError](err); !ok || e.Other != nil || e.Address.IsValid() ||
+					err.Error() != "too many other telescopes answered the scan to use any address for serial SERIAL-A" {
+					t.Errorf("error %#v", err)
 				}
 			})
 		})
