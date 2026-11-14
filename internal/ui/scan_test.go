@@ -241,10 +241,10 @@ func TestScanListsTelescopes(t *testing.T) {
 	if b := byName["S30_B"]; b.Serial != "SERIAL-B" {
 		t.Fatalf("row %+v", b)
 	}
-	// A line for the count, then one for each telescope, in the order
+	// A line for the counts, then one for each telescope, in the order
 	// they answered.
 	text := trailText(t, s)
-	for _, line := range []string{"Scanned this network: 6 replies.", "Found S50_A (Seestar S50, serial SERIAL-A) at 192.0.2.20.", "Found S30_B (Seestar S30, serial SERIAL-B) at 192.0.2.40."} {
+	for _, line := range []string{"Scanned this network: found 2 telescopes (6 replies).", "Found S50_A (Seestar S50, serial SERIAL-A) at 192.0.2.20.", "Found S30_B (Seestar S30, serial SERIAL-B) at 192.0.2.40."} {
 		if !strings.Contains(text, `"message":"`+line+`","code":"scan_listed"`) {
 			t.Fatalf("trail lacks %q: %s", line, text)
 		}
@@ -297,6 +297,7 @@ func TestScanTypedAddress(t *testing.T) {
 	n := twoTelescopes()
 	useLAN(t, n)
 	s := testServer(t)
+	s.controller.log = &eventLog{storage: s.storage}
 	v := scanPost(t, s, `{"address":"192.0.2.40:445"}`)
 	if len(v.Telescopes) != 1 || v.Telescopes[0].Name != "S30_B" || v.Message != "" {
 		t.Fatalf("probe %+v", v)
@@ -309,6 +310,12 @@ func TestScanTypedAddress(t *testing.T) {
 	// Nothing answering a typed address is for Test to explain.
 	if v := scanPost(t, s, `{"address":"192.0.2.77"}`); len(v.Telescopes) != 0 || v.Message != "" {
 		t.Fatalf("silent probe %+v", v)
+	}
+	text := trailText(t, s)
+	for _, line := range []string{"Asked 192.0.2.40 for a telescope: found 1 telescope (1 reply).", "Asked 192.0.2.77 for a telescope: found no telescopes (no replies)."} {
+		if !strings.Contains(text, `"message":"`+line+`","code":"scan_probed"`) {
+			t.Fatalf("trail lacks %q: %s", line, text)
+		}
 	}
 	// A name is only tested, never scanned.
 	before := len(n.sends())
