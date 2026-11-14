@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/pktinfo"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"golang.org/x/net/ipv4"
 )
 
@@ -66,6 +67,17 @@ func (t Telescope) Busy() bool { return t.Clients >= BusyClients }
 // 123)". Each is escaped as Go escapes ASCII strings, since a reply can
 // carry any text.
 func (t Telescope) Label() string { return t.label(escaped) }
+
+// CappedLabel is [Telescope.Label] within a log line's budget, whatever
+// text a scan reply carried: its name and model are capped, and its serial
+// is in full when it is a valid one (see [cloud.ValidSerial]). An invalid
+// serial is capped, and names t alone, without its name and model.
+func (t Telescope) CappedLabel() string {
+	if !cloud.ValidSerial(t.Serial) {
+		return "serial " + capped(t.Serial)
+	}
+	return t.label(capped)
+}
 
 // label is [Telescope.Label] with its name and model shown by show.
 func (t Telescope) label(show func(string) string) string {
