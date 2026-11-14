@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -355,10 +356,14 @@ type telescopeStatus struct {
 	} `json:"settings"`
 	History   string `json:"history"`
 	Telescope struct {
-		ID    int  `json:"id"`
-		Known bool `json:"known"`
-		New   bool `json:"new"`
-		Offer *struct {
+		ID           int    `json:"id"`
+		Name         string `json:"name"`
+		Address      string `json:"address"`
+		AddressSaved bool   `json:"address_saved"`
+		Folder       string `json:"folder"`
+		Known        bool   `json:"known"`
+		New          bool   `json:"new"`
+		Offer        *struct {
 			Name   string `json:"name"`
 			Folder string `json:"folder"`
 			Token  string `json:"token"`
@@ -1017,5 +1022,167 @@ func TestStaleSaveRefused(t *testing.T) {
 	}
 	if w := e.post("/copy/api/settings", saveInput(folder)); w.Code != 200 {
 		t.Errorf("B's save = %d %s", w.Code, w.Body)
+	}
+}
+
+// setHome makes home the home folder the page's folders are shown under.
+func setHome(t *testing.T, home string) {
+	old := userHome
+	userHome = func() string { return home }
+	t.Cleanup(func() { userHome = old })
+}
+
+// Status names the telescope and shows its own folder, home as "~", only
+// once it has one: a folder suggested for it is not its folder.
+func TestStatusNamesTheTelescope(t *testing.T) {
+	home := abs("/home/someone")
+	first := filepath.Join(home, "Pictures", "Seestar")
+	setHome(t, home)
+	e := newAppEnv(t, claimedAt(first, map[string]string{keyA: first}))
+	e.key, e.serial, e.name = keyA, serialA, "S50 Pro "+serialA
+	got := e.status().Telescope
+	if want := "~" + string(filepath.Separator) + filepath.Join("Pictures", "Seestar"); got.Name != "S50 Pro "+serialA || got.Folder != want {
+		t.Errorf("set up: %+v; want folder %q", got, want)
+	}
+	e.set(func() { e.key, e.serial, e.name = keyB, serialB, "Seestar S30 "+serialB })
+	if got := e.status(); got.SetUp || got.Settings.Folder == "" || got.Telescope.Folder != "" || got.Telescope.Name != "Seestar S30 "+serialB {
+		t.Errorf("no folder yet: %+v", got)
+	}
+	// While the telescope isn't known, it has no name.
+	e.set(func() { e.key, e.serial, e.lost = "", "", errNoRoute })
+	if got := e.status().Telescope; got.Name != "" || got.Folder != "" {
+		t.Errorf("not known: %+v", got)
+	}
+}
+
+// Through the account before it connects, the target is only the key of
+// the telescope saved, and it is named by that key's serial.
+func TestStatusNamesTheSavedTelescope(t *testing.T) {
+	e := newAppEnv(t, nil)
+	var named []Target
+	e.s.name = func(t Target) string {
+		named = append(named, t)
+		return "S50 Pro " + t.Serial
+	}
+	e.set(func() { e.endpoint, e.key, e.lost = "", keyA, errNoRoute })
+	if got := e.status().Telescope; got.Name != "S50 Pro "+serialA || got.Address != "" {
+		t.Errorf("saved: %+v", got)
+	}
+	if len(named) != 1 || named[0] != (Target{Serial: serialA, Telescope: keyA}) {
+		t.Errorf("named %+v", named)
+	}
+}
+
+// On this network, a telescope saved with its serial shows its saved
+// address, marked so, until a session reaches it, and then the address
+// in use, which a follow may have moved; a failed session, or a change
+// of where the telescope is, goes back to the saved one.
+func TestStatusAddressInUse(t *testing.T) {
+	e := newAppEnvFollowing(t, savedAt(abs("/data/Seestar")))
+	e.set(func() { e.key, e.serial, e.follow = keyA, serialA, "192.0.2.11:4445" })
+	address := func() (string, bool) {
+		got := e.status().Telescope
+		return got.Address, got.AddressSaved
+	}
+	if a, saved := address(); a != testEndpoint || !saved {
+		t.Fatalf("before a session: %q %v", a, saved)
+	}
+	// A session opened now, as Browse, copying or a preview opens one.
+	open := func() error {
+		sess, err := e.s.dial(t.Context(), e.s.current())
+		if err == nil {
+			sess.Close()
+		}
+		return err
+	}
+	if err := open(); err != nil {
+		t.Fatal(err)
+	}
+	if a, saved := address(); a != "192.0.2.11:4445" || saved {
+		t.Errorf("after a session: %q %v", a, saved)
+	}
+	e.d.mu.Lock()
+	e.d.fail = func() error { return errNoRoute }
+	e.d.mu.Unlock()
+	if open() == nil {
+		t.Fatal("a failing dial opened")
+	}
+	if a, saved := address(); a != testEndpoint || !saved {
+		t.Errorf("after a failure: %q %v", a, saved)
+	}
+	e.d.mu.Lock()
+	e.d.fail = nil
+	e.d.mu.Unlock()
+	e.set(func() { e.follow = "192.0.2.12:4445" })
+	open()
+	if a, saved := address(); a != "192.0.2.12:4445" || saved {
+		t.Errorf("reached again: %q %v", a, saved)
+	}
+	// A canceled session forgets nothing.
+	e.d.mu.Lock()
+	e.d.fail = func() error { return context.Canceled }
+	e.d.mu.Unlock()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	e.s.dial(ctx, e.s.current())
+	e.d.mu.Lock()
+	e.d.fail = nil
+	e.d.mu.Unlock()
+	if a, saved := address(); a != "192.0.2.12:4445" || saved {
+		t.Errorf("after a cancel: %q %v", a, saved)
+	}
+	e.set(func() { e.follow = "" })
+	e.move("192.0.2.13:445")
+	if a, saved := address(); a != "192.0.2.13:445" || !saved {
+		t.Errorf("after a move: %q %v", a, saved)
+	}
+	// Another telescope's session is not this one's address.
+	open()
+	e.set(func() { e.key, e.serial = keyB, serialB })
+	if a, saved := address(); a != "192.0.2.13:445" || !saved {
+		t.Errorf("another telescope: %q %v", a, saved)
+	}
+	// A telescope saved by its address, and one through the account, have
+	// none: the name says the one, and the other has no address here.
+	e.set(func() { e.key, e.serial = AddressKey(testEndpoint), "" })
+	open()
+	if a, saved := address(); a != "" || saved {
+		t.Errorf("address only: %q %v", a, saved)
+	}
+	e.set(func() { e.key, e.device, e.run, e.endpoint = keyA, "S50 Pro "+serialA, 1, "account" })
+	open()
+	if a, saved := address(); a != "" || saved {
+		t.Errorf("account: %q %v", a, saved)
+	}
+}
+
+// The status names no account and no password: the page builds its line
+// from named fields only.
+func TestStatusHasNoSecrets(t *testing.T) {
+	e := newAppEnv(t, savedAt(abs("/data/Seestar")))
+	e.set(func() { e.key, e.serial, e.name = keyA, serialA, "S50 Pro "+serialA })
+	body := e.serve("GET", "/copy/api/status", "").Body.String()
+	for _, secret := range []string{"email", "password", "@"} {
+		if strings.Contains(strings.ToLower(body), secret) {
+			t.Errorf("status has %q: %s", secret, body)
+		}
+	}
+}
+
+func TestDisplayFolder(t *testing.T) {
+	home := abs("/home/someone")
+	sep := string(filepath.Separator)
+	for _, c := range []struct{ folder, home, want string }{
+		{filepath.Join(home, "Seestar"), home, "~" + sep + "Seestar"},
+		{home, home, "~"},
+		{filepath.Join(home, "Seestar"), home + sep, "~" + sep + "Seestar"},
+		{home + "2" + sep + "Seestar", home, home + "2" + sep + "Seestar"},
+		{abs("/data/Seestar"), home, abs("/data/Seestar")},
+		{filepath.Join(home, "Seestar"), "", filepath.Join(home, "Seestar")}, // Windows
+		{"", home, ""},
+	} {
+		if got := displayFolder(c.folder, c.home); got != c.want {
+			t.Errorf("displayFolder(%q, %q) = %q; want %q", c.folder, c.home, got, c.want)
+		}
 	}
 }

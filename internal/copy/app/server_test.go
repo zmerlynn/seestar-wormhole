@@ -80,6 +80,7 @@ type appEnv struct {
 	serial   string       // the target's serial on this network
 	key      string       // the target's telescope key; "" for none
 	name     string       // the telescope's name on the page; "" is "Seestar"
+	follow   string       // where a session reaches the telescope, if not its endpoint
 	logs     lockedBuffer // the Mount's log, every level
 	saved    []Settings   // each Save, in order
 	saveErr  error        // what Save fails with
@@ -95,8 +96,31 @@ func newAppEnv(t *testing.T, saved *Settings) *appEnv {
 // newAppEnvIn is newAppEnv with stateDir as the default history folder.
 func newAppEnvIn(t *testing.T, saved *Settings, stateDir string) *appEnv {
 	t.Helper()
+	return newAppEnvWith(t, saved, stateDir, func(*appEnv, *MountOptions) {})
+}
+
+// newAppEnvFollowing is newAppEnv whose sessions reach the telescope at
+// e.follow, when it is set, rather than at its endpoint.
+func newAppEnvFollowing(t *testing.T, saved *Settings) *appEnv {
+	t.Helper()
+	return newAppEnvWith(t, saved, t.TempDir(), func(e *appEnv, o *MountOptions) {
+		o.Resolve = func(ctx context.Context, t Target) (remote.Session, Target, error) {
+			sess, err := e.d.dial(ctx, t)
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.follow != "" {
+				t.Endpoint = e.follow
+			}
+			return sess, t, err
+		}
+	})
+}
+
+// newAppEnvWith is newAppEnvIn with its Mount's options changed by opts.
+func newAppEnvWith(t *testing.T, saved *Settings, stateDir string, opts func(*appEnv, *MountOptions)) *appEnv {
+	t.Helper()
 	e := &appEnv{t: t, d: &dials{}, endpoint: testEndpoint}
-	m := NewMount(context.Background(), MountOptions{
+	o := MountOptions{
 		Addr: testAddr, StateDir: stateDir, Version: "v9.9.9",
 		Log: slog.New(slog.NewTextHandler(&e.logs, &slog.HandlerOptions{Level: slog.LevelDebug})),
 		Target: func() (Target, error) {
@@ -126,7 +150,9 @@ func newAppEnvIn(t *testing.T, saved *Settings, stateDir string) *appEnv {
 			e.saved = append(e.saved, set)
 			return nil
 		},
-	})
+	}
+	opts(e, &o)
+	m := NewMount(context.Background(), o)
 	e.m, e.s = m, m.s
 	t.Cleanup(m.Quit)
 	return e

@@ -24,6 +24,10 @@ type Telescope struct {
 // on both routes, so a change of route keeps its folder.
 func SerialKey(serial string) string { return "serial:" + serial }
 
+// serialOf is the serial of the telescope keyed key, if it is keyed by
+// its serial.
+func serialOf(key string) (string, bool) { return strings.CutPrefix(key, "serial:") }
+
 // AddressKey is the telescopes key of an address on this network saved
 // without a serial, host:port as saved.
 func AddressKey(endpoint string) string { return "address:" + endpoint }

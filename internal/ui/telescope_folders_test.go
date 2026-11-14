@@ -56,6 +56,15 @@ func TestTelescopeName(t *testing.T) {
 			t.Errorf("%+v: %q; want %q", c.t, got, c.want)
 		}
 	}
+
+	// Through the account before it connects, the saved telescope is
+	// named by its saved serial and model.
+	s.mu.Lock()
+	s.settings.Serial, s.settings.Model = "SYNTH0004", "Seestar S50 Pro"
+	s.mu.Unlock()
+	if got, want := s.telescopeName(copyapp.Target{Serial: "SYNTH0004", Telescope: copyapp.SerialKey("SYNTH0004")}), "Seestar S50 Pro SYNTH0004"; got != want {
+		t.Errorf("saved: %q; want %q", got, want)
+	}
 }
 
 // A copy.json with telescopes loads them, and a save keeps an entry's
