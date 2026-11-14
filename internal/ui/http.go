@@ -171,7 +171,10 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ports, _, _ := effective.validate()
 		defaults, _ := proxyrun.MergePorts(nil)
 		events, failures, path, logFailed := s.controller.log.trail()
-		target, targetErr := s.copyTarget()
+		// The telescope is named from the same settings and run the
+		// response carries, so a route saved meanwhile can't pair one
+		// telescope's address with another's name.
+		target, targetErr := s.copyTargetFor(settings, view.conn)
 		unlocked, reach := s.copyState(targetErr)
 		localhttp.Respond(w, http.StatusOK, struct {
 			CopyBusy  bool               `json:"copy_busy"`
@@ -195,7 +198,7 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TelescopeName string        `json:"telescope_name"`
 			Files         settingsFiles `json:"files"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
-			unlocked, reach, s.copyRefused, s.telescopeNameAt(target), s.settingsFiles()})
+			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), s.settingsFiles()})
 		return
 	}
 	if r.Method != "POST" {
@@ -462,12 +465,20 @@ func (s *server) settingsFiles() settingsFiles {
 // selected, and only while the run is connected: the copier never starts
 // or holds the device session itself. It never reads the Services ports.
 func (s *server) copyTarget() (copyapp.Target, error) {
-	if copyTargetHook != nil {
-		copyTargetHook()
-	}
 	s.mu.Lock()
 	settings := s.settings
 	s.mu.Unlock()
+	var conn runConn
+	_, conn.device, conn.serial, conn.id, conn.ok = s.controller.connectedSerial()
+	return s.copyTargetFor(settings, conn)
+}
+
+// copyTargetFor is [server.copyTarget] read from snapshots of the saved
+// settings and of the run's session.
+func (s *server) copyTargetFor(settings Settings, conn runConn) (copyapp.Target, error) {
+	if copyTargetHook != nil {
+		copyTargetHook()
+	}
 	if settings.Route == routeLAN {
 		endpoint, err := lanEndpoint(settings)
 		t := copyapp.Target{Endpoint: endpoint, Serial: settings.LANSerial, Telescope: SavedTelescope(settings)}
@@ -476,15 +487,14 @@ func (s *server) copyTarget() (copyapp.Target, error) {
 		}
 		return t, err
 	}
-	_, device, serial, id, ok := s.controller.connectedSerial()
-	if !ok {
+	if !conn.ok {
 		return copyapp.Target{Telescope: SavedTelescope(settings)}, errNotConnected
 	}
 	key := SavedTelescope(settings)
-	if serial != "" {
-		key = copyapp.SerialKey(serial)
+	if conn.serial != "" {
+		key = copyapp.SerialKey(conn.serial)
 	}
-	return copyapp.Target{Endpoint: accountEndpoint, Device: device, Run: id, Telescope: key}, nil
+	return copyapp.Target{Endpoint: accountEndpoint, Device: conn.device, Run: conn.id, Telescope: key}, nil
 }
 
 // heardAt is the serial the latest scan or Test heard at endpoint's
@@ -544,17 +554,21 @@ func SavedTelescope(s Settings) string {
 // suggests and the offer of an address's folder: "<model> <serial>", or
 // for an address "<model or Seestar> <host> <port>".
 func (s *server) telescopeName(t copyapp.Target) string {
+	s.mu.Lock()
+	settings := s.settings
+	s.mu.Unlock()
+	return s.telescopeNameIn(t, settings)
+}
+
+// telescopeNameIn is telescopeName with the model saved in settings.
+func (s *server) telescopeNameIn(t copyapp.Target, settings Settings) string {
 	if t.Device != "" {
 		return t.Device
 	}
 	if t.Serial != "" {
 		model := s.lan.modelOf(t.Serial)
-		if model == "" {
-			s.mu.Lock()
-			if s.settings.Serial == t.Serial {
-				model = s.settings.Model
-			}
-			s.mu.Unlock()
+		if model == "" && settings.Serial == t.Serial {
+			model = settings.Model
 		}
 		return cloudhttp.Device{Serial: t.Serial, Model: model}.DisplayName()
 	}
@@ -571,24 +585,21 @@ func (s *server) telescopeName(t copyapp.Target) string {
 	return model + " " + host + " " + port
 }
 
-// telescopeNameAt is the name of t's telescope, the copier's target, or ""
-// while none is known. Through the account before it connects, the target
-// is only the telescope saved, named by its saved serial, as Copy's status
-// names it.
-func (s *server) telescopeNameAt(t copyapp.Target) string {
+// telescopeNameAt is the name of t's telescope, the copier's target read
+// from settings, or "" while none is known. Through the account before it
+// connects, the target is only the telescope saved, named by its saved
+// serial, as Copy's status names it.
+func (s *server) telescopeNameAt(t copyapp.Target, settings Settings) string {
 	if t.Telescope == "" {
 		return ""
 	}
 	if t.Device == "" && t.Serial == "" && t.Endpoint == "" {
-		s.mu.Lock()
-		serial := s.settings.Serial
-		s.mu.Unlock()
-		if copyapp.SerialKey(serial) != t.Telescope {
+		if copyapp.SerialKey(settings.Serial) != t.Telescope {
 			return ""
 		}
-		t.Serial = serial
+		t.Serial = settings.Serial
 	}
-	return s.telescopeName(t)
+	return s.telescopeNameIn(t, settings)
 }
 
 // SavedCopyEndpoint is the TCP endpoint saved settings name for a copier

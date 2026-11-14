@@ -105,6 +105,34 @@ func TestStatusTelescopeName(t *testing.T) {
 	}
 }
 
+// The status names the telescope of the settings it carries, even when a
+// route is saved between its reading them and naming the telescope.
+func TestStatusTelescopeNameMatchesItsSettings(t *testing.T) {
+	s := testServer(t)
+	s.copyRefused = true
+	s.settings.Route, s.settings.LANAddress, s.settings.LANSerial = routeLAN, "192.0.2.10", "SYNTH0001"
+	saved := copyTargetHook
+	t.Cleanup(func() { copyTargetHook = saved })
+	copyTargetHook = func() {
+		s.mu.Lock()
+		s.settings.LANAddress, s.settings.LANSerial = "192.0.2.20", "SYNTH0002"
+		s.mu.Unlock()
+	}
+	var status struct {
+		Settings struct {
+			LANAddress string `json:"lan_address"`
+		} `json:"settings"`
+		TelescopeName string `json:"telescope_name"`
+	}
+	w := serve(s, request(s, "GET", "/api/status", ""))
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Settings.LANAddress != "192.0.2.10" || status.TelescopeName != "Seestar SYNTH0001" {
+		t.Errorf("status = %+v; want 192.0.2.10 named Seestar SYNTH0001", status)
+	}
+}
+
 // A copy.json with telescopes loads them, and a save keeps an entry's
 // members this version doesn't know; one without them loads as before.
 func TestCopySettingsTelescopes(t *testing.T) {
