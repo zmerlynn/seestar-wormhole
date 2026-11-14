@@ -23,6 +23,10 @@ const setUp = (folder) => ({
   'config.json': lan(), 'copy.json': { version: 1, folder, start_copying: false, later: { kept: true } },
 });
 
+// The fixture's share as the header names it, a telescope saved by its
+// address.
+const shareName = 'Seestar 127.0.0.1 14450';
+
 const lanResult = (page) => page.locator('#lan-result');
 const copySave = (page) => page.locator('#f-save');
 
@@ -40,6 +44,8 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeDisabled();
   await expect(page.locator('#tabs-note')).toBeVisible();
   await expect(page.locator('#connection-text')).toHaveText('Not connected');
+  await expect(page.locator('#telescope-text')).toHaveText('Telescope Network: no telescope chosen');
+  await expect(page.locator('#telescope-to')).toBeHidden();
   await expect(page.getByLabel('Remotely through Telescope Network')).toBeChecked();
   // The arrow keys pass over the closed tabs.
   await settleStartFocus(page);
@@ -56,7 +62,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
   await expect(lanResult(page)).toHaveAttribute('data-tone', 'ok');
   // Save ran Test; the header shows it.
-  await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}, reachable`);
   await expect(page.locator('#connection-dot')).toHaveAttribute('data-tone', 'on');
   await expect(page.locator('#tabs-note')).toBeHidden();
   expect(readJSON(app.config)).toMatchObject({ route: 'lan', lan_address: share, route_established: true });
@@ -214,7 +220,7 @@ test('a Test that passed is not run again by Save, and the header shows it', asy
     release();
   }
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
-  await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}, reachable`);
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeEnabled();
   expect(n.tests).toBe(1);
 });
@@ -237,7 +243,7 @@ test('Test of the saved address in another spelling does not say to Save', async
     await field(page, 'Telescope address').fill(answered);
     await page.getByRole('button', { name: 'Test' }).click();
     await expect(lanResult(page)).toHaveText(message);
-    await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+    await expect(page.locator('#connection-text')).toHaveText(/^On this network: Seestar .+, reachable$/);
     await page.unroute('**/copy/api/test');
   }
 });
@@ -675,6 +681,56 @@ test('a second telescope is asked for its own folder beside the first, and Save 
   expect(saved.telescopes).toEqual({ 'serial:SYNTHETIC-FIRST': { folder: app.folder, later: { kept: true } }, 'address:127.0.0.1:14450': { folder: suggested } });
   await tab(page, 'Browse').click();
   await expect(frame(page).locator('#list.statuses')).toBeVisible();
+});
+
+// The line under the header names the route's telescope and its folder,
+// and the folder, or no folder yet, opens Copy settings.
+test('the header names the telescope on this network and its folder, which opens Copy settings', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  await openApp(page, app.url);
+  const folder = page.locator('#telescope-folder');
+  await expect(page.locator('#telescope-text')).toHaveText(`On this network: ${shareName}`);
+  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}`);
+  await expect(folder).toHaveText('no folder yet');
+  await expect(folder).not.toHaveAttribute('title', /./);
+  await folder.click();
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await copySave(page).click();
+  await expect(page.locator('#c-next')).toBeFocused();
+  // The home folder is ~, and the whole folder is the title.
+  await expect(folder).toHaveText('~/Seestar');
+  await expect(folder).toHaveAttribute('title', app.folder);
+  await tab(page, 'Activity').click();
+  await folder.click();
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#copy-form')).toBeVisible();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+});
+
+test('the header names a telescope saved with its serial on this network, at its address', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), lan_serial: 'SYNTHETIC-HEARD', lan_scan: 'off' } });
+  await openApp(page, app.url);
+  await expect(page.locator('#telescope-text')).toHaveText(/^On this network: Seestar SYNTHETIC-HEARD at 127\.0\.0\.1:14450( \(saved\))?$/);
+  await expect(page.locator('#connection-text')).toHaveText('On this network: Seestar SYNTHETIC-HEARD');
+  await expect(page.locator('#telescope-folder')).toHaveText('no folder yet');
+});
+
+test('the header names the account\'s saved telescope while not connected, and never the email', async ({ page, startApp }) => {
+  const app = await startApp({
+    'config.json': { version: 1, bind: '127.0.0.1', idle: '0', route: 'account', email: 'synthetic@example.invalid', serial: 'SYNTHETIC-SAVED', model: 'Seestar S50 Pro', route_established: true },
+    'copy.json': (folder) => ({ version: 1, folder, start_copying: false }),
+  });
+  await openApp(page, app.url);
+  const folder = page.locator('#telescope-folder');
+  await expect(page.locator('#telescope-text')).toHaveText('Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected');
+  await expect(folder).toHaveText('~/Seestar');
+  await expect(folder).toHaveAttribute('title', app.folder);
+  await expect(page.locator('#telescope-line')).not.toContainText('@');
+  await folder.click();
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#copy-form')).toBeVisible();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
 });
 
 test('a serial heard at an address with a folder is offered that folder, and nothing moves until it is chosen', async ({ page, startApp }) => {

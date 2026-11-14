@@ -620,15 +620,15 @@ async function lanScan() {
   }
 }
 // The header's line and dot: the proxy's status on the Telescope Network route, and
-// the saved address and its last Test on this network. The dot is green
-// only while connected now; a retry, a busy telescope or an idle release is
-// busy.
+// the saved telescope and its address's last Test on this network. The dot
+// is green only while connected now; a retry, a busy telescope or an idle
+// release is busy.
 function connectionLine() {
   let line = 'Loading…', tone = 'off';
   const saved = state?.settings?.route === 'lan' ? state.settings.lan_address || '' : '';
   if (state && saved && !active) {
-    const tested = sameEndpoint(lanReach?.address, saved);
-    line = !tested ? 'On this network: ' + saved : lanReach.ok ? 'On this network: reachable' : "Can't reach " + saved;
+    const tested = sameEndpoint(lanReach?.address, saved), name = copyTelescopeNow()?.name || '';
+    line = !tested ? 'On this network: ' + (name || saved) : lanReach.ok ? 'On this network: ' + (name ? name + ', reachable' : 'reachable') : "Can't reach " + saved;
     tone = !tested ? 'off' : lanReach.ok ? 'on' : 'error';
   } else if (state) {
     line = active ? state.status : 'Not connected';
@@ -636,6 +636,48 @@ function connectionLine() {
   }
   text('connection-text', line);
   if ($('connection-dot').getAttribute('data-tone') !== tone) $('connection-dot').setAttribute('data-tone', tone);
+  telescopeLine();
+}
+// copyTelescopeNow is copy's status of the route's telescope, or null
+// while Copy is off.
+function copyTelescopeNow() {
+  return state?.copy_unlocked && !state.copy_refused ? copyStatus?.telescope || null : null;
+}
+// The line under it names the route's telescope and the folder its files
+// are copied to, which opens Copy's settings: on this network with the
+// address in use, through the account saved or connecting. It reads only
+// the fields it names.
+function telescopeLine() {
+  $('telescope-line').hidden = !state;
+  if (!state) return;
+  const lan = state.settings?.route === 'lan', telescope = copyTelescopeNow(), name = telescope?.name || '';
+  let what, to = 'folder';
+  if (lan) {
+    const saved = state.settings.lan_address || '';
+    what = !(name || saved) ? 'no telescope chosen' : (name || saved) + (telescope?.address ? ' at ' + telescope.address + (telescope.address_saved ? ' (saved)' : '') : '');
+    if (!name) to = '';
+  } else if (!active) {
+    const label = name || (state.settings?.serial ? state.settings.choice_label || '' : '');
+    what = label ? label + ' (saved), not connected' : 'no telescope chosen';
+    if (!name) to = '';
+  } else {
+    what = name || state.selected_device || 'connecting';
+    if (!name) to = 'wait';
+  }
+  if (!telescope) to = '';
+  const setUp = to === 'folder' && !!copyStatus.set_up && !!telescope.folder;
+  text('telescope-text', (lan ? 'On this network' : 'Telescope Network') + ': ' + what);
+  $('telescope-to').hidden = !to;
+  $('telescope-wait').hidden = to !== 'wait';
+  $('telescope-folder').hidden = to !== 'folder';
+  text('telescope-folder', setUp ? telescope.folder : 'no folder yet');
+  const title = setUp ? copyStatus.settings?.folder || telescope.folder : '';
+  if ($('telescope-folder').title !== title) $('telescope-folder').title = title;
+}
+// The folder, or no folder yet, opens Copy's settings, as Change… does.
+function telescopeFolder() {
+  selectTab('copy');
+  if (currentTab === 'copy') openCopyForm();
 }
 function lanError(message) {
   text('lan-address-error', message);
@@ -1569,6 +1611,7 @@ function copyRender(c) {
   copyNotice();
   text('copy-settings', JSON.stringify(c.settings, null, 2));
   renderEvents();
+  connectionLine();
 }
 // stale reports that what the copy tabs show may be out of date.
 function stale() {
@@ -2017,6 +2060,7 @@ $('copy-form').addEventListener('submit', e => {
   copySave();
 });
 $('s-change').addEventListener('click', openCopyForm);
+$('telescope-folder').addEventListener('click', telescopeFolder);
 $('s-adopt').addEventListener('click', copyAdopt);
 $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);

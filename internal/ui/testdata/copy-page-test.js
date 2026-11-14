@@ -521,3 +521,77 @@ async function checkLostLine(st) {
   for (const id of actions) copyAssert(!$(id).disabled, id + ' stayed off');
   copyAssert($('x-days').value === '30' && $('f-ex').value === 'Draft', 'a draft was lost');
 }
+
+// The line under the header names the route's telescope and its folder,
+// in each state, and the folder opens Copy's settings.
+async function checkTelescopeLine(st) {
+  // The fixture's copy names every telescope Seestar.
+  copyAssert(st.after.set_up && st.after.telescope.name === 'Seestar' && st.after.telescope.folder && !st.after.telescope.address, 'server statuses changed shape');
+  const line = () => $('telescope-text').textContent;
+  const folder = () => $('telescope-to').hidden ? '' : !$('telescope-wait').hidden ? $('telescope-wait').textContent : $('telescope-folder').textContent;
+  const shows = (what, want, wantFolder, title = '') => {
+    copyAssert(!$('telescope-line').hidden && line() === want, what + ': ' + line());
+    copyAssert(folder() === wantFolder, what + ' folder: ' + folder());
+    copyAssert($('telescope-folder').title === title, what + ' title: ' + $('telescope-folder').title);
+    copyAssert(!line().includes('@') && !folder().includes('@'), what + ' shows an email');
+  };
+  const name = 'Seestar S50 Pro SYNTH0004', home = '~/Seestar/S50 Pro SYNTH0004', full = '/synthetic/home/Seestar/S50 Pro SYNTH0004';
+  const email = {email: 'synthetic@example.invalid'};
+  const account = {...st.unlocked.settings, ...email, route: 'account', serial: 'SYNTH0004', model: 'Seestar S50 Pro', choice_label: 'synthetic choice label'};
+  const serialAt = (address, address_saved) => ({...st.after, telescope: {...st.after.telescope, name, address, address_saved, folder: home}, settings: {...st.after.settings, folder: full}});
+  const notSetUp = {...st.after, set_up: false, telescope: {...st.after.telescope, name, folder: ''}, settings: {...st.after.settings, folder: '/synthetic/home/Seestar/suggested'}};
+  copyFixture(st, st.unlocked);
+
+  // Through the account: nothing saved, saved, connecting, connected.
+  render({...st.locked, settings: {...st.locked.settings, ...email, route: 'account', serial: '', choice_label: ''}, devices_email: email.email});
+  shows('nothing saved', 'Telescope Network: no telescope chosen', '');
+  render({...st.unlocked, settings: account});
+  copyRender(serialAt('', false));
+  shows('saved', 'Telescope Network: ' + name + ' (saved), not connected', home, full);
+  copyRender({...st.after, telescope: {...st.after.telescope, name: '', folder: ''}, set_up: false});
+  render({...st.unlocked, settings: account, active: true, status: 'Connecting', selected_device: name});
+  shows('connecting', 'Telescope Network: ' + name, 'folder known once connected');
+  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name});
+  copyRender(serialAt('', false));
+  shows('connected', 'Telescope Network: ' + name, home, full);
+  copyRender(notSetUp);
+  shows('no folder yet', 'Telescope Network: ' + name, 'no folder yet');
+  // Copy off: the telescope part stays.
+  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, copy_unlocked: false});
+  shows('copy locked', 'Telescope Network: ' + name, '');
+  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, copy_refused: true});
+  shows('copy refused', 'Telescope Network: ' + name, '');
+
+  // On this network: nothing saved, a telescope saved by its address, one
+  // saved with its serial before and after a session reached it.
+  render({...st.unlocked, settings: {...st.unlocked.settings, lan_address: ''}, copy_unlocked: false});
+  shows('no address', 'On this network: no telescope chosen', '');
+  render(st.unlocked);
+  copyRender(st.after);
+  shows('address only', 'On this network: Seestar', st.after.telescope.folder, st.after.settings.folder);
+  copyAssert($('connection-text').textContent === 'On this network: Seestar', 'dot line: ' + $('connection-text').textContent);
+  copyRender(serialAt('192.0.2.20:445', true));
+  shows('saved address', 'On this network: ' + name + ' at 192.0.2.20:445 (saved)', home, full);
+  copyAssert($('connection-text').textContent === 'On this network: ' + name, 'dot line: ' + $('connection-text').textContent);
+  copyRender(serialAt('192.0.2.21:4445', false));
+  shows('address in use', 'On this network: ' + name + ' at 192.0.2.21:4445', home, full);
+  const saved = st.unlocked.settings.lan_address;
+  lanReach = {address: saved, ok: true};
+  controls();
+  copyAssert($('connection-text').textContent === 'On this network: ' + name + ', reachable', 'reachable: ' + $('connection-text').textContent);
+  lanReach = {address: saved, ok: false};
+  controls();
+  copyAssert($('connection-text').textContent === "Can't reach " + saved, 'unreachable: ' + $('connection-text').textContent);
+  lanReach = null;
+  copyRender(notSetUp);
+  shows('no folder yet here', 'On this network: ' + name, 'no folder yet');
+
+  // The folder, or no folder yet, opens Copy's settings.
+  for (const status of [notSetUp, serialAt('192.0.2.21:4445', false)]) {
+    copyRender(status);
+    selectTab('activity');
+    copyFormOpen = false;
+    $('telescope-folder').dispatchEvent({type: 'click'});
+    copyAssert(currentTab === 'copy' && copyFormOpen && !$('copy-form').hidden && document.activeElement === $('f-folder'), 'the folder did not open Copy settings');
+  }
+}

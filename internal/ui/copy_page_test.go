@@ -97,3 +97,9 @@ func TestActionAlertsPage(t *testing.T) {
 func TestLostLinePage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkLostLine("+copyPageStatuses(t)+")")
 }
+
+// The line under the header names the telescope and its folder, which
+// opens Copy's settings.
+func TestTelescopeLinePage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkTelescopeLine("+copyPageStatuses(t)+")")
+}
