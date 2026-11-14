@@ -103,7 +103,7 @@ func runScan(ctx context.Context, o scanOptions, out io.Writer, log *slog.Logger
 			row.Addresses = append(row.Addresses, a.String())
 		}
 		list.Telescopes = append(list.Telescopes, row)
-		log.Info("found a telescope", "telescope", t.Label(), "addresses", row.Addresses)
+		log.Info("found a telescope", "telescope", t.CappedLabel(), "addresses", row.Addresses)
 	}
 	w := bufio.NewWriter(out)
 	if o.format == "json" {

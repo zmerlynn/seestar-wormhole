@@ -216,6 +216,60 @@ func TestScanJSON(t *testing.T) {
 	}
 }
 
+// A telescope's record fits the log sink's line in both log formats,
+// whatever name a legal scan reply carried: the log names it capped, while
+// the list still gives the name in full.
+func TestScanRecordFitsTheLogLine(t *testing.T) {
+	del := strings.Repeat("\x7f", 3700)
+	label := strings.Repeat(`\x7f`, 15) + "... (S50 Pro, serial TEST0002)"
+	useLAN(t, &lanNet{answers: map[netip.Addr][3]string{
+		netip.MustParseAddr("192.0.2.85"): {"TEST0002", del, "S50 Pro"},
+	}})
+	for _, logFormat := range []string{"text", "json"} {
+		for _, format := range []string{"text", "json"} {
+			t.Run(logFormat+" log/"+format+" list", func(t *testing.T) {
+				var out, logs bytes.Buffer
+				if err := runScan(t.Context(), scanOptions{format: format}, &out, diagnostic.Logger(logFormat, &logs, slog.LevelInfo)); err != nil {
+					t.Fatal(err)
+				}
+				var record string
+				for line := range strings.Lines(logs.String()) {
+					if strings.Contains(line, "found a telescope") {
+						record = line
+					}
+				}
+				if record == "" || len(record) > logLine {
+					t.Fatalf("record of %d bytes:\n%.400s", len(record), logs.String())
+				}
+				if logFormat == "text" {
+					if !strings.Contains(record, " telescope="+strconv.Quote(label)+" ") {
+						t.Errorf("want %q in\n%s", label, record)
+					}
+				} else {
+					var got map[string]any
+					if err := json.Unmarshal([]byte(record), &got); err != nil || got["telescope"] != label {
+						t.Errorf("want %q in %v: %v", label, got, err)
+					}
+				}
+				if format == "text" {
+					if want := "192.0.2.85 - " + quoteField(del) + ` "S50 Pro" TEST0002` + "\n"; out.String() != want {
+						t.Errorf("list of %d bytes, want %d:\n%.400s", out.Len(), len(want), out.String())
+					}
+					return
+				}
+				var list struct {
+					Telescopes []scanned `json:"telescopes"`
+					Replies    int       `json:"replies"`
+				}
+				if err := json.Unmarshal(out.Bytes(), &list, json.RejectUnknownMembers(true)); err != nil ||
+					len(list.Telescopes) != 1 || list.Telescopes[0].Name != del || list.Telescopes[0].Serial != "TEST0002" {
+					t.Errorf("list %v:\n%.400s", err, out.String())
+				}
+			})
+		}
+	}
+}
+
 // Nothing answering is a scan that ran: exit 0, an empty list and a
 // warning, with the Local Network hint on macOS only.
 func TestScanSilent(t *testing.T) {
