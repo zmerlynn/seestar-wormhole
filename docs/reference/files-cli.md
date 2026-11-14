@@ -158,7 +158,9 @@ that; a connection made within them isn't limited by them. An `--endpoint` given
 dialed as given. An address another telescope answers at, the saved one or
 any other, isn't used, even if it answers there only while that address is
 being connected; a connection already made there is closed and the search
-goes on. If no reply carries the serial, the saved address is tried.
+goes on. If no reply carries the serial, the saved address is tried,
+unless another telescope answered there: then the connect fails, and its
+error names the telescope that answered and the saved serial.
 
 `--scan` chooses when a connect scans. Without it, the app's choice under
 **On this network**, [`lan_scan`](app-settings.md#configjson-version-1), is
