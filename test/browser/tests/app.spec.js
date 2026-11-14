@@ -730,9 +730,13 @@ test('focus goes to Change… when the folder that opened the form is no longer 
   await openCopy(page, app.url);
   await page.locator('#telescope-folder').click();
   await expect(field(page, 'Folder for your images')).toBeFocused();
-  await page.evaluate(() => { document.getElementById('telescope-to').hidden = true; });
-  await page.getByRole('button', { name: 'Cancel' }).click();
-  await expect(page.getByRole('button', { name: 'Change…' })).toBeFocused();
+  // In one task, so a status poll can't show the folder again in between.
+  const focused = await page.evaluate(() => {
+    $('telescope-to').hidden = true;
+    $('f-cancel').click();
+    return document.activeElement.id;
+  });
+  expect(focused).toBe('s-change');
 });
 
 test('a second telescope is asked for its own folder beside the first, and Save refuses the first one\'s', async ({ page, startApp }) => {
