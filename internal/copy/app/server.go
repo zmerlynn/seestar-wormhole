@@ -151,7 +151,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	// Each pass of copying follows its telescope to where it is now, and
 	// copying stops once the target is another telescope.
 	s.copy = newController(ctx, o.StateDir, log, dial)
-	s.copy.admit, s.copy.target, s.copy.rep = &s.admit, s.target, s.rep
+	s.copy.admit, s.copy.target, s.copy.rep, s.copy.name = &s.admit, s.target, s.rep, s.name
 	// A preview's and a delete's dials go only to the target they were
 	// started at, and fail once that changed, even by a reconnect: a
 	// delete must not remove files on a telescope it never checked.
@@ -163,9 +163,9 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 		return err
 	}
 	s.preview = newPreviewer(ctx, o.StateDir, log, dial)
-	s.preview.at, s.preview.rep = at, s.rep
+	s.preview.at, s.preview.rep, s.preview.name = at, s.rep, s.name
 	s.free = newFreer(ctx, o.StateDir, log, dial)
-	s.free.at, s.free.rep = at, s.rep
+	s.free.at, s.free.rep, s.free.name = at, s.rep, s.name
 	// Free up space's outcomes join copy's in Activity, tagged "delete".
 	s.free.record = slog.New(withoutFolder{newTee(slog.DiscardHandler, s.copy.activity, "delete")})
 	if o.Remover != nil {
@@ -1555,10 +1555,14 @@ const maxDays = 36500
 // system failure, such as "permission denied"; else the first safe text
 // in err's chain, such as a sentinel a dependency wrapped with a path;
 // and otherwise "operation failed". A failure on two ports is each
-// endpoint with its own reason.
+// endpoint with its own reason, and another telescope answering names
+// both telescopes.
 func reason(err error) string {
 	if err == nil {
 		return "none"
+	}
+	if other, ok := errors.AsType[*landiscovery.OtherTelescopeError](err); ok {
+		return other.Error()
 	}
 	if both, ok := errors.AsType[*landiscovery.PortsError](err); ok {
 		return both.Endpoints[0] + ": " + reason(both.Errs[0]) + "; " + both.Endpoints[1] + ": " + reason(both.Errs[1])

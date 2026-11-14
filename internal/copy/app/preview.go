@@ -43,6 +43,8 @@ type previewer struct {
 	at func(t Target) error
 	// rep, if set, reports how each preview ended: a [Mount]'s.
 	rep *reporter
+	// name, if set, names a target's telescope: a [Mount]'s.
+	name func(Target) string
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when no preview runs
@@ -268,6 +270,11 @@ func (p *previewer) view() *previewView {
 		v.Text = "Preview again to retry."
 		switch {
 		case st.unreachable:
+			if title, what, ok := otherAnswered(st.reachErr, p.name); ok {
+				v.Title = title
+				v.Text = what + " " + pickTelescope + ", or Preview again to retry."
+				break
+			}
 			v.Title = "Can't reach the telescope at " + st.endpoint + "."
 			v.Text = checkReach(st.lan) + " " + v.Text
 			if st.lan {
