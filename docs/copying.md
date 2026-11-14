@@ -162,7 +162,10 @@ telescope answers from, the saved one first, so a new address from the
 router is followed and saved; `--profile default` on the command line
 follows it the same way for that run. An address another telescope answers
 at, the saved one or any other, isn't used. If the scan doesn't see the telescope, the
-saved address is tried. Free up space deletes only where its preview
+saved address is tried, unless another telescope answered there: then
+Copy, Preview and Free up space say **Another telescope answered at**
+that address and name both telescopes; stop copying if it is on, then
+pick the telescope in **Connection** and **Save**. Free up space deletes only where its preview
 connected; if the telescope has moved since, preview again.
 
 By default it scans once when copying starts, and once when Browse opens or

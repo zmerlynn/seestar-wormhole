@@ -170,7 +170,7 @@ func followSearch[T io.Closer](ctx context.Context, f *follow, log *slog.Logger,
 func telescopeKeys(f *follow, r landiscovery.Resolved) []any {
 	keys := []any{"serial", f.serial}
 	if r.Seen != nil {
-		keys = []any{"telescope", r.Seen.Label()}
+		keys = []any{"telescope", r.Seen.CappedLabel()}
 	}
 	keys = append(keys, "saved", f.saved)
 	if r.Endpoint != f.saved {
@@ -180,7 +180,7 @@ func telescopeKeys(f *follow, r landiscovery.Resolved) []any {
 		keys = append(keys, "addresses", r.Seen.Addresses)
 	}
 	if r.Other != nil {
-		keys = append(keys, "other", r.Other.Label())
+		keys = append(keys, "other", r.Other.CappedLabel())
 	}
 	return append(keys, "replies", r.Replies)
 }

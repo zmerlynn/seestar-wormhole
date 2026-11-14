@@ -46,6 +46,8 @@ type freer struct {
 	record *slog.Logger
 	// rep, if set, reports each run's outcome: a [Mount]'s.
 	rep *reporter
+	// name, if set, names a target's telescope: a [Mount]'s.
+	name func(Target) string
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when nothing runs
@@ -439,5 +441,5 @@ func (f *freer) quit() {
 func (f *freer) view() freeView {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return f.st.view()
+	return f.st.view(f.name)
 }

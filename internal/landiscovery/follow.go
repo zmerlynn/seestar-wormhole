@@ -8,6 +8,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 )
 
 // SMBPort is the telescope's file-sharing port, and ProxySMBPort the port
@@ -70,6 +72,40 @@ func unconnected(err error) bool {
 // saved serial also answered from an address it disqualified.
 var ErrOtherTelescope = errors.New("the address advertised a different telescope and cannot be used for this target")
 
+// OtherTelescopeError is how a [Follow] fails with [ErrOtherTelescope]:
+// Serial is the saved serial, and Other a telescope that answered with
+// another serial at Address, an address the connect would have used: the
+// saved address, when the serial wasn't seen, or else the first the
+// serial answered from that another serial did too. Other is nil, and
+// Address invalid, when more addresses answered with other serials than
+// Follow remembers and none of those it does is one of them.
+type OtherTelescopeError struct {
+	Serial  string
+	Address netip.Addr
+	Other   *Telescope
+}
+
+// Error names both telescopes, as logs do (see [Telescope.CappedLabel]),
+// within the 4096-byte message budget the account's selection errors
+// keep, so that a log record carrying it fits a log sink's line.
+func (e *OtherTelescopeError) Error() string {
+	if e.Other == nil {
+		return "too many other telescopes answered the scan to use any address for serial " + shownSerial(e.Serial)
+	}
+	return "another telescope, " + e.Other.CappedLabel() + ", answered at " + e.Address.String() + " instead of serial " + shownSerial(e.Serial)
+}
+
+// shownSerial is serial as an [OtherTelescopeError] shows it: escaped in
+// full when it is a valid serial, and otherwise capped.
+func shownSerial(serial string) string {
+	if cloud.ValidSerial(serial) {
+		return escaped(serial)
+	}
+	return capped(serial)
+}
+
+func (e *OtherTelescopeError) Unwrap() error { return ErrOtherTelescope }
+
 // maxOthers bounds the addresses a [Follow] remembers another serial
 // answered from. Once more have, it uses none: it can't tell which.
 const maxOthers = 256
@@ -117,7 +153,8 @@ type Resolved struct {
 // addresses answered with other serials: then it fails with
 // [ErrOtherTelescope]. When serial answered but no address connected, it
 // returns the last dial's error, or ErrOtherTelescope when no address it
-// answered from could be used. A nil error always comes with a connection
+// answered from could be used. Its ErrOtherTelescope is an
+// [OtherTelescopeError]. A nil error always comes with a connection
 // from dial. Without a serial or a scanner it dials endpoint alone, without
 // scanning.
 //
@@ -304,7 +341,7 @@ func follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 		// Without serial, the saved address is disqualified when another
 		// serial answered from it, or from more addresses than the
 		// watcher keeps, so it can't tell.
-		return zero, r, ErrOtherTelescope
+		return zero, r, w.otherError()
 	}
 	r.NotSeen = true
 	v, err := dial(ctx, endpoint)
@@ -314,7 +351,8 @@ func follow[T any](ctx context.Context, s *Scanner, endpoint, serial string, dia
 // watcher collects a scan's replies for one serial as they arrive: found
 // carries each new address that answered with it, at most maxAddresses,
 // so a send never blocks. others is each address another serial answered
-// from, at most maxOthers, and full that more did.
+// from, at most maxOthers, with the first telescope that did, and full
+// that more did.
 type watcher struct {
 	serial string
 	saved  netip.Addr
@@ -323,7 +361,7 @@ type watcher struct {
 	mu     sync.Mutex
 	seen   *Telescope
 	sent   []netip.Addr
-	others map[netip.Addr]bool
+	others map[netip.Addr]Telescope
 	full   bool
 	other  *Telescope
 }
@@ -336,15 +374,17 @@ func (w *watcher) observe(t Telescope, from netip.Addr) {
 			t.Addresses = []netip.Addr{from}
 			w.other = &t
 		}
+		_, known := w.others[from]
 		switch {
-		case w.others[from]:
+		case known:
 		case len(w.others) >= maxOthers:
 			w.full = true
 		default:
 			if w.others == nil {
-				w.others = make(map[netip.Addr]bool)
+				w.others = make(map[netip.Addr]Telescope)
 			}
-			w.others[from] = true
+			t.Addresses = []netip.Addr{from}
+			w.others[from] = t
 		}
 		return
 	}
@@ -376,5 +416,32 @@ func (w *watcher) resolved(endpoint string, replies int) Resolved {
 func (w *watcher) disqualified(address netip.Addr) bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return w.full || w.others[address]
+	_, other := w.others[address]
+	return w.full || other
+}
+
+// otherError is the [OtherTelescopeError] of a search that found no
+// address it could use: it names the telescope that answered at the
+// saved address, when the serial wasn't seen, or else at the first
+// address the serial answered from that one is known for. The telescope
+// at the saved address is known even past maxOthers.
+func (w *watcher) otherError() *OtherTelescopeError {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	e := &OtherTelescopeError{Serial: w.serial}
+	addresses := w.sent
+	if w.seen == nil {
+		addresses = []netip.Addr{w.saved}
+	}
+	for _, a := range addresses {
+		if t, ok := w.others[a]; ok {
+			e.Address, e.Other = a, &t
+			return e
+		}
+	}
+	if w.seen == nil && w.other != nil {
+		other := *w.other
+		e.Address, e.Other = w.saved, &other
+	}
+	return e
 }

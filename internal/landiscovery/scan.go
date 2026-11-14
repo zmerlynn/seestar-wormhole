@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/pktinfo"
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"golang.org/x/net/ipv4"
 )
 
@@ -65,8 +66,22 @@ func (t Telescope) Busy() bool { return t.Clients >= BusyClients }
 // then its model, if any, and serial number, as "Seestar_ABC (S50, serial
 // 123)". Each is escaped as Go escapes ASCII strings, since a reply can
 // carry any text.
-func (t Telescope) Label() string {
-	name, model := escaped(t.Name), escaped(t.Model)
+func (t Telescope) Label() string { return t.label(escaped) }
+
+// CappedLabel is [Telescope.Label] within a log line's budget, whatever
+// text a scan reply carried: its name and model are capped, and its serial
+// is in full when it is a valid one (see [cloud.ValidSerial]). An invalid
+// serial is capped, and names t alone, without its name and model.
+func (t Telescope) CappedLabel() string {
+	if !cloud.ValidSerial(t.Serial) {
+		return "serial " + capped(t.Serial)
+	}
+	return t.label(capped)
+}
+
+// label is [Telescope.Label] with its name and model shown by show.
+func (t Telescope) label(show func(string) string) string {
+	name, model := show(t.Name), show(t.Model)
 	if name == "" {
 		name = "Seestar"
 	}
@@ -80,6 +95,31 @@ func (t Telescope) Label() string {
 func escaped(s string) string {
 	q := strconv.QuoteToASCII(s)
 	return q[1 : len(q)-1]
+}
+
+// maxLabel bounds what capped returns, its escapes and the "..." that
+// marks a cut included, as the account's model labels are bounded.
+const maxLabel = 64
+
+// capped is s escaped as escaped does, at most maxLabel bytes: cut at a
+// whole rune, so never within an escape, and marked with "...".
+func capped(s string) string {
+	r := []rune(s)
+	cut := len(r) > maxLabel
+	if cut {
+		r = r[:maxLabel]
+	}
+	for {
+		label := escaped(string(r))
+		if !cut && len(label) <= maxLabel {
+			return label
+		}
+		if len(label) <= maxLabel-len("...") {
+			return label + "..."
+		}
+		cut = true
+		r = r[:len(r)-1]
+	}
 }
 
 // ScanResult is what a scan heard. Replies counts the accepted replies.
