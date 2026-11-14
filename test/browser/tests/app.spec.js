@@ -876,6 +876,71 @@ test('the header shows Copy\'s folder only for the telescope the app status name
   await expect(folder).not.toHaveAttribute('title', /./);
 });
 
+// Away to another route and back to the same telescope at the same
+// address, the header shows nothing of a Copy status read before, kept or
+// answering late, until Copy's status is read again.
+for (const late of [false, true]) {
+  test(`back at the same telescope, the header shows no ${late ? 'late' : 'kept'} Copy status from before`, async ({ page, startApp }) => {
+    const app = await startApp({
+      'config.json': { ...lan(), lan_serial: 'SYNTHETIC-FIRST', lan_scan: 'off', email: 'synthetic@example.invalid', serial: 'SYNTHETIC-SAVED', model: 'Seestar S50 Pro' },
+      'copy.json': (folder) => ({ version: 1, folder, start_copying: false, telescopes: { 'serial:SYNTHETIC-FIRST': { folder } } }),
+    });
+    await openApp(page, app.url);
+    const line = page.locator('#telescope-text');
+    const folder = page.locator('#telescope-folder');
+    const name = 'On this network: Seestar SYNTHETIC-FIRST';
+    const current = /^On this network: Seestar SYNTHETIC-FIRST at 127\.0\.0\.1:14450( \(saved\))?$/;
+    await expect(line).toHaveText(current);
+    const address = await page.evaluate(() => state.settings.lan_address);
+    // Copy's status as an earlier session left it: another address reached
+    // and another folder.
+    const old = async (route) => {
+      const response = await route.fetch();
+      const c = await response.json();
+      await route.fulfill({ response, json: { ...c, settings: { ...c.settings, folder: '/synthetic/Old' }, telescope: { ...c.telescope, address: '192.0.2.99:4445', address_saved: false, folder: '~/Old' } } });
+    };
+    const away = async () => {
+      await page.evaluate(async () => { await api('route', { settings: { route: 'account' } }); await refresh(); });
+      await expect(line).toHaveText('Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected');
+      await expect(page.locator('#telescope-to')).toBeHidden();
+    };
+    const back = async () => {
+      await page.evaluate(async (lan_address) => { await api('route', { settings: { route: 'lan', lan_address } }); await refresh(); }, address);
+      await expect(line).toHaveText(name);
+      await expect(page.locator('#telescope-to')).toBeHidden();
+    };
+    if (!late) {
+      await page.route('**/copy/api/status', old);
+      await expect(line).toHaveText(`${name} at 192.0.2.99:4445`);
+      await expect(folder).toHaveAttribute('title', '/synthetic/Old');
+      // Copy's status is kept while its poll fails.
+      await page.unroute('**/copy/api/status');
+      await page.route('**/copy/api/status', (route) => route.abort());
+      await away();
+      await back();
+    } else {
+      let release, asked;
+      const held = new Promise((resolve) => (release = resolve));
+      const reached = new Promise((resolve) => (asked = resolve));
+      await page.route('**/copy/api/status', async (route) => { asked(); await held; await old(route); }, { times: 1 });
+      await reached;
+      await away();
+      await back();
+      // The polls after it fail, so the late status is the last one read.
+      await page.route('**/copy/api/status', (route) => route.abort());
+      release();
+      await expect.poll(() => page.evaluate(() => copyStatus.telescope.address)).toBe('192.0.2.99:4445');
+    }
+    await expect(line).toHaveText(name);
+    await expect(page.locator('#telescope-to')).toBeHidden();
+    await expect(folder).not.toHaveAttribute('title', /./);
+    await page.unroute('**/copy/api/status');
+    await expect(line).toHaveText(current);
+    await expect(folder).toHaveText('~/Seestar');
+    await expect(folder).toHaveAttribute('title', app.folder);
+  });
+}
+
 test('a serial heard at an address with a folder is offered that folder, and nothing moves until it is chosen', async ({ page, startApp }) => {
   const app = await startApp({
     'config.json': { ...lan(), lan_serial: 'SYNTHETIC-HEARD' },

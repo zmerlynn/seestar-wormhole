@@ -557,8 +557,8 @@ async function checkTelescopeLine(st) {
   render(saved);
   copyRender(serialAt('', false, savedKey));
   shows('saved', 'Telescope Network: ' + name + ' (saved), not connected', home, full);
-  copyRender({...st.after, telescope: {...st.after.telescope, name: '', key: '', folder: ''}, set_up: false});
   render({...st.unlocked, settings: account, active: true, status: 'Connecting', selected_device: name, telescope_name: '', telescope_key: ''});
+  copyRender({...st.after, telescope: {...st.after.telescope, name: '', key: '', folder: ''}, set_up: false});
   shows('connecting', 'Telescope Network: ' + name, 'folder known once connected');
   render(connected);
   copyRender(serialAt('', false, onKey));
@@ -644,6 +644,56 @@ async function checkTelescopeLine(st) {
     $('telescope-folder').dispatchEvent({type: 'click'});
     copyAssert(currentTab === 'copy' && copyFormOpen && !$('copy-form').hidden && document.activeElement === $('f-folder'), 'the folder did not open Copy settings');
   }
+}
+
+// Back at a telescope after another route, the header shows nothing of a
+// Copy status read before, kept or answering late, until Copy's status is
+// read again; Copy's tabs keep the status they have, and their drafts.
+async function checkTelescopeReturn(st) {
+  const name = 'Seestar S50 Pro SYNTH0004', key = 'serial:SYNTH0004 192.0.2.20:445';
+  const lan = {...st.unlocked, telescope_name: name, telescope_key: key};
+  const away = {...st.unlocked, settings: {...st.unlocked.settings, route: 'account', serial: 'SYNTH0005'}, telescope_name: 'Seestar S30 SYNTH0005', telescope_key: 'serial:SYNTH0005'};
+  const at = (address, address_saved, folder, full) => ({...st.after, telescope: {...st.after.telescope, name, key, address, address_saved, folder}, settings: {...st.after.settings, folder: full}});
+  const old = at('192.0.2.99:4445', false, '~/Old', '/synthetic/Old'), fresh = at('192.0.2.20:445', true, '~/New', '/synthetic/New');
+  const line = () => $('telescope-text').textContent;
+  const shows = (what, want, title) => {
+    copyAssert(line() === 'On this network: ' + name + want, what + ': ' + line());
+    copyAssert($('telescope-to').hidden === !title && $('telescope-folder').title === title, what + ' folder: ' + $('telescope-to').hidden + ' ' + $('telescope-folder').title);
+  };
+  copyFixture(st, lan);
+  copyRender(old);
+  shows('first visit', ' at 192.0.2.99:4445', '/synthetic/Old');
+  $('f-ex').value = 'Draft';
+  // A kept status: away and back to the same telescope and address.
+  render(away);
+  copyAssert($('telescope-to').hidden, 'the folder stayed on another route');
+  render(lan);
+  shows('back, Copy kept', '', '');
+  copyAssert(copyStatus === old && $('f-ex').value === 'Draft', "Copy's tabs lost their status or draft");
+  api = async (action, body, base) => base === '/copy/api/' ? fresh : lan;
+  await copyRefresh();
+  shows('back, Copy read', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  // A late status: read before the route changed, answering after it
+  // came back.
+  let asked, release;
+  const reached = new Promise(resolve => asked = resolve);
+  api = async (action, body, base) => {
+    if (base !== '/copy/api/') return lan;
+    asked();
+    return new Promise(resolve => release = resolve);
+  };
+  const reading = copyRefresh();
+  await reached;
+  render(away);
+  render(lan);
+  shows('back, Copy reading', '', '');
+  release(old);
+  await reading;
+  shows('back, Copy late', '', '');
+  copyAssert(copyStatus === old && $('f-ex').value === 'Draft', "Copy's tabs lost the late status or the draft");
+  api = async (action, body, base) => base === '/copy/api/' ? fresh : lan;
+  await copyRefresh();
+  shows('back, Copy read again', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
 }
 
 // Copy settings… and Change… both open the form, and focus goes back to

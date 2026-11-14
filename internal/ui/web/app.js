@@ -639,12 +639,13 @@ function connectionLine() {
   telescopeLine();
 }
 // copyTelescopeNow is copy's status of the route's telescope, or null
-// while Copy is off or its status describes another telescope than the
-// app's: a route saved since Copy's last poll shows the telescope only,
-// until Copy's status catches up.
+// while Copy is off, or its status describes another telescope than the
+// app's or was read before the app's status last changed: a route saved
+// since, even back to the same telescope, shows the telescope only, until
+// Copy's status is read again.
 function copyTelescopeNow() {
-  const telescope = state?.copy_unlocked && !state.copy_refused ? copyStatus?.telescope || null : null;
-  return telescope && telescope.key === (state.telescope_key || '') ? telescope : null;
+  const telescope = state?.copy_unlocked && !state.copy_refused ? headerCopy : null;
+  return telescope && telescope.association === association && telescope.key === (state.telescope_key || '') ? telescope : null;
 }
 // telescopeNameNow is the route's telescope's name, from the app's status.
 function telescopeNameNow() {
@@ -672,13 +673,13 @@ function telescopeLine() {
     if (!name) to = 'wait';
   }
   if (!telescope) to = '';
-  const setUp = to === 'folder' && !!copyStatus.set_up && !!telescope.folder;
+  const setUp = to === 'folder' && telescope.set_up && !!telescope.folder;
   text('telescope-text', (lan ? 'On this network' : 'Telescope Network') + ': ' + what);
   $('telescope-to').hidden = !to;
   $('telescope-wait').hidden = to !== 'wait';
   $('telescope-folder').hidden = to !== 'folder';
   text('telescope-folder', setUp ? telescope.folder : 'no folder yet');
-  const title = setUp ? copyStatus.settings?.folder || telescope.folder : '';
+  const title = setUp ? telescope.title : '';
   if ($('telescope-folder').title !== title) $('telescope-folder').title = title;
 }
 // The folder, or no folder yet, opens Copy's settings, as Change… does.
@@ -883,6 +884,12 @@ let copyOpener = null, copyLockAsked = false;
 // copyTelescope is the id of the telescope whose folder the folder field
 // was filled with; each telescope has its own.
 let copyTelescope = null;
+// association counts the app statuses that changed what the header names:
+// its route, telescope or selected device, or whether Copy is on.
+// headerCopy is the header's part of one Copy status read under one
+// association: the address, folder and title it shows only while both
+// that association and the telescope's key are still current.
+let association = 0, associated = '', headerCopy = null;
 // A refused copy.json keeps them off for the run, and its note, naming
 // the file, replaces the usual one.
 function copyTabs(s) {
@@ -1625,9 +1632,15 @@ async function clip(button, value, live, copied) {
   }
   setTimeout(() => button.textContent = label, 2000);
 }
-function copyRender(c) {
+// copyRender shows a Copy status read under association seen, the current
+// one unless a read began before the app status changed.
+function copyRender(c, seen = association) {
   const wasSetUp = !!copySaved;
   copyStatus = c;
+  if (seen === association) {
+    const t = c.telescope;
+    headerCopy = t ? {association: seen, key: t.key, address: t.address, address_saved: t.address_saved, folder: t.folder, set_up: !!c.set_up, title: c.settings?.folder || t.folder} : null;
+  }
   copySaved = c.set_up ? c.settings : null;
   copyHistory = c.history;
   $('f-choose').hidden = $('f-hchoose').hidden = !c.choose;
@@ -1691,12 +1704,14 @@ function lostLine() {
   clearable();
 }
 // copyRefresh reads copy's status; a failure leaves the last one shown,
-// since the wormhole's own poll reports a lost server.
+// since the wormhole's own poll reports a lost server. The header takes
+// it only if the app's status hasn't changed while it was read.
 async function copyRefresh() {
+  const seen = association;
   try {
     const c = await api('status', undefined, '/copy/api/');
     copyLost = copyOld = false;
-    copyRender(c);
+    copyRender(c, seen);
   } catch (_) {
     copyLost = true;
   }
@@ -1824,6 +1839,11 @@ function projectPicker(s) {
 }
 function render(s) {
   state = s;
+  const names = JSON.stringify([s.settings?.route, s.telescope_key, s.telescope_name, s.selected_device, !!s.copy_unlocked && !s.copy_refused]);
+  if (names !== associated) {
+    associated = names;
+    association++;
+  }
   projectPicker(s);
   text('version',s.version);
   active = s.active;

@@ -104,6 +104,12 @@ func TestTelescopeLinePage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkTelescopeLine("+copyPageStatuses(t)+")")
 }
 
+// Back at a telescope after another route, the header shows no Copy
+// status read before, kept or late, until one is read again.
+func TestTelescopeReturnPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkTelescopeReturn("+copyPageStatuses(t)+")")
+}
+
 // Copy settings… and Change… open one form and take focus back when it
 // closes; while copying, the folder says to stop copying first.
 func TestCopySettingsButtonPage(t *testing.T) {
