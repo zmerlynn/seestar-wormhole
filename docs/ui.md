@@ -30,7 +30,8 @@ known once the telescope is. On this network it shows the address in use,
 which can differ from the saved one, or the saved address marked **(saved)**
 before the first connection. The folder is the telescope's own, with your home
 folder shown as `~` except on Windows, or **no folder yet**; select it to open
-Copy settings. With Copy off, only the telescope shows.
+Copy settings, or, while copying runs, to see that copying must stop first.
+With Copy off, only the telescope shows.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
@@ -254,8 +255,10 @@ After that, Copy shows what
 copying is doing, with
 **Start copying**, **Preview**, **Check now** and **Stop copying**, and below
 them a summary of the settings, such as "Copying to ~/Seestar every 5 min,
-skipping logs and system files." **Change…** opens the settings, which you
-can't change while copying runs:
+skipping logs and system files." **Copy settings…**, beside **Preview**, and
+**Change…**, after the summary, open the settings; **Cancel** or **Save**
+returns you to the button you pressed. You can't change the settings while
+copying runs, and **Copy settings…** is hidden then:
 
 - **Folder for your images.** Images are copied there in the same folders as
   on the telescope. Each folder has its own copy history, and each telescope
