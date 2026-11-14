@@ -398,6 +398,29 @@ func TestFollowFailsClosedWhenOthersFill(t *testing.T) {
 	}
 }
 
+// The telescope that answered at the saved address is named even when it
+// answered after other serials filled the scan, and the saved serial
+// didn't answer.
+func TestFollowNamesSavedAddressPastOthers(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var replies []datagram
+		for i := range maxOthers + 1 {
+			replies = append(replies, datagram{replyBytes(fmt.Sprintf("OTHER-%d", i), "S50_X", "Seestar S50", 0), netip.AddrFrom4([4]byte{198, 51, byte(i >> 8), byte(i)})})
+		}
+		replies = append(replies, answer("TEST0002", "192.0.2.85"))
+		s, c := observedScan(time.Second, replies...)
+		c.in = make(chan datagram, len(replies))
+		dials := 0
+		_, _, _, err := Follow(t.Context(), s, "192.0.2.85:4445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+			dials++
+			return &session{endpoint: ep}, nil
+		}, release)
+		if !otherAt(err, "192.0.2.85", "TEST0002") || dials != 0 {
+			t.Fatalf("%#v, dials %d", err, dials)
+		}
+	})
+}
+
 // bothRefused reports whether err is a refusal on 445 then 4445 at host,
 // naming both.
 func bothRefused(err error, host string) bool {
