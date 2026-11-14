@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
@@ -190,33 +191,37 @@ func (c overflowConn) WriteTo(b []byte, _ *ipv4.ControlMessage, _ net.Addr) (int
 }
 
 // When other serials filled the scan, Preview says it couldn't choose an
-// address, not that the saved telescope didn't answer: here it did.
+// address, not that the saved telescope didn't answer: here it did. The
+// scan runs on the bubble's clock, so its window ends only once it has read
+// every reply, however slowly it reads them.
 func TestOtherTelescopesOverflowPreview(t *testing.T) {
-	s, l := otherTelescopeServer(t, true)
-	n := &lanNet{answers: map[netip.Addr][3]string{}}
-	useLAN(t, n)
-	lanScanner.Sends = 1
-	lanScanner.Listen = func() (landiscovery.Conn, error) {
-		c := n.conn()
-		c.in = make(chan lanDatagram, 512)
-		return overflowConn{c}, nil
-	}
-	target, err := s.copyTarget()
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = copyMountOptions(s, copyapp.MountOptions{}).Dial(t.Context(), target)
-	if e, ok := errors.AsType[*landiscovery.OtherTelescopeError](err); !ok || e.Other != nil || l.take() != nil {
-		t.Fatalf("dial: %v", err)
-	}
-	if w := doPost(s, "/copy/api/copy", `{"action":"preview"}`); w.Code != 200 {
-		t.Fatalf("preview = %d %s", w.Code, w.Body)
-	}
-	if _, title, text := copyPart(t, s, "copy.preview", "failed"); title != "Too many addresses answered the scan." ||
-		text != "The scan couldn't safely choose an address for S50 Pro SERIAL-A. Pick the telescope in Connection and Save, or Preview again to retry." {
-		t.Errorf("preview: %q %q", title, text)
-	}
-	if calls := l.take(); calls != nil {
-		t.Errorf("dialed %q", calls)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		s, l := otherTelescopeServer(t, true)
+		n := &lanNet{answers: map[netip.Addr][3]string{}}
+		useLAN(t, n)
+		lanScanner.Sends = 1
+		lanScanner.Listen = func() (landiscovery.Conn, error) {
+			c := n.conn()
+			c.in = make(chan lanDatagram, 512)
+			return overflowConn{c}, nil
+		}
+		target, err := s.copyTarget()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = copyMountOptions(s, copyapp.MountOptions{}).Dial(t.Context(), target)
+		if e, ok := errors.AsType[*landiscovery.OtherTelescopeError](err); !ok || e.Other != nil || l.take() != nil {
+			t.Fatalf("dial: %v", err)
+		}
+		if w := doPost(s, "/copy/api/copy", `{"action":"preview"}`); w.Code != 200 {
+			t.Fatalf("preview = %d %s", w.Code, w.Body)
+		}
+		if _, title, text := copyPart(t, s, "copy.preview", "failed"); title != "Too many addresses answered the scan." ||
+			text != "The scan couldn't safely choose an address for S50 Pro SERIAL-A. Pick the telescope in Connection and Save, or Preview again to retry." {
+			t.Errorf("preview: %q %q", title, text)
+		}
+		if calls := l.take(); calls != nil {
+			t.Errorf("dialed %q", calls)
+		}
+	})
 }
