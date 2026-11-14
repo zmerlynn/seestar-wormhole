@@ -76,7 +76,7 @@ func otherAnswered(err error, name func(Target) string) (title, what string, ok 
 		expected = name(Target{Serial: e.Serial})
 	}
 	if e.Other == nil {
-		return "Other telescopes answered instead.", "Expected " + expected + ", but only other telescopes answered.", true
+		return "Too many addresses answered the scan.", "The scan couldn't safely choose an address for " + expected + ".", true
 	}
 	other := "another telescope"
 	if cloudhttp.ValidSerial(e.Other.Serial) {
@@ -720,7 +720,7 @@ func (c *controller) view(now time.Time) copyView {
 	case stUnreachable:
 		if title, what, ok := otherAnswered(st.reachErr, c.name); ok {
 			v.Title = title
-			v.Text = "Trying again at " + at(st.next) + ". " + what + " " + pickTelescope + ". Copying stays on and keeps trying."
+			v.Text = "Trying again at " + at(st.next) + ". " + what + " Copying stays on and keeps trying. To switch telescopes, stop copying, then pick the telescope in Connection and Save."
 			break
 		}
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."

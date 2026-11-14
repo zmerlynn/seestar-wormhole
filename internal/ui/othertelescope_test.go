@@ -3,8 +3,10 @@ package ui
 import (
 	"encoding/json/v2"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
@@ -15,6 +17,7 @@ import (
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
+	"golang.org/x/net/ipv4"
 )
 
 // otherTelescopeServer is the owner's setup of 2026-11-14: the S50 Pro is
@@ -138,7 +141,7 @@ func TestOtherTelescopeCopy(t *testing.T) {
 		t.Fatalf("start = %d %s", w.Code, w.Body)
 	}
 	if _, title, text := copyPart(t, s, "copy", "unreachable"); title != otherTitle ||
-		!strings.HasSuffix(text, ". "+otherWhat+" Pick the telescope in Connection and Save. Copying stays on and keeps trying.") {
+		!strings.HasSuffix(text, ". "+otherWhat+" Copying stays on and keeps trying. To switch telescopes, stop copying, then pick the telescope in Connection and Save.") {
 		t.Errorf("on: %q %q", title, text)
 	}
 }
@@ -171,5 +174,49 @@ func TestOtherTelescopeBrowse(t *testing.T) {
 	}
 	if !strings.Contains(v.Message, otherLog) {
 		t.Errorf("Browse says %d %s", w.Code, w.Body)
+	}
+}
+
+// overflowConn answers a scan from more addresses with other serials than
+// Follow remembers, then with the saved serial from 192.0.2.30.
+type overflowConn struct{ *lanConn }
+
+func (c overflowConn) WriteTo(b []byte, _ *ipv4.ControlMessage, _ net.Addr) (int, error) {
+	for i := range 257 {
+		c.in <- lanDatagram{[]byte(fmt.Sprintf(`{"result":{"sn":"OTHER-%d","ssid":"Other","product_model":"S50"}}`, i)), netip.AddrFrom4([4]byte{198, 51, byte(i >> 8), byte(i)})}
+	}
+	c.in <- lanDatagram{[]byte(`{"result":{"sn":"SERIAL-A","ssid":"Expected","product_model":"S50 Pro"}}`), netip.MustParseAddr("192.0.2.30")}
+	return len(b), nil
+}
+
+// When other serials filled the scan, Preview says it couldn't choose an
+// address, not that the saved telescope didn't answer: here it did.
+func TestOtherTelescopesOverflowPreview(t *testing.T) {
+	s, l := otherTelescopeServer(t, true)
+	n := &lanNet{answers: map[netip.Addr][3]string{}}
+	useLAN(t, n)
+	lanScanner.Sends = 1
+	lanScanner.Listen = func() (landiscovery.Conn, error) {
+		c := n.conn()
+		c.in = make(chan lanDatagram, 512)
+		return overflowConn{c}, nil
+	}
+	target, err := s.copyTarget()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = copyMountOptions(s, copyapp.MountOptions{}).Dial(t.Context(), target)
+	if e, ok := errors.AsType[*landiscovery.OtherTelescopeError](err); !ok || e.Other != nil || l.take() != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	if w := doPost(s, "/copy/api/copy", `{"action":"preview"}`); w.Code != 200 {
+		t.Fatalf("preview = %d %s", w.Code, w.Body)
+	}
+	if _, title, text := copyPart(t, s, "copy.preview", "failed"); title != "Too many addresses answered the scan." ||
+		text != "The scan couldn't safely choose an address for S50 Pro SERIAL-A. Pick the telescope in Connection and Save, or Preview again to retry." {
+		t.Errorf("preview: %q %q", title, text)
+	}
+	if calls := l.take(); calls != nil {
+		t.Errorf("dialed %q", calls)
 	}
 }

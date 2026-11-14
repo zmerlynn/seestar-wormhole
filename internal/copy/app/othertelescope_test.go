@@ -44,7 +44,7 @@ func TestCopyOtherTelescope(t *testing.T) {
 	}
 	v := e.wait(stUnreachable)
 	if v.Title != otherTitle || !v.On || v.Contact != "err" || !strings.HasPrefix(v.Text, "Trying again at ") ||
-		!strings.HasSuffix(v.Text, ". "+otherWhat+" Pick the telescope in Connection and Save. Copying stays on and keeps trying.") {
+		!strings.HasSuffix(v.Text, ". "+otherWhat+" Copying stays on and keeps trying. To switch telescopes, stop copying, then pick the telescope in Connection and Save.") {
 		t.Errorf("on: %+v", v)
 	}
 	e.c.stop()
@@ -79,11 +79,12 @@ func TestPreviewOtherTelescope(t *testing.T) {
 }
 
 // When others filled the scan and no address was left to name, the text
-// still names the saved telescope; a page with no names says Seestar.
+// says the scan couldn't choose one, not that the saved telescope didn't
+// answer, as it may have; a page with no names says Seestar.
 func TestOtherTelescopesUnnamed(t *testing.T) {
 	err := &landiscovery.OtherTelescopeError{Serial: "SERIAL-A"}
 	title, what, ok := otherAnswered(err, otherName)
-	if !ok || title != "Other telescopes answered instead." || what != "Expected S50 Pro SERIAL-A, but only other telescopes answered." {
+	if !ok || title != "Too many addresses answered the scan." || what != "The scan couldn't safely choose an address for S50 Pro SERIAL-A." {
 		t.Errorf("got %q %q %v", title, what, ok)
 	}
 	if _, what, _ := otherAnswered(otherErr, nil); what != "Expected Seestar, but S50 Pro TEST0002 answered there." {
