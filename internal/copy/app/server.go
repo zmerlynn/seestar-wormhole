@@ -107,10 +107,15 @@ type server struct {
 	// reachedMu, taken alone or inside mu, guards where the latest
 	// session reached the telescope keyed reachedFor on this network: the
 	// address in use, which can differ from the saved one once it was
-	// followed to another address or port.
-	reachedMu  sync.Mutex
-	reachedFor string
-	reached    string
+	// followed to another address or port. reachedRoute counts the
+	// changes of route and reachedSeen the sessions that reached it: a
+	// session counts only on the route it began on, and its failure
+	// forgets only what was known when it began.
+	reachedMu    sync.Mutex
+	reachedFor   string
+	reached      string
+	reachedRoute uint64
+	reachedSeen  uint64
 }
 
 func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server {
@@ -158,8 +163,11 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	// Every session, whatever opens it, notes where it reached the
 	// telescope, for the page.
 	open := func(ctx context.Context, t Target) (remote.Session, Target, error) {
+		s.reachedMu.Lock()
+		route, seen := s.reachedRoute, s.reachedSeen
+		s.reachedMu.Unlock()
 		sess, at, err := resolve(ctx, t)
-		s.noteReached(ctx, t, at, err)
+		s.noteReached(ctx, route, seen, t, at, err)
 		return sess, at, err
 	}
 	dial = func(ctx context.Context, t Target) (remote.Session, error) {
@@ -520,6 +528,7 @@ var errNotSetUp = errors.New("save the copy settings first")
 func (s *server) endpointChanged() {
 	s.reachedMu.Lock()
 	s.reachedFor, s.reached = "", ""
+	s.reachedRoute++
 	s.reachedMu.Unlock()
 	s.mu.Lock()
 	s.free.clear()
@@ -836,17 +845,23 @@ func (s *server) telescopeView(t Target) telescopeView {
 }
 
 // noteReached notes where a session opened at t reached its telescope,
-// at, on this network: a failure forgets it, unless ctx ended first.
-func (s *server) noteReached(ctx context.Context, t, at Target, err error) {
-	if !t.onLAN() || t.Serial == "" || err != nil && ctx.Err() != nil {
+// at, on this network, when it began with the route and the sessions
+// seen at route and seen: a failure forgets it, unless another session
+// reached it since. Nothing counts once ctx ended or the route changed.
+func (s *server) noteReached(ctx context.Context, route, seen uint64, t, at Target, err error) {
+	if !t.onLAN() || t.Serial == "" {
 		return
 	}
 	s.reachedMu.Lock()
 	defer s.reachedMu.Unlock()
+	if ctx.Err() != nil || route != s.reachedRoute {
+		return
+	}
 	switch {
 	case err == nil:
 		s.reachedFor, s.reached = t.Telescope, at.Endpoint
-	case s.reachedFor == t.Telescope:
+		s.reachedSeen++
+	case seen == s.reachedSeen && s.reachedFor == t.Telescope:
 		s.reachedFor, s.reached = "", ""
 	}
 }

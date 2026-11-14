@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
@@ -1153,6 +1154,101 @@ func TestStatusAddressInUse(t *testing.T) {
 	open()
 	if a, saved := address(); a != "" || saved {
 		t.Errorf("account: %q %v", a, saved)
+	}
+}
+
+// heldResolve is an app env whose first session, at testEndpoint, waits
+// in Resolve until release closes and then reaches the telescope at
+// first, or fails with firstErr; every later one reaches it at its
+// endpoint, or at e.follow. entered closes once the first is waiting.
+func heldResolve(t *testing.T, first string, firstErr error) (e *appEnv, entered, release chan struct{}) {
+	t.Helper()
+	entered, release = make(chan struct{}), make(chan struct{})
+	var held sync.Once
+	e = newAppEnvWith(t, savedAt(abs("/data/Seestar")), t.TempDir(), func(e *appEnv, o *MountOptions) {
+		o.Resolve = func(ctx context.Context, at Target) (remote.Session, Target, error) {
+			hold := false
+			if at.Endpoint == testEndpoint {
+				held.Do(func() { hold = true })
+			}
+			if hold {
+				close(entered)
+				<-release
+				if firstErr != nil {
+					return nil, at, firstErr
+				}
+				sess, err := e.d.dial(ctx, at)
+				at.Endpoint = first
+				return sess, at, err
+			}
+			sess, err := e.d.dial(ctx, at)
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.follow != "" {
+				at.Endpoint = e.follow
+			}
+			return sess, at, err
+		}
+	})
+	e.set(func() { e.key, e.serial = keyA, serialA })
+	return e, entered, release
+}
+
+// A Browse session that reached the telescope just as the route changed
+// is the old route's: when it returns, the new route's address stays.
+func TestStatusAddressAfterMove(t *testing.T) {
+	e, entered, release := heldResolve(t, "192.0.2.10:4445", nil)
+	old := e.s.sessions
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		if lease, err := old.Get(t.Context()); err == nil {
+			lease.Release()
+		}
+	}()
+	<-entered
+	e.move("192.0.2.20:445")
+	lease, err := e.s.sessions.Get(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease.Release()
+	if got := e.status().Telescope; got.Address != "192.0.2.20:445" || got.AddressSaved {
+		t.Fatalf("the new route's session: %q %v", got.Address, got.AddressSaved)
+	}
+	close(release)
+	<-returned
+	if got := e.status().Telescope; got.Address != "192.0.2.20:445" || got.AddressSaved {
+		t.Errorf("after the old route's session returned: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
+// A session that began before another reached the telescope, and then
+// failed, doesn't forget the address the newer one reached.
+func TestStatusAddressAfterOlderFailure(t *testing.T) {
+	e, entered, release := heldResolve(t, "", errors.New("synthetic older failure"))
+	e.set(func() { e.follow = "192.0.2.20:4445" })
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		if sess, err := e.s.dial(t.Context(), e.s.current()); err == nil {
+			sess.Close()
+		}
+	}()
+	<-entered
+	// Free up space's preview opens a session and holds it.
+	sess, _, err := e.s.free.open(t.Context(), e.s.current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	if got := e.status().Telescope; got.Address != "192.0.2.20:4445" || got.AddressSaved {
+		t.Fatalf("the newer session: %q %v", got.Address, got.AddressSaved)
+	}
+	close(release)
+	<-returned
+	if got := e.status().Telescope; got.Address != "192.0.2.20:4445" || got.AddressSaved {
+		t.Errorf("after the older session failed: %q %v", got.Address, got.AddressSaved)
 	}
 }
 

@@ -31,11 +31,12 @@ type MountOptions struct {
 	// remote.Reach. Both check an address on this network. Tests replace
 	// them.
 	Dial func(ctx context.Context, t Target) (remote.Session, error)
-	// Resolve, if set, opens a Free up space preview's session at t and
-	// returns the target it reached: on this network, a telescope saved
-	// with its serial is wherever that serial answers now. The preview,
-	// and the delete that follows it, are bound to that target, and
-	// Remover is given it exactly. nil is Dial at t.
+	// Resolve, if set, opens read sessions at t and returns the target it
+	// reached. Copy, Browse, Copy's Preview, and Free up space's preview
+	// all use it. On this network, a telescope saved with its serial is
+	// wherever that serial answers now. Free up space binds its preview
+	// and subsequent delete to the returned target; Remover receives it
+	// exactly. nil is Dial at t.
 	Resolve func(ctx context.Context, t Target) (remote.Session, Target, error)
 	Test    func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	Reach   func(ctx context.Context, endpoint string) error
