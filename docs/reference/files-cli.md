@@ -1286,7 +1286,7 @@ replies are only counted.
 
 ### scan logs and exit codes
 
-`scan` logs `scanned this network` at INFO with `replies` and `telescopes`,
+`scan` logs `scanned this network` at INFO with `telescopes` and `replies`,
 then `found a telescope` at INFO for each, with `telescope` (its name, model
 and serial) and `addresses`, and `no telescope answered` at WARN when the
 list is empty. On macOS that warning adds where to allow Local Network

@@ -190,7 +190,7 @@ func TestScanText(t *testing.T) {
 	if code != exitOK || !slices.Equal(lines, want) {
 		t.Errorf("exit %d lines %q, want %q\n%s", code, lines, want, errs)
 	}
-	if !strings.Contains(errs, `msg="scanned this network" replies=6 telescopes=2`) ||
+	if !strings.Contains(errs, `msg="scanned this network" telescopes=2 replies=6`) ||
 		!strings.Contains(errs, `msg="found a telescope" telescope="S50_A (Seestar S50, serial SERIAL-A)" addresses=[192.0.2.20]`) {
 		t.Errorf("logs: %s", errs)
 	}

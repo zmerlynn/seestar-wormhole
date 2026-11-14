@@ -80,7 +80,7 @@ type scanned struct {
 }
 
 // runScan scans this network and lists what answered to out. The log
-// records the reply and telescope counts, and names each telescope.
+// records the telescope and reply counts, and names each telescope.
 func runScan(ctx context.Context, o scanOptions, out io.Writer, log *slog.Logger) error {
 	result, err := lanScanner.Scan(ctx)
 	if err != nil {
@@ -89,7 +89,7 @@ func runScan(ctx context.Context, o scanOptions, out io.Writer, log *slog.Logger
 	if result.Blocked {
 		return diagnostic.At("scan", fmt.Errorf("%w%s", errScanBlocked, scanBlockedHint(scanGOOS)))
 	}
-	log.Info("scanned this network", "replies", result.Replies, "telescopes", len(result.Telescopes))
+	log.Info("scanned this network", "telescopes", len(result.Telescopes), "replies", result.Replies)
 	if len(result.Telescopes) == 0 {
 		log.Warn("no telescope answered" + scanSilentHint(scanGOOS))
 	}
