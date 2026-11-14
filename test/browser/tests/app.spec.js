@@ -698,6 +698,41 @@ test('Copy settings… hides while copying, and the folder then says to stop cop
   await expect(page.locator('#copy-form')).toBeVisible();
   await expect(page.locator('#s-locked')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Copy settings…' })).toBeVisible();
+  // Its Cancel gives focus back to the folder that asked for it.
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('#copy-form')).toBeHidden();
+  await expect(page.locator('#telescope-folder')).toBeFocused();
+});
+
+// Closing the form while copying withdraws the folder's request too: the
+// form doesn't open once copying stops. Cancel is disabled while copying,
+// so the page's own functions close it here.
+test('closing the form while copying withdraws the folder\'s request for it', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  const observed = await page.evaluate(() => {
+    const off = { ...copyStatus.copy, on: false, state: 'off' };
+    renderCopy({ ...off, on: true, state: 'copying' });
+    openCopyForm($('s-change'));
+    telescopeFolder();
+    closeCopyForm();
+    const closed = $('copy-form').hidden;
+    renderCopy(off);
+    return { closed, reopened: !$('copy-form').hidden };
+  });
+  expect(observed).toEqual({ closed: true, reopened: false });
+});
+
+// Focus goes back to the opener only while it is shown: with the folder's
+// part of the line hidden, to Change….
+test('focus goes to Change… when the folder that opened the form is no longer shown', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await page.locator('#telescope-folder').click();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await page.evaluate(() => { document.getElementById('telescope-to').hidden = true; });
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.getByRole('button', { name: 'Change…' })).toBeFocused();
 });
 
 test('a second telescope is asked for its own folder beside the first, and Save refuses the first one\'s', async ({ page, startApp }) => {
@@ -774,6 +809,16 @@ test('the header names a telescope saved with its serial on this network, at its
   await expect(page.locator('#telescope-text')).toHaveText(/^On this network: Seestar SYNTHETIC-HEARD at 127\.0\.0\.1:14450( \(saved\))?$/);
   await expect(page.locator('#connection-text')).toHaveText('On this network: Seestar SYNTHETIC-HEARD');
   await expect(page.locator('#telescope-folder')).toHaveText('no folder yet');
+});
+
+// With Copy off, both header lines still name the telescope saved with its
+// serial, and no folder shows.
+test('the header names a telescope saved with its serial while Copy is off', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), lan_serial: 'SYNTHETIC-SAVED', lan_scan: 'off' }, 'copy.json': { version: 999, folder: '/nowhere' } });
+  await openApp(page, app.url);
+  await expect(page.locator('#telescope-text')).toHaveText('On this network: Seestar SYNTHETIC-SAVED');
+  await expect(page.locator('#connection-text')).toHaveText('On this network: Seestar SYNTHETIC-SAVED');
+  await expect(page.locator('#telescope-to')).toBeHidden();
 });
 
 test('the header names the account\'s saved telescope while not connected, and never the email', async ({ page, startApp }) => {

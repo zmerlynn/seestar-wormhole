@@ -18,6 +18,8 @@ class TestElement {
   querySelectorAll() {return [];}
   closest() {return null;}
   scrollIntoView() {this.scrolled = (this.scrolled || 0) + 1;}
+  // null while it or a parent is hidden, as a browser's is when not rendered.
+  get offsetParent() {for (let e = this; e; e = e.parentElement) if (e.hidden) return null; return this.parentElement || document;}
   createTHead() {const e=new TestElement();this.append(e);return e;}
   createTBody() {const e=new TestElement();this.append(e);return e;}
   insertRow() {const e=new TestElement();this.append(e);return e;}

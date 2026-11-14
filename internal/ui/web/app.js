@@ -627,7 +627,7 @@ function connectionLine() {
   let line = 'Loading…', tone = 'off';
   const saved = state?.settings?.route === 'lan' ? state.settings.lan_address || '' : '';
   if (state && saved && !active) {
-    const tested = sameEndpoint(lanReach?.address, saved), name = copyTelescopeNow()?.name || '';
+    const tested = sameEndpoint(lanReach?.address, saved), name = telescopeNameNow();
     line = !tested ? 'On this network: ' + (name || saved) : lanReach.ok ? 'On this network: ' + (name ? name + ', reachable' : 'reachable') : "Can't reach " + saved;
     tone = !tested ? 'off' : lanReach.ok ? 'on' : 'error';
   } else if (state) {
@@ -643,6 +643,12 @@ function connectionLine() {
 function copyTelescopeNow() {
   return state?.copy_unlocked && !state.copy_refused ? copyStatus?.telescope || null : null;
 }
+// telescopeNameNow is the route's telescope's name: Copy's, beside its
+// address and folder, or the server's own while Copy is off.
+function telescopeNameNow() {
+  const telescope = copyTelescopeNow();
+  return (telescope ? telescope.name : state?.telescope_name) || '';
+}
 // The line under it names the route's telescope and the folder its files
 // are copied to, which opens Copy's settings: on this network with the
 // address in use, through the account saved or connecting. It reads only
@@ -650,7 +656,7 @@ function copyTelescopeNow() {
 function telescopeLine() {
   $('telescope-line').hidden = !state;
   if (!state) return;
-  const lan = state.settings?.route === 'lan', telescope = copyTelescopeNow(), name = telescope?.name || '';
+  const lan = state.settings?.route === 'lan', telescope = copyTelescopeNow(), name = telescopeNameNow();
   let what, to = 'folder';
   if (lan) {
     const saved = state.settings.lan_address || '';
@@ -681,6 +687,7 @@ function telescopeFolder() {
   selectTab('copy');
   if (currentTab !== 'copy') return;
   if (copyOn) {
+    copyOpener = $('telescope-folder');
     copyLockAsked = true;
     renderSetup();
     $('s-stop').focus();
@@ -1107,14 +1114,17 @@ function openCopyForm(opener) {
   renderSetup();
   $('f-folder').focus();
 }
-// focusOpener puts focus back on the control that opened the form, or on
-// Change… when that one is gone.
+// focusOpener puts focus back on the control that opened the form, or,
+// when that one isn't shown or is disabled, on Change…, or else on the
+// tab's own button.
 function focusOpener() {
-  const opener = copyOpener && !copyOpener.hidden ? copyOpener : $('s-change');
+  const shown = e => !!e && e.offsetParent !== null && !e.disabled;
+  const opener = [copyOpener, $('s-change')].find(shown) || $('tab-' + currentTab);
   copyOpener = null;
   opener.focus();
 }
 function closeCopyForm() {
+  copyLockAsked = false;
   copyFormOpen = false;
   if (copySaved) copyFill(copySaved);
   showErrors({});
@@ -1631,8 +1641,10 @@ function copyRender(c) {
     // suggested for it. The settings all telescopes share stay as edited.
     $('f-folder').value = c.settings.folder;
     showErrors({});
-    // A form open only because the last telescope had no folder closes.
+    // A form open only because the last telescope had no folder closes,
+    // and one the last telescope's folder asked for doesn't open.
     if (c.set_up && !wasSetUp) copyFormOpen = false;
+    copyLockAsked = false;
   }
   copyTelescope = c.telescope ? c.telescope.id : null;
   renderSetup();

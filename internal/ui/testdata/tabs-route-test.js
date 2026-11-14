@@ -94,7 +94,8 @@ async function checkRouteChoice(statuses, scenario) {
     load(statuses.lan.settings);
     render(statuses.lan);
     tabAssert(routeChoice === 'lan' && shown('lan') && $('lan-address').value === statuses.lan.settings.lan_address, 'a saved LAN route reopens');
-    tabAssert($('connection-text').textContent === 'On this network: ' + statuses.lan.settings.lan_address, 'header line for an untested LAN route');
+    // Before Copy's status comes, the line has the server's name for it.
+    tabAssert(statuses.lan.telescope_name && $('connection-text').textContent === 'On this network: ' + statuses.lan.telescope_name, 'header line for an untested LAN route: ' + $('connection-text').textContent);
     break;
   }
   case 'active': {

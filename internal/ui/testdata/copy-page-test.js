@@ -67,6 +67,8 @@ async function checkCopySetup(st) {
   copyFixture(st, st.unlocked);
   copyAssert(!st.before.set_up && st.after.set_up && st.saved.browse_changed, 'server statuses changed shape');
   copyRender(st.before);
+  // The form and its controls are on the Copy tab, where focus can go back.
+  selectTab('copy');
   copyAssert($('c-main').hidden && !$('s-first').hidden && $('s-line').hidden, 'the first visit shows the copy controls');
   copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
@@ -543,7 +545,7 @@ async function checkTelescopeLine(st) {
   copyFixture(st, st.unlocked);
 
   // Through the account: nothing saved, saved, connecting, connected.
-  render({...st.locked, settings: {...st.locked.settings, ...email, route: 'account', serial: '', choice_label: ''}, devices_email: email.email});
+  render({...st.locked, settings: {...st.locked.settings, ...email, route: 'account', serial: '', choice_label: ''}, devices_email: email.email, telescope_name: ''});
   shows('nothing saved', 'Telescope Network: no telescope chosen', '');
   render({...st.unlocked, settings: account});
   copyRender(serialAt('', false));
@@ -556,16 +558,23 @@ async function checkTelescopeLine(st) {
   shows('connected', 'Telescope Network: ' + name, home, full);
   copyRender(notSetUp);
   shows('no folder yet', 'Telescope Network: ' + name, 'no folder yet');
-  // Copy off: the telescope part stays.
-  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, copy_unlocked: false});
+  // Copy off: the telescope part stays, named by the server.
+  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, copy_unlocked: false, telescope_name: name});
   shows('copy locked', 'Telescope Network: ' + name, '');
-  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, copy_refused: true});
+  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, copy_refused: true, telescope_name: name});
   shows('copy refused', 'Telescope Network: ' + name, '');
+  render({...st.unlocked, settings: account, copy_refused: true, telescope_name: name});
+  shows('copy refused, saved', 'Telescope Network: ' + name + ' (saved), not connected', '');
 
   // On this network: nothing saved, a telescope saved by its address, one
   // saved with its serial before and after a session reached it.
-  render({...st.unlocked, settings: {...st.unlocked.settings, lan_address: ''}, copy_unlocked: false});
+  render({...st.unlocked, settings: {...st.unlocked.settings, lan_address: ''}, copy_unlocked: false, telescope_name: ''});
   shows('no address', 'On this network: no telescope chosen', '');
+  // With Copy off, both lines name the telescope saved with its serial, not
+  // Copy's last telescope, and no folder shows.
+  render({...st.unlocked, copy_refused: true, telescope_name: name});
+  shows('copy refused here', 'On this network: ' + name, '');
+  copyAssert($('connection-text').textContent === 'On this network: ' + name, 'copy refused dot line: ' + $('connection-text').textContent);
   render(st.unlocked);
   copyRender(st.after);
   shows('address only', 'On this network: Seestar', st.after.telescope.folder, st.after.settings.folder);
@@ -603,6 +612,7 @@ async function checkCopySettingsButton(st) {
   copyFixture(st, st.unlocked);
   api = async action => action === 'settings' ? st.saved : st.after;
   copyRender(st.after);
+  selectTab('copy');
   const expanded = want => ['s-change', 'c-settings'].every(id => $(id).getAttribute('aria-expanded') === want && $(id).getAttribute('aria-controls') === 'copy-form');
   copyAssert(!$('c-settings').hidden && $('c-settings').textContent === 'Copy settings…' && $('copy-form').hidden && expanded('false'), 'Copy settings… is not offered');
   for (const id of ['c-settings', 's-change']) {
@@ -635,4 +645,38 @@ async function checkCopySettingsButton(st) {
   // Once copying stops, the form it asked for opens.
   copyRender(st.after);
   copyAssert(!$('c-settings').hidden && !$('copy-form').hidden && $('s-locked').hidden && expanded('true'), 'the form did not open once copying stopped');
+  // Its Cancel goes back to the folder that asked for it.
+  closeCopyForm();
+  copyAssert($('copy-form').hidden && document.activeElement === $('telescope-folder'), 'Cancel did not go back to the folder: ' + document.activeElement?.id);
+
+  // A Cancel after the folder asked for the form, while copying, cancels
+  // that too: the form doesn't open once copying stops.
+  copyRender(running);
+  $('s-change').dispatchEvent({type: 'click'});
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  closeCopyForm();
+  copyRender(st.after);
+  copyAssert($('copy-form').hidden && expanded('false'), 'the form opened after Cancel once copying stopped');
+  // Nor does one asked for by another telescope's folder.
+  copyRender(running);
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  const other = {...running, telescope: {...running.telescope, id: running.telescope.id + 1}};
+  copyRender(other);
+  copyRender({...other, copy: st.after.copy});
+  copyAssert($('copy-form').hidden && $('s-locked').hidden, "the form opened for another telescope's folder");
+  copyRender(st.after);
+
+  // Focus goes back only to a control that is shown: when the folder's
+  // part of the line is hidden, to Change…, and when that is disabled, to
+  // the tab.
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  $('telescope-to').hidden = true;
+  closeCopyForm();
+  copyAssert($('telescope-folder').offsetParent === null && document.activeElement === $('s-change'), 'focus went to a hidden folder: ' + document.activeElement?.id);
+  $('telescope-to').hidden = false;
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  $('telescope-to').hidden = $('s-change').disabled = true;
+  closeCopyForm();
+  copyAssert(document.activeElement === $('tab-copy'), 'focus did not go to the tab: ' + document.activeElement?.id);
+  $('telescope-to').hidden = $('s-change').disabled = false;
 }
