@@ -70,7 +70,7 @@ func TestFreeWording(t *testing.T) {
 		{"failed to connect", freeStatus{state: frFailed, err: errors.New("connect to x: no route")},
 			freeView{Title: "Stopped: connect to x: no route.", Text: "No files were deleted."}},
 	} {
-		got := c.st.view()
+		got := c.st.view(nil)
 		c.want.State = c.st.state
 		if !reflect.DeepEqual(got, c.want) {
 			t.Errorf("%s:\n got %+v\nwant %+v", c.name, got, c.want)

@@ -273,8 +273,8 @@ type syncer struct {
 	firstPass bool
 }
 
-// pass runs one pass, logs a line for each entry an exclude skipped, calls
-// the hooks but PassDone, and returns the summary, which also counts what
+// pass runs one pass, logs a line for each entry an exclude skipped as the
+// listing reaches it, calls the hooks but PassDone, and returns the summary, which also counts what
 // the includes left out, once every worker is joined. The caller logs the
 // summary and calls PassDone. If the session or a listing fails, nothing
 // is copied.
@@ -290,11 +290,8 @@ func (s *syncer) pass(ctx context.Context) (sum Summary) {
 	}
 	defer sess.Close()
 	// A failed listing still logs and counts what it skipped before failing.
-	decisions, counts, sel, err := s.decide(ctx, sess)
+	decisions, counts, sel, err := s.decide(ctx, sess, "skipped")
 	sum.Skipped, sum.Unmatched = len(sel.Skipped), sel.Unmatched
-	for _, x := range sel.Skipped {
-		s.log.Info("skipped", "path", x.Path, "exclude", x.Exclude)
-	}
 	if err != nil {
 		sum.Err = err
 		return sum
@@ -387,10 +384,7 @@ func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 	}
 	defer sess.Close()
 	var decisions []plan.Decision
-	decisions, counts, sel, err = s.decide(ctx, sess)
-	for _, x := range sel.Skipped {
-		s.log.Info("would skip", "path", x.Path, "exclude", x.Exclude)
-	}
+	decisions, counts, sel, err = s.decide(ctx, sess, "would skip")
 	if err != nil {
 		return 0, err
 	}
@@ -430,11 +424,12 @@ func (s *syncer) dryPass(ctx context.Context) (failed int, err error) {
 }
 
 // decide lists the share over sess and returns the pass decisions, their
-// counts and what the selection left out. It logs a line for each file that
-// fails. If the listing fails, it returns only what the selection left out
-// before the failure.
-func (s *syncer) decide(ctx context.Context, sess remote.Session) ([]plan.Decision, plan.Counts, selection, error) {
-	listing, sel, err := s.list(ctx, sess)
+// counts and what the selection left out. It logs a line, skip, for each
+// entry an exclude matches as the listing reaches it, and a line for each
+// file that fails. If the listing fails, it returns only what the selection
+// left out before the failure.
+func (s *syncer) decide(ctx context.Context, sess remote.Session, skip string) ([]plan.Decision, plan.Counts, selection, error) {
+	listing, sel, err := s.list(ctx, sess, skip)
 	if n := len(sel.reserved); n > 0 {
 		s.log.Warn("reserved name", "path", sel.reserved[0], "entries", n, "reason", plan.LockName+" is kept for the folder lock; not copied")
 	}
@@ -509,6 +504,12 @@ func (s *syncer) toCopy(h func(int, int64)) func(remote.Entry) {
 	}
 }
 
+// logSkipped returns a func that logs msg for each entry an exclude
+// matched, for [Selector.walk].
+func logSkipped(log *slog.Logger, msg string) func(Skipped) {
+	return func(x Skipped) { log.Info(msg, "path", x.Path, "exclude", x.Exclude) }
+}
+
 // entry is the decisions' view of a listed entry.
 func entry(e remote.Entry) plan.Entry {
 	return plan.Entry{Path: e.Path, Size: e.Size, ModTime: e.ModTime, Regular: e.Kind == remote.Regular}
@@ -521,15 +522,16 @@ type selection struct {
 	folders []string
 }
 
-// list lists the whole share, leaving out what the selection does. Any
-// listing failure, of the root or of a folder that is kept, fails the pass;
-// the returned selection then holds what was left out before it.
-func (s *syncer) list(ctx context.Context, sess remote.Session) ([]plan.Entry, selection, error) {
+// list lists the whole share, leaving out what the selection does, and
+// logs skip for each entry an exclude matches. Any listing failure, of the
+// root or of a folder that is kept, fails the pass; the returned selection
+// then holds what was left out before it.
+func (s *syncer) list(ctx context.Context, sess remote.Session, skip string) ([]plan.Entry, selection, error) {
 	var kept func(remote.Entry)
 	if h := s.opts.Hooks.ToCopy; h != nil {
 		kept = s.toCopy(h)
 	}
-	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed, kept, nil, true)
+	entries, out, err := s.opts.Selector.walk(ctx, sess, s.opts.Hooks.Listed, kept, logSkipped(s.log, skip), nil, true)
 	sel := selection{LeftOut: out}
 	if err != nil {
 		return nil, sel, fmt.Errorf("list the share: %w", err)

@@ -241,7 +241,8 @@ func scanHint(goos string) string {
 }
 
 // scan scans this network, or asks address alone when one is given, and
-// lists what answered. Activity records the reply count, then a line
+// lists what answered. Activity records the telescope and reply counts,
+// then a line
 // naming each telescope that answered, with its addresses.
 func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 	var probe netip.Addr
@@ -307,9 +308,10 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 		s.controller.recordScan(scanFailedCode, what+": the scan failed.")
 		view.Message = scanFailed
 	default:
-		// A line for the count and one for each telescope, so none
-		// outgrows the log.
-		s.controller.recordScan(code, what+": "+replies(result.Replies)+".")
+		// A line for the counts and one for each telescope, so none
+		// outgrows the log. Each telescope answers each of the scan's
+		// sends, so the telescopes lead and the replies follow.
+		s.controller.recordScan(code, what+": found "+telescopes(len(result.Telescopes))+" ("+replies(result.Replies)+").")
 		for _, t := range result.Telescopes {
 			s.controller.recordScan(code, "Found "+t.Label()+" at "+joinAddrs(t.Addresses)+".")
 		}
@@ -322,8 +324,21 @@ func (s *server) scan(ctx context.Context, address string) (scanView, error) {
 	return view, nil
 }
 
+func telescopes(n int) string {
+	switch n {
+	case 0:
+		return "no telescopes"
+	case 1:
+		return "1 telescope"
+	}
+	return fmt.Sprintf("%d telescopes", n)
+}
+
 func replies(n int) string {
-	if n == 1 {
+	switch n {
+	case 0:
+		return "no replies"
+	case 1:
 		return "1 reply"
 	}
 	return fmt.Sprintf("%d replies", n)

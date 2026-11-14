@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/copier"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/engine"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/guard"
@@ -59,6 +60,34 @@ func checkReach(lan bool) string {
 	return "Check the connection and telescope status on the Connection tab."
 }
 
+// otherAnswered words a connect that failed because another telescope
+// answered where the saved one was expected: its title, and the text's
+// sentence naming both, before what to do. name names the saved one; nil
+// is "Seestar". ok is false for any other failure. A telescope is named
+// only by a valid serial, and its model capped, so the text stays within
+// the 4096-byte message budget the account's selection errors keep.
+func otherAnswered(err error, name func(Target) string) (title, what string, ok bool) {
+	e, ok := errors.AsType[*landiscovery.OtherTelescopeError](err)
+	if !ok {
+		return "", "", false
+	}
+	expected := "Seestar"
+	if name != nil && cloudhttp.ValidSerial(e.Serial) {
+		expected = name(Target{Serial: e.Serial})
+	}
+	if e.Other == nil {
+		return "Too many addresses answered the scan.", "The scan couldn't safely choose an address for " + expected + ".", true
+	}
+	other := "another telescope"
+	if cloudhttp.ValidSerial(e.Other.Serial) {
+		other = cloudhttp.Device{Serial: e.Other.Serial, Model: e.Other.Model}.DisplayName()
+	}
+	return "Another telescope answered at " + e.Address.String() + ".", "Expected " + expected + ", but " + other + " answered there.", true
+}
+
+// pickTelescope is what to do once another telescope answered.
+const pickTelescope = "Pick the telescope in Connection and Save"
+
 // errBusy is a start while copying is on or stopping, or the app quitting.
 var errBusy = errors.New("copying is already on")
 
@@ -88,6 +117,8 @@ type controller struct {
 	admitting func()
 	// rep, if set, reports each pass and how the loop ended: a [Mount]'s.
 	rep *reporter
+	// name, if set, names a target's telescope: a [Mount]'s.
+	name func(Target) string
 
 	mu       sync.Mutex
 	cancel   context.CancelFunc // nil when no loop runs
@@ -687,6 +718,11 @@ func (c *controller) view(now time.Time) copyView {
 		}
 		v.Text = "No files were copied. Trying again at " + at(st.next) + "."
 	case stUnreachable:
+		if title, what, ok := otherAnswered(st.reachErr, c.name); ok {
+			v.Title = title
+			v.Text = "Trying again at " + at(st.next) + ". " + what + " Copying stays on and keeps trying. To switch telescopes, stop copying, then pick the telescope in Connection and Save."
+			break
+		}
 		v.Title = "Can't reach the telescope at " + st.endpoint + "."
 		v.Text = "Trying again at " + at(st.next) + ". " + checkReach(c.bound.onLAN()) + " Copying stays on and keeps trying."
 		if c.bound.onLAN() {
@@ -696,6 +732,11 @@ func (c *controller) view(now time.Time) copyView {
 		const once = " Checked once; copying is off."
 		switch st.outcome {
 		case stUnreachable:
+			if title, what, ok := otherAnswered(st.reachErr, c.name); ok {
+				v.Title = title + once
+				v.Text = what + " " + pickTelescope + "."
+				break
+			}
 			v.Title = "Can't reach the telescope at " + st.endpoint + "." + once
 			v.Text = checkReach(c.bound.onLAN())
 			if c.bound.onLAN() {

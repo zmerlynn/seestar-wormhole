@@ -272,14 +272,11 @@ func (d *deleter) run(ctx context.Context) (failed int, err error) {
 		return 0, diagnostic.At("connect", fmt.Errorf("connect to %s: %w", d.opts.Endpoint, err))
 	}
 	defer sess.Close()
-	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed, nil, d.within(), false)
 	skip := "skipped"
 	if d.opts.DryRun {
 		skip = "would skip"
 	}
-	for _, x := range left.Skipped {
-		d.log.Info(skip, "path", x.Path, "exclude", x.Exclude)
-	}
+	entries, left, err := d.opts.Selector.walk(ctx, sess, d.opts.Hooks.Listed, nil, logSkipped(d.log, skip), d.within(), false)
 	if err != nil {
 		return 0, fmt.Errorf("list the share: %w", err)
 	}

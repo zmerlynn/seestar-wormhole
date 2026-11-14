@@ -3,12 +3,14 @@ package cli
 import (
 	"bytes"
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"net"
 	"net/netip"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"testing"
@@ -175,6 +177,64 @@ func TestFollowConflictWithSightingIsLoggedAsUnreached(t *testing.T) {
 	if strings.Contains(logs.String(), "didn't find the saved one") ||
 		!strings.Contains(logs.String(), `level=WARN msg="found the telescope on this network, but it didn't connect where it answered" telescope="S50_A (Seestar S50, serial SERIAL-A)" saved=192.0.2.20:445 addresses=[192.0.2.30] other="Other (Seestar S30, serial SERIAL-B)"`) {
 		t.Errorf("logs: %s", logs.String())
+	}
+}
+
+// logLine is the longest record the program's log sink takes whole
+// (maxLogLine in cmd/seestar-wormhole); a longer one is dropped.
+const logLine = 16 << 10
+
+// A search's warning fits the log sink's line in both formats, whatever
+// text a legal scan reply carried: the telescope that answered at the
+// saved address, and the saved one where it answered, are named with
+// their names and models capped, and an invalid serial capped alone.
+func TestFollowWarningFitsTheLogLine(t *testing.T) {
+	del := strings.Repeat("\x7f", 3700)
+	cut := strings.Repeat(`\x7f`, 15) + "..."
+	for _, c := range []struct {
+		name    string
+		answers map[netip.Addr][3]string
+		saved   string
+		want    map[string]string
+	}{
+		{"long name at the saved address", map[netip.Addr][3]string{
+			netip.MustParseAddr("192.0.2.85"): {"TEST0002", del, "S50 Pro"},
+		}, "192.0.2.85:4445", map[string]string{"other": cut + " (S50 Pro, serial TEST0002)"}},
+		{"invalid serial at the saved address", map[netip.Addr][3]string{
+			netip.MustParseAddr("192.0.2.85"): {del, "Relay", "S50 Pro"},
+		}, "192.0.2.85:4445", map[string]string{"other": "serial " + cut}},
+		{"long name where the saved serial answered", map[netip.Addr][3]string{
+			netip.MustParseAddr("192.0.2.20"): {del, "Relay", "S50 Pro"},
+			netip.MustParseAddr("192.0.2.30"): {"SERIAL-A", del, "Seestar S50"},
+		}, "192.0.2.20:445", map[string]string{"telescope": cut + " (Seestar S50, serial SERIAL-A)", "other": "serial " + cut}},
+	} {
+		for _, format := range []string{"text", "json"} {
+			t.Run(c.name+"/"+format, func(t *testing.T) {
+				useLAN(t, &lanNet{answers: c.answers})
+				var logs bytes.Buffer
+				f := newFollow(Saved{Endpoint: c.saved, LANSerial: "SERIAL-A"}, none)
+				var calls []string
+				if _, err := followDial(t.Context(), f, f.saved, diagnostic.Logger(format, &logs, slog.LevelInfo), fakeDial(&calls)); err == nil {
+					t.Fatalf("connected, calls %q", calls)
+				}
+				lines := strings.SplitAfter(logs.String(), "\n")
+				if len(lines) != 2 || lines[1] != "" || len(lines[0]) > logLine {
+					t.Fatalf("%d lines, the first %d bytes:\n%.400s", len(lines)-1, len(lines[0]), logs.String())
+				}
+				for key, want := range c.want {
+					if format == "text" {
+						if !strings.Contains(lines[0], " "+key+"="+strconv.Quote(want)+" ") {
+							t.Errorf("%s: want %q in\n%s", key, want, lines[0])
+						}
+						continue
+					}
+					var record map[string]any
+					if err := json.Unmarshal([]byte(lines[0]), &record); err != nil || record["level"] != "WARN" || record[key] != want {
+						t.Errorf("%s: want %q in %v: %v", key, want, record, err)
+					}
+				}
+			})
+		}
 	}
 }
 

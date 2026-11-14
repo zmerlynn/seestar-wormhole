@@ -83,6 +83,8 @@ d 0 2026-10-31T01:00:00Z "MyWorks/M 31"
 		}
 	}
 	for _, want := range []string{
+		"level=INFO msg=connecting endpoint=h:445\n",
+		"level=INFO msg=\"listing the share\"\n",
 		"level=INFO msg=skipped path=.DS_Store exclude=.*\n",
 		"level=INFO msg=skipped path=log exclude=/log\n",
 		`level=INFO msg="listing done" files=10 folders=2 bytes=15 recent=0 skipped=2 unmatched=0 elapsed=`,
@@ -91,8 +93,8 @@ d 0 2026-10-31T01:00:00Z "MyWorks/M 31"
 			t.Errorf("stderr lacks %q:\n%s", want, stderr)
 		}
 	}
-	if n := strings.Count(stderr, "\n"); n != 3 {
-		t.Errorf("stderr has %d lines, want 3:\n%s", n, stderr)
+	if n := strings.Count(stderr, "\n"); n != 5 {
+		t.Errorf("stderr has %d lines, want 5:\n%s", n, stderr)
 	}
 }
 
@@ -366,6 +368,8 @@ func TestFindFails(t *testing.T) {
 		t.Errorf("exit %d, stdout %q, want 1 and none", code, stdout)
 	}
 	for _, want := range []string{
+		"level=INFO msg=connecting endpoint=h:445\n",
+		"level=INFO msg=\"listing the share\"\n",
 		"level=INFO msg=skipped path=.DS_Store exclude=.*\n",
 		`level=ERROR msg="listing failed" source=find op=list phase=list reason=permission_denied files=0 folders=0 bytes=0 recent=0 skipped=2 unmatched=0 elapsed=`,
 		`level=ERROR msg="find failed" error="list the share: `,

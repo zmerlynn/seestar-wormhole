@@ -179,10 +179,10 @@ func runDelete(ctx context.Context, o deleteOptions, log *slog.Logger) error {
 		// When o.follow is set, the dials may reach the telescope at
 		// another address.
 		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
-			return followDial(ctx, o.follow, o.endpoint, log, dial)
+			return connect(ctx, o.follow, o.endpoint, log, dial)
 		},
 		OpenRemover: func(ctx context.Context, _ string) (remote.Remover, error) {
-			return followDial(ctx, o.follow, o.endpoint, log, dialRemover)
+			return connect(ctx, o.follow, o.endpoint, log, dialRemover)
 		},
 	}, log)
 	return err

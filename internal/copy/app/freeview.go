@@ -93,8 +93,8 @@ type freeFile struct {
 	Size string `json:"size"`
 }
 
-// view words st for the page.
-func (st *freeStatus) view() freeView {
+// view words st for the page; name names a target's telescope.
+func (st *freeStatus) view(name func(Target) string) freeView {
 	v := freeView{State: st.state, Changed: st.changed}
 	days := st.set.OlderThanDays
 	switch st.state {
@@ -117,6 +117,10 @@ func (st *freeStatus) view() freeView {
 		if errors.Is(st.err, engine.ErrNoDest) {
 			v.Title = "Couldn't finish checking files: " + st.set.Folder + " isn't there."
 			v.Text = noDest
+		}
+		if title, what, ok := otherAnswered(st.err, name); ok {
+			v.Title = title
+			v.Text = what + " " + pickTelescope + ", or Preview again to retry."
 		}
 	case frPreview:
 		n, bytes := 0, int64(0)

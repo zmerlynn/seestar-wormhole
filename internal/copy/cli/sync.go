@@ -193,9 +193,11 @@ func historyDir(explicit string, readOnly bool, log *slog.Logger) (string, error
 	return state.HistoryDir(explicit, log)
 }
 
-// runSync resolves the history folder and runs the sync. A dry run is
-// read-only: the program turns the guard on before it calls this.
+// runSync names the destination, resolves the history folder and runs the
+// sync. A dry run is read-only: the program turns the guard on before it
+// calls this.
 func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
+	log.Info("sync starting", "dest", o.dest, "dry_run", o.dryRun)
 	stateDir, err := historyDir(o.historyDir, o.dryRun, log)
 	if err != nil {
 		return err
@@ -207,7 +209,7 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		// When o.follow is set, the dial may reach the telescope at
 		// another address.
 		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
-			return followDial(ctx, o.follow, o.endpoint, log, dial)
+			return connect(ctx, o.follow, o.endpoint, log, dial)
 		},
 	}, log)
 }

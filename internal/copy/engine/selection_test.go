@@ -507,7 +507,7 @@ func TestIncludeSpaceBeforeSlash(t *testing.T) {
 		{"/folder /", []string{"folder /file.fit"}},
 	} {
 		s := selector(t, nil, []string{tc.include})
-		kept, _, err := s.Walk(t.Context(), share)
+		kept, _, err := s.Walk(t.Context(), share, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -551,7 +551,7 @@ func TestWalkKeptParents(t *testing.T) {
 		"MyWorks/skip/in.jpg": file,
 	}
 	s := selector(t, append(slices.Clone(DefaultExcludes), "/MyWorks/skip"), []string{"*.jpg"})
-	_, out, err := s.Walk(t.Context(), remote.NewFake(share))
+	_, out, err := s.Walk(t.Context(), remote.NewFake(share), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -580,7 +580,7 @@ func TestLeavesOut(t *testing.T) {
 		"MyWorks/log/b.txt":    file,
 		"Video/v.mp4":          file,
 	})
-	all, _, err := Selector{}.Walk(t.Context(), share)
+	all, _, err := Selector{}.Walk(t.Context(), share, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -598,7 +598,7 @@ func TestLeavesOut(t *testing.T) {
 		{nil, []string{"*.jpg"}, []string{".DS_Store", "log/a.txt", "MyWorks/a/x.fit", "MyWorks/log/b.txt", "Video/v.mp4"}},
 	} {
 		s := selector(t, tc.excludes, tc.includes)
-		kept, _, err := s.Walk(t.Context(), share)
+		kept, _, err := s.Walk(t.Context(), share, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -649,7 +649,7 @@ func TestIncludeBeyondPrefixBudget(t *testing.T) {
 		"d/e/" + deep + "a.fit":                         file,
 	})
 	s := selector(t, nil, []string{"/" + deep + "a.fit"})
-	kept, _, err := s.Walk(t.Context(), share)
+	kept, _, err := s.Walk(t.Context(), share, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -299,7 +299,7 @@ func TestDefaultsEqualLiteralFlags(t *testing.T) {
 	}
 
 	selectionDevice(t)
-	variable := regexp.MustCompile(`time=\S+ |elapsed=\S+`)
+	variable := regexp.MustCompile(`time=\S+ |elapsed=\S+| dest=\S+`)
 	pass := func(dry bool, flags ...string) (string, []string) {
 		t.Helper()
 		dest, stateDir := t.TempDir(), t.TempDir()

@@ -162,7 +162,7 @@ func TestEveryTabLocalNetworkHint(t *testing.T) {
 		// An answer from the telescope is no Local Network failure.
 		{freeStatus{state: frCheckFail, err: errors.New("access denied"), target: lan}, "Preview again to retry."},
 	} {
-		if v := tt.st.view(); v.Text != tt.want {
+		if v := tt.st.view(nil); v.Text != tt.want {
 			t.Errorf("%s at %+v: %q, want %q", tt.st.state, tt.st.target, v.Text, tt.want)
 		}
 	}
