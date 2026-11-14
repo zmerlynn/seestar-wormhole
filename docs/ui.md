@@ -23,7 +23,7 @@ away when the run ends. Each chip opens its tab, Copy or Free up space. A run's
 start is announced once when another tab is open, each time it starts.
 
 A line under it names the telescope and where its files go, for example
-**On this network: Seestar S50 Pro <serial> at 192.168.4.85:4445 →
+**On this network: Seestar S50 Pro &lt;serial&gt; at 192.168.4.85:4445 →
 ~/Seestar**. Through Telescope Network it names the saved telescope as
 **(saved), not connected** until you connect; while connecting, its folder is
 known once the telescope is. On this network it shows the address in use,
@@ -31,7 +31,7 @@ which can differ from the saved one, or the saved address marked **(saved)**
 before the first connection. The folder is the telescope's own, with your home
 folder shown as `~` except on Windows, or **no folder yet**; select it to open
 Copy settings, or, while copying runs, to see that copying must stop first.
-With Copy off, only the telescope shows.
+When the Copy tab is unavailable, only the telescope shows.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
