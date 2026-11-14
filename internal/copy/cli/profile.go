@@ -51,9 +51,12 @@ type LoadProfile func() (Saved, error)
 
 // profileFlag is --profile, and the flags it filled.
 type profileFlag struct {
-	name      string
-	set       bool
-	filled    []string
+	name   string
+	set    bool
+	filled []string
+	// values are the filled flags' values, as key-value pairs for the
+	// record: none of these flags holds a secret.
+	values    []any
 	fallbacks []diagnostic.Fallback
 	// statuses is set by a command that runs without a local folder,
 	// only without the statuses one gives, as browse does: a saved
@@ -92,6 +95,15 @@ func (p *profileFlag) fill(flags *pflag.FlagSet, load LoadProfile, fillSaved fun
 		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder}
 	}
 	p.filled = fillSaved(s, flags.Changed)
+	for _, name := range p.filled {
+		name = strings.TrimPrefix(name, "--")
+		v := flags.Lookup(name).Value
+		value := v.String()
+		if list, ok := v.(pflag.SliceValue); ok {
+			value = strings.Join(list.GetSlice(), ",")
+		}
+		p.values = append(p.values, strings.ReplaceAll(name, "-", "_"), value)
+	}
 	p.fallbacks = s.Fallbacks
 	return nil
 }
@@ -113,12 +125,13 @@ func (p *profileFlag) present(flags *pflag.FlagSet, name string) bool {
 	return flags.Changed(name) || slices.Contains(p.filled, "--"+name)
 }
 
-// log records which flags the profile filled, never their values, and
-// the saved values its load replaced.
+// log records which flags the profile filled and the value each took,
+// and the saved values its load replaced. It writes to the user's own
+// terminal, so it names the local folders.
 func (p *profileFlag) log(log *slog.Logger) {
 	if p.set {
 		diagnostic.LogFallbacks(log, p.fallbacks)
-		log.Info("saved settings", "profile", p.name, "filled", strings.Join(p.filled, ","))
+		log.Info("saved settings", append([]any{"profile", p.name, "filled", strings.Join(p.filled, ",")}, p.values...)...)
 	}
 }
 

@@ -180,8 +180,12 @@ of a failed lookup, under every `--scan`. The scan's records, which name
 the telescope, are in [logs](#logs).
 
 At the start of the run, one `INFO` record, `saved settings`, names the
-filled flags and none of their values, such as
-`profile=default filled=--dest,--history-dir,--endpoint,--interval,--workers`.
+filled flags and the value each took, a list's values joined by commas,
+such as
+`profile=default filled=--dest,--endpoint,--interval dest=/Users/me/Seestar endpoint=192.168.4.85:4445 interval=5m0s`.
+The saved settings hold no password, token or key. The record goes only to
+the command's stderr; the app keeps local folders out of `gui.log` and
+diagnostics.
 Neither file is written or locked, and both are read with the app's own
 checks. Each refusal exits 2 with `option=--profile`:
 
@@ -258,12 +262,12 @@ matches; with `--include`, it copies only what an include selects.
 [pattern rules](selection-and-history.md#pattern-rules).
 
 Each pass logs a `skipped` line for each excluded file or folder, with the
-pattern that matched, as the listing reaches it, and counts them in its summary; a folder has one line,
-and what is in it has none. Files and folders that no include selects have no
-line of their own; each pass counts them as `unmatched` in its summary, a
-folder that is not listed once, without what is in it. An entry that an
-exclude matches is logged and counted as `skipped` instead, whether or not an
-include would select it. A pass whose listing fails still logs and counts
+pattern that matched, as the listing reaches it, and counts them in its
+summary; a folder has one line, and what is in it has none. Files and
+folders that no include selects have no line of their own; each pass counts
+them as `unmatched` in its summary, a folder that is not listed once,
+without what is in it. An entry that an exclude matches is logged and
+counted as `skipped` instead, whether or not an include would select it. A pass whose listing fails still logs and counts
 what it skipped, and what it found unmatched, before the failure.
 
 ### Dry run
@@ -274,9 +278,10 @@ real pass would, from the [state file](#the-state-file) and the destination
 if they exist. It logs a line for each file it would copy, replace or adopt,
 or that is waiting, a `file failed` line for each file that would fail, and a
 `dry run done` summary; see [logs](#logs). Files that are done have no line.
-It also logs a `would skip` line for each excluded file or folder, with the
-pattern that matched, as the listing reaches it, and a line for each top-level folder that has no copied
-files recorded under it, so new folders stand out before a real pass.
+It first logs `sync starting` with the destination, and logs a `would skip`
+line for each excluded file or folder, with the pattern that matched, as
+the listing reaches it, and a line for each top-level folder that has no
+copied files recorded under it, so new folders stand out before a real pass.
 `--once` may be given with it; `--interval` may not.
 
 A dry run creates nothing, not even a missing destination or state folder,
@@ -455,14 +460,15 @@ one stopped.
 
 Sync logs to stderr, as text lines with UTC timestamps to the millisecond, or
 as JSON records with the same messages and keys with `--log-format json`.
-Help and `licenses` write to stdout. Each pass logs `connecting` before it
-connects and `listing the share` once connected, since a scan, a connect and
-the listing of a large share can each take a while. `skipped` lines are
-logged as the listing reaches each entry, and per-file lines as each file
-finishes. A pass that skips the `log` folder and copies two files looks like
-this:
+Help and `licenses` write to stdout. A sync first logs `sync starting` with
+the destination. Each pass logs `connecting` before it connects and
+`listing the share` once connected, since a scan, a connect and the listing
+of a large share can each take a while. `skipped` lines are logged as the
+listing reaches each entry, and per-file lines as each file finishes. A
+first pass that skips the `log` folder and copies two files looks like this:
 
 ```text
+time=2026-11-02T03:10:00.002Z level=INFO msg="sync starting" dest=/Users/me/Seestar dry_run=false
 time=2026-11-02T03:10:00.010Z level=INFO msg=connecting endpoint=127.0.0.1:4445
 time=2026-11-02T03:10:00.115Z level=INFO msg="listing the share"
 time=2026-11-02T03:10:00.118Z level=INFO msg=skipped path=log exclude=/log
@@ -506,6 +512,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 
 | Level | Message | Keys | When |
 | --- | --- | --- | --- |
+| INFO | `sync starting` | `dest`, `dry_run` | Once, before the first pass or the dry run: the local mirror folder, as `--dest` gave it or the profile filled it, and whether this is a dry run. |
 | INFO | `connecting` | `endpoint` | A pass, a dry run, a `find` listing or a delete is connecting to the share, scanning first when [`--scan`](#use-the-apps-saved-settings) says to. `endpoint` is `--endpoint`; a scan's own records name an address it moved to. |
 | INFO | `listing the share` | none | Connected; the share is being listed. Each `skipped` or `would skip` line follows as the listing reaches that entry; the decisions on files follow the listing. |
 | INFO | `file copied` | `path`, `size`, `overwrote=true` when it replaced a different local file, and `elapsed`, the file's download time | A file was downloaded and recorded. |
@@ -538,7 +545,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
 | ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `moved the copy history` | `from`, `to` | With the default `--history-dir`: the history folder of earlier releases, `seestar-copy`, was moved to `copy-history`; see [location](selection-and-history.md#location). Logged once, by the first sync or delete that isn't a dry run. Find, browse and dry runs never move it. |
-| INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
+| INFO | `saved settings` | `profile`, `filled`, and one key per filled flag: `dest`, `history_dir`, `endpoint`, `exclude`, `include`, `no_default_excludes`, `interval`, `once`, `workers` | With `--profile`: the flags it filled, by name, and the value each took, a list's joined by commas; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
 | INFO | `found the telescope at another address on this network` | `telescope`, `saved`, `endpoint`, `addresses`, `other` when another serial answered at the saved address, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address or port other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). `telescope` is its name, model and serial as the reply gave them, such as `S50_Garden (Seestar S50, serial 4ab1c2d3)`; `saved` is the saved address, `endpoint` the one it connected to, `addresses` where it answered, and `other` the telescope that answered at the saved address. Logged again only when the outcome changes. |
 | WARN | `the telescope wasn't seen in a scan of this network; tried its saved address` | `serial`, `saved`, `replies` | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
 | WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `serial`, `saved`, `other`, `replies` | As above, but another serial answered from the saved address, which isn't used, and no reply carried the saved serial; the connect fails. `other` names the telescope that answered there. |

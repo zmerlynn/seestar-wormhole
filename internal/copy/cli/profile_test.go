@@ -111,7 +111,9 @@ func TestProfileDryRunWithSavedInterval(t *testing.T) {
 	s := Saved{Dest: filepath.Join(t.TempDir(), "dest"), HistoryDir: t.TempDir(), Endpoint: "h:445", Interval: 9 * time.Minute}
 	useProfile(t, s)
 	code, _, stderr := invoke(t, "sync", "--profile", "default", "--dry-run")
-	if code != exitOK || !strings.Contains(stderr, `msg="saved settings" profile=default filled=--dest,--history-dir,--endpoint,--interval`+"\n") {
+	if code != exitOK || !strings.Contains(stderr, `msg="saved settings" profile=default filled=--dest,--history-dir,--endpoint,--interval`+
+		` dest=`+s.Dest+` history_dir=`+s.HistoryDir+` endpoint=h:445 interval=9m0s`+"\n") ||
+		!strings.Contains(stderr, `msg="sync starting" dest=`+s.Dest+` dry_run=true`+"\n") {
 		t.Errorf("exit %d, want 0:\n%s", code, stderr)
 	}
 	if code, _, stderr := invoke(t, "sync", "--profile", "default", "--dry-run", "--interval", "1m"); code != exitUsage || !strings.Contains(stderr, "option=--dry-run") {
@@ -156,7 +158,7 @@ func TestProfileDeleteTakesNoSelection(t *testing.T) {
 	code, _, stderr := invoke(t, "delete", "--profile", "default")
 	if code != exitOK || !slices.Equal(logged(stderr, "would delete"), []string{"MyWorks/M 31/a.fit"}) ||
 		!strings.Contains(stderr, `msg="deletion starting" proof=hash older_than=7d dry_run=true`) ||
-		!strings.Contains(stderr, `msg="saved settings" profile=default filled=--dest,--history-dir,--endpoint`+"\n") {
+		!strings.Contains(stderr, `msg="saved settings" profile=default filled=--dest,--history-dir,--endpoint dest=`+dest+` history_dir=`+history+` endpoint=h:445`+"\n") {
 		t.Errorf("exit %d:\n%s", code, stderr)
 	}
 }
@@ -196,22 +198,31 @@ func TestProfileDeleteIgnoreState(t *testing.T) {
 	t.Cleanup(readonly.Reset)
 	code, _, stderr := invoke(t, "delete", "--profile", "default", "--ignore-state", "--include", "*.fit")
 	if code != exitOK || !strings.Contains(stderr, `msg="deletion starting" proof=none older_than=7d dry_run=true`) ||
-		!strings.Contains(stderr, `msg="saved settings" profile=default filled=--endpoint`+"\n") {
+		!strings.Contains(stderr, `msg="saved settings" profile=default filled=--endpoint endpoint=h:445`+"\n") {
 		t.Errorf("exit %d:\n%s", code, stderr)
 	}
 }
 
-// The record names the filled flags and none of their values.
+// The record names the filled flags and the value each took: a list's
+// values joined by commas.
 func TestProfileRecord(t *testing.T) {
 	statusDevice(t)
-	dest, history := filepath.Join(t.TempDir(), "SENTINEL_DEST"), filepath.Join(t.TempDir(), "SENTINEL_HISTORY")
+	dest, history := filepath.Join(t.TempDir(), "dest"), filepath.Join(t.TempDir(), "history")
 	writeFindState(t, dest, history)
-	useProfile(t, Saved{Dest: dest, HistoryDir: history, Endpoint: "h:445", Excludes: []string{"SENTINEL_EXCLUDE"},
-		Includes: []string{"SENTINEL_INCLUDE"}, NoDefaultExcludes: true, Interval: time.Minute, Once: true, Workers: 1})
+	useProfile(t, Saved{Dest: dest, HistoryDir: history, Endpoint: "h:445", Excludes: []string{"a", "b"},
+		Includes: []string{"c"}, NoDefaultExcludes: true, Interval: time.Minute, Once: true, Workers: 1})
 	code, _, stderr := find(t, "--profile", "default")
-	want := `level=INFO msg="saved settings" profile=default filled=--dest,--history-dir,--exclude,--include,--no-default-excludes` + "\n"
-	if code != exitOK || strings.Count(stderr, `msg="saved settings"`) != 1 || !strings.Contains(stderr, want) || strings.Contains(stderr, "SENTINEL") {
-		t.Errorf("exit %d, want one record %q and no value:\n%s", code, want, stderr)
+	want := `level=INFO msg="saved settings" profile=default filled=--dest,--history-dir,--exclude,--include,--no-default-excludes` +
+		` dest=` + dest + ` history_dir=` + history + ` exclude=a,b include=c no_default_excludes=true` + "\n"
+	if code != exitOK || strings.Count(stderr, `msg="saved settings"`) != 1 || !strings.Contains(stderr, want) {
+		t.Errorf("exit %d, want one record %q:\n%s", code, want, stderr)
+	}
+	readonly.Reset()
+	code, _, stderr = invoke(t, "sync", "--profile", "default", "--endpoint", "h:445", "--dest", dest)
+	want = `level=INFO msg="saved settings" profile=default filled=--history-dir,--exclude,--include,--no-default-excludes,--interval,--once,--workers` +
+		` history_dir=` + history + ` exclude=a,b include=c no_default_excludes=true interval=1m0s once=true workers=1` + "\n"
+	if code != exitOK || !strings.Contains(stderr, want) {
+		t.Errorf("sync: exit %d, want %q:\n%s", code, want, stderr)
 	}
 }
 
