@@ -64,10 +64,12 @@ type Skipped struct {
 
 // Walk lists the share over sess, leaving out what the selection does, and
 // returns what it kept and what it left out. A folder left out is never
-// read. Any listing failure, of the root or of a folder that is kept, fails
-// the walk; what was left out before it is still returned.
-func (s Selector) Walk(ctx context.Context, sess remote.Session) ([]remote.Entry, LeftOut, error) {
-	return s.walk(ctx, sess, nil, nil, nil, false)
+// read. skipped, if not nil, is called with each entry an exclude matches
+// as the walk reaches it, so a caller can log it before a long listing
+// ends. Any listing failure, of the root or of a folder that is kept,
+// fails the walk; what was left out before it is still returned.
+func (s Selector) Walk(ctx context.Context, sess remote.Session, skipped func(Skipped)) ([]remote.Entry, LeftOut, error) {
+	return s.walk(ctx, sess, nil, nil, skipped, nil, false)
 }
 
 // walk is [Selector.Walk] that also calls listed, if not nil, with each
@@ -78,7 +80,7 @@ func (s Selector) Walk(ctx context.Context, sess remote.Session) ([]remote.Entry
 // an entry under a reserved top-level name is left out before the
 // selection is consulted, so no include can keep it, and noted in
 // reserved.
-func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folder string, folders int), kept func(remote.Entry), within func(dir string) bool, reserve bool) ([]remote.Entry, LeftOut, error) {
+func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(folder string, folders int), kept func(remote.Entry), skipped func(Skipped), within func(dir string) bool, reserve bool) ([]remote.Entry, LeftOut, error) {
 	out := LeftOut{keptParents: map[string]bool{}}
 	folders := 0
 	entries, err := sess.Walk(ctx, func(p string, dir bool) bool {
@@ -88,7 +90,11 @@ func (s Selector) walk(ctx context.Context, sess remote.Session, listed func(fol
 			return true
 		}
 		if e, ok := s.excluder(p, dir); ok {
-			out.Skipped = append(out.Skipped, Skipped{p, e.flag})
+			x := Skipped{p, e.flag}
+			out.Skipped = append(out.Skipped, x)
+			if skipped != nil {
+				skipped(x)
+			}
 			out.keptParents[path.Dir(p)] = true
 			return true
 		}

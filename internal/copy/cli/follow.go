@@ -110,6 +110,20 @@ func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, lo
 	return v, err
 }
 
+// connect is [followDial] for a run that lists the whole share next: it
+// logs that it connects, and once connected, that it lists the share. A
+// scan, a connect and a large share's listing can each take a while, and
+// log nothing else until they end.
+func connect[T io.Closer](ctx context.Context, f *follow, endpoint string, log *slog.Logger,
+	d func(context.Context, string, *slog.Logger) (T, error)) (T, error) {
+	log.Info("connecting", "endpoint", endpoint)
+	v, err := followDial(ctx, f, endpoint, log, d)
+	if err == nil {
+		log.Info("listing the share")
+	}
+	return v, err
+}
+
 // followSearch is one search for f's telescope, which scans, and what it
 // logs. It returns the address it connected at. Closing the connection it
 // returns releases the search's context.

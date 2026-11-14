@@ -180,8 +180,12 @@ of a failed lookup, under every `--scan`. The scan's records, which name
 the telescope, are in [logs](#logs).
 
 At the start of the run, one `INFO` record, `saved settings`, names the
-filled flags and none of their values, such as
-`profile=default filled=--dest,--history-dir,--endpoint,--interval,--workers`.
+filled flags and the value each took, a list's values joined by commas,
+such as
+`profile=default filled=--dest,--endpoint,--interval dest=/Users/me/Seestar endpoint=192.168.4.85:4445 interval=5m0s`.
+The saved settings hold no password, token or key. The record goes only to
+the command's stderr; the app keeps local folders out of `gui.log` and
+diagnostics.
 Neither file is written or locked, and both are read with the app's own
 checks. Each refusal exits 2 with `option=--profile`:
 
@@ -258,12 +262,12 @@ matches; with `--include`, it copies only what an include selects.
 [pattern rules](selection-and-history.md#pattern-rules).
 
 Each pass logs a `skipped` line for each excluded file or folder, with the
-pattern that matched, and counts them in its summary; a folder has one line,
-and what is in it has none. Files and folders that no include selects have no
-line of their own; each pass counts them as `unmatched` in its summary, a
-folder that is not listed once, without what is in it. An entry that an
-exclude matches is logged and counted as `skipped` instead, whether or not an
-include would select it. A pass whose listing fails still logs and counts
+pattern that matched, as the listing reaches it, and counts them in its
+summary; a folder has one line, and what is in it has none. Files and
+folders that no include selects have no line of their own; each pass counts
+them as `unmatched` in its summary, a folder that is not listed once,
+without what is in it. An entry that an exclude matches is logged and
+counted as `skipped` instead, whether or not an include would select it. A pass whose listing fails still logs and counts
 what it skipped, and what it found unmatched, before the failure.
 
 ### Dry run
@@ -274,9 +278,10 @@ real pass would, from the [state file](#the-state-file) and the destination
 if they exist. It logs a line for each file it would copy, replace or adopt,
 or that is waiting, a `file failed` line for each file that would fail, and a
 `dry run done` summary; see [logs](#logs). Files that are done have no line.
-It also logs a `would skip` line for each excluded file or folder, with the
-pattern that matched, and a line for each top-level folder that has no copied
-files recorded under it, so new folders stand out before a real pass.
+It first logs `sync starting` with the destination, and logs a `would skip`
+line for each excluded file or folder, with the pattern that matched, as
+the listing reaches it, and a line for each top-level folder that has no
+copied files recorded under it, so new folders stand out before a real pass.
 `--once` may be given with it; `--interval` may not.
 
 A dry run creates nothing, not even a missing destination or state folder,
@@ -455,11 +460,17 @@ one stopped.
 
 Sync logs to stderr, as text lines with UTC timestamps to the millisecond, or
 as JSON records with the same messages and keys with `--log-format json`.
-Help and `licenses` write to stdout. Per-file lines are logged as
-each file finishes. A pass that skips the `log` folder and copies two files
-looks like this:
+Help and `licenses` write to stdout. A sync first logs `sync starting` with
+the destination. Each pass logs `connecting` before it connects and
+`listing the share` once connected, since a scan, a connect and the listing
+of a large share can each take a while. `skipped` lines are logged as the
+listing reaches each entry, and per-file lines as each file finishes. A
+first pass that skips the `log` folder and copies two files looks like this:
 
 ```text
+time=2026-11-02T03:10:00.002Z level=INFO msg="sync starting" dest=/Users/me/Seestar dry_run=false
+time=2026-11-02T03:10:00.010Z level=INFO msg=connecting endpoint=127.0.0.1:4445
+time=2026-11-02T03:10:00.115Z level=INFO msg="listing the share"
 time=2026-11-02T03:10:00.118Z level=INFO msg=skipped path=log exclude=/log
 time=2026-11-02T03:10:01.620Z level=INFO msg="file copied" path="MyWorks/M 31/light_002.fit" size=16000000 elapsed=1.497s
 time=2026-11-02T03:10:03.290Z level=INFO msg="file copied" path="MyWorks/M 31/light_003.fit" size=16000000 elapsed=1.668s
@@ -501,11 +512,14 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 
 | Level | Message | Keys | When |
 | --- | --- | --- | --- |
+| INFO | `sync starting` | `dest`, `dry_run` | Once, before the first pass or the dry run: the local mirror folder, as `--dest` gave it or the profile filled it, and whether this is a dry run. |
+| INFO | `connecting` | `endpoint` | A pass, a dry run, a `find` listing or a delete is connecting to the share, scanning first when [`--scan`](#use-the-apps-saved-settings) says to. `endpoint` is `--endpoint`; a scan's own records name an address it moved to. |
+| INFO | `listing the share` | none | Connected; the share is being listed. Each `skipped` or `would skip` line follows as the listing reaches that entry; the decisions on files follow the listing. |
 | INFO | `file copied` | `path`, `size`, `overwrote=true` when it replaced a different local file, and `elapsed`, the file's download time | A file was downloaded and recorded. |
 | INFO | `file replaced` | `path`, `size`, `elapsed` | A file that changed on the device was downloaded again. |
 | INFO | `file adopted` | `path`, `size` | A file already in the destination was hashed and recorded. |
 | WARN | `file failed` | `path`, `reason` | A file failed this pass; it is tried again next pass. |
-| INFO | `skipped` | `path`, `exclude` | The file or folder matches the pattern `exclude`, the first one that matched, and is left out, by a pass or by `find`. A folder has one line; what is in it is not listed. See [selection](#selection). |
+| INFO | `skipped` | `path`, `exclude` | The file or folder matches the pattern `exclude`, the first one that matched, and is left out, by a pass or by `find`. Logged as the listing reaches it. A folder has one line; what is in it is not listed. See [selection](#selection). |
 | INFO | `pass done` | see below | A pass finished. |
 | ERROR | `pass failed` | `source`, `op`, `phase`, `reason`, see below, and `error` | The connection or a listing failed. |
 | WARN | `pass failed` | `reason=destination_missing`, `dest` | `--dest` was removed while sync runs; see [a failed pass](#a-failed-pass). |
@@ -531,7 +545,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
 | ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `moved the copy history` | `from`, `to` | With the default `--history-dir`: the history folder of earlier releases, `seestar-copy`, was moved to `copy-history`; see [location](selection-and-history.md#location). Logged once, by the first sync or delete that isn't a dry run. Find, browse and dry runs never move it. |
-| INFO | `saved settings` | `profile`, `filled` | With `--profile`: the flags it filled, by name, without their values; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
+| INFO | `saved settings` | `profile`, `filled`, and one key per filled flag: `dest`, `history_dir`, `endpoint`, `exclude`, `include`, `no_default_excludes`, `interval`, `once`, `workers` | With `--profile`: the flags it filled, by name, and the value each took, a list's joined by commas; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
 | INFO | `found the telescope at another address on this network` | `telescope`, `saved`, `endpoint`, `addresses`, `other` when another serial answered at the saved address, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address or port other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). `telescope` is its name, model and serial as the reply gave them, such as `S50_Garden (Seestar S50, serial 4ab1c2d3)`; `saved` is the saved address, `endpoint` the one it connected to, `addresses` where it answered, and `other` the telescope that answered at the saved address. Logged again only when the outcome changes. |
 | WARN | `the telescope wasn't seen in a scan of this network; tried its saved address` | `serial`, `saved`, `replies` | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
 | WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `serial`, `saved`, `other`, `replies` | As above, but another serial answered from the saved address, which isn't used, and no reply carried the saved serial; the connect fails. `other` names the telescope that answered there. |
@@ -707,8 +721,8 @@ is listed even if nothing in it is selected. Entries that are neither a
 regular file nor a folder, such as links, are not listed; sync ignores them
 too.
 
-Find logs a `skipped` line for each excluded file or folder, as a pass does,
-and ends with a `listing done` line; see [find logs](#find-logs). The listing
+Find logs a `skipped` line for each excluded file or folder as the listing
+reaches it, as a pass does, and ends with a `listing done` line; see [find logs](#find-logs). The listing
 is written only once the whole share has been listed, so a listing that fails
 writes nothing to stdout.
 
@@ -798,11 +812,14 @@ read.
 
 ### find logs
 
-Find logs to stderr as sync does: a `skipped` line for each excluded file or
-folder, then one summary line, `listing done`, or `listing failed` with an
-`error` key, followed by `find failed`:
+Find logs to stderr as sync does: `connecting`, `listing the share`, a
+`skipped` line for each excluded file or folder, then one summary line,
+`listing done`, or `listing failed` with an `error` key, followed by
+`find failed`:
 
 ```text
+time=2026-11-09T09:00:00.010Z level=INFO msg=connecting endpoint=127.0.0.1:4445
+time=2026-11-09T09:00:00.115Z level=INFO msg="listing the share"
 time=2026-11-09T09:00:00.118Z level=INFO msg=skipped path=log exclude=/log
 time=2026-11-09T09:00:01.502Z level=INFO msg="listing done" files=212 folders=9 bytes=3518046720 recent=0 skipped=3 unmatched=0 copied=200 changed=1 new=11 elapsed=1.502s
 ```
@@ -1183,6 +1200,8 @@ Delete logs to stderr as sync does. A run with `--force`:
 
 ```text
 time=2026-11-09T09:00:00.010Z level=INFO msg="deletion starting" proof=hash older_than=7d dry_run=false
+time=2026-11-09T09:00:00.012Z level=INFO msg=connecting endpoint=127.0.0.1:4445
+time=2026-11-09T09:00:00.120Z level=INFO msg="listing the share"
 time=2026-11-09T09:00:02.410Z level=INFO msg="file deleted" path="MyWorks/M 31/Light_M 31_10.0s_IRCUT_20261029-033119.fit" size=16594560
 time=2026-11-09T09:00:02.470Z level=WARN msg="file kept" path="MyWorks/M 31/Stacked_M 31.fit" reason="changed on the device since it was copied"
 time=2026-11-09T09:00:02.530Z level=INFO msg="folder removed" path="MyWorks/M 31_sub"
@@ -1200,11 +1219,12 @@ time=2026-11-09T09:00:02.600Z level=INFO msg="preview only; add --force to delet
 | Message | Meaning |
 | --- | --- |
 | `deletion starting` | The proof mode, the age limit and whether this is a preview (`dry_run`). |
+| `connecting`, `listing the share` | As in a pass. |
 | `deleting without the folder lock` | A WARN, with `dest` and `reason`: the destination is on a read-only file system, so the run goes on without the [folder lock](selection-and-history.md#the-folder-lock). |
 | `file deleted`, `folder removed` | Removed from the device. |
 | `file kept`, `folder kept` | Not removed, with the reason; see [how delete decides](#how-delete-decides). |
 | `file failed`, `folder failed` | A failure, with the reason. |
-| `skipped` | As in a pass: an excluded file or folder. |
+| `skipped` | As in a pass: an excluded file or folder, logged as the listing reaches it. |
 | `deletion done`, `deletion stopped`, `deletion failed` | The summary. A preview's is `dry run done`, `dry run stopped` or `dry run failed`. A failed one carries `source`, `op`, `phase`, `reason` and `error`. |
 | `delete failed` | Delete is exiting 1, with `source`, `op=run`, `phase`, `reason` and `error`. |
 
