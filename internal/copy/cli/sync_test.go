@@ -226,6 +226,8 @@ func TestSyncPasses(t *testing.T) {
 		// Pass 1: only files at least --first-pass-age old are stable.
 		synctest.Wait()
 		if got, want := logs.Take(), logLines(t0,
+			`INFO msg=connecting endpoint=127.0.0.1:4445`,
+			`INFO msg="listing the share"`,
 			`INFO msg="file copied" path=Autorun/Dark/dark.fit size=2 elapsed=0s`,
 			`INFO msg="file adopted" path="MyWorks/M 31/have.fit" size=2`,
 			`INFO msg="file copied" path="MyWorks/M 31/old.fit" size=3 elapsed=0s`,
@@ -245,6 +247,8 @@ func TestSyncPasses(t *testing.T) {
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
 		if got, want := logs.Take(), logLines(t0.Add(5*time.Minute),
+			`INFO msg=connecting endpoint=127.0.0.1:4445`,
+			`INFO msg="listing the share"`,
 			`INFO msg="file copied" path="MyWorks/M 31/settled.fit" size=3 elapsed=0s`,
 			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=3 failed=0 skipped=0 unmatched=0 bytes=3 elapsed=0s`,
 		); got != want {
@@ -255,6 +259,8 @@ func TestSyncPasses(t *testing.T) {
 		time.Sleep(5 * time.Minute)
 		synctest.Wait()
 		if got, want := logs.Take(), logLines(t0.Add(10*time.Minute),
+			`INFO msg=connecting endpoint=127.0.0.1:4445`,
+			`INFO msg="listing the share"`,
 			`INFO msg="file replaced" path=Autorun/Dark/dark.fit size=3 elapsed=0s`,
 			`INFO msg="file copied" path="MyWorks/M 31/growing.fit" size=2 elapsed=0s`,
 			`INFO msg="file copied" path="MyWorks/M 31/young.fit" size=2 elapsed=0s`,
@@ -386,7 +392,7 @@ func TestSyncLogsRate(t *testing.T) {
 		dev.use(t)
 		var stderr bytes.Buffer
 		code := run(t.Context(), []string{"sync", "--endpoint", "h:445", "--dest", t.TempDir(), "--history-dir", t.TempDir(), "--once"}, io.Discard, &stderr)
-		if want := logLines(t0.Add(500*time.Millisecond),
+		if want := logLines(t0, `INFO msg=connecting endpoint=h:445`, `INFO msg="listing the share"`) + logLines(t0.Add(500*time.Millisecond),
 			`INFO msg="file copied" path=MyWorks/a.fit size=4194304 elapsed=500ms`,
 			`INFO msg="pass done" copied=1 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=4194304 elapsed=500ms rate=8.0MiB/s`,
 		); code != exitOK || stderr.String() != want {
@@ -413,7 +419,7 @@ func TestSyncRetriesFailedPass(t *testing.T) {
 			code <- run(ctx, []string{"sync", "--endpoint", "h:445", "--dest", dest, "--history-dir", stateDir, "--interval", "1m"}, io.Discard, logs)
 		}()
 		synctest.Wait()
-		if got, want := logs.Take(), logLines(t0, `ERROR msg="pass failed" source=copy op=pass phase=connect reason=operation_failed copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
+		if got, want := logs.Take(), logLines(t0, `INFO msg=connecting endpoint=h:445`, `ERROR msg="pass failed" source=copy op=pass phase=connect reason=operation_failed copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s error="connect to h:445: connection refused"`); got != want {
 			t.Fatalf("first pass log %q, want %q", got, want)
 		}
 		time.Sleep(time.Minute)
@@ -442,7 +448,7 @@ func TestSyncStopWhileListing(t *testing.T) {
 		if code != exitOK {
 			t.Errorf("exit %d after a stop, want 0", code)
 		}
-		if got, want := stderr.String(), logLines(t0, `INFO msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s`); got != want {
+		if got, want := stderr.String(), logLines(t0, `INFO msg=connecting endpoint=h:445`, `INFO msg="listing the share"`, `INFO msg="pass stopped" copied=0 replaced=0 adopted=0 waiting=0 failed=0 skipped=0 unmatched=0 bytes=0 elapsed=0s`); got != want {
 			t.Errorf("log %q, want %q", got, want)
 		}
 	})
@@ -467,7 +473,7 @@ func TestSyncLogsEachFileAsItFinishes(t *testing.T) {
 				"--workers", "2", "--once"}, io.Discard, logs)
 		}()
 		synctest.Wait() // a.fit is done and b.fit is stalled mid-file
-		if got, want := logs.Take(), logLines(t0, `INFO msg="file copied" path=MyWorks/a.fit size=3 elapsed=0s`); got != want {
+		if got, want := logs.Take(), logLines(t0, `INFO msg=connecting endpoint=h:445`, `INFO msg="listing the share"`, `INFO msg="file copied" path=MyWorks/a.fit size=3 elapsed=0s`); got != want {
 			t.Fatalf("log while b.fit is read %q, want %q", got, want)
 		}
 		cancel()

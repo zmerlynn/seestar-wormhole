@@ -163,8 +163,8 @@ type listed struct {
 }
 
 // list lists the share and writes a line for each entry kept, logs a line
-// for each entry an exclude skipped, and a summary. records, if not nil,
-// give each file a status.
+// for each entry an exclude skipped as the listing reaches it, and a
+// summary. records, if not nil, give each file a status.
 func list(ctx context.Context, o findOptions, records map[string]state.Record, out io.Writer, log *slog.Logger) (err error) {
 	start := time.Now()
 	var left engine.LeftOut
@@ -185,15 +185,14 @@ func list(ctx context.Context, o findOptions, records map[string]state.Record, o
 		}
 		log.Info("listing done", args...)
 	}()
-	sess, err := followDial(ctx, o.follow, o.endpoint, log, dial)
+	sess, err := connect(ctx, o.follow, o.endpoint, log, dial)
 	if err != nil {
 		return diagnostic.At("connect", fmt.Errorf("connect to %s: %w", o.endpoint, err))
 	}
 	defer sess.Close()
-	entries, left, err := o.selector.Walk(ctx, sess)
-	for _, x := range left.Skipped {
+	entries, left, err := o.selector.Walk(ctx, sess, func(x engine.Skipped) {
 		log.Info("skipped", "path", x.Path, "exclude", x.Exclude)
-	}
+	})
 	if err != nil {
 		return fmt.Errorf("list the share: %w", err)
 	}

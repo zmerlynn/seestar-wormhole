@@ -207,7 +207,7 @@ func runSync(ctx context.Context, o syncOptions, log *slog.Logger) error {
 		// When o.follow is set, the dial may reach the telescope at
 		// another address.
 		Dial: func(ctx context.Context, _ string) (remote.Session, error) {
-			return followDial(ctx, o.follow, o.endpoint, log, dial)
+			return connect(ctx, o.follow, o.endpoint, log, dial)
 		},
 	}, log)
 }
