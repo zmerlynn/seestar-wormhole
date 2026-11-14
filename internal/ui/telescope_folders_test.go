@@ -67,6 +67,44 @@ func TestTelescopeName(t *testing.T) {
 	}
 }
 
+// The server's status names the saved telescope whether or not Copy is
+// open: here copy.json was refused, so Copy is off.
+func TestStatusTelescopeName(t *testing.T) {
+	s := testServer(t)
+	s.copyRefused = true
+	at := netip.MustParseAddr("192.0.2.10")
+	s.lan.remember(1, at, landiscovery.ScanResult{Telescopes: []landiscovery.Telescope{{Serial: "SYNTH0001", Model: "Seestar S30", Addresses: []netip.Addr{at}}}})
+	for _, c := range []struct {
+		name string
+		set  func(*Settings)
+		want string
+	}{
+		{"lan serial", func(set *Settings) { set.Route, set.LANAddress, set.LANSerial = routeLAN, "192.0.2.10", "SYNTH0001" }, "Seestar S30 SYNTH0001"},
+		{"lan address", func(set *Settings) { set.Route, set.LANAddress, set.LANSerial = routeLAN, "192.0.2.11", "" }, "Seestar 192.0.2.11 445"},
+		{"lan nothing", func(set *Settings) { set.Route, set.LANAddress, set.LANSerial = routeLAN, "", "" }, ""},
+		{"account saved", func(set *Settings) {
+			set.Route, set.Serial, set.Model = routeAccount, "SYNTH0004", "Seestar S50 Pro"
+		}, "Seestar S50 Pro SYNTH0004"},
+		{"account none", func(set *Settings) { set.Route, set.Serial = routeAccount, "" }, ""},
+	} {
+		s.mu.Lock()
+		c.set(&s.settings)
+		s.mu.Unlock()
+		var status struct {
+			CopyRefused   bool   `json:"copy_refused"`
+			CopyUnlocked  bool   `json:"copy_unlocked"`
+			TelescopeName string `json:"telescope_name"`
+		}
+		w := serve(s, request(s, "GET", "/api/status", ""))
+		if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+			t.Fatal(err)
+		}
+		if !status.CopyRefused || status.CopyUnlocked || status.TelescopeName != c.want {
+			t.Errorf("%s: %+v; want name %q", c.name, status, c.want)
+		}
+	}
+}
+
 // A copy.json with telescopes loads them, and a save keeps an entry's
 // members this version doesn't know; one without them loads as before.
 func TestCopySettingsTelescopes(t *testing.T) {

@@ -171,7 +171,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ports, _, _ := effective.validate()
 		defaults, _ := proxyrun.MergePorts(nil)
 		events, failures, path, logFailed := s.controller.log.trail()
-		unlocked, reach := s.copyState()
+		target, targetErr := s.copyTarget()
+		unlocked, reach := s.copyState(targetErr)
 		localhttp.Respond(w, http.StatusOK, struct {
 			CopyBusy  bool               `json:"copy_busy"`
 			Settings  pageSettings       `json:"settings"`
@@ -189,9 +190,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			CopyUnlocked bool            `json:"copy_unlocked"`
 			CopyReach    string          `json:"copy_reach"`
 			CopyRefused  bool            `json:"copy_refused"`
-			Files        settingsFiles   `json:"files"`
+			// TelescopeName names the route's telescope as Copy's status
+			// does, whether or not Copy is open.
+			TelescopeName string        `json:"telescope_name"`
+			Files         settingsFiles `json:"files"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
-			unlocked, reach, s.copyRefused, s.settingsFiles()})
+			unlocked, reach, s.copyRefused, s.telescopeNameAt(target), s.settingsFiles()})
 		return
 	}
 	if r.Method != "POST" {
@@ -413,13 +417,12 @@ var (
 const accountEndpoint = "Seestar (account connection)"
 
 // copyState reports whether Copy, Browse and Free up space are open, and
-// why the copier has no target now: "not_connected" or "no_lan_address",
-// or "" when it has one.
-func (s *server) copyState() (unlocked bool, reach string) {
+// why the copier has no target now, given err, what looking it up
+// returned: "not_connected" or "no_lan_address", or "" when it has one.
+func (s *server) copyState(err error) (unlocked bool, reach string) {
 	if s.copy == nil {
 		return false, ""
 	}
-	_, err := s.copyTarget()
 	switch {
 	case errors.Is(err, errNotConnected):
 		reach = "not_connected"
@@ -566,6 +569,26 @@ func (s *server) telescopeName(t copyapp.Target) string {
 		}
 	}
 	return model + " " + host + " " + port
+}
+
+// telescopeNameAt is the name of t's telescope, the copier's target, or ""
+// while none is known. Through the account before it connects, the target
+// is only the telescope saved, named by its saved serial, as Copy's status
+// names it.
+func (s *server) telescopeNameAt(t copyapp.Target) string {
+	if t.Telescope == "" {
+		return ""
+	}
+	if t.Device == "" && t.Serial == "" && t.Endpoint == "" {
+		s.mu.Lock()
+		serial := s.settings.Serial
+		s.mu.Unlock()
+		if copyapp.SerialKey(serial) != t.Telescope {
+			return ""
+		}
+		t.Serial = serial
+	}
+	return s.telescopeName(t)
 }
 
 // SavedCopyEndpoint is the TCP endpoint saved settings name for a copier
