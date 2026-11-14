@@ -648,7 +648,8 @@ async function checkTelescopeLine(st) {
 
 // Back at a telescope after another route, the header shows nothing of a
 // Copy status read before, kept or answering late, until Copy's status is
-// read again; Copy's tabs keep the status they have, and their drafts.
+// read again, and a late one answering after that changes nothing in it;
+// Copy's tabs keep the status they have, and their drafts.
 async function checkTelescopeReturn(st) {
   const name = 'Seestar S50 Pro SYNTH0004', key = 'serial:SYNTH0004 192.0.2.20:445';
   const lan = {...st.unlocked, telescope_name: name, telescope_key: key};
@@ -673,6 +674,18 @@ async function checkTelescopeReturn(st) {
   api = async (action, body, base) => base === '/copy/api/' ? fresh : lan;
   await copyRefresh();
   shows('back, Copy read', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  // The app's status read again, unchanged, while Copy's is being read,
+  // leaves the header as it is, and Copy's answer is still shown.
+  for (let i = 0; i < 3; i++) {
+    let answer;
+    api = async (action, body, base) => base === '/copy/api/' ? new Promise(resolve => answer = resolve) : lan;
+    const reading = copyRefresh();
+    render({...lan});
+    shows('unchanged app, Copy reading', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+    answer(fresh);
+    await reading;
+    shows('unchanged app, Copy read', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  }
   // A late status: read before the route changed, answering after it
   // came back.
   let asked, release;
@@ -694,6 +707,23 @@ async function checkTelescopeReturn(st) {
   api = async (action, body, base) => base === '/copy/api/' ? fresh : lan;
   await copyRefresh();
   shows('back, Copy read again', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  // A status read before another round trip, answering only after a
+  // fresh one, leaves the header as the fresh one showed it: none of its
+  // address, folder, title or "no folder yet" reaches it.
+  let releaseRetired;
+  const retiredStatus = {...old, set_up: false};
+  api = async (action, body, base) => base === '/copy/api/' ? new Promise(resolve => releaseRetired = resolve) : lan;
+  const retired = copyRefresh();
+  render(away);
+  render(lan);
+  api = async (action, body, base) => base === '/copy/api/' ? fresh : lan;
+  await copyRefresh();
+  shows('fresh before retired', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  releaseRetired(retiredStatus);
+  await retired;
+  shows('fresh after retired', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  copyAssert($('telescope-folder').textContent === '~/New', 'retired status replaced the current folder');
+  copyAssert(copyStatus === retiredStatus && $('f-ex').value === 'Draft', "Copy's tabs lost the retired status or the draft");
 }
 
 // Copy settings… and Change… both open the form, and focus goes back to

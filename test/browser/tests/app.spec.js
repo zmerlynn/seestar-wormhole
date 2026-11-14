@@ -878,9 +878,15 @@ test('the header shows Copy\'s folder only for the telescope the app status name
 
 // Away to another route and back to the same telescope at the same
 // address, the header shows nothing of a Copy status read before, kept or
-// answering late, until Copy's status is read again.
-for (const late of [false, true]) {
-  test(`back at the same telescope, the header shows no ${late ? 'late' : 'kept'} Copy status from before`, async ({ page, startApp }) => {
+// answering late, until Copy's status is read again; one answering after
+// that changes nothing in it.
+const returns = {
+  kept: 'back at the same telescope, the header shows no kept Copy status from before',
+  late: 'back at the same telescope, the header shows no late Copy status from before',
+  afterFresh: 'back at the same telescope, a Copy status from before answering after a fresh one leaves the header as it was',
+};
+for (const [order, title] of Object.entries(returns)) {
+  test(title, async ({ page, startApp }) => {
     const app = await startApp({
       'config.json': { ...lan(), lan_serial: 'SYNTHETIC-FIRST', lan_scan: 'off', email: 'synthetic@example.invalid', serial: 'SYNTHETIC-SAVED', model: 'Seestar S50 Pro' },
       'copy.json': (folder) => ({ version: 1, folder, start_copying: false, telescopes: { 'serial:SYNTHETIC-FIRST': { folder } } }),
@@ -894,10 +900,10 @@ for (const late of [false, true]) {
     const address = await page.evaluate(() => state.settings.lan_address);
     // Copy's status as an earlier session left it: another address reached
     // and another folder.
-    const old = async (route) => {
+    const old = async (route, more = {}) => {
       const response = await route.fetch();
       const c = await response.json();
-      await route.fulfill({ response, json: { ...c, settings: { ...c.settings, folder: '/synthetic/Old' }, telescope: { ...c.telescope, address: '192.0.2.99:4445', address_saved: false, folder: '~/Old' } } });
+      await route.fulfill({ response, json: { ...c, ...more, settings: { ...c.settings, folder: '/synthetic/Old' }, telescope: { ...c.telescope, address: '192.0.2.99:4445', address_saved: false, folder: '~/Old' } } });
     };
     const away = async () => {
       await page.evaluate(async () => { await api('route', { settings: { route: 'account' } }); await refresh(); });
@@ -909,7 +915,7 @@ for (const late of [false, true]) {
       await expect(line).toHaveText(name);
       await expect(page.locator('#telescope-to')).toBeHidden();
     };
-    if (!late) {
+    if (order === 'kept') {
       await page.route('**/copy/api/status', old);
       await expect(line).toHaveText(`${name} at 192.0.2.99:4445`);
       await expect(folder).toHaveAttribute('title', '/synthetic/Old');
@@ -922,14 +928,27 @@ for (const late of [false, true]) {
       let release, asked;
       const held = new Promise((resolve) => (release = resolve));
       const reached = new Promise((resolve) => (asked = resolve));
-      await page.route('**/copy/api/status', async (route) => { asked(); await held; await old(route); }, { times: 1 });
+      await page.route('**/copy/api/status', async (route) => { asked(); await held; await old(route, { set_up: false }); }, { times: 1 });
       await reached;
       await away();
       await back();
+      if (order === 'afterFresh') {
+        // The poll waits on the held read, so read Copy's status here.
+        await page.evaluate(() => copyRefresh());
+        await expect(line).toHaveText(current);
+        await expect(folder).toHaveText('~/Seestar');
+        await expect(folder).toHaveAttribute('title', app.folder);
+      }
       // The polls after it fail, so the late status is the last one read.
       await page.route('**/copy/api/status', (route) => route.abort());
       release();
       await expect.poll(() => page.evaluate(() => copyStatus.telescope.address)).toBe('192.0.2.99:4445');
+      if (order === 'afterFresh') {
+        await expect(line).toHaveText(current);
+        await expect(folder).toHaveText('~/Seestar');
+        await expect(folder).toHaveAttribute('title', app.folder);
+        return;
+      }
     }
     await expect(line).toHaveText(name);
     await expect(page.locator('#telescope-to')).toBeHidden();
