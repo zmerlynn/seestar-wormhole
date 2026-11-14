@@ -675,9 +675,17 @@ function telescopeLine() {
   if ($('telescope-folder').title !== title) $('telescope-folder').title = title;
 }
 // The folder, or no folder yet, opens Copy's settings, as Change… does.
+// While copying, the settings can't change: it shows why, as Change…
+// does, and the form opens once copying stops.
 function telescopeFolder() {
   selectTab('copy');
-  if (currentTab === 'copy') openCopyForm();
+  if (currentTab !== 'copy') return;
+  if (copyOn) {
+    copyLockAsked = true;
+    renderSetup();
+    $('s-stop').focus();
+  } else openCopyForm($('telescope-folder'));
+  $('s-box').scrollIntoView({block: 'start'});
 }
 function lanError(message) {
   text('lan-address-error', message);
@@ -860,6 +868,10 @@ const reachCopy = {
 // The last copy status, the saved copy settings (null until saved), the
 // saved folder's history file, and whether Change… has the form open.
 let copyStatus = null, copySaved = null, copyHistory = '', copyFormOpen = false, copyFilled = false;
+// copyOpener is the control that opened the form, which takes focus back
+// when it closes; copyLockAsked, that the status line's folder asked for
+// the form while copying, which opens it once copying stops.
+let copyOpener = null, copyLockAsked = false;
 // copyTelescope is the id of the telescope whose folder the folder field
 // was filled with; each telescope has its own.
 let copyTelescope = null;
@@ -1078,23 +1090,36 @@ function renderSetup() {
   $('s-line').hidden = first;
   put('s-summary', copySaved && copySummary(copySaved));
   $('copy-form').hidden = !copyFormOpen;
-  $('s-change').setAttribute('aria-expanded', String(copyFormOpen));
+  for (const id of ['s-change', 'c-settings']) $(id).setAttribute('aria-expanded', String(copyFormOpen));
   $('f-cancel').hidden = first;
-  $('s-locked').hidden = !(copyOn && copyFormOpen);
+  $('s-locked').hidden = !copyLocked();
   renderHistory();
 }
-function openCopyForm() {
+// copyLocked is whether the notice says to stop copying first.
+function copyLocked() {
+  return copyOn && (copyFormOpen || copyLockAsked);
+}
+function openCopyForm(opener) {
+  copyOpener = opener;
+  copyLockAsked = false;
   copyFormOpen = true;
   result('f-saved', '');
   renderSetup();
   $('f-folder').focus();
+}
+// focusOpener puts focus back on the control that opened the form, or on
+// Change… when that one is gone.
+function focusOpener() {
+  const opener = copyOpener && !copyOpener.hidden ? copyOpener : $('s-change');
+  copyOpener = null;
+  opener.focus();
 }
 function closeCopyForm() {
   copyFormOpen = false;
   if (copySaved) copyFill(copySaved);
   showErrors({});
   renderSetup();
-  $('s-change').focus();
+  focusOpener();
 }
 // copySave sends the form; Save is disabled until the answer is in, so two
 // saves' answers can't arrive out of order.
@@ -1132,7 +1157,7 @@ async function copySave() {
     if (first) $('c-next').focus();
     else {
       result('f-saved', 'Settings saved.', 'ok');
-      $('s-change').focus();
+      focusOpener();
     }
   } finally {
     button.disabled = false;
@@ -1154,7 +1179,7 @@ async function copyAdopt() {
     copyFormOpen = false;
     await copyRefresh();
     result('f-saved', 'Settings saved.', 'ok');
-    $('s-change').focus();
+    focusOpener();
   } catch (e) {
     result('s-offer-result', e?.error || "Couldn't save settings. Try again.", 'err');
     $('s-offer-result').focus();
@@ -1228,6 +1253,7 @@ function renderPreview(v, st) {
   }
   const off = copyShows['c-start'].includes(st);
   $('c-pbtn').hidden = $('c-pnote').hidden = !off || ps === 'running';
+  $('c-settings').hidden = !off;
   // A preview that ends hides Cancel; focus on it moves to the result.
   const cancel = $('c-pcancel');
   const lost = document.activeElement === cancel;
@@ -1290,7 +1316,12 @@ function renderCopy(v) {
   // Settings can't change, nor the history clear, while copying is on.
   $('f-set').disabled = v.on || stale();
   copyOn = v.on;
-  $('s-locked').hidden = !(copyOn && copyFormOpen);
+  if (!copyOn && copyLockAsked) {
+    copyLockAsked = false;
+    copyFormOpen = true;
+    renderSetup();
+  }
+  $('s-locked').hidden = !copyLocked();
   clearable();
   // When the button pressed went away, focus moves to the new state's
   // heading; background updates never move focus.
@@ -2059,7 +2090,7 @@ $('copy-form').addEventListener('submit', e => {
   e.preventDefault();
   copySave();
 });
-$('s-change').addEventListener('click', openCopyForm);
+for (const id of ['s-change', 'c-settings']) $(id).addEventListener('click', () => openCopyForm($(id)));
 $('telescope-folder').addEventListener('click', telescopeFolder);
 $('s-adopt').addEventListener('click', copyAdopt);
 $('f-cancel').addEventListener('click', closeCopyForm);

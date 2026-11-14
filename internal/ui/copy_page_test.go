@@ -103,3 +103,9 @@ func TestLostLinePage(t *testing.T) {
 func TestTelescopeLinePage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkTelescopeLine("+copyPageStatuses(t)+")")
 }
+
+// Copy settings… and Change… open one form and take focus back when it
+// closes; while copying, the folder says to stop copying first.
+func TestCopySettingsButtonPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkCopySettingsButton("+copyPageStatuses(t)+")")
+}

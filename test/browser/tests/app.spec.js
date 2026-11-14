@@ -640,6 +640,66 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
   await expect(page.locator('#f-int')).toHaveValue('30');
 });
 
+// Copy settings… beside Preview and Change… under the summary open one
+// form, and Cancel or Save gives focus back to the one pressed.
+test('Copy settings… and Change… open the form and focus goes back to the one pressed', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  const settings = page.getByRole('button', { name: 'Copy settings…' });
+  const change = page.getByRole('button', { name: 'Change…' });
+  await expect(settings).toBeVisible();
+  await expect(settings).toHaveAttribute('aria-controls', 'copy-form');
+  await expect(settings).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#copy-form')).toBeHidden();
+  await settings.click();
+  await expect(page.locator('#copy-form')).toBeVisible();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  for (const b of [settings, change]) await expect(b).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('#copy-form')).toBeHidden();
+  await expect(settings).toBeFocused();
+  for (const b of [settings, change]) await expect(b).toHaveAttribute('aria-expanded', 'false');
+  await settings.click();
+  await field(page, 'Folder for your images').fill(app.folder);
+  await copySave(page).click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await expect(settings).toBeFocused();
+  expect(readJSON(app.copyFile).folder).toBe(app.folder);
+  // Change… still opens it, and takes focus back.
+  await change.click();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(change).toBeFocused();
+  // The header's folder opens it too, and takes focus back.
+  await page.locator('#telescope-folder').click();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('#telescope-folder')).toBeFocused();
+});
+
+// While copying, Copy settings… hides with Preview, and the header's folder
+// says to stop copying first; the form opens once copying stops.
+test('Copy settings… hides while copying, and the folder then says to stop copying first', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  let v = copyViews.copying;
+  await fakeStatus(page, () => v);
+  await openCopy(page, app.url);
+  await expect(page.locator('#c-title')).toHaveText(copyViews.copying.title);
+  await expect(page.getByRole('button', { name: 'Copy settings…' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Preview' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Change…' })).toBeVisible();
+  await tab(page, 'Activity').click();
+  await page.locator('#telescope-folder').click();
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#s-locked')).toBeVisible();
+  await expect(page.locator('#s-stop')).toBeFocused();
+  await expect(page.locator('#copy-form')).toBeHidden();
+  v = null;
+  await expect(page.locator('#copy-form')).toBeVisible();
+  await expect(page.locator('#s-locked')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Copy settings…' })).toBeVisible();
+});
+
 test('a second telescope is asked for its own folder beside the first, and Save refuses the first one\'s', async ({ page, startApp }) => {
   // The first telescope, known by an invented serial, has the folder; the
   // saved address is another telescope.

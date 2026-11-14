@@ -17,6 +17,7 @@ class TestElement {
   querySelector() {return new TestElement();}
   querySelectorAll() {return [];}
   closest() {return null;}
+  scrollIntoView() {this.scrolled = (this.scrolled || 0) + 1;}
   createTHead() {const e=new TestElement();this.append(e);return e;}
   createTBody() {const e=new TestElement();this.append(e);return e;}
   insertRow() {const e=new TestElement();this.append(e);return e;}

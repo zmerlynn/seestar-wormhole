@@ -595,3 +595,44 @@ async function checkTelescopeLine(st) {
     copyAssert(currentTab === 'copy' && copyFormOpen && !$('copy-form').hidden && document.activeElement === $('f-folder'), 'the folder did not open Copy settings');
   }
 }
+
+// Copy settings… and Change… both open the form, and focus goes back to
+// whichever opened it; Copy settings… hides while copying, and the status
+// line's folder then shows why the settings can't change.
+async function checkCopySettingsButton(st) {
+  copyFixture(st, st.unlocked);
+  api = async action => action === 'settings' ? st.saved : st.after;
+  copyRender(st.after);
+  const expanded = want => ['s-change', 'c-settings'].every(id => $(id).getAttribute('aria-expanded') === want && $(id).getAttribute('aria-controls') === 'copy-form');
+  copyAssert(!$('c-settings').hidden && $('c-settings').textContent === 'Copy settings…' && $('copy-form').hidden && expanded('false'), 'Copy settings… is not offered');
+  for (const id of ['c-settings', 's-change']) {
+    $(id).dispatchEvent({type: 'click'});
+    copyAssert(!$('copy-form').hidden && expanded('true') && document.activeElement === $('f-folder'), id + ' did not open the form');
+    closeCopyForm();
+    copyAssert($('copy-form').hidden && expanded('false') && document.activeElement === $(id), 'Cancel did not go back to ' + id);
+    $(id).dispatchEvent({type: 'click'});
+    await copySave();
+    copyAssert($('f-saved').textContent === 'Settings saved.' && document.activeElement === $(id), 'Save did not go back to ' + id);
+    copyFormOpen = false;
+    renderSetup();
+  }
+  // The folder opens the form too, and brings it into view.
+  selectTab('activity');
+  const scrolled = $('s-box').scrolled || 0;
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && !$('copy-form').hidden && document.activeElement === $('f-folder') && $('s-box').scrolled === scrolled + 1, 'the folder did not open the form in view');
+  closeCopyForm();
+  copyAssert(document.activeElement === $('telescope-folder'), 'Cancel did not go back to the folder');
+
+  // While copying, Copy settings… hides, as Preview does.
+  const running = {...st.after, copy: {...st.after.copy, state: 'copying', on: true, chip: 'Copying'}};
+  copyRender(running);
+  copyAssert($('c-settings').hidden && $('c-pbtn').hidden && !$('s-change').hidden, 'Copy settings… shows while copying');
+  // The folder shows the notice, not a form that can't be saved.
+  selectTab('activity');
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && $('copy-form').hidden && !$('s-locked').hidden && document.activeElement === $('s-stop') && $('s-box').scrolled === scrolled + 2, 'the folder did not say to stop copying first');
+  // Once copying stops, the form it asked for opens.
+  copyRender(st.after);
+  copyAssert(!$('c-settings').hidden && !$('copy-form').hidden && $('s-locked').hidden && expanded('true'), 'the form did not open once copying stopped');
+}
