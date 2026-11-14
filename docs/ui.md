@@ -11,8 +11,9 @@ The header shows a dot and a line with the connection's state: **Not
 connected**, the status while connecting, or **Connected to** your Seestar. The
 dot is green only while connected; while connecting, reconnecting, waiting for
 a busy telescope or releasing an idle session it shows busy. On
-this network it shows the saved address, then **On this network: reachable**
-or **Can't reach** the address once **Test** has run. While copying is on, a
+this network it names the saved telescope, or its address, then adds
+**reachable**, or says **Can't reach** the address, once **Test** has run.
+While copying is on, a
 chip after the line says how it stands: **Copying**, **Up to date**, how many
 files were not copied, or **Copying is on**. A copy once shows **Copying**
 while its check runs. With copying off, there is no chip.
@@ -20,6 +21,16 @@ While a run is busy, a chip of its own follows: **Previewing copy**, **Checking
 what to delete**, **Checking N files again** or **Deleting 3 of 12**. It goes
 away when the run ends. Each chip opens its tab, Copy or Free up space. A run's
 start is announced once when another tab is open, each time it starts.
+
+A line under it names the telescope and where its files go, for example
+**On this network: Seestar S50 Pro <serial> at 192.168.4.85:4445 →
+~/Seestar**. Through Telescope Network it names the saved telescope as
+**(saved), not connected** until you connect; while connecting, its folder is
+known once the telescope is. On this network it shows the address in use,
+which can differ from the saved one, or the saved address marked **(saved)**
+before the first connection. The folder is the telescope's own, with your home
+folder shown as `~` except on Windows, or **no folder yet**; select it to open
+Copy settings. With Copy off, only the telescope shows.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
