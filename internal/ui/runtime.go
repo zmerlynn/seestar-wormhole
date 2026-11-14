@@ -260,8 +260,8 @@ func quitCopy(handler *server) {
 // Ready.
 var runText func(*proxy.Status) string
 
-// copyTargetHook, if set, runs at the start of each copy target lookup.
-// Only tests set it, to hold a lookup.
+// copyTargetHook, if set, runs as each copy target is read from its
+// snapshots, after they were taken. Only tests set it, to hold a lookup.
 var copyTargetHook func()
 
 func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native *copyapp.Native) (result error) {

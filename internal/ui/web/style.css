@@ -270,6 +270,15 @@ header {
   font-weight:600;
   overflow-wrap:anywhere
 }
+#telescope-line {
+  flex-basis:100%;
+  margin:.2rem 0 0;
+  overflow-wrap:anywhere
+}
+#telescope-folder {
+  text-align:start;
+  overflow-wrap:anywhere
+}
 #connection-dot {
   flex:none;
   width:.75rem;

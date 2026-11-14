@@ -21,7 +21,7 @@ const shortText = "the device sent fewer bytes than expected"
 func TestSaveShortReadSaysWhy(t *testing.T) {
 	e, f := newNativeEnv(t)
 	f.answer = filepath.Join(t.TempDir(), "saved.txt")
-	e.s.dial = func(context.Context, Target) (remote.Session, error) {
+	e.s.dial = func(context.Context, uint64, Target) (remote.Session, error) {
 		s := remote.NewFake(fstest.MapFS{"at 192.0.2.10_445/x.txt": {Data: []byte("abc")}})
 		s.Faults = map[string]remote.Fault{"at 192.0.2.10_445/x.txt": {After: 1, ReadErr: io.EOF}}
 		return s, nil
@@ -88,7 +88,7 @@ func (i shorterInfo) Size() int64 { return i.FileInfo.Size() - 1 }
 func TestSaveLongerReadSaysWhy(t *testing.T) {
 	e, f := newNativeEnv(t)
 	f.answer = filepath.Join(t.TempDir(), "saved.txt")
-	e.s.dial = func(context.Context, Target) (remote.Session, error) {
+	e.s.dial = func(context.Context, uint64, Target) (remote.Session, error) {
 		return growingSession{remote.NewFake(fstest.MapFS{"at 192.0.2.10_445/x.txt": {Data: []byte("abc")}})}, nil
 	}
 	e.serve("GET", xURL, "")

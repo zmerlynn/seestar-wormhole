@@ -94,7 +94,8 @@ async function checkRouteChoice(statuses, scenario) {
     load(statuses.lan.settings);
     render(statuses.lan);
     tabAssert(routeChoice === 'lan' && shown('lan') && $('lan-address').value === statuses.lan.settings.lan_address, 'a saved LAN route reopens');
-    tabAssert($('connection-text').textContent === 'On this network: ' + statuses.lan.settings.lan_address, 'header line for an untested LAN route');
+    // Before Copy's status comes, the line has the server's name for it.
+    tabAssert(statuses.lan.telescope_name && $('connection-text').textContent === 'On this network: ' + statuses.lan.telescope_name, 'header line for an untested LAN route: ' + $('connection-text').textContent);
     break;
   }
   case 'active': {
@@ -203,7 +204,7 @@ async function checkLANForm(statuses, replies, scenario) {
     tabAssert(prevented, 'Save submitted the form');
     tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan', '/copy/api/test', '/api/route', '/api/status', '/copy/api/status']), 'Save requests ' + JSON.stringify(calls));
     tabAssert(JSON.stringify(calls[2][1]) === JSON.stringify({settings: {route: 'lan', lan_address: replies['192.0.2.20'].body.address}}), 'Save body ' + JSON.stringify(calls[1][1]));
-    tabAssert(state.settings.route === 'lan' && $('connection-text').textContent === 'On this network: reachable' && $('connection-dot').getAttribute('data-tone') === 'on', 'header after Test and Save: ' + $('connection-text').textContent);
+    tabAssert(state.settings.route === 'lan' && $('connection-text').textContent === 'On this network: ' + statuses.lan.telescope_name + ', reachable' && $('connection-dot').getAttribute('data-tone') === 'on', 'header after Test and Save: ' + $('connection-text').textContent);
     tabAssert($('lan-result').textContent === 'Saved. ' + lan + ' is reachable.' && $('lan-result').getAttribute('data-tone') === 'ok', 'Save result');
     tabAssert(lan === replies['192.0.2.20'].body.address, 'fixture: the saved address is the tested one');
     // Copy shows the saved telescope, and its token, by Saved.

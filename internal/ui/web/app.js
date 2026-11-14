@@ -620,15 +620,15 @@ async function lanScan() {
   }
 }
 // The header's line and dot: the proxy's status on the Telescope Network route, and
-// the saved address and its last Test on this network. The dot is green
-// only while connected now; a retry, a busy telescope or an idle release is
-// busy.
+// the saved telescope and its address's last Test on this network. The dot
+// is green only while connected now; a retry, a busy telescope or an idle
+// release is busy.
 function connectionLine() {
   let line = 'Loading…', tone = 'off';
   const saved = state?.settings?.route === 'lan' ? state.settings.lan_address || '' : '';
   if (state && saved && !active) {
-    const tested = sameEndpoint(lanReach?.address, saved);
-    line = !tested ? 'On this network: ' + saved : lanReach.ok ? 'On this network: reachable' : "Can't reach " + saved;
+    const tested = sameEndpoint(lanReach?.address, saved), name = telescopeNameNow();
+    line = !tested ? 'On this network: ' + (name || saved) : lanReach.ok ? 'On this network: ' + (name ? name + ', reachable' : 'reachable') : "Can't reach " + saved;
     tone = !tested ? 'off' : lanReach.ok ? 'on' : 'error';
   } else if (state) {
     line = active ? state.status : 'Not connected';
@@ -636,6 +636,65 @@ function connectionLine() {
   }
   text('connection-text', line);
   if ($('connection-dot').getAttribute('data-tone') !== tone) $('connection-dot').setAttribute('data-tone', tone);
+  telescopeLine();
+}
+// copyTelescopeNow is copy's status of the route's telescope, or null
+// while Copy is off, or its status describes another telescope than the
+// app's or was read before the app's status last changed: a route saved
+// since, even back to the same telescope, shows the telescope only, until
+// Copy's status is read again.
+function copyTelescopeNow() {
+  const telescope = state?.copy_unlocked && !state.copy_refused ? headerCopy : null;
+  return telescope && telescope.association === association && telescope.key === (state.telescope_key || '') ? telescope : null;
+}
+// telescopeNameNow is the route's telescope's name, from the app's status.
+function telescopeNameNow() {
+  return state?.telescope_name || '';
+}
+// The line under it names the route's telescope and the folder its files
+// are copied to, which opens Copy's settings: on this network with the
+// address in use, through the account saved or connecting. It reads only
+// the fields it names.
+function telescopeLine() {
+  $('telescope-line').hidden = !state;
+  if (!state) return;
+  const lan = state.settings?.route === 'lan', telescope = copyTelescopeNow(), name = telescopeNameNow();
+  let what, to = 'folder';
+  if (lan) {
+    const saved = state.settings.lan_address || '';
+    what = !(name || saved) ? 'no telescope chosen' : (name || saved) + (telescope?.address ? ' at ' + telescope.address + (telescope.address_saved ? ' (saved)' : '') : '');
+    if (!name) to = '';
+  } else if (!active) {
+    const label = name || (state.settings?.serial ? state.settings.choice_label || '' : '');
+    what = label ? label + ' (saved), not connected' : 'no telescope chosen';
+    if (!name) to = '';
+  } else {
+    what = name || state.selected_device || 'connecting';
+    if (!name) to = 'wait';
+  }
+  if (!telescope) to = '';
+  const setUp = to === 'folder' && telescope.set_up && !!telescope.folder;
+  text('telescope-text', (lan ? 'On this network' : 'Telescope Network') + ': ' + what);
+  $('telescope-to').hidden = !to;
+  $('telescope-wait').hidden = to !== 'wait';
+  $('telescope-folder').hidden = to !== 'folder';
+  text('telescope-folder', setUp ? telescope.folder : 'no folder yet');
+  const title = setUp ? telescope.title : '';
+  if ($('telescope-folder').title !== title) $('telescope-folder').title = title;
+}
+// The folder, or no folder yet, opens Copy's settings, as Change… does.
+// While copying, the settings can't change: it shows why, as Change…
+// does, and the form opens once copying stops.
+function telescopeFolder() {
+  selectTab('copy');
+  if (currentTab !== 'copy') return;
+  if (copyOn) {
+    copyOpener = $('telescope-folder');
+    copyLockAsked = true;
+    renderSetup();
+    $('s-stop').focus();
+  } else openCopyForm($('telescope-folder'));
+  $('s-box').scrollIntoView({block: 'start'});
 }
 function lanError(message) {
   text('lan-address-error', message);
@@ -818,9 +877,19 @@ const reachCopy = {
 // The last copy status, the saved copy settings (null until saved), the
 // saved folder's history file, and whether Change… has the form open.
 let copyStatus = null, copySaved = null, copyHistory = '', copyFormOpen = false, copyFilled = false;
+// copyOpener is the control that opened the form, which takes focus back
+// when it closes; copyLockAsked, that the status line's folder asked for
+// the form while copying, which opens it once copying stops.
+let copyOpener = null, copyLockAsked = false;
 // copyTelescope is the id of the telescope whose folder the folder field
 // was filled with; each telescope has its own.
 let copyTelescope = null;
+// association counts the app statuses that changed what the header names:
+// its route, telescope or selected device, or whether Copy is on.
+// headerCopy is the header's part of one Copy status read under one
+// association: the address, folder and title it shows only while both
+// that association and the telescope's key are still current.
+let association = 0, associated = '', headerCopy = null;
 // A refused copy.json keeps them off for the run, and its note, naming
 // the file, replaces the usual one.
 function copyTabs(s) {
@@ -1036,23 +1105,39 @@ function renderSetup() {
   $('s-line').hidden = first;
   put('s-summary', copySaved && copySummary(copySaved));
   $('copy-form').hidden = !copyFormOpen;
-  $('s-change').setAttribute('aria-expanded', String(copyFormOpen));
+  for (const id of ['s-change', 'c-settings']) $(id).setAttribute('aria-expanded', String(copyFormOpen));
   $('f-cancel').hidden = first;
-  $('s-locked').hidden = !(copyOn && copyFormOpen);
+  $('s-locked').hidden = !copyLocked();
   renderHistory();
 }
-function openCopyForm() {
+// copyLocked is whether the notice says to stop copying first.
+function copyLocked() {
+  return copyOn && (copyFormOpen || copyLockAsked);
+}
+function openCopyForm(opener) {
+  copyOpener = opener;
+  copyLockAsked = false;
   copyFormOpen = true;
   result('f-saved', '');
   renderSetup();
   $('f-folder').focus();
 }
+// focusOpener puts focus back on the control that opened the form, or,
+// when that one isn't shown or is disabled, on Change…, or else on the
+// tab's own button.
+function focusOpener() {
+  const shown = e => !!e && e.offsetParent !== null && !e.disabled;
+  const opener = [copyOpener, $('s-change')].find(shown) || $('tab-' + currentTab);
+  copyOpener = null;
+  opener.focus();
+}
 function closeCopyForm() {
+  copyLockAsked = false;
   copyFormOpen = false;
   if (copySaved) copyFill(copySaved);
   showErrors({});
   renderSetup();
-  $('s-change').focus();
+  focusOpener();
 }
 // copySave sends the form; Save is disabled until the answer is in, so two
 // saves' answers can't arrive out of order.
@@ -1090,7 +1175,7 @@ async function copySave() {
     if (first) $('c-next').focus();
     else {
       result('f-saved', 'Settings saved.', 'ok');
-      $('s-change').focus();
+      focusOpener();
     }
   } finally {
     button.disabled = false;
@@ -1112,7 +1197,7 @@ async function copyAdopt() {
     copyFormOpen = false;
     await copyRefresh();
     result('f-saved', 'Settings saved.', 'ok');
-    $('s-change').focus();
+    focusOpener();
   } catch (e) {
     result('s-offer-result', e?.error || "Couldn't save settings. Try again.", 'err');
     $('s-offer-result').focus();
@@ -1186,6 +1271,7 @@ function renderPreview(v, st) {
   }
   const off = copyShows['c-start'].includes(st);
   $('c-pbtn').hidden = $('c-pnote').hidden = !off || ps === 'running';
+  $('c-settings').hidden = !off;
   // A preview that ends hides Cancel; focus on it moves to the result.
   const cancel = $('c-pcancel');
   const lost = document.activeElement === cancel;
@@ -1248,7 +1334,12 @@ function renderCopy(v) {
   // Settings can't change, nor the history clear, while copying is on.
   $('f-set').disabled = v.on || stale();
   copyOn = v.on;
-  $('s-locked').hidden = !(copyOn && copyFormOpen);
+  if (!copyOn && copyLockAsked) {
+    copyLockAsked = false;
+    copyFormOpen = true;
+    renderSetup();
+  }
+  $('s-locked').hidden = !copyLocked();
   clearable();
   // When the button pressed went away, focus moves to the new state's
   // heading; background updates never move focus.
@@ -1541,9 +1632,15 @@ async function clip(button, value, live, copied) {
   }
   setTimeout(() => button.textContent = label, 2000);
 }
-function copyRender(c) {
+// copyRender shows a Copy status read under association seen, the current
+// one unless a read began before the app status changed.
+function copyRender(c, seen = association) {
   const wasSetUp = !!copySaved;
   copyStatus = c;
+  if (seen === association) {
+    const t = c.telescope;
+    headerCopy = t ? {association: seen, key: t.key, address: t.address, address_saved: t.address_saved, folder: t.folder, set_up: !!c.set_up, title: c.settings?.folder || t.folder} : null;
+  }
   copySaved = c.set_up ? c.settings : null;
   copyHistory = c.history;
   $('f-choose').hidden = $('f-hchoose').hidden = !c.choose;
@@ -1558,8 +1655,10 @@ function copyRender(c) {
     // suggested for it. The settings all telescopes share stay as edited.
     $('f-folder').value = c.settings.folder;
     showErrors({});
-    // A form open only because the last telescope had no folder closes.
+    // A form open only because the last telescope had no folder closes,
+    // and one the last telescope's folder asked for doesn't open.
     if (c.set_up && !wasSetUp) copyFormOpen = false;
+    copyLockAsked = false;
   }
   copyTelescope = c.telescope ? c.telescope.id : null;
   renderSetup();
@@ -1569,6 +1668,7 @@ function copyRender(c) {
   copyNotice();
   text('copy-settings', JSON.stringify(c.settings, null, 2));
   renderEvents();
+  connectionLine();
 }
 // stale reports that what the copy tabs show may be out of date.
 function stale() {
@@ -1604,12 +1704,14 @@ function lostLine() {
   clearable();
 }
 // copyRefresh reads copy's status; a failure leaves the last one shown,
-// since the wormhole's own poll reports a lost server.
+// since the wormhole's own poll reports a lost server. The header takes
+// it only if the app's status hasn't changed while it was read.
 async function copyRefresh() {
+  const seen = association;
   try {
     const c = await api('status', undefined, '/copy/api/');
     copyLost = copyOld = false;
-    copyRender(c);
+    copyRender(c, seen);
   } catch (_) {
     copyLost = true;
   }
@@ -1737,6 +1839,11 @@ function projectPicker(s) {
 }
 function render(s) {
   state = s;
+  const names = JSON.stringify([s.settings?.route, s.telescope_key, s.telescope_name, s.selected_device, !!s.copy_unlocked && !s.copy_refused]);
+  if (names !== associated) {
+    associated = names;
+    association++;
+  }
   projectPicker(s);
   text('version',s.version);
   active = s.active;
@@ -2016,7 +2123,8 @@ $('copy-form').addEventListener('submit', e => {
   e.preventDefault();
   copySave();
 });
-$('s-change').addEventListener('click', openCopyForm);
+for (const id of ['s-change', 'c-settings']) $(id).addEventListener('click', () => openCopyForm($(id)));
+$('telescope-folder').addEventListener('click', telescopeFolder);
 $('s-adopt').addEventListener('click', copyAdopt);
 $('f-cancel').addEventListener('click', closeCopyForm);
 $('f-folder').addEventListener('input', renderHistory);

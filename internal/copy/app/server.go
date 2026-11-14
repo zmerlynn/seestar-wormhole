@@ -49,9 +49,10 @@ type server struct {
 	version  string
 	stateDir string // the default history folder; Settings may choose another
 	log      *slog.Logger
-	// dial opens a browse session at t, which [server.dialNow] reads
-	// from target; test runs Test, and reach a route's Save's check.
-	dial  func(ctx context.Context, t Target) (remote.Session, error)
+	// dial opens a browse session at t for the route numbered route, which
+	// [server.dialNow] reads from target; test runs Test, and reach a
+	// route's Save's check.
+	dial  func(ctx context.Context, route uint64, t Target) (remote.Session, error)
 	test  func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	reach func(ctx context.Context, endpoint string) error
 	// serialAt is MountOptions.SerialAt.
@@ -103,6 +104,19 @@ type server struct {
 	// tokenKey signs the tokens status gives the page for the telescope
 	// and its offer, which a Save and an adoption send back.
 	tokenKey []byte
+
+	// reachedMu, taken alone or inside mu, guards where the latest
+	// session reached the telescope keyed reachedFor on this network: the
+	// address in use, which can differ from the saved one once it was
+	// followed to another address or port. reachedRoute counts the
+	// changes of route and reachedSeen the sessions that reached it: a
+	// session counts only on its route, its Browse pool's or the one it
+	// began on, and its failure forgets only what was known when it began.
+	reachedMu    sync.Mutex
+	reachedFor   string
+	reached      string
+	reachedRoute uint64
+	reachedSeen  uint64
 }
 
 func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server {
@@ -139,10 +153,41 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 			return remote.Dial(ctx, t.Endpoint, log)
 		}
 	}
+	resolve := o.Resolve
+	if resolve == nil {
+		at := dial
+		resolve = func(ctx context.Context, t Target) (remote.Session, Target, error) {
+			sess, err := at(ctx, t)
+			return sess, t, err
+		}
+	}
+	// Every session, whatever opens it, notes where it reached the
+	// telescope, for the page, while the route is still the one numbered
+	// route: a Browse pool's, which it took when it was made, or the
+	// route now for copying, a preview and Free up space, as a change of
+	// route waits for them.
+	open := func(ctx context.Context, route uint64, t Target) (remote.Session, Target, error) {
+		s.reachedMu.Lock()
+		seen := s.reachedSeen
+		s.reachedMu.Unlock()
+		sess, at, err := resolve(ctx, t)
+		s.noteReached(ctx, route, seen, t, at, err)
+		return sess, at, err
+	}
+	openNow := func(ctx context.Context, t Target) (remote.Session, Target, error) {
+		return open(ctx, s.routeNow(), t)
+	}
+	dial = func(ctx context.Context, t Target) (remote.Session, error) {
+		sess, _, err := openNow(ctx, t)
+		return sess, err
+	}
 	// Browse's page shows only the error's message, so one on this network
 	// carries the Local Network hint.
-	s.dial = func(ctx context.Context, t Target) (remote.Session, error) {
-		sess, err := establish(ctx, t, func(ctx context.Context) (remote.Session, error) { return dial(ctx, t) })
+	s.dial = func(ctx context.Context, route uint64, t Target) (remote.Session, error) {
+		sess, err := establish(ctx, t, func(ctx context.Context) (remote.Session, error) {
+			sess, _, err := open(ctx, route, t)
+			return sess, err
+		})
 		if err != nil && t.onLAN() {
 			err = withHint(err)
 		}
@@ -171,23 +216,26 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	if o.Remover != nil {
 		s.free.remover = o.Remover
 	}
-	s.free.resolve = o.Resolve
+	if o.Resolve != nil {
+		s.free.resolve = openNow
+	}
 	s.route, s.endRoute = context.WithCancel(ctx)
 	s.browse, s.sessions = s.newBrowse(file.settings)
 	return s
 }
 
-// dialNow is Browse's dial. It asks for the target again, so it reaches
-// the telescope where it is now; a change of route replaces Browse's
-// pool. The session it opens carries that target, which a save of one
-// file reads back with [dialedAt]: its bytes are that telescope's,
-// whatever the target is by then.
-func (s *server) dialNow(ctx context.Context) (remote.Session, error) {
+// dialNow is Browse's dial for a pool made on the route numbered route.
+// It asks for the target again, so it reaches the telescope where it is
+// now; a change of route replaces Browse's pool. The session it opens
+// carries that target, which a save of one file reads back with
+// [dialedAt]: its bytes are that telescope's, whatever the target is by
+// then.
+func (s *server) dialNow(ctx context.Context, route uint64) (remote.Session, error) {
 	t, err := s.target()
 	if err != nil {
 		return nil, err
 	}
-	sess, err := s.dial(ctx, t)
+	sess, err := s.dial(ctx, route, t)
 	if err != nil {
 		return nil, err
 	}
@@ -348,10 +396,12 @@ func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 		},
 		Seq: s.rep.next,
 	}
-	// The pool's dials share one run for the scan on this network.
-	run := &landiscovery.Run{}
+	// The pool's dials share one run for the scan on this network, and
+	// count only on the route it is made on: one that read the old target
+	// just as the route changed is the old route's, whenever it returns.
+	run, route := &landiscovery.Run{}, s.routeNow()
 	sessions := browse.NewSessions(s.route, func(ctx context.Context) (remote.Session, error) {
-		return s.dialNow(landiscovery.WithRun(ctx, run))
+		return s.dialNow(landiscovery.WithRun(ctx, run), route)
 	}, log, rep)
 	var records func() (map[string]state.Record, error)
 	var sel engine.Selector
@@ -489,6 +539,10 @@ var errNotSetUp = errors.New("save the copy settings first")
 // old route closes every other pool made on it too, including one a
 // download's save dialog still holds.
 func (s *server) endpointChanged() {
+	s.reachedMu.Lock()
+	s.reachedFor, s.reached = "", ""
+	s.reachedRoute++
+	s.reachedMu.Unlock()
 	s.mu.Lock()
 	s.free.clear()
 	s.preview.discard()
@@ -707,6 +761,21 @@ type telescopeView struct {
 	// ID moves when the target is another telescope, and the page fills
 	// the folder field again.
 	ID int `json:"id"`
+	// Name is the telescope's name, as [MountOptions.Name] gives it, or ""
+	// while the telescope isn't known.
+	Name string `json:"name"`
+	// Key is the telescope's [ViewKey], which the page compares with the
+	// host's status.
+	Key string `json:"key"`
+	// Address is, on this network, for a telescope saved with its serial,
+	// the address the latest session reached it at, or the saved address,
+	// marked AddressSaved, before one did. It is "" through the account
+	// and for a telescope saved by its address, which its name says.
+	Address      string `json:"address"`
+	AddressSaved bool   `json:"address_saved"`
+	// Folder is the telescope's own folder as the page shows it, with the
+	// home folder as "~" except on Windows, or "" before it has one.
+	Folder string `json:"folder"`
 	// Known is false while the telescope can't be known until the
 	// connection is up, and another telescope has a folder: its folder
 	// can't be chosen yet.
@@ -761,7 +830,25 @@ const errTelescopeMoved = "The telescope or its folder changed since the page sh
 // telescopeView is the page's view of t's telescope, holding s.mu.
 func (s *server) telescopeView(t Target) telescopeView {
 	claimed := s.file.exists && s.file.settings.claimed()
-	v := telescopeView{ID: s.telescope, Known: t.Telescope != "" || !claimed, New: claimed && s.folderAt(t) == "", Token: s.telescopeToken(t.Telescope)}
+	v := telescopeView{ID: s.telescope, Known: t.Telescope != "" || !claimed, New: claimed && s.folderAt(t) == "", Token: s.telescopeToken(t.Telescope), Key: ViewKey(t)}
+	v.Folder = displayFolder(s.folderAt(t), userHome())
+	if t.Telescope != "" {
+		named := t
+		// Through the account before it connects, the target is only the
+		// telescope saved.
+		if serial, ok := serialOf(t.Telescope); ok && t.Device == "" && t.Serial == "" {
+			named.Serial = serial
+		}
+		v.Name = s.name(named)
+	}
+	if t.onLAN() && t.Endpoint != "" && t.Serial != "" {
+		v.Address, v.AddressSaved = t.Endpoint, true
+		s.reachedMu.Lock()
+		if s.reachedFor == t.Telescope && s.reached != "" {
+			v.Address, v.AddressSaved = s.reached, false
+		}
+		s.reachedMu.Unlock()
+	}
 	if from, to, ok := s.offerAt(t); ok {
 		folder := s.file.settings.Telescopes[from].Folder
 		named := t
@@ -771,6 +858,61 @@ func (s *server) telescopeView(t Target) telescopeView {
 		v.Offer = &offerView{Name: s.name(named), Folder: folder, Token: s.offerToken(from, to, folder)}
 	}
 	return v
+}
+
+// routeNow is the number of the route now, which a change of route moves.
+func (s *server) routeNow() uint64 {
+	s.reachedMu.Lock()
+	defer s.reachedMu.Unlock()
+	return s.reachedRoute
+}
+
+// noteReached notes where a session opened at t reached its telescope,
+// at, on this network, when it began with the route and the sessions
+// seen at route and seen: a failure forgets it, unless another session
+// reached it since. Nothing counts once ctx ended or the route changed.
+func (s *server) noteReached(ctx context.Context, route, seen uint64, t, at Target, err error) {
+	if !t.onLAN() || t.Serial == "" {
+		return
+	}
+	s.reachedMu.Lock()
+	defer s.reachedMu.Unlock()
+	if ctx.Err() != nil || route != s.reachedRoute {
+		return
+	}
+	switch {
+	case err == nil:
+		s.reachedFor, s.reached = t.Telescope, at.Endpoint
+		s.reachedSeen++
+	case seen == s.reachedSeen && s.reachedFor == t.Telescope:
+		s.reachedFor, s.reached = "", ""
+	}
+}
+
+// userHome is the home folder the page's folders are shown under, or ""
+// on Windows, where they are shown whole; tests replace it.
+var userHome = func() string {
+	if hostOS == "windows" {
+		return ""
+	}
+	home, _ := os.UserHomeDir()
+	return home
+}
+
+// displayFolder is folder with home, if it is in it, as "~".
+func displayFolder(folder, home string) string {
+	if folder == "" || home == "" || !filepath.IsAbs(home) {
+		return folder
+	}
+	home = filepath.Clean(home)
+	switch rest, ok := strings.CutPrefix(folder, home); {
+	case !ok:
+	case rest == "":
+		return "~"
+	case rest[0] == filepath.Separator && home != string(filepath.Separator):
+		return "~" + rest
+	}
+	return folder
 }
 
 // offerAt finds, holding s.mu, the address's folder to offer t's

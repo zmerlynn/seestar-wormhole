@@ -67,6 +67,8 @@ async function checkCopySetup(st) {
   copyFixture(st, st.unlocked);
   copyAssert(!st.before.set_up && st.after.set_up && st.saved.browse_changed, 'server statuses changed shape');
   copyRender(st.before);
+  // The form and its controls are on the Copy tab, where focus can go back.
+  selectTab('copy');
   copyAssert($('c-main').hidden && !$('s-first').hidden && $('s-line').hidden, 'the first visit shows the copy controls');
   copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
@@ -520,4 +522,282 @@ async function checkLostLine(st) {
   for (const id of views) copyAssert($(id).getAttribute('data-stale') === null, id + ' stayed stale');
   for (const id of actions) copyAssert(!$(id).disabled, id + ' stayed off');
   copyAssert($('x-days').value === '30' && $('f-ex').value === 'Draft', 'a draft was lost');
+}
+
+// The line under the header names the route's telescope and its folder,
+// in each state, and the folder opens Copy's settings.
+async function checkTelescopeLine(st) {
+  // The fixture's copy names every telescope Seestar.
+  copyAssert(st.after.set_up && st.after.telescope.name === 'Seestar' && st.after.telescope.folder && !st.after.telescope.address, 'server statuses changed shape');
+  const line = () => $('telescope-text').textContent;
+  const folder = () => $('telescope-to').hidden ? '' : !$('telescope-wait').hidden ? $('telescope-wait').textContent : $('telescope-folder').textContent;
+  const shows = (what, want, wantFolder, title = '') => {
+    copyAssert(!$('telescope-line').hidden && line() === want, what + ': ' + line());
+    copyAssert(folder() === wantFolder, what + ' folder: ' + folder());
+    copyAssert($('telescope-folder').title === title, what + ' title: ' + $('telescope-folder').title);
+    copyAssert(!line().includes('@') && !folder().includes('@'), what + ' shows an email');
+  };
+  // Each status keys its telescope alike, and Copy's shows only beside the
+  // app status of the same key.
+  copyAssert(st.unlocked.telescope_key && st.unlocked.telescope_key === st.after.telescope.key, 'the statuses key the telescope apart: ' + st.unlocked.telescope_key + ' ' + st.after.telescope.key);
+  const name = 'Seestar S50 Pro SYNTH0004', home = '~/Seestar/S50 Pro SYNTH0004', full = '/synthetic/home/Seestar/S50 Pro SYNTH0004';
+  const email = {email: 'synthetic@example.invalid'};
+  const account = {...st.unlocked.settings, ...email, route: 'account', serial: 'SYNTH0004', model: 'Seestar S50 Pro', choice_label: 'synthetic choice label'};
+  const savedKey = 'serial:SYNTH0004', onKey = savedKey + ' Seestar (account connection)', lanKey = savedKey + ' 192.0.2.20:445';
+  const serialAt = (address, address_saved, key) => ({...st.after, telescope: {...st.after.telescope, name, key, address, address_saved, folder: home}, settings: {...st.after.settings, folder: full}});
+  const notSetUp = key => ({...st.after, set_up: false, telescope: {...st.after.telescope, name, key, folder: ''}, settings: {...st.after.settings, folder: '/synthetic/home/Seestar/suggested'}});
+  const saved = {...st.unlocked, settings: account, telescope_name: name, telescope_key: savedKey};
+  const connected = {...saved, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, telescope_key: onKey};
+  const lan = {...st.unlocked, telescope_name: name, telescope_key: lanKey};
+  copyFixture(st, st.unlocked);
+
+  // Through the account: nothing saved, saved, connecting, connected.
+  render({...st.locked, settings: {...st.locked.settings, ...email, route: 'account', serial: '', choice_label: ''}, devices_email: email.email, telescope_name: '', telescope_key: ''});
+  shows('nothing saved', 'Telescope Network: no telescope chosen', '');
+  render(saved);
+  copyRender(serialAt('', false, savedKey));
+  shows('saved', 'Telescope Network: ' + name + ' (saved), not connected', home, full);
+  render({...st.unlocked, settings: account, active: true, status: 'Connecting', selected_device: name, telescope_name: '', telescope_key: ''});
+  copyRender({...st.after, telescope: {...st.after.telescope, name: '', key: '', folder: ''}, set_up: false});
+  shows('connecting', 'Telescope Network: ' + name, 'folder known once connected');
+  render(connected);
+  copyRender(serialAt('', false, onKey));
+  shows('connected', 'Telescope Network: ' + name, home, full);
+  copyRender(notSetUp(onKey));
+  shows('no folder yet', 'Telescope Network: ' + name, 'no folder yet');
+  // Copy off: the telescope part stays, named by the server.
+  render({...connected, copy_unlocked: false});
+  shows('copy locked', 'Telescope Network: ' + name, '');
+  render({...connected, copy_refused: true});
+  shows('copy refused', 'Telescope Network: ' + name, '');
+  render({...saved, copy_refused: true});
+  shows('copy refused, saved', 'Telescope Network: ' + name + ' (saved), not connected', '');
+
+  // On this network: nothing saved, a telescope saved by its address, one
+  // saved with its serial before and after a session reached it.
+  render({...st.unlocked, settings: {...st.unlocked.settings, lan_address: ''}, copy_unlocked: false, telescope_name: '', telescope_key: ''});
+  shows('no address', 'On this network: no telescope chosen', '');
+  // With Copy off, both lines name the telescope saved with its serial, not
+  // Copy's last telescope, and no folder shows.
+  render({...lan, copy_refused: true});
+  shows('copy refused here', 'On this network: ' + name, '');
+  copyAssert($('connection-text').textContent === 'On this network: ' + name, 'copy refused dot line: ' + $('connection-text').textContent);
+  render(st.unlocked);
+  copyRender(st.after);
+  shows('address only', 'On this network: ' + st.unlocked.telescope_name, st.after.telescope.folder, st.after.settings.folder);
+  copyAssert($('connection-text').textContent === 'On this network: ' + st.unlocked.telescope_name, 'dot line: ' + $('connection-text').textContent);
+  render(lan);
+  copyRender(serialAt('192.0.2.20:445', true, lanKey));
+  shows('saved address', 'On this network: ' + name + ' at 192.0.2.20:445 (saved)', home, full);
+  copyAssert($('connection-text').textContent === 'On this network: ' + name, 'dot line: ' + $('connection-text').textContent);
+  copyRender(serialAt('192.0.2.21:4445', false, lanKey));
+  shows('address in use', 'On this network: ' + name + ' at 192.0.2.21:4445', home, full);
+  const savedAddress = st.unlocked.settings.lan_address;
+  lanReach = {address: savedAddress, ok: true};
+  controls();
+  copyAssert($('connection-text').textContent === 'On this network: ' + name + ', reachable', 'reachable: ' + $('connection-text').textContent);
+  lanReach = {address: savedAddress, ok: false};
+  controls();
+  copyAssert($('connection-text').textContent === "Can't reach " + savedAddress, 'unreachable: ' + $('connection-text').textContent);
+  lanReach = null;
+  copyRender(notSetUp(lanKey));
+  shows('no folder yet here', 'On this network: ' + name, 'no folder yet');
+
+  // A route saved since Copy's last status names the new telescope alone,
+  // never with the old one's address or folder, until Copy's status of it
+  // is read; Copy's tabs keep the status they have.
+  const other = 'Seestar S30 SYNTH0005', otherKey = 'serial:SYNTH0005 192.0.2.30:445';
+  const before = serialAt('192.0.2.21:4445', false, lanKey);
+  copyRender(before);
+  render({...lan, settings: {...lan.settings, lan_address: '192.0.2.30'}, telescope_name: other, telescope_key: otherKey});
+  shows('another telescope, Copy behind', 'On this network: ' + other, '');
+  copyAssert(copyStatus === before, "Copy's status changed with the app's");
+  render({...connected, telescope_name: other, telescope_key: 'serial:SYNTH0005 Seestar (account connection)'});
+  shows('another route, Copy behind', 'Telescope Network: ' + other, '');
+  // The same telescope saved at another address is another key too.
+  render({...lan, settings: {...lan.settings, lan_address: '192.0.2.31'}, telescope_key: savedKey + ' 192.0.2.31:445'});
+  shows('a new address, Copy behind', 'On this network: ' + name, '');
+  // A Copy poll that fails, or answers late, changes nothing; the one that
+  // reads the new telescope shows it whole.
+  const now = {...lan, settings: {...lan.settings, lan_address: '192.0.2.30'}, telescope_name: other, telescope_key: otherKey};
+  let copyRead;
+  api = async (action, body, base) => {
+    if (base !== '/copy/api/') return now;
+    if (!copyRead) throw {code: 'controls', message: lostCopy};
+    return copyRead;
+  };
+  await poll();
+  shows('Copy lost', 'On this network: ' + other, '');
+  copyRead = before;
+  await poll();
+  shows('Copy read late', 'On this network: ' + other, '');
+  copyRead = {...before, telescope: {...before.telescope, name: other, key: otherKey, address: '192.0.2.30:445', address_saved: true, folder: '~/Seestar/S30 SYNTH0005'}};
+  await poll();
+  shows('Copy caught up', 'On this network: ' + other + ' at 192.0.2.30:445 (saved)', '~/Seestar/S30 SYNTH0005', full);
+
+  render(lan);
+  // The folder, or no folder yet, opens Copy's settings.
+  for (const status of [notSetUp(lanKey), serialAt('192.0.2.21:4445', false, lanKey)]) {
+    copyRender(status);
+    selectTab('activity');
+    copyFormOpen = false;
+    $('telescope-folder').dispatchEvent({type: 'click'});
+    copyAssert(currentTab === 'copy' && copyFormOpen && !$('copy-form').hidden && document.activeElement === $('f-folder'), 'the folder did not open Copy settings');
+  }
+}
+
+// Back at a telescope after another route, the header shows nothing of a
+// Copy status read before, kept or answering late, until Copy's status is
+// read again, and a late one answering after that changes nothing in it;
+// Copy's tabs keep the status they have, and their drafts.
+async function checkTelescopeReturn(st) {
+  const name = 'Seestar S50 Pro SYNTH0004', key = 'serial:SYNTH0004 192.0.2.20:445';
+  const lan = {...st.unlocked, telescope_name: name, telescope_key: key};
+  const away = {...st.unlocked, settings: {...st.unlocked.settings, route: 'account', serial: 'SYNTH0005'}, telescope_name: 'Seestar S30 SYNTH0005', telescope_key: 'serial:SYNTH0005'};
+  const at = (address, address_saved, folder, full) => ({...st.after, telescope: {...st.after.telescope, name, key, address, address_saved, folder}, settings: {...st.after.settings, folder: full}});
+  const old = at('192.0.2.99:4445', false, '~/Old', '/synthetic/Old'), fresh = at('192.0.2.20:445', true, '~/New', '/synthetic/New');
+  const line = () => $('telescope-text').textContent;
+  const shows = (what, want, title) => {
+    copyAssert(line() === 'On this network: ' + name + want, what + ': ' + line());
+    copyAssert($('telescope-to').hidden === !title && $('telescope-folder').title === title, what + ' folder: ' + $('telescope-to').hidden + ' ' + $('telescope-folder').title);
+  };
+  copyFixture(st, lan);
+  copyRender(old);
+  shows('first visit', ' at 192.0.2.99:4445', '/synthetic/Old');
+  $('f-ex').value = 'Draft';
+  // A kept status: away and back to the same telescope and address.
+  render(away);
+  copyAssert($('telescope-to').hidden, 'the folder stayed on another route');
+  render(lan);
+  shows('back, Copy kept', '', '');
+  copyAssert(copyStatus === old && $('f-ex').value === 'Draft', "Copy's tabs lost their status or draft");
+  api = async (action, body, base) => base === '/copy/api/' ? fresh : lan;
+  await copyRefresh();
+  shows('back, Copy read', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  // The app's status read again, unchanged, while Copy's is being read,
+  // leaves the header as it is, and Copy's answer is still shown.
+  for (let i = 0; i < 3; i++) {
+    let answer;
+    api = async (action, body, base) => base === '/copy/api/' ? new Promise(resolve => answer = resolve) : lan;
+    const reading = copyRefresh();
+    render({...lan});
+    shows('unchanged app, Copy reading', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+    answer(fresh);
+    await reading;
+    shows('unchanged app, Copy read', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  }
+  // A late status: read before the route changed, answering after it
+  // came back.
+  let asked, release;
+  const reached = new Promise(resolve => asked = resolve);
+  api = async (action, body, base) => {
+    if (base !== '/copy/api/') return lan;
+    asked();
+    return new Promise(resolve => release = resolve);
+  };
+  const reading = copyRefresh();
+  await reached;
+  render(away);
+  render(lan);
+  shows('back, Copy reading', '', '');
+  release(old);
+  await reading;
+  shows('back, Copy late', '', '');
+  copyAssert(copyStatus === old && $('f-ex').value === 'Draft', "Copy's tabs lost the late status or the draft");
+  api = async (action, body, base) => base === '/copy/api/' ? fresh : lan;
+  await copyRefresh();
+  shows('back, Copy read again', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  // A status read before another round trip, answering only after a
+  // fresh one, leaves the header as the fresh one showed it: none of its
+  // address, folder, title or "no folder yet" reaches it.
+  let releaseRetired;
+  const retiredStatus = {...old, set_up: false};
+  api = async (action, body, base) => base === '/copy/api/' ? new Promise(resolve => releaseRetired = resolve) : lan;
+  const retired = copyRefresh();
+  render(away);
+  render(lan);
+  api = async (action, body, base) => base === '/copy/api/' ? fresh : lan;
+  await copyRefresh();
+  shows('fresh before retired', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  releaseRetired(retiredStatus);
+  await retired;
+  shows('fresh after retired', ' at 192.0.2.20:445 (saved)', '/synthetic/New');
+  copyAssert($('telescope-folder').textContent === '~/New', 'retired status replaced the current folder');
+  copyAssert(copyStatus === retiredStatus && $('f-ex').value === 'Draft', "Copy's tabs lost the retired status or the draft");
+}
+
+// Copy settings… and Change… both open the form, and focus goes back to
+// whichever opened it; Copy settings… hides while copying, and the status
+// line's folder then shows why the settings can't change.
+async function checkCopySettingsButton(st) {
+  copyFixture(st, st.unlocked);
+  api = async action => action === 'settings' ? st.saved : st.after;
+  copyRender(st.after);
+  selectTab('copy');
+  const expanded = want => ['s-change', 'c-settings'].every(id => $(id).getAttribute('aria-expanded') === want && $(id).getAttribute('aria-controls') === 'copy-form');
+  copyAssert(!$('c-settings').hidden && $('c-settings').textContent === 'Copy settings…' && $('copy-form').hidden && expanded('false'), 'Copy settings… is not offered');
+  for (const id of ['c-settings', 's-change']) {
+    $(id).dispatchEvent({type: 'click'});
+    copyAssert(!$('copy-form').hidden && expanded('true') && document.activeElement === $('f-folder'), id + ' did not open the form');
+    closeCopyForm();
+    copyAssert($('copy-form').hidden && expanded('false') && document.activeElement === $(id), 'Cancel did not go back to ' + id);
+    $(id).dispatchEvent({type: 'click'});
+    await copySave();
+    copyAssert($('f-saved').textContent === 'Settings saved.' && document.activeElement === $(id), 'Save did not go back to ' + id);
+    copyFormOpen = false;
+    renderSetup();
+  }
+  // The folder opens the form too, and brings it into view.
+  selectTab('activity');
+  const scrolled = $('s-box').scrolled || 0;
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && !$('copy-form').hidden && document.activeElement === $('f-folder') && $('s-box').scrolled === scrolled + 1, 'the folder did not open the form in view');
+  closeCopyForm();
+  copyAssert(document.activeElement === $('telescope-folder'), 'Cancel did not go back to the folder');
+
+  // While copying, Copy settings… hides, as Preview does.
+  const running = {...st.after, copy: {...st.after.copy, state: 'copying', on: true, chip: 'Copying'}};
+  copyRender(running);
+  copyAssert($('c-settings').hidden && $('c-pbtn').hidden && !$('s-change').hidden, 'Copy settings… shows while copying');
+  // The folder shows the notice, not a form that can't be saved.
+  selectTab('activity');
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  copyAssert(currentTab === 'copy' && $('copy-form').hidden && !$('s-locked').hidden && document.activeElement === $('s-stop') && $('s-box').scrolled === scrolled + 2, 'the folder did not say to stop copying first');
+  // Once copying stops, the form it asked for opens.
+  copyRender(st.after);
+  copyAssert(!$('c-settings').hidden && !$('copy-form').hidden && $('s-locked').hidden && expanded('true'), 'the form did not open once copying stopped');
+  // Its Cancel goes back to the folder that asked for it.
+  closeCopyForm();
+  copyAssert($('copy-form').hidden && document.activeElement === $('telescope-folder'), 'Cancel did not go back to the folder: ' + document.activeElement?.id);
+
+  // A Cancel after the folder asked for the form, while copying, cancels
+  // that too: the form doesn't open once copying stops.
+  copyRender(running);
+  $('s-change').dispatchEvent({type: 'click'});
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  closeCopyForm();
+  copyRender(st.after);
+  copyAssert($('copy-form').hidden && expanded('false'), 'the form opened after Cancel once copying stopped');
+  // Nor does one asked for by another telescope's folder.
+  copyRender(running);
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  const other = {...running, telescope: {...running.telescope, id: running.telescope.id + 1}};
+  copyRender(other);
+  copyRender({...other, copy: st.after.copy});
+  copyAssert($('copy-form').hidden && $('s-locked').hidden, "the form opened for another telescope's folder");
+  copyRender(st.after);
+
+  // Focus goes back only to a control that is shown: when the folder's
+  // part of the line is hidden, to Change…, and when that is disabled, to
+  // the tab.
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  $('telescope-to').hidden = true;
+  closeCopyForm();
+  copyAssert($('telescope-folder').offsetParent === null && document.activeElement === $('s-change'), 'focus went to a hidden folder: ' + document.activeElement?.id);
+  $('telescope-to').hidden = false;
+  $('telescope-folder').dispatchEvent({type: 'click'});
+  $('telescope-to').hidden = $('s-change').disabled = true;
+  closeCopyForm();
+  copyAssert(document.activeElement === $('tab-copy'), 'focus did not go to the tab: ' + document.activeElement?.id);
+  $('telescope-to').hidden = $('s-change').disabled = false;
 }

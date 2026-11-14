@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
@@ -9,13 +10,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/plan"
+	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
 )
 
@@ -355,10 +359,14 @@ type telescopeStatus struct {
 	} `json:"settings"`
 	History   string `json:"history"`
 	Telescope struct {
-		ID    int  `json:"id"`
-		Known bool `json:"known"`
-		New   bool `json:"new"`
-		Offer *struct {
+		ID           int    `json:"id"`
+		Name         string `json:"name"`
+		Address      string `json:"address"`
+		AddressSaved bool   `json:"address_saved"`
+		Folder       string `json:"folder"`
+		Known        bool   `json:"known"`
+		New          bool   `json:"new"`
+		Offer        *struct {
 			Name   string `json:"name"`
 			Folder string `json:"folder"`
 			Token  string `json:"token"`
@@ -1017,5 +1025,386 @@ func TestStaleSaveRefused(t *testing.T) {
 	}
 	if w := e.post("/copy/api/settings", saveInput(folder)); w.Code != 200 {
 		t.Errorf("B's save = %d %s", w.Code, w.Body)
+	}
+}
+
+// setHome makes home the home folder the page's folders are shown under.
+func setHome(t *testing.T, home string) {
+	old := userHome
+	userHome = func() string { return home }
+	t.Cleanup(func() { userHome = old })
+}
+
+// Status names the telescope and shows its own folder, home as "~", only
+// once it has one: a folder suggested for it is not its folder.
+func TestStatusNamesTheTelescope(t *testing.T) {
+	home := abs("/home/someone")
+	first := filepath.Join(home, "Pictures", "Seestar")
+	setHome(t, home)
+	e := newAppEnv(t, claimedAt(first, map[string]string{keyA: first}))
+	e.key, e.serial, e.name = keyA, serialA, "S50 Pro "+serialA
+	got := e.status().Telescope
+	if want := "~" + string(filepath.Separator) + filepath.Join("Pictures", "Seestar"); got.Name != "S50 Pro "+serialA || got.Folder != want {
+		t.Errorf("set up: %+v; want folder %q", got, want)
+	}
+	e.set(func() { e.key, e.serial, e.name = keyB, serialB, "Seestar S30 "+serialB })
+	if got := e.status(); got.SetUp || got.Settings.Folder == "" || got.Telescope.Folder != "" || got.Telescope.Name != "Seestar S30 "+serialB {
+		t.Errorf("no folder yet: %+v", got)
+	}
+	// While the telescope isn't known, it has no name.
+	e.set(func() { e.key, e.serial, e.lost = "", "", errNoRoute })
+	if got := e.status().Telescope; got.Name != "" || got.Folder != "" {
+		t.Errorf("not known: %+v", got)
+	}
+}
+
+// Through the account before it connects, the target is only the key of
+// the telescope saved, and it is named by that key's serial.
+func TestStatusNamesTheSavedTelescope(t *testing.T) {
+	e := newAppEnv(t, nil)
+	var named []Target
+	e.s.name = func(t Target) string {
+		named = append(named, t)
+		return "S50 Pro " + t.Serial
+	}
+	e.set(func() { e.endpoint, e.key, e.lost = "", keyA, errNoRoute })
+	if got := e.status().Telescope; got.Name != "S50 Pro "+serialA || got.Address != "" {
+		t.Errorf("saved: %+v", got)
+	}
+	if len(named) != 1 || named[0] != (Target{Serial: serialA, Telescope: keyA}) {
+		t.Errorf("named %+v", named)
+	}
+}
+
+// On this network, a telescope saved with its serial shows its saved
+// address, marked so, until a session reaches it, and then the address
+// in use, which a follow may have moved; a failed session, or a change
+// of where the telescope is, goes back to the saved one.
+func TestStatusAddressInUse(t *testing.T) {
+	e := newAppEnvFollowing(t, savedAt(abs("/data/Seestar")))
+	e.set(func() { e.key, e.serial, e.follow = keyA, serialA, "192.0.2.11:4445" })
+	address := func() (string, bool) {
+		got := e.status().Telescope
+		return got.Address, got.AddressSaved
+	}
+	if a, saved := address(); a != testEndpoint || !saved {
+		t.Fatalf("before a session: %q %v", a, saved)
+	}
+	// A session opened now, as Browse, copying or a preview opens one.
+	open := func() error {
+		sess, err := e.s.dial(t.Context(), e.s.routeNow(), e.s.current())
+		if err == nil {
+			sess.Close()
+		}
+		return err
+	}
+	if err := open(); err != nil {
+		t.Fatal(err)
+	}
+	if a, saved := address(); a != "192.0.2.11:4445" || saved {
+		t.Errorf("after a session: %q %v", a, saved)
+	}
+	e.d.mu.Lock()
+	e.d.fail = func() error { return errNoRoute }
+	e.d.mu.Unlock()
+	if open() == nil {
+		t.Fatal("a failing dial opened")
+	}
+	if a, saved := address(); a != testEndpoint || !saved {
+		t.Errorf("after a failure: %q %v", a, saved)
+	}
+	e.d.mu.Lock()
+	e.d.fail = nil
+	e.d.mu.Unlock()
+	e.set(func() { e.follow = "192.0.2.12:4445" })
+	open()
+	if a, saved := address(); a != "192.0.2.12:4445" || saved {
+		t.Errorf("reached again: %q %v", a, saved)
+	}
+	// A canceled session forgets nothing.
+	e.d.mu.Lock()
+	e.d.fail = func() error { return context.Canceled }
+	e.d.mu.Unlock()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	e.s.dial(ctx, e.s.routeNow(), e.s.current())
+	e.d.mu.Lock()
+	e.d.fail = nil
+	e.d.mu.Unlock()
+	if a, saved := address(); a != "192.0.2.12:4445" || saved {
+		t.Errorf("after a cancel: %q %v", a, saved)
+	}
+	e.set(func() { e.follow = "" })
+	e.move("192.0.2.13:445")
+	if a, saved := address(); a != "192.0.2.13:445" || !saved {
+		t.Errorf("after a move: %q %v", a, saved)
+	}
+	// Another telescope's session is not this one's address.
+	open()
+	e.set(func() { e.key, e.serial = keyB, serialB })
+	if a, saved := address(); a != "192.0.2.13:445" || !saved {
+		t.Errorf("another telescope: %q %v", a, saved)
+	}
+	// A telescope saved by its address, and one through the account, have
+	// none: the name says the one, and the other has no address here.
+	e.set(func() { e.key, e.serial = AddressKey(testEndpoint), "" })
+	open()
+	if a, saved := address(); a != "" || saved {
+		t.Errorf("address only: %q %v", a, saved)
+	}
+	e.set(func() { e.key, e.device, e.run, e.endpoint = keyA, "S50 Pro "+serialA, 1, "account" })
+	open()
+	if a, saved := address(); a != "" || saved {
+		t.Errorf("account: %q %v", a, saved)
+	}
+}
+
+// heldResolve is an app env whose first session, at testEndpoint, waits
+// in Resolve until release closes and then reaches the telescope at
+// first, or fails with firstErr; every later one reaches it at its
+// endpoint, or at e.follow. entered closes once the first is waiting.
+func heldResolve(t *testing.T, first string, firstErr error) (e *appEnv, entered, release chan struct{}) {
+	t.Helper()
+	entered, release = make(chan struct{}), make(chan struct{})
+	var held sync.Once
+	e = newAppEnvWith(t, savedAt(abs("/data/Seestar")), t.TempDir(), func(e *appEnv, o *MountOptions) {
+		o.Resolve = func(ctx context.Context, at Target) (remote.Session, Target, error) {
+			hold := false
+			if at.Endpoint == testEndpoint {
+				held.Do(func() { hold = true })
+			}
+			if hold {
+				close(entered)
+				<-release
+				if firstErr != nil {
+					return nil, at, firstErr
+				}
+				sess, err := e.d.dial(ctx, at)
+				at.Endpoint = first
+				return sess, at, err
+			}
+			sess, err := e.d.dial(ctx, at)
+			e.mu.Lock()
+			defer e.mu.Unlock()
+			if e.follow != "" {
+				at.Endpoint = e.follow
+			}
+			return sess, at, err
+		}
+	})
+	e.set(func() { e.key, e.serial = keyA, serialA })
+	return e, entered, release
+}
+
+// A Browse session that reached the telescope just as the route changed
+// is the old route's: when it returns, the new route's address stays.
+func TestStatusAddressAfterMove(t *testing.T) {
+	e, entered, release := heldResolve(t, "192.0.2.10:4445", nil)
+	old := e.s.sessions
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		if lease, err := old.Get(t.Context()); err == nil {
+			lease.Release()
+		}
+	}()
+	<-entered
+	e.move("192.0.2.20:445")
+	lease, err := e.s.sessions.Get(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	lease.Release()
+	if got := e.status().Telescope; got.Address != "192.0.2.20:445" || got.AddressSaved {
+		t.Fatalf("the new route's session: %q %v", got.Address, got.AddressSaved)
+	}
+	close(release)
+	<-returned
+	if got := e.status().Telescope; got.Address != "192.0.2.20:445" || got.AddressSaved {
+		t.Errorf("after the old route's session returned: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
+// A Browse pool's dial that read the old target just before the route
+// changed, and reached the telescope after the change had moved the
+// route's number but before it ended the old pool, is the old route's.
+func TestStatusAddressTargetReadBeforeMove(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var hold atomic.Bool
+	e := newAppEnvWith(t, savedAt(abs("/data/Seestar")), t.TempDir(), func(e *appEnv, o *MountOptions) {
+		target := o.Target
+		o.Target = func() (Target, error) {
+			at, err := target()
+			if hold.CompareAndSwap(true, false) {
+				close(entered)
+				<-release
+			}
+			return at, err
+		}
+		o.Resolve = func(ctx context.Context, at Target) (remote.Session, Target, error) {
+			sess, err := e.d.dial(ctx, at)
+			if at.Endpoint == testEndpoint {
+				at.Endpoint = "192.0.2.10:4445"
+			}
+			return sess, at, err
+		}
+	})
+	e.set(func() { e.key, e.serial = keyA, serialA })
+	old := e.s.sessions
+	hold.Store(true)
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		if lease, err := old.Get(t.Context()); err == nil {
+			lease.Release()
+		}
+	}()
+	<-entered
+	route := e.s.routeNow()
+	committed, finish, moved := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		moved <- e.m.Change(func() bool { return true }, func() error {
+			e.set(func() { e.endpoint = "192.0.2.20:445" })
+			close(committed)
+			<-finish
+			return nil
+		})
+	}()
+	<-committed
+	// Holding mu, as a status may, keeps the change from ending the old
+	// pool, so its dial returns with its context live.
+	e.s.mu.Lock()
+	close(finish)
+	for e.s.routeNow() == route {
+		runtime.Gosched()
+	}
+	close(release)
+	<-returned
+	e.s.mu.Unlock()
+	if err := <-moved; err != nil {
+		t.Fatal(err)
+	}
+	if got := e.status().Telescope; got.Address != "192.0.2.20:445" || !got.AddressSaved {
+		t.Errorf("after the old pool's dial: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
+// A session canceled after it reached the telescope, with the route
+// unchanged, notes nothing.
+func TestStatusAddressAfterCanceledSuccess(t *testing.T) {
+	e, entered, release := heldResolve(t, "192.0.2.10:4445", nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		if sess, err := e.s.dial(ctx, e.s.routeNow(), e.s.current()); err == nil {
+			sess.Close()
+		}
+	}()
+	<-entered
+	cancel()
+	close(release)
+	<-returned
+	if got := e.status().Telescope; got.Address != testEndpoint || !got.AddressSaved {
+		t.Errorf("after a canceled session: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
+// A session that began before another reached the telescope, and then
+// failed, doesn't forget the address the newer one reached.
+func TestStatusAddressAfterOlderFailure(t *testing.T) {
+	e, entered, release := heldResolve(t, "", errors.New("synthetic older failure"))
+	e.set(func() { e.follow = "192.0.2.20:4445" })
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		if sess, err := e.s.dial(t.Context(), e.s.routeNow(), e.s.current()); err == nil {
+			sess.Close()
+		}
+	}()
+	<-entered
+	// Free up space's preview opens a session and holds it.
+	sess, _, err := e.s.free.open(t.Context(), e.s.current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sess.Close()
+	if got := e.status().Telescope; got.Address != "192.0.2.20:4445" || got.AddressSaved {
+		t.Fatalf("the newer session: %q %v", got.Address, got.AddressSaved)
+	}
+	close(release)
+	<-returned
+	if got := e.status().Telescope; got.Address != "192.0.2.20:4445" || got.AddressSaved {
+		t.Errorf("after the older session failed: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
+// Free up space's preview notes where its session reached the telescope,
+// as every other session does.
+func TestStatusAddressFromFreeUpSpace(t *testing.T) {
+	e := newAppEnvFollowing(t, savedAt(abs("/data/Seestar")))
+	e.set(func() { e.key, e.serial, e.follow = keyA, serialA, "192.0.2.11:4445" })
+	sess, at, err := e.s.free.open(t.Context(), e.s.current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Close()
+	if at.Endpoint != "192.0.2.11:4445" {
+		t.Errorf("reached at %q", at.Endpoint)
+	}
+	if got := e.status().Telescope; got.Address != "192.0.2.11:4445" || got.AddressSaved {
+		t.Errorf("after Free up space's session: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
+// On Windows the page's folders are shown whole, home and all.
+func TestUserHomeOnWindows(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	folder := filepath.Join(home, "Seestar")
+	setHostOS(t, "linux")
+	if got, want := displayFolder(folder, userHome()), "~"+string(filepath.Separator)+"Seestar"; got != want {
+		t.Errorf("on Linux: %q; want %q", got, want)
+	}
+	setHostOS(t, "windows")
+	if got := userHome(); got != "" {
+		t.Errorf("home on Windows = %q; want none", got)
+	}
+	e := newAppEnv(t, claimedAt(folder, map[string]string{keyA: folder}))
+	e.set(func() { e.key, e.serial = keyA, serialA })
+	if got := e.status().Telescope.Folder; got != folder {
+		t.Errorf("on Windows: %q; want %q", got, folder)
+	}
+}
+
+// The status names no account and no password: the page builds its line
+// from named fields only.
+func TestStatusHasNoSecrets(t *testing.T) {
+	e := newAppEnv(t, savedAt(abs("/data/Seestar")))
+	e.set(func() { e.key, e.serial, e.name = keyA, serialA, "S50 Pro "+serialA })
+	body := e.serve("GET", "/copy/api/status", "").Body.String()
+	for _, secret := range []string{"email", "password", "@"} {
+		if strings.Contains(strings.ToLower(body), secret) {
+			t.Errorf("status has %q: %s", secret, body)
+		}
+	}
+}
+
+func TestDisplayFolder(t *testing.T) {
+	home := abs("/home/someone")
+	sep := string(filepath.Separator)
+	for _, c := range []struct{ folder, home, want string }{
+		{filepath.Join(home, "Seestar"), home, "~" + sep + "Seestar"},
+		{home, home, "~"},
+		{filepath.Join(home, "Seestar"), home + sep, "~" + sep + "Seestar"},
+		{home + "2" + sep + "Seestar", home, home + "2" + sep + "Seestar"},
+		{abs("/data/Seestar"), home, abs("/data/Seestar")},
+		{filepath.Join(home, "Seestar"), "", filepath.Join(home, "Seestar")}, // Windows
+		{"", home, ""},
+	} {
+		if got := displayFolder(c.folder, c.home); got != c.want {
+			t.Errorf("displayFolder(%q, %q) = %q; want %q", c.folder, c.home, got, c.want)
+		}
 	}
 }

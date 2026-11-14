@@ -23,6 +23,10 @@ const setUp = (folder) => ({
   'config.json': lan(), 'copy.json': { version: 1, folder, start_copying: false, later: { kept: true } },
 });
 
+// The fixture's share as the header names it, a telescope saved by its
+// address.
+const shareName = 'Seestar 127.0.0.1 14450';
+
 const lanResult = (page) => page.locator('#lan-result');
 const copySave = (page) => page.locator('#f-save');
 
@@ -40,6 +44,8 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeDisabled();
   await expect(page.locator('#tabs-note')).toBeVisible();
   await expect(page.locator('#connection-text')).toHaveText('Not connected');
+  await expect(page.locator('#telescope-text')).toHaveText('Telescope Network: no telescope chosen');
+  await expect(page.locator('#telescope-to')).toBeHidden();
   await expect(page.getByLabel('Remotely through Telescope Network')).toBeChecked();
   // The arrow keys pass over the closed tabs.
   await settleStartFocus(page);
@@ -56,7 +62,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
   await expect(lanResult(page)).toHaveAttribute('data-tone', 'ok');
   // Save ran Test; the header shows it.
-  await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}, reachable`);
   await expect(page.locator('#connection-dot')).toHaveAttribute('data-tone', 'on');
   await expect(page.locator('#tabs-note')).toBeHidden();
   expect(readJSON(app.config)).toMatchObject({ route: 'lan', lan_address: share, route_established: true });
@@ -214,7 +220,7 @@ test('a Test that passed is not run again by Save, and the header shows it', asy
     release();
   }
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
-  await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}, reachable`);
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeEnabled();
   expect(n.tests).toBe(1);
 });
@@ -237,7 +243,7 @@ test('Test of the saved address in another spelling does not say to Save', async
     await field(page, 'Telescope address').fill(answered);
     await page.getByRole('button', { name: 'Test' }).click();
     await expect(lanResult(page)).toHaveText(message);
-    await expect(page.locator('#connection-text')).toHaveText('On this network: reachable');
+    await expect(page.locator('#connection-text')).toHaveText(/^On this network: Seestar .+, reachable$/);
     await page.unroute('**/copy/api/test');
   }
 });
@@ -634,6 +640,105 @@ test('Copy settings save every field and keep unknown keys', async ({ page, star
   await expect(page.locator('#f-int')).toHaveValue('30');
 });
 
+// Copy settings… beside Preview and Change… under the summary open one
+// form, and Cancel or Save gives focus back to the one pressed.
+test('Copy settings… and Change… open the form and focus goes back to the one pressed', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  const settings = page.getByRole('button', { name: 'Copy settings…' });
+  const change = page.getByRole('button', { name: 'Change…' });
+  await expect(settings).toBeVisible();
+  await expect(settings).toHaveAttribute('aria-controls', 'copy-form');
+  await expect(settings).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#copy-form')).toBeHidden();
+  await settings.click();
+  await expect(page.locator('#copy-form')).toBeVisible();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  for (const b of [settings, change]) await expect(b).toHaveAttribute('aria-expanded', 'true');
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('#copy-form')).toBeHidden();
+  await expect(settings).toBeFocused();
+  for (const b of [settings, change]) await expect(b).toHaveAttribute('aria-expanded', 'false');
+  await settings.click();
+  await field(page, 'Folder for your images').fill(app.folder);
+  await copySave(page).click();
+  await expect(page.locator('#f-saved')).toHaveText('Settings saved.');
+  await expect(settings).toBeFocused();
+  expect(readJSON(app.copyFile).folder).toBe(app.folder);
+  // Change… still opens it, and takes focus back.
+  await change.click();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(change).toBeFocused();
+  // The header's folder opens it too, and takes focus back.
+  await page.locator('#telescope-folder').click();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('#telescope-folder')).toBeFocused();
+});
+
+// While copying, Copy settings… hides with Preview, and the header's folder
+// says to stop copying first; the form opens once copying stops.
+test('Copy settings… hides while copying, and the folder then says to stop copying first', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  let v = copyViews.copying;
+  await fakeStatus(page, () => v);
+  await openCopy(page, app.url);
+  await expect(page.locator('#c-title')).toHaveText(copyViews.copying.title);
+  await expect(page.getByRole('button', { name: 'Copy settings…' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Preview' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Change…' })).toBeVisible();
+  await tab(page, 'Activity').click();
+  await page.locator('#telescope-folder').click();
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#s-locked')).toBeVisible();
+  await expect(page.locator('#s-stop')).toBeFocused();
+  await expect(page.locator('#copy-form')).toBeHidden();
+  v = null;
+  await expect(page.locator('#copy-form')).toBeVisible();
+  await expect(page.locator('#s-locked')).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Copy settings…' })).toBeVisible();
+  // Its Cancel gives focus back to the folder that asked for it.
+  await page.getByRole('button', { name: 'Cancel' }).click();
+  await expect(page.locator('#copy-form')).toBeHidden();
+  await expect(page.locator('#telescope-folder')).toBeFocused();
+});
+
+// Closing the form while copying withdraws the folder's request too: the
+// form doesn't open once copying stops. Cancel is disabled while copying,
+// so the page's own functions close it here.
+test('closing the form while copying withdraws the folder\'s request for it', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  const observed = await page.evaluate(() => {
+    const off = { ...copyStatus.copy, on: false, state: 'off' };
+    renderCopy({ ...off, on: true, state: 'copying' });
+    openCopyForm($('s-change'));
+    telescopeFolder();
+    closeCopyForm();
+    const closed = $('copy-form').hidden;
+    renderCopy(off);
+    return { closed, reopened: !$('copy-form').hidden };
+  });
+  expect(observed).toEqual({ closed: true, reopened: false });
+});
+
+// Focus goes back to the opener only while it is shown: with the folder's
+// part of the line hidden, to Change….
+test('focus goes to Change… when the folder that opened the form is no longer shown', async ({ page, startApp }) => {
+  const app = await startApp(setUp('/nowhere'));
+  await openCopy(page, app.url);
+  await page.locator('#telescope-folder').click();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  // In one task, so a status poll can't show the folder again in between.
+  const focused = await page.evaluate(() => {
+    $('telescope-to').hidden = true;
+    $('f-cancel').click();
+    return document.activeElement.id;
+  });
+  expect(focused).toBe('s-change');
+});
+
 test('a second telescope is asked for its own folder beside the first, and Save refuses the first one\'s', async ({ page, startApp }) => {
   // The first telescope, known by an invented serial, has the folder; the
   // saved address is another telescope.
@@ -676,6 +781,184 @@ test('a second telescope is asked for its own folder beside the first, and Save 
   await tab(page, 'Browse').click();
   await expect(frame(page).locator('#list.statuses')).toBeVisible();
 });
+
+// The line under the header names the route's telescope and its folder,
+// and the folder, or no folder yet, opens Copy settings.
+test('the header names the telescope on this network and its folder, which opens Copy settings', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  await openApp(page, app.url);
+  const folder = page.locator('#telescope-folder');
+  await expect(page.locator('#telescope-text')).toHaveText(`On this network: ${shareName}`);
+  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}`);
+  await expect(folder).toHaveText('no folder yet');
+  await expect(folder).not.toHaveAttribute('title', /./);
+  await folder.click();
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+  await copySave(page).click();
+  await expect(page.locator('#c-next')).toBeFocused();
+  // The home folder is ~, and the whole folder is the title.
+  await expect(folder).toHaveText('~/Seestar');
+  await expect(folder).toHaveAttribute('title', app.folder);
+  await tab(page, 'Activity').click();
+  await folder.click();
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#copy-form')).toBeVisible();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+});
+
+test('the header names a telescope saved with its serial on this network, at its address', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), lan_serial: 'SYNTHETIC-HEARD', lan_scan: 'off' } });
+  await openApp(page, app.url);
+  await expect(page.locator('#telescope-text')).toHaveText(/^On this network: Seestar SYNTHETIC-HEARD at 127\.0\.0\.1:14450( \(saved\))?$/);
+  await expect(page.locator('#connection-text')).toHaveText('On this network: Seestar SYNTHETIC-HEARD');
+  await expect(page.locator('#telescope-folder')).toHaveText('no folder yet');
+});
+
+// With Copy off, both header lines still name the telescope saved with its
+// serial, and no folder shows.
+test('the header names a telescope saved with its serial while Copy is off', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), lan_serial: 'SYNTHETIC-SAVED', lan_scan: 'off' }, 'copy.json': { version: 999, folder: '/nowhere' } });
+  await openApp(page, app.url);
+  await expect(page.locator('#telescope-text')).toHaveText('On this network: Seestar SYNTHETIC-SAVED');
+  await expect(page.locator('#connection-text')).toHaveText('On this network: Seestar SYNTHETIC-SAVED');
+  await expect(page.locator('#telescope-to')).toBeHidden();
+});
+
+test('the header names the account\'s saved telescope while not connected, and never the email', async ({ page, startApp }) => {
+  const app = await startApp({
+    'config.json': { version: 1, bind: '127.0.0.1', idle: '0', route: 'account', email: 'synthetic@example.invalid', serial: 'SYNTHETIC-SAVED', model: 'Seestar S50 Pro', route_established: true },
+    'copy.json': (folder) => ({ version: 1, folder, start_copying: false }),
+  });
+  await openApp(page, app.url);
+  const folder = page.locator('#telescope-folder');
+  await expect(page.locator('#telescope-text')).toHaveText('Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected');
+  await expect(folder).toHaveText('~/Seestar');
+  await expect(folder).toHaveAttribute('title', app.folder);
+  await expect(page.locator('#telescope-line')).not.toContainText('@');
+  await folder.click();
+  await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#copy-form')).toBeVisible();
+  await expect(field(page, 'Folder for your images')).toBeFocused();
+});
+
+// A route saved while Copy's status lags names the new telescope alone,
+// never with the old one's folder, until Copy's status of it is read: its
+// poll failing, then answering late, then caught up.
+test('the header shows Copy\'s folder only for the telescope the app status names', async ({ page, startApp }) => {
+  const app = await startApp({
+    'config.json': { ...lan(), lan_serial: 'SYNTHETIC-FIRST', lan_scan: 'off', email: 'synthetic@example.invalid', serial: 'SYNTHETIC-SAVED', model: 'Seestar S50 Pro' },
+    'copy.json': (folder) => ({ version: 1, folder, start_copying: false, telescopes: { 'serial:SYNTHETIC-FIRST': { folder } } }),
+  });
+  await openApp(page, app.url);
+  const folder = page.locator('#telescope-folder');
+  await expect(page.locator('#telescope-text')).toHaveText(/^On this network: Seestar SYNTHETIC-FIRST at 127\.0\.0\.1:14450( \(saved\))?$/);
+  await expect(folder).toHaveText('~/Seestar');
+  await page.route('**/copy/api/status', (route) => route.abort());
+  await page.evaluate(() => api('route', { settings: { route: 'account' } }));
+  const saved = 'Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected';
+  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  await expect(page.locator('#lost')).toBeVisible();
+  await expect(page.locator('#telescope-to')).toBeHidden();
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  let asked;
+  const late = new Promise((resolve) => (asked = resolve));
+  await page.unroute('**/copy/api/status');
+  await page.route('**/copy/api/status', async (route) => { asked(); await held; await route.continue(); });
+  await late;
+  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  await expect(page.locator('#telescope-to')).toBeHidden();
+  release();
+  await expect(page.locator('#lost')).toBeHidden();
+  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  await expect(folder).toHaveText('no folder yet');
+  await expect(folder).not.toHaveAttribute('title', /./);
+});
+
+// Away to another route and back to the same telescope at the same
+// address, the header shows nothing of a Copy status read before, kept or
+// answering late, until Copy's status is read again; one answering after
+// that changes nothing in it.
+const returns = {
+  kept: 'back at the same telescope, the header shows no kept Copy status from before',
+  late: 'back at the same telescope, the header shows no late Copy status from before',
+  afterFresh: 'back at the same telescope, a Copy status from before answering after a fresh one leaves the header as it was',
+};
+for (const [order, title] of Object.entries(returns)) {
+  test(title, async ({ page, startApp }) => {
+    const app = await startApp({
+      'config.json': { ...lan(), lan_serial: 'SYNTHETIC-FIRST', lan_scan: 'off', email: 'synthetic@example.invalid', serial: 'SYNTHETIC-SAVED', model: 'Seestar S50 Pro' },
+      'copy.json': (folder) => ({ version: 1, folder, start_copying: false, telescopes: { 'serial:SYNTHETIC-FIRST': { folder } } }),
+    });
+    await openApp(page, app.url);
+    const line = page.locator('#telescope-text');
+    const folder = page.locator('#telescope-folder');
+    const name = 'On this network: Seestar SYNTHETIC-FIRST';
+    const current = /^On this network: Seestar SYNTHETIC-FIRST at 127\.0\.0\.1:14450( \(saved\))?$/;
+    await expect(line).toHaveText(current);
+    const address = await page.evaluate(() => state.settings.lan_address);
+    // Copy's status as an earlier session left it: another address reached
+    // and another folder.
+    const old = async (route, more = {}) => {
+      const response = await route.fetch();
+      const c = await response.json();
+      await route.fulfill({ response, json: { ...c, ...more, settings: { ...c.settings, folder: '/synthetic/Old' }, telescope: { ...c.telescope, address: '192.0.2.99:4445', address_saved: false, folder: '~/Old' } } });
+    };
+    const away = async () => {
+      await page.evaluate(async () => { await api('route', { settings: { route: 'account' } }); await refresh(); });
+      await expect(line).toHaveText('Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected');
+      await expect(page.locator('#telescope-to')).toBeHidden();
+    };
+    const back = async () => {
+      await page.evaluate(async (lan_address) => { await api('route', { settings: { route: 'lan', lan_address } }); await refresh(); }, address);
+      await expect(line).toHaveText(name);
+      await expect(page.locator('#telescope-to')).toBeHidden();
+    };
+    if (order === 'kept') {
+      await page.route('**/copy/api/status', old);
+      await expect(line).toHaveText(`${name} at 192.0.2.99:4445`);
+      await expect(folder).toHaveAttribute('title', '/synthetic/Old');
+      // Copy's status is kept while its poll fails.
+      await page.unroute('**/copy/api/status');
+      await page.route('**/copy/api/status', (route) => route.abort());
+      await away();
+      await back();
+    } else {
+      let release, asked;
+      const held = new Promise((resolve) => (release = resolve));
+      const reached = new Promise((resolve) => (asked = resolve));
+      await page.route('**/copy/api/status', async (route) => { asked(); await held; await old(route, { set_up: false }); }, { times: 1 });
+      await reached;
+      await away();
+      await back();
+      if (order === 'afterFresh') {
+        // The poll waits on the held read, so read Copy's status here.
+        await page.evaluate(() => copyRefresh());
+        await expect(line).toHaveText(current);
+        await expect(folder).toHaveText('~/Seestar');
+        await expect(folder).toHaveAttribute('title', app.folder);
+      }
+      // The polls after it fail, so the late status is the last one read.
+      await page.route('**/copy/api/status', (route) => route.abort());
+      release();
+      await expect.poll(() => page.evaluate(() => copyStatus.telescope.address)).toBe('192.0.2.99:4445');
+      if (order === 'afterFresh') {
+        await expect(line).toHaveText(current);
+        await expect(folder).toHaveText('~/Seestar');
+        await expect(folder).toHaveAttribute('title', app.folder);
+        return;
+      }
+    }
+    await expect(line).toHaveText(name);
+    await expect(page.locator('#telescope-to')).toBeHidden();
+    await expect(folder).not.toHaveAttribute('title', /./);
+    await page.unroute('**/copy/api/status');
+    await expect(line).toHaveText(current);
+    await expect(folder).toHaveText('~/Seestar');
+    await expect(folder).toHaveAttribute('title', app.folder);
+  });
+}
 
 test('a serial heard at an address with a folder is offered that folder, and nothing moves until it is chosen', async ({ page, startApp }) => {
   const app = await startApp({

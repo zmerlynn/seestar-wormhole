@@ -24,9 +24,24 @@ type Telescope struct {
 // on both routes, so a change of route keeps its folder.
 func SerialKey(serial string) string { return "serial:" + serial }
 
+// serialOf is the serial of the telescope keyed key, if it is keyed by
+// its serial.
+func serialOf(key string) (string, bool) { return strings.CutPrefix(key, "serial:") }
+
 // AddressKey is the telescopes key of an address on this network saved
 // without a serial, host:port as saved.
 func AddressKey(endpoint string) string { return "address:" + endpoint }
+
+// ViewKey is what the page compares to tell that Copy's status and the
+// host's describe the same telescope, saved at the same endpoint: t's
+// telescope and endpoint, its telescope alone while it has no endpoint,
+// or "" while the telescope isn't known.
+func ViewKey(t Target) string {
+	if t.Telescope == "" || t.Endpoint == "" {
+		return t.Telescope
+	}
+	return t.Telescope + " " + t.Endpoint
+}
 
 // claimed reports whether any telescope has a folder of its own. Until one
 // does, as in a copy.json from before telescopes, the shared Folder is the

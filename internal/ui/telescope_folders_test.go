@@ -56,6 +56,122 @@ func TestTelescopeName(t *testing.T) {
 			t.Errorf("%+v: %q; want %q", c.t, got, c.want)
 		}
 	}
+
+	// Through the account before it connects, the saved telescope is
+	// named by its saved serial and model.
+	s.mu.Lock()
+	s.settings.Serial, s.settings.Model = "SYNTH0004", "Seestar S50 Pro"
+	s.mu.Unlock()
+	if got, want := s.telescopeName(copyapp.Target{Serial: "SYNTH0004", Telescope: copyapp.SerialKey("SYNTH0004")}), "Seestar S50 Pro SYNTH0004"; got != want {
+		t.Errorf("saved: %q; want %q", got, want)
+	}
+}
+
+// The server's status names the saved telescope whether or not Copy is
+// open: here copy.json was refused, so Copy is off.
+func TestStatusTelescopeName(t *testing.T) {
+	s := testServer(t)
+	s.copyRefused = true
+	at := netip.MustParseAddr("192.0.2.10")
+	s.lan.remember(1, at, landiscovery.ScanResult{Telescopes: []landiscovery.Telescope{{Serial: "SYNTH0001", Model: "Seestar S30", Addresses: []netip.Addr{at}}}})
+	for _, c := range []struct {
+		name string
+		set  func(*Settings)
+		want string
+	}{
+		{"lan serial", func(set *Settings) { set.Route, set.LANAddress, set.LANSerial = routeLAN, "192.0.2.10", "SYNTH0001" }, "Seestar S30 SYNTH0001"},
+		{"lan address", func(set *Settings) { set.Route, set.LANAddress, set.LANSerial = routeLAN, "192.0.2.11", "" }, "Seestar 192.0.2.11 445"},
+		{"lan nothing", func(set *Settings) { set.Route, set.LANAddress, set.LANSerial = routeLAN, "", "" }, ""},
+		{"account saved", func(set *Settings) {
+			set.Route, set.Serial, set.Model = routeAccount, "SYNTH0004", "Seestar S50 Pro"
+		}, "Seestar S50 Pro SYNTH0004"},
+		{"account none", func(set *Settings) { set.Route, set.Serial = routeAccount, "" }, ""},
+	} {
+		s.mu.Lock()
+		c.set(&s.settings)
+		s.mu.Unlock()
+		var status struct {
+			CopyRefused   bool   `json:"copy_refused"`
+			CopyUnlocked  bool   `json:"copy_unlocked"`
+			TelescopeName string `json:"telescope_name"`
+		}
+		w := serve(s, request(s, "GET", "/api/status", ""))
+		if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+			t.Fatal(err)
+		}
+		if !status.CopyRefused || status.CopyUnlocked || status.TelescopeName != c.want {
+			t.Errorf("%s: %+v; want name %q", c.name, status, c.want)
+		}
+	}
+}
+
+// The status names the telescope of the settings it carries, even when a
+// route is saved between its reading them and naming the telescope.
+func TestStatusTelescopeNameMatchesItsSettings(t *testing.T) {
+	s := testServer(t)
+	s.copyRefused = true
+	s.settings.Route, s.settings.LANAddress, s.settings.LANSerial = routeLAN, "192.0.2.10", "SYNTH0001"
+	saved := copyTargetHook
+	t.Cleanup(func() { copyTargetHook = saved })
+	copyTargetHook = func() {
+		s.mu.Lock()
+		s.settings.LANAddress, s.settings.LANSerial = "192.0.2.20", "SYNTH0002"
+		s.mu.Unlock()
+	}
+	var status struct {
+		Settings struct {
+			LANAddress string `json:"lan_address"`
+		} `json:"settings"`
+		TelescopeName string `json:"telescope_name"`
+		TelescopeKey  string `json:"telescope_key"`
+	}
+	w := serve(s, request(s, "GET", "/api/status", ""))
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Settings.LANAddress != "192.0.2.10" || status.TelescopeName != "Seestar SYNTH0001" || status.TelescopeKey != "serial:SYNTH0001 192.0.2.10:445" {
+		t.Errorf("status = %+v; want 192.0.2.10 named Seestar SYNTH0001", status)
+	}
+}
+
+// The app's status keys the route's telescope as Copy's status does, on
+// each route, so the page can tell they describe the same telescope.
+func TestStatusTelescopeKeyMatchesCopy(t *testing.T) {
+	s, _ := copyServer(t)
+	keys := func() (string, string) {
+		var app struct {
+			TelescopeKey string `json:"telescope_key"`
+		}
+		var copied struct {
+			Telescope struct {
+				Key string `json:"key"`
+			} `json:"telescope"`
+		}
+		if err := json.Unmarshal(serve(s, request(s, "GET", "/api/status", "")).Body.Bytes(), &app); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(serve(s, request(s, "GET", "/copy/api/status", "")).Body.Bytes(), &copied); err != nil {
+			t.Fatal(err)
+		}
+		return app.TelescopeKey, copied.Telescope.Key
+	}
+	for _, c := range []struct {
+		what string
+		save func()
+		want string
+	}{
+		{"nothing saved", func() {}, ""},
+		{"an address", func() { s.settings.Route, s.settings.LANAddress = routeLAN, "192.0.2.20" }, "address:192.0.2.20:445 192.0.2.20:445"},
+		{"a serial at an address", func() { s.settings.LANSerial = "SYNTH0001" }, "serial:SYNTH0001 192.0.2.20:445"},
+		{"the account, not connected", func() { s.settings.Route, s.settings.Serial = routeAccount, "SYNTH0002" }, "serial:SYNTH0002"},
+	} {
+		s.mu.Lock()
+		c.save()
+		s.mu.Unlock()
+		if app, copied := keys(); app != c.want || copied != c.want {
+			t.Errorf("%s: keys %q and %q; want %q", c.what, app, copied, c.want)
+		}
+	}
 }
 
 // A copy.json with telescopes loads them, and a save keeps an entry's

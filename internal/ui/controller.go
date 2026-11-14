@@ -385,8 +385,9 @@ type runView struct {
 	Ready          bool                     `json:"ready"` // the session is ready now; the file tools need only [controller.connected]
 	Failure        *ActionError             `json:"failure,omitempty"`
 	settings       Settings
-	SaveFailed     bool `json:"save_failed"`
-	Discovery      bool `json:"discovery_started"`
+	conn           runConn // the run's session, for the copier's target
+	SaveFailed     bool    `json:"save_failed"`
+	Discovery      bool    `json:"discovery_started"`
 }
 
 func (c *controller) view() runView {
@@ -394,6 +395,7 @@ func (c *controller) view() runView {
 	defer c.mu.Unlock()
 	text, active := c.snapshotLocked()
 	v := runView{DevicesEmail: c.devicesEmail, Devices: append([]cloudhttp.DeviceChoice(nil), c.devices...), Status: text, Active: active, Stopping: c.stopping && active, Failure: c.failure, settings: c.runSettings, SaveFailed: c.pendingSave != nil}
+	_, v.conn = c.connectedLocked()
 	if active {
 		v.SelectedDevice = c.status.SelectedDevice()
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
@@ -508,10 +510,25 @@ func (c *controller) connected() (run Settings, device string, id uint64, ok boo
 func (c *controller) connectedSerial() (run Settings, device, serial string, id uint64, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	run, conn := c.connectedLocked()
+	return run, conn.device, conn.serial, conn.id, conn.ok
+}
+
+// runConn is the run's session as [controller.connectedSerial] reports
+// it: the telescope it selected, its serial and the run's number, while
+// ok.
+type runConn struct {
+	device, serial string
+	id             uint64
+	ok             bool
+}
+
+// connectedLocked is connectedSerial, holding c.mu.
+func (c *controller) connectedLocked() (Settings, runConn) {
 	if c.done == nil || c.stopping || !c.status.Armed() || !c.files.live(c.runs) {
-		return Settings{}, "", "", 0, false
+		return Settings{}, runConn{}
 	}
-	return c.runSettings, c.status.SelectedDevice(), c.status.SelectedSerial(), c.runs, true
+	return c.runSettings, runConn{c.status.SelectedDevice(), c.status.SelectedSerial(), c.runs, true}
 }
 
 func (c *controller) isReady(status *proxy.Status) bool {

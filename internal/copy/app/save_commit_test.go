@@ -57,7 +57,7 @@ func TestSaveCommitAfterReassignment(t *testing.T) {
 		t.Fatal(err)
 	}
 	sess := &eofSession{Session: remote.NewFake(fstest.MapFS{"at 192.0.2.10_445/x.txt": {Data: []byte("from A")}}), entered: make(chan struct{}), release: make(chan struct{})}
-	e.s.dial = func(context.Context, Target) (remote.Session, error) { return sess, nil }
+	e.s.dial = func(context.Context, uint64, Target) (remote.Session, error) { return sess, nil }
 	var mu sync.Mutex
 	var alerts []string
 	e.s.native = Native{
@@ -198,7 +198,7 @@ func TestSaveCommitWhereTheRootIs(t *testing.T) {
 				t.Fatal(err)
 			}
 			sess := &eofSession{Session: remote.NewFake(fstest.MapFS{"at 192.0.2.10_445/x.txt": {Data: []byte("from A")}}), entered: make(chan struct{}), release: make(chan struct{})}
-			e.s.dial = func(context.Context, Target) (remote.Session, error) { return sess, nil }
+			e.s.dial = func(context.Context, uint64, Target) (remote.Session, error) { return sess, nil }
 			var mu sync.Mutex
 			var alerts []string
 			e.s.native = Native{
