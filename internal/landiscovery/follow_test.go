@@ -131,6 +131,49 @@ func TestFollowOtherTelescopeNamed(t *testing.T) {
 	}
 }
 
+// A reply can carry any text, up to a datagram. The error caps the other
+// telescope's name and model, never within an escape, keeps a valid
+// serial in full, and names the other by its serial alone, capped, when
+// that isn't a valid one, so it stays within 4096 bytes. The reply itself
+// is kept as it came.
+func TestFollowOtherTelescopeBounded(t *testing.T) {
+	del, acute := strings.Repeat("\x7f", 3700), strings.Repeat("é", 1000)
+	cut := func(escape string, n int) string { return strings.Repeat(escape, n) + "..." }
+	for _, c := range []struct {
+		name, sn, ssid, model, want string
+	}{
+		{"long name", "TEST0002", del, "S50 Pro", cut(`\x7f`, 15) + " (S50 Pro, serial TEST0002)"},
+		{"long model", "TEST0002", "Relay", acute, "Relay (" + cut(`\u00e9`, 10) + ", serial TEST0002)"},
+		{"escaped valid serial", `TEST\"0002`, del, "S50 Pro", cut(`\x7f`, 15) + ` (S50 Pro, serial TEST\"0002)`},
+		{"long serial", del, "Relay", "S50 Pro", "serial " + cut(`\x7f`, 15)},
+		{"invalid serial", "TEST 0002", "Relay", "S50 Pro", "serial TEST 0002"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			raw := replyBytes(c.sn, c.ssid, c.model, 0)
+			if len(raw) > MaxDatagram {
+				t.Fatalf("reply of %d bytes", len(raw))
+			}
+			s, _ := observedScan(100*time.Millisecond, datagram{raw, netip.MustParseAddr("192.0.2.85")})
+			dials := 0
+			_, _, _, err := Follow(t.Context(), s, "192.0.2.85:4445", "SERIAL-A", func(_ context.Context, ep string) (*session, error) {
+				dials++
+				return &session{endpoint: ep}, nil
+			}, release)
+			e, ok := errors.AsType[*OtherTelescopeError](err)
+			if !errors.Is(err, ErrOtherTelescope) || !ok || dials != 0 || e.Other == nil || e.Other.Name != strings.ReplaceAll(c.ssid, `\"`, `"`) ||
+				e.Other.Model != c.model || e.Other.Serial != strings.ReplaceAll(c.sn, `\"`, `"`) {
+				t.Fatalf("%#v, dials %d", err, dials)
+			}
+			if want := "another telescope, " + c.want + ", answered at 192.0.2.85 instead of serial SERIAL-A"; err.Error() != want || len(want) > 4096 {
+				t.Errorf("error %q, want %q", err, want)
+			}
+		})
+	}
+	if got, want := (&OtherTelescopeError{Serial: del}).Error(), "too many other telescopes answered the scan to use any address for serial "+cut(`\x7f`, 15); got != want {
+		t.Errorf("saved serial: %q, want %q", got, want)
+	}
+}
+
 // Another serial answering from the saved address while it is dialed
 // disqualifies it: the connection is released, and the search goes on in
 // the same scan.

@@ -8,6 +8,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 )
 
 // SMBPort is the telescope's file-sharing port, and ProxySMBPort the port
@@ -83,12 +85,30 @@ type OtherTelescopeError struct {
 	Other   *Telescope
 }
 
-// Error names both telescopes, as logs do (see [Telescope.Label]).
+// Error names both telescopes, as logs do (see [Telescope.Label]), within
+// the 4096-byte message budget the account's selection errors keep, so
+// that a log record carrying it fits a log sink's line: the other's name
+// and model are capped, and a serial is in full when it is a valid one
+// (see [cloud.ValidSerial]). Another serial is capped, and names the
+// other telescope alone, without its name and model.
 func (e *OtherTelescopeError) Error() string {
 	if e.Other == nil {
-		return "too many other telescopes answered the scan to use any address for serial " + escaped(e.Serial)
+		return "too many other telescopes answered the scan to use any address for serial " + shownSerial(e.Serial)
 	}
-	return "another telescope, " + e.Other.Label() + ", answered at " + e.Address.String() + " instead of serial " + escaped(e.Serial)
+	other := e.Other.label(capped)
+	if !cloud.ValidSerial(e.Other.Serial) {
+		other = "serial " + capped(e.Other.Serial)
+	}
+	return "another telescope, " + other + ", answered at " + e.Address.String() + " instead of serial " + shownSerial(e.Serial)
+}
+
+// shownSerial is serial as an [OtherTelescopeError] shows it: escaped in
+// full when it is a valid serial, and otherwise capped.
+func shownSerial(serial string) string {
+	if cloud.ValidSerial(serial) {
+		return escaped(serial)
+	}
+	return capped(serial)
 }
 
 func (e *OtherTelescopeError) Unwrap() error { return ErrOtherTelescope }

@@ -63,20 +63,25 @@ func checkReach(lan bool) string {
 // otherAnswered words a connect that failed because another telescope
 // answered where the saved one was expected: its title, and the text's
 // sentence naming both, before what to do. name names the saved one; nil
-// is "Seestar". ok is false for any other failure.
+// is "Seestar". ok is false for any other failure. A telescope is named
+// only by a valid serial, and its model capped, so the text stays within
+// the 4096-byte message budget the account's selection errors keep.
 func otherAnswered(err error, name func(Target) string) (title, what string, ok bool) {
 	e, ok := errors.AsType[*landiscovery.OtherTelescopeError](err)
 	if !ok {
 		return "", "", false
 	}
 	expected := "Seestar"
-	if name != nil {
+	if name != nil && cloudhttp.ValidSerial(e.Serial) {
 		expected = name(Target{Serial: e.Serial})
 	}
 	if e.Other == nil {
 		return "Other telescopes answered instead.", "Expected " + expected + ", but only other telescopes answered.", true
 	}
-	other := cloudhttp.Device{Serial: e.Other.Serial, Model: e.Other.Model}.DisplayName()
+	other := "another telescope"
+	if cloudhttp.ValidSerial(e.Other.Serial) {
+		other = cloudhttp.Device{Serial: e.Other.Serial, Model: e.Other.Model}.DisplayName()
+	}
 	return "Another telescope answered at " + e.Address.String() + ".", "Expected " + expected + ", but " + other + " answered there.", true
 }
 

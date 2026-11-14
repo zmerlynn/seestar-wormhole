@@ -100,3 +100,30 @@ func TestReasonOtherTelescope(t *testing.T) {
 		t.Errorf("reason = %q, want %q", got, want)
 	}
 }
+
+// Whatever text the other telescope's reply carried, the text names it
+// within the message budget: by its model, capped, and a valid serial, or
+// as another telescope. Logs and Activity bound it the same way.
+func TestOtherTelescopeBounded(t *testing.T) {
+	del := strings.Repeat("\x7f", 3700)
+	capped := strings.Repeat(`\x7f`, 15) + "..."
+	for _, c := range []struct {
+		other      landiscovery.Telescope
+		what, logs string
+	}{
+		{landiscovery.Telescope{Serial: "TEST0002", Name: del, Model: del},
+			"Expected S50 Pro SERIAL-A, but " + capped + " TEST0002 answered there.",
+			"another telescope, " + capped + " (" + capped + ", serial TEST0002), answered at 192.0.2.85 instead of serial SERIAL-A"},
+		{landiscovery.Telescope{Serial: del, Name: del, Model: del},
+			"Expected S50 Pro SERIAL-A, but another telescope answered there.",
+			"another telescope, serial " + capped + ", answered at 192.0.2.85 instead of serial SERIAL-A"},
+	} {
+		err := fmt.Errorf("find telescope: %w", &landiscovery.OtherTelescopeError{Serial: "SERIAL-A", Address: netip.MustParseAddr("192.0.2.85"), Other: &c.other})
+		if title, what, ok := otherAnswered(err, otherName); !ok || title != otherTitle || what != c.what {
+			t.Errorf("got %q %q %v, want %q", title, what, ok, c.what)
+		}
+		if got := reason(err); got != c.logs || len(got) > 4096 {
+			t.Errorf("reason = %q, want %q", got, c.logs)
+		}
+	}
+}
