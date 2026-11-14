@@ -49,9 +49,10 @@ type server struct {
 	version  string
 	stateDir string // the default history folder; Settings may choose another
 	log      *slog.Logger
-	// dial opens a browse session at t, which [server.dialNow] reads
-	// from target; test runs Test, and reach a route's Save's check.
-	dial  func(ctx context.Context, t Target) (remote.Session, error)
+	// dial opens a browse session at t for the route numbered route, which
+	// [server.dialNow] reads from target; test runs Test, and reach a
+	// route's Save's check.
+	dial  func(ctx context.Context, route uint64, t Target) (remote.Session, error)
 	test  func(ctx context.Context, endpoint string) ([]remote.Entry, error)
 	reach func(ctx context.Context, endpoint string) error
 	// serialAt is MountOptions.SerialAt.
@@ -109,8 +110,8 @@ type server struct {
 	// address in use, which can differ from the saved one once it was
 	// followed to another address or port. reachedRoute counts the
 	// changes of route and reachedSeen the sessions that reached it: a
-	// session counts only on the route it began on, and its failure
-	// forgets only what was known when it began.
+	// session counts only on its route, its Browse pool's or the one it
+	// began on, and its failure forgets only what was known when it began.
 	reachedMu    sync.Mutex
 	reachedFor   string
 	reached      string
@@ -161,23 +162,32 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 		}
 	}
 	// Every session, whatever opens it, notes where it reached the
-	// telescope, for the page.
-	open := func(ctx context.Context, t Target) (remote.Session, Target, error) {
+	// telescope, for the page, while the route is still the one numbered
+	// route: a Browse pool's, which it took when it was made, or the
+	// route now for copying, a preview and Free up space, as a change of
+	// route waits for them.
+	open := func(ctx context.Context, route uint64, t Target) (remote.Session, Target, error) {
 		s.reachedMu.Lock()
-		route, seen := s.reachedRoute, s.reachedSeen
+		seen := s.reachedSeen
 		s.reachedMu.Unlock()
 		sess, at, err := resolve(ctx, t)
 		s.noteReached(ctx, route, seen, t, at, err)
 		return sess, at, err
 	}
+	openNow := func(ctx context.Context, t Target) (remote.Session, Target, error) {
+		return open(ctx, s.routeNow(), t)
+	}
 	dial = func(ctx context.Context, t Target) (remote.Session, error) {
-		sess, _, err := open(ctx, t)
+		sess, _, err := openNow(ctx, t)
 		return sess, err
 	}
 	// Browse's page shows only the error's message, so one on this network
 	// carries the Local Network hint.
-	s.dial = func(ctx context.Context, t Target) (remote.Session, error) {
-		sess, err := establish(ctx, t, func(ctx context.Context) (remote.Session, error) { return dial(ctx, t) })
+	s.dial = func(ctx context.Context, route uint64, t Target) (remote.Session, error) {
+		sess, err := establish(ctx, t, func(ctx context.Context) (remote.Session, error) {
+			sess, _, err := open(ctx, route, t)
+			return sess, err
+		})
 		if err != nil && t.onLAN() {
 			err = withHint(err)
 		}
@@ -207,24 +217,25 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 		s.free.remover = o.Remover
 	}
 	if o.Resolve != nil {
-		s.free.resolve = open
+		s.free.resolve = openNow
 	}
 	s.route, s.endRoute = context.WithCancel(ctx)
 	s.browse, s.sessions = s.newBrowse(file.settings)
 	return s
 }
 
-// dialNow is Browse's dial. It asks for the target again, so it reaches
-// the telescope where it is now; a change of route replaces Browse's
-// pool. The session it opens carries that target, which a save of one
-// file reads back with [dialedAt]: its bytes are that telescope's,
-// whatever the target is by then.
-func (s *server) dialNow(ctx context.Context) (remote.Session, error) {
+// dialNow is Browse's dial for a pool made on the route numbered route.
+// It asks for the target again, so it reaches the telescope where it is
+// now; a change of route replaces Browse's pool. The session it opens
+// carries that target, which a save of one file reads back with
+// [dialedAt]: its bytes are that telescope's, whatever the target is by
+// then.
+func (s *server) dialNow(ctx context.Context, route uint64) (remote.Session, error) {
 	t, err := s.target()
 	if err != nil {
 		return nil, err
 	}
-	sess, err := s.dial(ctx, t)
+	sess, err := s.dial(ctx, route, t)
 	if err != nil {
 		return nil, err
 	}
@@ -385,10 +396,12 @@ func (s *server) browseFor(set Settings) (*browse.Handler, *browse.Sessions) {
 		},
 		Seq: s.rep.next,
 	}
-	// The pool's dials share one run for the scan on this network.
-	run := &landiscovery.Run{}
+	// The pool's dials share one run for the scan on this network, and
+	// count only on the route it is made on: one that read the old target
+	// just as the route changed is the old route's, whenever it returns.
+	run, route := &landiscovery.Run{}, s.routeNow()
 	sessions := browse.NewSessions(s.route, func(ctx context.Context) (remote.Session, error) {
-		return s.dialNow(landiscovery.WithRun(ctx, run))
+		return s.dialNow(landiscovery.WithRun(ctx, run), route)
 	}, log, rep)
 	var records func() (map[string]state.Record, error)
 	var sel engine.Selector
@@ -842,6 +855,13 @@ func (s *server) telescopeView(t Target) telescopeView {
 		v.Offer = &offerView{Name: s.name(named), Folder: folder, Token: s.offerToken(from, to, folder)}
 	}
 	return v
+}
+
+// routeNow is the number of the route now, which a change of route moves.
+func (s *server) routeNow() uint64 {
+	s.reachedMu.Lock()
+	defer s.reachedMu.Unlock()
+	return s.reachedRoute
 }
 
 // noteReached notes where a session opened at t reached its telescope,

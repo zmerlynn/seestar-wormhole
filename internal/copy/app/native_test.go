@@ -352,7 +352,7 @@ func TestNativeDialogSurvivesBrowseReopen(t *testing.T) {
 			e, _ := newNativeEnv(t)
 			var mu sync.Mutex
 			var made []*countedSession
-			e.s.dial = func(context.Context, Target) (remote.Session, error) {
+			e.s.dial = func(context.Context, uint64, Target) (remote.Session, error) {
 				mu.Lock()
 				defer mu.Unlock()
 				s := &countedSession{Session: remote.NewFake(fstest.MapFS{"at 192.0.2.10_445/x.txt": {Data: []byte("x")}})}
@@ -441,7 +441,7 @@ func TestLeasedDownloadSurvivesBrowseReopen(t *testing.T) {
 		countedSession: countedSession{Session: remote.NewFake(fstest.MapFS{"a.fit": {Data: []byte("abc")}})},
 		entered:        make(chan struct{}), release: make(chan struct{}),
 	}
-	e.s.dial = func(context.Context, Target) (remote.Session, error) { return held, nil }
+	e.s.dial = func(context.Context, uint64, Target) (remote.Session, error) { return held, nil }
 	if w := e.serve("GET", "/browse/", ""); w.Code != 200 {
 		t.Fatal(w.Code)
 	}
@@ -498,7 +498,7 @@ func TestDialogLifetimes(t *testing.T) {
 			var mu sync.Mutex
 			var made []*endedSession
 			var dials []context.Context
-			e.s.dial = func(ctx context.Context, _ Target) (remote.Session, error) {
+			e.s.dial = func(ctx context.Context, _ uint64, _ Target) (remote.Session, error) {
 				mu.Lock()
 				defer mu.Unlock()
 				text := "replacement source"

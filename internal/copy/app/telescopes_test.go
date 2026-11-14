@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1090,7 +1092,7 @@ func TestStatusAddressInUse(t *testing.T) {
 	}
 	// A session opened now, as Browse, copying or a preview opens one.
 	open := func() error {
-		sess, err := e.s.dial(t.Context(), e.s.current())
+		sess, err := e.s.dial(t.Context(), e.s.routeNow(), e.s.current())
 		if err == nil {
 			sess.Close()
 		}
@@ -1125,7 +1127,7 @@ func TestStatusAddressInUse(t *testing.T) {
 	e.d.mu.Unlock()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	e.s.dial(ctx, e.s.current())
+	e.s.dial(ctx, e.s.routeNow(), e.s.current())
 	e.d.mu.Lock()
 	e.d.fail = nil
 	e.d.mu.Unlock()
@@ -1223,6 +1225,91 @@ func TestStatusAddressAfterMove(t *testing.T) {
 	}
 }
 
+// A Browse pool's dial that read the old target just before the route
+// changed, and reached the telescope after the change had moved the
+// route's number but before it ended the old pool, is the old route's.
+func TestStatusAddressTargetReadBeforeMove(t *testing.T) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	var hold atomic.Bool
+	e := newAppEnvWith(t, savedAt(abs("/data/Seestar")), t.TempDir(), func(e *appEnv, o *MountOptions) {
+		target := o.Target
+		o.Target = func() (Target, error) {
+			at, err := target()
+			if hold.CompareAndSwap(true, false) {
+				close(entered)
+				<-release
+			}
+			return at, err
+		}
+		o.Resolve = func(ctx context.Context, at Target) (remote.Session, Target, error) {
+			sess, err := e.d.dial(ctx, at)
+			if at.Endpoint == testEndpoint {
+				at.Endpoint = "192.0.2.10:4445"
+			}
+			return sess, at, err
+		}
+	})
+	e.set(func() { e.key, e.serial = keyA, serialA })
+	old := e.s.sessions
+	hold.Store(true)
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		if lease, err := old.Get(t.Context()); err == nil {
+			lease.Release()
+		}
+	}()
+	<-entered
+	route := e.s.routeNow()
+	committed, finish, moved := make(chan struct{}), make(chan struct{}), make(chan error, 1)
+	go func() {
+		moved <- e.m.Change(func() bool { return true }, func() error {
+			e.set(func() { e.endpoint = "192.0.2.20:445" })
+			close(committed)
+			<-finish
+			return nil
+		})
+	}()
+	<-committed
+	// Holding mu, as a status may, keeps the change from ending the old
+	// pool, so its dial returns with its context live.
+	e.s.mu.Lock()
+	close(finish)
+	for e.s.routeNow() == route {
+		runtime.Gosched()
+	}
+	close(release)
+	<-returned
+	e.s.mu.Unlock()
+	if err := <-moved; err != nil {
+		t.Fatal(err)
+	}
+	if got := e.status().Telescope; got.Address != "192.0.2.20:445" || !got.AddressSaved {
+		t.Errorf("after the old pool's dial: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
+// A session canceled after it reached the telescope, with the route
+// unchanged, notes nothing.
+func TestStatusAddressAfterCanceledSuccess(t *testing.T) {
+	e, entered, release := heldResolve(t, "192.0.2.10:4445", nil)
+	ctx, cancel := context.WithCancel(t.Context())
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		if sess, err := e.s.dial(ctx, e.s.routeNow(), e.s.current()); err == nil {
+			sess.Close()
+		}
+	}()
+	<-entered
+	cancel()
+	close(release)
+	<-returned
+	if got := e.status().Telescope; got.Address != testEndpoint || !got.AddressSaved {
+		t.Errorf("after a canceled session: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
 // A session that began before another reached the telescope, and then
 // failed, doesn't forget the address the newer one reached.
 func TestStatusAddressAfterOlderFailure(t *testing.T) {
@@ -1231,7 +1318,7 @@ func TestStatusAddressAfterOlderFailure(t *testing.T) {
 	returned := make(chan struct{})
 	go func() {
 		defer close(returned)
-		if sess, err := e.s.dial(t.Context(), e.s.current()); err == nil {
+		if sess, err := e.s.dial(t.Context(), e.s.routeNow(), e.s.current()); err == nil {
 			sess.Close()
 		}
 	}()
