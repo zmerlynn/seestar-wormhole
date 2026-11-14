@@ -1252,6 +1252,45 @@ func TestStatusAddressAfterOlderFailure(t *testing.T) {
 	}
 }
 
+// Free up space's preview notes where its session reached the telescope,
+// as every other session does.
+func TestStatusAddressFromFreeUpSpace(t *testing.T) {
+	e := newAppEnvFollowing(t, savedAt(abs("/data/Seestar")))
+	e.set(func() { e.key, e.serial, e.follow = keyA, serialA, "192.0.2.11:4445" })
+	sess, at, err := e.s.free.open(t.Context(), e.s.current())
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess.Close()
+	if at.Endpoint != "192.0.2.11:4445" {
+		t.Errorf("reached at %q", at.Endpoint)
+	}
+	if got := e.status().Telescope; got.Address != "192.0.2.11:4445" || got.AddressSaved {
+		t.Errorf("after Free up space's session: %q %v", got.Address, got.AddressSaved)
+	}
+}
+
+// On Windows the page's folders are shown whole, home and all.
+func TestUserHomeOnWindows(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	folder := filepath.Join(home, "Seestar")
+	setHostOS(t, "linux")
+	if got, want := displayFolder(folder, userHome()), "~"+string(filepath.Separator)+"Seestar"; got != want {
+		t.Errorf("on Linux: %q; want %q", got, want)
+	}
+	setHostOS(t, "windows")
+	if got := userHome(); got != "" {
+		t.Errorf("home on Windows = %q; want none", got)
+	}
+	e := newAppEnv(t, claimedAt(folder, map[string]string{keyA: folder}))
+	e.set(func() { e.key, e.serial = keyA, serialA })
+	if got := e.status().Telescope.Folder; got != folder {
+		t.Errorf("on Windows: %q; want %q", got, folder)
+	}
+}
+
 // The status names no account and no password: the page builds its line
 // from named fields only.
 func TestStatusHasNoSecrets(t *testing.T) {
