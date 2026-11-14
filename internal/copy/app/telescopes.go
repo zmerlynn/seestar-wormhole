@@ -32,6 +32,17 @@ func serialOf(key string) (string, bool) { return strings.CutPrefix(key, "serial
 // without a serial, host:port as saved.
 func AddressKey(endpoint string) string { return "address:" + endpoint }
 
+// ViewKey is what the page compares to tell that Copy's status and the
+// host's describe the same telescope, saved at the same endpoint: t's
+// telescope and endpoint, its telescope alone while it has no endpoint,
+// or "" while the telescope isn't known.
+func ViewKey(t Target) string {
+	if t.Telescope == "" || t.Endpoint == "" {
+		return t.Telescope
+	}
+	return t.Telescope + " " + t.Endpoint
+}
+
 // claimed reports whether any telescope has a folder of its own. Until one
 // does, as in a copy.json from before telescopes, the shared Folder is the
 // folder of whichever telescope is first known: the saved one.

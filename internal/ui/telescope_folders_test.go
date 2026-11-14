@@ -123,13 +123,54 @@ func TestStatusTelescopeNameMatchesItsSettings(t *testing.T) {
 			LANAddress string `json:"lan_address"`
 		} `json:"settings"`
 		TelescopeName string `json:"telescope_name"`
+		TelescopeKey  string `json:"telescope_key"`
 	}
 	w := serve(s, request(s, "GET", "/api/status", ""))
 	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Settings.LANAddress != "192.0.2.10" || status.TelescopeName != "Seestar SYNTH0001" {
+	if status.Settings.LANAddress != "192.0.2.10" || status.TelescopeName != "Seestar SYNTH0001" || status.TelescopeKey != "serial:SYNTH0001 192.0.2.10:445" {
 		t.Errorf("status = %+v; want 192.0.2.10 named Seestar SYNTH0001", status)
+	}
+}
+
+// The app's status keys the route's telescope as Copy's status does, on
+// each route, so the page can tell they describe the same telescope.
+func TestStatusTelescopeKeyMatchesCopy(t *testing.T) {
+	s, _ := copyServer(t)
+	keys := func() (string, string) {
+		var app struct {
+			TelescopeKey string `json:"telescope_key"`
+		}
+		var copied struct {
+			Telescope struct {
+				Key string `json:"key"`
+			} `json:"telescope"`
+		}
+		if err := json.Unmarshal(serve(s, request(s, "GET", "/api/status", "")).Body.Bytes(), &app); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(serve(s, request(s, "GET", "/copy/api/status", "")).Body.Bytes(), &copied); err != nil {
+			t.Fatal(err)
+		}
+		return app.TelescopeKey, copied.Telescope.Key
+	}
+	for _, c := range []struct {
+		what string
+		save func()
+		want string
+	}{
+		{"nothing saved", func() {}, ""},
+		{"an address", func() { s.settings.Route, s.settings.LANAddress = routeLAN, "192.0.2.20" }, "address:192.0.2.20:445 192.0.2.20:445"},
+		{"a serial at an address", func() { s.settings.LANSerial = "SYNTH0001" }, "serial:SYNTH0001 192.0.2.20:445"},
+		{"the account, not connected", func() { s.settings.Route, s.settings.Serial = routeAccount, "SYNTH0002" }, "serial:SYNTH0002"},
+	} {
+		s.mu.Lock()
+		c.save()
+		s.mu.Unlock()
+		if app, copied := keys(); app != c.want || copied != c.want {
+			t.Errorf("%s: keys %q and %q; want %q", c.what, app, copied, c.want)
+		}
 	}
 }
 

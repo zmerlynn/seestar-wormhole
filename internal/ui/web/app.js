@@ -639,15 +639,16 @@ function connectionLine() {
   telescopeLine();
 }
 // copyTelescopeNow is copy's status of the route's telescope, or null
-// while Copy is off.
+// while Copy is off or its status describes another telescope than the
+// app's: a route saved since Copy's last poll shows the telescope only,
+// until Copy's status catches up.
 function copyTelescopeNow() {
-  return state?.copy_unlocked && !state.copy_refused ? copyStatus?.telescope || null : null;
+  const telescope = state?.copy_unlocked && !state.copy_refused ? copyStatus?.telescope || null : null;
+  return telescope && telescope.key === (state.telescope_key || '') ? telescope : null;
 }
-// telescopeNameNow is the route's telescope's name: Copy's, beside its
-// address and folder, or the server's own while Copy is off.
+// telescopeNameNow is the route's telescope's name, from the app's status.
 function telescopeNameNow() {
-  const telescope = copyTelescopeNow();
-  return (telescope ? telescope.name : state?.telescope_name) || '';
+  return state?.telescope_name || '';
 }
 // The line under it names the route's telescope and the folder its files
 // are copied to, which opens Copy's settings: on this network with the

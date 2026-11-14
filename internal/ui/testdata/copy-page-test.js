@@ -537,66 +537,107 @@ async function checkTelescopeLine(st) {
     copyAssert($('telescope-folder').title === title, what + ' title: ' + $('telescope-folder').title);
     copyAssert(!line().includes('@') && !folder().includes('@'), what + ' shows an email');
   };
+  // Each status keys its telescope alike, and Copy's shows only beside the
+  // app status of the same key.
+  copyAssert(st.unlocked.telescope_key && st.unlocked.telescope_key === st.after.telescope.key, 'the statuses key the telescope apart: ' + st.unlocked.telescope_key + ' ' + st.after.telescope.key);
   const name = 'Seestar S50 Pro SYNTH0004', home = '~/Seestar/S50 Pro SYNTH0004', full = '/synthetic/home/Seestar/S50 Pro SYNTH0004';
   const email = {email: 'synthetic@example.invalid'};
   const account = {...st.unlocked.settings, ...email, route: 'account', serial: 'SYNTH0004', model: 'Seestar S50 Pro', choice_label: 'synthetic choice label'};
-  const serialAt = (address, address_saved) => ({...st.after, telescope: {...st.after.telescope, name, address, address_saved, folder: home}, settings: {...st.after.settings, folder: full}});
-  const notSetUp = {...st.after, set_up: false, telescope: {...st.after.telescope, name, folder: ''}, settings: {...st.after.settings, folder: '/synthetic/home/Seestar/suggested'}};
+  const savedKey = 'serial:SYNTH0004', onKey = savedKey + ' Seestar (account connection)', lanKey = savedKey + ' 192.0.2.20:445';
+  const serialAt = (address, address_saved, key) => ({...st.after, telescope: {...st.after.telescope, name, key, address, address_saved, folder: home}, settings: {...st.after.settings, folder: full}});
+  const notSetUp = key => ({...st.after, set_up: false, telescope: {...st.after.telescope, name, key, folder: ''}, settings: {...st.after.settings, folder: '/synthetic/home/Seestar/suggested'}});
+  const saved = {...st.unlocked, settings: account, telescope_name: name, telescope_key: savedKey};
+  const connected = {...saved, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, telescope_key: onKey};
+  const lan = {...st.unlocked, telescope_name: name, telescope_key: lanKey};
   copyFixture(st, st.unlocked);
 
   // Through the account: nothing saved, saved, connecting, connected.
-  render({...st.locked, settings: {...st.locked.settings, ...email, route: 'account', serial: '', choice_label: ''}, devices_email: email.email, telescope_name: ''});
+  render({...st.locked, settings: {...st.locked.settings, ...email, route: 'account', serial: '', choice_label: ''}, devices_email: email.email, telescope_name: '', telescope_key: ''});
   shows('nothing saved', 'Telescope Network: no telescope chosen', '');
-  render({...st.unlocked, settings: account});
-  copyRender(serialAt('', false));
+  render(saved);
+  copyRender(serialAt('', false, savedKey));
   shows('saved', 'Telescope Network: ' + name + ' (saved), not connected', home, full);
-  copyRender({...st.after, telescope: {...st.after.telescope, name: '', folder: ''}, set_up: false});
-  render({...st.unlocked, settings: account, active: true, status: 'Connecting', selected_device: name});
+  copyRender({...st.after, telescope: {...st.after.telescope, name: '', key: '', folder: ''}, set_up: false});
+  render({...st.unlocked, settings: account, active: true, status: 'Connecting', selected_device: name, telescope_name: '', telescope_key: ''});
   shows('connecting', 'Telescope Network: ' + name, 'folder known once connected');
-  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name});
-  copyRender(serialAt('', false));
+  render(connected);
+  copyRender(serialAt('', false, onKey));
   shows('connected', 'Telescope Network: ' + name, home, full);
-  copyRender(notSetUp);
+  copyRender(notSetUp(onKey));
   shows('no folder yet', 'Telescope Network: ' + name, 'no folder yet');
   // Copy off: the telescope part stays, named by the server.
-  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, copy_unlocked: false, telescope_name: name});
+  render({...connected, copy_unlocked: false});
   shows('copy locked', 'Telescope Network: ' + name, '');
-  render({...st.unlocked, settings: account, active: true, ready: true, status: 'Connected to ' + name, selected_device: name, copy_refused: true, telescope_name: name});
+  render({...connected, copy_refused: true});
   shows('copy refused', 'Telescope Network: ' + name, '');
-  render({...st.unlocked, settings: account, copy_refused: true, telescope_name: name});
+  render({...saved, copy_refused: true});
   shows('copy refused, saved', 'Telescope Network: ' + name + ' (saved), not connected', '');
 
   // On this network: nothing saved, a telescope saved by its address, one
   // saved with its serial before and after a session reached it.
-  render({...st.unlocked, settings: {...st.unlocked.settings, lan_address: ''}, copy_unlocked: false, telescope_name: ''});
+  render({...st.unlocked, settings: {...st.unlocked.settings, lan_address: ''}, copy_unlocked: false, telescope_name: '', telescope_key: ''});
   shows('no address', 'On this network: no telescope chosen', '');
   // With Copy off, both lines name the telescope saved with its serial, not
   // Copy's last telescope, and no folder shows.
-  render({...st.unlocked, copy_refused: true, telescope_name: name});
+  render({...lan, copy_refused: true});
   shows('copy refused here', 'On this network: ' + name, '');
   copyAssert($('connection-text').textContent === 'On this network: ' + name, 'copy refused dot line: ' + $('connection-text').textContent);
   render(st.unlocked);
   copyRender(st.after);
-  shows('address only', 'On this network: Seestar', st.after.telescope.folder, st.after.settings.folder);
-  copyAssert($('connection-text').textContent === 'On this network: Seestar', 'dot line: ' + $('connection-text').textContent);
-  copyRender(serialAt('192.0.2.20:445', true));
+  shows('address only', 'On this network: ' + st.unlocked.telescope_name, st.after.telescope.folder, st.after.settings.folder);
+  copyAssert($('connection-text').textContent === 'On this network: ' + st.unlocked.telescope_name, 'dot line: ' + $('connection-text').textContent);
+  render(lan);
+  copyRender(serialAt('192.0.2.20:445', true, lanKey));
   shows('saved address', 'On this network: ' + name + ' at 192.0.2.20:445 (saved)', home, full);
   copyAssert($('connection-text').textContent === 'On this network: ' + name, 'dot line: ' + $('connection-text').textContent);
-  copyRender(serialAt('192.0.2.21:4445', false));
+  copyRender(serialAt('192.0.2.21:4445', false, lanKey));
   shows('address in use', 'On this network: ' + name + ' at 192.0.2.21:4445', home, full);
-  const saved = st.unlocked.settings.lan_address;
-  lanReach = {address: saved, ok: true};
+  const savedAddress = st.unlocked.settings.lan_address;
+  lanReach = {address: savedAddress, ok: true};
   controls();
   copyAssert($('connection-text').textContent === 'On this network: ' + name + ', reachable', 'reachable: ' + $('connection-text').textContent);
-  lanReach = {address: saved, ok: false};
+  lanReach = {address: savedAddress, ok: false};
   controls();
-  copyAssert($('connection-text').textContent === "Can't reach " + saved, 'unreachable: ' + $('connection-text').textContent);
+  copyAssert($('connection-text').textContent === "Can't reach " + savedAddress, 'unreachable: ' + $('connection-text').textContent);
   lanReach = null;
-  copyRender(notSetUp);
+  copyRender(notSetUp(lanKey));
   shows('no folder yet here', 'On this network: ' + name, 'no folder yet');
 
+  // A route saved since Copy's last status names the new telescope alone,
+  // never with the old one's address or folder, until Copy's status of it
+  // is read; Copy's tabs keep the status they have.
+  const other = 'Seestar S30 SYNTH0005', otherKey = 'serial:SYNTH0005 192.0.2.30:445';
+  const before = serialAt('192.0.2.21:4445', false, lanKey);
+  copyRender(before);
+  render({...lan, settings: {...lan.settings, lan_address: '192.0.2.30'}, telescope_name: other, telescope_key: otherKey});
+  shows('another telescope, Copy behind', 'On this network: ' + other, '');
+  copyAssert(copyStatus === before, "Copy's status changed with the app's");
+  render({...connected, telescope_name: other, telescope_key: 'serial:SYNTH0005 Seestar (account connection)'});
+  shows('another route, Copy behind', 'Telescope Network: ' + other, '');
+  // The same telescope saved at another address is another key too.
+  render({...lan, settings: {...lan.settings, lan_address: '192.0.2.31'}, telescope_key: savedKey + ' 192.0.2.31:445'});
+  shows('a new address, Copy behind', 'On this network: ' + name, '');
+  // A Copy poll that fails, or answers late, changes nothing; the one that
+  // reads the new telescope shows it whole.
+  const now = {...lan, settings: {...lan.settings, lan_address: '192.0.2.30'}, telescope_name: other, telescope_key: otherKey};
+  let copyRead;
+  api = async (action, body, base) => {
+    if (base !== '/copy/api/') return now;
+    if (!copyRead) throw {code: 'controls', message: lostCopy};
+    return copyRead;
+  };
+  await poll();
+  shows('Copy lost', 'On this network: ' + other, '');
+  copyRead = before;
+  await poll();
+  shows('Copy read late', 'On this network: ' + other, '');
+  copyRead = {...before, telescope: {...before.telescope, name: other, key: otherKey, address: '192.0.2.30:445', address_saved: true, folder: '~/Seestar/S30 SYNTH0005'}};
+  await poll();
+  shows('Copy caught up', 'On this network: ' + other + ' at 192.0.2.30:445 (saved)', '~/Seestar/S30 SYNTH0005', full);
+
+  render(lan);
   // The folder, or no folder yet, opens Copy's settings.
-  for (const status of [notSetUp, serialAt('192.0.2.21:4445', false)]) {
+  for (const status of [notSetUp(lanKey), serialAt('192.0.2.21:4445', false, lanKey)]) {
     copyRender(status);
     selectTab('activity');
     copyFormOpen = false;

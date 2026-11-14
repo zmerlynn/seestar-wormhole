@@ -176,6 +176,12 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// telescope's address with another's name.
 		target, targetErr := s.copyTargetFor(settings, view.conn)
 		unlocked, reach := s.copyState(targetErr)
+		// Copy's status keeps only the telescope of a target it can't
+		// use, as the key does.
+		keyed := target
+		if targetErr != nil {
+			keyed = copyapp.Target{Telescope: target.Telescope}
+		}
 		localhttp.Respond(w, http.StatusOK, struct {
 			CopyBusy  bool               `json:"copy_busy"`
 			Settings  pageSettings       `json:"settings"`
@@ -195,10 +201,14 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			CopyRefused  bool            `json:"copy_refused"`
 			// TelescopeName names the route's telescope as Copy's status
 			// does, whether or not Copy is open.
-			TelescopeName string        `json:"telescope_name"`
-			Files         settingsFiles `json:"files"`
+			TelescopeName string `json:"telescope_name"`
+			// TelescopeKey is the route's telescope as Copy's status keys
+			// it, which the page compares to show Copy's folder only for
+			// this telescope.
+			TelescopeKey string        `json:"telescope_key"`
+			Files        settingsFiles `json:"files"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
-			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), s.settingsFiles()})
+			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles()})
 		return
 	}
 	if r.Method != "POST" {

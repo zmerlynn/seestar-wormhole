@@ -842,6 +842,40 @@ test('the header names the account\'s saved telescope while not connected, and n
   await expect(field(page, 'Folder for your images')).toBeFocused();
 });
 
+// A route saved while Copy's status lags names the new telescope alone,
+// never with the old one's folder, until Copy's status of it is read: its
+// poll failing, then answering late, then caught up.
+test('the header shows Copy\'s folder only for the telescope the app status names', async ({ page, startApp }) => {
+  const app = await startApp({
+    'config.json': { ...lan(), lan_serial: 'SYNTHETIC-FIRST', lan_scan: 'off', email: 'synthetic@example.invalid', serial: 'SYNTHETIC-SAVED', model: 'Seestar S50 Pro' },
+    'copy.json': (folder) => ({ version: 1, folder, start_copying: false, telescopes: { 'serial:SYNTHETIC-FIRST': { folder } } }),
+  });
+  await openApp(page, app.url);
+  const folder = page.locator('#telescope-folder');
+  await expect(page.locator('#telescope-text')).toHaveText(/^On this network: Seestar SYNTHETIC-FIRST at 127\.0\.0\.1:14450( \(saved\))?$/);
+  await expect(folder).toHaveText('~/Seestar');
+  await page.route('**/copy/api/status', (route) => route.abort());
+  await page.evaluate(() => api('route', { settings: { route: 'account' } }));
+  const saved = 'Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected';
+  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  await expect(page.locator('#lost')).toBeVisible();
+  await expect(page.locator('#telescope-to')).toBeHidden();
+  let release;
+  const held = new Promise((resolve) => (release = resolve));
+  let asked;
+  const late = new Promise((resolve) => (asked = resolve));
+  await page.unroute('**/copy/api/status');
+  await page.route('**/copy/api/status', async (route) => { asked(); await held; await route.continue(); });
+  await late;
+  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  await expect(page.locator('#telescope-to')).toBeHidden();
+  release();
+  await expect(page.locator('#lost')).toBeHidden();
+  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  await expect(folder).toHaveText('no folder yet');
+  await expect(folder).not.toHaveAttribute('title', /./);
+});
+
 test('a serial heard at an address with a folder is offered that folder, and nothing moves until it is chosen', async ({ page, startApp }) => {
   const app = await startApp({
     'config.json': { ...lan(), lan_serial: 'SYNTHETIC-HEARD' },

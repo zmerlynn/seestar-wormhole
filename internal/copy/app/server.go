@@ -764,6 +764,9 @@ type telescopeView struct {
 	// Name is the telescope's name, as [MountOptions.Name] gives it, or ""
 	// while the telescope isn't known.
 	Name string `json:"name"`
+	// Key is the telescope's [ViewKey], which the page compares with the
+	// host's status.
+	Key string `json:"key"`
 	// Address is, on this network, for a telescope saved with its serial,
 	// the address the latest session reached it at, or the saved address,
 	// marked AddressSaved, before one did. It is "" through the account
@@ -827,7 +830,7 @@ const errTelescopeMoved = "The telescope or its folder changed since the page sh
 // telescopeView is the page's view of t's telescope, holding s.mu.
 func (s *server) telescopeView(t Target) telescopeView {
 	claimed := s.file.exists && s.file.settings.claimed()
-	v := telescopeView{ID: s.telescope, Known: t.Telescope != "" || !claimed, New: claimed && s.folderAt(t) == "", Token: s.telescopeToken(t.Telescope)}
+	v := telescopeView{ID: s.telescope, Known: t.Telescope != "" || !claimed, New: claimed && s.folderAt(t) == "", Token: s.telescopeToken(t.Telescope), Key: ViewKey(t)}
 	v.Folder = displayFolder(s.folderAt(t), userHome())
 	if t.Telescope != "" {
 		named := t

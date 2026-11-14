@@ -31,7 +31,8 @@ which can differ from the saved one, or the saved address marked **(saved)**
 before the first connection. The folder is the telescope's own, with your home
 folder shown as `~` except on Windows, or **no folder yet**; select it to open
 Copy settings, or, while copying runs, to see that copying must stop first.
-When the Copy tab is unavailable, only the telescope shows.
+When the Copy tab is unavailable, only the telescope shows, as it does just
+after you change the route until Copy has read the new telescope.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
