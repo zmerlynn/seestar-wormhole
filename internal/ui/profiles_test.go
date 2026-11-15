@@ -190,8 +190,9 @@ func TestStatusServingPorts(t *testing.T) {
 	run.Ports = []proxyrun.Port{{Device: 445, Local: 1445}, {Device: 4700, Local: 4700}}
 	s.controller.runSettings = run
 	status := func() (got struct {
-		ServingPorts []uint16      `json:"serving_ports"`
-		CopyOnly     *proxy.Holder `json:"copy_only"`
+		ServingPorts   []uint16      `json:"serving_ports"`
+		ServingAddress string        `json:"serving_address"`
+		CopyOnly       *proxy.Holder `json:"copy_only"`
 	}) {
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, request(s, "GET", "/api/status", ""))
@@ -200,11 +201,11 @@ func TestStatusServingPorts(t *testing.T) {
 		}
 		return got
 	}
-	if got := status(); got.ServingPorts == nil || len(got.ServingPorts) != 0 || got.CopyOnly != nil {
+	if got := status(); got.ServingPorts == nil || len(got.ServingPorts) != 0 || got.ServingAddress != "" || got.CopyOnly != nil {
 		t.Errorf("before binding: %+v", got)
 	}
-	s.controller.status.MarkServing()
-	if got := status(); !slices.Contains(got.ServingPorts, 1445) || !slices.Contains(got.ServingPorts, 4700) || got.CopyOnly != nil {
+	s.controller.status.MarkServing("127.0.0.1")
+	if got := status(); !slices.Contains(got.ServingPorts, 1445) || !slices.Contains(got.ServingPorts, 4700) || got.ServingAddress != "127.0.0.1" || got.CopyOnly != nil {
 		t.Errorf("bound, before arming: %+v", got)
 	}
 	s.controller.status.MarkArmed()
@@ -212,7 +213,7 @@ func TestStatusServingPorts(t *testing.T) {
 		t.Errorf("armed: %+v", got)
 	}
 	s.controller.status.ClearServing()
-	if got := status(); len(got.ServingPorts) != 0 {
+	if got := status(); len(got.ServingPorts) != 0 || got.ServingAddress != "" {
 		t.Errorf("closed: %+v", got)
 	}
 	s.controller.status = proxy.NewStatus()
@@ -224,7 +225,8 @@ func TestStatusServingPorts(t *testing.T) {
 }
 
 // ServingWindow asks every open window of the root's profiles but self,
-// and only a window serving the port holds it; default shows as Default.
+// and only a window serving the port at the same bind address holds it;
+// default shows as Default.
 func TestServingWindow(t *testing.T) {
 	root := filepath.Join(t.TempDir(), "state")
 	if _, err := CreateProfile(root, "Garden"); err != nil {
@@ -248,23 +250,26 @@ func TestServingWindow(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	answer(root, `{"serving_ports":[1445,4700],"telescope_name":"Seestar S30 TEST0001"}`)
-	answer(ProfileDir(root, "Garden"), `{"serving_ports":[],"telescope_name":"Seestar S50 TEST0002","unknown":{}}`)
-	if h, ok := ServingWindow(t.Context(), root, "Garden", 1445); !ok || h != (proxy.Holder{Profile: "Default", Telescope: "Seestar S30 TEST0001"}) {
-		t.Errorf("1445 from Garden = %+v, %t", h, ok)
-	}
-	for _, tc := range []struct {
-		self string
-		port uint16
-	}{{"Garden", 445}, {"default", 1445}, {"DEFAULT", 4700}} {
-		if h, ok := ServingWindow(t.Context(), root, tc.self, tc.port); ok {
-			t.Errorf("%d from %s = %+v", tc.port, tc.self, h)
+	answer(root, `{"serving_ports":[1445,4700],"serving_address":"0.0.0.0","telescope_name":"Seestar S30 TEST0001"}`)
+	answer(ProfileDir(root, "Garden"), `{"serving_ports":[],"serving_address":"","telescope_name":"Seestar S50 TEST0002","unknown":{}}`)
+	for _, bind := range []string{"0.0.0.0", "::ffff:0.0.0.0"} {
+		if h, ok := ServingWindow(t.Context(), root, "Garden", bind, 1445); !ok || h != (proxy.Holder{Profile: "Default", Telescope: "Seestar S30 TEST0001"}) {
+			t.Errorf("1445 at %s from Garden = %+v, %t", bind, h, ok)
 		}
 	}
-	if _, ok := PortHolder(t.Context(), 1445); ok {
+	for _, tc := range []struct {
+		self, bind string
+		port       uint16
+	}{{"Garden", "0.0.0.0", 445}, {"default", "0.0.0.0", 1445}, {"DEFAULT", "0.0.0.0", 4700},
+		{"Garden", "127.0.0.1", 1445}, {"Garden", "::", 1445}, {"Garden", "", 1445}} {
+		if h, ok := ServingWindow(t.Context(), root, tc.self, tc.bind, tc.port); ok {
+			t.Errorf("%d at %q from %s = %+v", tc.port, tc.bind, tc.self, h)
+		}
+	}
+	if _, ok := PortHolder(t.Context(), "0.0.0.0", 1445); ok {
 		t.Error("a run of no profile found a holder")
 	}
-	if _, ok := PortHolder(WithProfile(t.Context(), root, "Garden"), 1445); !ok {
+	if _, ok := PortHolder(WithProfile(t.Context(), root, "Garden"), "0.0.0.0", 1445); !ok {
 		t.Error("Garden's run found no holder")
 	}
 }

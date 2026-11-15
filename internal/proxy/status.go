@@ -21,7 +21,7 @@ type Status struct {
 	serial    atomic.Pointer[string]
 	ready     atomic.Bool
 	armed     atomic.Bool
-	serving   atomic.Bool
+	serving   atomic.Pointer[string]
 	copyOnly  atomic.Pointer[Holder]
 	updates   chan string
 	rejected  chan struct{}
@@ -132,22 +132,32 @@ func (s *Status) MarkArmed() {
 // Armed reports whether the run's listeners and channels are serving.
 func (s *Status) Armed() bool { return s != nil && s.armed.Load() }
 
-// MarkServing records that the run's own listeners are bound, which is
-// before its session starts; ClearServing that they closed.
-func (s *Status) MarkServing() {
+// MarkServing records that the run's own listeners are bound at the bind
+// address, which is before its session starts; ClearServing that they
+// closed.
+func (s *Status) MarkServing(bind string) {
 	if s != nil {
-		s.serving.Store(true)
+		s.serving.Store(&bind)
 	}
 }
 
 func (s *Status) ClearServing() {
 	if s != nil {
-		s.serving.Store(false)
+		s.serving.Store(nil)
 	}
 }
 
-// Serving reports whether the run's own listeners are bound.
-func (s *Status) Serving() bool { return s != nil && s.serving.Load() }
+// Serving is the bind address of the run's own listeners while they are
+// bound.
+func (s *Status) Serving() (string, bool) {
+	if s == nil {
+		return "", false
+	}
+	if bind := s.serving.Load(); bind != nil {
+		return *bind, true
+	}
+	return "", false
+}
 
 // Holder is another app window that holds the local ports a copy-only run
 // went without: its profile and its telescope, each "" when it couldn't

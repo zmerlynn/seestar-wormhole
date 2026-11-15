@@ -468,7 +468,7 @@ func TestProfileEndpointOfAnotherWindow(t *testing.T) {
 	if got, err := loadProfile("Garden"); err != nil || got.EndpointHolder != "" || got.Endpoint != "127.0.0.2:1445" {
 		t.Errorf("no window open: %+v, %v", got, err)
 	}
-	fakeWindow(t, root, "[1445]")
+	fakeWindow(t, root, "127.0.0.2", "[1445]")
 	if got, err := loadProfile("Garden"); err != nil || got.EndpointHolder != "Default" {
 		t.Errorf("Default serving: %+v, %v", got, err)
 	}

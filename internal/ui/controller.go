@@ -389,10 +389,11 @@ type runView struct {
 	SaveFailed     bool    `json:"save_failed"`
 	Discovery      bool    `json:"discovery_started"`
 	// CopyOnly is the window holding the local ports when the run serves
-	// none of them; serving is true while the run's own listeners are
-	// bound, from before its session starts.
+	// none of them; serving is the bind address of the run's own
+	// listeners while they are bound, from before its session starts, and
+	// "" otherwise.
 	CopyOnly *proxy.Holder `json:"copy_only,omitempty"`
-	serving  bool
+	serving  string
 }
 
 func (c *controller) view() runView {
@@ -409,7 +410,7 @@ func (c *controller) view() runView {
 		if h, ok := c.status.CopyOnly(); ok {
 			v.CopyOnly = &h
 		} else {
-			v.serving = c.status.Serving()
+			v.serving, _ = c.status.Serving()
 		}
 	}
 	if c.failure != nil {

@@ -226,11 +226,14 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// same state root reads to tell its own port conflict from
 			// another program's.
 			ServingPorts []uint16 `json:"serving_ports"`
+			// ServingAddress is the bind address of those ports, "" when
+			// there are none.
+			ServingAddress string `json:"serving_address"`
 			// Profile is the run's profile, absent for a run of a
 			// --state-dir folder.
 			Profile *profileView `json:"profile,omitempty"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
-			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports), s.profileStatus(r)})
+			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports), view.serving, s.profileStatus(r)})
 		return
 	}
 	if r.Method != "POST" {
@@ -650,7 +653,7 @@ func (s *server) telescopeNameAt(t copyapp.Target, settings Settings) string {
 // servingPorts are the local ports of ports while the run v serves them.
 func servingPorts(v runView, ports []proxyrun.Port) []uint16 {
 	serving := []uint16{}
-	if v.serving {
+	if v.serving != "" {
 		for _, p := range ports {
 			serving = append(serving, p.Local)
 		}

@@ -294,7 +294,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	// from another program's as soon as they are bound, though the session
 	// may take a while to start.
 	if !copyOnly {
-		o.uiStatus.MarkServing()
+		o.uiStatus.MarkServing(o.bind)
 	}
 	var discovery commandDiscovery
 	if o.lanDiscovery && !copyOnly {

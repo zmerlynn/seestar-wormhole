@@ -5,6 +5,7 @@ import (
 	"encoding/json/v2"
 	"io"
 	"net/http"
+	"net/netip"
 	"slices"
 	"strings"
 	"time"
@@ -49,8 +50,9 @@ func probeClient() *http.Client {
 // windowStatus is what an open profile's /api/status says of its run,
 // read permissively.
 type windowStatus struct {
-	ServingPorts  []uint16 `json:"serving_ports"`
-	TelescopeName string   `json:"telescope_name"`
+	ServingPorts   []uint16 `json:"serving_ports"`
+	ServingAddress string   `json:"serving_address"`
+	TelescopeName  string   `json:"telescope_name"`
 }
 
 // probeStatus asks the app of the state folder dir for its status: ok is
@@ -77,10 +79,26 @@ func probeStatus(ctx context.Context, client *http.Client, dir string) (windowSt
 	return status, true
 }
 
+// serves is whether the window's run listens on the local port at the
+// bind address: the same address once parsed, so 127.0.0.1 does not hold
+// a port at 127.0.0.2 nor 0.0.0.0 one at 127.0.0.1.
+func (w windowStatus) serves(bind string, port uint16) bool {
+	return slices.Contains(w.ServingPorts, port) && sameBind(w.ServingAddress, bind)
+}
+
+func sameBind(a, b string) bool {
+	x, errX := netip.ParseAddr(a)
+	y, errY := netip.ParseAddr(b)
+	if errX != nil || errY != nil {
+		return a == b
+	}
+	return x.Unmap() == y.Unmap()
+}
+
 // ServingWindow is the open window of another of root's profiles than
-// self whose run listens on the local port: the app holding it. A port
-// held by anything else, or by self, has none.
-func ServingWindow(ctx context.Context, root, self string, port uint16) (proxy.Holder, bool) {
+// self whose run listens on the local port at the bind address: the app
+// holding it. A port held by anything else, or by self, has none.
+func ServingWindow(ctx context.Context, root, self, bind string, port uint16) (proxy.Holder, bool) {
 	names, _ := Profiles(root)
 	client := probeClient()
 	defer client.CloseIdleConnections()
@@ -88,7 +106,7 @@ func ServingWindow(ctx context.Context, root, self string, port uint16) (proxy.H
 		if sameProfile(name, self) {
 			continue
 		}
-		if status, ok := probeStatus(ctx, client, ProfileDir(root, name)); ok && slices.Contains(status.ServingPorts, port) {
+		if status, ok := probeStatus(ctx, client, ProfileDir(root, name)); ok && status.serves(bind, port) {
 			return proxy.Holder{Profile: ProfileLabel(name), Telescope: status.TelescopeName}, true
 		}
 	}
@@ -96,14 +114,14 @@ func ServingWindow(ctx context.Context, root, self string, port uint16) (proxy.H
 }
 
 // PortHolder is the open window of another profile that holds the local
-// port, for the UI run under ctx: see ServingWindow. A run of no profile
-// has none.
-func PortHolder(ctx context.Context, port uint16) (proxy.Holder, bool) {
+// port at the bind address, for the UI run under ctx: see ServingWindow.
+// A run of no profile has none.
+func PortHolder(ctx context.Context, bind string, port uint16) (proxy.Holder, bool) {
 	p, ok := profileOf(ctx)
 	if !ok {
 		return proxy.Holder{}, false
 	}
-	return ServingWindow(ctx, p.root, p.name, port)
+	return ServingWindow(ctx, p.root, p.name, bind, port)
 }
 
 // activateWindow brings forward the open window of the state folder dir,

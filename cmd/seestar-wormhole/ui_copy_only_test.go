@@ -41,10 +41,10 @@ func (b *syncBuffer) String() string { b.mu.Lock(); defer b.mu.Unlock(); return 
 const syntheticToken = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
 // fakeWindow answers as the open window of the profile folder dir,
-// serving the local ports serving, a JSON array.
-func fakeWindow(t *testing.T, dir string, serving string) {
+// serving the local ports serving, a JSON array, at the bind address.
+func fakeWindow(t *testing.T, dir, bind, serving string) {
 	t.Helper()
-	fakeWindowFunc(t, dir, func() string { return `"serving_ports":` + serving })
+	fakeWindowFunc(t, dir, func() string { return `"serving_address":"` + bind + `","serving_ports":` + serving })
 }
 
 // fakeWindowFunc is fakeWindow with the status's serving fields as fields
@@ -96,20 +96,21 @@ func TestUIRunCopyOnly(t *testing.T) {
 		Ports: []proxyrun.Port{{Local: freePort, Device: 4700}, {Local: heldPort, Device: 445}}}
 
 	for _, tc := range []struct {
-		name, serving string
-		profile       bool
-		copyOnly      bool
+		name, bind, serving string
+		profile             bool
+		copyOnly            bool
 	}{
-		{"held by Garden", "[" + strconv.Itoa(int(heldPort)) + "]", true, true},
-		{"held by another program", "[]", true, false},
-		{"no profile", "[" + strconv.Itoa(int(heldPort)) + "]", false, false},
+		{"held by Garden", "0.0.0.0", "[" + strconv.Itoa(int(heldPort)) + "]", true, true},
+		{"held by another program", "0.0.0.0", "[]", true, false},
+		{"Garden serves another address", "127.0.0.1", "[" + strconv.Itoa(int(heldPort)) + "]", true, false},
+		{"no profile", "0.0.0.0", "[" + strconv.Itoa(int(heldPort)) + "]", false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			root := filepath.Join(t.TempDir(), "state")
 			if _, err := ui.CreateProfile(root, "Garden"); err != nil {
 				t.Fatal(err)
 			}
-			fakeWindow(t, ui.ProfileDir(root, "Garden"), tc.serving)
+			fakeWindow(t, ui.ProfileDir(root, "Garden"), tc.bind, tc.serving)
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			if tc.profile {
@@ -202,10 +203,10 @@ func TestUIRunServingBeforeSession(t *testing.T) {
 	// Default's window says what its run's status says.
 	first := proxy.NewStatus()
 	fakeWindowFunc(t, root, func() string {
-		if first.Serving() {
-			return `"serving_ports":[` + strings.Join(served, ",") + `]`
+		if bind, ok := first.Serving(); ok {
+			return `"serving_address":"` + bind + `","serving_ports":[` + strings.Join(served, ",") + `]`
 		}
-		return `"serving_ports":[]`
+		return `"serving_address":"","serving_ports":[]`
 	})
 	inSession := make(chan struct{})
 	var firstLogs syncBuffer
@@ -224,8 +225,8 @@ func TestUIRunServingBeforeSession(t *testing.T) {
 	case err := <-firstDone:
 		t.Fatalf("the first run ended: %v\n%s", err, firstLogs.String())
 	}
-	if !first.Serving() || first.Armed() {
-		t.Fatalf("waiting for its session: serving %t, armed %t", first.Serving(), first.Armed())
+	if bind, ok := first.Serving(); !ok || bind != "127.0.0.1" || first.Armed() {
+		t.Fatalf("waiting for its session: serving %q %t, armed %t", bind, ok, first.Armed())
 	}
 
 	second := proxy.NewStatus()
@@ -251,7 +252,79 @@ func TestUIRunServingBeforeSession(t *testing.T) {
 	cancel()
 	<-secondDone
 	<-firstDone
-	if first.Serving() {
+	if _, ok := first.Serving(); ok {
 		t.Error("the first run still serves after it ended")
+	}
+}
+
+// Another profile's window holds a port only at its own bind address:
+// with one window's run on 127.0.0.2 and another program on 127.0.0.1 at
+// one port, a run on 127.0.0.1 meets the port error, and is copy-only
+// only when the window serves 127.0.0.1.
+func TestUIRunCopyOnlyMatchesBindAddress(t *testing.T) {
+	other, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer other.Close()
+	port := uint16(other.Addr().(*net.TCPAddr).Port)
+	window, err := net.Listen("tcp", net.JoinHostPort("127.0.0.2", strconv.Itoa(int(port))))
+	if err != nil {
+		t.Skipf("127.0.0.2 doesn't bind here: %v", err)
+	}
+	defer window.Close()
+	free, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	freePort := uint16(free.Addr().(*net.TCPAddr).Port)
+	free.Close()
+	settings := ui.Settings{Version: 1, Bind: "127.0.0.1", Idle: "2m",
+		Ports: []proxyrun.Port{{Local: port, Device: 4700}, {Local: freePort, Device: 445}}}
+	serving := "[" + strconv.Itoa(int(port)) + "," + strconv.Itoa(int(freePort)) + "]"
+
+	for _, tc := range []struct {
+		bind     string
+		copyOnly bool
+	}{{"127.0.0.2", false}, {"127.0.0.1", true}} {
+		t.Run(tc.bind, func(t *testing.T) {
+			root := filepath.Join(t.TempDir(), "state")
+			if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+				t.Fatal(err)
+			}
+			fakeWindow(t, ui.ProfileDir(root, "Garden"), tc.bind, serving)
+			ctx, cancel := context.WithCancel(ui.WithProfile(t.Context(), root, ui.DefaultProfile))
+			defer cancel()
+			var logs syncBuffer
+			status := proxy.NewStatus()
+			runner := newUIRunnerWithDiscovery(root, &logs,
+				func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error) {
+					return &idleCommandSession{done: make(chan struct{})}, nil
+				}, net.Listen, func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error) {
+					return &fakeUIDiscovery{}, nil
+				}, func(context.Context) error { return nil })
+			done := make(chan error, 1)
+			go func() {
+				done <- runner(ctx, settings, cloud.Credentials{}, status, func(proxy.Dialer) (func(), bool) { return func() {}, true })
+			}()
+			if !tc.copyOnly {
+				if e, ok := errors.AsType[*ui.ActionError](<-done); !ok || e.Code != "port_conflict" || e.Local != port {
+					t.Errorf("= %v, want the port conflict\n%s", e, logs.String())
+				}
+				return
+			}
+			select {
+			case <-status.Updates():
+			case err := <-done:
+				t.Fatalf("ended: %v\n%s", err, logs.String())
+			case <-time.After(5 * time.Second):
+				t.Fatal("never armed")
+			}
+			if h, ok := status.CopyOnly(); !ok || h.Profile != "Garden" {
+				t.Errorf("holder %+v %t", h, ok)
+			}
+			cancel()
+			<-done
+		})
 	}
 }

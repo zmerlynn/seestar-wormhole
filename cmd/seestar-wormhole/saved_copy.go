@@ -45,7 +45,7 @@ func endpointHolder(config ui.Settings, endpoint, self string) string {
 	if err != nil || rootErr != nil {
 		return ""
 	}
-	holder, ok := ui.ServingWindow(context.Background(), root, self, addr.Port())
+	holder, ok := ui.ServingWindow(context.Background(), root, self, config.Bind, addr.Port())
 	if !ok {
 		return ""
 	}

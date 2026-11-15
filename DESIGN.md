@@ -111,9 +111,11 @@ internal/ui server (page, token, config.json, gui.log)
   the copy history (kept per images folder) and this computer's ports. They know of each other only through each
   other's `ui-runtime.json` and token: the Profiles dialog lists the folders and asks each open window's
   `/api/status`, and brings one forward with `/api/activate`. The first account run to bind the local ports serves
-  them; a later one whose bind fails on a port another profile's open window reports in `serving_ports` runs
-  copy-only, all ports or none: it serves no port and no discovery, and still attaches its session for the file
-  tools. A port held by anything else is the usual port error. Through the account the file commands' endpoint is
+  them, and reports them in `serving_ports` with its bind address in `serving_address` from when they are bound
+  until they close, before its session starts. A later run whose bind fails on a port another profile's open window
+  reports there, at the same bind address once parsed, runs copy-only, all ports or none: it serves no port and no
+  discovery, and still attaches its session for the file tools. A port held by anything else, or at another
+  address, is the usual port error. Through the account the file commands' endpoint is
   that local port and the copier checks no serial, so `--profile` refuses to fill it while another profile's window
   serves it.
 - **Shutdown.** On quit the app first stops the Mount: it closes Browse's pool, then stops and joins copying, the
