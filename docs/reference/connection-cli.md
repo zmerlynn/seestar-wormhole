@@ -563,8 +563,9 @@ Dependency records written during startup are held until the configuration is
 accepted or refused, then written ahead of the final record either way;
 `device_catalog` is written at once. Records past the 64 KiB hold are dropped
 and their loss reported at WARN; diagnostic loss makes the final command result fail.
+Logs hide only access secrets; see [what logs show](../ui.md#what-logs-show).
 Most diagnostic records contain fixed classifications and numeric context,
-not dependency error text, forwarded payloads, or session secrets. Device
+not dependency error text or forwarded payloads. Device
 selection includes full serials in logs without truncation; valid serials preserve printable ASCII verbatim, with syntax escaping supplied by the log encoder. Model labels retain their 64-character display cap.
 The selected telescope also appears in lifecycle events and the copied diagnostic
 summary. Each catalog fetch also records the account's received telescope pairs,

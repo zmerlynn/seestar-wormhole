@@ -572,6 +572,14 @@ account-catalog events, your copy folder and history folder, your patterns,
 and the private log's path. It leaves out your password, the account email
 and tokens. Remove what you don't want to share before you post it.
 
+<a id="what-logs-show"></a>
+seestar-wormhole hides only access secrets: passwords and their hashes,
+tokens, keys, license material, cloud session and connection IDs, and the
+relay credentials. The account email appears in logs but never in this
+summary. Everything else shows in full in logs, Activity, errors and the
+summary: folders, addresses, serials, telescope names, the listen address
+and the site a client tried to set.
+
 Logs, Activity and errors name the telescope too: its name, model, serial
 number, LAN address and host name, as a scan, Test or connect saw them. A
 failed connection or name lookup names the address or host and the DNS
