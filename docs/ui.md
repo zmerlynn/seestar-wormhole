@@ -574,8 +574,8 @@ and tokens. Remove what you don't want to share before you post it.
 
 <a id="what-logs-show"></a>
 seestar-wormhole hides only access secrets: passwords and their hashes,
-tokens, keys, license material, cloud session and connection IDs, and the
-relay credentials. The account email appears in logs but never in this
+tokens, keys, license material, cloud session and connection IDs, the device
+UID inside a cloud allocation, and relay credentials. The account email appears in logs but never in this
 summary. Everything else shows in full in logs, Activity, errors and the
 summary: folders, addresses, serials, telescope names, the listen address
 and the site a client tried to set.
