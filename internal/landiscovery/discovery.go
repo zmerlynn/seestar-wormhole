@@ -9,6 +9,7 @@ import (
 	"encoding/json/v2"
 	"errors"
 	"fmt"
+	"net"
 	"time"
 )
 
@@ -92,6 +93,8 @@ type Machine struct {
 	tokens   int
 	last     time.Duration
 	refusals [refusalCount]uint64
+	from     net.Addr               // the datagram being decided, when a socket gave one
+	senders  [refusalCount]net.Addr // each rule's last refused sender
 }
 
 // New synthesizes a discovery reply from supplied identity. Synthesized names may
