@@ -186,7 +186,7 @@ func (l *eventLog) appendLine(line []byte) error {
 		return err
 	}
 	if info.Size() > logLimit {
-		return errStorage
+		return tooLarge(path, logLimit)
 	}
 	if info.Size()+int64(len(line)) > logLimit {
 		rotated := path + ".1"
@@ -194,8 +194,10 @@ func (l *eventLog) appendLine(line []byte) error {
 		if err == nil {
 			info, statErr := old.Stat()
 			old.Close()
-			if statErr != nil || info.Size() > logLimit {
-				return errStorage
+			if statErr != nil {
+				return storageFailed(statErr)
+			} else if info.Size() > logLimit {
+				return tooLarge(rotated, logLimit)
 			}
 		} else if !os.IsNotExist(err) {
 			return err

@@ -287,8 +287,8 @@ func (c *controller) persistLocked(s Settings) error {
 	c.mu.Unlock()
 	if err == nil {
 		c.record("Settings saved.")
-	} else {
-		c.record(errorCopy("storage"))
+	} else if c.log != nil {
+		c.log.addFailure(errorCopy("storage"), err)
 	}
 	return err
 }

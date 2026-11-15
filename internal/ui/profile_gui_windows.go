@@ -19,15 +19,15 @@ func windowProfile(root string) (string, func() error, error) {
 	sweepWindowProfiles(root)
 	var nonce [16]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
-		return "", nil, errStorage
+		return "", nil, storageFailed(err)
 	}
 	path, err := filepath.Abs(filepath.Join(root, "webview-"+hex.EncodeToString(nonce[:])))
 	if err != nil {
-		return "", nil, errStorage
+		return "", nil, storageFailed(err)
 	}
 	dir, err := privatefile.Directory(path)
 	if err != nil {
-		return "", nil, errStorage
+		return "", nil, storageFailed(err)
 	}
 	// The private state root remains pinned by storage. Do not pin the engine's
 	// directory without FILE_SHARE_DELETE: WebView2 must manage its own folder.

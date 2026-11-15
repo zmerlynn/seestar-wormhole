@@ -35,7 +35,7 @@ func actionError(err error) *ActionError {
 		return e
 	}
 	if errors.Is(err, errStorage) {
-		return &ActionError{Code: "storage"}
+		return &ActionError{Code: "storage", Err: err}
 	}
 	var validation *cloud.ValidationError
 	if errors.As(err, &validation) && errors.Is(err, cloud.ErrConfig) {

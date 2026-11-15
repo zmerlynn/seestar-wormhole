@@ -3,6 +3,7 @@
 package ui
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -50,8 +51,14 @@ func TestPrivateStorageModesAndRefusals(t *testing.T) {
 	}
 	unsafe := filepath.Join(t.TempDir(), "unsafe")
 	os.Mkdir(unsafe, 0755)
+	// The refusal is errStorage, as the page's code takes it, and names
+	// the folder and what is wrong with it.
 	if _, err := openStorage(unsafe); err == nil {
 		t.Fatal("public directory accepted")
+	} else if want := "Settings storage unavailable: open " + unsafe + ": private file: unsafe permissions or type. Use a private state directory."; !errors.Is(err, errStorage) || err.Error() != want {
+		t.Fatalf("refusal = %v; want %q", err, want)
+	} else if e := actionError(err); e.Code != "storage" || e.Err != err {
+		t.Fatalf("action error = %+v", e)
 	}
 	alias := filepath.Join(t.TempDir(), "alias")
 	os.Symlink(st.root, alias)
