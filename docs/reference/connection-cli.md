@@ -437,10 +437,10 @@ string or numeric ID (null when unavailable or ambiguous), and message
 Device replies stay byte-transparent and are never decoded for this check.
 
 One WARN `site_protected` record is emitted for each dropped setter. It contains
-`method`, integer request `id` or `unavailable`, and `reason=site_protected`.
-String IDs are echoed to the client but omitted from logs. Coordinates, clock
-values, zone values, and unknown parameter names are omitted. Invalid frames
-use WARN `site_reject` with fixed method/reason labels. There is no startup
+`method`, the request `id` as sent (`unavailable` when it is missing or not a
+string or number), `params` as sent, so the coordinates, zone and clock values
+the client tried to set, and `reason=site_protected`. Invalid frames use WARN
+`site_reject` with the method, any recovered `id` and the refusal rule. There is no startup
 site record. If device EOF prevents a local error from being delivered, WARN
 `site_reply_failed` names the refusal rule in `reason` with `cause=device_closed`.
 
@@ -663,8 +663,8 @@ In trail entries:
 | `channel_closed` | INFO for a closed local writer; WARN for abnormal failures; DEBUG otherwise | Tunnel/bridge detail, direction or channel, reason and classified cause |
 | `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason; `rule=SIO_TCP_INFO_required` identifies a failed or short TCP-state query, which refuses admission |
 | `client_canceled` | INFO | Admission canceled before forwarding; ports and `client` |
-| `site_protected` | WARN | Dropped setter; method, integer ID or `unavailable`, reason |
-| `site_reject` | WARN | Invalid frame; method and reason |
+| `site_protected` | WARN | Dropped setter; method, request ID or `unavailable`, params as sent, reason |
+| `site_reject` | WARN | Invalid frame; method, recovered request ID or `unavailable`, reason |
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
 | `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode |
 | `lan_discovery_refused` | WARN | Nonzero refusal counts per fixed `rule`, at most once per rule per five seconds, plus pending counts at shutdown; `sender` is the address and port of the rule's last refused datagram, empty when a truncated read gave none |

@@ -84,22 +84,16 @@ func TestSiteSettingPassThroughTCP(t *testing.T) {
 
 func TestSiteProtectedLogsAndIDs(t *testing.T) {
 	for _, tc := range []struct{ request, method, id string }{
-		{`{"id":115,"method":"set_user_location","params":{"lat":12.345,"lon":67.891,"private-key":"private-value"}}`, "set_user_location", "115"},
-		{`{"id":"private-id","method":"pi_set_time","params":[{"time_zone":"private-zone","year":2001}]}`, "pi_set_time", `"unavailable"`},
-		{`{"id":1e400,"method":"pi_set_time","params":{}}`, "pi_set_time", `"unavailable"`},
-		{`{"id":9223372036854775808,"method":"set_user_location","params":{}}`, "set_user_location", `"unavailable"`},
-		{`{"id":5,"method":"scope_set_time","params":["private-clock"]}`, "scope_set_time", "5"},
+		{`{"id":115,"method":"set_user_location","params":{"lat":12.345,"lon":67.891,"extra-key":"extra-value"}}`, "set_user_location", "115"},
+		{`{"id":"client-id","method":"pi_set_time","params":[{"time_zone":"Etc/GMT+7","year":2001}]}`, "pi_set_time", `"client-id"`},
+		{`{"id":1e400,"method":"pi_set_time","params":{}}`, "pi_set_time", `"1e400"`},
+		{`{"id":9223372036854775808,"method":"set_user_location","params":{}}`, "set_user_location", `"9223372036854775808"`},
+		{`{"id":5,"method":"scope_set_time","params":["clock-value"]}`, "scope_set_time", "5"},
 		{`{"id":6,"method":"scope_set_location","params":{"latitude":12.345}}`, "scope_set_location", "6"},
 	} {
 		t.Run(tc.method+tc.id, func(t *testing.T) {
 			var out, reply, logs bytes.Buffer
-			err := copySite(&out, strings.NewReader(tc.request+"\r\n"), slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-				// Timestamps can coincidentally contain the synthetic coordinate values.
-				if a.Key == slog.TimeKey {
-					return slog.Attr{}
-				}
-				return a
-			}})), &reply)
+			err := copySite(&out, strings.NewReader(tc.request+"\r\n"), slog.New(slog.NewJSONHandler(&logs, nil)), &reply)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -114,16 +108,17 @@ func TestSiteProtectedLogsAndIDs(t *testing.T) {
 				t.Fatalf("forwarded=%q reply=%q want=%q", out.Bytes(), reply.Bytes(), want)
 			}
 			var record struct {
-				Msg, Level, Method, Reason string
-				ID                         jsontext.Value
+				Msg, Level, Method, Reason, Params string
+				ID                                 jsontext.Value
 			}
-			if bytes.Count(logs.Bytes(), []byte("\n")) != 1 || json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_protected" || record.Level != "WARN" || record.Reason != "site_protected" || record.Method != tc.method || string(record.ID) != tc.id || bytes.Contains(logs.Bytes(), []byte(`"fields"`)) {
-				t.Fatalf("log=%s want method=%s id=%s", logs.Bytes(), tc.method, tc.id)
+			var params struct {
+				Params jsontext.Value `json:"params"`
 			}
-			for _, secret := range []string{"12.345", "67.891", "2001", "private-"} {
-				if strings.Contains(logs.String(), secret) {
-					t.Fatalf("log contains values: %s", logs.Bytes())
-				}
+			if err := json.Unmarshal([]byte(tc.request), &params); err != nil {
+				t.Fatal(err)
+			}
+			if bytes.Count(logs.Bytes(), []byte("\n")) != 1 || json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_protected" || record.Level != "WARN" || record.Reason != "site_protected" || record.Method != tc.method || string(record.ID) != tc.id || record.Params != string(params.Params) {
+				t.Fatalf("log=%s want method=%s id=%s params=%s", logs.Bytes(), tc.method, tc.id, params.Params)
 			}
 		})
 	}
