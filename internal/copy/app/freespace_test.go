@@ -471,7 +471,7 @@ func TestFreeFailed(t *testing.T) {
 		t.Fatal(err)
 	}
 	d := e.wait(frFailed, frDone, frStopped)
-	if d.State != frFailed || d.Title != "Stopped: the telescope refused to delete MyWorks/a.jpg (permission denied)." || d.Text != "No files were deleted." {
+	if d.State != frFailed || d.Title != "Stopped: the telescope refused to delete MyWorks/a.jpg (remove MyWorks/a.jpg: permission denied)." || d.Text != "No files were deleted." {
 		t.Errorf("failed: %+v", d)
 	}
 }

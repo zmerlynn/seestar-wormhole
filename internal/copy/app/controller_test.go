@@ -554,9 +554,10 @@ func TestCopyCantWrite(t *testing.T) {
 		v.Text != "Fix the problem, then start copying." || v.On {
 		t.Errorf("can't start: %+v", v)
 	}
-	e.c.finish(fmt.Errorf("create destination: %w", &fs.PathError{Op: "mkdir", Path: e.set.Folder, Err: fs.ErrPermission}))
+	denied := fmt.Errorf("create destination: %w", &fs.PathError{Op: "mkdir", Path: e.set.Folder, Err: fs.ErrPermission})
+	e.c.finish(denied)
 	v = e.c.view(time.Now())
-	if v.Title != "Can't write to "+e.set.Folder+": permission denied." || v.Text != "Choose a writable folder with Change…, then start copying." {
+	if v.Title != "Can't write to "+e.set.Folder+": "+denied.Error()+"." || v.Text != "Choose a writable folder with Change…, then start copying." {
 		t.Errorf("can't write: %+v", v)
 	}
 	// A refused write elsewhere, such as the state's folder, isn't the

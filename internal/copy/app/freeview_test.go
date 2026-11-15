@@ -62,7 +62,7 @@ func TestFreeWording(t *testing.T) {
 			freeView{Title: "Deleting 1 of 5…", Chip: "Deleting 1 of 5", Progress: &freeBar{Done: 0, Total: 5}}},
 		{"failed after some", freeStatus{state: frFailed, deleted: 2, err: refused, result: engine.DeleteResult{Files: []engine.DeleteFile{
 			{Path: "MyWorks/b.jpg", Outcome: engine.FileFailed, Reason: refused.Error()}}}},
-			freeView{Title: "Stopped: the telescope refused to delete MyWorks/b.jpg (permission denied).", Text: "2 files were deleted before this; nothing after it."}},
+			freeView{Title: "Stopped: the telescope refused to delete MyWorks/b.jpg (" + refused.Error() + ").", Text: "2 files were deleted before this; nothing after it."}},
 		{"no folder", freeStatus{state: frCheckFail, set: Settings{Folder: "/x/Seestar"}, err: engine.ErrNoDest},
 			freeView{Title: "Couldn't finish checking files: /x/Seestar isn't there.", Text: noDest}},
 		{"folder busy", freeStatus{state: frFailed, err: fmt.Errorf("destination /x/Seestar: %w (lock file /x/Seestar/.seestar-wormhole.lock)", state.ErrFolderLocked)},

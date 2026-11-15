@@ -129,7 +129,8 @@ func writeAttr(b *strings.Builder, prefix string, a slog.Attr) {
 }
 
 // withReasons is a slog.Handler that passes each record to next with
-// each error attribute, at any group, as its [reason].
+// each error attribute, at any group, as its [reason]: its text, clipped
+// so that no record outgrows a log sink.
 type withReasons struct{ next slog.Handler }
 
 func (h withReasons) Enabled(ctx context.Context, l slog.Level) bool {
@@ -157,8 +158,7 @@ func (h withReasons) WithGroup(name string) slog.Handler {
 	return withReasons{h.next.WithGroup(name)}
 }
 
-// reasoned is a with an error, under any key, as its [reason], and a text
-// under an error's key kept only when it is [safeText].
+// reasoned is a with an error, under any key, as its [reason].
 func reasoned(a slog.Attr) slog.Attr {
 	a.Value = a.Value.Resolve()
 	switch a.Value.Kind() {
@@ -172,13 +172,6 @@ func reasoned(a slog.Attr) slog.Attr {
 		if err, ok := a.Value.Any().(error); ok {
 			return slog.String(a.Key, reason(err))
 		}
-	case slog.KindString:
-		if errorKey[a.Key] && !safeText(a.Value.String()) {
-			return slog.String(a.Key, "operation failed")
-		}
 	}
 	return a
 }
-
-// errorKey are the keys a log gives an error's text.
-var errorKey = map[string]bool{"err": true, "error": true}
