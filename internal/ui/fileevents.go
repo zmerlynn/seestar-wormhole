@@ -38,13 +38,13 @@ var fileMessages = map[opKey]opMessages{
 }
 
 // failState is a failing operation: its current failure class, its last
-// count of failed files, how many failures it has had in that class, and
-// when the class began and last failed.
+// error's text and count of failed files, how many failures it has had in
+// that class, and when the class began and last failed.
 type failState struct {
-	phase, reason string
-	count         int
-	failures      int
-	since, last   time.Time
+	phase, reason, err string
+	count              int
+	failures           int
+	since, last        time.Time
 }
 
 // opFailure is a failing operation as /api/status and the summary show it.
@@ -54,6 +54,7 @@ type opFailure struct {
 	Code     string    `json:"code"`
 	Phase    string    `json:"phase"`
 	Reason   string    `json:"reason"`
+	Error    string    `json:"error,omitempty"`
 	Count    int       `json:"count"`
 	Failures int       `json:"failures"`
 	Since    time.Time `json:"since"`
@@ -107,20 +108,21 @@ func (l *eventLog) outcomeLocked(key opKey, msgs opMessages, o copyapp.Outcome) 
 		return &entry
 	}
 	phase, reason := diagnostic.OpFields(key.op, o.Err)
+	var text string
+	if o.Err != nil {
+		text = diagnostic.Clip(o.Err.Error(), diagnostic.MaxValue)
+	}
 	if state != nil && state.phase == phase && state.reason == reason {
-		state.count, state.last = o.Count, now
+		state.err, state.count, state.last = text, o.Count, now
 		state.failures++
 		return nil
 	}
-	l.failing[key] = &failState{phase: phase, reason: reason, count: o.Count, failures: 1, since: now, last: now}
+	l.failing[key] = &failState{phase: phase, reason: reason, err: text, count: o.Count, failures: 1, since: now, last: now}
 	entry.Message = msgs.failed
 	if o.Err == nil && msgs.failedFiles != "" {
 		entry.Message = msgs.failedFiles
 	}
-	entry.Code, entry.Phase, entry.Reason, entry.Count = diagnostic.Code(key.source, key.op, true), phase, reason, o.Count
-	if o.Err != nil {
-		entry.Error = diagnostic.Clip(o.Err.Error(), diagnostic.MaxValue)
-	}
+	entry.Code, entry.Phase, entry.Reason, entry.Error, entry.Count = diagnostic.Code(key.source, key.op, true), phase, reason, text, o.Count
 	l.appendLocked(entry)
 	return &entry
 }
@@ -131,7 +133,7 @@ func (l *eventLog) failuresLocked() []opFailure {
 	list := []opFailure{}
 	for key, s := range l.failing {
 		list = append(list, opFailure{Source: key.source, Op: key.op, Code: diagnostic.Code(key.source, key.op, true),
-			Phase: s.phase, Reason: s.reason, Count: s.count, Failures: s.failures, Since: s.since, Last: s.last})
+			Phase: s.phase, Reason: s.reason, Error: s.err, Count: s.count, Failures: s.failures, Since: s.since, Last: s.last})
 	}
 	slices.SortFunc(list, func(a, b opFailure) int {
 		return cmp.Or(a.Since.Compare(b.Since), cmp.Compare(a.Source, b.Source), cmp.Compare(a.Op, b.Op))

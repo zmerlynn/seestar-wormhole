@@ -1289,13 +1289,10 @@ func TestTrailErrorText(t *testing.T) {
 	if err := json.Unmarshal([]byte(reply), &status); err != nil {
 		t.Fatal(err)
 	}
-	for where, text := range map[string]string{"gui.log": string(data), "events": string(status.Events)} {
+	for where, text := range map[string]string{"gui.log": string(data), "events": string(status.Events), "failures": string(status.Failures)} {
 		if !strings.Contains(text, `"error":"`) || !strings.Contains(text, "PATH-SENTINEL FILE-SENTINEL HOST-SENTINEL") {
 			t.Errorf("%s lacks the error's text: %s", where, text)
 		}
-	}
-	if strings.Contains(string(status.Failures), "SENTINEL") {
-		t.Errorf("failures hold an error's text: %s", status.Failures)
 	}
 	if n := strings.Count(string(data), "SERIAL-SENTINEL"); n < 2 {
 		t.Errorf("gui.log has the serial %d times; want the catalog line and device_catalog", n)
