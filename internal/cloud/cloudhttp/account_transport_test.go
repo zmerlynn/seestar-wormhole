@@ -42,9 +42,9 @@ func TestAccountTransportDiagnosticsNeverExposeSecrets(t *testing.T) {
 					case "unsolicited":
 						fmt.Fprintf(b, "HTTP/1.1 200 OK\r\nContent-Length: %d\r\n\r\n%s%s", len(body), body, accountSentinel)
 					case "status":
-						fmt.Fprintf(b, "HTTP/1.1 %s\r\n\r\n", accountSentinel)
+						io.WriteString(b, "HTTP/1.1 BAD-STATUS\r\n\r\n")
 					case "header":
-						fmt.Fprintf(b, "HTTP/1.1 200 OK\r\n%s\x00: invalid\r\n\r\n", accountSentinel)
+						fmt.Fprintf(b, "HTTP/1.1 200 OK\r\nX-Token\x00: %s\r\n\r\n", accountSentinel)
 					case "redirect":
 						fmt.Fprintf(b, "HTTP/1.1 307 %s\r\nLocation: https://example.invalid/%s\r\nContent-Length: 0\r\n\r\n", accountSentinel, accountSentinel)
 					}
@@ -79,6 +79,11 @@ func TestAccountTransportDiagnosticsNeverExposeSecrets(t *testing.T) {
 				<-closed
 				if strings.Contains(fmt.Sprintf("%v %+v %#v", err, err, err)+sink.String(), accountSentinel) {
 					t.Fatal("HTTP diagnostics leaked secrets")
+				}
+				// The transport's own text shows, less a header line's value.
+				want := map[string]string{"status": "BAD-STATUS", "header": "malformed MIME header"}[mode]
+				if !strings.Contains(fmt.Sprint(err), want) {
+					t.Fatalf("transport text missing %q: %v", want, err)
 				}
 			})
 		}

@@ -123,3 +123,12 @@ func FuzzOutcomeJoin(f *testing.F) {
 	}
 	f.Fuzz(func(t *testing.T, choices []byte) { checkOutcomeOrder(t, choices) })
 }
+
+// An outcome's text is each observation's own text, once, whatever the join.
+func TestOutcomeText(t *testing.T) {
+	refused := fmt.Errorf("dial tcp 192.0.2.10:443: %w", ErrTransport)
+	joined := JoinOutcomes(JoinOutcomes(refused, ErrBusy), refused, nil)
+	if got, want := joined.Error(), "dial tcp 192.0.2.10:443: cloud: HTTP exchange failed; cloud: device in use or service busy"; got != want {
+		t.Fatalf("text = %q, want %q", got, want)
+	}
+}

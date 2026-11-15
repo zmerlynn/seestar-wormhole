@@ -32,7 +32,7 @@ func (f causeTransport) RoundTrip(*http.Request) (*http.Response, error) {
 }
 
 // Typed transport failures are checked through response reads and URL wrappers.
-// Only fixed cause labels may survive the HTTP secret boundary.
+// Their text shows, host included; the URL's userinfo and query do not.
 func TestHTTPTransportCauses(t *testing.T) {
 	t.Setenv("SEESTAR_EMAIL", "")
 	t.Setenv("SEESTAR_PASSWORD", "")
@@ -42,15 +42,15 @@ func TestHTTPTransportCauses(t *testing.T) {
 		err        error
 	}{
 		{"refused", "connection_refused", &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}},
-		{"dns", "dns_not_found", &net.DNSError{Name: "host-sentinel", Err: "password-sentinel", IsNotFound: true}},
-		{"timeout", "timeout", &net.DNSError{Name: "host-sentinel", Err: "password-sentinel", IsTimeout: true}},
-		{"unknown", "transport_failed", errors.New("password-sentinel")},
+		{"dns", "dns_not_found", &net.DNSError{Name: "cloud.example", Err: "no such host", IsNotFound: true}},
+		{"timeout", "timeout", &net.DNSError{Name: "cloud.example", Err: "i/o timeout", IsTimeout: true}},
+		{"unknown", "transport_failed", errors.New("transport broke")},
 	} {
 		for _, body := range []bool{false, true} {
 			t.Run(tc.name+map[bool]string{false: "/dial", true: "/read"}[body], func(t *testing.T) {
 				var logs bytes.Buffer
 				logger := diagnostic.Logger("json", &logs, slog.LevelDebug)
-				wrapped := &url.Error{Op: "Get", URL: "https://host-sentinel/password-sentinel", Err: tc.err}
+				wrapped := &url.Error{Op: "Get", URL: "https://user:password-sentinel@cloud.example/v1/my-device?token=token-sentinel", Err: tc.err}
 				c, err := newAuthenticatedFixture(t, Config{Transport: causeTransport{wrapped, body}, Logger: logger})
 				if err != nil {
 					t.Fatal(err)
@@ -68,7 +68,10 @@ func TestHTTPTransportCauses(t *testing.T) {
 						t.Fatalf("logs = %s; want %s", &logs, want)
 					}
 				}
-				for _, secret := range []string{"host-sentinel", "password-sentinel", "token-sentinel", "source-sentinel"} {
+				if !strings.Contains(err.Error(), tc.err.Error()) || !strings.Contains(logs.String(), `"https://cloud.example/v1/my-device`) {
+					t.Fatalf("transport text missing: %v %s", err, &logs)
+				}
+				for _, secret := range []string{"password-sentinel", "token-sentinel"} {
 					if strings.Contains(logs.String()+err.Error(), secret) {
 						t.Fatalf("leaked %s", secret)
 					}

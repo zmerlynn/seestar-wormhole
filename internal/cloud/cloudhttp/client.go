@@ -1,5 +1,5 @@
 // Package cloudhttp is the blocking HTTPS edge for cloud. It accepts credentials
-// in memory or from the environment, never logs response bodies or transport errors, and
+// in memory or from the environment, never logs response bodies, and
 // owns a successful allocation until a lease is explicitly transferred. It starts
 // one account owner goroutine when email credentials are supplied. Callers bound
 // remote concurrency (one active attempt per device).
@@ -19,8 +19,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"syscall"
@@ -272,23 +274,57 @@ func (c *Client) exchangeRaw(ctx context.Context, path string, q url.Values, bod
 	}
 	return info, b, resultErr
 }
+
+// safeIO keeps the transport's own text, host included, classified by its
+// known causes. A URL in it loses its query and userinfo, where a token can
+// ride, and a malformed response header line loses its value.
 func safeIO(ctx context.Context, err error) error {
-	// Only fixed causes survive, never raw transport messages/URLs. Observe all
-	// known causes rather than choosing the first secondary network error.
-	result := cloud.JoinOutcomes(cloud.ErrTransport, ctx.Err())
+	causes := []error{cloud.ErrTransport}
+	if ctx.Err() != nil {
+		causes = append(causes, ctx.Err())
+	}
 	if oserror.Is(err, syscall.ECONNREFUSED) {
-		result = cloud.JoinOutcomes(result, syscall.ECONNREFUSED)
+		causes = append(causes, syscall.ECONNREFUSED)
 	}
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
-		result = cloud.JoinOutcomes(result, context.DeadlineExceeded)
+		causes = append(causes, context.DeadlineExceeded)
 	}
 	var dns *net.DNSError
 	if errors.As(err, &dns) && dns.IsNotFound {
-		result = cloud.JoinOutcomes(result, &net.DNSError{IsNotFound: true})
+		causes = append(causes, &net.DNSError{IsNotFound: true})
 	}
-	return result
+	text := "cloud: HTTP exchange failed"
+	if err != nil {
+		text += ": " + err.Error()
+	}
+	var u *url.Error
+	if errors.As(err, &u) {
+		stripped := "[unparsed URL]"
+		if parsed, perr := url.Parse(u.URL); perr == nil {
+			parsed.User, parsed.RawQuery, parsed.ForceQuery, parsed.Fragment, parsed.RawFragment = nil, "", false, "", ""
+			stripped = parsed.String()
+		}
+		// url.Error quotes its URL.
+		text = strings.ReplaceAll(text, strconv.Quote(u.URL), strconv.Quote(stripped))
+		text = strings.ReplaceAll(text, u.URL, stripped)
+	}
+	// net/http reads response headers with textproto alone.
+	var header textproto.ProtocolError
+	if errors.As(err, &header) {
+		text = strings.ReplaceAll(text, string(header), "malformed MIME header")
+	}
+	return cloud.JoinOutcomes(&transportError{text, causes})
 }
+
+// transportError is a transport failure's text over its classified causes.
+type transportError struct {
+	text   string
+	causes []error
+}
+
+func (e *transportError) Error() string   { return e.text }
+func (e *transportError) Unwrap() []error { return e.causes }
 
 // Local retry policy is restricted to throttling, gateway failures and service
 // unavailability on requests that cannot create or release a device allocation.
