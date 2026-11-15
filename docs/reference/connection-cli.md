@@ -25,10 +25,28 @@ proxy's wire behavior and local policy to the v1 specification.
 
 ```sh
 seestar-wormhole
-seestar-wormhole ui [--state-dir PATH]
+seestar-wormhole ui [--state-dir PATH | --profile NAME]
 ```
 
 Open the UI; see [Using the UI](../ui.md) for setup and controls.
+
+`--profile NAME` opens the app on that
+[profile](../ui.md#profiles-two-telescopes-at-once): `default`, the state
+folder, or one made with **New profile**, in
+[`profiles/NAME/`](app-settings.md#where-settings-live) there, matched
+without regard to case. Without it, the app opens Default. A profile
+already open in a window is brought forward, as opening the app again
+does. These exit 2 with `option=--profile`:
+
+| Case | rule |
+| --- | --- |
+| `--state-dir` given too | `give --profile or --state-dir, not both` |
+| A name with no profile | `no profile named Orchard; profiles: default, Backyard, Garden` |
+| No per-user config folder | `no per-user config folder for the app's profiles; give the flags` |
+| The profiles folder can't be read | `the app's profiles folder couldn't be read: <error>` |
+
+A window opened with `--state-dir` is of no profile: it has no
+**Profiles…** and never runs for copying only.
 
 ## proxy
 
@@ -76,8 +94,9 @@ with code 2 and a fixed message; keychain reads have the three-second bound.
 This command never writes settings or takes or writes `ui.lock`. GUI and
 headless runs still follow the account's one-session rule.
 
-The file commands take the app's saved Copy settings with `--profile default`,
-such as `seestar-wormhole-cli sync --profile default`; see
+The file commands take the app's saved Copy settings with `--profile NAME`,
+such as `seestar-wormhole-cli sync --profile default` or
+`seestar-wormhole-cli sync --profile Garden`; see
 [use the app's saved settings](files-cli.md#use-the-apps-saved-settings).
 
 On macOS, a launchd user agent works in the user's login session and may prompt
@@ -211,7 +230,7 @@ read-only page over it, and delete what is safely copied. The
 exit codes. They need no cloud session and no credentials: `--endpoint` is the
 share's address, such as a running proxy's SMB port (`127.0.0.1:4445` by
 default) or the telescope on this network, and is dialed as given. With
-`--profile default`, a telescope saved by its serial is followed on this
+`--profile`, a telescope saved by its serial is followed on this
 network, on port 445 and then 4445 when the saved port is one of the two;
 see [use the app's saved settings](files-cli.md#use-the-apps-saved-settings). Earlier releases shipped them as a
 separate `seestar-copy-cli`. `scan` lists the telescopes that answer the

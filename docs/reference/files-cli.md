@@ -58,8 +58,8 @@ deletes anything in the destination either, except its own
 | `--first-pass-age` | `10m` | On the first pass, a file counts as finished only if its device mtime is at least this old. Zero or more. See [readiness](#readiness). |
 | `--workers` | `4` | Files copied at once, `1` to `64`. All of them share one SMB session. |
 | `--history-dir` | `copy-history` in the per-user config folder's `seestar-wormhole` | The copy history folder, which holds the state file. See [location](selection-and-history.md#location). It must not be empty when given. Earlier releases called it `--state-dir`, which is now refused. |
-| `--profile` | none: no saved settings are read | `default` fills the flags not given from the app's saved settings. Only `default` exists. See [use the app's saved settings](#use-the-apps-saved-settings). |
-| `--scan` | the app's saved choice, `start` without one | When to scan this network for the telescope `--profile default` saved there: `start`, `connect` or `off`. See [use the app's saved settings](#use-the-apps-saved-settings). Any other value exits 2. It is checked even when nothing is scanned. |
+| `--profile` | none: no saved settings are read | `default`, or a profile's name such as `Garden`, fills the flags not given from that profile's saved settings. See [use the app's saved settings](#use-the-apps-saved-settings). |
+| `--scan` | the app's saved choice, `start` without one | When to scan this network for the telescope the `--profile` profile saved there: `start`, `connect` or `off`. See [use the app's saved settings](#use-the-apps-saved-settings). Any other value exits 2. It is checked even when nothing is scanned. |
 | `--log-format` | `text` | `text` or `json` log lines on stderr. See [logs](#logs). |
 | `--log-level` | `info` | The lowest level logged: `debug`, `info`, `warn` or `error`. |
 
@@ -86,18 +86,24 @@ only; see [a failed pass](#a-failed-pass).
 
 ### Use the app's saved settings
 
-`--profile default` fills each flag not given from what the app saved: its
-Copy settings, [`copy.json`](app-settings.md#copyjson-version-1), and its connection,
-[`config.json`](app-settings.md#configjson-version-1), in the app's state folder
-without `--state-dir`. It is on `sync`, `find`, `browse` and `delete`, and
-`default` is the only profile; any other name exits 2 before any file is
-read. An app run with `ui --state-dir PATH` keeps its settings outside the
-default profile. Without `--profile`, the file commands read neither file.
+`--profile NAME` fills each flag not given from what the app saved in that
+[profile](../ui.md#profiles-two-telescopes-at-once): its Copy settings,
+[`copy.json`](app-settings.md#copyjson-version-1), and its connection,
+[`config.json`](app-settings.md#configjson-version-1). `default` is the
+app's state folder without `--state-dir`, shown as **Default** in the app;
+any other name is a profile made with **New profile**, in
+[`profiles/NAME/`](app-settings.md#where-settings-live) there, matched
+without regard to case. It is on `sync`, `find`, `browse` and `delete`. A
+name with no profile exits 2 before any file is read, and names the
+profiles there are. An app run with `ui --state-dir PATH` keeps its
+settings outside every profile. Without `--profile`, the file commands
+read neither file.
 
 ```text
 seestar-wormhole-cli sync --profile default
+seestar-wormhole-cli sync --profile Garden
 seestar-wormhole-cli find --profile default --format jsonl
-seestar-wormhole-cli delete --profile default --older-than 14d
+seestar-wormhole-cli delete --profile Backyard --older-than 14d
 seestar-wormhole-cli sync --profile default --exclude '*.mp4'
 ```
 
@@ -143,6 +149,14 @@ by default, and something must be serving it: the app connected with
 commands never start a connection. With no usable `config.json`, no saved
 address, or that service off, `--endpoint` is not filled and is required as
 usual; if nothing listens, the run fails with exit 1.
+
+That port is served by whichever app window connected through Telescope
+Network first, and the file commands don't check which telescope answers
+there. So when the open window of another profile serves it, `--profile`
+refuses to fill `--endpoint` from it, which would copy that window's
+telescope into this profile's folder and history, and exits 2; copy with
+that window's profile, or give `--endpoint`. A profile saved On this
+network dials the telescope's own address and is never refused this way.
 
 On this network, an address the app saved from a scan is saved with the
 telescope's serial number, [`lan_serial`](app-settings.md#configjson-version-1).
@@ -193,11 +207,13 @@ checks. Each refusal exits 2 with `option=--profile`:
 
 | Case | rule |
 | --- | --- |
-| A name other than `default` | `only default exists in this version` |
-| No per-user config folder | `no per-user config folder for the default profile; give the flags` |
+| A name with no profile | `no profile named Orchard; profiles: default, Backyard, Garden` |
+| No per-user config folder | `no per-user config folder for the app's profiles; give the flags` |
+| The profiles folder can't be read | `the app's profiles folder couldn't be read: <error>` |
 | No `copy.json` | `no saved Copy settings; save them on the app's Copy tab, or give the flags` |
 | A `copy.json` the app refuses | `use a valid saved copy.json in the app's state folder` |
 | The saved telescope has no folder yet, and `--dest` is not given, except for browse | `the telescope saved in the app has no folder yet; choose one on the app's Copy tab, or give --dest` |
+| Through the account, the open window of another profile serves the saved endpoint's port, and `--endpoint` is not given | `the Garden window serves this computer's Telescope Network ports, so the saved endpoint would reach its telescope; copy with that window's profile, or give --endpoint` |
 
 ### Performance
 
@@ -548,7 +564,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `moved the copy history` | `from`, `to` | With the default `--history-dir`: the history folder of earlier releases, `seestar-copy`, was moved to `copy-history`; see [location](selection-and-history.md#location). Logged once, by the first sync or delete that isn't a dry run. Find, browse and dry runs never move it. |
 | INFO | `saved settings` | `profile`, `filled`, and one key per filled flag: `dest`, `history_dir`, `endpoint`, `exclude`, `include`, `no_default_excludes`, `interval`, `once`, `workers` | With `--profile`: the flags it filled, by name, and the value each took, a list's joined by commas; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
-| INFO | `found the telescope at another address on this network` | `telescope`, `saved`, `endpoint`, `addresses`, `other` when another serial answered at the saved address, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address or port other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). `telescope` is its name, model and serial as the reply gave them, such as `S50_Garden (Seestar S50, serial 4ab1c2d3)`; `saved` is the saved address, `endpoint` the one it connected to, `addresses` where it answered, and `other` the telescope that answered at the saved address. Logged again only when the outcome changes. |
+| INFO | `found the telescope at another address on this network` | `telescope`, `saved`, `endpoint`, `addresses`, `other` when another serial answered at the saved address, `replies` | With `--profile` on this network: a connect's scan found the telescope at an address or port other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). `telescope` is its name, model and serial as the reply gave them, such as `S50_Garden (Seestar S50, serial 4ab1c2d3)`; `saved` is the saved address, `endpoint` the one it connected to, `addresses` where it answered, and `other` the telescope that answered at the saved address. Logged again only when the outcome changes. |
 | WARN | `the telescope wasn't seen in a scan of this network; tried its saved address` | `serial`, `saved`, `replies` | As above, but no reply carried the saved serial, so the saved address was dialed, whether or not it connected. Logged again only when the outcome changes. |
 | WARN | `another telescope answers at the saved address, and a scan of this network didn't find the saved one` | `serial`, `saved`, `other`, `replies` | As above, but another serial answered from the saved address, which isn't used, and no reply carried the saved serial; the connect fails. `other` names the telescope that answered there. |
 | WARN | `found the telescope on this network, but it didn't connect where it answered` | `telescope`, `saved`, `addresses`, `other` when another serial answered from the saved address, `replies` | As above, but no address that answered with the serial connected, or another serial answered at each of them too; the connect fails. |
@@ -700,7 +716,7 @@ seestar-wormhole-cli find --endpoint 127.0.0.1:4445 --format jsonl > share.jsonl
 | `--format` | `text` | `text` or `jsonl`. See [text format](#text-format) and [JSONL format](#jsonl-format). |
 | `--dest` | none | A destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
 | `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](selection-and-history.md#location). Only with `--dest`, and it must not be empty when given. |
-| `--profile` | none | As for sync: `default` fills the destination, history, endpoint and selection not given. |
+| `--profile` | none | As for sync: the profile fills the destination, history, endpoint and selection not given. |
 | `--scan` | as for sync | As for sync. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 
@@ -884,7 +900,7 @@ the port browse listens on.
 | `--open` | off | Also open the page in the default browser. The URL is printed either way. |
 | `--dest` | none | As for find: a destination whose state gives each file a [status](#statuses). It is never created, and need not exist. It must not be empty when given. |
 | `--history-dir` | as for sync | As for find: the folder that holds the state file of `--dest`. Only with `--dest`, and it must not be empty when given. |
-| `--profile` | none | As for sync: `default` fills the destination, history and endpoint not given, and the selection with a destination. |
+| `--profile` | none | As for sync: the profile fills the destination, history and endpoint not given, and the selection with a destination. |
 | `--scan` | as for sync | As for sync. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--exclude`, `--no-default-excludes`, `--include` | as for sync | The [selection](#selection) whose left-out files and folders show [`left out`](#left-out-in-browse). Only with `--dest`. |
@@ -1072,7 +1088,7 @@ seestar-wormhole-cli delete --endpoint 127.0.0.1:4445 --ignore-state --include '
 | `--endpoint` | none; required | As for sync. See [endpoint](#endpoint). |
 | `--dest` | none; required, except with `--ignore-state`, which refuses it | The destination whose [state](#the-state-file), and by default whose local copies, prove that a file was copied. It is never created. It must be the destination of **this** telescope; see [what the proof does not show](#what-the-proof-does-not-show). |
 | `--history-dir` | as for sync | The folder that holds the state file of `--dest`; see [location](selection-and-history.md#location). Refused with `--ignore-state`, and it must not be empty when given. |
-| `--profile` | none | As for sync, but `default` fills only the destination and history, not with `--ignore-state`, and the endpoint; never the selection, proof or age. |
+| `--profile` | none | As for sync, but the profile fills only the destination and history, not with `--ignore-state`, and the endpoint; never the selection, proof or age. |
 | `--scan` | as for sync | As for sync. |
 | `--log-format`, `--log-level` | as for sync | As for sync. See [logs](#logs). |
 | `--trust-state` | off | Prove a file by its state record alone, without reading the local copy. Use it when the copies were moved out of `--dest` or the drive is offline. |

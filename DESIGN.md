@@ -100,10 +100,22 @@ internal/ui server (page, token, config.json, gui.log)
   this version cannot read turns Copy, Browse and Free up space off for the run and is never written. The copy
   history lives in the per-user config folder's `seestar-copy`, or the history folder `copy.json` names. The app,
   `sync`, `delete`, `find` and `browse` share it by default, so they share one history and one history lock per
-  images folder. `--profile default` reads `copy.json` and `config.json` to fill a command's flags, and writes or
-  locks nothing. Each copying pass (`sync` or the app's) and Browse's Save into the images folder hold its folder
+  images folder. `--profile NAME` reads that profile's `copy.json` and `config.json` to fill a command's flags,
+  and writes or locks nothing. Each copying pass (`sync` or the app's) and Browse's Save into the images folder hold its folder
   lock, `.seestar-wormhole.lock` at its top. A real `delete` takes it too, except when the folder is missing or on a
   read-only file system; a dry run or an `--ignore-state` delete takes none.
+- **Profiles.** A profile is one full state folder, so one app process with its own `ui.lock`, telescope, account
+  run, `config.json`, `copy.json`, `gui.log` and installation identity. `default` (**Default**) is the state root
+  itself; a named profile is `<root>/profiles/<name>/`, matched without regard to case. `ui --profile NAME` and the
+  file commands' `--profile NAME` find it the same way; a `--state-dir` run is of no profile. Profiles share only
+  the copy history (kept per images folder) and this computer's ports. They know of each other only through each
+  other's `ui-runtime.json` and token: the Profiles dialog lists the folders and asks each open window's
+  `/api/status`, and brings one forward with `/api/activate`. The first account run to bind the local ports serves
+  them; a later one whose bind fails on a port another profile's open window reports in `serving_ports` runs
+  copy-only, all ports or none: it serves no port and no discovery, and still attaches its session for the file
+  tools. A port held by anything else is the usual port error. Through the account the file commands' endpoint is
+  that local port and the copier checks no serial, so `--profile` refuses to fill it while another profile's window
+  serves it.
 - **Shutdown.** On quit the app first stops the Mount: it closes Browse's pool, then stops and joins copying, the
   preview and Free up space. Only then does it stop the run, whose detach closes and joins every channel the file
   tools still hold before the proxy session is closed and released. The file tools reach the telescope through that

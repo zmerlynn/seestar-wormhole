@@ -17,6 +17,17 @@ The default state directory is:
 To use another existing installation root, run
 `seestar-wormhole ui --state-dir PATH`. This doesn't move or copy its identity.
 
+The state directory is also the **Default** profile. Each other
+[profile](../ui.md#profiles-two-telescopes-at-once) is a full state
+directory of its own, `profiles/<name>/` inside it, named as typed in
+**New profile**, with the files below. A name is matched
+without regard to case, can't be `default`, start with a dot, contain `/`,
+`\` or a control character, or be longer than 64 bytes. Run
+`seestar-wormhole ui --profile NAME` to open one. A window opened with
+`--state-dir` is of no profile: it has no **Profiles…**, and never copies
+only. To remove a profile, quit its window and delete its folder,
+`<state>/profiles/<name>`.
+
 | File | Purpose |
 |---|---|
 | `config.json` | Settings except the password; see [the format](#configjson-version-1). |
@@ -24,14 +35,16 @@ To use another existing installation root, run
 | `InterProcessKV/device_uuid` | Your [installation identity](connection-cli.md#installation-identity), shared with `proxy --state-dir PATH`. |
 | `gui.log`, `gui.log.1` | UI events as JSON lines, up to 64 KiB each, with one rotation. |
 | `ui.lock` | Keeps one UI running per state directory. |
-| `ui-runtime.json` | Private control port and token; removed on normal exit. |
+| `ui-runtime.json` | Private control port and token; removed on normal exit. The windows of other profiles, and the file commands' `--profile`, read it to ask the open window which ports it serves, or to bring it forward. |
 | `webview-<random>/` | Windows only: a fresh private engine profile for each launch; see [engine data](#engine-data). |
+| `profiles/<name>/` | A named profile's own state directory, with the files of this table. |
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
 
 By default, the copy history and its locks are in the file commands' default
 [history location](selection-and-history.md#location), `copy-history` inside
 the default state directory above. Changing the app's `--state-dir` does not
-change that history location.
+change that history location, and every profile uses it too: the history is
+kept per copy folder.
 
 Earlier releases kept them in `seestar-copy` beside `seestar-wormhole`; the
 first Copy, Free up space or **Clear history** moves that folder to
@@ -52,7 +65,7 @@ for how the app and `seestar-wormhole-cli` share them.
 | `remember_password` | `false` |
 | `route` | Empty, meaning **Remotely through Telescope Network**. `"lan"` means the copier reaches the telescope on this network at `lan_address`; any other value means Telescope Network. |
 | `lan_address` | Empty. The telescope's address on this network as `host:port`, saved by **On this network** > **Save**. |
-| `lan_serial` | Empty. The serial number a scan of this network saw at `lan_address` when it was saved, or that a scan or Test heard there when you chose **Use the address's folder** for it. Copy, Browse and Free up space, and `--profile default` on the command line, scan for it when `lan_scan` says and use the address that answers with it, `lan_address` first; the app saves a new address here, unless a Save came since. An address where another serial answers is never used; when no reply carries it, `lan_address` is tried. Absent or empty, the saved address is used as it is, without a scan. Logs, Activity and the diagnostic summary name it. |
+| `lan_serial` | Empty. The serial number a scan of this network saw at `lan_address` when it was saved, or that a scan or Test heard there when you chose **Use the address's folder** for it. Copy, Browse and Free up space, and `--profile` on the command line, scan for it when `lan_scan` says and use the address that answers with it, `lan_address` first; the app saves a new address here, unless a Save came since. An address where another serial answers is never used; when no reply carries it, `lan_address` is tried. Absent or empty, the saved address is used as it is, without a scan. Logs, Activity and the diagnostic summary name it. |
 | `lan_scan` | Empty, meaning `"start"`. When a connect scans this network for `lan_serial`, chosen under **On this network** > **Scan for the saved telescope**: `"start"` once per run (starting copying, opening Browse, each Copy preview and each Free up space check, and each command-line command), and again only when a connect fails; `"connect"` before every connect; `"off"` never, and the app then sends no scan request it wasn't asked for. Any other value is treated as `"start"` and kept until a new choice is saved. `--scan` overrides it for one command. It can't be changed while connected through Telescope Network. |
 | `route_established` | `false`. `true` once a connection through Telescope Network is ready or an address on this network passed Test and was saved; it opens **Copy**, **Browse** and **Free up space** at launch. A password save never sets it. |
 
@@ -104,7 +117,7 @@ alone never writes the file.
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. With no `copy.json`, the form starts with `includes` set to `["*.fit", "*.fits"]`, **FITS files only**; Save writes the chosen patterns. **What to copy** is read from `includes`; nothing else is saved for it. |
 | `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
 | `start_copying` | `false` |
-| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range loads as the nearest of them, and a `settings_fallback` warning names the setting and the fallback, never the saved value, in `gui.log` or the `--profile default` command's log. |
+| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range loads as the nearest of them, and a `settings_fallback` warning names the setting and the fallback, never the saved value, in `gui.log` or the `--profile` command's log. |
 | `older_than_days` | `7` |
 | `trust_state` | `false`; **Only the copy history** under **Before deleting, check**. |
 | `ignore_state` | `false`; **Nothing** under **Before deleting, check**. A save writes at most one of it and `trust_state` true; on load, `ignore_state` wins. |
@@ -121,7 +134,7 @@ An older app ignores `ignore_state` and falls back to checking copies.
 
 The telescope's address is not in it; it comes from the route in `config.json`.
 `telescopes` names a telescope only by its key, which also chooses the
-folder `--profile default` fills; see
+folder `--profile` fills; see
 [use the app's saved settings](files-cli.md#use-the-apps-saved-settings).
 
 `telescopes` needs no new version: an older app reads `folder` and keeps
