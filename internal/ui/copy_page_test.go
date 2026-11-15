@@ -104,6 +104,12 @@ func TestTelescopeLinePage(t *testing.T) {
 	runPageRegression(t, "copy-page-test.js", "checkTelescopeLine("+copyPageStatuses(t)+")")
 }
 
+// On this network, the Connection tab names the address Copy last reached
+// the saved telescope at when it isn't the saved one.
+func TestLANReachedPage(t *testing.T) {
+	runPageRegression(t, "copy-page-test.js", "checkLANReached("+copyPageStatuses(t)+")")
+}
+
 // Back at a telescope after another route, the header shows no Copy
 // status read before, kept or late, until one is read again.
 func TestTelescopeReturnPage(t *testing.T) {

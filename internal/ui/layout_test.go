@@ -81,7 +81,7 @@ func TestTabsAndPanelsOrder(t *testing.T) {
 	last := -1
 	for _, id := range []string{"app-header", "connection-dot", "connection-text", "telescope-folder", "copy-chip", "tabs", "tab-connection", "tab-copy", "tab-browse", "tab-free", "tab-activity", "tabs-note", "copy-refused", "copy-reach", "lost",
 		"panel-connection", "route-choice", "route-account", "route-lan", "account-route", "announcements", "primary-action", "settings", "running",
-		"lan-route", "lan-address", "lan-test", "lan-save", "lan-result", "lan-when", "panel-copy", "c-main", "s-box", "copy-form", "h-details", "panel-browse", "b-frame", "panel-free",
+		"lan-route", "lan-address", "lan-test", "lan-save", "lan-result", "lan-reached", "lan-when", "panel-copy", "c-main", "s-box", "copy-form", "h-details", "panel-browse", "b-frame", "panel-free",
 		"panel-activity", "details", "events", "error-code", "copy", "effective-settings", "copy-settings", "log-path", "config-file", "copy-file", "quit"} {
 		position := strings.Index(string(b), `id="`+id+`"`)
 		if position < 0 || position <= last {

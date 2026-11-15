@@ -816,6 +816,27 @@ test('the header names a telescope saved with its serial on this network, withou
   await expect(page.locator('#connection-text')).toHaveText('Seestar SYNTHETIC-HEARD on this network');
   await expect(page.locator('#telescope-folder')).toHaveText('no folder yet');
   await expect(page.locator('#app-header')).not.toContainText('127.0.0.1');
+  // Copy reached it at the saved address, which the Connection tab doesn't repeat.
+  await expect.poll(() => page.evaluate(() => copyStatus?.telescope?.address)).toBe(share);
+  await expect(page.locator('#lan-reached')).toBeHidden();
+});
+
+// The Connection tab says where Copy last reached the saved telescope when
+// that isn't the saved address, and stops once Copy reaches the saved one.
+test('the Connection tab names the address Copy last reached when it differs from the saved one', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), lan_serial: 'SYNTHETIC-HEARD', lan_scan: 'off' } });
+  await page.route('**/copy/api/status', async (route) => {
+    const response = await route.fetch();
+    const c = await response.json();
+    await route.fulfill({ response, json: { ...c, telescope: { ...c.telescope, address: '192.0.2.21:4445', address_saved: false } } });
+  });
+  await openApp(page, app.url);
+  const reached = page.locator('#lan-reached');
+  await expect(reached).toHaveText('Copy last reached Seestar SYNTHETIC-HEARD at 192.0.2.21:4445.');
+  await expect(reached).toBeVisible();
+  await expect(page.locator('#app-header')).not.toContainText('192.0.2.21');
+  await page.unroute('**/copy/api/status');
+  await expect(reached).toBeHidden();
 });
 
 // With Copy off, the header's line still names the telescope saved with its
@@ -897,6 +918,7 @@ for (const [order, title] of Object.entries(returns)) {
     await openApp(page, app.url);
     const line = page.locator('#connection-text');
     const folder = page.locator('#telescope-folder');
+    const reached = page.locator('#lan-reached');
     const name = 'Seestar SYNTHETIC-FIRST on this network';
     await expect(line).toHaveText(name);
     await expect(folder).toHaveText('~/Seestar');
@@ -917,9 +939,11 @@ for (const [order, title] of Object.entries(returns)) {
       await page.evaluate(async (lan_address) => { await api('route', { settings: { route: 'lan', lan_address } }); await refresh(); }, address);
       await expect(line).toHaveText(name);
       await expect(page.locator('#telescope-to')).toBeHidden();
+      await expect(reached).toBeHidden();
     };
     if (order === 'kept') {
       await page.route('**/copy/api/status', old);
+      await expect(reached).toHaveText('Copy last reached Seestar SYNTHETIC-FIRST at 192.0.2.99:4445.');
       await expect(line).toHaveText(name);
       await expect(folder).toHaveAttribute('title', '/synthetic/Old');
       // Copy's status is kept while its poll fails.
@@ -950,11 +974,13 @@ for (const [order, title] of Object.entries(returns)) {
         await expect(line).toHaveText(name);
         await expect(folder).toHaveText('~/Seestar');
         await expect(folder).toHaveAttribute('title', app.folder);
+        await expect(reached).toBeHidden();
         return;
       }
     }
     await expect(line).toHaveText(name);
     await expect(page.locator('#telescope-to')).toBeHidden();
+    await expect(reached).toBeHidden();
     await expect(folder).not.toHaveAttribute('title', /./);
     await page.unroute('**/copy/api/status');
     await expect(line).toHaveText(name);

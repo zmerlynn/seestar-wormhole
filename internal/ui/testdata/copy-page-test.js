@@ -663,6 +663,45 @@ async function checkTelescopeLine(st) {
   }
 }
 
+// On this network, the Connection tab says where Copy last reached the
+// saved telescope when that isn't its saved address, and only for the
+// saved telescope's own Copy status.
+async function checkLANReached(st) {
+  const name = 'Seestar S50 Pro SYNTH0004', lanKey = 'serial:SYNTH0004 192.0.2.20:445';
+  const lan = {...st.unlocked, settings: {...st.unlocked.settings, lan_address: '192.0.2.20:445'}, telescope_name: name, telescope_key: lanKey};
+  const at = (address, address_saved, key = lanKey) => ({...st.after, telescope: {...st.after.telescope, name, key, address, address_saved}});
+  const reached = () => $('lan-reached').hidden ? '' : $('lan-reached').textContent;
+  copyFixture(st, lan);
+  copyAssert($('lan-reached').parentElement === $('lan-route'), 'the line is not on the On this network panel');
+  copyRender(at('192.0.2.20:445', true));
+  copyAssert(reached() === '', 'shown for the saved address: ' + reached());
+  // Copy's own saved address, not one it reached, says nothing either.
+  copyRender(at('192.0.2.21:4445', true));
+  copyAssert(reached() === '', "shown for Copy's saved address: " + reached());
+  copyRender(at('192.0.2.21:4445', false));
+  copyAssert(reached() === 'Copy last reached ' + name + ' at 192.0.2.21:4445.', 'reached: ' + reached());
+  // Reached at the saved address itself, in another spelling, is the saved one.
+  copyRender(at('192.0.2.20:0445', false));
+  copyAssert(reached() === '', 'shown for the saved address reached: ' + reached());
+  // Another telescope's status, or one read before the route changed,
+  // says nothing.
+  copyRender(at('192.0.2.21:4445', false, 'serial:SYNTH0005 192.0.2.20:445'));
+  copyAssert(reached() === '', "shown for another telescope's status: " + reached());
+  copyRender(at('192.0.2.21:4445', false));
+  render({...lan, settings: {...lan.settings, lan_address: '192.0.2.31:445'}, telescope_key: 'serial:SYNTH0004 192.0.2.31:445'});
+  copyAssert(reached() === '', 'shown after the route changed: ' + reached());
+  render(lan);
+  copyAssert(reached() === '', 'shown from a status read before the route changed: ' + reached());
+  copyRender(at('192.0.2.21:4445', false));
+  copyAssert(reached() === 'Copy last reached ' + name + ' at 192.0.2.21:4445.', 'reached again: ' + reached());
+  // Copy off says nothing.
+  render({...lan, copy_refused: true});
+  copyAssert(reached() === '', 'shown with Copy off: ' + reached());
+  // Through the account, there is no address.
+  render({...lan, settings: {...lan.settings, route: 'account'}});
+  copyAssert(reached() === '', 'shown through the account: ' + reached());
+}
+
 // Back at a telescope after another route, the header shows nothing of a
 // Copy status read before, kept or answering late, until Copy's status is
 // read again, and a late one answering after that changes nothing in it;
@@ -674,13 +713,14 @@ async function checkTelescopeReturn(st) {
   const at = (address, address_saved, folder, full) => ({...st.after, telescope: {...st.after.telescope, name, key, address, address_saved, folder}, settings: {...st.after.settings, folder: full}});
   const old = at('192.0.2.99:4445', false, '~/Old', '/synthetic/Old'), fresh = at('192.0.2.20:445', true, '~/New', '/synthetic/New');
   const line = () => $('connection-text').textContent;
-  const shows = (what, title) => {
+  const shows = (what, title, reached = '') => {
     copyAssert(line() === name + ' on this network', what + ': ' + line());
+    copyAssert($('lan-reached').hidden === !reached && (!reached || $('lan-reached').textContent === 'Copy last reached ' + name + ' at ' + reached + '.'), what + ' reached: ' + $('lan-reached').textContent);
     copyAssert($('telescope-to').hidden === !title && $('telescope-folder').title === title, what + ' folder: ' + $('telescope-to').hidden + ' ' + $('telescope-folder').title);
   };
   copyFixture(st, lan);
   copyRender(old);
-  shows('first visit', '/synthetic/Old');
+  shows('first visit', '/synthetic/Old', '192.0.2.99:4445');
   $('f-ex').value = 'Draft';
   // A kept status: away and back to the same telescope and address.
   render(away);

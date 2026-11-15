@@ -654,6 +654,7 @@ function connectionLine() {
   if ($('telescope-folder').getAttribute('aria-label') !== label) $('telescope-folder').setAttribute('aria-label', label);
   const title = setUp ? telescope.title : '';
   if ($('telescope-folder').title !== title) $('telescope-folder').title = title;
+  lanReached();
 }
 // copyTelescopeNow is copy's status of the route's telescope, or null
 // while Copy is off, or its status describes another telescope than the
@@ -667,6 +668,15 @@ function copyTelescopeNow() {
 // telescopeNameNow is the route's telescope's name, from the app's status.
 function telescopeNameNow() {
   return state?.telescope_name || '';
+}
+// On this network, under the saved address: the address Copy last reached
+// the saved telescope at, after following it to a new one, when that
+// isn't the saved address.
+function lanReached() {
+  const telescope = state?.settings?.route === 'lan' ? copyTelescopeNow() : null;
+  const shown = !!telescope?.address && !telescope.address_saved && !sameEndpoint(telescope.address, state.settings.lan_address);
+  $('lan-reached').hidden = !shown;
+  text('lan-reached', shown ? 'Copy last reached ' + (telescopeNameNow() || 'the telescope') + ' at ' + telescope.address + '.' : '');
 }
 // The folder, or no folder yet, opens Copy's settings, as Change… does.
 // While copying, the settings can't change: it shows why, as Change…
