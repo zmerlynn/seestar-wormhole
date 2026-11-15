@@ -8,23 +8,24 @@
 // goroutine it doesn't own recovers its own with [Run] or [Recover], logs
 // where it was recovered, and carries on as if the work had failed.
 //
-// The record names only the recovery site: like the proxy's own recovery
-// points, it carries neither the panic value nor the stack, which can hold
-// device paths, addresses or credentials the log must not.
+// The record names the recovery site, the panic value and the stack. The
+// copier holds no account credentials; the proxy's and the cloud client's
+// own recovery points, which can, still log the site alone.
 package guard
 
 import (
 	"fmt"
 	"log/slog"
+	"runtime/debug"
 )
 
 // Run calls f and returns its error. If f panics, Run logs where the panic
-// was recovered to log (a nil log means slog.Default()) and returns an error
-// naming where, in place of f's. Neither holds the panic value.
+// was recovered, the panic value and the stack to log (a nil log means
+// slog.Default()) and returns an error naming where, in place of f's.
 func Run(log *slog.Logger, where string, f func() error) (err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = report(log, where, r)
+			err = report(log, where, r, debug.Stack())
 		}
 	}()
 	return f()
@@ -35,13 +36,14 @@ func Run(log *slog.Logger, where string, f func() error) (err error) {
 // does that work in its own deferred calls, deferred before Recover.
 func Recover(log *slog.Logger, where string) {
 	if r := recover(); r != nil {
-		report(log, where, r)
+		report(log, where, r, debug.Stack())
 	}
 }
 
-// Panic is a panic [Catch] recovered.
+// Panic is a panic [Catch] recovered, with the stack where it was raised.
 type Panic struct {
 	Value any
+	Stack []byte
 }
 
 // Catch calls f and returns the panic it recovered from f, or nil. It logs
@@ -50,7 +52,7 @@ type Panic struct {
 func Catch(f func()) (p *Panic) {
 	defer func() {
 		if r := recover(); r != nil {
-			p = &Panic{Value: r}
+			p = &Panic{Value: r, Stack: debug.Stack()}
 		}
 	}()
 	f()
@@ -63,15 +65,15 @@ func (p *Panic) Report(log *slog.Logger, where string) error {
 	if p == nil {
 		return nil
 	}
-	return report(log, where, p.Value)
+	return report(log, where, p.Value, p.Stack)
 }
 
-// report logs the recovery site alone. The returned error names only where
-// too, since callers log it and show it.
-func report(log *slog.Logger, where string, _ any) error {
+// report logs the recovery site, the panic value and the stack. The returned
+// error names only where, since callers show it as a failure's title.
+func report(log *slog.Logger, where string, value any, stack []byte) error {
 	if log == nil {
 		log = slog.Default()
 	}
-	log.Error("internal error recovered", "where", where)
+	log.Error("internal error recovered", "where", where, "panic", fmt.Sprint(value), "stack", string(stack))
 	return fmt.Errorf("internal error while %s", where)
 }

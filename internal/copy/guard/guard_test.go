@@ -68,12 +68,12 @@ func TestCatch(t *testing.T) {
 }
 
 // checkRecord checks that b holds one record of a panic recovered where,
-// naming the site and neither the panic value nor its stack.
+// naming the site, the panic value and a stack through the panicking test.
 func checkRecord(t *testing.T, b *bytes.Buffer, where string) {
 	t.Helper()
-	want := `level=ERROR msg="internal error recovered" where=` + where + "\n"
-	if s := b.String(); !strings.HasSuffix(s, want) || strings.Count(s, "\n") != 1 ||
-		strings.Contains(s, "boom") || strings.Contains(s, "guard_test.go") {
-		t.Errorf("log %q, want one record ending %q", s, want)
+	want := `level=ERROR msg="internal error recovered" where=` + where + " panic=boom stack="
+	if s := b.String(); !strings.HasPrefix(s, "time=") || !strings.Contains(s, want) || strings.Count(s, "\n") != 1 ||
+		!strings.Contains(s, "guard_test.go") {
+		t.Errorf("log %q, want one record with %q and a stack", s, want)
 	}
 }

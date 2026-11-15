@@ -466,8 +466,8 @@ func TestPanickingDial(t *testing.T) {
 		if _, err := p.Get(context.Background()); err == nil || err.Error() != "internal error while connecting to the device" {
 			t.Fatalf("Get = %v, want the recovered panic", err)
 		}
-		if s := logged.String(); !strings.Contains(s, "internal error recovered") || strings.Contains(s, "boom") {
-			t.Errorf("the panic was not logged by its site alone: %s", s)
+		if s := logged.String(); !strings.Contains(s, "internal error recovered") || !strings.Contains(s, "boom") {
+			t.Errorf("the panic was not logged with its value: %s", s)
 		}
 		panics = false
 		l, err := p.Get(context.Background())

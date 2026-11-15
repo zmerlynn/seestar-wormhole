@@ -40,7 +40,7 @@ func (s *sink) logged() []string {
 }
 
 // checkOneRecovery checks that s holds one record, of a panic recovered
-// where, without the panic value or its stack.
+// where, with the panic value and its stack.
 func checkOneRecovery(t *testing.T, s *sink, where string) {
 	t.Helper()
 	got := s.logged()
@@ -49,8 +49,8 @@ func checkOneRecovery(t *testing.T, s *sink, where string) {
 	}
 	r := got[0]
 	if !strings.Contains(r, "internal error recovered") || !strings.Contains(r, `where="`+where+`"`) ||
-		strings.Contains(r, "boom") || strings.Contains(r, "smb_callback_test.go") {
-		t.Errorf("record %q, want where %q and no panic value or stack", r, where)
+		!strings.Contains(r, "boom") || !strings.Contains(r, "smb_callback_test.go") {
+		t.Errorf("record %q, want where %q, the panic value and a stack", r, where)
 	}
 }
 
