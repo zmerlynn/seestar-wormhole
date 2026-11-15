@@ -918,7 +918,7 @@ for (const [order, title] of Object.entries(returns)) {
     await openApp(page, app.url);
     const line = page.locator('#connection-text');
     const folder = page.locator('#telescope-folder');
-    const reached = page.locator('#lan-reached');
+    const lastReached = page.locator('#lan-reached');
     const name = 'Seestar SYNTHETIC-FIRST on this network';
     await expect(line).toHaveText(name);
     await expect(folder).toHaveText('~/Seestar');
@@ -939,11 +939,11 @@ for (const [order, title] of Object.entries(returns)) {
       await page.evaluate(async (lan_address) => { await api('route', { settings: { route: 'lan', lan_address } }); await refresh(); }, address);
       await expect(line).toHaveText(name);
       await expect(page.locator('#telescope-to')).toBeHidden();
-      await expect(reached).toBeHidden();
+      await expect(lastReached).toBeHidden();
     };
     if (order === 'kept') {
       await page.route('**/copy/api/status', old);
-      await expect(reached).toHaveText('Copy last reached Seestar SYNTHETIC-FIRST at 192.0.2.99:4445.');
+      await expect(lastReached).toHaveText('Copy last reached Seestar SYNTHETIC-FIRST at 192.0.2.99:4445.');
       await expect(line).toHaveText(name);
       await expect(folder).toHaveAttribute('title', '/synthetic/Old');
       // Copy's status is kept while its poll fails.
@@ -974,13 +974,13 @@ for (const [order, title] of Object.entries(returns)) {
         await expect(line).toHaveText(name);
         await expect(folder).toHaveText('~/Seestar');
         await expect(folder).toHaveAttribute('title', app.folder);
-        await expect(reached).toBeHidden();
+        await expect(lastReached).toBeHidden();
         return;
       }
     }
     await expect(line).toHaveText(name);
     await expect(page.locator('#telescope-to')).toBeHidden();
-    await expect(reached).toBeHidden();
+    await expect(lastReached).toBeHidden();
     await expect(folder).not.toHaveAttribute('title', /./);
     await page.unroute('**/copy/api/status');
     await expect(line).toHaveText(name);
