@@ -43,8 +43,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(connection).toHaveAttribute('aria-selected', 'true');
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeDisabled();
   await expect(page.locator('#tabs-note')).toBeVisible();
-  await expect(page.locator('#connection-text')).toHaveText('Not connected');
-  await expect(page.locator('#telescope-text')).toHaveText('Telescope Network: no telescope chosen');
+  await expect(page.locator('#connection-text')).toHaveText('Not connected. No telescope chosen yet.');
   await expect(page.locator('#telescope-to')).toBeHidden();
   await expect(page.getByLabel('Remotely through Telescope Network')).toBeChecked();
   // The arrow keys pass over the closed tabs.
@@ -62,7 +61,7 @@ test('the first run opens on Connection; saving an address opens Copy, whose fir
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
   await expect(lanResult(page)).toHaveAttribute('data-tone', 'ok');
   // Save ran Test; the header shows it.
-  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}, reachable`);
+  await expect(page.locator('#connection-text')).toHaveText(`${shareName} on this network, reachable`);
   await expect(page.locator('#connection-dot')).toHaveAttribute('data-tone', 'on');
   await expect(page.locator('#tabs-note')).toBeHidden();
   expect(readJSON(app.config)).toMatchObject({ route: 'lan', lan_address: share, route_established: true });
@@ -202,7 +201,7 @@ test('a Test that passed is not run again by Save, and the header shows it', asy
   await field(page, 'Telescope address').fill(share);
   await page.getByRole('button', { name: 'Test' }).click();
   await expect(lanResult(page)).toHaveText(connectedUnsaved);
-  await expect(page.locator('#connection-text')).toHaveText('Not connected');
+  await expect(page.locator('#connection-text')).toHaveText('Not connected. No telescope chosen yet.');
   // Test saves nothing: the tabs stay locked until Save.
   await expect(tab(page, 'Copy')).toBeDisabled();
   // While Save checks the address, the result line says so.
@@ -220,7 +219,7 @@ test('a Test that passed is not run again by Save, and the header shows it', asy
     release();
   }
   await expect(lanResult(page)).toHaveText(`Saved. ${share} is reachable.`);
-  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}, reachable`);
+  await expect(page.locator('#connection-text')).toHaveText(`${shareName} on this network, reachable`);
   for (const name of ['Copy', 'Browse', 'Free up space']) await expect(tab(page, name)).toBeEnabled();
   expect(n.tests).toBe(1);
 });
@@ -243,7 +242,7 @@ test('Test of the saved address in another spelling does not say to Save', async
     await field(page, 'Telescope address').fill(answered);
     await page.getByRole('button', { name: 'Test' }).click();
     await expect(lanResult(page)).toHaveText(message);
-    await expect(page.locator('#connection-text')).toHaveText(/^On this network: Seestar .+, reachable$/);
+    await expect(page.locator('#connection-text')).toHaveText(/^Seestar .+ on this network, reachable$/);
     await page.unroute('**/copy/api/test');
   }
 });
@@ -782,16 +781,30 @@ test('a second telescope is asked for its own folder beside the first, and Save 
   await expect(frame(page).locator('#list.statuses')).toBeVisible();
 });
 
-// The line under the header names the route's telescope and its folder,
-// and the folder, or no folder yet, opens Copy settings.
+// The header's line names the route's telescope and its folder, and the
+// folder, or no folder yet, opens Copy settings.
 test('the header names the telescope on this network and its folder, which opens Copy settings', async ({ page, startApp }) => {
   const app = await startApp({ 'config.json': lan() });
   await openApp(page, app.url);
   const folder = page.locator('#telescope-folder');
-  await expect(page.locator('#telescope-text')).toHaveText(`On this network: ${shareName}`);
-  await expect(page.locator('#connection-text')).toHaveText(`On this network: ${shareName}`);
+  await expect(page.locator('#connection-text')).toHaveText(`${shareName} on this network`);
   await expect(folder).toHaveText('no folder yet');
   await expect(folder).not.toHaveAttribute('title', /./);
+  await expect(page.getByRole('button', { name: 'No folder yet. Open Copy settings', exact: true })).toBeVisible();
+  // One line: the folder follows the sentence, and the arrow isn't read out.
+  await expect(page.locator('#connection-line')).toContainText(`${shareName} on this network→ no folder yet`);
+  await expect(page.locator('#telescope-to [aria-hidden=true]')).toHaveText('→ ');
+  // In a narrow window the dot stays on the sentence's first line, and the
+  // arrow on the folder's.
+  await page.setViewportSize({ width: 320, height: 640 });
+  const onFirstLine = async (locator, of) => {
+    const box = await locator.boundingBox(), line = await of.boundingBox(), middle = box.y + box.height / 2;
+    expect(middle).toBeGreaterThan(line.y);
+    expect(middle).toBeLessThan(line.y + 24);
+  };
+  await onFirstLine(page.locator('#connection-dot'), page.locator('#connection-text'));
+  await onFirstLine(page.locator('#telescope-to [aria-hidden=true]'), folder);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await folder.click();
   await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
   await expect(field(page, 'Folder for your images')).toBeFocused();
@@ -800,6 +813,7 @@ test('the header names the telescope on this network and its folder, which opens
   // The home folder is ~, and the whole folder is the title.
   await expect(folder).toHaveText('~/Seestar');
   await expect(folder).toHaveAttribute('title', app.folder);
+  await expect(folder).toHaveAccessibleName('Copy folder: ~/Seestar. Open Copy settings');
   await tab(page, 'Activity').click();
   await folder.click();
   await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
@@ -807,21 +821,41 @@ test('the header names the telescope on this network and its folder, which opens
   await expect(field(page, 'Folder for your images')).toBeFocused();
 });
 
-test('the header names a telescope saved with its serial on this network, at its address', async ({ page, startApp }) => {
+test('the header names a telescope saved with its serial on this network, without its address', async ({ page, startApp }) => {
   const app = await startApp({ 'config.json': { ...lan(), lan_serial: 'SYNTHETIC-HEARD', lan_scan: 'off' } });
   await openApp(page, app.url);
-  await expect(page.locator('#telescope-text')).toHaveText(/^On this network: Seestar SYNTHETIC-HEARD at 127\.0\.0\.1:14450( \(saved\))?$/);
-  await expect(page.locator('#connection-text')).toHaveText('On this network: Seestar SYNTHETIC-HEARD');
+  await expect(page.locator('#connection-text')).toHaveText('Seestar SYNTHETIC-HEARD on this network');
   await expect(page.locator('#telescope-folder')).toHaveText('no folder yet');
+  await expect(page.locator('#app-header')).not.toContainText('127.0.0.1');
+  // Copy reached it at the saved address, which the Connection tab doesn't repeat.
+  await expect.poll(() => page.evaluate(() => copyStatus?.telescope?.address)).toBe(share);
+  await expect(page.locator('#lan-reached')).toBeHidden();
 });
 
-// With Copy off, both header lines still name the telescope saved with its
+// The Connection tab says where Copy last reached the saved telescope when
+// that isn't the saved address, and stops once Copy reaches the saved one.
+test('the Connection tab names the address Copy last reached when it differs from the saved one', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': { ...lan(), lan_serial: 'SYNTHETIC-HEARD', lan_scan: 'off' } });
+  await page.route('**/copy/api/status', async (route) => {
+    const response = await route.fetch();
+    const c = await response.json();
+    await route.fulfill({ response, json: { ...c, telescope: { ...c.telescope, address: '192.0.2.21:4445', address_saved: false } } });
+  });
+  await openApp(page, app.url);
+  const reached = page.locator('#lan-reached');
+  await expect(reached).toHaveText('Copy last reached Seestar SYNTHETIC-HEARD at 192.0.2.21:4445.');
+  await expect(reached).toBeVisible();
+  await expect(page.locator('#app-header')).not.toContainText('192.0.2.21');
+  await page.unroute('**/copy/api/status');
+  await expect(reached).toBeHidden();
+});
+
+// With Copy off, the header's line still names the telescope saved with its
 // serial, and no folder shows.
 test('the header names a telescope saved with its serial while Copy is off', async ({ page, startApp }) => {
   const app = await startApp({ 'config.json': { ...lan(), lan_serial: 'SYNTHETIC-SAVED', lan_scan: 'off' }, 'copy.json': { version: 999, folder: '/nowhere' } });
   await openApp(page, app.url);
-  await expect(page.locator('#telescope-text')).toHaveText('On this network: Seestar SYNTHETIC-SAVED');
-  await expect(page.locator('#connection-text')).toHaveText('On this network: Seestar SYNTHETIC-SAVED');
+  await expect(page.locator('#connection-text')).toHaveText('Seestar SYNTHETIC-SAVED on this network');
   await expect(page.locator('#telescope-to')).toBeHidden();
 });
 
@@ -832,10 +866,11 @@ test('the header names the account\'s saved telescope while not connected, and n
   });
   await openApp(page, app.url);
   const folder = page.locator('#telescope-folder');
-  await expect(page.locator('#telescope-text')).toHaveText('Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected');
+  await expect(page.locator('#connection-text')).toHaveText('Not connected to Seestar S50 Pro SYNTHETIC-SAVED');
+  await expect(page.locator('#connection-dot')).toHaveAttribute('data-tone', 'off');
   await expect(folder).toHaveText('~/Seestar');
   await expect(folder).toHaveAttribute('title', app.folder);
-  await expect(page.locator('#telescope-line')).not.toContainText('@');
+  await expect(page.locator('#app-header')).not.toContainText('@');
   await folder.click();
   await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
   await expect(page.locator('#copy-form')).toBeVisible();
@@ -852,12 +887,12 @@ test('the header shows Copy\'s folder only for the telescope the app status name
   });
   await openApp(page, app.url);
   const folder = page.locator('#telescope-folder');
-  await expect(page.locator('#telescope-text')).toHaveText(/^On this network: Seestar SYNTHETIC-FIRST at 127\.0\.0\.1:14450( \(saved\))?$/);
+  await expect(page.locator('#connection-text')).toHaveText('Seestar SYNTHETIC-FIRST on this network');
   await expect(folder).toHaveText('~/Seestar');
   await page.route('**/copy/api/status', (route) => route.abort());
   await page.evaluate(() => api('route', { settings: { route: 'account' } }));
-  const saved = 'Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected';
-  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  const saved = 'Not connected to Seestar S50 Pro SYNTHETIC-SAVED';
+  await expect(page.locator('#connection-text')).toHaveText(saved);
   await expect(page.locator('#lost')).toBeVisible();
   await expect(page.locator('#telescope-to')).toBeHidden();
   let release;
@@ -867,11 +902,11 @@ test('the header shows Copy\'s folder only for the telescope the app status name
   await page.unroute('**/copy/api/status');
   await page.route('**/copy/api/status', async (route) => { asked(); await held; await route.continue(); });
   await late;
-  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  await expect(page.locator('#connection-text')).toHaveText(saved);
   await expect(page.locator('#telescope-to')).toBeHidden();
   release();
   await expect(page.locator('#lost')).toBeHidden();
-  await expect(page.locator('#telescope-text')).toHaveText(saved);
+  await expect(page.locator('#connection-text')).toHaveText(saved);
   await expect(folder).toHaveText('no folder yet');
   await expect(folder).not.toHaveAttribute('title', /./);
 });
@@ -892,11 +927,12 @@ for (const [order, title] of Object.entries(returns)) {
       'copy.json': (folder) => ({ version: 1, folder, start_copying: false, telescopes: { 'serial:SYNTHETIC-FIRST': { folder } } }),
     });
     await openApp(page, app.url);
-    const line = page.locator('#telescope-text');
+    const line = page.locator('#connection-text');
     const folder = page.locator('#telescope-folder');
-    const name = 'On this network: Seestar SYNTHETIC-FIRST';
-    const current = /^On this network: Seestar SYNTHETIC-FIRST at 127\.0\.0\.1:14450( \(saved\))?$/;
-    await expect(line).toHaveText(current);
+    const lastReached = page.locator('#lan-reached');
+    const name = 'Seestar SYNTHETIC-FIRST on this network';
+    await expect(line).toHaveText(name);
+    await expect(folder).toHaveText('~/Seestar');
     const address = await page.evaluate(() => state.settings.lan_address);
     // Copy's status as an earlier session left it: another address reached
     // and another folder.
@@ -907,17 +943,19 @@ for (const [order, title] of Object.entries(returns)) {
     };
     const away = async () => {
       await page.evaluate(async () => { await api('route', { settings: { route: 'account' } }); await refresh(); });
-      await expect(line).toHaveText('Telescope Network: Seestar S50 Pro SYNTHETIC-SAVED (saved), not connected');
+      await expect(line).toHaveText('Not connected to Seestar S50 Pro SYNTHETIC-SAVED');
       await expect(page.locator('#telescope-to')).toBeHidden();
     };
     const back = async () => {
       await page.evaluate(async (lan_address) => { await api('route', { settings: { route: 'lan', lan_address } }); await refresh(); }, address);
       await expect(line).toHaveText(name);
       await expect(page.locator('#telescope-to')).toBeHidden();
+      await expect(lastReached).toBeHidden();
     };
     if (order === 'kept') {
       await page.route('**/copy/api/status', old);
-      await expect(line).toHaveText(`${name} at 192.0.2.99:4445`);
+      await expect(lastReached).toHaveText('Copy last reached Seestar SYNTHETIC-FIRST at 192.0.2.99:4445.');
+      await expect(line).toHaveText(name);
       await expect(folder).toHaveAttribute('title', '/synthetic/Old');
       // Copy's status is kept while its poll fails.
       await page.unroute('**/copy/api/status');
@@ -935,7 +973,7 @@ for (const [order, title] of Object.entries(returns)) {
       if (order === 'afterFresh') {
         // The poll waits on the held read, so read Copy's status here.
         await page.evaluate(() => copyRefresh());
-        await expect(line).toHaveText(current);
+        await expect(line).toHaveText(name);
         await expect(folder).toHaveText('~/Seestar');
         await expect(folder).toHaveAttribute('title', app.folder);
       }
@@ -944,17 +982,19 @@ for (const [order, title] of Object.entries(returns)) {
       release();
       await expect.poll(() => page.evaluate(() => copyStatus.telescope.address)).toBe('192.0.2.99:4445');
       if (order === 'afterFresh') {
-        await expect(line).toHaveText(current);
+        await expect(line).toHaveText(name);
         await expect(folder).toHaveText('~/Seestar');
         await expect(folder).toHaveAttribute('title', app.folder);
+        await expect(lastReached).toBeHidden();
         return;
       }
     }
     await expect(line).toHaveText(name);
     await expect(page.locator('#telescope-to')).toBeHidden();
+    await expect(lastReached).toBeHidden();
     await expect(folder).not.toHaveAttribute('title', /./);
     await page.unroute('**/copy/api/status');
-    await expect(line).toHaveText(current);
+    await expect(line).toHaveText(name);
     await expect(folder).toHaveText('~/Seestar');
     await expect(folder).toHaveAttribute('title', app.folder);
   });

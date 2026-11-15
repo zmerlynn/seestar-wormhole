@@ -79,9 +79,9 @@ func TestTabsAndPanelsOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	last := -1
-	for _, id := range []string{"app-header", "connection-dot", "connection-text", "tabs", "tab-connection", "tab-copy", "tab-browse", "tab-free", "tab-activity", "tabs-note", "copy-refused", "copy-reach", "lost",
+	for _, id := range []string{"app-header", "connection-dot", "connection-text", "telescope-folder", "copy-chip", "tabs", "tab-connection", "tab-copy", "tab-browse", "tab-free", "tab-activity", "tabs-note", "copy-refused", "copy-reach", "lost",
 		"panel-connection", "route-choice", "route-account", "route-lan", "account-route", "announcements", "primary-action", "settings", "running",
-		"lan-route", "lan-address", "lan-test", "lan-save", "lan-result", "panel-copy", "c-main", "s-box", "copy-form", "h-details", "panel-browse", "b-frame", "panel-free",
+		"lan-route", "lan-address", "lan-test", "lan-save", "lan-result", "lan-reached", "lan-when", "panel-copy", "c-main", "s-box", "copy-form", "h-details", "panel-browse", "b-frame", "panel-free",
 		"panel-activity", "details", "events", "error-code", "copy", "effective-settings", "copy-settings", "log-path", "config-file", "copy-file", "quit"} {
 		position := strings.Index(string(b), `id="`+id+`"`)
 		if position < 0 || position <= last {
@@ -103,5 +103,26 @@ func TestRadiosKeepTheirNativeSize(t *testing.T) {
 	}
 	if !strings.Contains(string(css), "input:not([type=checkbox]):not([type=radio]),select,textarea {") {
 		t.Fatal("the route choice's radios must not take the text fields' block style")
+	}
+}
+
+// The header's line is not a live region, as it changes with every poll,
+// and its arrow is not read out before the folder.
+func TestHeaderLineSpeech(t *testing.T) {
+	b, err := assets.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := strings.Index(string(b), `<p id="connection-line">`)
+	end := strings.Index(string(b), `</header>`)
+	if start < 0 || end < start {
+		t.Fatal("the header's line is missing")
+	}
+	line := string(b[start:end])
+	if strings.Contains(line, "aria-live") || strings.Count(line, `role="status"`) != 1 || !strings.Contains(line, `<span id="chip-live" class="hide" role="status">`) {
+		t.Fatal("only the chips' announcement is a live region in the header")
+	}
+	if !strings.Contains(line, `<span id="telescope-to" hidden><span aria-hidden="true">→ </span><button id="telescope-folder"`) {
+		t.Fatal("the folder's arrow is read out")
 	}
 }

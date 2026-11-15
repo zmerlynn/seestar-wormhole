@@ -75,7 +75,7 @@ async function checkRouteChoice(statuses, scenario) {
     load(old);
     render(status);
     tabAssert(routeChoice === 'account' && shown('account') && !$('route-choice').disabled, 'an old file is not the account route');
-    tabAssert($('connection-text').textContent === 'Not connected' && $('connection-dot').getAttribute('data-tone') === 'off', 'header line for no connection');
+    tabAssert($('connection-text').textContent === 'Not connected. No telescope chosen yet.' && $('connection-dot').getAttribute('data-tone') === 'off', 'header line for no connection: ' + $('connection-text').textContent);
     tabAssert($('announcements').parentElement === $('account-route') && $('primary-action').parentElement === $('account-route'), 'account content moved');
     break;
   }
@@ -95,7 +95,7 @@ async function checkRouteChoice(statuses, scenario) {
     render(statuses.lan);
     tabAssert(routeChoice === 'lan' && shown('lan') && $('lan-address').value === statuses.lan.settings.lan_address, 'a saved LAN route reopens');
     // Before Copy's status comes, the line has the server's name for it.
-    tabAssert(statuses.lan.telescope_name && $('connection-text').textContent === 'On this network: ' + statuses.lan.telescope_name, 'header line for an untested LAN route: ' + $('connection-text').textContent);
+    tabAssert(statuses.lan.telescope_name && $('connection-text').textContent === statuses.lan.telescope_name + ' on this network', 'header line for an untested LAN route: ' + $('connection-text').textContent);
     break;
   }
   case 'active': {
@@ -105,7 +105,7 @@ async function checkRouteChoice(statuses, scenario) {
     tabAssert($('lan-when').disabled, 'when to scan is open while the account route runs');
     tabAssert($('connection-text').textContent === 'Connecting to your Seestar…' && $('connection-dot').getAttribute('data-tone') === 'busy', 'header line while connecting');
     render({...statuses.account, active: true, ready: true, status: 'Connected to your Seestar'});
-    tabAssert($('connection-text').textContent === 'Connected to your Seestar' && $('connection-dot').getAttribute('data-tone') === 'on', 'header line when connected');
+    tabAssert($('connection-text').textContent === 'Connected to your Seestar through Telescope Network' && $('connection-dot').getAttribute('data-tone') === 'on', 'header line when connected: ' + $('connection-text').textContent);
     // Once a run has been ready, a retry, a busy telescope or an idle
     // release is busy, not green.
     for (const status of ['Connection to your Seestar interrupted. Retrying automatically.', 'Your Seestar is occupied. Retrying automatically.', 'Releasing idle session with your Seestar…']) {
@@ -204,7 +204,7 @@ async function checkLANForm(statuses, replies, scenario) {
     tabAssert(prevented, 'Save submitted the form');
     tabAssert(JSON.stringify(calls.map(c => c[0])) === JSON.stringify(['/api/scan', '/copy/api/test', '/api/route', '/api/status', '/copy/api/status']), 'Save requests ' + JSON.stringify(calls));
     tabAssert(JSON.stringify(calls[2][1]) === JSON.stringify({settings: {route: 'lan', lan_address: replies['192.0.2.20'].body.address}}), 'Save body ' + JSON.stringify(calls[1][1]));
-    tabAssert(state.settings.route === 'lan' && $('connection-text').textContent === 'On this network: ' + statuses.lan.telescope_name + ', reachable' && $('connection-dot').getAttribute('data-tone') === 'on', 'header after Test and Save: ' + $('connection-text').textContent);
+    tabAssert(state.settings.route === 'lan' && $('connection-text').textContent === statuses.lan.telescope_name + ' on this network, reachable' && $('connection-dot').getAttribute('data-tone') === 'on', 'header after Test and Save: ' + $('connection-text').textContent);
     tabAssert($('lan-result').textContent === 'Saved. ' + lan + ' is reachable.' && $('lan-result').getAttribute('data-tone') === 'ok', 'Save result');
     tabAssert(lan === replies['192.0.2.20'].body.address, 'fixture: the saved address is the tested one');
     // Copy shows the saved telescope, and its token, by Saved.

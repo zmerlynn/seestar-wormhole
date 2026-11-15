@@ -184,7 +184,7 @@ the telescope, are in [logs](#logs).
 At the start of the run, one `INFO` record, `saved settings`, names the
 filled flags and the value each took, a list's values joined by commas,
 such as
-`profile=default filled=--dest,--endpoint,--interval dest=/Users/me/Seestar endpoint=192.168.4.85:4445 interval=5m0s`.
+`profile=default filled=--dest,--endpoint,--interval dest=/Users/me/Seestar endpoint=192.0.2.85:4445 interval=5m0s`.
 The saved settings hold no password, token or key. The record goes only to
 the command's stderr; the app keeps local folders out of `gui.log` and
 diagnostics.
@@ -893,8 +893,8 @@ Browse always shows the whole share. The selection flags only choose what
 shows as `left out`, and with no flags the built-in patterns do.
 
 `--listen` takes an IP address and a port, such as `127.0.0.1:0`,
-`[::1]:8080`, `192.168.1.5:0` or `0.0.0.0:0`, never a host name, not even
-`localhost`. An IPv4-mapped IPv6 address, such as `[::ffff:192.168.1.5]:0`,
+`[::1]:8080`, `192.0.2.5:0` or `0.0.0.0:0`, never a host name, not even
+`localhost`. An IPv4-mapped IPv6 address, such as `[::ffff:192.0.2.5]:0`,
 and an address with a zone, such as `[fe80::1%en0]:0`, are refused too. Use
 the plain IPv4 address for a mapped address. An IPv6 address with a zone is
 not supported; choose another address, such as `[::1]:0` or an available IPv4

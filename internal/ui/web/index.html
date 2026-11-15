@@ -4,10 +4,8 @@
 <body><main>
 <header id="app-header">
 <h1><img src="/icon.svg" width="40" height="40" alt="">seestar‑wormhole</h1>
-<p id="connection-line"><span id="connection-dot" data-tone="off" aria-hidden="true"></span><span id="connection-text">Loading…</span><button id="copy-chip" class="chip" type="button" hidden></button><button id="preview-chip" class="chip on" type="button" hidden></button><button id="free-chip" class="chip on" type="button" hidden></button><span id="chip-live" class="hide" role="status"></span></p>
-<p id="telescope-line" hidden><span id="telescope-text"></span><span id="telescope-to" hidden> → <span id="telescope-wait">folder known once connected</span><button id="telescope-folder" class="linkbtn" type="button"></button></span></p>
+<p id="connection-line"><span id="connection-dot" data-tone="off" aria-hidden="true"></span><span id="connection-text">Loading…</span><span id="telescope-to" hidden><span aria-hidden="true">→ </span><button id="telescope-folder" class="linkbtn" type="button"></button></span><button id="copy-chip" class="chip" type="button" hidden></button><button id="preview-chip" class="chip on" type="button" hidden></button><button id="free-chip" class="chip on" type="button" hidden></button><span id="chip-live" class="hide" role="status"></span></p>
 </header>
-<p>Your remote Seestar, as if it were on your network.</p>
 <div id="tabs" role="tablist" aria-label="seestar-wormhole">
 <button id="tab-connection" type="button" role="tab" aria-controls="panel-connection" aria-selected="true" tabindex="0">Connection</button>
 <button id="tab-copy" type="button" role="tab" aria-controls="panel-copy" aria-selected="false" aria-describedby="tabs-note" tabindex="-1" disabled>Copy</button>
@@ -91,6 +89,7 @@
 <p id="lan-result" role="status" aria-live="polite"></p>
 </fieldset>
 </form>
+<p id="lan-reached" hidden></p>
 <div id="lan-when-box">
 <label for="lan-when">Scan for the saved telescope</label><select id="lan-when" aria-describedby="lan-when-help" disabled><option value="start">Once each time copying, Browse or Free up space starts</option><option value="connect">Before every connection</option><option value="off">Never: use the saved address</option></select>
 <p id="lan-when-help" class="help">Copy, Browse and Free up space look for this telescope on the network, so they still find it after the router gives it a new address. <strong>Once each time…</strong> looks once when each starts, and again if a connection fails. <strong>Before every connection</strong> looks every time. <strong>Never</strong> uses the saved address; only <strong>Scan</strong> and <strong>Scan again</strong> look.</p>
