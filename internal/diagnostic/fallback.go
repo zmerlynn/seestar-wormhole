@@ -3,8 +3,8 @@ package diagnostic
 import "log/slog"
 
 // A Fallback is a saved setting that a load replaced because its value
-// was invalid: the file, the setting's name, what it fell back to and,
-// when it isn't private, the value it replaced.
+// was invalid: the file, the setting's name, what it fell back to and the
+// value it replaced.
 type Fallback struct{ File, Setting, Fallback, Value string }
 
 // LogFallbacks writes one warning for each fallback.

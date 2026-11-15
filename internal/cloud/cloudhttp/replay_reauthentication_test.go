@@ -70,7 +70,7 @@ func TestRejectedReplayLaterOperationsRequireReauthentication(t *testing.T) {
 						t.Errorf("%s inherited replay cause: class=%s status-retained=%t; want reauthentication without cause mapping", op, diagnostic.Class(err), ae != nil)
 					}
 					diagnostic.LogFinal(c.logger, "later_failed", op, err, nil)
-					for _, secret := range []string{"reader@example.invalid", "Review-Only-123", "token-secret", "identity-secret", "9876"} {
+					for _, secret := range []string{"Review-Only-123", "token-secret", "identity-secret", "9876"} {
 						if strings.Contains(fmt.Sprintf("%v %+v %#v", err, err, err)+logs.String(), secret) {
 							t.Error("secret reached logs or errors")
 						}

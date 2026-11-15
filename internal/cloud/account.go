@@ -20,10 +20,12 @@ var ErrReauthentication = errors.New("cloud: reauthentication required")
 
 // Credentials are ephemeral. Environment values are explicit login arguments:
 // unlike UI default arguments, they are not trimmed or stripped of spaces.
+// They print as a marker, hiding the password; Email gives the account alone.
 type Credentials struct{ email, password string }
 
 func (Credentials) Format(s fmt.State, v rune) { io.WriteString(s, "[account credentials]") }
 func (Credentials) LogValue() slog.Value       { return slog.StringValue("[account credentials]") }
+func (c Credentials) Email() string            { return c.email }
 
 // EmailCredentials validates the recovered email regex and 8..32 UTF-16-unit
 // password bound without changing explicitly supplied credential values.

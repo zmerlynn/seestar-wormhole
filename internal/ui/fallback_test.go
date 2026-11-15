@@ -27,10 +27,10 @@ func fallbackLog(t *testing.T, fallbacks []diagnostic.Fallback) string {
 func checkFallback(t *testing.T, fallbacks []diagnostic.Fallback, file, setting, fallback, private string) {
 	t.Helper()
 	want := diagnostic.Fallback{File: file, Setting: setting, Fallback: fallback}
-	if setting == "serial" && len(fallbacks) == 1 {
+	if (setting == "serial" || setting == "email") && len(fallbacks) == 1 {
 		want.Value = fallbacks[0].Value
 		if !strings.Contains(want.Value, private) {
-			t.Fatalf("serial value = %q; want %q", want.Value, private)
+			t.Fatalf("%s value = %q; want %q", setting, want.Value, private)
 		}
 	}
 	if len(fallbacks) != 1 || fallbacks[0] != want {
@@ -38,7 +38,7 @@ func checkFallback(t *testing.T, fallbacks []diagnostic.Fallback, file, setting,
 	}
 	if want.Value != "" {
 		if log := fallbackLog(t, fallbacks); !strings.Contains(log, private) {
-			t.Fatalf("log lacks the serial: %s", log)
+			t.Fatalf("log lacks the %s: %s", setting, log)
 		}
 		return
 	}
@@ -94,7 +94,7 @@ func TestSettingsFallbacks(t *testing.T) {
 	}{
 		{"discovery", `{"version":1,"bind":"127.0.0.9","discovery":true}`, "off", "127.0.0.9", func(s Settings) bool { return !s.Discovery && s.Bind == "127.0.0.9" }},
 		{"serial", `{"version":1,"serial":"invalid serial\n"}`, "none", "invalid serial", func(s Settings) bool { return s.Serial == "" }},
-		{"email", `{"version":1,"email":"private-not-an-email"}`, "none", "private-not-an-email", func(s Settings) bool { return s.Email == "" }},
+		{"email", `{"version":1,"email":"synthetic-not-an-email"}`, "none", "synthetic-not-an-email", func(s Settings) bool { return s.Email == "" }},
 	} {
 		t.Run(tc.setting+" "+tc.private, func(t *testing.T) {
 			st := testStorage(t)
@@ -117,7 +117,7 @@ func TestSettingsFallbacks(t *testing.T) {
 				if tc.setting == "serial" {
 					bad.Serial = "secret serial\n"
 				} else {
-					bad.Email = "private-not-an-email"
+					bad.Email = "synthetic-not-an-email"
 				}
 				if _, _, err := bad.validate(); err == nil || actionError(err).Field != tc.setting {
 					t.Fatalf("typed %s accepted: %v", tc.setting, err)
@@ -138,7 +138,7 @@ func TestSettingsStillRefused(t *testing.T) {
 		t.Fatalf("good settings = %v, %v", fallbacks, err)
 	}
 	for _, body := range []string{
-		`{"version":2,"email":"private-not-an-email"}`, `{"email":"private-not-an-email"}`, `{"version":1,"email":"private-not-an-email"`, `{"version":1,"idle":120}`,
+		`{"version":2,"email":"synthetic-not-an-email"}`, `{"email":"synthetic-not-an-email"}`, `{"version":1,"email":"synthetic-not-an-email"`, `{"version":1,"idle":120}`,
 		`{"version":1,"idle":"soon"}`, `{"version":1,"idle":"-17m"}`, `{"version":1,"bind":"  "}`, `{"version":1,"model":"secret\nmodel"}`,
 		`{"version":1,"ports":[{"local":80,"device":0}]}`,
 	} {
@@ -186,13 +186,13 @@ func TestCopySettingsFallbacks(t *testing.T) {
 	}
 }
 
-// The app logs each fallback in both files once in its log. Only the
-// serial's saved value is logged with it.
+// The app logs each fallback in both files once in its log, with the
+// saved serial and email it replaced.
 func TestAppLogsFallbacks(t *testing.T) {
 	useLAN(t, &lanNet{})
 	st := testStorage(t)
 	for name, body := range map[string]string{
-		"config.json": `{"version":1,"bind":"127.0.0.9","discovery":true,"serial":"INVALID serial","email":"PRIVATE-not-an-email"}`,
+		"config.json": `{"version":1,"bind":"127.0.0.9","discovery":true,"serial":"INVALID serial","email":"SYNTHETIC-not-an-email"}`,
 		copyName:      `{"version":1,"files_at_once":57}`,
 	} {
 		if err := st.writeBytes(name, []byte(body)); err != nil {
@@ -226,8 +226,8 @@ func TestAppLogsFallbacks(t *testing.T) {
 			t.Fatalf("level = %v", record["level"])
 		}
 		got[[2]string{file, setting}] = fallback
-		if value, _ := record["value"].(string); setting == "serial" && value != "INVALID serial" {
-			t.Errorf("serial value = %q", value)
+		if value, _ := record["value"].(string); setting == "serial" && value != "INVALID serial" || setting == "email" && value != "SYNTHETIC-not-an-email" {
+			t.Errorf("%s value = %q", setting, value)
 		}
 	}
 	if warnings != len(want) || len(got) != len(want) {

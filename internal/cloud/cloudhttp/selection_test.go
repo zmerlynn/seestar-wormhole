@@ -80,7 +80,7 @@ func selectionClient(t *testing.T, f *selectionCloud, logs *bytes.Buffer, level 
 }
 func assertSelectionSecrets(t *testing.T, s string) {
 	t.Helper()
-	for _, secret := range []string{"token-sentinel-secret", "fixture@example.invalid", "fixture-password", "profile-sentinel"} {
+	for _, secret := range []string{"token-sentinel-secret", "fixture-password", "profile-sentinel"} {
 		if strings.Contains(s, secret) {
 			t.Fatal("secret escaped selection diagnostics")
 		}

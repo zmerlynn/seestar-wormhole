@@ -116,7 +116,7 @@ func TestStopReadsCurrentTokenWithoutAccountIO(t *testing.T) {
 					}
 				}
 				_ = lease.Close()
-				for _, secret := range []string{"reader@example.invalid", "Review-Only-123", "first-secret", "current-secret", "allocation-secret", "uid-secret", "license-secret", "user-secret", "password-secret"} {
+				for _, secret := range []string{"Review-Only-123", "first-secret", "current-secret", "allocation-secret", "uid-secret", "license-secret", "user-secret", "password-secret"} {
 					if strings.Contains(logs.String(), secret) {
 						t.Error("secret reached diagnostics")
 					}

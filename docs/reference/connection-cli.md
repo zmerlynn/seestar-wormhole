@@ -284,7 +284,7 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning; a serial's names it in `value`, an email's doesn't; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning naming it in `value`; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
@@ -681,7 +681,7 @@ In trail entries:
 | `ui failed` | ERROR, JSON | UI command argument refusal; fixed `option`, `rule`, help hint, `phase=arguments`, `reason=invalid_option`. UI startup/storage failures use fixed stderr messages; browser actions report sanitized errors in the page. |
 | `internal error recovered` | ERROR | The copier recovered a panic and failed only that work, leaving the proxy running; `where` names the recovery site, `panic` the panic value and `stack` the stack trace |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
-| `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions; direct/relay and UDP/TCP path |
+| `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions, with the account email in `account` for `login` and `renewal`; direct/relay and UDP/TCP path |
 | `cloud_catalog_pagination_oddities`, `cloud_receive_oddity`, `cloud_response_rejected` | DEBUG | Bounded cloud parsing/catalog diagnostics |
 | `diagnostic_causes` | DEBUG | Bounded classified error graph correlated by diagnostic, phase, reason |
 

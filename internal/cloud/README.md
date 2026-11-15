@@ -32,6 +32,8 @@ serial/model/storage flags through its configuration.
 Login is lazy, before the first remote request, or explicit via `Client.Login`.
 It performs [login and profile fetch](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/auth/account-login/login.md#interactive-emailpassword-login); credentials and
 tokens stay in memory and are never written to the app's mainKV or any other file.
+Login and renewal phase records carry the account email in `account`; credentials
+print as `[account credentials]` and tokens as `[account token]`.
 Pure profile I/O failure leaves its installed token usable. Completed malformed,
 denied or fatal account outcomes
 retire credentials and token and block later authorization, including a completion

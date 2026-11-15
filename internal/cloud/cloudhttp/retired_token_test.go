@@ -133,7 +133,7 @@ func TestRetiredTokenReplacementUsesCurrentCleanupToken(t *testing.T) {
 					if logins != 3 || profiles != 3 || details != 2 || stops != 1 {
 						t.Fatalf("login/profile/detail/stop = %d/%d/%d/%d, want 3/3/2/1", logins, profiles, details, stops)
 					}
-					for _, secret := range []string{"review@example.invalid", "review-password", "retired-token", "replacement-token", "private-profile", "private-allocation", "private-uid", "private-license", "private-user", "private-password"} {
+					for _, secret := range []string{"review-password", "retired-token", "replacement-token", "private-profile", "private-allocation", "private-uid", "private-license", "private-user", "private-password"} {
 						if strings.Contains(logs.String()+fmt.Sprintf("%v %+v %#v", remoteErr, remoteErr, remoteErr), secret) {
 							t.Fatal("credential or identity reached logs/errors")
 						}
