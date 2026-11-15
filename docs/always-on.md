@@ -142,6 +142,8 @@ patterns, interval, copy once and files at once. From the connection in
 through Telescope Network, the SMB listener on the saved bind address
 (`127.0.0.1` for a wildcard bind). Both files come from the app's default
 settings folder, not from the proxy's `--state-dir`, and are only read.
+Once a named profile exists in the app, the profile must be served by its
+own app window or `--endpoint` must be given, so give `--endpoint` here then.
 Without saved Copy settings, `sync --profile default` exits 2. Without a
 saved connection, or with the app's SMB sharing off, give `--endpoint`. If the
 app's Copy is set to copy once, add `--interval 5m` so that the service keeps

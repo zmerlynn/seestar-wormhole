@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,6 +42,11 @@ type server struct {
 	quitOnce    sync.Once
 	activate    func()
 	native      bool
+	// profile is the profile this run is of, nil for a run of a
+	// --state-dir folder; title is its window's, nil without one.
+	profile     *runProfile
+	title       *windowTitle
+	askProfiles atomic.Bool
 	// copy serves copy's API under /copy/api/ and Browse under /browse/;
 	// nil serves neither.
 	copy *copyapp.Mount
@@ -144,6 +150,14 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusForbidden)
 		return
 	}
+	if r.URL.Path == "/api/profiles" {
+		if r.Method != "GET" {
+			fail(http.StatusMethodNotAllowed)
+			return
+		}
+		s.serveProfiles(w, r, profileInput{})
+		return
+	}
 	read := r.URL.Path == "/api/status" || r.URL.Path == "/api/instance"
 	if read {
 		if r.Method != "GET" {
@@ -207,8 +221,23 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// this telescope.
 			TelescopeKey string        `json:"telescope_key"`
 			Files        settingsFiles `json:"files"`
+			// ServingPorts are the local ports this app's run listens on
+			// now, from when they are bound, which another window of the
+			// same state root reads to tell its own port conflict from
+			// another program's.
+			ServingPorts []uint16 `json:"serving_ports"`
+			// ServingAddress is the bind address of those ports, "" when
+			// there are none, and ServingSerial the serial of the
+			// telescope they reach, "" until the run selects one: the
+			// file commands' --profile copies through another profile's
+			// window only when it is the telescope that profile saved.
+			ServingAddress string `json:"serving_address"`
+			ServingSerial  string `json:"serving_serial"`
+			// Profile is the run's profile, absent for a run of a
+			// --state-dir folder.
+			Profile *profileView `json:"profile,omitempty"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
-			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles()})
+			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports), view.serving, view.servingSerial, s.profileStatus(r)})
 		return
 	}
 	if r.Method != "POST" {
@@ -236,11 +265,24 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	in.Settings.Email = strings.TrimSpace(strings.ReplaceAll(in.Settings.Email, " ", ""))
 	switch r.URL.Path {
 	case "/api/activate":
+		var activation profileInput
 		if s.activate == nil {
 			fail(http.StatusNotFound)
 			return
 		}
-		s.activate()
+		if json.Unmarshal(b, &activation) != nil {
+			fail(http.StatusBadRequest)
+			return
+		}
+		s.relaunched(activation.Show)
+	case "/api/profiles/open", "/api/profiles/new":
+		var profile profileInput
+		if json.Unmarshal(b, &profile) != nil {
+			fail(http.StatusBadRequest)
+			return
+		}
+		s.serveProfiles(w, r, profile)
+		return
 	case "/api/start":
 		// Connect chooses the account route, which moves the copier when
 		// this network was the route.
@@ -612,6 +654,17 @@ func (s *server) telescopeNameAt(t copyapp.Target, settings Settings) string {
 	return s.telescopeNameIn(t, settings)
 }
 
+// servingPorts are the local ports of ports while the run v serves them.
+func servingPorts(v runView, ports []proxyrun.Port) []uint16 {
+	serving := []uint16{}
+	if v.serving != "" {
+		for _, p := range ports {
+			serving = append(serving, p.Local)
+		}
+	}
+	return serving
+}
+
 // SavedCopyEndpoint is the TCP endpoint saved settings name for a copier
 // outside the app: on this network the saved address, through the
 // account the proxy's local listener for the device's SMB port, which
@@ -632,6 +685,10 @@ func SavedCopyEndpoint(s Settings) (string, error) {
 	}
 	return "", errSMBOff
 }
+
+// SavedThroughAccount reports whether s reaches the telescope through the
+// account, where SavedCopyEndpoint is this computer's port.
+func SavedThroughAccount(s Settings) bool { return s.Route != routeLAN }
 
 // SavedLANSerial is the serial saved with this network's address, when
 // that is the route, or "".

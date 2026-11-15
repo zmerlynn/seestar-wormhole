@@ -339,6 +339,16 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	handler := &server{version: version, host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
 	handler.native = native != nil
 	handler.routeSaved = routeSaved
+	// The window's title names the run's profile once there is more than
+	// one; a run of a --state-dir folder is of none.
+	title := &windowTitle{text: titleFor("")}
+	if p, ok := profileOf(ctx); ok {
+		handler.profile = &p
+		title.text, title.profiles = titleFor(handler.profileLabel()), true
+	}
+	if window != nil {
+		handler.title = title
+	}
 	handler.copyRefused = copyRefused
 	c.save = handler.saveSettings
 	c.lastSaved = settings
@@ -381,7 +391,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	}
 	done := make(chan error, 1)
 	go func() { done <- httpServer.Serve(listener) }()
-	windowCtx, windowDone := context.WithCancel(context.WithValue(context.Background(), versionKey{}, version))
+	windowCtx, windowDone := context.WithCancel(context.WithValue(context.WithValue(context.Background(), versionKey{}, version), windowTitleKey{}, handler.title))
 	defer windowDone()
 	cleanupDone := make(chan struct{})
 	go func() {

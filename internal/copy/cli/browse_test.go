@@ -383,7 +383,7 @@ func TestExposed(t *testing.T) {
 // browse, and lists without statuses: no --dest, and so no history
 // folder or selection, which browse takes only with one.
 func TestBrowseWithoutFolder(t *testing.T) {
-	c := NewBrowse("synthetic", func() (Saved, error) {
+	c := NewBrowse("synthetic", func(string) (Saved, error) {
 		return Saved{NoFolder: true, Endpoint: "192.0.2.10:445", HistoryDir: "/synthetic/history", Excludes: []string{"*.jpg"}}, nil
 	})
 	c.SetArgs([]string{"--profile", "default"})

@@ -202,3 +202,25 @@ func TestWriteFilePrivateRefusesUnsafeFile(t *testing.T) {
 		t.Errorf("file = %q (%v), want the new content", b, err)
 	}
 }
+
+// NewDirectory creates a private directory as Directory does, but refuses
+// one that exists, which Directory pins.
+func TestNewDirectory(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "new")
+	f, err := NewDirectory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	if f, err := NewDirectory(dir); !os.IsExist(err) {
+		if f != nil {
+			f.Close()
+		}
+		t.Errorf("again: %v, want it exists", err)
+	}
+	f, err = Directory(dir)
+	if err != nil {
+		t.Fatalf("Directory of it: %v", err)
+	}
+	f.Close()
+}

@@ -52,8 +52,8 @@ func TestReparseRefusal(t *testing.T) {
 	if f, err := Open(link, os.O_RDWR|os.O_CREATE); err == nil {
 		f.Close()
 		t.Fatal("reparse point followed")
-	} else if err.Error() != "private file: unsafe type" {
-		t.Fatalf("reparse refusal = %v; want unsafe type from the opened reparse handle", err)
+	} else if want := "open " + link + ": private file: unsafe type"; err.Error() != want {
+		t.Fatalf("reparse refusal = %v; want %q from the opened reparse handle", err, want)
 	}
 }
 
@@ -119,7 +119,7 @@ func TestReparseRefusalBeforeACL(t *testing.T) {
 	if f != nil {
 		f.Close()
 	}
-	if err == nil || err.Error() != "private file: unsafe type" {
-		t.Fatalf("reparse refusal = %v; want unsafe type before any target ACL inspection", err)
+	if want := "open " + link + ": private file: unsafe type"; err == nil || err.Error() != want {
+		t.Fatalf("reparse refusal = %v; want %q before any target ACL inspection", err, want)
 	}
 }

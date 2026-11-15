@@ -39,9 +39,12 @@ var lanScanner = &landiscovery.Scanner{}
 // from then on, unscanned.
 type follow struct {
 	saved, serial string
-	mode          landiscovery.Mode
-	pin           bool
-	run           landiscovery.Run // the run's scan, in start mode
+	// check is the profile's check that saved reaches its telescope,
+	// asked before every connect, when it has one.
+	check func(context.Context) error
+	mode  landiscovery.Mode
+	pin   bool
+	run   landiscovery.Run // the run's scan, in start mode
 
 	mu     sync.Mutex
 	pinned string // the address a pinned follow connected at, or ""
@@ -49,13 +52,13 @@ type follow struct {
 }
 
 // newFollow is the follow for a run whose --endpoint the profile s filled,
-// or nil: a given --endpoint, and an endpoint saved without a serial, are
-// dialed as they are.
+// or nil: a given --endpoint, and an endpoint saved without a serial or a
+// check, are dialed as they are.
 func newFollow(s Saved, changed func(string) bool) *follow {
-	if changed("endpoint") || s.Endpoint == "" || s.LANSerial == "" {
+	if changed("endpoint") || s.Endpoint == "" || s.LANSerial == "" && s.CheckEndpoint == nil {
 		return nil
 	}
-	return &follow{saved: s.Endpoint, serial: s.LANSerial, mode: landiscovery.ModeOf(s.LANScan)}
+	return &follow{saved: s.Endpoint, serial: s.LANSerial, check: s.CheckEndpoint, mode: landiscovery.ModeOf(s.LANScan)}
 }
 
 // scanFlag is --scan, which overrides when a follow scans.
@@ -82,14 +85,24 @@ func (s *scanFlag) apply(flags *pflag.FlagSet, f *follow) error {
 }
 
 // followDial dials endpoint with d, or, when f is set and endpoint is its
-// saved one, reaches the telescope as f's mode says: off dials the saved
-// address; connect follows the telescope; start follows it once per run
-// and dials where it connected after that, following it again when that
-// fails. The log names the telescope a scan saw, the addresses and the
-// reply count.
+// saved one, first asks f's check, if any, and reaches the telescope as
+// f's mode says: off dials the saved address; connect follows the
+// telescope; start follows it once per run and dials where it connected
+// after that, following it again when that fails. A saved endpoint with
+// no serial is dialed as it is. The log names the telescope a scan saw,
+// the addresses and the reply count.
 func followDial[T io.Closer](ctx context.Context, f *follow, endpoint string, log *slog.Logger,
 	d func(context.Context, string, *slog.Logger) (T, error)) (T, error) {
 	if f == nil || endpoint != f.saved {
+		return d(ctx, endpoint, log)
+	}
+	if f.check != nil {
+		if err := f.check(ctx); err != nil {
+			var zero T
+			return zero, err
+		}
+	}
+	if f.serial == "" {
 		return d(ctx, endpoint, log)
 	}
 	dial := func(ctx context.Context, endpoint string) (T, error) { return d(ctx, endpoint, log) }
