@@ -656,7 +656,7 @@ In trail entries:
 | `channel_close` | INFO | Same context, `duration_ms`, successful `local_to_device_bytes`, `device_to_local_bytes`, classified reason |
 | `channel_closed` | INFO for a closed local writer; WARN for abnormal failures; DEBUG otherwise | Tunnel/bridge detail, direction or channel, reason and classified cause |
 | `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason; `rule=SIO_TCP_INFO_required` identifies a failed or short TCP-state query, which refuses admission |
-| `client_canceled` | INFO | Admission canceled before forwarding; ports/client class |
+| `client_canceled` | INFO | Admission canceled before forwarding; ports and `client` |
 | `site_protected` | WARN | Dropped setter; method, integer ID or `unavailable`, reason |
 | `site_reject` | WARN | Invalid frame; method and reason |
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
