@@ -104,7 +104,7 @@ func TestCLIConfigAttribution(t *testing.T) {
 						if problem == "selection" && !strings.Contains(logs.String(), "dependency_startup") {
 							t.Errorf("dependency record suppressed: %s", &logs)
 						}
-						assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_PAYLOAD")
+						assertNoSecrets(t, err, "PRIVATE_PASSWORD", "PRIVATE_PAYLOAD")
 						if out.Len() != 0 {
 							t.Fatalf("proxy stdout=%s", &out)
 						}
@@ -166,7 +166,7 @@ func TestCLIParserRules(t *testing.T) {
 				}
 				name := cmd.Name()
 				assertConfigRecord(t, logs.Bytes(), name, "--"+flag.Name, rule)
-				assertNoSensitiveErrorDetails(t, err, "PRIVATE_VALUE")
+				assertNoSecrets(t, err, "PRIVATE_VALUE")
 			})
 		})
 	}

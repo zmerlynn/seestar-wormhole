@@ -16,15 +16,64 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 )
 
-func TestSecretSentinels(t *testing.T) {
-	const secrets = "email-sentinel password-sentinel token-sentinel serial-sentinel source-sentinel license-sentinel"
-	for _, err := range []error{errors.New(secrets), &os.PathError{Op: secrets, Path: secrets, Err: syscall.EACCES}, fmt.Errorf("%s: %w", secrets, cloud.ErrUnauthorized)} {
+// An error's text shows in full, but access secrets wrapped inside it still
+// print as their markers.
+func TestErrorTextAndSecretMarkers(t *testing.T) {
+	credentials, err := cloud.EmailCredentials("me@example.com", "password-sentinel")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := cloud.ParseLogin(200, []byte(`{"data":{"accessToken":"token-sentinel"}}`), false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allocation, _, err := cloud.ParseOnline([]byte(`{"code":200,"data":{"conId":"connection-sentinel","deviceUid":"uid-sentinel","sdkLicenseKey":"license-sentinel","username":"user-sentinel","password":"relay-sentinel"}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapped := fmt.Errorf("login %v with %v for %v: %w", credentials, token, allocation,
+		&os.PathError{Op: "open", Path: "/Users/me/Seestar/state.json", Err: syscall.EACCES})
+	for _, final := range []bool{false, true} {
 		var b bytes.Buffer
-		Log(slog.New(slog.NewJSONHandler(&b, nil)), "failed", "login", err)
-		for _, secret := range strings.Fields(secrets) {
-			if strings.Contains(b.String(), secret) {
-				t.Fatal("secret escaped")
+		logger := slog.New(slog.NewJSONHandler(&b, nil))
+		if final {
+			LogFinal(logger, "proxy failed", "login", wrapped, nil)
+		} else {
+			Log(logger, "failed", "login", wrapped)
+		}
+		var record struct{ Error string }
+		if err := json.Unmarshal(b.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
+			t.Fatal(err)
+		}
+		if record.Error != wrapped.Error() || !strings.Contains(record.Error, "open /Users/me/Seestar/state.json: permission denied") {
+			t.Fatalf("final=%v: error text missing: %s", final, &b)
+		}
+		for _, marker := range []string{"[account credentials]", "[account token]", "[cloud allocation]"} {
+			if !strings.Contains(record.Error, marker) {
+				t.Fatalf("final=%v: missing %s: %s", final, marker, &b)
 			}
+		}
+		for _, secret := range []string{"password-sentinel", "token-sentinel", "connection-sentinel", "uid-sentinel", "license-sentinel", "user-sentinel", "relay-sentinel"} {
+			if strings.Contains(b.String(), secret) {
+				t.Fatalf("final=%v: %s escaped: %s", final, secret, &b)
+			}
+		}
+	}
+}
+
+// A huge error is clipped, so the record stays well under a log sink's bound.
+func TestErrorTextClipped(t *testing.T) {
+	huge := errors.New(strings.Repeat("x", 64<<10) + "TAIL")
+	for _, final := range []bool{false, true} {
+		var b bytes.Buffer
+		logger := slog.New(slog.NewJSONHandler(&b, nil))
+		if final {
+			LogFinal(logger, "proxy failed", "login", huge, nil)
+		} else {
+			Log(logger, "failed", "login", huge)
+		}
+		if b.Len() > 16<<10 || strings.Contains(b.String(), "TAIL") || !strings.Contains(b.String(), "xxx") {
+			t.Fatalf("final=%v: record of %d bytes", final, b.Len())
 		}
 	}
 }
@@ -82,9 +131,9 @@ func TestFinalErrorReportsCleanupIndependently(t *testing.T) {
 	}
 	var logs bytes.Buffer
 	logger := slog.New(slog.NewJSONHandler(&logs, nil))
-	LogFinal(logger, "proxy failed", "arguments", errors.New("coordinate-time-credential-UID-payload-sentinel"), nil)
-	if strings.Contains(logs.String(), "sentinel") || !strings.Contains(logs.String(), `"cleanup_reason":"none"`) {
-		t.Fatalf("unsafe or incomplete final diagnostic: %s", &logs)
+	LogFinal(logger, "proxy failed", "arguments", errors.New("bad argument"), nil)
+	if !strings.Contains(logs.String(), `"error":"bad argument"`) || !strings.Contains(logs.String(), `"cleanup_reason":"none"`) {
+		t.Fatalf("incomplete final diagnostic: %s", &logs)
 	}
 }
 
@@ -96,13 +145,13 @@ func TestOperationReportingBoundary(t *testing.T) {
 			logger = Lifecycle(logger).With("port", 445).WithGroup("operation")
 		}
 		finish := Operation(logger, "release")
-		finish(errors.New("credential-coordinate-time-UID-payload-sentinel"))
+		finish(errors.New("release refused"))
 		count := strings.Count(logs.String(), `"level":"ERROR"`)
 		want := 1
 		if nested {
 			want = 0
 		}
-		if count != want || strings.Contains(logs.String(), "sentinel") {
+		if count != want || strings.Contains(logs.String(), "release refused") != !nested {
 			t.Fatalf("nested=%v: report boundary=%s", nested, &logs)
 		}
 		if nested && !strings.Contains(logs.String(), `"state":"failed"`) {

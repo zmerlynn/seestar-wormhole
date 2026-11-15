@@ -3,25 +3,18 @@ package main
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"net"
-	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"testing"
 )
 
-// Verify returned errors do not expose sensitive paths or dependency details.
-func assertNoSensitiveErrorDetails(t *testing.T, err error, secrets ...string) {
+// assertNoSecrets verifies that no access secret is reachable through any
+// formatting of a returned error or its causes. Other text shows in full.
+func assertNoSecrets(t *testing.T, err error, secrets ...string) {
 	t.Helper()
-	var path *os.PathError
-	var op *net.OpError
-	var dns *net.DNSError
-	if errors.As(err, &path) || errors.As(err, &op) || errors.As(err, &dns) {
-		t.Errorf("raw dependency cause reachable through errors.As: %T", err)
-	}
 	var visit func(error)
 	visit = func(e error) {
 		if e == nil {

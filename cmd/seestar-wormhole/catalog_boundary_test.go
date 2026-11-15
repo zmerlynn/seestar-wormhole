@@ -137,7 +137,7 @@ func TestCatalogBoundary(t *testing.T) {
 					if !errors.Is(err, cloud.ErrConfig) {
 						t.Fatalf("want config error, got %v", err)
 					}
-					assertNoSensitiveErrorDetails(t, err, "SYNTHETIC_TOKEN", "SYNTHETIC_SOURCE")
+					assertNoSecrets(t, err, "SYNTHETIC_TOKEN")
 					// A serial typed on the command line is echoed back.
 					wantValue := ""
 					if tc.name == "wrong-serial" {

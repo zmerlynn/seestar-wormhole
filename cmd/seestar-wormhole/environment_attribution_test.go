@@ -52,7 +52,7 @@ func TestEnvironmentAttribution(t *testing.T) {
 			if !errors.As(err, &detail) || detail.Option != setting || detail.Rule != rule {
 				t.Errorf("wrong returned option error: %v", err)
 			}
-			assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_INVALID_EMAIL", "PRIVATE_TOKEN", "PRIVATE_SOURCE")
+			assertNoSecrets(t, err, "PRIVATE_PASSWORD")
 			if bytes.Contains(logs.Bytes(), []byte("PRIVATE_")) || out.Len() != 0 {
 				t.Error("private environment value leaked")
 			}
@@ -80,7 +80,6 @@ func TestSelectorAttribution(t *testing.T) {
 			if err == nil {
 				t.Errorf("invalid selector should fail safely: %v", err)
 			}
-			assertNoSensitiveErrorDetails(t, err, "PRIVATE_SERIAL", "PRIVATE_MODEL")
 			if bytes.Contains(logs.Bytes(), []byte("PRIVATE_")) || out.Len() != 0 {
 				t.Error("selector value leaked")
 			}

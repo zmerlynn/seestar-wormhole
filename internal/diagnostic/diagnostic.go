@@ -1,4 +1,4 @@
-// Package diagnostic classifies failures without formatting dependency errors.
+// Package diagnostic classifies failures and logs them with their own text.
 package diagnostic
 
 import (
@@ -108,7 +108,7 @@ func selectedCause(err error, phase string) (string, string, *Terminal) {
 	return phase, reason, nil
 }
 
-// Class never calls Error, String or LogValue on an untrusted value.
+// Class classifies by type and sentinel, never by an error's text.
 func Class(err error) string {
 	// Account login retains rejected HTTP status separately from its cause.
 	// Only an explicit authorization denial belongs to the credential exit policy.
@@ -191,13 +191,14 @@ func Class(err error) string {
 	return "operation_failed"
 }
 
-// Log emits the classified operation and cause, with fixed guidance when available.
+// Log emits the classified operation and cause, the error's text, clipped,
+// and fixed guidance when available.
 func Log(l *slog.Logger, message, phase string, err error) {
 	if l == nil || err == nil {
 		return
 	}
 	reportReceived(err, phase, func(phase, reason string) {
-		attrs := []any{"phase", phase, "reason", reason}
+		attrs := []any{"phase", phase, "reason", reason, "error", Clip(err.Error(), MaxValue)}
 		if reason == "cloud_license_missing" {
 			attrs = append(attrs, "hint", licenseMissingHint)
 		}
