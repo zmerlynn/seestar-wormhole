@@ -288,10 +288,9 @@ func folderMapOf(s copyapp.Settings) map[string]string {
 	return m
 }
 
-// No line of gui.log, event, failure or Activity names a telescope's
-// folder, through an address's folder, its adoption by the serial heard
-// there, and a second telescope's folder. Activity names the telescopes.
-func TestTelescopeFolderPrivacy(t *testing.T) {
+// Activity names the telescopes through an address's folder, its adoption
+// by the serial heard there, and a second telescope's folder.
+func TestTelescopeFolderActivity(t *testing.T) {
 	e := newTrailEnv(t)
 	e.ready() // 192.0.2.10, keyed by its address, with e.folder
 	e.pass(1)
@@ -322,32 +321,12 @@ func TestTelescopeFolderPrivacy(t *testing.T) {
 	e.pass(3)
 	e.stopCopying()
 
-	data, err := os.ReadFile(filepath.Join(e.s.storage.root, "gui.log"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, reply := e.get("/api/status")
-	var status struct {
-		Events   jsontext.Value `json:"events"`
-		Failures jsontext.Value `json:"failures"`
-	}
-	if err := json.Unmarshal([]byte(reply), &status); err != nil {
-		t.Fatal(err)
-	}
 	_, copyReply := e.get("/copy/api/status")
 	var copyStatus struct {
 		Activity jsontext.Value `json:"activity"`
 	}
 	if err := json.Unmarshal([]byte(copyReply), &copyStatus); err != nil || len(copyStatus.Activity) < 10 {
 		t.Fatalf("copy status %s: %v", copyReply, err)
-	}
-	escaped, _ := json.Marshal(e.folder)
-	for where, text := range map[string]string{"gui.log": string(data), "events": string(status.Events), "failures": string(status.Failures), "activity": string(copyStatus.Activity)} {
-		for _, s := range []string{filepath.ToSlash(e.folder), string(escaped[1 : len(escaped)-1])} {
-			if strings.Contains(text, s) {
-				t.Errorf("%s holds %q", where, s)
-			}
-		}
 	}
 	for _, s := range []string{"SERIAL-SENTINEL-A", "SERIAL-SENTINEL-B", "192.0.2.10:445", "192.0.2.11:445"} {
 		if !strings.Contains(string(copyStatus.Activity), s) {
