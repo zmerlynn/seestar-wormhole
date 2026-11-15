@@ -556,6 +556,7 @@ added ports as **Added**. For other options, use the
 The **Activity** tab lists the connection's recent events, copying's and
 deleting's activity, and Browse's failures and recoveries in one list, newest
 first, each tagged **Connection**, **Copy**, **Browse** or **Free up space**.
+A connection or Browse failure ends with its error's text.
 **Details and logs** holds your connection and copy
 settings as JSON, error codes, and the paths of the private log and the
 settings files, `config.json` and `copy.json`.

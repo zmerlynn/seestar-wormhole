@@ -1727,8 +1727,10 @@ function activityRows() {
   // A stable sort keeps each source's own order within a timestamp.
   return rows.sort((a, b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0));
 }
+// A line ends with its error's text when the event carries one.
 function eventLine(row) {
-  return new Date(row.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + (sourceNames[row.source] || row.source) + '  ' + row.message;
+  const message = row.message + (row.error ? ' ' + row.error : '');
+  return new Date(row.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'}) + '  ' + (sourceNames[row.source] || row.source) + '  ' + message;
 }
 let activityShown = [];
 function renderEvents() {
