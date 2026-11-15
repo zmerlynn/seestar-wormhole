@@ -140,10 +140,10 @@ the Copy settings in `copy.json` it takes the folder, copy history folder,
 patterns, interval, copy once and files at once. From the connection in
 `config.json` it takes the endpoint: the saved address on this network, or,
 through Telescope Network, the SMB listener on the saved bind address
-(`127.0.0.1` for a wildcard bind), but only while an app window serves it
-for the saved telescope: a headless proxy's isn't, so give `--endpoint`
-there. Both files come from the app's default settings folder, not from the
-proxy's `--state-dir`, and are only read.
+(`127.0.0.1` for a wildcard bind). Both files come from the app's default
+settings folder, not from the proxy's `--state-dir`, and are only read.
+Once a named profile exists in the app, the profile must be served by its
+own app window or `--endpoint` must be given, so give `--endpoint` here then.
 Without saved Copy settings, `sync --profile default` exits 2. Without a
 saved connection, or with the app's SMB sharing off, give `--endpoint`. If the
 app's Copy is set to copy once, add `--interval 5m` so that the service keeps
