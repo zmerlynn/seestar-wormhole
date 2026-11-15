@@ -560,6 +560,8 @@ async function checkTelescopeLine(st) {
   // connected, busy.
   render({...st.locked, settings: {...st.locked.settings, ...email, route: 'account', serial: '', choice_label: ''}, devices_email: email.email, telescope_name: '', telescope_key: ''});
   shows('nothing saved', 'Not connected. No telescope chosen yet.', '', '', 'off');
+  render({...st.locked, settings: {...account, serial: '', choice_label: ''}, telescope_name: '', telescope_key: '', failure: {code: 'cloud'}});
+  shows('failed without a telescope', 'Could not connect.', '', '', 'off');
   render(saved);
   copyRender(serialAt('', false, savedKey));
   shows('saved', 'Not connected to ' + name, home, full, 'off');
