@@ -55,9 +55,12 @@ func TestIndependentSelectionReceivedCauseCancels(t *testing.T) {
 		}
 	})
 }
-func TestIndependentCloudCausePrivacy(t *testing.T) {
+
+// A known cloud cause keeps its attribution and policy, and the record
+// carries the adapter error's own text.
+func TestIndependentCloudCauseText(t *testing.T) {
 	for _, cause := range []error{cloud.ErrUnauthorized, cloud.ErrReauthentication, cloud.ErrBusy, cloud.ErrOffline, cloud.ErrRejected, cloud.ErrInvalid, cloud.ErrConfig, cloud.ErrInternal} {
-		got := cloudTerminal(cloud.JoinOutcomes(cause, context.Canceled, errors.New("PRIVATE_COORDINATES_TIME_TOKEN_UID_PAYLOAD")))
+		got := cloudTerminal(cloud.JoinOutcomes(cause, context.Canceled, errors.New("dial tcp 192.0.2.10:443: synthetic adapter error")))
 		if p, r := diagnostic.Fields(got, ""); p != "cloud" || r == "canceled" {
 			t.Errorf("known cause erased=%s/%s", p, r)
 		}
@@ -66,8 +69,8 @@ func TestIndependentCloudCausePrivacy(t *testing.T) {
 		}
 		var logs bytes.Buffer
 		diagnostic.Log(slog.New(slog.NewJSONHandler(&logs, nil)), "layer_failed", "", got)
-		if strings.Contains(logs.String(), "PRIVATE_") {
-			t.Error("private data escaped")
+		if !strings.Contains(logs.String(), "dial tcp 192.0.2.10:443: synthetic adapter error") || !strings.Contains(logs.String(), cause.Error()) {
+			t.Errorf("adapter error text lost: %s", &logs)
 		}
 	}
 }

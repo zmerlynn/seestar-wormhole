@@ -62,7 +62,7 @@ func (f *fake) check(ctx context.Context, l int) error {
 		if f.busy {
 			return session.ErrBusy
 		}
-		return errors.New("secret layer error")
+		return errors.New("synthetic layer error")
 	}
 	return nil
 }

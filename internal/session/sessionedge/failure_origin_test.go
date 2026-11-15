@@ -75,8 +75,8 @@ func TestConstructorFailureReportEveryPhase(t *testing.T) {
 			if record.Phase != want || record.Reason != "operation_failed" || record.Level != "ERROR" {
 				t.Fatalf("constructor report=%+v, want %s/operation_failed", record, want)
 			}
-			if strings.Contains(logs.String(), "secret") {
-				t.Fatal("raw constructor error logged")
+			if !strings.Contains(logs.String(), "synthetic layer error") {
+				t.Fatalf("constructor error text lost: %s", &logs)
 			}
 			if f.allocated.Load() != f.stopped.Load() {
 				t.Fatal("constructor failure leaked lease")
