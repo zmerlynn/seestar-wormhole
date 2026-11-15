@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+// The catalog is written at once; other startup output waits for the
+// decision, and a refusal then writes it too.
 func TestCatalogLogSurvivesSelectionRefusal(t *testing.T) {
 	for _, format := range []string{"json", "text"} {
 		var output bytes.Buffer
@@ -16,8 +18,8 @@ func TestCatalogLogSurvivesSelectionRefusal(t *testing.T) {
 			t.Fatal("catalog routing lost or widened")
 		}
 		s.finish(&argumentError{Option: "--serial", Rule: "synthetic"})
-		if strings.Count(output.String(), "device_catalog") != 1 || strings.Contains(output.String(), "synthetic-other") {
-			t.Fatal("refusal dropped/duplicated catalog or admitted other output")
+		if strings.Count(output.String(), "device_catalog") != 1 || !strings.Contains(output.String(), "synthetic-other") {
+			t.Fatal("refusal dropped/duplicated catalog or held back other output")
 		}
 	}
 }

@@ -749,10 +749,12 @@ func pageSettingsFor(s Settings) pageSettings {
 	return pageSettings{s, d.Minutes(), (cloudhttp.Device{Serial: s.Serial, Model: s.Model}).ChoiceLabel()}
 }
 
-// One allowlisted projection feeds both Settings and the copied summary.
-// It names the telescope: the route, the account telescope's serial and
-// model, and the address and serial saved on this network. It contains no
-// account, credential, token, or path.
+// One projection feeds both Settings and the copied summary. It names the
+// telescope: the route, the account telescope's serial and model, and the
+// address and serial saved on this network, and the address it listens on.
+// It never holds the account email, a password or a token: the summary is
+// meant to be shared. Bind is the listen address as it is saved; Listen is
+// what it means, all_networks, this_computer or other, which the page words.
 type diagnosticSettings struct {
 	Route      string            `json:"route"`
 	Serial     string            `json:"serial"`
@@ -760,6 +762,7 @@ type diagnosticSettings struct {
 	LANAddress string            `json:"lan_address"`
 	LANSerial  string            `json:"lan_serial"`
 	Idle       diagnosticIdle    `json:"idle"`
+	Bind       string            `json:"bind"`
 	Listen     string            `json:"listen"`
 	Discovery  bool              `json:"discovery"`
 	Ports      map[uint16]uint16 `json:"ports"`
@@ -772,7 +775,7 @@ type diagnosticIdle struct {
 func diagnosticSettingsFor(s Settings, ports []proxyrun.Port) diagnosticSettings {
 	d, _ := time.ParseDuration(s.Idle)
 	v := diagnosticSettings{Route: s.Route, Serial: s.Serial, Model: s.Model, LANAddress: s.LANAddress, LANSerial: s.LANSerial,
-		Idle: diagnosticIdle{Mode: "keep_connected", Minutes: d.Minutes()}, Listen: "other", Discovery: s.Discovery, Ports: make(map[uint16]uint16)}
+		Idle: diagnosticIdle{Mode: "keep_connected", Minutes: d.Minutes()}, Bind: s.Bind, Listen: "other", Discovery: s.Discovery, Ports: make(map[uint16]uint16)}
 	if d > 0 {
 		v.Idle.Mode = "on_demand"
 	}

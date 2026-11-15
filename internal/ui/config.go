@@ -132,8 +132,8 @@ func (s *Settings) fallBack() []diagnostic.Fallback {
 	}
 	if s.Email != "" {
 		if _, err := cloud.EmailCredentials(s.Email, "validation-only"); err != nil {
+			replace("email", "none", s.Email)
 			s.Email = ""
-			replace("email", "none")
 		}
 	}
 	return fallbacks

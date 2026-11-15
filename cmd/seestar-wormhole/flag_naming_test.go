@@ -37,31 +37,32 @@ func usageExit(t *testing.T, args ...string) (int, usageRecord, string) {
 	return code, record, logs.String()
 }
 
-// A flag is named only when the program defines that name somewhere in its
-// tree; any other name could be a typed secret and is reported as arguments.
+// An unknown flag is named, never the value after its "="; one the program
+// defines elsewhere in its tree says where it belongs.
 func TestFlagNaming(t *testing.T) {
 	for _, tc := range []struct {
 		args              []string
 		msg, option, rule string
 		help, secret      string
 	}{
-		{[]string{"proxy", "--zzz-secret=PRIVATE_VALUE"}, "proxy failed", "arguments", "unknown flag", "proxy", "zzz-secret"},
-		{[]string{"proxy", "-z"}, "proxy failed", "arguments", "unknown flag", "proxy", ""},
+		{[]string{"proxy", "--zzz-unknown=PRIVATE_VALUE"}, "proxy failed", "--zzz-unknown", "unknown flag", "proxy", ""},
+		{[]string{"proxy", "--password=PRIVATE_VALUE"}, "proxy failed", "--password", "unknown flag", "proxy", ""},
+		{[]string{"proxy", "-z=PRIVATE_VALUE"}, "proxy failed", "-z", "unknown flag", "proxy", ""},
 		{[]string{"licenses", "--idle=PRIVATE_VALUE"}, "licenses failed", "--idle", "not a flag of licenses; see " + programName + " proxy --help", "licenses", ""},
 		{[]string{"discovery", "-p", "1:1"}, "discovery failed", "-p", "not a flag of discovery; see " + programName + " proxy --help", "discovery", ""},
 		{[]string{"discovery", "--serial"}, "discovery failed", "--serial", "not a flag of discovery; see " + programName + " proxy --help", "discovery", ""},
 		{[]string{"proxy", "--dest", "PRIVATE_VALUE"}, "proxy failed", "--dest", "not a flag of proxy; see " + programName + " sync --help", "proxy", ""},
 		{[]string{"proxy", "--older-than=PRIVATE_VALUE"}, "proxy failed", "--older-than", "not a flag of proxy; see " + programName + " find --help", "proxy", ""},
 		{[]string{"sync", "--bind", "PRIVATE_VALUE"}, "sync failed", "--bind", "not a flag of sync; see " + programName + " proxy --help", "sync", ""},
-		{[]string{"sync", "--zzz-secret=PRIVATE_VALUE"}, "sync failed", "arguments", "unknown flag", "sync", "zzz-secret"},
+		{[]string{"sync", "--zzz-unknown=PRIVATE_VALUE"}, "sync failed", "--zzz-unknown", "unknown flag", "sync", ""},
 		{[]string{"sync", "--source", "PRIVATE_VALUE"}, "sync failed", "--source", "removed; sync copies the whole share, so leave folders out with --exclude", "sync", ""},
-		{[]string{"find", "--source"}, "find failed", "arguments", "unknown flag", "find", ""},
+		{[]string{"find", "--source"}, "find failed", "--source", "unknown flag", "find", ""},
 		{[]string{"sync", "--version"}, "sync failed", "--version", "not a flag of sync; use " + programName + " --version", "sync", ""},
 		{[]string{"delete", "--version"}, "delete failed", "--version", "not a flag of delete; use " + programName + " --version", "delete", ""},
 		{[]string{"proxy", "--advertise-serial", "PRIVATE_VALUE"}, "proxy failed", "--advertise-serial", "not a flag of proxy; see " + programName + " discovery --help", "proxy", ""},
 		{[]string{"licenses", "--version"}, "licenses failed", "--version", "not a flag of licenses; use " + programName + " --version", "licenses", ""},
 		{[]string{"--idle", "2m"}, programName + " failed", "--idle", "not a flag of " + programName + "; see " + programName + " proxy --help", "", ""},
-		{[]string{"--zzz-secret"}, programName + " failed", "arguments", "unknown flag", "", "zzz-secret"},
+		{[]string{"--zzz-unknown"}, programName + " failed", "--zzz-unknown", "unknown flag", "", ""},
 	} {
 		code, record, logs := usageExit(t, tc.args...)
 		help := programName + " " + tc.help + " --help"
@@ -103,5 +104,17 @@ func TestRetiredStateDir(t *testing.T) {
 	o, err := parse([]string{"proxy", "--state-dir", "s"}, io.Discard)
 	if err != nil || o.stateDir != "s" {
 		t.Errorf("proxy --state-dir s: %+v %v", o, err)
+	}
+}
+
+// An oversized unknown flag is named clipped, with its prefix and a marker,
+// in a record a log sink takes, in the JSON and the text format.
+func TestFlagNamingClips(t *testing.T) {
+	long := "--zzz" + strings.Repeat("<", 20000)
+	for _, command := range []string{"proxy", "sync"} {
+		code, record, logs := usageExit(t, command, long+"=PRIVATE_VALUE")
+		if code != 2 || len(logs) >= 16<<10 || !strings.HasPrefix(record.Option, "--zzz<<<") || !strings.HasSuffix(record.Option, "…(truncated, 20005 bytes)") || strings.Contains(logs, "PRIVATE_VALUE") {
+			t.Errorf("%s: exit %d, record of %d bytes: %.300s", command, code, len(logs), logs)
+		}
 	}
 }

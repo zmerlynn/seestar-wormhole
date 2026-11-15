@@ -14,12 +14,12 @@ func TestSiteFrameRefusalIDsAndWarnings(t *testing.T) {
 		name, frame, id, rule string
 		code                  int
 	}{
-		{"bare LF string", `{"id":"private-id","method":"foo"}` + "\n", `"private-id"`, "incomplete_frame", -32600},
+		{"bare LF string", `{"id":"client-id","method":"foo"}` + "\n", `"client-id"`, "incomplete_frame", -32600},
 		{"CR only number", `{"id":9007199254740993,"method":"foo"}` + "\r", `9007199254740993`, "incomplete_frame", -32600},
 		{"EOF exponent", `{"id":-12.50e+2,"method":"foo"}`, `-12.50e+2`, "incomplete_frame", -32600},
-		{"malformed suffix", `{"id":"private-id","method":` + "\r\n", `"private-id"`, "invalid_request", -32700},
+		{"malformed suffix", `{"id":"client-id","method":` + "\r\n", `"client-id"`, "invalid_request", -32700},
 		{"duplicate method before ID", `{"method":"foo","method":"bar","id":1e400}` + "\r\n", `1e400`, "invalid_request", -32700},
-		{"nested duplicates before ID", `{"params":{"x":1,"x":2},"id":"private-id","method":"foo"}` + "\r\n", `"private-id"`, "invalid_request", -32700},
+		{"nested duplicates before ID", `{"params":{"x":1,"x":2},"id":"client-id","method":"foo"}` + "\r\n", `"client-id"`, "invalid_request", -32700},
 		{"escaped ID", `{"i\u0064":"\u0070rivate-id","method":` + "\r\n", `"\u0070rivate-id"`, "invalid_request", -32700},
 		{"duplicate ID", `{"id":1,"id":2}` + "\r\n", `null`, "invalid_request", -32700},
 		{"incomplete duplicate ID", `{"id":1,"id":` + "\r\n", `null`, "invalid_request", -32700},
@@ -34,9 +34,9 @@ func TestSiteFrameRefusalIDsAndWarnings(t *testing.T) {
 		{"null ID", `{"id":null,"method":` + "\r\n", `null`, "invalid_request", -32700},
 		{"missing ID", `{"method":` + "\r\n", `null`, "invalid_request", -32700},
 		{"nested ID", `{"params":{"id":1},"method":` + "\r\n", `null`, "invalid_request", -32700},
-		{"incomplete ID", `{"id":"private-id` + "\r\n", `null`, "invalid_request", -32700},
+		{"incomplete ID", `{"id":"client-id` + "\r\n", `null`, "invalid_request", -32700},
 		{"unreachable ID", `{"params":oops,"id":1}` + "\r\n", `null`, "invalid_request", -32700},
-		{"overlong prefix ID", `{"id":"private-id","params":"` + strings.Repeat("x", MaxSiteLine) + `"}` + "\r\n", `"private-id"`, "frame_too_large", -32600},
+		{"overlong prefix ID", `{"id":"client-id","params":"` + strings.Repeat("x", MaxSiteLine) + `"}` + "\r\n", `"client-id"`, "frame_too_large", -32600},
 		{"overlong numeric ID", `{"id":` + strings.Repeat("1", MaxSiteLine) + `}` + "\r\n", `null`, "frame_too_large", -32600},
 		{"overlong string ID", `{"id":"` + strings.Repeat("x", MaxSiteLine) + `"}` + "\r\n", `null`, "frame_too_large", -32600},
 		{"overlong suffix ID", `{"params":"` + strings.Repeat("x", MaxSiteLine) + `","id":1}` + "\r\n", `null`, "frame_too_large", -32600},
@@ -66,8 +66,8 @@ func TestSiteFrameRefusalIDsAndWarnings(t *testing.T) {
 				if bytes.Count(logs.Bytes(), []byte("\n")) != 1 || json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_reject" || record.Level != "WARN" || record.Reason != tc.rule {
 					t.Fatalf("log=%s want WARN rule=%s", logs.Bytes(), tc.rule)
 				}
-				if strings.Contains(logs.String(), "private-id") {
-					t.Fatalf("ID leaked: %s", logs.Bytes())
+				if strings.Contains(tc.id, "client-id") != strings.Contains(logs.String(), `"id":"client-id"`) {
+					t.Fatalf("log=%s want the recovered ID %s", logs.Bytes(), tc.id)
 				}
 			}
 		})

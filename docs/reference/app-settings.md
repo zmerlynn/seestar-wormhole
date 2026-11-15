@@ -73,9 +73,8 @@ fallback, and the next save writes the fallback:
 | `serial` or `email` that isn't valid | Empty, as if none were saved |
 
 Each fallback logs one warning, `settings_fallback`, naming the file, the
-setting and the fallback, and, for `serial`, the saved value in `value`; an
-email's is never logged: the app's in `gui.log`,
-`proxy --config`'s in its log. Entering a bad value in the app is still an
+setting, the fallback and, for `serial` or `email`, the saved value in
+`value`, cut at 512 bytes: the app's in `gui.log`, `proxy --config`'s in its log. Entering a bad value in the app is still an
 error on that field.
 
 Unknown members survive a save. Reads are limited to 64 KiB and never rewrite

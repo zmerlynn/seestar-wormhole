@@ -2,6 +2,7 @@ package guard
 
 import (
 	"bytes"
+	"encoding/json/v2"
 	"errors"
 	"log/slog"
 	"strings"
@@ -68,12 +69,37 @@ func TestCatch(t *testing.T) {
 }
 
 // checkRecord checks that b holds one record of a panic recovered where,
-// naming the site and neither the panic value nor its stack.
+// naming the site, the panic value and a stack through the panicking test.
 func checkRecord(t *testing.T, b *bytes.Buffer, where string) {
 	t.Helper()
-	want := `level=ERROR msg="internal error recovered" where=` + where + "\n"
-	if s := b.String(); !strings.HasSuffix(s, want) || strings.Count(s, "\n") != 1 ||
-		strings.Contains(s, "boom") || strings.Contains(s, "guard_test.go") {
-		t.Errorf("log %q, want one record ending %q", s, want)
+	want := `level=ERROR msg="internal error recovered" where=` + where + " panic=boom stack="
+	if s := b.String(); !strings.HasPrefix(s, "time=") || !strings.Contains(s, want) || strings.Count(s, "\n") != 1 ||
+		!strings.Contains(s, "guard_test.go") {
+		t.Errorf("log %q, want one record with %q and a stack", s, want)
+	}
+}
+
+// An oversized panic value and a deep stack are clipped, each with its
+// prefix and a marker, in a record a log sink takes.
+func TestReportClips(t *testing.T) {
+	var b bytes.Buffer
+	log := slog.New(slog.NewJSONHandler(&b, nil))
+	var deep func(int)
+	deep = func(n int) {
+		if n == 0 {
+			panic("boom" + strings.Repeat("<", 20000))
+		}
+		deep(n - 1)
+	}
+	if err := Run(log, "copying", func() error { deep(200); return nil }); err == nil {
+		t.Fatal("Run after a panic returned nil")
+	}
+	var record struct{ Panic, Stack string }
+	if err := json.Unmarshal(b.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
+		t.Fatal(err)
+	}
+	if b.Len() >= 16<<10 || !strings.HasPrefix(record.Panic, "boom<<<") || !strings.HasSuffix(record.Panic, "…(truncated, 20004 bytes)") ||
+		!strings.HasPrefix(record.Stack, "goroutine ") || !strings.Contains(record.Stack, "guard_test.go") || !strings.Contains(record.Stack, "…(truncated, ") {
+		t.Fatalf("record of %d bytes: %.300s", b.Len(), b.String())
 	}
 }

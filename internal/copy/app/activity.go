@@ -128,72 +128,56 @@ func writeAttr(b *strings.Builder, prefix string, a slog.Attr) {
 	b.WriteString(" " + prefix + a.Key + "=" + v)
 }
 
-// private are the keys of the attributes no copy log or Activity line
-// keeps: a telescope's folder, a file's destination and the folders a
-// copy history move names. The page shows them.
-var private = map[string]bool{"dest": true, "from": true, "to": true}
+// withReasons is a slog.Handler that passes each record to next with
+// each error attribute, at any group, as its [reason].
+type withReasons struct{ next slog.Handler }
 
-// withoutFolder is a slog.Handler that passes each record to next without
-// its private attributes, at any group.
-type withoutFolder struct{ next slog.Handler }
-
-func (h withoutFolder) Enabled(ctx context.Context, l slog.Level) bool {
+func (h withReasons) Enabled(ctx context.Context, l slog.Level) bool {
 	return h.next.Enabled(ctx, l)
 }
 
-func (h withoutFolder) Handle(ctx context.Context, r slog.Record) error {
+func (h withReasons) Handle(ctx context.Context, r slog.Record) error {
 	out := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
 	r.Attrs(func(a slog.Attr) bool {
-		if a, ok := public(a); ok {
-			out.AddAttrs(a)
-		}
+		out.AddAttrs(reasoned(a))
 		return true
 	})
 	return h.next.Handle(ctx, out)
 }
 
-func (h withoutFolder) WithAttrs(as []slog.Attr) slog.Handler {
+func (h withReasons) WithAttrs(as []slog.Attr) slog.Handler {
 	kept := make([]slog.Attr, 0, len(as))
 	for _, a := range as {
-		if a, ok := public(a); ok {
-			kept = append(kept, a)
-		}
+		kept = append(kept, reasoned(a))
 	}
-	return withoutFolder{h.next.WithAttrs(kept)}
+	return withReasons{h.next.WithAttrs(kept)}
 }
 
-func (h withoutFolder) WithGroup(name string) slog.Handler {
-	return withoutFolder{h.next.WithGroup(name)}
+func (h withReasons) WithGroup(name string) slog.Handler {
+	return withReasons{h.next.WithGroup(name)}
 }
 
-// public is a without its private attributes, and false when a is one.
-// An error, under any key, becomes its [reason], and a text under an
-// error's key is kept only when it is [safeText]: an error's own text may
-// name a folder, a file, an address, a host or a serial.
-func public(a slog.Attr) (slog.Attr, bool) {
-	if private[a.Key] {
-		return a, false
-	}
+// reasoned is a with an error, under any key, as its [reason], and a text
+// under an error's key kept only when it is [safeText].
+func reasoned(a slog.Attr) slog.Attr {
 	a.Value = a.Value.Resolve()
 	switch a.Value.Kind() {
 	case slog.KindGroup:
 		var kept []slog.Attr
 		for _, g := range a.Value.Group() {
-			if g, ok := public(g); ok {
-				kept = append(kept, g)
-			}
+			kept = append(kept, reasoned(g))
 		}
-		return slog.Attr{Key: a.Key, Value: slog.GroupValue(kept...)}, true
+		return slog.Attr{Key: a.Key, Value: slog.GroupValue(kept...)}
 	case slog.KindAny:
 		if err, ok := a.Value.Any().(error); ok {
-			return slog.String(a.Key, reason(err)), true
+			return slog.String(a.Key, reason(err))
 		}
 	case slog.KindString:
 		if errorKey[a.Key] && !safeText(a.Value.String()) {
-			return slog.String(a.Key, "operation failed"), true
+			return slog.String(a.Key, "operation failed")
 		}
 	}
-	return a, true
+	return a
 }
 
 // errorKey are the keys a log gives an error's text.

@@ -54,7 +54,7 @@ func siteWireFrames() []siteWireFrame {
 				frames = append(frames, siteWireFrame{raw: fmt.Sprintf(`{"id":%d,"method":%q,"params":%s,"envelope_extra":9007199254740993}`+"\r\n", 100+len(frames), method, params), reject: true})
 			}
 		}
-		for _, params := range []string{"null", "[]", "[null]", "[1]", `"private-params"`, "7", "[[{}]]"} {
+		for _, params := range []string{"null", "[]", "[null]", "[1]", `"synthetic-params"`, "7", "[[{}]]"} {
 			frames = append(frames, siteWireFrame{raw: fmt.Sprintf(`{"id":%d,"method":%q,"params":%s}`+"\r\n", 100+len(frames), method, params), reject: true})
 		}
 		frames = append(frames, siteWireFrame{raw: fmt.Sprintf(`{"id":%d,"method":%q}`+"\r\n", 100+len(frames), method), reject: true})
@@ -121,11 +121,11 @@ func TestSiteCLIToFakeDevice(t *testing.T) {
 					if err := <-done; err != nil {
 						t.Error(err)
 					}
-					// Check values actually sent by siteWireFrames. Short unused
-					// coordinates can also occur in the logger's wall-clock time.
-					for _, secret := range []string{"-71.23456", "81.98765", "America/Los_Angeles", "private-params"} {
-						if strings.Contains(logs.String(), secret) {
-							t.Errorf("log leaks %q", secret)
+					// A dropped setter's params are logged as sent; on a port
+					// without site protection nothing is inspected or logged.
+					for _, value := range []string{"-71.23456", "81.98765", "America/Los_Angeles", "synthetic-params"} {
+						if strings.Contains(logs.String(), value) != (mode.port == 4700) {
+							t.Errorf("log has %q: %t; want %t", value, !(mode.port == 4700), mode.port == 4700)
 						}
 					}
 					if mode.port == 4700 {

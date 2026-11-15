@@ -66,8 +66,8 @@ func TestSelectionErrorProjections(t *testing.T) {
 
 const wantSelection = "device_selection: multiple devices on account; set --serial; received telescopes: S50 Pro serial-sentinel-secret-1234, S30 other-serial-sentinel-5678"
 
-// assertSafeSelectionProjection wants both received telescopes and nothing
-// else from the account or its reply.
+// assertSafeSelectionProjection wants both received telescopes, no account
+// secret and none of the reply's field names.
 func assertSafeSelectionProjection(t *testing.T, text string) {
 	t.Helper()
 	for _, identity := range []string{"S50 Pro serial-sentinel-secret-1234", "S30 other-serial-sentinel-5678"} {
@@ -76,7 +76,7 @@ func assertSafeSelectionProjection(t *testing.T, text string) {
 		}
 	}
 	assertSelectionSecrets(t, text)
-	for _, raw := range []string{"synthetic-wifi", "deviceSn", "deviceModel", "deviceStatus"} {
+	for _, raw := range []string{"deviceSn", "deviceModel", "deviceStatus"} {
 		if strings.Contains(text, raw) {
 			t.Fatalf("cloud reply field %q escaped the projection", raw)
 		}

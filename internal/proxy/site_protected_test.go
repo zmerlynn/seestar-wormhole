@@ -83,23 +83,24 @@ func TestSiteSettingPassThroughTCP(t *testing.T) {
 }
 
 func TestSiteProtectedLogsAndIDs(t *testing.T) {
-	for _, tc := range []struct{ request, method, id string }{
-		{`{"id":115,"method":"set_user_location","params":{"lat":12.345,"lon":67.891,"private-key":"private-value"}}`, "set_user_location", "115"},
-		{`{"id":"private-id","method":"pi_set_time","params":[{"time_zone":"private-zone","year":2001}]}`, "pi_set_time", `"unavailable"`},
-		{`{"id":1e400,"method":"pi_set_time","params":{}}`, "pi_set_time", `"unavailable"`},
-		{`{"id":9223372036854775808,"method":"set_user_location","params":{}}`, "set_user_location", `"unavailable"`},
-		{`{"id":5,"method":"scope_set_time","params":["private-clock"]}`, "scope_set_time", "5"},
-		{`{"id":6,"method":"scope_set_location","params":{"latitude":12.345}}`, "scope_set_location", "6"},
+	for _, tc := range []struct{ request, method, id, params string }{
+		{`{"id":115,"method":"set_user_location","params":{"lat":12.345,"lon":67.891,"extra-key":"extra-value"}}`, "set_user_location", "115", `{"lat":12.345,"lon":67.891,"unknown":["extra-key"]}`},
+		{`{"id":"client-id","method":"pi_set_time","params":[{"time_zone":"Etc/GMT+7","year":2001,"mon":1,"day":2,"hour":3,"min":4,"sec":5}]}`, "pi_set_time", `"client-id"`, `[{"day":2,"hour":3,"min":4,"mon":1,"sec":5,"time_zone":"Etc/GMT+7","year":2001}]`},
+		{`{"id":1e400,"method":"pi_set_time","params":{}}`, "pi_set_time", `"1e400"`, `{}`},
+		{`{"id":9223372036854775808,"method":"set_user_location","params":{}}`, "set_user_location", `"9223372036854775808"`, `{}`},
+		{`{"id":5,"method":"scope_set_time","params":["clock-value"]}`, "scope_set_time", "5", `["clock-value"]`},
+		{`{"id":6,"method":"scope_set_location","params":{"latitude":12.345,"longitude":-67.891}}`, "scope_set_location", "6", `{"latitude":12.345,"longitude":-67.891}`},
+		{`{"id":7,"method":"scope_set_time","params":{"offset":"-07:00","utc":"2001-02-03T04:05:06Z"}}`, "scope_set_time", "7", `{"offset":"-07:00","utc":"2001-02-03T04:05:06Z"}`},
+		{`{"id":8,"method":"set_user_location","params":[81.98765,-71.23456,false]}`, "set_user_location", "8", `[81.98765,-71.23456,false]`},
+		{`{"id":9,"method":"set_user_location"}`, "set_user_location", "9", ``},
+		// Unknown values never appear, however deep, and a known name with a
+		// nested value is listed by name only.
+		{`{"id":10,"method":"set_user_location","params":{"lat":1,"password":"SECRET-PASSWORD","nested":{"token":"SECRET-TOKEN"},"lon":{"key":"SECRET-KEY"}}}`, "set_user_location", "10", `{"lat":1,"unknown":["lon","nested","password"]}`},
+		{`{"id":11,"method":"pi_set_time","params":[{"year":2001,"auth":{"license":"SECRET-LICENSE"}},["SECRET-SESSION"],{"time_zone":["SECRET-CONNECTION"]}]}`, "pi_set_time", "11", `[{"unknown":["auth"],"year":2001},[],{"unknown":["time_zone"]}]`},
 	} {
 		t.Run(tc.method+tc.id, func(t *testing.T) {
 			var out, reply, logs bytes.Buffer
-			err := copySite(&out, strings.NewReader(tc.request+"\r\n"), slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-				// Timestamps can coincidentally contain the synthetic coordinate values.
-				if a.Key == slog.TimeKey {
-					return slog.Attr{}
-				}
-				return a
-			}})), &reply)
+			err := copySite(&out, strings.NewReader(tc.request+"\r\n"), slog.New(slog.NewJSONHandler(&logs, nil)), &reply)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -114,16 +115,14 @@ func TestSiteProtectedLogsAndIDs(t *testing.T) {
 				t.Fatalf("forwarded=%q reply=%q want=%q", out.Bytes(), reply.Bytes(), want)
 			}
 			var record struct {
-				Msg, Level, Method, Reason string
-				ID                         jsontext.Value
+				Msg, Level, Method, Reason, Params string
+				ID                                 jsontext.Value
 			}
-			if bytes.Count(logs.Bytes(), []byte("\n")) != 1 || json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_protected" || record.Level != "WARN" || record.Reason != "site_protected" || record.Method != tc.method || string(record.ID) != tc.id || bytes.Contains(logs.Bytes(), []byte(`"fields"`)) {
-				t.Fatalf("log=%s want method=%s id=%s", logs.Bytes(), tc.method, tc.id)
+			if bytes.Count(logs.Bytes(), []byte("\n")) != 1 || json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_protected" || record.Level != "WARN" || record.Reason != "site_protected" || record.Method != tc.method || string(record.ID) != tc.id || record.Params != tc.params {
+				t.Fatalf("log=%s want method=%s id=%s params=%s", logs.Bytes(), tc.method, tc.id, tc.params)
 			}
-			for _, secret := range []string{"12.345", "67.891", "2001", "private-"} {
-				if strings.Contains(logs.String(), secret) {
-					t.Fatalf("log contains values: %s", logs.Bytes())
-				}
+			if bytes.Contains(logs.Bytes(), []byte("SECRET")) {
+				t.Fatalf("log has an unknown value: %s", logs.Bytes())
 			}
 		})
 	}
@@ -189,5 +188,38 @@ func TestSiteJSONPortsTCP(t *testing.T) {
 				t.Fatalf("downstream=%s err=%v want=%s", got, err, want)
 			}
 		})
+	}
+}
+
+// An oversized string ID and params are clipped, each with its prefix and a
+// marker, so even an escape-heavy setter at the frame limit logs a record a
+// log sink takes, in either format and with the client's attributes.
+func TestSiteProtectedClips(t *testing.T) {
+	request := `{"id":"id-` + strings.Repeat(`\u0001`, 1300) + `","method":"pi_set_time","params":{"time_zone":"zone-` + strings.Repeat("<", 7000) + `"}}` + "\r\n"
+	if len(request) > MaxSiteLine {
+		t.Fatalf("request of %d bytes exceeds the frame limit", len(request))
+	}
+	for _, format := range []string{"json", "text"} {
+		var out, reply, logs bytes.Buffer
+		options := &slog.HandlerOptions{}
+		var handler slog.Handler = slog.NewJSONHandler(&logs, options)
+		if format == "text" {
+			handler = slog.NewTextHandler(&logs, options)
+		}
+		logger := slog.New(handler).With("client", "192.0.2.10:50000", "port", 4700)
+		if err := copySite(&out, strings.NewReader(request), logger, &reply); err != nil {
+			t.Fatal(err)
+		}
+		if out.Len() != 0 || !strings.Contains(reply.String(), "site_protected") {
+			t.Fatalf("forwarded=%q reply=%q", out.Bytes(), reply.Bytes())
+		}
+		id, params := `"id":"id-\u0001\u0001`, `"params":"{\"time_zone\":\"zone-<<<`
+		if format == "text" {
+			id, params = `id="id-\x01\x01`, `params="{\"time_zone\":\"zone-<<<`
+		}
+		s := logs.String()
+		if logs.Len() >= 16<<10 || strings.Count(s, "\n") != 1 || !strings.Contains(s, id) || !strings.Contains(s, params) || strings.Count(s, "…(truncated, ") != 2 {
+			t.Errorf("%s record of %d bytes: %.400s", format, logs.Len(), s)
+		}
 	}
 }

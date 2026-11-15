@@ -17,7 +17,7 @@ func TestEffectiveDiagnosticSettings(t *testing.T) {
 	s.controller.done = make(chan struct{})
 	s.controller.status = proxy.NewStatus()
 	run := testSettings()
-	run.Bind, run.Discovery, run.Idle = "PRIVATE_ADDRESS", false, "1h30m"
+	run.Bind, run.Discovery, run.Idle = "192.0.2.40", false, "1h30m"
 	run.Serial, run.Model, run.Email = "", "", "PRIVATE_EMAIL@example.invalid"
 	run.Ports = []proxyrun.Port{{Device: 80}, {Device: 445, Local: 1234}, {Device: 5000, Local: 5001}}
 	s.controller.runSettings = run
@@ -30,12 +30,13 @@ func TestEffectiveDiagnosticSettings(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
 		t.Fatal(err)
 	}
-	if got.Version != s.version || got.Effective.Listen != "other" || got.Effective.Discovery || got.Effective.Idle.Mode != "on_demand" || got.Effective.Idle.Minutes != 90 || got.Effective.Ports[80] != 0 || got.Effective.Ports[445] != 1234 || len(got.Effective.Ports) != 12 || got.Effective.Ports[4700] != 4700 || got.Effective.Ports[32323] != 32323 || got.Effective.Ports[5000] != 5001 {
+	if got.Version != s.version || got.Effective.Bind != "192.0.2.40" || got.Effective.Listen != "other" || got.Effective.Discovery || got.Effective.Idle.Mode != "on_demand" || got.Effective.Idle.Minutes != 90 || got.Effective.Ports[80] != 0 || got.Effective.Ports[445] != 1234 || len(got.Effective.Ports) != 12 || got.Effective.Ports[4700] != 4700 || got.Effective.Ports[32323] != 32323 || got.Effective.Ports[5000] != 5001 {
 		t.Fatalf("effective: %+v", got)
 	}
+	// The summary shows the settings in full, but never the account email.
 	b, _ := json.Marshal(got.Effective)
-	if strings.Contains(string(b), "PRIVATE_") {
-		t.Fatalf("private fields: %s", b)
+	if strings.Contains(string(b), "PRIVATE_EMAIL") {
+		t.Fatalf("account email in the summary's settings: %s", b)
 	}
 	log := &eventLog{}
 	log.add("App opened.")

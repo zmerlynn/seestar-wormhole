@@ -427,8 +427,8 @@
     });
     await check('Details and copied summary are JSON', async () => {
       const event = {time: '2026-01-01T19:16:00Z', message: 'Account telescopes: S30 synthetic-details', code: 'lifecycle', phase: '', reason: ''};
-      const effective = {idle: {mode: 'keep_connected', minutes: 0}, listen: 'all_networks', discovery: true, ports: {'80': 80}};
-      render({...status(), effective, events: [event], log_path: 'synthetic-private-path'});
+      const effective = {idle: {mode: 'keep_connected', minutes: 0}, bind: '0.0.0.0', listen: 'all_networks', discovery: true, ports: {'80': 80}};
+      render({...status(), devices_email: 'synthetic@example.invalid', effective, events: [event], log_path: 'synthetic-private-path'});
       assert($('effective-settings').textContent === JSON.stringify(effective, null, 2), 'Settings is not pretty JSON');
       const localTime = new Date(event.time).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'});
       assert($('events').children.length === 1 && $('events').children[0].textContent === localTime + '  Connection  Account telescopes: S30 synthetic-details', 'event category or UTC leaked into local list, or the source tag is missing');

@@ -250,7 +250,11 @@ func runAccount(ctx context.Context, c *Client, m *cloud.AccountMachine, e cloud
 			if a.Renewal {
 				phase = "renewal"
 			}
-			finish := diagnostic.Operation(c.logger, phase)
+			logger := c.logger
+			if logger != nil {
+				logger = logger.With("account", a.Credentials.Email())
+			}
+			finish := diagnostic.Operation(logger, phase)
 			request.token = ""
 			requestCtx := ctx
 			cancel := func() {}

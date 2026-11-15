@@ -41,10 +41,8 @@ func loggingRecords(t *testing.T, b *bytes.Buffer) []map[string]any {
 		}
 		records = append(records, r)
 	}
-	for _, private := range []string{"192.168.42.99", "192.168.42.88", "56789", "PRIVATE"} {
-		if bytes.Contains(b.Bytes(), []byte(private)) {
-			t.Fatalf("private address/error in logs: %s", b)
-		}
+	if bytes.Contains(b.Bytes(), []byte("PRIVATE")) {
+		t.Fatalf("private error in logs: %s", b)
 	}
 	return records
 }
@@ -108,7 +106,7 @@ func TestListenerLifecycleLogs(t *testing.T) {
 				if opened == nil || closed == nil {
 					t.Fatalf("missing lifecycle: %s", &logs)
 				}
-				if opened["level"] != "INFO" || opened["local_port"] != float64(14445) || opened["port"] != float64(4700) || opened["client_class"] != "LAN" {
+				if opened["level"] != "INFO" || opened["local_port"] != float64(14445) || opened["port"] != float64(4700) || opened["client"] != "192.168.42.88:56789" {
 					t.Fatalf("open=%v", opened)
 				}
 				if closed["level"] != "INFO" || closed["channel"] != opened["channel"] || closed["duration_ms"].(float64) < 2000 || closed["local_to_device_bytes"] != float64(len(request)) || closed["device_to_local_bytes"] != float64(len(response)) || closed["reason"] != wantReason {
@@ -226,18 +224,18 @@ func TestListenerAcceptFailureLogs(t *testing.T) {
 	}
 }
 
-func TestClientAddressClasses(t *testing.T) {
-	for _, tc := range []struct{ ip, want string }{
-		{"127.0.0.1", "loopback"}, {"::1", "loopback"}, {"192.168.1.2", "LAN"},
-		{"10.23.4.5", "LAN"}, {"172.20.0.1", "LAN"}, {"fd00::123", "LAN"},
-		{"fe80::123", "LAN"}, {"169.254.1.2", "LAN"}, {"203.0.113.5", "other"}, {"2001:db8::1", "other"},
+func TestClientAddress(t *testing.T) {
+	for _, tc := range []struct {
+		addr net.Addr
+		want string
+	}{
+		{&net.TCPAddr{IP: net.ParseIP("192.0.2.5"), Port: 50123}, "192.0.2.5:50123"},
+		{&net.TCPAddr{IP: net.ParseIP("2001:db8::1"), Port: 4700}, "[2001:db8::1]:4700"},
+		{nil, ""},
 	} {
-		if got := clientClass(&net.TCPAddr{IP: net.ParseIP(tc.ip)}); got != tc.want {
-			t.Errorf("class of %s=%s want %s", tc.ip, got, tc.want)
+		if got := clientAddress(tc.addr); got != tc.want {
+			t.Errorf("address of %v=%q want %q", tc.addr, got, tc.want)
 		}
-	}
-	if got := clientClass(nil); got != "other" {
-		t.Errorf("nil address=%s want other", got)
 	}
 }
 

@@ -120,17 +120,17 @@ func TestDiscoveryRefusalSummaries(t *testing.T) {
 			}
 			s.summarize(m, refusalInterval, false)
 			var record struct {
-				Level, Msg, Rule string
-				Count            uint64
+				Level, Msg, Rule, Sender string
+				Count                    uint64
 			}
 			if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
 				t.Fatal(err)
 			}
-			if record.Level != "WARN" || record.Msg != "lan_discovery_refused" || record.Rule != tc.rule || record.Count != 3 {
-				t.Fatalf("summary=%s", &logs)
+			if record.Level != "WARN" || record.Msg != "lan_discovery_refused" || record.Rule != tc.rule || record.Count != 3 || record.Sender != source.String() {
+				t.Fatalf("summary=%s, want sender %s", &logs, source)
 			}
 			if strings.Contains(logs.String(), "secret") {
-				t.Fatal("peer data in summary")
+				t.Fatal("request or identity data in summary")
 			}
 			logs.Reset()
 			s.summarize(m, 2*refusalInterval, false)
@@ -396,10 +396,10 @@ func TestServeTruncatedPacketRecovery(t *testing.T) {
 		t.Fatalf("recovery: reads=%d tokens=%d", reads, m.tokens)
 	}
 	var record struct {
-		Msg, Rule string
-		Count     int
+		Msg, Rule, Sender string
+		Count             int
 	}
-	if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil || record.Msg != "lan_discovery_refused" || record.Rule != "packet_metadata" || record.Count != 1 {
+	if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil || record.Msg != "lan_discovery_refused" || record.Rule != "packet_metadata" || record.Count != 1 || record.Sender != "" {
 		t.Fatalf("refusal summary: %s err=%v", &logs, err)
 	}
 }

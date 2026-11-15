@@ -1,8 +1,10 @@
 package cloud
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"testing"
 )
@@ -36,6 +38,24 @@ func TestAccountWire(t *testing.T) {
 		if _, err := EmailCredentials("a@b.invalid", p); !errors.Is(err, ErrConfig) {
 			t.Fatal("password UTF-16 bound")
 		}
+	}
+}
+
+// Credentials print as a marker under every verb and slog; only Email
+// gives the account, and nothing gives the password.
+func TestCredentialsHidePassword(t *testing.T) {
+	c, err := EmailCredentials("reader@example.invalid", "Example-Only-123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var logs bytes.Buffer
+	slog.New(slog.NewJSONHandler(&logs, nil)).Info("login", "credentials", c, "account", c.Email())
+	printed := fmt.Sprintf("%v %+v %#v %s", c, c, c, c) + logs.String()
+	if strings.Contains(printed, "Example-Only-123") || strings.Count(printed, "[account credentials]") != 5 {
+		t.Fatalf("credentials printed as %s", printed)
+	}
+	if c.Email() != "reader@example.invalid" || !strings.Contains(logs.String(), `"account":"reader@example.invalid"`) {
+		t.Fatalf("email = %q, log = %s", c.Email(), &logs)
 	}
 }
 

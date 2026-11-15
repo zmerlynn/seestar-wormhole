@@ -15,17 +15,11 @@ import (
 func TestSiteRejectedStreamSplitsAndLog(t *testing.T) {
 	valid := `{"id":1,"method":"set_setting","params":[{"lat":"10","lon":"20","force":false},null]}` + "\r\n"
 	want := valid
-	bad := `{"id":"private id","method":"pi_set_time","params":null}` + "\r\n"
+	bad := `{"id":"client id","method":"pi_set_time","params":null}` + "\r\n"
 	input := valid + bad + strings.Repeat(" ", MaxSiteLine) + bad + valid + bad[:len(bad)-2]
 	for _, chunk := range []int{1, 2, 7, 4096, MaxSiteLine + 1, len(input)} {
 		var output, reply, logs bytes.Buffer
-		logger := slog.New(slog.NewJSONHandler(&logs, &slog.HandlerOptions{ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-			// Timestamps can coincidentally contain the synthetic coordinate values.
-			if a.Key == slog.TimeKey {
-				return slog.Attr{}
-			}
-			return a
-		}}))
+		logger := slog.New(slog.NewJSONHandler(&logs, nil))
 		if err := copySite(&output, &siteChunkReader{[]byte(input), chunk}, logger, &reply); err != nil {
 			t.Fatal(err)
 		}
@@ -38,10 +32,8 @@ func TestSiteRejectedStreamSplitsAndLog(t *testing.T) {
 				t.Fatal("rejection not WARN")
 			}
 		}
-		for _, secret := range []string{"private id", "-12.5", "45.25", "Pacific/Kiritimati"} {
-			if strings.Contains(logs.String(), secret) {
-				t.Fatal("rejection log includes values")
-			}
+		if !strings.Contains(logs.String(), `"id":"client id"`) {
+			t.Fatalf("rejection log lacks the request ID: %s", logs.Bytes())
 		}
 	}
 	if err := copySite(io.Discard, strings.NewReader(bad), nil, siteShortWriter{}); !errors.Is(err, io.ErrShortWrite) {
@@ -72,8 +64,8 @@ func TestSiteLocalReplyAfterDeviceEOF(t *testing.T) {
 				t.Fatalf("retired local reply: n=%d err=%v want n=0 err=ErrClosedPipe", n, err)
 			}
 			for _, tc := range []struct{ frame, rule string }{
-				{`{"id":"private-id","method":"pi_set_time"}` + "\r\n", "site_protected"},
-				{`{"id":"private-id","method":"foo"}` + "\n", "incomplete_frame"},
+				{`{"id":"client-id","method":"pi_set_time"}` + "\r\n", "site_protected"},
+				{`{"id":"client-id","method":"foo"}` + "\n", "incomplete_frame"},
 			} {
 				var forwarded, logs bytes.Buffer
 				const ordinary = "{\"method\":\"get_setting\"}\r\n"
@@ -89,8 +81,8 @@ func TestSiteLocalReplyAfterDeviceEOF(t *testing.T) {
 				if len(records) != 2 || json.Unmarshal(records[len(records)-1], &record, json.MatchCaseInsensitiveNames(true)) != nil || record.Msg != "site_reply_failed" || record.Level != "WARN" || record.Reason != tc.rule || record.Cause != "device_closed" {
 					t.Fatalf("log=%s want unsent WARN rule=%s", logs.Bytes(), tc.rule)
 				}
-				if strings.Contains(logs.String(), "private-id") {
-					t.Fatalf("ID leaked: %s", logs.Bytes())
+				if !strings.Contains(string(records[0]), `"id":"client-id"`) {
+					t.Fatalf("log=%s want the request ID", logs.Bytes())
 				}
 			}
 		})

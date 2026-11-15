@@ -563,13 +563,22 @@ settings files, `config.json` and `copy.json`.
 **Copy diagnostic summary** copies one JSON object with the program name,
 version, error code, connection and copy settings, the events, the current
 failures, and the log's path. It names your telescope: the connection
-settings include the route, the account telescope's serial and model, and
-the address and serial saved on this network, and the events name each
+settings include the route, the account telescope's serial and model, the
+address and serial saved on this network, and the address the app listens
+on, and the events name each
 telescope a scan found, with its name, model, serial and address. It also
 includes your telescopes' full serial numbers in connection and
 account-catalog events, your copy folder and history folder, your patterns,
 and the private log's path. It leaves out your password, the account email
 and tokens. Remove what you don't want to share before you post it.
+
+<a id="what-logs-show"></a>
+seestar-wormhole hides only access secrets: passwords and their hashes,
+tokens, keys, license material, cloud session and connection IDs, the device
+UID inside a cloud allocation, and relay credentials. The account email appears in logs but never in this
+summary. Everything else shows in full in logs, Activity, errors and the
+summary: folders, addresses, serials, telescope names, the listen address
+and the site a client tried to set.
 
 Logs, Activity and errors name the telescope too: its name, model, serial
 number, LAN address and host name, as a scan, Test or connect saw them. A

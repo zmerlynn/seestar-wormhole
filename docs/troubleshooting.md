@@ -91,12 +91,14 @@ run from the tool's folder; in PowerShell,
 and firmware, and the log lines around the problem. In the app, **Copy
 diagnostic summary** on the [Activity](ui.md#activity) tab copies the version,
 settings, recent events and any failing Copy, Browse or Free up space
-operations at once. Logs and diagnostics leave out your credentials, but they
+operations at once. Logs and diagnostics hide only access secrets such as
+your password and tokens; see [what logs show](ui.md#what-logs-show). They
 name the telescope, with its serial number, name, model and network address,
-and can include your local folders, selection patterns and file names: the
-summary keeps your telescopes' serials and addresses, your folders and
-patterns, and the CLI's `error` text names hosts, paths and files. Read them
-over and remove anything you'd rather keep before posting.
+and include your local folders, selection patterns and file names, client
+addresses and, in logs, your account email: the summary keeps your
+telescopes' serials and addresses, your folders and patterns, and the CLI's
+`error` text names hosts, paths and files. Read them over and remove
+anything you'd rather keep before posting.
 
 ## The native window didn't open
 

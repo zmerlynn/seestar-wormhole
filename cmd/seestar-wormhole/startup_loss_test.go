@@ -11,7 +11,7 @@ type shortStartupSink struct{}
 func (shortStartupSink) Write(p []byte) (int, error) { return len(p) / 2, nil }
 
 func TestStartupDiagnosticLoss(t *testing.T) {
-	for _, name := range []string{"cap", "denied", "flush"} {
+	for _, name := range []string{"cap", "flush"} {
 		t.Run(name, func(t *testing.T) {
 			var logs bytes.Buffer
 			s := newStartupLogging(options{format: "json", level: "info"}, &logs)
@@ -20,13 +20,10 @@ func TestStartupDiagnosticLoss(t *testing.T) {
 			case "cap":
 				s.output.Write(bytes.Repeat([]byte("x"), startupLogLimit))
 				_, receipt = s.output.Write([]byte("lost"))
-			case "denied":
-				s.output.resolve(false)
-				_, receipt = s.output.Write([]byte("lost"))
 			case "flush":
 				s.output.output = shortStartupSink{}
 				s.output.Write([]byte("lost"))
-				receipt = s.output.resolve(true)
+				receipt = s.output.resolve()
 				s.output.output = &logs
 			}
 			err := s.finish(nil)

@@ -238,6 +238,7 @@ func (s *Socket) Serve(ctx context.Context, m *Machine) error {
 			// A truncated datagram or ancillary buffer cannot authorize a reply.
 			// x/net reports Windows WSAEMSGSIZE and truncation flags this way.
 			if errors.Is(err, io.ErrShortBuffer) {
+				m.from = source
 				m.refuse(refusalMetadata)
 				continue
 			}
@@ -258,6 +259,7 @@ func (s *Socket) Serve(ctx context.Context, m *Machine) error {
 }
 
 func (s *Socket) received(m *Machine, b []byte, cm *ipv4.ControlMessage, source net.Addr, now time.Duration) ([]byte, netip.Addr) {
+	m.from = source
 	if len(b) > MaxDatagram {
 		m.refuse(refusalOversize)
 		return nil, netip.Addr{}

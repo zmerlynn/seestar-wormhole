@@ -317,7 +317,7 @@ func TestSavedConfigFallbackWarningsSurviveStartupFailure(t *testing.T) {
 		listen              func(string, string) (net.Listener, error)
 		want                func(error) bool
 	}{
-		{"credential rejection", `{"version":1,"email":"PRIVATE-not-an-email"}`, "email",
+		{"credential rejection", `{"version":1,"email":"SYNTHETIC-not-an-email"}`, "email",
 			func(string, string) (net.Listener, error) { t.Fatal("listener opened"); return nil, nil },
 			func(err error) bool { return err != nil }},
 		{"bind failure", `{"version":1,"email":"saved@example.invalid","serial":"INVALID serial"}`, "serial",
@@ -367,8 +367,8 @@ func TestSavedConfigFallbackWarningsSurviveStartupFailure(t *testing.T) {
 			if len(warnings) != 1 || warnings[0]["level"] != "WARN" || warnings[0]["file"] != "config.json" || warnings[0]["setting"] != tc.setting || warnings[0]["fallback"] != "none" {
 				t.Fatalf("warnings = %v, logs = %s", warnings, &logs)
 			}
-			// An invalid email isn't logged; an invalid serial is.
-			if strings.Contains(logs.String(), "PRIVATE") || (tc.setting == "serial") != (warnings[0]["value"] == "INVALID serial") {
+			// The invalid value is logged, whether email or serial.
+			if want := map[string]string{"email": "SYNTHETIC-not-an-email", "serial": "INVALID serial"}[tc.setting]; warnings[0]["value"] != want {
 				t.Fatalf("log value: %s", &logs)
 			}
 		})

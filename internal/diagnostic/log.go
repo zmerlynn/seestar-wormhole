@@ -4,7 +4,29 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
+	"unicode/utf8"
 )
+
+// MaxValue caps a free-form value a record carries, and MaxStack a stack
+// trace, so that even with JSON escaping a record stays well under the
+// 16 KiB a log sink takes.
+const (
+	MaxValue = 512
+	MaxStack = 4096
+)
+
+// Clip returns s, or its first n bytes cut on a UTF-8 boundary with a marker
+// naming s's length.
+func Clip(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	for n > 0 && !utf8.RuneStart(s[n]) {
+		n--
+	}
+	return s[:n] + "…(truncated, " + strconv.Itoa(len(s)) + " bytes)"
+}
 
 // Level accepts only the documented verbosity names.
 func Level(value string) (slog.Level, error) {

@@ -1,9 +1,13 @@
 package landiscovery
 
-import "time"
+import (
+	"net"
+	"time"
+)
 
-// Refusal counts use fixed labels and cumulative uint64 counters.
-// They retain no peer addresses, request IDs, methods or device identity.
+// Refusal counts use fixed labels and cumulative uint64 counters, with the
+// address of each rule's last refused sender. They retain no request IDs,
+// methods or device identity.
 const (
 	refusalMalformed = iota
 	refusalOversize
@@ -34,6 +38,15 @@ func (m *Machine) refuse(rule int) {
 	if m.refusals[rule] != ^uint64(0) {
 		m.refusals[rule]++
 	}
+	m.senders[rule] = m.from
+}
+
+// sender is addr as it is, or "" when the datagram had none.
+func sender(addr net.Addr) string {
+	if addr == nil {
+		return ""
+	}
+	return addr.String()
 }
 
 // The socket owner flushes on its read deadline even if traffic stops, and on
@@ -45,8 +58,9 @@ func (s *Socket) summarize(m *Machine, now time.Duration, final bool) {
 	s.summaryLast = max(now, s.summaryLast)
 	for rule, count := range m.refusals {
 		if count != 0 && s.Logger != nil {
-			s.Logger.Warn("lan_discovery_refused", "rule", refusalRules[rule], "count", count)
+			s.Logger.Warn("lan_discovery_refused", "rule", refusalRules[rule], "count", count, "sender", sender(m.senders[rule]))
 		}
 		m.refusals[rule] = 0
+		m.senders[rule] = nil
 	}
 }

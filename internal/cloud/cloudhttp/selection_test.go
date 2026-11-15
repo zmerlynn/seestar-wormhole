@@ -80,7 +80,7 @@ func selectionClient(t *testing.T, f *selectionCloud, logs *bytes.Buffer, level 
 }
 func assertSelectionSecrets(t *testing.T, s string) {
 	t.Helper()
-	for _, secret := range []string{"token-sentinel-secret", "fixture@example.invalid", "fixture-password", "profile-sentinel"} {
+	for _, secret := range []string{"token-sentinel-secret", "fixture-password", "profile-sentinel"} {
 		if strings.Contains(s, secret) {
 			t.Fatal("secret escaped selection diagnostics")
 		}
@@ -129,6 +129,9 @@ func TestDeviceSelection(t *testing.T) {
 					}
 					if !errors.As(err, &option) || option.Option != wantOption || option.Rule != wantRule {
 						t.Fatalf("want fixed catalog option/rule, got %v", err)
+					}
+					if tc.name == "serial not found" && option.Value != tc.input.Serial {
+						t.Fatalf("unknown serial not named: %v", err)
 					}
 					if tc.reason == "multiple devices on account" {
 						assertCloudSecretSafe(t, err, logs.String())

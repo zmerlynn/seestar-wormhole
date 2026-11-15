@@ -16,10 +16,10 @@ import (
 // Validate options that are resolved during startup I/O as well as during parsing.
 func TestAttackRuntimeOptions(t *testing.T) {
 	for _, tc := range []struct {
-		name, option, rule, secret string
-		args                       []string
+		name, option, rule, value string
+		args                      []string
 	}{
-		{"invalid bind", "--bind", "use an OS-supported bind address with available local ports", "HOST_PRIVATE_MARKER", []string{"--bind", "HOST_PRIVATE_MARKER/invalid", "--port", "12347:13459"}},
+		{"invalid bind", "--bind", "use an OS-supported bind address with available local ports", "HOST_MARKER/invalid", []string{"--bind", "HOST_MARKER/invalid", "--port", "12347:13459"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			for _, suffix := range [][]string{nil, {"--log-format=text", "--log-level=debug"}} {
@@ -29,7 +29,11 @@ func TestAttackRuntimeOptions(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid runtime configuration accepted")
 				}
-				assertStartupOptionFailure(t, err, &out, &logs, tc.option, tc.rule, tc.secret, "12347", "13459")
+				assertStartupOptionFailure(t, err, &out, &logs, tc.option, tc.rule, "12347", "13459")
+				// The value that failed is named, in the log and the error.
+				if !strings.Contains(logs.String(), `"value":"`+tc.value+`"`) || !strings.Contains(err.Error(), tc.value) {
+					t.Errorf("value not named: err=%v log=%s", err, &logs)
+				}
 			}
 		})
 	}
@@ -48,7 +52,17 @@ func TestAttackStateDirectoryReturnedError(t *testing.T) {
 	if err == nil {
 		t.Fatal("invalid credential state directory accepted")
 	}
-	assertStartupOptionFailure(t, err, &out, &logs, "--state-dir", "use a private writable state directory and installation identity file", privatePath, "PRIVATE_PASSWORD", "14387", "file blocks directory")
+	assertStartupOptionFailure(t, err, &out, &logs, "--state-dir", "use a private writable state directory and installation identity file", "PRIVATE_PASSWORD", "14387", "file blocks directory")
+	// Compare the decoded value: JSON escapes a Windows path's backslashes.
+	var record struct{ Value string }
+	lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
+	if e := json.Unmarshal(lines[len(lines)-1], &record, json.MatchCaseInsensitiveNames(true)); e != nil {
+		t.Fatal(e)
+	}
+	var option *argumentError
+	if record.Value != privatePath || !errors.As(err, &option) || option.Value != privatePath {
+		t.Errorf("state directory not named: err=%v log=%s", err, &logs)
+	}
 	if !errors.Is(err, cloud.ErrConfig) {
 		t.Fatal("state failure lost ErrConfig")
 	}
@@ -75,7 +89,7 @@ func assertStartupOptionFailure(t *testing.T, err error, out, logs *bytes.Buffer
 	}
 	for key := range record {
 		switch key {
-		case "time", "level", "msg", "option", "rule", "phase", "reason", "help", "cleanup_reason":
+		case "time", "level", "msg", "option", "value", "rule", "phase", "reason", "help", "cleanup_reason":
 		default:
 			t.Errorf("configuration diagnostic carries incidental attribute %q", key)
 		}

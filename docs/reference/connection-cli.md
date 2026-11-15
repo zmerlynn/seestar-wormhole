@@ -284,7 +284,7 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning; a serial's names it in `value`, an email's doesn't; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning naming it in `value` (cut at 512 bytes); an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
@@ -295,14 +295,19 @@ for the root) with fixed
 `option`, `rule`, command-help hint, `phase=arguments` and
 `reason=invalid_option` (and, for `proxy` and `discovery`, `cleanup_reason=none`),
 regardless of requested log settings: JSON for the root, `proxy`, `discovery`,
-`licenses` and `ui`, and a text line for the file commands. Supplied values,
-paths and coordinates are omitted. A flag that another command of this program
+`licenses` and `ui`, and a text line for the file commands. A parse refusal
+does not echo the value it refused. A flag that another command of this program
 defines, or a retired name such as a file command's `--state-dir`, is named,
 and the rule says where it belongs, such as
 `option=--dest rule="not a flag of proxy; see seestar-wormhole-cli sync --help"`.
-Any other unknown flag is reported as `option=arguments rule="unknown flag"`,
-and a positional argument as `option=arguments`. Startup bind and
-identity-storage errors identify `--bind` and `--state-dir`.
+Any other unknown flag is named without what follows its `=`: `--password=…`
+is reported as `option=--password rule="unknown flag"`. A positional argument
+is reported as `option=arguments`. Startup bind and
+identity-storage errors identify `--bind` and `--state-dir` and give the
+value that failed, as in
+`option=--bind value=192.0.2.7 rule="use an OS-supported bind address with available local ports"`.
+An option or value longer than 512 bytes is cut there and ends
+`…(truncated, N bytes)`.
 
 ### Exit codes
 
@@ -434,10 +439,13 @@ string or numeric ID (null when unavailable or ambiguous), and message
 Device replies stay byte-transparent and are never decoded for this check.
 
 One WARN `site_protected` record is emitted for each dropped setter. It contains
-`method`, integer request `id` or `unavailable`, and `reason=site_protected`.
-String IDs are echoed to the client but omitted from logs. Coordinates, clock
-values, zone values, and unknown parameter names are omitted. Invalid frames
-use WARN `site_reject` with fixed method/reason labels. There is no startup
+`method`, the request `id` as sent (`unavailable` when it is missing or not a
+string or number), `params` (the coordinates, zone and clock values the
+client tried to set, plus unknown parameter names; access-secret fields and
+unknown value subtrees are excluded) and `reason=site_protected`. An `id` or
+`params` longer than 512 bytes is cut there and ends `…(truncated, N bytes)`,
+where N is its full length. Invalid frames use WARN
+`site_reject` with the method, any recovered `id` and the refusal rule. There is no startup
 site record. If device EOF prevents a local error from being delivered, WARN
 `site_reply_failed` names the refusal rule in `reason` with `cause=device_closed`.
 
@@ -489,7 +497,8 @@ All detail requests, including the pre-allocation check, send
 `onlyQueryOwner=false`, as the app's connect workflow does in the
 [spec](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection).
 Unmatched serials or multiple pairs without a serial identify `--serial` in
-classified diagnostics. For multiple devices without a serial, the CLI prints
+classified diagnostics; an unmatched serial is echoed in `value`, as in
+`option=--serial value=SYNTHETIC0001`. For multiple devices without a serial, the CLI prints
 an error to standard output listing every received distinct pair, one per line:
 model then **full serial**. Pass `--serial` with one of them. Incomplete-catalog, duplicate, and ambiguous
 serial refusals also list the received pairs. The returned error, and any log
@@ -555,10 +564,13 @@ by default and shares this exact identity format.
 Help, version, license text, and received telescope lists go to stdout.
 Classified logs/errors go to stderr. Normal logging uses the selected format and level.
 Use WARN for quieter long-running service logs.
-Rejected startup suppresses pending dependency records except `device_catalog`
-and reports their loss at WARN; diagnostic loss makes the final command result fail.
+Dependency records written during startup are held until the configuration is
+accepted or refused, then written ahead of the final record either way;
+`device_catalog` is written at once. Records past the 64 KiB hold are dropped
+and their loss reported at WARN; diagnostic loss makes the final command result fail.
+Logs hide only access secrets; see [what logs show](../ui.md#what-logs-show).
 Most diagnostic records contain fixed classifications and numeric context,
-not dependency error text, forwarded payloads, or session secrets. Device
+not dependency error text or forwarded payloads. Device
 selection includes full serials in logs without truncation; valid serials preserve printable ASCII verbatim, with syntax escaping supplied by the log encoder. Model labels retain their 64-character display cap.
 The selected telescope also appears in lifecycle events and the copied diagnostic
 summary. Each catalog fetch also records the account's received telescope pairs,
@@ -652,16 +664,16 @@ In trail entries:
 | `iotc_rid_history_exhausted` | ERROR | Process-lifetime rendezvous identifier reservation budget is full; fixed `error` includes restart guidance |
 | `iotc_license_refused` | WARN | `rule=license_nul`; decoded license contains NUL, with no license material logged |
 | `relay_progress`, `relay_summary`, `relay_failure_summary` | INFO | Relay phase, request/result/refusal counters, selection; fixed failure reason in the failure summary |
-| `channel_open` | INFO | Device `port`, `local_port`, `channel`, `client_class` |
+| `channel_open` | INFO | Device `port`, `local_port`, `channel`, `client` (the client's address and port) |
 | `channel_close` | INFO | Same context, `duration_ms`, successful `local_to_device_bytes`, `device_to_local_bytes`, classified reason |
 | `channel_closed` | INFO for a closed local writer; WARN for abnormal failures; DEBUG otherwise | Tunnel/bridge detail, direction or channel, reason and classified cause |
 | `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason; `rule=SIO_TCP_INFO_required` identifies a failed or short TCP-state query, which refuses admission |
-| `client_canceled` | INFO | Admission canceled before forwarding; ports/client class |
-| `site_protected` | WARN | Dropped setter; method, integer ID or `unavailable`, reason |
-| `site_reject` | WARN | Invalid frame; method and reason |
+| `client_canceled` | INFO | Admission canceled before forwarding; ports and `client` |
+| `site_protected` | WARN | Dropped setter; method, request ID or `unavailable`, params with the coordinates, zone and clock values plus unknown parameter names, reason |
+| `site_reject` | WARN | Invalid frame; method, recovered request ID or `unavailable`, reason |
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
-| `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode |
-| `lan_discovery_refused` | WARN | Nonzero refusal counts per fixed `rule`, at most once per rule per five seconds, plus pending counts at shutdown; no peer data |
+| `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode and the advertised telescope's serial, model and name (the cloud `ssid`); `proxy` groups them under `telescope` |
+| `lan_discovery_refused` | WARN | Nonzero refusal counts per fixed `rule`, at most once per rule per five seconds, plus pending counts at shutdown; `sender` is the address and port of the rule's last refused datagram, empty when a truncated read gave none |
 | `lan_discovery_delivery_failed` | WARN | Local deadline/write failure or short write; fixed `rule`. Reply failures drop one reply; read-deadline failures end discovery. |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |
 | `wildcard_bind_warning` | WARN | Exposed non-LAN interfaces/addresses and TCP mappings; advisory snapshot, excluding discovery UDP |
@@ -673,9 +685,9 @@ In trail entries:
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
 | `console control failed` | ERROR, JSON | Windows console event wait failed or returned an unexpected result; `phase=console_control`, `reason=operation_failed`. Cancels the command so release and cleanup proceed. |
 | `ui failed` | ERROR, JSON | UI command argument refusal; fixed `option`, `rule`, help hint, `phase=arguments`, `reason=invalid_option`. UI startup/storage failures use fixed stderr messages; browser actions report sanitized errors in the page. |
-| `internal error recovered` | ERROR | The copier recovered a panic and failed only that work, leaving the proxy running; `where` names the recovery site, with no panic value or stack |
+| `internal error recovered` | ERROR | The copier recovered a panic and failed only that work, leaving the proxy running; `where` names the recovery site, `panic` the panic value and `stack` the stack trace, cut at 512 bytes and 4 KiB with a `…(truncated, N bytes)` marker |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
-| `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions; direct/relay and UDP/TCP path |
+| `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions, with the account email in `account` for `login` and `renewal`; direct/relay and UDP/TCP path |
 | `cloud_catalog_pagination_oddities`, `cloud_receive_oddity`, `cloud_response_rejected` | DEBUG | Bounded cloud parsing/catalog diagnostics |
 | `diagnostic_causes` | DEBUG | Bounded classified error graph correlated by diagnostic, phase, reason |
 
@@ -695,8 +707,8 @@ process normally, wait for session release and exit, then restart it to restore
 the budget. [This is a local limit, not a device refusal.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#attempt-and-cache-lifetimes) The record uses the
 selected log format and sink; a stalled sink can drop it.
 
-Client class is `loopback`, `LAN` for private/link-local IPs, or `other`;
-client addresses are omitted. Channel byte counts include successful partial
+`client` is the local client's address and port, for example
+`192.0.2.20:50123`. Channel byte counts include successful partial
 writes; duration ends when both forwarding workers finish.
 Outage reminders continue without clients and during an in-flight dial or
 cleanup or recovery delay. Ownership recovery keeps its original

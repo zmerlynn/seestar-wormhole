@@ -67,7 +67,11 @@ func TestAccountPhaseLogs(t *testing.T) {
 				}
 			}
 		}
-		for _, secret := range []string{"reader@example.invalid", "Example-Only-123", "token-sentinel", "profile-sentinel", "fixture-password"} {
+		// The login records name the account; the password stays out.
+		if !strings.Contains(logs.String(), `"account":"reader@example.invalid","phase":"login"`) {
+			t.Fatalf("login records lack the account: %s", &logs)
+		}
+		for _, secret := range []string{"Example-Only-123", "token-sentinel", "profile-sentinel", "fixture-password"} {
 			if strings.Contains(logs.String(), secret) {
 				t.Fatal("secret in logs")
 			}

@@ -261,7 +261,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			if o.command == commandUI {
 				return uiListenerError(p.Device, p.Local, err)
 			}
-			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports"}
+			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports", Value: o.bind}
 		}
 		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.Device})
 	}
@@ -273,7 +273,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			if o.command == commandUI {
 				return &ui.ActionError{Code: "discovery", Field: "discovery"}
 			}
-			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
+			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available", Value: o.bind}
 		}
 		defer discovery.Close()
 	}
@@ -298,7 +298,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		if err != nil {
 			return diagnostic.Wrap("lan_discovery", "invalid_device_detail", err)
 		}
-		startup.output.resolve(true)
+		startup.output.resolve()
 		logger.Warn("lan_discovery_synthesized", "fields", synthesized, "envelope_fields", []string{"Timestamp"})
 		discoveryDone = make(chan struct{})
 		go func() { discoveryErr = discovery.Serve(ctx, machine); close(discoveryDone) }()
@@ -309,7 +309,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	}
 	// Configuration is accepted before waiting for readiness, which may spend
 	// a long time retrying busy. Keep those lifecycle diagnostics visible.
-	startup.output.resolve(true)
+	startup.output.resolve()
 	warnWildcardBind(logger, forwards, systemInterfaces())
 	done := make(chan error, 1)
 	go func() { done <- proxy.Serve(ctx, s, forwards, 128, logger) }()

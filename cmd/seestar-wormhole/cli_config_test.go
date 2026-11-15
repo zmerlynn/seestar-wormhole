@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/synctest"
 
@@ -21,15 +22,12 @@ import (
 )
 
 // Compare the complete record, allowing only slog's timestamp to vary.
-func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string) {
+// assertConfigRecord checks that the last line of logs is the configuration
+// refusal, and returns the value it names, if any. Lines before it are the
+// startup's own records, which a refusal does not suppress.
+func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string) string {
 	t.Helper()
 	lines := bytes.Split(bytes.TrimSpace(logs), []byte("\n"))
-	for _, line := range lines[:len(lines)-1] {
-		var warning map[string]any
-		if err := json.Unmarshal(line, &warning); err != nil || warning["level"] != "WARN" || (warning["rule"] != "startup_diagnostics_lost") {
-			t.Fatalf("unexpected startup diagnostic: %s", line)
-		}
-	}
 	var got map[string]any
 	if fileCommand(command) { // a file command's record is text
 		var err error
@@ -43,6 +41,8 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 		t.Fatalf("missing timestamp: %v", got)
 	}
 	delete(got, "time")
+	value, _ := got["value"].(string)
+	delete(got, "value")
 	want := map[string]any{"level": "ERROR", "msg": command + " failed", "option": option, "rule": rule, "help": programName + " " + command + " --help", "phase": "arguments", "reason": "invalid_option"}
 	if command == "proxy" || command == "discovery" {
 		want["cleanup_reason"] = "none"
@@ -53,6 +53,7 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("diagnostic=%v want=%v", got, want)
 	}
+	return value
 }
 
 func TestCLIConfigAttribution(t *testing.T) {
@@ -65,6 +66,7 @@ func TestCLIConfigAttribution(t *testing.T) {
 						t.Setenv("SEESTAR_PASSWORD", "PRIVATE_PASSWORD")
 						args := []string{command, "--log-format=" + format, "--log-level=debug"}
 						option, rule := "SEESTAR_EMAIL", "use a valid UTF-8 email of at most 4096 bytes matching the supported account format"
+						state := ""
 						switch problem {
 						case "email":
 							t.Setenv("SEESTAR_EMAIL", "")
@@ -72,7 +74,7 @@ func TestCLIConfigAttribution(t *testing.T) {
 							t.Setenv("SEESTAR_PASSWORD", "bad")
 							option, rule = "SEESTAR_PASSWORD", "use a valid UTF-8 password of 8..32 UTF-16 units"
 						case "state":
-							state := filepath.Join(t.TempDir(), "PRIVATE_STATE_PATH")
+							state = filepath.Join(t.TempDir(), "state")
 							if err := os.WriteFile(state, []byte("block directory"), 0600); err != nil {
 								t.Fatal(err)
 							}
@@ -84,7 +86,7 @@ func TestCLIConfigAttribution(t *testing.T) {
 						var out, logs bytes.Buffer
 						factory := func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
 							if problem == "selection" {
-								// A preliminary dependency record must not survive a typed refusal.
+								// A preliminary dependency record survives a typed refusal.
 								cfg.Logger.Debug("dependency_startup", "count", 1)
 								return nil, diagnostic.Wrap("device_selection", "invalid_configuration", errors.Join(cloud.ErrConfig, &argumentError{Option: option, Rule: rule}))
 							}
@@ -96,8 +98,13 @@ func TestCLIConfigAttribution(t *testing.T) {
 						if got := commandExitCode(options{command: commandProxy}, err); got != 2 {
 							t.Fatalf("exit=%d want=2 err=%v logs=%s", got, err, &logs)
 						}
-						assertConfigRecord(t, logs.Bytes(), command, option, rule)
-						assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_STATE_PATH", "PRIVATE_PAYLOAD")
+						if value := assertConfigRecord(t, logs.Bytes(), command, option, rule); value != state {
+							t.Errorf("value=%q want %q", value, state)
+						}
+						if problem == "selection" && !strings.Contains(logs.String(), "dependency_startup") {
+							t.Errorf("dependency record suppressed: %s", &logs)
+						}
+						assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_PAYLOAD")
 						if out.Len() != 0 {
 							t.Fatalf("proxy stdout=%s", &out)
 						}

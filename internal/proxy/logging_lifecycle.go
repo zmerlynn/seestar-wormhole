@@ -7,32 +7,26 @@ import (
 	"time"
 )
 
-// Only numeric ports and fixed address classes may cross the logging boundary.
 func localPort(addr net.Addr) int {
 	if a, ok := addr.(*net.TCPAddr); ok {
 		return a.Port
 	}
 	return 0
 }
-func clientClass(addr net.Addr) string {
-	a, ok := addr.(*net.TCPAddr)
-	if !ok {
-		return "other"
+
+// clientAddress is the client's address as it is, or "" when there is none.
+func clientAddress(addr net.Addr) string {
+	if addr == nil {
+		return ""
 	}
-	if a.IP.IsLoopback() {
-		return "loopback"
-	}
-	if a.IP.IsPrivate() || a.IP.IsLinkLocalUnicast() {
-		return "LAN"
-	}
-	return "other"
+	return addr.String()
 }
 
 func clientLog(logger *slog.Logger, local net.Conn, port uint16) *slog.Logger {
 	if logger == nil {
 		return nil
 	}
-	return logger.With("port", port, "local_port", localPort(local.LocalAddr()), "client_class", clientClass(local.RemoteAddr()))
+	return logger.With("port", port, "local_port", localPort(local.LocalAddr()), "client", clientAddress(local.RemoteAddr()))
 }
 
 type bridgeResult struct {
