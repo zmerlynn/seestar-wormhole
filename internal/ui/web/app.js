@@ -619,24 +619,41 @@ async function lanScan() {
     controls();
   }
 }
-// The header's line and dot: the proxy's status on the Telescope Network route, and
-// the saved telescope and its address's last Test on this network. The dot
+// The header's line: a dot and a sentence naming the route's telescope
+// and its state, then the folder its files are copied to, which opens
+// Copy's settings. Through Telescope Network it is the proxy's status; on
+// this network, the saved telescope and its address's last Test. The dot
 // is green only while connected now; a retry, a busy telescope or an idle
-// release is busy.
+// release is busy. It reads only the fields it names.
 function connectionLine() {
   let line = 'Loading…', tone = 'off';
-  const saved = state?.settings?.route === 'lan' ? state.settings.lan_address || '' : '';
-  if (state && saved && !active) {
-    const tested = sameEndpoint(lanReach?.address, saved), name = telescopeNameNow();
-    line = !tested ? 'On this network: ' + (name || saved) : lanReach.ok ? 'On this network: ' + (name ? name + ', reachable' : 'reachable') : "Can't reach " + saved;
+  const name = telescopeNameNow();
+  if (state?.settings?.route === 'lan' && !active) {
+    const saved = state.settings.lan_address || '', tested = sameEndpoint(lanReach?.address, saved);
+    if (!saved) line = 'On this network: no telescope saved yet.';
+    else if (tested && !lanReach.ok) line = "Can't reach " + (name ? name + ' at ' : '') + saved;
+    else line = (name || saved) + ' on this network' + (tested ? ', reachable' : '');
     tone = !tested ? 'off' : lanReach.ok ? 'on' : 'error';
+  } else if (state && !active) {
+    const label = name || (state.settings?.serial ? state.settings.choice_label || '' : '');
+    const failed = !!state.failure && state.failure.code !== 'release' && state.failure.code !== 'selection_multiple';
+    line = label ? (failed ? 'Could not connect to ' : 'Not connected to ') + label : failed ? 'Could not connect.' : 'Not connected. No telescope chosen yet.';
   } else if (state) {
-    line = active ? state.status : 'Not connected';
-    tone = !active ? 'off' : state.ready ? 'on' : 'busy';
+    line = state.ready ? 'Connected to ' + (name || state.selected_device || 'your Seestar') + ' through Telescope Network' : state.status;
+    tone = state.ready ? 'on' : 'busy';
   }
   text('connection-text', line);
   if ($('connection-dot').getAttribute('data-tone') !== tone) $('connection-dot').setAttribute('data-tone', tone);
-  telescopeLine();
+  // The folder shows once the telescope is named and Copy's status of it
+  // is read: not for a telescope saved by its address only, or none.
+  const telescope = name ? copyTelescopeNow() : null;
+  const setUp = !!telescope?.set_up && !!telescope.folder;
+  $('telescope-to').hidden = !telescope;
+  text('telescope-folder', setUp ? telescope.folder : 'no folder yet');
+  const label = setUp ? 'Copy folder: ' + telescope.folder + '. Open Copy settings' : 'No folder yet. Open Copy settings';
+  if ($('telescope-folder').getAttribute('aria-label') !== label) $('telescope-folder').setAttribute('aria-label', label);
+  const title = setUp ? telescope.title : '';
+  if ($('telescope-folder').title !== title) $('telescope-folder').title = title;
 }
 // copyTelescopeNow is copy's status of the route's telescope, or null
 // while Copy is off, or its status describes another telescope than the
@@ -650,37 +667,6 @@ function copyTelescopeNow() {
 // telescopeNameNow is the route's telescope's name, from the app's status.
 function telescopeNameNow() {
   return state?.telescope_name || '';
-}
-// The line under it names the route's telescope and the folder its files
-// are copied to, which opens Copy's settings: on this network with the
-// address in use, through the account saved or connecting. It reads only
-// the fields it names.
-function telescopeLine() {
-  $('telescope-line').hidden = !state;
-  if (!state) return;
-  const lan = state.settings?.route === 'lan', telescope = copyTelescopeNow(), name = telescopeNameNow();
-  let what, to = 'folder';
-  if (lan) {
-    const saved = state.settings.lan_address || '';
-    what = !(name || saved) ? 'no telescope chosen' : (name || saved) + (telescope?.address ? ' at ' + telescope.address + (telescope.address_saved ? ' (saved)' : '') : '');
-    if (!name) to = '';
-  } else if (!active) {
-    const label = name || (state.settings?.serial ? state.settings.choice_label || '' : '');
-    what = label ? label + ' (saved), not connected' : 'no telescope chosen';
-    if (!name) to = '';
-  } else {
-    what = name || state.selected_device || 'connecting';
-    if (!name) to = 'wait';
-  }
-  if (!telescope) to = '';
-  const setUp = to === 'folder' && telescope.set_up && !!telescope.folder;
-  text('telescope-text', (lan ? 'On this network' : 'Telescope Network') + ': ' + what);
-  $('telescope-to').hidden = !to;
-  $('telescope-wait').hidden = to !== 'wait';
-  $('telescope-folder').hidden = to !== 'folder';
-  text('telescope-folder', setUp ? telescope.folder : 'no folder yet');
-  const title = setUp ? telescope.title : '';
-  if ($('telescope-folder').title !== title) $('telescope-folder').title = title;
 }
 // The folder, or no folder yet, opens Copy's settings, as Change… does.
 // While copying, the settings can't change: it shows why, as Change…
