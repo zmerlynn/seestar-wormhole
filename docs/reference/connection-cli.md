@@ -438,8 +438,9 @@ Device replies stay byte-transparent and are never decoded for this check.
 
 One WARN `site_protected` record is emitted for each dropped setter. It contains
 `method`, the request `id` as sent (`unavailable` when it is missing or not a
-string or number), `params` as sent, so the coordinates, zone and clock values
-the client tried to set, and `reason=site_protected`. Invalid frames use WARN
+string or number), `params` with the coordinates, zone and clock values the
+client tried to set, plus unknown parameter names; access-secret fields and
+unknown value subtrees are excluded. It ends with `reason=site_protected`. Invalid frames use WARN
 `site_reject` with the method, any recovered `id` and the refusal rule. There is no startup
 site record. If device EOF prevents a local error from being delivered, WARN
 `site_reply_failed` names the refusal rule in `reason` with `cause=device_closed`.
@@ -664,7 +665,7 @@ In trail entries:
 | `channel_closed` | INFO for a closed local writer; WARN for abnormal failures; DEBUG otherwise | Tunnel/bridge detail, direction or channel, reason and classified cause |
 | `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason; `rule=SIO_TCP_INFO_required` identifies a failed or short TCP-state query, which refuses admission |
 | `client_canceled` | INFO | Admission canceled before forwarding; ports and `client` |
-| `site_protected` | WARN | Dropped setter; method, request ID or `unavailable`, params as sent, reason |
+| `site_protected` | WARN | Dropped setter; method, request ID or `unavailable`, params with the coordinates, zone and clock values plus unknown parameter names, reason |
 | `site_reject` | WARN | Invalid frame; method, recovered request ID or `unavailable`, reason |
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
 | `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode and the advertised telescope's serial, model and name (the cloud `ssid`); `proxy` groups them under `telescope` |
