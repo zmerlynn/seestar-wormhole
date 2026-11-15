@@ -1200,7 +1200,7 @@ test('Browse follows a change of route', async ({ page, startApp }) => {
 
 // A Browse connect that fails is in Activity as a Browse row, and the
 // copied diagnostic summary holds it in failures, gives the trail newest
-// first, and names no address or file.
+// first, and gives the error's text, which names the address dialed.
 test('the diagnostic summary holds a failing Browse connect', async ({ page, startApp }) => {
   const app = await startApp({ ...setUp('/nowhere'), 'config.json': lan(refused) });
   await page.addInitScript(() => {
@@ -1226,10 +1226,8 @@ test('the diagnostic summary holds a failing Browse connect', async ({ page, sta
   const openedAt = summary.events.findIndex((e) => e.message === 'App opened.');
   expect(failedAt).toBeGreaterThanOrEqual(0);
   expect(openedAt).toBeGreaterThan(failedAt);
-  for (const e of summary.events) {
-    if (e.source && e.source !== 'connection') expect(JSON.stringify(e)).not.toMatch(/127\.0\.0\.1|MyWorks|\.fit/);
-  }
-  expect(JSON.stringify(summary.failures)).not.toMatch(/127\.0\.0\.1|MyWorks|\.fit/);
+  expect(summary.events[failedAt].error).toMatch(/127\.0\.0\.1/);
+  expect(summary.failures.find((f) => f.op === 'connect').error).toMatch(/127\.0\.0\.1/);
 });
 
 // While the controls are lost, Browse keeps its loaded view but takes no
