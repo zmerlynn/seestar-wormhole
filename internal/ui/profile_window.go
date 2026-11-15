@@ -16,16 +16,26 @@ import (
 // executable itself, which starts a new instance where open -a would
 // reactivate this one. Only tests replace it.
 var startProfile = func(name string) error {
-	exe, err := os.Executable()
+	cmd, err := profileCommand(name)
 	if err != nil {
 		return err
 	}
-	cmd := exec.Command(exe, "ui", "--profile", name)
 	if err := cmd.Start(); err != nil {
 		return err
 	}
 	go cmd.Wait()
 	return nil
+}
+
+// profileCommand is the process startProfile starts: this executable,
+// with the name as an argument of its own and no shell, and no file of
+// this process's but the standard ones.
+func profileCommand(name string) (*exec.Cmd, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	return exec.Command(exe, "ui", "--profile", name), nil
 }
 
 // windowTitle is the window's title, which names the profile once there

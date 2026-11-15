@@ -230,3 +230,23 @@ func TestRelaunchAsksForProfile(t *testing.T) {
 		t.Errorf("a run of no profile has one: %s", w.Body)
 	}
 }
+
+// A profile opens in this executable, with ui --profile and the name as
+// an argument of its own, never through a shell, and with no file of
+// this process's but the standard ones, whatever the name holds.
+func TestProfileCommand(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"Garden", "Back yard", `a "quoted" $(name); rm -rf x`, "--state-dir", "Straße"} {
+		cmd, err := profileCommand(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cmd.Err != nil || cmd.Path != exe || !slices.Equal(cmd.Args, []string{exe, "ui", "--profile", name}) ||
+			cmd.ExtraFiles != nil || cmd.Dir != "" || cmd.Env != nil || cmd.SysProcAttr != nil {
+			t.Errorf("%q: path %q, args %q, extra files %v, err %v", name, cmd.Path, cmd.Args, cmd.ExtraFiles, cmd.Err)
+		}
+	}
+}
