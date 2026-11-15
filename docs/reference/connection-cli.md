@@ -658,6 +658,7 @@ In trail entries:
 | Record | Level | Meaning and useful fields |
 |---|---|---|
 | `proxy_started` | INFO | Revision, listener count, lazy flag, pause threshold; process serving, not necessarily remote ready |
+| `copy_only` | WARN | UI only, once per copy-only run: `local_port`, `port` (device port), `error` (the real bind error), `holder_profile` and `holder_telescope`. The run serves no TCP listeners or discovery. |
 | `installation_id_ephemeral`, `device_selected` | INFO | Identity storage mode; selected public model and full serial |
 | `device_catalog` | INFO | Every catalog fetch, including selection refusals: `devices` contains escaped `model` labels and full `serial` pairs; `count` is the received distinct-pair count and `complete` states whether completeness was proven without duplicates. `omitted` counts pairs cut to keep the encoded array within 12 KiB and the record within 16 KiB. The log sink accepts records up to 16 KiB. Failed fetches retain successfully received pairs with `complete=false`. The private GUI log also records this schema. |
 | `session_state`, `session_phase_complete`, `session_release_complete` | INFO | State in `phase`, layer, reason, retry milliseconds, local-client policy; ready records include selected public model and full serial in `telescope` |
