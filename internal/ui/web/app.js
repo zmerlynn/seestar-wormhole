@@ -639,7 +639,7 @@ function connectionLine() {
     const failed = !!state.failure && state.failure.code !== 'release' && state.failure.code !== 'selection_multiple';
     line = label ? (failed ? 'Could not connect to ' : 'Not connected to ') + label : failed ? 'Could not connect.' : 'Not connected. No telescope chosen yet.';
   } else if (state) {
-    line = state.ready ? 'Connected to ' + (name || state.selected_device || 'your Seestar') + ' through Telescope Network' : state.status;
+    line = state.ready ? 'Connected to ' + (name || state.selected_device || 'your Seestar') + ' through Telescope Network' + (state.copy_only ? ', for copying only' : '') : state.status;
     tone = state.ready ? 'on' : 'busy';
   }
   text('connection-text', line);
@@ -1867,11 +1867,24 @@ function render(s) {
   const run = s.effective;
   const listen = {all_networks: 'all networks', this_computer: 'this computer only', other: 'a selected network address'}[run.listen];
   $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle.mode === 'keep_connected' ? 'Keep connected' : 'Connect when an app needs Seestar');
-  $('phone-steps').hidden = !(active && s.discovery_started);
+  // Copying only, the window serves no ports: what would point the
+  // Seestar app or an SMB app at them is hidden.
+  const copyOnly = active ? s.copy_only || null : null;
+  $('copy-only').hidden = !copyOnly;
+  if (copyOnly) {
+    const holder = copyOnly.profile ? 'The ' + copyOnly.profile + ' window' : 'Another seestar-wormhole window';
+    text('copy-only-text', holder + ' is serving the Seestar app' + (copyOnly.telescope ? ' (' + copyOnly.telescope + ')' : '') + " on this computer's ports, so this window can't. Copy, Browse and Free up space work here as usual.");
+    text('copy-only-how', 'To use the Seestar app with this telescope instead: Stop the connection in ' + (copyOnly.profile ? 'the ' + copyOnly.profile + ' window' : 'the other window') + ', then Stop and Connect here.');
+  }
+  $('run-summary').hidden = !!copyOnly;
+  $('phone-steps').hidden = !(active && s.discovery_started) || !!copyOnly;
   const smb = run.ports['445'];
   $('copy-steps').hidden = !(active && smb);
+  $('copy-smb').hidden = !!copyOnly;
   $('copy-port').textContent = smb || '';
+  $('running-ports-box').hidden = !!copyOnly;
   portsTable('running-ports', run.ports);
+  renderProfile(s.profile);
   text('effective-settings', JSON.stringify(s.effective, null, 2));
   text('log-path', s.log_path ? 'Private log: ' + s.log_path : '');
   $('log-error').hidden = !s.log_failed;
@@ -1881,11 +1894,82 @@ function render(s) {
   copyTabs(s);
   controls();
 }
+// The window's profile: its label after the title, in the header and the
+// window's title, once there is more than one profile, and Profiles… for
+// a run of a profile. A relaunch asks which profile to open.
+function renderProfile(p) {
+  const label = p?.label || '';
+  $('profiles-open').hidden = !p;
+  $('profile-name').hidden = !label;
+  text('profile-name', label ? '· ' + label : '');
+  const title = label ? 'seestar-wormhole — ' + label : 'seestar-wormhole';
+  if (document.title !== title) document.title = title;
+  if (p?.ask) openProfiles(true);
+}
+// The Profiles dialog lists Default and the named profiles, each a button
+// that brings its open window forward or opens it, and creates one. From
+// a relaunch, Show this window closes it; from the menu or the footer,
+// Cancel does; Escape does the same. profilesBack is where focus returns.
+let profilesBack = null, profilesGeneration = 0;
+async function openProfiles(relaunch) {
+  const generation = ++profilesGeneration;
+  if (!$('p-dialog').open) {
+    profilesBack = document.activeElement;
+    $('p-dialog').showModal();
+  }
+  $('p-main').hidden = false;
+  $('p-form').hidden = true;
+  $('p-show').hidden = !relaunch;
+  $('p-cancel').hidden = relaunch;
+  profileError('p-err', '');
+  $('p-list').replaceChildren();
+  $(relaunch ? 'p-show' : 'p-cancel').focus();
+  let profiles;
+  try {
+    profiles = (await api('profiles')).profiles || [];
+  } catch (e) {
+    if (generation === profilesGeneration) profileError('p-err', e.message || lostCopy);
+    return;
+  }
+  if (generation !== profilesGeneration) return;
+  for (const p of profiles) {
+    const row = document.createElement('li'), button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = p.label + (p.self ? ' — this window' : p.open ? ' — open' : '');
+    button.addEventListener('click', () => p.self ? $('p-dialog').close() : profileAct('profiles/open', {name: p.name}, 'p-err'));
+    row.append(button);
+    $('p-list').append(row);
+  }
+}
+function profileError(id, message) {
+  text(id, message);
+  $(id).hidden = !message;
+  if (id === 'p-name-err') $('p-name').setAttribute('aria-invalid', message ? 'true' : 'false');
+}
+// profileAct opens a profile, or creates one and opens it; a refusal
+// shows its message under the name or the list.
+async function profileAct(action, body, errorId) {
+  try {
+    await api(action, body);
+    $('p-dialog').close();
+  } catch (e) {
+    profileError(errorId, e.message || lostCopy);
+    if (errorId === 'p-name-err') $('p-name').focus();
+  }
+}
+function newProfile() {
+  $('p-main').hidden = true;
+  $('p-form').hidden = false;
+  $('p-name').value = '';
+  profileError('p-name-err', '');
+  $('p-name').focus();
+}
 async function refresh() {
   const generation = ++statusGeneration;
   let s;
   try {
-    s = await api('status');
+    // The page's first status answers a relaunch's question.
+    s = await api(initialized ? 'status' : 'status?first=1');
   } catch (e) {
     if (ended || generation !== statusGeneration) return;
     throw e;
@@ -1906,7 +1990,7 @@ async function refresh() {
     $('password').value = '';
   }
   render(s);
-  if (first && !selectionStep) {
+  if (first && !selectionStep && !$('p-dialog').open) {
     // WKWebView can finish the status fetch before its native window is key.
     const focusStart = () => requestAnimationFrame(() => $('start').focus());
     if (document.hasFocus()) focusStart();
@@ -2165,6 +2249,21 @@ $('x-confirm').addEventListener('close', () => {
   if (!$('x-go').hidden) $('x-go').focus();
 });
 $('lan-address').addEventListener('input', () => lanError(''));
+$('profiles-open').addEventListener('click', () => openProfiles(false));
+$('p-show').addEventListener('click', () => $('p-dialog').close());
+$('p-cancel').addEventListener('click', () => $('p-dialog').close());
+$('p-back').addEventListener('click', () => $('p-dialog').close());
+$('p-new').addEventListener('click', newProfile);
+$('p-form').addEventListener('submit', e => {
+  e.preventDefault();
+  profileAct('profiles/new', {name: $('p-name').value}, 'p-name-err');
+});
+$('p-name').addEventListener('input', () => profileError('p-name-err', ''));
+$('p-dialog').addEventListener('close', () => {
+  profilesGeneration++;
+  if (profilesBack?.isConnected) profilesBack.focus();
+  profilesBack = null;
+});
 document.addEventListener('click', openExternalLink);
 document.addEventListener('auxclick', openExternalLink);
 portsTable('ports', {}, true);

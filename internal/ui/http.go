@@ -21,6 +21,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -41,6 +42,11 @@ type server struct {
 	quitOnce    sync.Once
 	activate    func()
 	native      bool
+	// profile is the profile this run is of, nil for a run of a
+	// --state-dir folder; title is its window's, nil without one.
+	profile     *runProfile
+	title       *windowTitle
+	askProfiles atomic.Bool
 	// copy serves copy's API under /copy/api/ and Browse under /browse/;
 	// nil serves neither.
 	copy *copyapp.Mount
@@ -144,6 +150,14 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(http.StatusForbidden)
 		return
 	}
+	if r.URL.Path == "/api/profiles" {
+		if r.Method != "GET" {
+			fail(http.StatusMethodNotAllowed)
+			return
+		}
+		s.serveProfiles(w, r, profileInput{})
+		return
+	}
 	read := r.URL.Path == "/api/status" || r.URL.Path == "/api/instance"
 	if read {
 		if r.Method != "GET" {
@@ -211,8 +225,11 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// now, which another window of the same state root reads to
 			// tell its own port conflict from another program's.
 			ServingPorts []uint16 `json:"serving_ports"`
+			// Profile is the run's profile, absent for a run of a
+			// --state-dir folder.
+			Profile *profileView `json:"profile,omitempty"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
-			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports)})
+			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports), s.profileStatus(r)})
 		return
 	}
 	if r.Method != "POST" {
@@ -240,11 +257,24 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	in.Settings.Email = strings.TrimSpace(strings.ReplaceAll(in.Settings.Email, " ", ""))
 	switch r.URL.Path {
 	case "/api/activate":
+		var activation profileInput
 		if s.activate == nil {
 			fail(http.StatusNotFound)
 			return
 		}
-		s.activate()
+		if json.Unmarshal(b, &activation) != nil {
+			fail(http.StatusBadRequest)
+			return
+		}
+		s.relaunched(activation.Show)
+	case "/api/profiles/open", "/api/profiles/new":
+		var profile profileInput
+		if json.Unmarshal(b, &profile) != nil {
+			fail(http.StatusBadRequest)
+			return
+		}
+		s.serveProfiles(w, r, profile)
+		return
 	case "/api/start":
 		// Connect chooses the account route, which moves the copier when
 		// this network was the route.

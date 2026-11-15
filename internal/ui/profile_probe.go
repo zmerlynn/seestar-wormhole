@@ -105,3 +105,27 @@ func PortHolder(ctx context.Context, port uint16) (proxy.Holder, bool) {
 	}
 	return ServingWindow(ctx, p.root, p.name, port)
 }
+
+// activateWindow brings forward the open window of the state folder dir,
+// as a relaunch does, but showing it only: the window it asks never asks
+// which profile to open. false is no window answering there.
+func activateWindow(ctx context.Context, client *http.Client, dir string) bool {
+	var record runtimeRecord
+	if err := (&storage{root: dir}).read("ui-runtime.json", &record); err != nil || !record.valid() {
+		return false
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", "http://"+record.host()+"/api/activate", strings.NewReader(`{"show":true}`))
+	if err != nil {
+		return false
+	}
+	req.Header.Set("X-Seestar-Token", record.Token)
+	req.Header.Set("Origin", "http://"+record.host())
+	req.Header.Set("Content-Type", "application/json")
+	response, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	io.Copy(io.Discard, io.LimitReader(response.Body, 128))
+	response.Body.Close()
+	return response.StatusCode == http.StatusOK
+}
