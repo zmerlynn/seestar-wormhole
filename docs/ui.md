@@ -569,7 +569,8 @@ on, and the events name each
 telescope a scan found, with its name, model, serial and address. It also
 includes your telescopes' full serial numbers in connection and
 account-catalog events, your copy folder and history folder, your patterns,
-and the private log's path. It leaves out your password, the account email
+the private log's path, and each event's and current failure's error text,
+which can name folders, files and addresses. It leaves out your password, the account email
 and tokens. Remove what you don't want to share before you post it.
 
 <a id="what-logs-show"></a>
@@ -577,8 +578,10 @@ seestar-wormhole hides only access secrets: passwords and their hashes,
 tokens, keys, license material, cloud session and connection IDs, the device
 UID inside a cloud allocation, and relay credentials. The account email appears in logs but never in this
 summary. Everything else shows in full in logs, Activity, errors and the
-summary: folders, addresses, serials, telescope names, the listen address
-and the site a client tried to set.
+summary: each error's own text, folders, addresses, serials, telescope
+names, the listen address and the site a client tried to set. An error's
+text is cut at 512 bytes, and an access secret inside it prints as a marker
+such as `[account token]`.
 
 Logs, Activity and errors name the telescope too: its name, model, serial
 number, LAN address and host name, as a scan, Test or connect saw them. A
@@ -597,8 +600,8 @@ and completeness; see the [log reference](reference/connection-cli.md#logs).
 Unchanged status polls preserve the text and nodes in Details and the service
 tables so selected text stays selected. Changed content updates on the next poll.
 
-The private logs use fixed message templates and categories, UTC timestamps, and
-classified failure phases and reasons, with no raw protocol traces.
+The private logs use UTC timestamps, classified failure phases and reasons,
+and each failure's own error text, with no raw protocol traces.
 
 If seestar-wormhole fails to start, your system shows the error. On Windows,
 the error says when you need the WebView2 Runtime.

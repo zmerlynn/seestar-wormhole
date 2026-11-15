@@ -96,8 +96,9 @@ your password and tokens; see [what logs show](ui.md#what-logs-show). They
 name the telescope, with its serial number, name, model and network address,
 and include your local folders, selection patterns and file names, client
 addresses and, in logs, your account email: the summary keeps your
-telescopes' serials and addresses, your folders and patterns, and the CLI's
-`error` text names hosts, paths and files. Read them over and remove
+telescopes' serials and addresses, your folders and patterns, and each
+error's own text, which can name hosts, paths and files, as in
+`open /Users/me/Seestar/MyWorks/M 31/a.fit: permission denied`. Read them over and remove
 anything you'd rather keep before posting.
 
 ## The native window didn't open

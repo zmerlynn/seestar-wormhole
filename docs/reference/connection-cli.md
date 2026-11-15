@@ -182,7 +182,8 @@ Exit 0 means orderly shutdown, including cancellation by Ctrl+C or SIGTERM;
 exit 2 means a usage/configuration error, including an unavailable UDP bind;
 exit 1 means a runtime or logging failure. Configuration errors produce one
 JSON `discovery failed` record with `phase=arguments`,
-`reason=invalid_option`, fixed `option`/`rule`, a discovery-help hint, and
+`reason=invalid_option`, `option`, the `value` it refused, `rule`, the OS
+`error` when there is one, a discovery-help hint, and
 `cleanup_reason=none`, regardless of log format/level. Other failures also
 produce a final JSON `discovery failed` record with `phase`, an existing
 [reason value](#status-and-reason-values), and `cleanup_reason=none`.
@@ -284,19 +285,19 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning naming it in `value` (cut at 512 bytes); an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning naming it in `value` (cut at 512 bytes), as an unusable discovery `bind` does; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
 
 Flag parsing and settings validation precede credentials and
 listeners. A command-line error emits one `<command> failed` record (`seestar-wormhole-cli failed`
-for the root) with fixed
-`option`, `rule`, command-help hint, `phase=arguments` and
+for the root) with
+`option`, the `value` it refused, `rule`, command-help hint, `phase=arguments` and
 `reason=invalid_option` (and, for `proxy` and `discovery`, `cleanup_reason=none`),
 regardless of requested log settings: JSON for the root, `proxy`, `discovery`,
-`licenses` and `ui`, and a text line for the file commands. A parse refusal
-does not echo the value it refused. A flag that another command of this program
+`licenses` and `ui`, and a text line for the file commands. The password
+is never echoed. A flag that another command of this program
 defines, or a retired name such as a file command's `--state-dir`, is named,
 and the rule says where it belongs, such as
 `option=--dest rule="not a flag of proxy; see seestar-wormhole-cli sync --help"`.
@@ -304,9 +305,9 @@ Any other unknown flag is named without what follows its `=`: `--password=…`
 is reported as `option=--password rule="unknown flag"`. A positional argument
 is reported as `option=arguments`. Startup bind and
 identity-storage errors identify `--bind` and `--state-dir` and give the
-value that failed, as in
-`option=--bind value=192.0.2.7 rule="use an OS-supported bind address with available local ports"`.
-An option or value longer than 512 bytes is cut there and ends
+value that failed and the OS error, as in
+`option=--bind value=192.0.2.7 rule="use an OS-supported bind address with available local ports" error="listen tcp 192.0.2.7:4700: bind: cannot assign requested address"`.
+An option, value or error longer than 512 bytes is cut there and ends
 `…(truncated, N bytes)`.
 
 ### Exit codes
@@ -569,8 +570,9 @@ accepted or refused, then written ahead of the final record either way;
 `device_catalog` is written at once. Records past the 64 KiB hold are dropped
 and their loss reported at WARN; diagnostic loss makes the final command result fail.
 Logs hide only access secrets; see [what logs show](../ui.md#what-logs-show).
-Most diagnostic records contain fixed classifications and numeric context,
-not dependency error text or forwarded payloads. Device
+Diagnostic records carry classifications, numeric context and, in `error`,
+the failure's own text, cut at 512 bytes; access secrets inside it print as
+markers such as `[account token]`. Forwarded payloads are not logged. Device
 selection includes full serials in logs without truncation; valid serials preserve printable ASCII verbatim, with syntax escaping supplied by the log encoder. Model labels retain their 64-character display cap.
 The selected telescope also appears in lifecycle events and the copied diagnostic
 summary. Each catalog fetch also records the account's received telescope pairs,
@@ -592,7 +594,9 @@ replaces it. CLI logs keep their classified phase and reason rather than this UI
 
 The UI's private `gui.log` holds one JSON object per line, up to 64 KiB per file
 with one rotation (`gui.log.1`). Trail entries have `time`, `source`,
-`message`, `code`, `phase` and `reason`. Each account-catalog fetch also
+`message`, `code`, `phase` and `reason`, and a failure's `error`, its own
+text cut at 512 bytes. A message without a code of its own is written with
+an empty `code`. Each account-catalog fetch also
 writes a structured `device_catalog` record with `time`, `level`, `msg`,
 `devices`, `count`, `complete` and `omitted`.
 
@@ -606,7 +610,8 @@ In trail entries:
   Their `code` is `<source>_<op>_failed` or `<source>_<op>_recovered`.
 - A file-tool operation writes a line when it first fails, when its failure
   changes `phase` or `reason`, and when it next succeeds. Repeats of the same
-  failure stay in memory, in the UI's status `failures` and the copied summary.
+  failure stay in memory, in the UI's status `failures` and the copied summary,
+  each with the latest failure's `error` text.
 - Scans of this network are `connection` lines with one of these `code`
   values, a message that names the telescopes the scan saw, each with its
   name, model, serial and addresses, the saved address, and the reply
@@ -636,10 +641,10 @@ In trail entries:
   space check), and again only when a connect fails; with `connect`, on
   every connect; with `off`, never, so none of the connect codes above is
   recorded, and `scan_probed` neither.
-- File-tool lines carry a fixed message and the classified `phase` and
-  `reason`. They leave out paths, file and folder names, endpoints and error
-  text; in Activity, starting copying names the address, and a connection
-  error names the address dialed.
+- File-tool lines carry a fixed message, the classified `phase` and
+  `reason` and, for a failure, its `error` text, which can name paths, files,
+  folders and endpoints; in Activity, starting copying names the address,
+  and a connection error names the address dialed.
   Connection lines keep their telescope text, including the selected
   telescope's full serial, and catalog lines list the account's serials.
 
@@ -682,9 +687,9 @@ In trail entries:
 | `dtls_credentials_refused` | WARN | NUL-containing credentials refused with an error; `rule=R024` |
 | `diagnostics_lost` | WARN | Rule and cumulative loss count for startup or stderr rules; stderr failure uses stdout, except for the file commands, which have no stdout fallback |
 | `proxy_cleanup_complete` | INFO | Classified cleanup result |
-| `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
+| `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; `error` is the failure's text; a refused login (`reason=unauthorized` or `reauthentication_required`) adds the account email in `account`; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
 | `console control failed` | ERROR, JSON | Windows console event wait failed or returned an unexpected result; `phase=console_control`, `reason=operation_failed`. Cancels the command so release and cleanup proceed. |
-| `ui failed` | ERROR, JSON | UI command argument refusal; fixed `option`, `rule`, help hint, `phase=arguments`, `reason=invalid_option`. UI startup/storage failures use fixed stderr messages; browser actions report sanitized errors in the page. |
+| `ui failed` | ERROR, JSON | UI command argument refusal; `option`, `value`, `rule`, help hint, `phase=arguments`, `reason=invalid_option`. UI startup/storage failures use fixed stderr messages; a browser action's page error shows its category, and the log has the error's text. |
 | `internal error recovered` | ERROR | The copier recovered a panic and failed only that work, leaving the proxy running; `where` names the recovery site, `panic` the panic value and `stack` the stack trace, cut at 512 bytes and 4 KiB with a `…(truncated, N bytes)` marker |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
 | `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions, with the account email in `account` for `login` and `renewal`; direct/relay and UDP/TCP path |
@@ -726,7 +731,8 @@ diagnostics. Closed connection handles during teardown remain quiet.
 Final proxy diagnostics carry independent `reason`, `phase`, and
 `cleanup_reason`, plus up to eight distinct `leaf_causes`. `more` marks omitted
 labels/nodes. DEBUG `diagnostic_causes` retains up to 64 classified graph nodes.
-Raw wrapped dependency errors are not printed.
+`error` is the failure's own text, wrapped dependency errors included, cut at
+512 bytes.
 
 ### Proxy final failure
 
@@ -736,7 +742,8 @@ record with `msg="proxy failed"`, a string `reason`, and a string
 was held. A failed release is reported here even if an earlier session log
 already reported the primary failure. The selected primary stays in `reason`;
 cleanup does not erase it. Configuration refusals use the same record and
-include the fixed option and rule.
+include the option, the value it refused (never the password), the rule and
+any OS error.
 
 This record is JSON even with `--log-format text`, and appears at every
 `--log-level`. Orderly shutdown, including a signal followed by successful release, has

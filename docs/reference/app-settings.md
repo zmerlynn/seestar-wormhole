@@ -73,8 +73,8 @@ fallback, and the next save writes the fallback:
 | `serial` or `email` that isn't valid | Empty, as if none were saved |
 
 Each fallback logs one warning, `settings_fallback`, naming the file, the
-setting, the fallback and, for `serial` or `email`, the saved value in
-`value`, cut at 512 bytes: the app's in `gui.log`, `proxy --config`'s in its log. Entering a bad value in the app is still an
+setting, the fallback and the saved value in `value` (the `bind` for
+`discovery`), cut at 512 bytes: the app's in `gui.log`, `proxy --config`'s in its log. Entering a bad value in the app is still an
 error on that field.
 
 Unknown members survive a save. Reads are limited to 64 KiB and never rewrite
@@ -103,7 +103,7 @@ alone never writes the file.
 | `excludes`, `includes` | `[]`; **Leave out** and **Only copy**, one pattern each. With no `copy.json`, the form starts with `includes` set to `["*.fit", "*.fits"]`, **FITS files only**; Save writes the chosen patterns. **What to copy** is read from `includes`; nothing else is saved for it. |
 | `skip_built_in` | `true`; Copy only. Free up space always leaves out the built-in patterns. |
 | `start_copying` | `false` |
-| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range loads as the nearest of them, and a `settings_fallback` warning names the setting and the fallback, never the saved value, in `gui.log` or the `--profile default` command's log. |
+| `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range loads as the nearest of them, and a `settings_fallback` warning names the setting, the fallback and the saved value, in `gui.log` or the `--profile default` command's log. |
 | `older_than_days` | `7` |
 | `trust_state` | `false`; **Only the copy history** under **Before deleting, check**. |
 | `ignore_state` | `false`; **Nothing** under **Before deleting, check**. A save writes at most one of it and `trust_state` true; on load, `ignore_state` wins. |

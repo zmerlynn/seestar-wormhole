@@ -188,7 +188,8 @@ such as
 The saved settings hold no password, token or key. The record goes only to
 the command's stderr.
 Neither file is written or locked, and both are read with the app's own
-checks. Each refusal exits 2 with `option=--profile`:
+checks. Each refusal exits 2 with `option=--profile`, and the name given in
+`value` when it isn't `default`:
 
 | Case | rule |
 | --- | --- |
@@ -544,7 +545,7 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="pass failed" source=copy op=pass 
 | INFO | `listing done` | see [find logs](#find-logs) | A `find` listing finished. |
 | ERROR | `listing failed` | `source`, `op`, `phase`, `reason`, as `listing done`, and `error` | The connection or a listing failed in `find`. |
 | ERROR | `find failed` | `source`, `op=run`, `phase`, `reason`, `error` | Find is exiting 1. |
-| ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
+| ERROR | `sync failed`, `find failed`, `browse failed`, `delete failed` or `scan failed` | `option`, `value`, `rule`, `help`, `phase=arguments`, `reason=invalid_option` | A usage error; the command is exiting 2. It has no `source` or `op`; `phase=arguments` is only on this record. |
 | INFO | `moved the copy history` | `from`, `to` | With the default `--history-dir`: the history folder of earlier releases, `seestar-copy`, was moved to `copy-history`; see [location](selection-and-history.md#location). Logged once, by the first sync or delete that isn't a dry run. Find, browse and dry runs never move it. |
 | INFO | `saved settings` | `profile`, `filled`, and one key per filled flag: `dest`, `history_dir`, `endpoint`, `exclude`, `include`, `no_default_excludes`, `interval`, `once`, `workers` | With `--profile`: the flags it filled, by name, and the value each took, a list's joined by commas; see [use the app's saved settings](#use-the-apps-saved-settings). Logged by sync, find, browse and delete. |
 | INFO | `found the telescope at another address on this network` | `telescope`, `saved`, `endpoint`, `addresses`, `other` when another serial answered at the saved address, `replies` | With `--profile default` on this network: a connect's scan found the telescope at an address or port other than the saved one, and it connected there; see [use the app's saved settings](#use-the-apps-saved-settings). `telescope` is its name, model and serial as the reply gave them, such as `S50_Garden (Seestar S50, serial 4ab1c2d3)`; `saved` is the saved address, `endpoint` the one it connected to, `addresses` where it answered, and `other` the telescope that answered at the saved address. Logged again only when the outcome changes. |
@@ -571,16 +572,16 @@ WARN record listed above, without summary counts.
 | `rate` | `bytes` over `elapsed`, in MiB/s, such as `8.7MiB/s`. Left out when nothing was downloaded. |
 
 Files that are done are not counted. A usage error is a single line naming the
-flag and the rule it broke, and the help command to run. It is a text line
+flag, the value it refused and the rule it broke, and the help command to run. It is a text line
 whatever `--log-format` says, since that flag may be the bad one:
 
 ```text
-time=2026-11-02T03:00:00.000Z level=ERROR msg="sync failed" option=--workers rule="must be 1 to 64" help="seestar-wormhole-cli sync --help" phase=arguments reason=invalid_option
+time=2026-11-02T03:00:00.000Z level=ERROR msg="sync failed" option=--workers value=100 rule="must be 1 to 64" help="seestar-wormhole-cli sync --help" phase=arguments reason=invalid_option
 ```
 
-Flag values are never echoed in it. A flag that belongs to another command is
-named, with that command's help; any other unknown flag is named, without
-what follows its `=`, as in `option=--zzz rule="unknown flag"`.
+A flag that belongs to another command is named, with that command's
+help; any other unknown flag is named, without what follows its `=`, as in
+`option=--zzz rule="unknown flag"`.
 
 Stderr never holds a command up: a stalled terminal or log reader loses lines
 instead, so Ctrl+C still stops sync. The file commands never write log lines
