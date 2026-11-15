@@ -16,10 +16,10 @@ func TestSessionConfigDiagnostics(t *testing.T) {
 		name, option, rule, want string
 		cfg                      Config
 	}{
-		{"Idle", "--idle", "duration must be nonnegative", "--idle: duration must be nonnegative", Config{Idle: -time.Nanosecond}},
-		{"PauseThreshold/negative", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold: byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: -1}},
-		{"PauseThreshold/one", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold: byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: 1}},
-		{"PauseThreshold/above_max", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold: byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: 8388609}},
+		{"Idle", "--idle", "duration must be nonnegative", "--idle \"-1ns\": duration must be nonnegative", Config{Idle: -time.Nanosecond}},
+		{"PauseThreshold/negative", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold \"-1\": byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: -1}},
+		{"PauseThreshold/one", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold \"1\": byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: 1}},
+		{"PauseThreshold/above_max", "--pause-threshold", "byte count must be 2..8388608 (zero selects default)", "--pause-threshold \"8388609\": byte count must be 2..8388608 (zero selects default)", Config{PauseThreshold: 8388609}},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			called := false

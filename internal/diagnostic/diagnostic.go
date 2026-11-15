@@ -1,4 +1,4 @@
-// Package diagnostic classifies failures without formatting dependency errors.
+// Package diagnostic classifies failures and logs them with their own text.
 package diagnostic
 
 import (
@@ -20,25 +20,38 @@ const licenseMissingHint = "the cloud allocation carried no SDK license key, so 
 
 // OptionError identifies a configuration setting by its registered name and a
 // fixed validation rule. Value, when set, is the value that failed; it is
-// never set for a setting that holds an access secret. Dependency errors are
-// not stored in it.
-type OptionError struct{ Option, Rule, Value string }
-
-func (e *OptionError) Error() string {
-	if e.Value != "" {
-		return Clip(e.Option, MaxValue) + " " + strconv.Quote(Clip(e.Value, MaxValue)) + ": " + e.Rule
-	}
-	return Clip(e.Option, MaxValue) + ": " + e.Rule
+// never set for a setting that holds an access secret. Err, when set, is the
+// dependency error the value met, kept for its text only: it is not unwrapped,
+// so it never changes the classification.
+type OptionError struct {
+	Option, Rule, Value string
+	Err                 error
 }
 
-// Attrs returns the option, the value when set, and the rule as log
-// key-value pairs. The option, which may be an unknown name as typed, and
-// the value are clipped.
-func (e *OptionError) Attrs() []any {
+func (e *OptionError) Error() string {
+	text := Clip(e.Option, MaxValue) + ": " + e.Rule
 	if e.Value != "" {
-		return []any{"option", Clip(e.Option, MaxValue), "value", Clip(e.Value, MaxValue), "rule", e.Rule}
+		text = Clip(e.Option, MaxValue) + " " + strconv.Quote(Clip(e.Value, MaxValue)) + ": " + e.Rule
 	}
-	return []any{"option", Clip(e.Option, MaxValue), "rule", e.Rule}
+	if e.Err != nil {
+		text += ": " + Clip(e.Err.Error(), MaxValue)
+	}
+	return text
+}
+
+// Attrs returns the option, the value when set, the rule and the dependency
+// error when set as log key-value pairs. The option, which may be an unknown
+// name as typed, the value and the error are clipped.
+func (e *OptionError) Attrs() []any {
+	attrs := []any{"option", Clip(e.Option, MaxValue)}
+	if e.Value != "" {
+		attrs = append(attrs, "value", Clip(e.Value, MaxValue))
+	}
+	attrs = append(attrs, "rule", e.Rule)
+	if e.Err != nil {
+		attrs = append(attrs, "error", Clip(e.Err.Error(), MaxValue))
+	}
+	return attrs
 }
 
 type failure struct {
@@ -47,10 +60,10 @@ type failure struct {
 	reported      *atomic.Bool
 }
 
-func (e *failure) Error() string { return e.phase + ": " + e.reason }
+func (e *failure) Error() string { return e.phase + ": " + e.reason + ": " + e.err.Error() }
 func (e *failure) Unwrap() error { return e.err }
 
-// Wrap attaches trusted operation/reason labels, never raw input values.
+// Wrap attaches trusted operation/reason labels to err, whose text it keeps.
 // Reasons are constants.
 // An empty reason selects the fixed error vocabulary.
 func Wrap(phase, reason string, err error) error {
@@ -108,7 +121,7 @@ func selectedCause(err error, phase string) (string, string, *Terminal) {
 	return phase, reason, nil
 }
 
-// Class never calls Error, String or LogValue on an untrusted value.
+// Class classifies by type and sentinel, never by an error's text.
 func Class(err error) string {
 	// Account login retains rejected HTTP status separately from its cause.
 	// Only an explicit authorization denial belongs to the credential exit policy.
@@ -191,13 +204,14 @@ func Class(err error) string {
 	return "operation_failed"
 }
 
-// Log emits the classified operation and cause, with fixed guidance when available.
+// Log emits the classified operation and cause, the error's text, clipped,
+// and fixed guidance when available.
 func Log(l *slog.Logger, message, phase string, err error) {
 	if l == nil || err == nil {
 		return
 	}
 	reportReceived(err, phase, func(phase, reason string) {
-		attrs := []any{"phase", phase, "reason", reason}
+		attrs := []any{"phase", phase, "reason", reason, "error", Clip(err.Error(), MaxValue)}
 		if reason == "cloud_license_missing" {
 			attrs = append(attrs, "hint", licenseMissingHint)
 		}

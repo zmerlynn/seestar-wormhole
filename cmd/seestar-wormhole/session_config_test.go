@@ -13,11 +13,11 @@ func TestSessionConfigFlagDiagnostics(t *testing.T) {
 	for _, tt := range []struct {
 		name, command, flag, value, rule, want string
 	}{
-		{"idle", "proxy", "--idle", "-17ns", "duration must be nonnegative", "--idle: duration must be nonnegative"},
-		{"pause negative", "proxy", "--pause-threshold", "-29", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
-		{"pause zero", "proxy", "--pause-threshold", "0", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
-		{"pause one", "proxy", "--pause-threshold", "1", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
-		{"pause above max", "proxy", "--pause-threshold", "8388609", "byte count must be 2..8388608", "--pause-threshold: byte count must be 2..8388608"},
+		{"idle", "proxy", "--idle", "-17ns", "duration must be nonnegative", "--idle \"-17ns\": duration must be nonnegative"},
+		{"pause negative", "proxy", "--pause-threshold", "-29", "byte count must be 2..8388608", "--pause-threshold \"-29\": byte count must be 2..8388608"},
+		{"pause zero", "proxy", "--pause-threshold", "0", "byte count must be 2..8388608", "--pause-threshold \"0\": byte count must be 2..8388608"},
+		{"pause one", "proxy", "--pause-threshold", "1", "byte count must be 2..8388608", "--pause-threshold \"1\": byte count must be 2..8388608"},
+		{"pause above max", "proxy", "--pause-threshold", "8388609", "byte count must be 2..8388608", "--pause-threshold \"8388609\": byte count must be 2..8388608"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			args := []string{tt.command, tt.flag + "=" + tt.value}

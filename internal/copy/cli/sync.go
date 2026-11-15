@@ -135,19 +135,19 @@ func (o *syncOptions) validate() error {
 	}
 	o.selector = sel
 	if o.interval <= 0 {
-		return &diagnostic.OptionError{Option: "--interval", Rule: "must be more than zero"}
+		return &diagnostic.OptionError{Option: "--interval", Rule: "must be more than zero", Value: o.interval.String()}
 	}
 	if o.dryRun && o.intervalSet {
 		return &diagnostic.OptionError{Option: "--dry-run", Rule: "runs one pass; do not give --interval with it"}
 	}
 	if o.readyAge < 0 {
-		return &diagnostic.OptionError{Option: "--ready-age", Rule: "must not be negative"}
+		return &diagnostic.OptionError{Option: "--ready-age", Rule: "must not be negative", Value: o.readyAge.String()}
 	}
 	if o.firstPassAge < 0 {
-		return &diagnostic.OptionError{Option: "--first-pass-age", Rule: "must not be negative"}
+		return &diagnostic.OptionError{Option: "--first-pass-age", Rule: "must not be negative", Value: o.firstPassAge.String()}
 	}
 	if o.workers < 1 || o.workers > maxWorkers {
-		return &diagnostic.OptionError{Option: "--workers", Rule: "must be 1 to 64"}
+		return &diagnostic.OptionError{Option: "--workers", Rule: "must be 1 to 64", Value: strconv.Itoa(o.workers)}
 	}
 	if o.historyDirSet && o.historyDir == "" {
 		return &diagnostic.OptionError{Option: "--history-dir", Rule: "must not be empty; omit it for the default"}
@@ -159,10 +159,10 @@ func validateEndpoint(endpoint string) error {
 	const rule = "use host:port, such as 127.0.0.1:4445"
 	host, port, err := net.SplitHostPort(endpoint)
 	if err != nil || host == "" {
-		return &diagnostic.OptionError{Option: "--endpoint", Rule: rule}
+		return &diagnostic.OptionError{Option: "--endpoint", Rule: rule, Value: endpoint}
 	}
 	if n, err := strconv.ParseUint(port, 10, 16); err != nil || n == 0 {
-		return &diagnostic.OptionError{Option: "--endpoint", Rule: rule}
+		return &diagnostic.OptionError{Option: "--endpoint", Rule: rule, Value: endpoint}
 	}
 	return nil
 }

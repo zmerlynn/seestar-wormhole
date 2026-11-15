@@ -47,13 +47,16 @@ func loadCopySettings(st *storage) (*copyStore, *copyapp.Settings, []diagnostic.
 	}
 	// A relative history folder would resolve against wherever the app
 	// was started, so it is refused, not guessed.
-	if f.Version != copyapp.SettingsVersion || f.HistoryDir != "" && !filepath.IsAbs(f.HistoryDir) {
-		return nil, nil, nil, errStorage
+	if f.Version != copyapp.SettingsVersion {
+		return nil, nil, nil, storageRefused(copyName + " is version " + strconv.Itoa(f.Version) + "; this app reads version " + strconv.Itoa(copyapp.SettingsVersion))
+	}
+	if f.HistoryDir != "" && !filepath.IsAbs(f.HistoryDir) {
+		return nil, nil, nil, storageRefused(copyName + " history_dir " + strconv.Quote(f.HistoryDir) + " is not an absolute path")
 	}
 	var fallbacks []diagnostic.Fallback
 	if clamped := min(max(f.FilesAtOnce, 1), copyapp.MaxFilesAtOnce); clamped != f.FilesAtOnce {
+		fallbacks = append(fallbacks, diagnostic.Fallback{File: copyName, Setting: "files_at_once", Fallback: strconv.Itoa(clamped), Value: strconv.Itoa(f.FilesAtOnce)})
 		f.FilesAtOnce = clamped
-		fallbacks = append(fallbacks, diagnostic.Fallback{File: copyName, Setting: "files_at_once", Fallback: strconv.Itoa(clamped)})
 	}
 	// Checking nothing wins over checking only the copy history, as the
 	// menu that saves them chooses one.
@@ -89,7 +92,7 @@ func LoadCopySettings(root string) (copyapp.Settings, []diagnostic.Fallback, err
 	if os.IsNotExist(err) {
 		return copyapp.Settings{}, nil, ErrNoCopySettings
 	} else if err != nil {
-		return copyapp.Settings{}, nil, errStorage
+		return copyapp.Settings{}, nil, storageFailed(err)
 	}
 	defer d.Close()
 	_, set, fallbacks, err := loadCopySettings(&storage{root: root, directory: d})

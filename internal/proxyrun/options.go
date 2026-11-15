@@ -17,18 +17,18 @@ type Port struct {
 func ParsePort(existing []Port, s string) ([]Port, error) {
 	parts := strings.Split(s, ":")
 	if len(parts) != 2 {
-		return nil, &diagnostic.OptionError{Option: "--port", Rule: "use local:device ports"}
+		return nil, &diagnostic.OptionError{Option: "--port", Rule: "use local:device ports", Value: s}
 	}
 	if len(existing) >= 128 {
-		return nil, &diagnostic.OptionError{Option: "--port", Rule: "at most 128 mappings are allowed"}
+		return nil, &diagnostic.OptionError{Option: "--port", Rule: "at most 128 mappings are allowed", Value: s}
 	}
 	a, e := strconv.ParseUint(parts[0], 10, 16)
 	if e != nil {
-		return nil, &diagnostic.OptionError{Option: "--port", Rule: "local port must be 0..65535"}
+		return nil, &diagnostic.OptionError{Option: "--port", Rule: "local port must be 0..65535", Value: s}
 	}
 	b, e := strconv.ParseUint(parts[1], 10, 16)
 	if e != nil {
-		return nil, &diagnostic.OptionError{Option: "--port", Rule: "device port must be 1..65535"}
+		return nil, &diagnostic.OptionError{Option: "--port", Rule: "device port must be 1..65535", Value: s}
 	}
 	return AddPort(existing, Port{Local: uint16(a), Device: uint16(b)})
 }
@@ -41,14 +41,14 @@ func AddPort(existing []Port, p Port) ([]Port, error) {
 		return nil, &diagnostic.OptionError{Option: "--port", Rule: "at most 128 mappings are allowed"}
 	}
 	if p.Device == 0 {
-		return nil, &diagnostic.OptionError{Option: "--port", Rule: "device port must be 1..65535"}
+		return nil, &diagnostic.OptionError{Option: "--port", Rule: "device port must be 1..65535", Value: strconv.Itoa(int(p.Local)) + ":" + strconv.Itoa(int(p.Device))}
 	}
 	for _, v := range existing {
 		if v.Device == p.Device {
-			return nil, &diagnostic.OptionError{Option: "--port", Rule: "device ports must be unique"}
+			return nil, &diagnostic.OptionError{Option: "--port", Rule: "device ports must be unique", Value: strconv.Itoa(int(p.Local)) + ":" + strconv.Itoa(int(p.Device))}
 		}
 		if p.Local != 0 && v.Local == p.Local {
-			return nil, &diagnostic.OptionError{Option: "--port", Rule: "local ports must be unique"}
+			return nil, &diagnostic.OptionError{Option: "--port", Rule: "local ports must be unique", Value: strconv.Itoa(int(p.Local)) + ":" + strconv.Itoa(int(p.Device))}
 		}
 	}
 	return append(existing, p), nil
@@ -88,7 +88,7 @@ func MergePorts(ports []Port) ([]Port, error) {
 	locals := make(map[uint16]bool)
 	for _, p := range ports {
 		if locals[p.Local] {
-			return nil, &diagnostic.OptionError{Option: "--port", Rule: "local ports must be unique"}
+			return nil, &diagnostic.OptionError{Option: "--port", Rule: "local ports must be unique", Value: strconv.Itoa(int(p.Local)) + ":" + strconv.Itoa(int(p.Device))}
 		}
 		locals[p.Local] = true
 	}

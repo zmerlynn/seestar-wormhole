@@ -55,7 +55,7 @@ func TestSelectionErrorProjections(t *testing.T) {
 					}
 					slog.New(handler).Error("synthetic failure", "err", value)
 					assertSafeSelectionProjection(t, output.String())
-					if name == "direct" && !strings.Contains(output.String(), "device_selection: multiple devices on account; set --serial; received telescopes: ") {
+					if name == "direct" && !strings.Contains(output.String(), "device_selection: multiple devices on account; set --serial: cloud: invalid configuration") {
 						t.Fatal("slog lost the selection reason")
 					}
 				})
@@ -64,7 +64,7 @@ func TestSelectionErrorProjections(t *testing.T) {
 	}
 }
 
-const wantSelection = "device_selection: multiple devices on account; set --serial; received telescopes: S50 Pro serial-sentinel-secret-1234, S30 other-serial-sentinel-5678"
+const wantSelection = "device_selection: multiple devices on account; set --serial: cloud: invalid configuration\n--serial: select an existing device from the account catalog; received telescopes: S50 Pro serial-sentinel-secret-1234, S30 other-serial-sentinel-5678"
 
 // assertSafeSelectionProjection wants both received telescopes, no account
 // secret and none of the reply's field names.

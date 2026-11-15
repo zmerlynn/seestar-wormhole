@@ -14,7 +14,7 @@ import (
 )
 
 func TestFinalCancellationWithoutIndependentCause(t *testing.T) {
-	unknown := errors.New("PRIVATE_COORDINATES_TIME_TOKEN_UID_PAYLOAD")
+	unknown := errors.New("UNKNOWN_TEXT")
 	for _, tc := range []struct {
 		name string
 		err  error
@@ -38,11 +38,9 @@ func TestFinalCancellationWithoutIndependentCause(t *testing.T) {
 				if logs.Len() != 0 {
 					t.Fatalf("cancellation-only report: %s", &logs)
 				}
-			} else if strings.Count(logs.String(), `"level":"ERROR"`) != 1 || !strings.Contains(logs.String(), `"reason":"`+tc.want+`"`) {
-				t.Fatalf("report=%s want one ERROR with reason %s", &logs, tc.want)
-			}
-			if strings.Contains(logs.String(), "PRIVATE_") || strings.Contains(logs.String(), "private wrapper") {
-				t.Fatalf("unsafe report: %s", &logs)
+			} else if strings.Count(logs.String(), `"level":"ERROR"`) != 1 || !strings.Contains(logs.String(), `"reason":"`+tc.want+`"`) ||
+				!strings.Contains(logs.String(), `"error":`) || strings.Contains(tc.err.Error(), "UNKNOWN_TEXT") != strings.Contains(logs.String(), "UNKNOWN_TEXT") {
+				t.Fatalf("report=%s want one ERROR with reason %s and the error's text", &logs, tc.want)
 			}
 		})
 	}

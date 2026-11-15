@@ -51,7 +51,7 @@ func validateDiscoveryOptions(o *options) error {
 		return &argumentError{Option: "--advertise-model", Rule: "a nonblank advertised model is required"}
 	}
 	if !landiscovery.ValidBind(o.bind) {
-		return &argumentError{Option: "--bind", Rule: "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0"}
+		return &argumentError{Option: "--bind", Rule: "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0", Value: o.bind}
 	}
 	_, _, err := discoveryMachine(o)
 	return err
@@ -88,7 +88,7 @@ func runDiscovery(ctx context.Context, o options, logs io.Writer, listen func(st
 	}
 	s, err := listen(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces}, startup.logger)
 	if err != nil {
-		return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available", Value: o.bind}
+		return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available", Value: o.bind, Err: err}
 	}
 	defer s.Close()
 	startup.output.resolve()

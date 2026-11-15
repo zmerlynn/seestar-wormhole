@@ -10,6 +10,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"io"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -52,9 +53,13 @@ func TestEnvironmentAttribution(t *testing.T) {
 			if !errors.As(err, &detail) || detail.Option != setting || detail.Rule != rule {
 				t.Errorf("wrong returned option error: %v", err)
 			}
-			assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_INVALID_EMAIL", "PRIVATE_TOKEN", "PRIVATE_SOURCE")
-			if bytes.Contains(logs.Bytes(), []byte("PRIVATE_")) || out.Len() != 0 {
-				t.Error("private environment value leaked")
+			assertNoSecrets(t, err, "PRIVATE_PASSWORD")
+			// The password never shows; a bad email is named in the log.
+			if bytes.Contains(logs.Bytes(), []byte("PRIVATE_PASSWORD")) || out.Len() != 0 {
+				t.Error("password leaked")
+			}
+			if tc.name == "invalid-email" && (record["value"] != tc.email || !strings.Contains(err.Error(), tc.email)) {
+				t.Errorf("invalid email not named: %v", record)
 			}
 		})
 	}
@@ -80,9 +85,8 @@ func TestSelectorAttribution(t *testing.T) {
 			if err == nil {
 				t.Errorf("invalid selector should fail safely: %v", err)
 			}
-			assertNoSensitiveErrorDetails(t, err, "PRIVATE_SERIAL", "PRIVATE_MODEL")
-			if bytes.Contains(logs.Bytes(), []byte("PRIVATE_")) || out.Len() != 0 {
-				t.Error("selector value leaked")
+			if !strings.Contains(logs.String(), `"value":"PRIVATE_SERIAL\r"`) || out.Len() != 0 {
+				t.Error("selector value not named")
 			}
 			decoder := jsontext.NewDecoder(&logs)
 			found := false

@@ -21,13 +21,13 @@ var profileRoot = func() (string, error) { return ui.StateRoot("") }
 func profileDir(name string) (dir, found string, err error) {
 	root, err := profileRoot()
 	if err != nil {
-		return "", "", &argumentError{Option: "--profile", Rule: "no per-user config folder for the app's profiles; give the flags"}
+		return "", "", &argumentError{Option: "--profile", Rule: "no per-user config folder for the app's profiles; give the flags", Value: name, Err: err}
 	}
 	dir, found, err = ui.FindProfile(root, name)
 	if missing, ok := errors.AsType[*ui.NoProfileError](err); ok {
-		return "", "", &argumentError{Option: "--profile", Rule: missing.Error()}
+		return "", "", &argumentError{Option: "--profile", Rule: missing.Error(), Value: name}
 	} else if err != nil {
-		return "", "", &argumentError{Option: "--profile", Rule: "the app's profiles folder couldn't be read: " + err.Error()}
+		return "", "", &argumentError{Option: "--profile", Rule: "the app's profiles folder couldn't be read: " + err.Error(), Value: name}
 	}
 	return dir, found, nil
 }
@@ -89,9 +89,9 @@ func loadProfile(name string) (cli.Saved, error) {
 	}
 	set, fallbacks, err := ui.LoadCopySettings(root)
 	if errors.Is(err, ui.ErrNoCopySettings) {
-		return cli.Saved{}, &argumentError{Option: "--profile", Rule: "no saved Copy settings; save them on the app's Copy tab, or give the flags"}
+		return cli.Saved{}, &argumentError{Option: "--profile", Rule: "no saved Copy settings; save them on the app's Copy tab, or give the flags", Value: name}
 	} else if err != nil {
-		return cli.Saved{}, &argumentError{Option: "--profile", Rule: "use a valid saved copy.json in the app's state folder"}
+		return cli.Saved{}, &argumentError{Option: "--profile", Rule: "use a valid saved copy.json in the app's state folder", Value: name, Err: err}
 	}
 	saved := cli.Saved{
 		Dest: set.Folder, HistoryDir: set.HistoryDir, Excludes: set.Excludes, Includes: set.Includes,

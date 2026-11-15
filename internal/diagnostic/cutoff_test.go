@@ -11,7 +11,6 @@ import (
 	"net"
 	"os"
 	"slices"
-	"strings"
 	"syscall"
 	"testing"
 )
@@ -20,7 +19,7 @@ import (
 // though errors.Join filters them out.
 type cutoffJoin []error
 
-func (cutoffJoin) Error() string     { panic("private error formatted") }
+func (cutoffJoin) Error() string     { return "cutoff join" }
 func (e cutoffJoin) Unwrap() []error { return e }
 
 func TestFinalDiagnosticCutoff(t *testing.T) {
@@ -34,7 +33,7 @@ func TestFinalDiagnosticCutoff(t *testing.T) {
 	wrapped := func(n int) error {
 		err := errors.ErrUnsupported
 		for range n {
-			err = fmt.Errorf("PRIVATE_WRAPPER: %w", err)
+			err = fmt.Errorf("wrapper: %w", err)
 		}
 		return err
 	}
@@ -71,7 +70,7 @@ func TestFinalDiagnosticCutoff(t *testing.T) {
 				if level == slog.LevelDebug {
 					wantLines = 2
 				}
-				if len(lines) != wantLines || strings.Contains(logs.String(), "PRIVATE_WRAPPER") {
+				if len(lines) != wantLines {
 					t.Fatalf("level=%s unexpected output: %s", level, &logs)
 				}
 				var record struct {

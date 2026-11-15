@@ -72,8 +72,12 @@ func TestDiscoveryInvalidOptions(t *testing.T) {
 			if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
 				t.Fatalf("want one JSON diagnostic: %v, logs=%q", e, &logs)
 			}
-			if out.Len() != 0 || rec.Msg != "discovery failed" || rec.Phase != "arguments" || rec.Reason != "invalid_option" || rec.Option != tc.option || rec.Help != programName+" discovery --help" || strings.Contains(logs.String(), "PRIVATE_") {
+			if out.Len() != 0 || rec.Msg != "discovery failed" || rec.Phase != "arguments" || rec.Reason != "invalid_option" || rec.Option != tc.option || rec.Help != programName+" discovery --help" {
 				t.Fatalf("configuration diagnostic: stdout=%q logs=%q", &out, &logs)
+			}
+			// A typed option names the value that failed.
+			if _, value, ok := strings.Cut(tc.args[len(tc.args)-1], "=PRIVATE_"); ok && tc.option != "arguments" && tc.name != "catalog serial" && !strings.Contains(logs.String(), `"value":"PRIVATE_`+value+`"`) {
+				t.Fatalf("value not named: logs=%q", &logs)
 			}
 		})
 	}
@@ -207,7 +211,7 @@ func TestDiscoveryFailureRecords(t *testing.T) {
 		if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
 			t.Fatal(e, &logs)
 		}
-		if commandExitCode(o, err) != wantCode || rec.Msg != "discovery failed" || rec.Phase != wantPhase || rec.Reason != wantReason || rec.CleanupReason != "none" || (!failListen && !s.closed) || strings.Contains(logs.String(), "PRIVATE_") {
+		if commandExitCode(o, err) != wantCode || rec.Msg != "discovery failed" || rec.Phase != wantPhase || rec.Reason != wantReason || rec.CleanupReason != "none" || (!failListen && !s.closed) || failListen != strings.Contains(logs.String(), `"error":"PRIVATE_OS_ERROR"`) {
 			t.Fatalf("failure: err=%v closed=%t logs=%q", err, s.closed, &logs)
 		}
 	}

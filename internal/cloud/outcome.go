@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net"
+	"slices"
+	"strings"
 	"syscall"
 )
 
@@ -39,7 +41,7 @@ var ErrInternal = errors.New("cloud: internal failure")
 // The owner still joins the eventual response before accepting later work.
 var ErrAccountUncertain = errors.New("cloud: account outcome uncertain")
 
-// Outcome accumulates sanitized observed causes under one severity order:
+// Outcome accumulates observed causes under one severity order:
 // fatal > denied > busy > malformed > owed-release > retryable > success.
 // Release metadata is orthogonal: a failed release must remain recorded even
 // when an acquisition denial dominates it. Fields are private so callers cannot
@@ -48,10 +50,16 @@ type Outcome struct {
 	severity       Severity
 	releaseBlocked bool
 	causes         []error
+	texts          []string
 }
 
-// Error returns a fixed diagnostic without formatting causes.
-func (*Outcome) Error() string { return "cloud: attempt failed" }
+// Error is the text of each joined observation, once.
+func (o *Outcome) Error() string {
+	if len(o.texts) == 0 {
+		return "cloud: attempt failed"
+	}
+	return strings.Join(o.texts, "; ")
+}
 
 // Unwrap retains all observed causes and protects the accumulator slice.
 func (o *Outcome) Unwrap() []error { return append([]error(nil), o.causes...) }
@@ -78,6 +86,9 @@ func JoinOutcomes(observed ...error) error {
 			o.severity = max(o.severity, prior.severity)
 			o.releaseBlocked = o.releaseBlocked || prior.releaseBlocked
 			o.causes = append(o.causes, prior.causes...)
+			for _, text := range prior.texts {
+				o.text(text)
+			}
 			return
 		}
 		// ParseLogin/ParseProfile with no response describe an absent exchange,
@@ -126,12 +137,23 @@ func JoinOutcomes(observed ...error) error {
 		o.causes = append(o.causes, err)
 	}
 	for _, err := range observed {
+		before := len(o.causes)
 		observe(err)
+		if _, ok := err.(*Outcome); !ok && len(o.causes) > before {
+			o.text(err.Error())
+		}
 	}
 	if len(o.causes) == 0 {
 		return nil
 	}
 	return o
+}
+
+// text records an observation's text unless an earlier one had the same.
+func (o *Outcome) text(text string) {
+	if !slices.Contains(o.texts, text) {
+		o.texts = append(o.texts, text)
+	}
 }
 
 // ReleaseOutcome records a failed stop using the same join as acquisition.

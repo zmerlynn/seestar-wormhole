@@ -445,7 +445,7 @@ func TestSaveFailure(t *testing.T) {
 	got := decode[struct {
 		Error string `json:"error"`
 	}](t, w)
-	if w.Code != 500 || got.Error != "Couldn't save settings: permission denied. Your changes have not been saved. Try saving again." {
+	if w.Code != 500 || got.Error != "Couldn't save settings: "+e.saveErr.Error()+". Your changes have not been saved. Try saving again." {
 		t.Errorf("a failed save = %d %q", w.Code, got.Error)
 	}
 	if st := decode[struct {
@@ -1014,7 +1014,7 @@ func TestTestTriesTheProxysPort(t *testing.T) {
 			}
 			if !c.ok && c.address == "192.0.2.10:4445" {
 				if want := "Can't reach 192.0.2.10:4445. Check that the telescope is on and on this computer's network."; got.Message != want ||
-					!strings.Contains(e.logs.String(), `msg="test failed" endpoint=192.0.2.10:4445 err="192.0.2.10:445: dial tcp: connect: connection refused; 192.0.2.10:4445: permission denied"`) {
+					!strings.Contains(e.logs.String(), `msg="test failed" endpoint=192.0.2.10:4445 err="192.0.2.10:445: dial 192.0.2.10:445: dial tcp: connect: connection refused; 192.0.2.10:4445: connect to 192.0.2.10:4445: mount: permission denied"`) {
 					t.Errorf("message %q, log %q", got.Message, e.logs.String())
 				}
 			} else if !c.ok && got.Message != "192.0.2.10 answered but refused port 445. Is this the telescope's address?" {

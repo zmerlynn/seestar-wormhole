@@ -86,7 +86,7 @@ func TestHTTPRejectionShape(t *testing.T) {
 				if !errors.Is(err, want) {
 					t.Fatalf("got %v, want HTTP rejection", err)
 				}
-				for _, secret := range []string{"9876", "token-secret", "read-secret"} {
+				for _, secret := range []string{"token-secret", "Example-Only"} {
 					if strings.Contains(sink.String(), secret) {
 						t.Fatalf("response escaped: %s", sink.String())
 					}
@@ -113,4 +113,4 @@ func TestHTTPRejectionShape(t *testing.T) {
 
 type failReader struct{}
 
-func (failReader) Read([]byte) (int, error) { return 0, errors.New("read-secret") }
+func (failReader) Read([]byte) (int, error) { return 0, errors.New("read broke") }

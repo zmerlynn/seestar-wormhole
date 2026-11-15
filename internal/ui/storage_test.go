@@ -3,6 +3,7 @@ package ui
 import (
 	"bytes"
 	"encoding/json/jsontext"
+	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"os"
 	"path/filepath"
@@ -88,5 +89,9 @@ func TestHeadlessSettingsReadOnly(t *testing.T) {
 		if _, _, err := LoadSettings(st.root); err == nil {
 			t.Fatal("invalid headless config accepted")
 		}
+	}
+	// An oversized file is refused in plain words, naming it.
+	if _, _, err := LoadSettings(st.root); !errors.Is(err, errStorage) || err.Error() != "Settings storage unavailable: "+filepath.Join(st.root, "config.json")+" is over 64 KiB. Use a private state directory." {
+		t.Fatalf("oversized config = %v", err)
 	}
 }

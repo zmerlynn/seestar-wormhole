@@ -22,81 +22,33 @@ func fallbackLog(t *testing.T, fallbacks []diagnostic.Fallback) string {
 }
 
 // checkFallback asserts one fallback for setting, logged once as a warning
-// naming the setting and its fallback, without the saved value. A serial
-// names the telescope, so its saved value is logged.
-func checkFallback(t *testing.T, fallbacks []diagnostic.Fallback, file, setting, fallback, private string) {
+// naming the setting, its fallback and the saved value it replaced.
+func checkFallback(t *testing.T, fallbacks []diagnostic.Fallback, file, setting, fallback, value string) {
 	t.Helper()
-	want := diagnostic.Fallback{File: file, Setting: setting, Fallback: fallback}
-	if (setting == "serial" || setting == "email") && len(fallbacks) == 1 {
-		want.Value = fallbacks[0].Value
-		if !strings.Contains(want.Value, private) {
-			t.Fatalf("%s value = %q; want %q", setting, want.Value, private)
-		}
-	}
+	want := diagnostic.Fallback{File: file, Setting: setting, Fallback: fallback, Value: value}
 	if len(fallbacks) != 1 || fallbacks[0] != want {
-		t.Fatalf("fallbacks = %+v", fallbacks)
-	}
-	if want.Value != "" {
-		if log := fallbackLog(t, fallbacks); !strings.Contains(log, private) {
-			t.Fatalf("log lacks the %s: %s", setting, log)
-		}
-		return
-	}
-	checkFallbackLog(t, fallbackLog(t, fallbacks), file, setting, fallback, private)
-}
-
-// checkFallbackLog asserts log is one warning naming the setting and its
-// fallback, and that none of its fields but the time holds private.
-func checkFallbackLog(t *testing.T, log, file, setting, fallback, private string) {
-	t.Helper()
-	lines := strings.Split(strings.TrimSpace(log), "\n")
-	if len(lines) != 1 {
-		t.Fatalf("log = %q; want one line", log)
+		t.Fatalf("fallbacks = %+v; want %+v", fallbacks, want)
 	}
 	var line map[string]any
-	if err := json.Unmarshal([]byte(lines[0]), &line); err != nil {
+	if err := json.Unmarshal([]byte(fallbackLog(t, fallbacks)), &line); err != nil {
 		t.Fatal(err)
 	}
-	if line["level"] != "WARN" || line["msg"] != "settings_fallback" || line["file"] != file || line["setting"] != setting || line["fallback"] != fallback {
+	if line["level"] != "WARN" || line["msg"] != "settings_fallback" || line["file"] != file || line["setting"] != setting || line["fallback"] != fallback || line["value"] != value {
 		t.Fatalf("log line = %v", line)
 	}
-	// The time is left out: its digits can match a numeric value.
-	delete(line, "time")
-	fields, err := json.Marshal(line)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(fields), private) {
-		t.Fatalf("log names the saved value: %s", log)
-	}
 }
 
-// A timestamp holding a saved number's digits isn't a leak of it.
-func TestFallbackLogIgnoresTime(t *testing.T) {
-	var line map[string]any
-	log := fallbackLog(t, []diagnostic.Fallback{{File: copyName, Setting: "files_at_once", Fallback: "4"}})
-	if err := json.Unmarshal([]byte(log), &line); err != nil {
-		t.Fatal(err)
-	}
-	line["time"] = "2057-01-01T00:00:00.000Z"
-	fixed, err := json.Marshal(line)
-	if err != nil {
-		t.Fatal(err)
-	}
-	checkFallbackLog(t, string(fixed), copyName, "files_at_once", "4", "57")
-}
-
-// A bad config.json value loads as its fallback and is logged, not shown.
+// A bad config.json value loads as its fallback and is logged with it.
 func TestSettingsFallbacks(t *testing.T) {
 	for _, tc := range []struct {
-		setting, body, fallback, private string
-		check                            func(Settings) bool
+		setting, body, fallback, value string
+		check                          func(Settings) bool
 	}{
 		{"discovery", `{"version":1,"bind":"127.0.0.9","discovery":true}`, "off", "127.0.0.9", func(s Settings) bool { return !s.Discovery && s.Bind == "127.0.0.9" }},
-		{"serial", `{"version":1,"serial":"invalid serial\n"}`, "none", "invalid serial", func(s Settings) bool { return s.Serial == "" }},
+		{"serial", `{"version":1,"serial":"invalid serial\n"}`, "none", "invalid serial\n", func(s Settings) bool { return s.Serial == "" }},
 		{"email", `{"version":1,"email":"synthetic-not-an-email"}`, "none", "synthetic-not-an-email", func(s Settings) bool { return s.Email == "" }},
 	} {
-		t.Run(tc.setting+" "+tc.private, func(t *testing.T) {
+		t.Run(tc.setting, func(t *testing.T) {
 			st := testStorage(t)
 			if err := st.writeBytes("config.json", []byte(tc.body)); err != nil {
 				t.Fatal(err)
@@ -105,7 +57,7 @@ func TestSettingsFallbacks(t *testing.T) {
 			if err != nil || st.settingsRefused || !tc.check(s) {
 				t.Fatalf("load = %+v, %v, refused %v", s, err, st.settingsRefused)
 			}
-			checkFallback(t, fallbacks, "config.json", tc.setting, tc.fallback, tc.private)
+			checkFallback(t, fallbacks, "config.json", tc.setting, tc.fallback, tc.value)
 			// proxy --config reads it the same way.
 			s, fallbacks, err = LoadSettings(st.root)
 			if err != nil || !tc.check(s) || len(fallbacks) != 1 {
@@ -156,10 +108,10 @@ func TestSettingsStillRefused(t *testing.T) {
 // logged; another version or a relative history folder is still refused.
 func TestCopySettingsFallbacks(t *testing.T) {
 	for _, tc := range []struct {
-		body, fallback, private string
-		want                    int
+		body, fallback, value string
+		want                  int
 	}{
-		{`{"version":1,"folder":"/synthetic/Seestar","files_at_once":0}`, "1", "/synthetic/Seestar", 1},
+		{`{"version":1,"folder":"/synthetic/Seestar","files_at_once":0}`, "1", "0", 1},
 		{`{"version":1,"folder":"/synthetic/Seestar","files_at_once":-3}`, "1", "-3", 1},
 		{`{"version":1,"folder":"/synthetic/Seestar","files_at_once":57}`, "4", "57", 4},
 	} {
@@ -169,7 +121,7 @@ func TestCopySettingsFallbacks(t *testing.T) {
 			if err != nil || set == nil || set.FilesAtOnce != tc.want {
 				t.Fatalf("load = %+v, %v", set, err)
 			}
-			checkFallback(t, fallbacks, copyName, "files_at_once", tc.fallback, tc.private)
+			checkFallback(t, fallbacks, copyName, "files_at_once", tc.fallback, tc.value)
 			loaded, fallbacks, err := LoadCopySettings(st.root)
 			if err != nil || loaded.FilesAtOnce != tc.want || len(fallbacks) != 1 {
 				t.Fatalf("LoadCopySettings = %+v, %v, %v", loaded, fallbacks, err)
@@ -187,7 +139,7 @@ func TestCopySettingsFallbacks(t *testing.T) {
 }
 
 // The app logs each fallback in both files once in its log, with the
-// saved serial and email it replaced.
+// saved value it replaced.
 func TestAppLogsFallbacks(t *testing.T) {
 	useLAN(t, &lanNet{})
 	st := testStorage(t)
@@ -211,6 +163,10 @@ func TestAppLogsFallbacks(t *testing.T) {
 		{"config.json", "discovery"}: "off", {"config.json", "serial"}: "none", {"config.json", "email"}: "none",
 		{copyName, "files_at_once"}: "4",
 	}
+	values := map[[2]string]string{
+		{"config.json", "discovery"}: "127.0.0.9", {"config.json", "serial"}: "INVALID serial", {"config.json", "email"}: "SYNTHETIC-not-an-email",
+		{copyName, "files_at_once"}: "57",
+	}
 	got := map[[2]string]string{}
 	warnings := 0
 	for line := range strings.Lines(logs.String()) {
@@ -226,7 +182,7 @@ func TestAppLogsFallbacks(t *testing.T) {
 			t.Fatalf("level = %v", record["level"])
 		}
 		got[[2]string{file, setting}] = fallback
-		if value, _ := record["value"].(string); setting == "serial" && value != "INVALID serial" || setting == "email" && value != "SYNTHETIC-not-an-email" {
+		if value, _ := record["value"].(string); value != values[[2]string{file, setting}] {
 			t.Errorf("%s value = %q", setting, value)
 		}
 	}
@@ -237,9 +193,6 @@ func TestAppLogsFallbacks(t *testing.T) {
 		if got[k] != v {
 			t.Fatalf("%v fallback = %q; want %q", k, got[k], v)
 		}
-	}
-	if strings.Contains(logs.String(), "PRIVATE") || strings.Contains(logs.String(), "127.0.0.9") {
-		t.Fatalf("log names a saved value: %s", logs.String())
 	}
 }
 

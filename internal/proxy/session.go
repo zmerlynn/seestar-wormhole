@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -81,10 +82,10 @@ func start(ctx context.Context, cfg Config, factory func(*Session) sessionedge.F
 
 func startWithRNG(ctx context.Context, cfg Config, factory func(*Session) sessionedge.Factory, rng session.RNG) (*Session, error) {
 	if cfg.Idle < 0 {
-		return nil, &diagnostic.OptionError{Option: "--idle", Rule: "duration must be nonnegative"}
+		return nil, &diagnostic.OptionError{Option: "--idle", Rule: "duration must be nonnegative", Value: cfg.Idle.String()}
 	}
 	if cfg.PauseThreshold < 0 || cfg.PauseThreshold == 1 || cfg.PauseThreshold > MaxPauseThreshold {
-		return nil, &diagnostic.OptionError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608 (zero selects default)"}
+		return nil, &diagnostic.OptionError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608 (zero selects default)", Value: strconv.Itoa(cfg.PauseThreshold)}
 	}
 	s := &Session{status: cfg.Status, lazy: cfg.Idle > 0, tunnelConfig: runtimeTunnelConfig(cfg.PauseThreshold), logger: cfg.Logger, clients: make(map[uint64]*stream), in: make(chan session.Event, 257), work: make(chan func(core.Instant), 128), done: make(chan struct{})}
 	ctx, s.cancel = context.WithCancel(ctx)

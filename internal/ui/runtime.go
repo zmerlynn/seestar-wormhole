@@ -118,7 +118,7 @@ func StateRoot(root string) (string, error) {
 	}
 	base, err := os.UserConfigDir()
 	if err != nil {
-		return "", errStorage
+		return "", storageFailed(err)
 	}
 	return filepath.Join(base, "seestar-wormhole"), nil
 }
@@ -272,12 +272,12 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	defer st.directory.Close()
 	lock, err := privatefile.Open(filepath.Join(root, "ui.lock"), os.O_CREATE|os.O_RDWR)
 	if err != nil {
-		return errStorage
+		return storageFailed(err)
 	}
 	defer lock.Close()
 	acquired, err := filelock.TryLock(lock)
 	if err != nil {
-		return errStorage
+		return storageFailed(err)
 	}
 	if !acquired {
 		return reopen(ctx, st, open, out)

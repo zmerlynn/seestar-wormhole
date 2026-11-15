@@ -32,8 +32,9 @@ Failures cross adapters as classified values. Normalize once, then forward the
 same result. Preserve quiet/canceled receipts at their own phase or as typed
 receipts; wrapping them as a new operation failure changes attribution.
 [internal/diagnostic](../../internal/diagnostic) projects bounded classifications
-without formatting private dependency errors. Do not log raw action envelopes,
-cloud bodies, credentials, or forwarded payloads.
+and logs each error's own text, clipped. Hide only access secrets, through
+their formatters; see [what logs show](../ui.md#what-logs-show). Do not log raw
+action envelopes, cloud bodies, credentials, or forwarded payloads.
 
 ## Build and run
 

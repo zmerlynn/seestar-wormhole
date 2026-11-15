@@ -76,7 +76,7 @@ func (s *scanFlag) apply(flags *pflag.FlagSet, f *follow) error {
 	}
 	m, ok := landiscovery.ParseMode(s.value)
 	if !ok {
-		return &diagnostic.OptionError{Option: "--scan", Rule: "use start, connect or off"}
+		return &diagnostic.OptionError{Option: "--scan", Rule: "use start, connect or off", Value: s.value}
 	}
 	if f != nil {
 		f.mode = m

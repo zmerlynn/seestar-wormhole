@@ -46,7 +46,7 @@ func TestWindowsIdentityProcess(t *testing.T) {
 		var id string
 		if role == "repair" {
 			fmt.Println("started")
-			id, err = persistentIdentity(f)
+			id, err = persistentIdentity(filepath.Dir(filepath.Dir(os.Getenv("WORMHOLE_IDENTITY_TEST_PATH"))), f)
 		} else {
 			var lock windows.Overlapped
 			if role == "queued-repair" {
@@ -62,7 +62,7 @@ func TestWindowsIdentityProcess(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, &lock)
-			id, err = readOrRepairIdentity(f)
+			id, err = readOrRepairIdentity(filepath.Dir(filepath.Dir(os.Getenv("WORMHOLE_IDENTITY_TEST_PATH"))), f)
 		}
 		result := identityResult{ID: id}
 		if err != nil {

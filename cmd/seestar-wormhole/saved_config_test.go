@@ -251,6 +251,17 @@ func TestSavedConfigRefusesUnknownVersion(t *testing.T) {
 	}
 }
 
+// A config.json that isn't JSON is refused with the real error, its path
+// included.
+func TestSavedConfigRefusalNamesTheError(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedConfig(t, root, []byte(`{`))
+	code, record, logs := usageExit(t, "proxy", "--config", "--state-dir", root)
+	if want := "Settings storage unavailable: " + filepath.Join(root, "config.json") + ": "; code != 2 || record.Option != "--config" || !strings.HasPrefix(record.Error, want) {
+		t.Fatalf("exit %d %+v, want error %q...\n%s", code, record, want, logs)
+	}
+}
+
 func TestSavedConfigCredentialRefusalBeforeListeners(t *testing.T) {
 	root := savedConfigRoot(t)
 	t.Setenv("SEESTAR_PASSWORD", "") // Explicit invalid input must never consult the real keychain.

@@ -25,46 +25,46 @@ func persistentSource(stateDir string) (string, error) {
 	}
 	dir := filepath.Join(stateDir, "InterProcessKV")
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return "", stateError("state_directory", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_directory", diagnostic.Class(err), err)
 	}
 	info, err := os.Lstat(dir)
 	if err != nil {
-		return "", stateError("state_directory", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_directory", diagnostic.Class(err), err)
 	}
 	if !info.IsDir() || info.Mode().Perm()&0077 != 0 {
-		return "", stateError("state_directory", "unsafe_permissions_or_type")
+		return "", stateError(stateDir, "state_directory", "unsafe_permissions_or_type", nil)
 	}
 	// O_NOFOLLOW rejects a substituted credential-file symlink. Linux is the
 	// release target. File mode is checked after opening the exact inode we lock.
 	f, err := os.OpenFile(filepath.Join(dir, "device_uuid"), os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW|syscall.O_NONBLOCK, 0600)
 	if err != nil {
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	defer f.Close()
 	info, err = f.Stat()
 	if err != nil {
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	if !info.Mode().IsRegular() || info.Mode().Perm() != 0600 {
-		return "", stateError("state_identity", "unsafe_permissions_or_type")
+		return "", stateError(stateDir, "state_identity", "unsafe_permissions_or_type", nil)
 	}
 	switch err := filelock.Lock(f, time.Second); {
 	case errors.Is(err, filelock.ErrTimeout):
-		return "", stateError("state_identity", "lock_timeout")
+		return "", stateError(stateDir, "state_identity", "lock_timeout", nil)
 	case err != nil:
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	defer filelock.Unlock(f)
 	b, err := io.ReadAll(io.LimitReader(f, 4097))
 	if len(b) > 4096 {
-		return "", stateError("state_identity", "invalid_content")
+		return "", stateError(stateDir, "state_identity", "invalid_content", nil)
 	}
 	if err != nil {
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	if len(b) > 0 {
 		if !validInput(string(b)) {
-			return "", stateError("state_identity", "invalid_content")
+			return "", stateError(stateDir, "state_identity", "invalid_content", nil)
 		}
 		return string(b), nil
 	}
@@ -73,19 +73,19 @@ func persistentSource(stateDir string) (string, error) {
 		return "", err
 	}
 	if _, err = f.WriteString(id); err != nil {
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	if err = f.Sync(); err != nil {
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	// Sync the directory entry as well as its content for restart durability.
 	d, err := os.Open(dir)
 	if err != nil {
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	defer d.Close()
 	if err = d.Sync(); err != nil {
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	return id, nil
 }

@@ -50,8 +50,8 @@ func TestListenerAndArgumentDiagnostics(t *testing.T) {
 		if strings.Contains(logs.String(), `"port":`) || strings.Contains(logs.String(), `"device_port":`) {
 			t.Fatalf("configuration failure retained private mapping: %s", &logs)
 		}
-		if strings.Contains(out.String()+logs.String(), "sentinel-password") {
-			t.Fatal("flag parser leaked value")
+		if tc.args[0] == "--idle" && !strings.Contains(logs.String(), `"value":"sentinel-password"`) {
+			t.Fatalf("flag parser lost the value: %s", &logs)
 		}
 	}
 }

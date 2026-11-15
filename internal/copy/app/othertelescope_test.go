@@ -97,7 +97,7 @@ func TestOtherTelescopesUnnamed(t *testing.T) {
 
 // Logs and Activity name both telescopes.
 func TestReasonOtherTelescope(t *testing.T) {
-	if got, want := reason(withHint(otherErr)), "another telescope, Relay (S50 Pro, serial TEST0002), answered at 192.0.2.85 instead of serial SERIAL-A"; got != want {
+	if got, want := reason(withHint(otherErr)), "find telescope: another telescope, Relay (S50 Pro, serial TEST0002), answered at 192.0.2.85 instead of serial SERIAL-A"; got != want {
 		t.Errorf("reason = %q, want %q", got, want)
 	}
 }
@@ -114,10 +114,10 @@ func TestOtherTelescopeBounded(t *testing.T) {
 	}{
 		{landiscovery.Telescope{Serial: "TEST0002", Name: del, Model: del},
 			"Expected S50 Pro SERIAL-A, but " + capped + " TEST0002 answered there.",
-			"another telescope, " + capped + " (" + capped + ", serial TEST0002), answered at 192.0.2.85 instead of serial SERIAL-A"},
+			"find telescope: another telescope, " + capped + " (" + capped + ", serial TEST0002), answered at 192.0.2.85 instead of serial SERIAL-A"},
 		{landiscovery.Telescope{Serial: del, Name: del, Model: del},
 			"Expected S50 Pro SERIAL-A, but another telescope answered there.",
-			"another telescope, serial " + capped + ", answered at 192.0.2.85 instead of serial SERIAL-A"},
+			"find telescope: another telescope, serial " + capped + ", answered at 192.0.2.85 instead of serial SERIAL-A"},
 	} {
 		err := fmt.Errorf("find telescope: %w", &landiscovery.OtherTelescopeError{Serial: "SERIAL-A", Address: netip.MustParseAddr("192.0.2.85"), Other: &c.other})
 		if title, what, ok := otherAnswered(err, otherName); !ok || title != otherTitle || what != c.what {

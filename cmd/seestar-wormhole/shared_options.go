@@ -38,20 +38,20 @@ func validateSharedOptions(o *options) error {
 		return err
 	}
 	if o.serial != "" && !cloudhttp.ValidSerial(o.serial) {
-		return &argumentError{Option: "--serial", Rule: cloudhttp.SerialRule}
+		return &argumentError{Option: "--serial", Rule: cloudhttp.SerialRule, Value: o.serial}
 	}
 	if o.model != "" && !cloudhttp.ValidModel(o.model) {
-		return &argumentError{Option: "--model", Rule: cloudhttp.ModelRule}
+		return &argumentError{Option: "--model", Rule: cloudhttp.ModelRule, Value: o.model}
 	}
 	return nil
 }
 
 func validateLoggingOptions(o *options) error {
 	if o.format != "json" && o.format != "text" {
-		return &argumentError{Option: "--log-format", Rule: "choose json or text"}
+		return &argumentError{Option: "--log-format", Rule: "choose json or text", Value: o.format}
 	}
 	if _, err := diagnostic.Level(o.level); err != nil {
-		return &argumentError{Option: "--log-level", Rule: "choose debug, info, warn or error"}
+		return &argumentError{Option: "--log-level", Rule: "choose debug, info, warn or error", Value: o.level}
 	}
 	return nil
 }

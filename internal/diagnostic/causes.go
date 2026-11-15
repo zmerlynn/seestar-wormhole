@@ -11,7 +11,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
-// Cause identifies an error node without formatting its potentially private text.
+// Cause identifies an error node by its type and class.
 type Cause struct {
 	Type   string `json:"type"`
 	Reason string `json:"reason"`
@@ -19,8 +19,8 @@ type Cause struct {
 }
 
 // Causes preserves the shape and typed reasons of wrapped/joined failures for
-// debug logs. Parent indexes distinguish independent siblings. It never
-// calls an error's Error, String or LogValue method or reads backend paths.
+// debug logs. Parent indexes distinguish independent siblings. It
+// classifies by type and sentinel, never by an error's text.
 func Causes(err error) []Cause {
 	return walkCauses(err).nodes
 }
@@ -100,7 +100,7 @@ func leafCauses(graph causeGraph) []string {
 func logFinalRecord(l *slog.Logger, message, phase, reason string, err, cleanup error) {
 	graph := walkCauses(err)
 	l.Debug("diagnostic_causes", "diagnostic", message, "phase", phase, "reason", reason, "causes", graph.nodes)
-	attrs := []any{"phase", phase, "reason", reason, "cleanup_reason", CleanupClass(cleanup), "leaf_causes", leafCauses(graph)}
+	attrs := []any{"phase", phase, "reason", reason, "cleanup_reason", CleanupClass(cleanup), "leaf_causes", leafCauses(graph), "error", Clip(err.Error(), MaxValue)}
 	if reason == "cloud_license_missing" {
 		attrs = append(attrs, "hint", licenseMissingHint)
 	}

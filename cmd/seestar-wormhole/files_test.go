@@ -73,7 +73,7 @@ func TestFileUsageRecordFormat(t *testing.T) {
 	} {
 		code, record, logs := usageExit(t, tc.args...)
 		if code != 2 || record.Msg != tc.args[0]+" failed" || record.Option != tc.option || tc.rule != "" && record.Rule != tc.rule ||
-			record.Help != programName+" "+tc.args[0]+" --help" || strings.Contains(logs, "cleanup_reason") || strings.Contains(logs, "PRIVATE_VALUE") {
+			record.Help != programName+" "+tc.args[0]+" --help" || strings.Contains(logs, "cleanup_reason") || strings.Contains(strings.Join(tc.args, " "), "PRIVATE_VALUE") && strings.Contains(logs, "PRIVATE_VALUE") == (tc.option == "arguments") {
 			t.Errorf("%q: exit %d record %+v logs %s", tc.args, code, record, logs)
 		}
 	}

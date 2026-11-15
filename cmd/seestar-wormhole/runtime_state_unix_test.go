@@ -68,7 +68,7 @@ func TestStatePaths(t *testing.T) {
 			if !errors.As(err, &option) || option.Option != "--state-dir" || option.Value != state || option.Rule == "" {
 				t.Errorf("missing state option/rule: %v", err)
 			}
-			assertNoSensitiveErrorDetails(t, err, "PRIVATE_IDENTITY", "PRIVATE_PASSWORD", "PRIVATE_SYMLINK_TARGET")
+			assertNoSecrets(t, err, "PRIVATE_IDENTITY", "PRIVATE_PASSWORD")
 			t.Logf("safe returned failure: %v", err)
 		})
 	}

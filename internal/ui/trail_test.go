@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"syscall"
 	"testing"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
@@ -87,6 +89,26 @@ func TestConnectionRepeatCollapsesAcrossFileLines(t *testing.T) {
 	events, _, _ := log.snapshot()
 	if len(events) != 3 {
 		t.Errorf("events = %v", events)
+	}
+}
+
+// A failing operation shows its latest error's text, clipped, while a
+// repeat of the same class writes no new line.
+func TestFailureKeepsLatestErrorText(t *testing.T) {
+	st := testStorage(t)
+	log := &eventLog{storage: st}
+	open := func(path string) error {
+		return &os.PathError{Op: "open", Path: path, Err: syscall.EACCES}
+	}
+	log.addOutcome(copyapp.Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpPass, Err: open("/Users/me/Seestar/a.fit"), Seq: 1})
+	log.addOutcome(copyapp.Outcome{Source: diagnostic.SourceCopy, Op: diagnostic.OpPass, Err: open("/Users/me/Seestar/" + strings.Repeat("b", 20000)), Seq: 2})
+	lines := guiLog(t, st.root)
+	if len(lines) != 1 || lines[0]["error"] != open("/Users/me/Seestar/a.fit").Error() {
+		t.Fatalf("gui.log = %+v", lines)
+	}
+	_, failures, _, _ := log.trail()
+	if len(failures) != 1 || failures[0].Failures != 2 || !strings.HasPrefix(failures[0].Error, "open /Users/me/Seestar/bbb") || !strings.Contains(failures[0].Error, "…(truncated, ") || len(failures[0].Error) > 2*diagnostic.MaxValue {
+		t.Fatalf("failures = %+v", failures)
 	}
 }
 

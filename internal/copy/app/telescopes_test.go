@@ -784,10 +784,9 @@ func TestDownloadWaitsForFolder(t *testing.T) {
 	}
 }
 
-// No log or Activity line names a telescope's folder, whatever Copy,
-// Test, Save, the offer and Free up space do; they name its serial and
-// its address.
-func TestTelescopeFoldersStayOutOfLogs(t *testing.T) {
+// The log and Activity name the telescope's serial and its address,
+// whatever Copy, Test, Save, the offer and Free up space do.
+func TestTelescopeLogsNameSerialAndAddress(t *testing.T) {
 	const serial = "SN-SENTINEL-9"
 	first := filepath.Join(t.TempDir(), "FOLDER-SENTINEL-A")
 	second := filepath.Join(t.TempDir(), "FOLDER-SENTINEL-B")
@@ -824,9 +823,6 @@ func TestTelescopeFoldersStayOutOfLogs(t *testing.T) {
 		t.Errorf("Activity lacks the start: %s", activity.String())
 	}
 	for where, text := range map[string]string{"log": e.logs.String(), "Activity": activity.String()} {
-		if strings.Contains(text, "FOLDER-SENTINEL") {
-			t.Errorf("%s holds a folder:\n%s", where, text)
-		}
 		for _, s := range []string{serial, "192.0.2.10:445"} {
 			if !strings.Contains(text, s) {
 				t.Errorf("%s lacks %q:\n%s", where, s, text)

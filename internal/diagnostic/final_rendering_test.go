@@ -22,9 +22,9 @@ func TestFinalCompactRendering(t *testing.T) {
 			for _, level := range []slog.Level{slog.LevelInfo, slog.LevelDebug} {
 				t.Run(fmt.Sprintf("%s/%s/%s", message, format, level), func(t *testing.T) {
 					var logs bytes.Buffer
-					err := errors.Join(context.DeadlineExceeded, io.EOF, privateCause{}, io.EOF)
+					err := errors.Join(context.DeadlineExceeded, io.EOF, backendCause{}, io.EOF)
 					for range 16 {
-						err = fmt.Errorf("PRIVATE_PATH: %w", err)
+						err = fmt.Errorf("WRAPPED_PATH: %w", err)
 					}
 					LogFinal(Logger(format, &logs, level), message, "session", err, nil)
 					lines := strings.Split(strings.TrimSpace(logs.String()), "\n")
@@ -36,15 +36,16 @@ func TestFinalCompactRendering(t *testing.T) {
 						t.Fatalf("lines=%d want=%d: %s", len(lines), want, &logs)
 					}
 					final := lines[len(lines)-1]
-					if len(final) > 400 || !strings.Contains(final, "timeout") || !strings.Contains(final, "peer_closed") || !strings.Contains(final, "operation_failed") || !strings.Contains(final, "leaf_causes") || strings.Contains(final, "parent") || strings.Contains(logs.String(), "PRIVATE_PATH") {
-						t.Fatalf("default diagnostic too long, missing causes, or private: %s", &logs)
+					// The error's text, 290 bytes, and the rest.
+					if len(final) > 750 || !strings.Contains(final, "timeout") || !strings.Contains(final, "peer_closed") || !strings.Contains(final, "operation_failed") || !strings.Contains(final, "leaf_causes") || strings.Contains(final, "parent") || !strings.Contains(final, "WRAPPED_PATH: WRAPPED_PATH: ") || !strings.Contains(final, "BACKEND_TEXT") {
+						t.Fatalf("default diagnostic too long, or missing causes or text: %s", &logs)
 					}
 					if format == "json" {
 						var r map[string]any
 						if err := json.Unmarshal([]byte(final), &r, json.MatchCaseInsensitiveNames(true)); err != nil {
 							t.Fatal(err)
 						}
-						if r["msg"] != message || r["reason"] != "timeout" || r["level"] != "ERROR" || r["causes"] != nil {
+						if r["msg"] != message || r["reason"] != "timeout" || r["level"] != "ERROR" || r["causes"] != nil || r["error"] != err.Error() {
 							t.Fatalf("final=%v", r)
 						}
 						want := []string{"timeout", "peer_closed", "operation_failed"}
@@ -88,7 +89,7 @@ func TestFinalLeafSummaryBounded(t *testing.T) {
 	if err := json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatal(err)
 	}
-	if len(record.Leaves) != 9 || record.Leaves[8] != "more" || logs.Len() > 550 {
+	if len(record.Leaves) != 9 || record.Leaves[8] != "more" || logs.Len() > 550+MaxValue {
 		t.Fatalf("unbounded summary=%s", &logs)
 	}
 }

@@ -14,8 +14,8 @@ import (
 )
 
 // shortText is what a transfer that ended early says, in an alert, the
-// log and Activity: the byte counts stay private with the rest.
-const shortText = "the device sent fewer bytes than expected"
+// log and Activity: how many of the file's bytes came.
+const shortText = "the device sent 1 of its 3 bytes"
 
 // A save of one file that the device ends early says so.
 func TestSaveShortReadSaysWhy(t *testing.T) {

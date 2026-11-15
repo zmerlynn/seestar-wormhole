@@ -21,6 +21,7 @@ type Terminal struct {
 	policy    error
 	reported  *atomic.Bool
 	next      *Terminal // Immutable received receipts from this one normalized outcome.
+	text      string    // The adapter error's own text, clipped; the policy graph is not kept.
 	Permanent bool      // Acquisition barrier; set before publication, independent of attribution.
 }
 
@@ -65,7 +66,14 @@ func NewTerminal(origin session.Layer, reason string, policy error) *Terminal {
 	return &Terminal{origin: origin, cause: cause, rank: rank, priority: blockingPriority(clean), policy: clean, reported: new(atomic.Bool)}
 }
 
-func (e *Terminal) Error() string { return e.Phase() + ": " + terminalCauses[e.cause] }
+// Error is the fixed phase and cause, then the adapter error's text when
+// the terminal was built from one.
+func (e *Terminal) Error() string {
+	if e.text == "" {
+		return e.Phase() + ": " + terminalCauses[e.cause]
+	}
+	return e.Phase() + ": " + terminalCauses[e.cause] + ": " + e.text
+}
 func (e *Terminal) Unwrap() error { return e.policy }
 
 // Origin returns the actual failing layer, regardless of the notification queue.
@@ -186,9 +194,10 @@ func receivedCause(err error) (*Terminal, *failure) {
 
 // RetainTerminal applies the composition rule to one incoming outcome. Every
 // distinct received receipt survives; only shared receipt identity deduplicates.
-// Its compact immutable chain contains bounded labels and policy, never raw
-// errors. The chain replaces the incoming diagnostic graph; it is not an owner
-// history or a queue batch. Owner aggregation must use Primary after observation.
+// Its compact immutable chain contains bounded labels, policy and each
+// receipt's clipped error text, never raw errors. The chain replaces the
+// incoming diagnostic graph; it is not an owner history or a queue batch.
+// Owner aggregation must use Primary after observation.
 func RetainTerminal(err, policy error) error { return retainTerminal(err, policy, nil) }
 
 // AtLayer normalizes an adapter outcome, using its actual layer only when the
@@ -220,6 +229,7 @@ func retainTerminal(err, policy error, fallback *session.Layer) error {
 		origin = StackLayer
 	}
 	head := NewTerminal(origin, reason, policy)
+	head.text = receiptText(err)
 	if selected != nil {
 		head.reported = selected.reported
 		head.rank = selected.rank
@@ -251,6 +261,7 @@ func retainTerminal(err, policy error, fallback *session.Layer) error {
 		own := NewTerminal(head.origin, terminalReason(head), head.policy)
 		own.reported = head.reported
 		own.rank = 1
+		own.text = head.text
 		head = own
 	}
 	tail := head
@@ -268,6 +279,7 @@ func retainTerminal(err, policy error, fallback *session.Layer) error {
 		next.rank = t.rank
 		next.priority = t.priority
 		next.Permanent = t.Permanent
+		next.text = t.text
 		tail.next = next
 		tail = next
 	}
@@ -284,9 +296,26 @@ func retainTerminal(err, policy error, fallback *session.Layer) error {
 		}
 		t := NewTerminal(origin, f.reason, Disposition(f.err))
 		t.reported = f.reported
+		t.text = Clip(f.err.Error(), MaxValue)
 		appendReceipt(t)
 	})
 	return head
+}
+
+// receiptText is the clipped text a normalized head carries: the selected
+// received terminal's, an attached operation's own error, or the adapter
+// error's, whose formatters have already masked its access secrets.
+func receiptText(err error) string {
+	terminal, attached := receivedCause(err)
+	switch {
+	case terminal != nil:
+		return terminal.text
+	case attached != nil:
+		return Clip(attached.err.Error(), MaxValue)
+	case !HasReceipt(err):
+		return Clip(err.Error(), MaxValue)
+	}
+	return ""
 }
 
 // JoinTerminals combines policy and received diagnostics at every edge join.

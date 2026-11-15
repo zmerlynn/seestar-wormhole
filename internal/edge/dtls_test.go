@@ -320,6 +320,14 @@ func TestDTLSPaired(t *testing.T) {
 func TestDTLSWrongKey(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) { pairedDTLS(t, 1388, false, false, true) })
 }
+
+// A dial with no packet path fails with the fixed handshake error.
+func TestDTLSHandshakeError(t *testing.T) {
+	c, err := DialDTLS(context.Background(), nil, []byte("test"), []byte("password"))
+	if c != nil || err != ErrDTLSHandshake || err.Error() != "dtls: handshake failed" {
+		t.Fatalf("got %v %v", c, err)
+	}
+}
 func TestDTLSCancelTimeoutAndJoin(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		// synctest.Test waits for every bubble goroutine to exit; leaked

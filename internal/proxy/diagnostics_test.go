@@ -61,7 +61,7 @@ func TestRuntimeListenerDiagnostic(t *testing.T) {
 	if phase != "listener_accept" || reason != "descriptor_limit" {
 		t.Fatalf("failure = %s/%s", phase, reason)
 	}
-	if strings.Contains(err.Error(), "secret-sentinel") {
-		t.Fatal("listener diagnostic leaked")
+	if !strings.Contains(err.Error(), "secret-sentinel tcp: too many open files") {
+		t.Fatalf("listener diagnostic lost the error text: %v", err)
 	}
 }

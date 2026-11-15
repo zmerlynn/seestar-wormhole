@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 func TestMissingStateDirectoryAndDiagnostic(t *testing.T) {
@@ -33,22 +34,9 @@ func TestMissingStateDirectoryAndDiagnostic(t *testing.T) {
 	if !errors.Is(err, cloud.ErrConfig) {
 		t.Fatal("state failure lost configuration classification")
 	}
-	var visit func(error)
-	visit = func(e error) {
-		if e == nil {
-			return
-		}
-		if strings.Contains(e.Error(), "sentinel-password") {
-			t.Errorf("path leaked through %T: %v", e, e)
-		}
-		switch e := e.(type) {
-		case interface{ Unwrap() []error }:
-			for _, child := range e.Unwrap() {
-				visit(child)
-			}
-		case interface{ Unwrap() error }:
-			visit(e.Unwrap())
-		}
+	// The error names the directory and keeps the OS error's text.
+	var option *diagnostic.OptionError
+	if !errors.As(err, &option) || option.Value != file || option.Err == nil || !strings.Contains(err.Error(), file) {
+		t.Fatalf("state failure lost the directory or its error: %v", err)
 	}
-	visit(err)
 }

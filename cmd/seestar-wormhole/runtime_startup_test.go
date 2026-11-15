@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
@@ -78,7 +79,9 @@ func TestRuntimeFailures(t *testing.T) {
 			if rec["option"] != option || rec["value"] != "0.0.0.0" || rec["rule"] == nil || rec["help"] != programName+" proxy --help" || out.Len() != 0 {
 				t.Errorf("missing safe diagnostic: stdout=%q log=%s", out.String(), &logs)
 			}
-			assertNoSensitiveErrorDetails(t, err, "PRIVATE_FILE_PATH", "PRIVATE_TARGET", "13459")
+			if err == nil || !strings.Contains(err.Error(), "0.0.0.0") {
+				t.Errorf("error lacks the bind value: %v", err)
+			}
 		})
 	}
 }

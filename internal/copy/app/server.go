@@ -1688,101 +1688,11 @@ func within(folder, dst string) (top, rel string, ok bool) {
 // maxDays caps Only files older than N days: 100 years.
 const maxDays = 36500
 
-// reason is a short text for err that names no folder or file, for logs,
-// Activity and the page's error messages: a transfer that ended early is
-// [remote.ErrShort], without its byte counts; else err's own text when
-// that is [safeText], as this app's errors and the telescope
-// connection's are; else the text of a network error in err's chain,
-// which names the telescope's address or host name; else the class of a
-// system failure, such as "permission denied"; else the first safe text
-// in err's chain, such as a sentinel a dependency wrapped with a path;
-// and otherwise "operation failed". A failure on two ports is each
-// endpoint with its own reason, and another telescope answering names
-// both telescopes.
+// reason is err's own text, clipped, for logs, Activity and the page's
+// error messages, or "none" for no error.
 func reason(err error) string {
 	if err == nil {
 		return "none"
 	}
-	if other, ok := errors.AsType[*landiscovery.OtherTelescopeError](err); ok {
-		return other.Error()
-	}
-	if both, ok := errors.AsType[*landiscovery.PortsError](err); ok {
-		return both.Endpoints[0] + ": " + reason(both.Errs[0]) + "; " + both.Endpoints[1] + ": " + reason(both.Errs[1])
-	}
-	if errors.Is(err, remote.ErrShort) {
-		return remote.ErrShort.Error()
-	}
-	if t := err.Error(); safeText(t) {
-		return t
-	}
-	if t, ok := networkText(err); ok {
-		return t
-	}
-	if c := diagnostic.Class(err); c != "operation_failed" {
-		if t, ok := classText[c]; ok {
-			return t
-		}
-		return strings.ReplaceAll(c, "_", " ")
-	}
-	if t, ok := safeCause(err); ok {
-		return t
-	}
-	return "operation failed"
-}
-
-// networkText is the text of the first TCP or UDP error, or name lookup
-// error, in err's chain: it names an address or a host, never a folder.
-func networkText(err error) (string, bool) {
-	if op, ok := errors.AsType[*net.OpError](err); ok && (strings.HasPrefix(op.Net, "tcp") || strings.HasPrefix(op.Net, "udp")) {
-		return op.Error(), true
-	}
-	if dns, ok := errors.AsType[*net.DNSError](err); ok {
-		return dns.Error(), true
-	}
-	return "", false
-}
-
-// classText reads better than a class with its underscores as spaces.
-var classText = map[string]string{
-	"no_space": "no space left", "read_only": "read-only file system",
-	"not_found": "not found", "not_a_directory": "not a folder",
-	"dns_not_found": "host not found", "timeout": "timed out",
-}
-
-// safeCause is the text of the first error in err's chain whose text is
-// [safeText].
-func safeCause(err error) (string, bool) {
-	if err == nil {
-		return "", false
-	}
-	if t := err.Error(); safeText(t) {
-		return t, true
-	}
-	switch u := err.(type) {
-	case interface{ Unwrap() error }:
-		return safeCause(u.Unwrap())
-	case interface{ Unwrap() []error }:
-		for _, e := range u.Unwrap() {
-			if t, ok := safeCause(e); ok {
-				return t, true
-			}
-		}
-	}
-	return "", false
-}
-
-// safeText reports whether t has none of what a path, an address, a host
-// name or a serial is written with: a digit, a slash, a backslash, an at
-// or a percent sign, or a dot or a colon that doesn't end a sentence or a
-// clause.
-func safeText(t string) bool {
-	if t == "" || strings.ContainsAny(t, "0123456789/\\@%") {
-		return false
-	}
-	for i := 0; i < len(t)-1; i++ {
-		if (t[i] == '.' || t[i] == ':') && t[i+1] != ' ' {
-			return false
-		}
-	}
-	return true
+	return diagnostic.Clip(err.Error(), diagnostic.MaxValue)
 }

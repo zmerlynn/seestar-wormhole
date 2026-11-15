@@ -60,11 +60,15 @@ func TestEnvironmentBoundaries(t *testing.T) {
 			if rec["option"] != tc.key || rec["rule"] == nil || rec["level"] != "ERROR" || out.Len() != 0 {
 				t.Fatalf("wrong diagnostic: %v", rec)
 			}
-			assertNoSensitiveErrorDetails(t, err, "PRIVATE_", "12.3456789", "23.4567891", "Etc/UTC", "13459", "0.0.0.0")
-			for _, v := range []string{"PRIVATE_", "12.3456789", "23.4567891", "Etc/UTC", "13459", "0.0.0.0"} {
-				if bytes.Contains(logs.Bytes(), []byte(v)) {
-					t.Fatalf("supplied value leaked: %s", &logs)
-				}
+			if tc.key == "SEESTAR_PASSWORD" {
+				assertNoSecrets(t, err, tc.value)
+			}
+			// The value that failed is named, except a password's.
+			if tc.key != "SEESTAR_PASSWORD" && option.Value != tc.value {
+				t.Fatalf("value not named: %q", option.Value)
+			}
+			if tc.key == "SEESTAR_PASSWORD" && rec["value"] != nil {
+				t.Fatalf("password value logged: %s", &logs)
 			}
 		})
 	}

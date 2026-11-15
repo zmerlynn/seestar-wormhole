@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"testing/synctest"
 	"time"
@@ -284,17 +287,29 @@ func TestStopDeadlineIndependentOfCanceledAttempt(t *testing.T) {
 		}
 	})
 }
-func TestTransportErrorsAreSanitized(t *testing.T) {
 
+// A transport error shows its own text, host and path included, but a URL
+// loses its query and userinfo.
+func TestTransportErrorsShowWithoutURLSecrets(t *testing.T) {
 	c, err := newAuthenticatedFixture(t, Config{Transport: transportFunc(func(r *http.Request) (*http.Response, error) {
-		return nil, fmt.Errorf("failed %s Authorization=token-secret", r.URL)
+		u := *r.URL
+		u.User = url.UserPassword("user", "password-secret")
+		u.RawQuery = "token=token-secret"
+		return nil, &url.Error{Op: "Post", URL: u.String(), Err: &net.OpError{Op: "dial", Net: "tcp", Addr: &net.TCPAddr{IP: net.IPv4(192, 0, 2, 10), Port: 443}, Err: syscall.ECONNREFUSED}}
 	})})
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = c.Acquire(context.Background(), Device{Serial: "serial-secret", Model: "model-secret"})
-	if !errors.Is(err, cloud.ErrTransport) || strings.Contains(err.Error(), "secret") {
-		t.Fatal("transport error leaked")
+	_, err = c.Acquire(context.Background(), Device{Serial: "serial", Model: "S50 Pro"})
+	if !errors.Is(err, cloud.ErrTransport) || !errors.Is(err, syscall.ECONNREFUSED) {
+		t.Fatalf("got %v, want a refused transport failure", err)
+	}
+	text := fmt.Sprintf("%v %+v", err, err)
+	if !strings.Contains(text, "dial tcp 192.0.2.10:443: connection refused") || !strings.Contains(text, "/v1/device-p2p/online-link\"") {
+		t.Fatalf("transport text missing: %s", text)
+	}
+	if strings.Contains(text, "secret") || strings.Contains(text, "user@") {
+		t.Fatalf("URL secret shown: %s", text)
 	}
 }
 func TestCanceledBeforeRequest(t *testing.T) {

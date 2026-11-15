@@ -320,7 +320,7 @@ func (h *Handler) deviceError(w http.ResponseWriter, r *http.Request, p string, 
 		if read {
 			h.cfg.send(diagnostic.OpRead, err, false, h.cfg.seq())
 		}
-		fail(w, http.StatusBadGateway, "device", err.Error())
+		fail(w, http.StatusBadGateway, "device", diagnostic.Clip(err.Error(), diagnostic.MaxValue))
 	}
 }
 

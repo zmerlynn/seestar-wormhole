@@ -124,7 +124,7 @@ func (s *Settings) fallBack() []diagnostic.Fallback {
 	}
 	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
 		s.Discovery = false
-		replace("discovery", "off")
+		replace("discovery", "off", s.Bind)
 	}
 	if s.Serial != "" && !cloudhttp.ValidSerial(s.Serial) {
 		replace("serial", "none", s.Serial)
@@ -145,7 +145,7 @@ func (s *Settings) fallBack() []diagnostic.Fallback {
 func LoadSettings(root string) (Settings, []diagnostic.Fallback, error) {
 	d, err := privatefile.ReadDirectory(root)
 	if err != nil {
-		return Settings{}, nil, errStorage
+		return Settings{}, nil, storageFailed(err)
 	}
 	defer d.Close()
 	return loadSettings(&storage{root: root, directory: d})

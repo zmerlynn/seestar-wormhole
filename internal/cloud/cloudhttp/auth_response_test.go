@@ -49,7 +49,7 @@ func TestAuthenticationStatusWithInjectedBodyErrors(t *testing.T) {
 						case "nil-body":
 							body = nil
 						case "reader-error":
-							body = &terminalErrorBody{Reader: strings.NewReader(b), err: errors.New("review-password-sentinel")}
+							body = &terminalErrorBody{Reader: strings.NewReader(b), err: errors.New("read tcp 192.0.2.10:443: connection reset by peer")}
 						}
 						return &http.Response{StatusCode: status, Body: body}, nil
 					})})
@@ -96,8 +96,8 @@ func TestAuthenticationStatusWithInjectedBodyErrors(t *testing.T) {
 					if bodyErr != nil && !errors.Is(err, bodyErr) {
 						t.Errorf("got %v, want body class %v", err, bodyErr)
 					}
-					if err != nil && strings.Contains(err.Error(), "sentinel") {
-						t.Errorf("error leaked sentinel: %v", err)
+					if mode == "reader-error" && !strings.Contains(err.Error(), "192.0.2.10:443: connection reset by peer") {
+						t.Errorf("read error text missing: %v", err)
 					}
 				})
 			}

@@ -1,17 +1,50 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json/v2"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"strings"
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
+
+// A refused login's final record names the account it tried, never the
+// password.
+func TestUnauthorizedRecordNamesAccount(t *testing.T) {
+	t.Setenv("SEESTAR_EMAIL", "test@example.invalid")
+	t.Setenv("SEESTAR_PASSWORD", "PRIVATE_PASSWORD")
+	_, unauthorized := cloud.ParseLogin(401, nil, false)
+	var logs bytes.Buffer
+	err := runWithListener(t.Context(), []string{"proxy", "--log-level=error"}, io.Discard, &logs, func(context.Context, proxy.Config) (commandSession, error) {
+		return nil, diagnostic.AtLayer(unauthorized, session.Cloud, session.ErrUncertain)
+	}, func(string, string) (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") })
+	if code := commandExitCode(options{command: commandProxy}, err); code != 3 {
+		t.Fatalf("exit=%d: %v", code, err)
+	}
+	found := false
+	for _, line := range bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n")) {
+		var record map[string]any
+		if json.Unmarshal(line, &record) != nil || record["msg"] != "proxy failed" {
+			continue
+		}
+		found = true
+		if record["reason"] != "unauthorized" || record["account"] != "test@example.invalid" {
+			t.Errorf("final record: %v", record)
+		}
+	}
+	if !found || strings.Contains(logs.String(), "PRIVATE_PASSWORD") {
+		t.Fatalf("logs: %s", &logs)
+	}
+}
 
 func TestCredentialExitCode(t *testing.T) {
 	_, unauthorized := cloud.ParseLogin(401, nil, false)

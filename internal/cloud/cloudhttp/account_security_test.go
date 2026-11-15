@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -71,14 +72,14 @@ func TestAccountEveryFailureIsSecretSafe(t *testing.T) {
 						}
 						return accountResponse(200, `{"code":0,"msg":"ok","data":{"accessToken":12,"id":12}}`), nil
 					case "read-error":
-						return &http.Response{StatusCode: 200, Body: &terminalErrorBody{Reader: strings.NewReader(b), err: errors.New(accountSentinel)}}, nil
+						return &http.Response{StatusCode: 200, Body: &terminalErrorBody{Reader: strings.NewReader(b), err: errors.New("read broke")}}, nil
 					case "transport-error":
-						return nil, errors.New(accountSentinel)
+						return nil, &url.Error{Op: "Post", URL: r.URL.String() + "?token=" + accountSentinel, Err: errors.New("dial broke")}
 					case "panic":
 						panic(accountSentinel)
 					case "cancel":
 						cancel()
-						return nil, errors.New(accountSentinel)
+						return nil, errors.New("canceled")
 					}
 					panic("test mode")
 				})})

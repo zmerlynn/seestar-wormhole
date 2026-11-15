@@ -160,28 +160,32 @@ func TestNamedProfileLoad(t *testing.T) {
 	}
 	for _, cmd := range copyCommandNames {
 		code, record, _ := usageExit(t, cmd, "--profile", "TEST0002")
-		if code != 2 || record.Option != "--profile" || record.Rule != "no profile named TEST0002; profiles: default, Garden" {
+		if code != 2 || record.Option != "--profile" || record.Value != "TEST0002" || record.Rule != "no profile named TEST0002; profiles: default, Garden" {
 			t.Errorf("%s: exit %d %+v", cmd, code, record)
 		}
 	}
 }
 
-// Each refusal is exit 2 for --profile with its rule and no path, and
-// writes nothing.
+// Each refusal is exit 2 for --profile with its rule and, where one
+// failed, the real error, path included, and writes nothing.
 func TestDefaultProfileRefusals(t *testing.T) {
 	root := savedConfigRoot(t)
+	const invalid = "use a valid saved copy.json in the app's state folder"
 	for _, tc := range []struct {
 		name, copyJSON string
 		root           string
 		rootErr        error
 		rule           string
+		err            string // the record's error, or its start
 	}{
-		{"no config folder", "", "", errors.New("no config folder"), "no per-user config folder for the app's profiles; give the flags"},
-		{"no state folder", "", filepath.Join(t.TempDir(), "missing"), nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags"},
-		{"no copy.json", "", root, nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags"},
-		{"another version", `{"version":2,"folder":"/synthetic/Seestar"}`, root, nil, "use a valid saved copy.json in the app's state folder"},
-		{"not JSON", `{`, root, nil, "use a valid saved copy.json in the app's state folder"},
-		{"relative history", `{"version":1,"history_dir":"synthetic/history"}`, root, nil, "use a valid saved copy.json in the app's state folder"},
+		{"no config folder", "", "", errors.New("no config folder"), "no per-user config folder for the app's profiles; give the flags", "no config folder"},
+		{"no state folder", "", filepath.Join(t.TempDir(), "missing"), nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags", ""},
+		{"no copy.json", "", root, nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags", ""},
+		{"another version", `{"version":2,"folder":"/synthetic/Seestar"}`, root, nil, invalid,
+			"Settings storage unavailable: copy.json is version 2; this app reads version 1. Use a private state directory."},
+		{"not JSON", `{`, root, nil, invalid, "Settings storage unavailable: " + filepath.Join(root, "copy.json") + ": "},
+		{"relative history", `{"version":1,"history_dir":"synthetic/history"}`, root, nil, invalid,
+			`Settings storage unavailable: copy.json history_dir "synthetic/history" is not an absolute path. Use a private state directory.`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_ = os.Remove(filepath.Join(root, "copy.json"))
@@ -192,7 +196,7 @@ func TestDefaultProfileRefusals(t *testing.T) {
 			before := profileFiles(t, root)
 			for _, cmd := range copyCommandNames {
 				code, record, logs := usageExit(t, cmd, "--profile", "default")
-				if code != 2 || record.Option != "--profile" || record.Rule != tc.rule || strings.Contains(logs, root) || strings.Contains(logs, "synthetic") {
+				if code != 2 || record.Option != "--profile" || record.Value != "default" || record.Rule != tc.rule || !strings.HasPrefix(record.Error, tc.err) || tc.err == "" && record.Error != "" {
 					t.Errorf("%s: exit %d %+v\n%s", cmd, code, record, logs)
 				}
 			}
@@ -324,7 +328,7 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 			continue
 		}
 		code, record, logs := usageExit(t, cmd, "--profile", "default")
-		if code != 2 || record.Option != "--profile" || !strings.Contains(record.Rule, "has no folder yet") || !strings.Contains(record.Rule, "--dest") ||
+		if code != 2 || record.Option != "--profile" || record.Value != "default" || !strings.Contains(record.Rule, "has no folder yet") || !strings.Contains(record.Rule, "--dest") ||
 			strings.Contains(logs, "synthetic") || strings.Contains(logs, "192.0.2") || strings.Contains(logs, "SYNTH-") {
 			t.Errorf("%s: exit %d %+v\n%s", cmd, code, record, logs)
 		}
@@ -358,7 +362,7 @@ func TestDefaultProfileFallbacks(t *testing.T) {
 	before := profileFiles(t, root)
 	got, err := loadProfile("default")
 	want := []diagnostic.Fallback{
-		{File: "copy.json", Setting: "files_at_once", Fallback: "4"},
+		{File: "copy.json", Setting: "files_at_once", Fallback: "4", Value: "57"},
 		{File: "config.json", Setting: "serial", Fallback: "none", Value: "INVALID serial"},
 	}
 	if err != nil || got.Workers != 4 || got.Endpoint != "127.0.0.1:1445" || !reflect.DeepEqual(got.Fallbacks, want) {
@@ -444,15 +448,15 @@ func TestUIProfileFlag(t *testing.T) {
 		t.Errorf("no flag: %q %q, %v", o.stateDir, o.profile, err)
 	}
 	for _, tc := range []struct {
-		args []string
-		rule string
+		args        []string
+		value, rule string
 	}{
-		{[]string{"ui", "--profile", "TEST0002"}, "no profile named TEST0002; profiles: default, Garden"},
-		{[]string{"ui", "--profile", "Garden", "--state-dir", root}, "give --profile or --state-dir, not both"},
-		{[]string{"ui", "--state-dir", root, "--profile", "default"}, "give --profile or --state-dir, not both"},
+		{[]string{"ui", "--profile", "TEST0002"}, "TEST0002", "no profile named TEST0002; profiles: default, Garden"},
+		{[]string{"ui", "--profile", "Garden", "--state-dir", root}, "Garden", "give --profile or --state-dir, not both"},
+		{[]string{"ui", "--state-dir", root, "--profile", "default"}, "default", "give --profile or --state-dir, not both"},
 	} {
 		code, record, _ := usageExit(t, tc.args...)
-		if code != 2 || record.Msg != "ui failed" || record.Option != "--profile" || record.Rule != tc.rule {
+		if code != 2 || record.Msg != "ui failed" || record.Option != "--profile" || record.Value != tc.value || record.Rule != tc.rule {
 			t.Errorf("%q: exit %d %+v", tc.args, code, record)
 		}
 	}
@@ -491,7 +495,7 @@ func TestProfileEndpointOwnership(t *testing.T) {
 		t.Errorf("no window open: %v", err)
 	}
 	code, record, _ := usageExit(t, "find", "--profile", "Garden")
-	if code != 2 || record.Option != "--profile" || !strings.HasPrefix(record.Rule, unknown) ||
+	if code != 2 || record.Option != "--profile" || record.Value != "Garden" || !strings.HasPrefix(record.Rule, unknown) ||
 		!strings.HasSuffix(record.Rule, "give --endpoint to copy through another proxy deliberately") {
 		t.Errorf("find: exit %d %+v", code, record)
 	}

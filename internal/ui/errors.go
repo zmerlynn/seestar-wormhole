@@ -8,7 +8,8 @@ import (
 )
 
 // ActionError carries fixed categories and, only for multiple-device selection,
-// received account choices. Dependency error text never enters this projection.
+// received account choices. The page gets the categories; the dependency
+// error's text, when there is one, goes to the log.
 type ActionError struct {
 	Code    string                   `json:"code"`
 	Field   string                   `json:"field,omitempty"`
@@ -18,16 +19,23 @@ type ActionError struct {
 	// hint follows the code's message on the page, not in the log: copy's
 	// Local Network sentence for a Save whose Test nothing answered.
 	hint string
+	// Err is the dependency error behind the code, for the log's text only.
+	Err error `json:"-"`
 }
 
-func (e *ActionError) Error() string { return "UI action failed: " + e.Code }
+func (e *ActionError) Error() string {
+	if e.Err != nil {
+		return "UI action failed: " + e.Code + ": " + e.Err.Error()
+	}
+	return "UI action failed: " + e.Code
+}
 func actionError(err error) *ActionError {
 	var e *ActionError
 	if errors.As(err, &e) {
 		return e
 	}
 	if errors.Is(err, errStorage) {
-		return &ActionError{Code: "storage"}
+		return &ActionError{Code: "storage", Err: err}
 	}
 	var validation *cloud.ValidationError
 	if errors.As(err, &validation) && errors.Is(err, cloud.ErrConfig) {

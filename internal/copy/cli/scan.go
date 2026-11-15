@@ -58,7 +58,7 @@ send, 2 on a usage error.`,
 		Args: noArguments,
 		RunE: func(*cobra.Command, []string) error {
 			if o.format != "text" && o.format != "json" {
-				return &diagnostic.OptionError{Option: "--format", Rule: "use text or json"}
+				return &diagnostic.OptionError{Option: "--format", Rule: "use text or json", Value: o.format}
 			}
 			c.store(true, func(ctx context.Context, out io.Writer, log *slog.Logger) error {
 				return runScan(ctx, o, out, log)

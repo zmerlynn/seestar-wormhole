@@ -149,7 +149,7 @@ func (o *browseOptions) validate() error {
 func parseListen(s string) (netip.AddrPort, error) {
 	ap, err := netip.ParseAddrPort(s)
 	if err != nil || ap.Addr().Is4In6() || ap.Addr().Zone() != "" {
-		return netip.AddrPort{}, &diagnostic.OptionError{Option: "--listen", Rule: "give an IP address and port, such as 127.0.0.1:0"}
+		return netip.AddrPort{}, &diagnostic.OptionError{Option: "--listen", Rule: "give an IP address and port, such as 127.0.0.1:0", Value: s}
 	}
 	return ap, nil
 }

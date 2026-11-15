@@ -92,5 +92,5 @@ func uiListenerError(device, local uint16, err error) error {
 			code = "http_conflict"
 		}
 	}
-	return &ui.ActionError{Code: code, Field: field, Service: device, Local: local}
+	return &ui.ActionError{Code: code, Field: field, Service: device, Local: local, Err: err}
 }

@@ -118,10 +118,10 @@ func (o *findOptions) validate() error {
 	}
 	o.selector = sel
 	if o.olderThan < 0 {
-		return &diagnostic.OptionError{Option: "--older-than", Rule: "must not be negative"}
+		return &diagnostic.OptionError{Option: "--older-than", Rule: "must not be negative", Value: o.olderThan.String()}
 	}
 	if o.format != "text" && o.format != "jsonl" {
-		return &diagnostic.OptionError{Option: "--format", Rule: "use text or jsonl"}
+		return &diagnostic.OptionError{Option: "--format", Rule: "use text or jsonl", Value: o.format}
 	}
 	if o.destSet && o.dest == "" {
 		return &diagnostic.OptionError{Option: "--dest", Rule: "must not be empty; omit it to list without a status"}
