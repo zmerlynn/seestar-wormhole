@@ -432,6 +432,17 @@ test('Preview shows what Start would copy by folder and copies nothing; Start di
   const ptitle = page.locator('#c-ptitle');
   await expect(page.locator('#c-preview')).toBeHidden();
   await expect(page.locator('#c-pnote')).toHaveText('Nothing is copied until you start.');
+  // The three buttons share one row, in order, and the hint is its own
+  // line under them.
+  const row = [];
+  for (const name of ['Start copying', 'Preview', 'Copy settings…']) row.push(await button(page, name).boundingBox());
+  for (let i = 1; i < row.length; i++) {
+    expect(row[i].y).toBe(row[0].y);
+    expect(row[i].x).toBeGreaterThan(row[i - 1].x + row[i - 1].width);
+  }
+  const note = await page.locator('#c-pnote').boundingBox();
+  expect(note.y).toBeGreaterThanOrEqual(Math.max(...row.map((b) => b.y + b.height)));
+  expect(note.x).toBe(row[0].x);
   await button(page, 'Preview').click();
   await expect(ptitle).toHaveText(/^Would copy 7 files \(\d.*\)$/, { timeout: 30000 });
   await expect(ptitle).toBeFocused();
