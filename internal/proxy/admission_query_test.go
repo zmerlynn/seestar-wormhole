@@ -92,9 +92,9 @@ func TestAdmissionSocketQueryDiagnostic(t *testing.T) {
 					if err := <-finished; err != nil {
 						t.Fatal(err)
 					}
-					want := `"level":"INFO","msg":"client_canceled","port":445,"local_port":0,"client_class":"other","reason":"connection_reset"`
+					want := `"level":"INFO","msg":"client_canceled","port":445,"local_port":0,"client":"pipe","reason":"connection_reset"`
 					if tc.query {
-						want = `"level":"WARN","msg":"client_rejected","port":445,"local_port":0,"client_class":"other","rule":"SIO_TCP_INFO_required","reason":"` + tc.reason + `"`
+						want = `"level":"WARN","msg":"client_rejected","port":445,"local_port":0,"client":"pipe","rule":"SIO_TCP_INFO_required","reason":"` + tc.reason + `"`
 					}
 					if bytes.Count(logs.Bytes(), []byte("\n")) != 1 || !bytes.Contains(logs.Bytes(), []byte(want)) {
 						t.Fatalf("want one diagnostic containing %s, got %s", want, logs.String())

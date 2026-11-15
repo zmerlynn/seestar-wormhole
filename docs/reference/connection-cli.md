@@ -652,7 +652,7 @@ In trail entries:
 | `iotc_rid_history_exhausted` | ERROR | Process-lifetime rendezvous identifier reservation budget is full; fixed `error` includes restart guidance |
 | `iotc_license_refused` | WARN | `rule=license_nul`; decoded license contains NUL, with no license material logged |
 | `relay_progress`, `relay_summary`, `relay_failure_summary` | INFO | Relay phase, request/result/refusal counters, selection; fixed failure reason in the failure summary |
-| `channel_open` | INFO | Device `port`, `local_port`, `channel`, `client_class` |
+| `channel_open` | INFO | Device `port`, `local_port`, `channel`, `client` (the client's address and port) |
 | `channel_close` | INFO | Same context, `duration_ms`, successful `local_to_device_bytes`, `device_to_local_bytes`, classified reason |
 | `channel_closed` | INFO for a closed local writer; WARN for abnormal failures; DEBUG otherwise | Tunnel/bridge detail, direction or channel, reason and classified cause |
 | `client_rejected`, `listener_accept_failed` | WARN | Capacity/dial or accept failure, ports and classified reason; `rule=SIO_TCP_INFO_required` identifies a failed or short TCP-state query, which refuses admission |
@@ -695,8 +695,8 @@ process normally, wait for session release and exit, then restart it to restore
 the budget. [This is a local limit, not a device refusal.](https://github.com/zmerlynn/seestar-spec/blob/v1/spec/transport/iotc/connect.md#attempt-and-cache-lifetimes) The record uses the
 selected log format and sink; a stalled sink can drop it.
 
-Client class is `loopback`, `LAN` for private/link-local IPs, or `other`;
-client addresses are omitted. Channel byte counts include successful partial
+`client` is the local client's address and port, for example
+`192.0.2.20:50123`. Channel byte counts include successful partial
 writes; duration ends when both forwarding workers finish.
 Outage reminders continue without clients and during an in-flight dial or
 cleanup or recovery delay. Ownership recovery keeps its original
