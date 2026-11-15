@@ -13,21 +13,21 @@ import (
 // replace it.
 var profileRoot = func() (string, error) { return ui.StateRoot("") }
 
-// profileDir is the state folder of the profile named name, or an exit 2
-// for --profile when there is none: a name with no folder is refused with
-// the names there are.
-func profileDir(name string) (string, error) {
+// profileDir is the state folder of the profile named name, and its name
+// as its folder is named, or an exit 2 for --profile when there is none:
+// a name with no folder is refused with the names there are.
+func profileDir(name string) (dir, found string, err error) {
 	root, err := profileRoot()
 	if err != nil {
-		return "", &argumentError{Option: "--profile", Rule: "no per-user config folder for the app's profiles; give the flags"}
+		return "", "", &argumentError{Option: "--profile", Rule: "no per-user config folder for the app's profiles; give the flags"}
 	}
-	dir, _, err := ui.FindProfile(root, name)
+	dir, found, err = ui.FindProfile(root, name)
 	if missing, ok := errors.AsType[*ui.NoProfileError](err); ok {
-		return "", &argumentError{Option: "--profile", Rule: missing.Error()}
+		return "", "", &argumentError{Option: "--profile", Rule: missing.Error()}
 	} else if err != nil {
-		return "", &argumentError{Option: "--profile", Rule: "the app's profiles folder couldn't be read"}
+		return "", "", &argumentError{Option: "--profile", Rule: "the app's profiles folder couldn't be read: " + err.Error()}
 	}
-	return dir, nil
+	return dir, found, nil
 }
 
 // loadProfile reads the profile named name for --profile: the history
@@ -40,7 +40,7 @@ func profileDir(name string) (string, error) {
 // has a folder of its own: after that, none is filled, and NoFolder is
 // set.
 func loadProfile(name string) (cli.Saved, error) {
-	root, err := profileDir(name)
+	root, _, err := profileDir(name)
 	if err != nil {
 		return cli.Saved{}, err
 	}

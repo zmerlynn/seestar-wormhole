@@ -66,8 +66,10 @@ type options struct {
 	lanDiscovery              bool
 	lanDiscoveryAllInterfaces bool
 	serial, model, stateDir   string
-	config                    bool
-	savedEmail                string
+	// profile is ui's --profile, as its folder is named; "" without it.
+	profile    string
+	config     bool
+	savedEmail string
 	// settingsFallbacks are the saved values --config or --profile
 	// replaced. A refused option logs them with its error; otherwise
 	// proxy dispatch logs and clears them, and a file command logs its

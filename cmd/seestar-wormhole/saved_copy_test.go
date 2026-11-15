@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
@@ -406,4 +407,42 @@ func TestProfileFallbackWarningsOnceOnRunFailure(t *testing.T) {
 		t.Fatalf("expected a run failure, got %v", err)
 	}
 	checkProfileWarnings(t, err, &logs)
+}
+
+// ui --profile runs the app on that profile's folder, found as the file
+// commands find it; an unknown name, or --state-dir too, is exit 2.
+func TestUIProfileFlag(t *testing.T) {
+	saved := registerUICommand
+	t.Cleanup(func() { registerUICommand = saved })
+	registerUICommand = func(root *cobra.Command, o *options) { root.AddCommand(newUICommand(o)) }
+	root := savedConfigRoot(t)
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	useProfileRoot(t, root, nil)
+	for _, name := range []string{"Garden", "GARDEN"} {
+		o, err := parse([]string{"ui", "--profile", name}, io.Discard)
+		if err != nil || o.command != commandUI || o.stateDir != ui.ProfileDir(root, "Garden") || o.profile != "Garden" {
+			t.Errorf("%s: %+v, %v", name, o, err)
+		}
+	}
+	if o, err := parse([]string{"ui", "--profile", "default"}, io.Discard); err != nil || o.stateDir != root || o.profile != "default" {
+		t.Errorf("default: %q %q, %v", o.stateDir, o.profile, err)
+	}
+	if o, err := parse([]string{"ui"}, io.Discard); err != nil || o.stateDir != "" || o.profile != "" {
+		t.Errorf("no flag: %q %q, %v", o.stateDir, o.profile, err)
+	}
+	for _, tc := range []struct {
+		args []string
+		rule string
+	}{
+		{[]string{"ui", "--profile", "TEST0002"}, "no profile named TEST0002; profiles: default, Garden"},
+		{[]string{"ui", "--profile", "Garden", "--state-dir", root}, "give --profile or --state-dir, not both"},
+		{[]string{"ui", "--state-dir", root, "--profile", "default"}, "give --profile or --state-dir, not both"},
+	} {
+		code, record, _ := usageExit(t, tc.args...)
+		if code != 2 || record.Msg != "ui failed" || record.Option != "--profile" || record.Rule != tc.rule {
+			t.Errorf("%q: exit %d %+v", tc.args, code, record)
+		}
+	}
 }
