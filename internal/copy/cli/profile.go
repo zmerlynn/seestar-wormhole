@@ -10,7 +10,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// DefaultProfile is the only profile: the app's own saved settings.
+// DefaultProfile is the app's own saved settings, in its state folder.
 const DefaultProfile = "default"
 
 // Saved is what a profile holds for the file commands. A zero member is
@@ -44,10 +44,11 @@ type Saved struct {
 	Fallbacks []diagnostic.Fallback
 }
 
-// LoadProfile reads the default profile, without writing any file. A
-// failure is a *diagnostic.OptionError for --profile. The program supplies
-// it, so this package never reads the app's files itself.
-type LoadProfile func() (Saved, error)
+// LoadProfile reads the profile with that name, without writing any
+// file. A failure, a name with no profile among them, is a
+// *diagnostic.OptionError for --profile. The program supplies it, so this
+// package never reads the app's files itself.
+type LoadProfile func(name string) (Saved, error)
 
 // profileFlag is --profile, and the flags it filled.
 type profileFlag struct {
@@ -65,22 +66,18 @@ type profileFlag struct {
 }
 
 func (p *profileFlag) register(f *pflag.FlagSet) {
-	f.StringVar(&p.name, "profile", "", "fill the flags not given from the app's saved settings; only default exists (default: read no saved settings)")
+	f.StringVar(&p.name, "profile", "", "fill the flags not given from the app's saved settings of this profile, such as default (default: read no saved settings)")
 }
 
-// load reads the profile when --profile was given. It checks the name
-// before anything is read.
+// load reads the profile when --profile was given.
 func (p *profileFlag) load(flags *pflag.FlagSet, load LoadProfile) (Saved, bool, error) {
 	if p.set = flags.Changed("profile"); !p.set {
 		return Saved{}, false, nil
 	}
-	if p.name != DefaultProfile {
-		return Saved{}, false, &diagnostic.OptionError{Option: "--profile", Rule: "only default exists in this version"}
-	}
 	if load == nil {
-		return Saved{}, false, &diagnostic.OptionError{Option: "--profile", Rule: "no per-user config folder for the default profile; give the flags"}
+		return Saved{}, false, &diagnostic.OptionError{Option: "--profile", Rule: "no per-user config folder for the app's profiles; give the flags"}
 	}
-	s, err := load()
+	s, err := load(p.name)
 	return s, err == nil, err
 }
 

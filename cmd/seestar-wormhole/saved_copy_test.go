@@ -22,9 +22,9 @@ import (
 
 // useProfileRoot makes root the default profile's folder for the test.
 func useProfileRoot(t *testing.T, root string, err error) {
-	old := defaultProfileRoot
-	t.Cleanup(func() { defaultProfileRoot = old })
-	defaultProfileRoot = func() (string, error) { return root, err }
+	old := profileRoot
+	t.Cleanup(func() { profileRoot = old })
+	profileRoot = func() (string, error) { return root, err }
 }
 
 // writeSavedCopy writes copy.json as the app creates it.
@@ -89,7 +89,7 @@ func TestDefaultProfileLoad(t *testing.T) {
 	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
 	before := profileFiles(t, root)
-	got, err := loadDefaultProfile()
+	got, err := loadProfile("default")
 	want := cli.Saved{
 		Dest: "/synthetic/Seestar", HistoryDir: history, Endpoint: "127.0.0.2:1445",
 		Excludes: []string{"copy-exclude"}, Includes: []string{"copy-include"}, NoDefaultExcludes: true,
@@ -107,25 +107,52 @@ func TestDefaultProfileLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/Seestar"}`)
-	got, err = loadDefaultProfile()
+	got, err = loadProfile("default")
 	if err != nil || got.HistoryDir != "" || got.NoDefaultExcludes || got.Dest != "/synthetic/Seestar" || got.Workers != 4 || got.Interval != 5*time.Minute {
 		t.Errorf("a short copy.json = %+v, %v", got, err)
 	}
 
 	// Without a usable config.json, only the endpoint is left unfilled.
 	writeSavedConfig(t, root, []byte(`{"version":99}`))
-	if got, err = loadDefaultProfile(); err != nil || got.Endpoint != "" || got.Dest == "" {
+	if got, err = loadProfile("default"); err != nil || got.Endpoint != "" || got.Dest == "" {
 		t.Errorf("a refused config.json = %+v, %v", got, err)
 	}
 	if err := os.Remove(filepath.Join(root, "config.json")); err != nil {
 		t.Fatal(err)
 	}
-	if got, err = loadDefaultProfile(); err != nil || got.Endpoint != "" || got.Dest == "" {
+	if got, err = loadProfile("default"); err != nil || got.Endpoint != "" || got.Dest == "" {
 		t.Errorf("no config.json = %+v, %v", got, err)
 	}
 	code, record, _ := usageExit(t, "sync", "--profile", "default")
 	if code != 2 || record.Option != "--endpoint" || record.Rule != "required; give the SMB host:port" {
 		t.Errorf("sync without a saved endpoint: exit %d %+v", code, record)
+	}
+}
+
+// A named profile is read from its own folder under the root, matched
+// without regard to case, and the root's own files aren't its. A name
+// with no folder is exit 2 naming the profiles there are.
+func TestNamedProfileLoad(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/default"}`)
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	writeSavedCopy(t, ui.ProfileDir(root, "Garden"), `{"version":1,"folder":"/synthetic/Garden"}`)
+	useProfileRoot(t, root, nil)
+	for _, name := range []string{"Garden", "garden"} {
+		if got, err := loadProfile(name); err != nil || got.Dest != "/synthetic/Garden" || got.Endpoint != "" {
+			t.Errorf("%s = %+v, %v", name, got, err)
+		}
+	}
+	if got, err := loadProfile("default"); err != nil || got.Dest != "/synthetic/default" {
+		t.Errorf("default = %+v, %v", got, err)
+	}
+	for _, cmd := range copyCommandNames {
+		code, record, _ := usageExit(t, cmd, "--profile", "TEST0002")
+		if code != 2 || record.Option != "--profile" || record.Rule != "no profile named TEST0002; profiles: default, Garden" {
+			t.Errorf("%s: exit %d %+v", cmd, code, record)
+		}
 	}
 }
 
@@ -139,7 +166,7 @@ func TestDefaultProfileRefusals(t *testing.T) {
 		rootErr        error
 		rule           string
 	}{
-		{"no config folder", "", "", errors.New("no config folder"), "no per-user config folder for the default profile; give the flags"},
+		{"no config folder", "", "", errors.New("no config folder"), "no per-user config folder for the app's profiles; give the flags"},
 		{"no state folder", "", filepath.Join(t.TempDir(), "missing"), nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags"},
 		{"no copy.json", "", root, nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags"},
 		{"another version", `{"version":2,"folder":"/synthetic/Seestar"}`, root, nil, "use a valid saved copy.json in the app's state folder"},
@@ -171,9 +198,9 @@ func TestDefaultProfileRefusals(t *testing.T) {
 func TestNoProfileReadsNothing(t *testing.T) {
 	root := savedConfigRoot(t)
 	writeSavedCopy(t, root, `{"version":2}`)
-	old := defaultProfileRoot
-	t.Cleanup(func() { defaultProfileRoot = old })
-	defaultProfileRoot = func() (string, error) { t.Error("read the default profile without --profile"); return root, nil }
+	old := profileRoot
+	t.Cleanup(func() { profileRoot = old })
+	profileRoot = func() (string, error) { t.Error("read the default profile without --profile"); return root, nil }
 	for name, args := range fileArgs(t) {
 		if o, err := parse(args, io.Discard); err != nil || o.file == nil {
 			t.Errorf("%s: %v", name, err)
@@ -188,7 +215,7 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 	body, _ := fullCopyJSON(t)
 	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
-	if got, err := loadDefaultProfile(); err != nil || got.LANSerial != "" {
+	if got, err := loadProfile("default"); err != nil || got.LANSerial != "" {
 		t.Errorf("the proxy route = %+v, %v", got, err)
 	}
 	s := ui.Settings{Version: 1, Bind: "127.0.0.2", Idle: "2m", Ports: []proxyrun.Port{{Local: 1445, Device: 445}},
@@ -198,7 +225,7 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSavedConfig(t, root, b)
-	got, err := loadDefaultProfile()
+	got, err := loadProfile("default")
 	if err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "SYNTHETIC_LAN_SERIAL" || got.LANScan != "" {
 		t.Errorf("this network = %+v, %v", got, err)
 	}
@@ -210,7 +237,7 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeSavedConfig(t, root, b)
-		if got, err = loadDefaultProfile(); err != nil || got.LANScan != scan {
+		if got, err = loadProfile("default"); err != nil || got.LANScan != scan {
 			t.Errorf("lan_scan %q = %+v, %v", scan, got, err)
 		}
 	}
@@ -220,7 +247,7 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSavedConfig(t, root, b)
-	if got, err = loadDefaultProfile(); err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "" {
+	if got, err = loadProfile("default"); err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "" {
 		t.Errorf("no saved serial = %+v, %v", got, err)
 	}
 }
@@ -269,7 +296,7 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeSavedConfig(t, root, b)
-		if got, err := loadDefaultProfile(); err != nil || got.Dest != tc.dest || got.NoFolder != tc.noFolder {
+		if got, err := loadProfile("default"); err != nil || got.Dest != tc.dest || got.NoFolder != tc.noFolder {
 			t.Errorf("%s = %+v, %v", tc.name, got, err)
 		}
 	}
@@ -304,7 +331,7 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/A"}`)
-	if got, err := loadDefaultProfile(); err != nil || got.Dest != "/synthetic/A" || got.NoFolder {
+	if got, err := loadProfile("default"); err != nil || got.Dest != "/synthetic/A" || got.NoFolder {
 		t.Errorf("an older copy.json = %+v, %v", got, err)
 	}
 }
@@ -317,7 +344,7 @@ func TestDefaultProfileFallbacks(t *testing.T) {
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/Seestar","files_at_once":57}`)
 	useProfileRoot(t, root, nil)
 	before := profileFiles(t, root)
-	got, err := loadDefaultProfile()
+	got, err := loadProfile("default")
 	want := []diagnostic.Fallback{
 		{File: "copy.json", Setting: "files_at_once", Fallback: "4"},
 		{File: "config.json", Setting: "serial", Fallback: "none", Value: "INVALID serial"},

@@ -8,22 +8,41 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 )
 
-// defaultProfileRoot is the default profile's folder: the app's state
-// folder without --state-dir. Tests replace it.
-var defaultProfileRoot = func() (string, error) { return ui.StateRoot("") }
+// profileRoot is the profiles' state root: the app's state folder
+// without --state-dir, which is the default profile's folder. Tests
+// replace it.
+var profileRoot = func() (string, error) { return ui.StateRoot("") }
 
-// loadDefaultProfile reads the default profile for --profile default: the
-// history and Copy options from copy.json, the endpoint from config.json,
-// with the serial saved with it on this network, and the folder of the
-// telescope config.json saves. It writes and locks nothing. Without
-// copy.json there is nothing to fill, so it is refused; without a usable
-// config.json the endpoint stays unfilled, and the folder is copy.json's
-// folder only until any telescope has a folder of its own: after that,
-// none is filled, and NoFolder is set.
-func loadDefaultProfile() (cli.Saved, error) {
-	root, err := defaultProfileRoot()
+// profileDir is the state folder of the profile named name, or an exit 2
+// for --profile when there is none: a name with no folder is refused with
+// the names there are.
+func profileDir(name string) (string, error) {
+	root, err := profileRoot()
 	if err != nil {
-		return cli.Saved{}, &argumentError{Option: "--profile", Rule: "no per-user config folder for the default profile; give the flags"}
+		return "", &argumentError{Option: "--profile", Rule: "no per-user config folder for the app's profiles; give the flags"}
+	}
+	dir, _, err := ui.FindProfile(root, name)
+	if missing, ok := errors.AsType[*ui.NoProfileError](err); ok {
+		return "", &argumentError{Option: "--profile", Rule: missing.Error()}
+	} else if err != nil {
+		return "", &argumentError{Option: "--profile", Rule: "the app's profiles folder couldn't be read"}
+	}
+	return dir, nil
+}
+
+// loadProfile reads the profile named name for --profile: the history
+// and Copy options from its copy.json, the endpoint from its config.json,
+// with the serial saved with it on this network, and the folder of the
+// telescope config.json saves. default is the app's state folder itself.
+// It writes and locks nothing. Without copy.json there is nothing to
+// fill, so it is refused; without a usable config.json the endpoint stays
+// unfilled, and the folder is copy.json's folder only until any telescope
+// has a folder of its own: after that, none is filled, and NoFolder is
+// set.
+func loadProfile(name string) (cli.Saved, error) {
+	root, err := profileDir(name)
+	if err != nil {
+		return cli.Saved{}, err
 	}
 	set, fallbacks, err := ui.LoadCopySettings(root)
 	if errors.Is(err, ui.ErrNoCopySettings) {
