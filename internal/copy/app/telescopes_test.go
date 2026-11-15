@@ -835,20 +835,15 @@ func TestTelescopeFoldersStayOutOfLogs(t *testing.T) {
 	}
 }
 
-// withoutFolder drops the private attributes, in a group too, and keeps
-// the rest.
-func TestWithoutFolder(t *testing.T) {
+// withReasons keeps the folders, in a group too, and logs an error as
+// its reason.
+func TestWithReasons(t *testing.T) {
 	var out lockedBuffer
-	log := slog.New(withoutFolder{slog.NewTextHandler(&out, nil)}).With("dest", "/w1", "kept", 1)
+	log := slog.New(withReasons{slog.NewTextHandler(&out, nil)}).With("dest", "/w1", "kept", 1)
 	log.WithGroup("g").Info("m", "to", "/w2", "endpoint", "192.0.2.10:445", "n", 2)
-	log.Info("m", slog.Group("s", "dest", "/w3", "n", 3))
+	log.Info("m", slog.Group("s", "dest", "/w3", "n", 3, "err", ErrClaim))
 	got := out.String()
-	for _, s := range []string{"/w1", "/w2", "/w3"} {
-		if strings.Contains(got, s) {
-			t.Errorf("log holds %q: %s", s, got)
-		}
-	}
-	for _, s := range []string{"kept=1", "g.endpoint=192.0.2.10:445", "g.n=2", "s.n=3"} {
+	for _, s := range []string{"dest=/w1", "g.to=/w2", "s.dest=/w3", "kept=1", "g.endpoint=192.0.2.10:445", "g.n=2", "s.n=3", `s.err="` + reason(ErrClaim) + `"`} {
 		if !strings.Contains(got, s) {
 			t.Errorf("log lacks %q: %s", s, got)
 		}

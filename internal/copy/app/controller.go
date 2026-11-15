@@ -173,7 +173,7 @@ func newController(parent context.Context, stateDir string, log *slog.Logger, di
 	act := &activity{}
 	return &controller{
 		parent: parent, stateDir: stateDir, activity: act,
-		log:  slog.New(withoutFolder{newTee(log.Handler(), act, "copy")}),
+		log:  slog.New(withReasons{newTee(log.Handler(), act, "copy")}),
 		dial: dial,
 		st:   status{state: stOff},
 	}

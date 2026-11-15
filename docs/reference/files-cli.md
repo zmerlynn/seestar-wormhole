@@ -186,8 +186,7 @@ filled flags and the value each took, a list's values joined by commas,
 such as
 `profile=default filled=--dest,--endpoint,--interval dest=/Users/me/Seestar endpoint=192.0.2.85:4445 interval=5m0s`.
 The saved settings hold no password, token or key. The record goes only to
-the command's stderr; the app keeps local folders out of `gui.log` and
-diagnostics.
+the command's stderr.
 Neither file is written or locked, and both are read with the app's own
 checks. Each refusal exits 2 with `option=--profile`:
 

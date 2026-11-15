@@ -268,12 +268,12 @@ func TestOldHistoryNotMovedToChosenDefault(t *testing.T) {
 	}
 }
 
-// The move shows once in copying's Activity, without the folders, even
+// The move shows once in copying's Activity, naming both folders, even
 // with the app's log taking only warnings.
 func TestOldHistoryMoveInActivity(t *testing.T) {
 	e, _, base, _ := oldHistoryEnv(t)
 	e.s.log = slog.New(slog.NewTextHandler(&e.logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	e.s.copy.log = slog.New(withoutFolder{newTee(e.s.log.Handler(), e.s.copy.activity, "copy")})
+	e.s.copy.log = slog.New(withReasons{newTee(e.s.log.Handler(), e.s.copy.activity, "copy")})
 	for range 2 {
 		if w := e.post("/copy/api/clear", `{}`); w.Code != 200 {
 			t.Fatalf("clear: %d %s", w.Code, w.Body)
@@ -286,11 +286,8 @@ func TestOldHistoryMoveInActivity(t *testing.T) {
 			moves = append(moves, l.Text)
 		}
 	}
-	if !slices.Equal(moves, []string{"moved the copy history"}) {
-		t.Errorf("Activity's moves = %q, want one, without the folders", moves)
-	}
-	if logs := e.logs.String(); strings.Contains(logs, base) {
-		t.Errorf("the log names a folder:\n%s", logs)
+	if len(moves) != 1 || !strings.Contains(moves[0], "from="+filepath.Join(base, "seestar-copy")) || !strings.Contains(moves[0], " to=") {
+		t.Errorf("Activity's moves = %q, want one, naming the folders", moves)
 	}
 }
 

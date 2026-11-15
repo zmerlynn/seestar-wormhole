@@ -124,8 +124,8 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	if log == nil {
 		log = slog.New(slog.DiscardHandler)
 	}
-	// The copy folder is a telescope's: no log or Activity line names it.
-	log = slog.New(withoutFolder{log.Handler()})
+	// An error is logged as its reason.
+	log = slog.New(withReasons{log.Handler()})
 	s := &server{
 		ctx: ctx, addr: o.Addr, version: o.Version, stateDir: o.StateDir, target: o.Target, file: file, log: log,
 		rep: &reporter{report: o.Report}, name: o.Name, knowSerial: o.KnowSerial, serialAt: o.SerialAt, tokenKey: make([]byte, 32),
@@ -212,7 +212,7 @@ func newServer(ctx context.Context, o MountOptions, file *settingsFile) *server 
 	s.free = newFreer(ctx, o.StateDir, log, dial)
 	s.free.at, s.free.rep, s.free.name = at, s.rep, s.name
 	// Free up space's outcomes join copy's in Activity, tagged "delete".
-	s.free.record = slog.New(withoutFolder{newTee(slog.DiscardHandler, s.copy.activity, "delete")})
+	s.free.record = slog.New(withReasons{newTee(slog.DiscardHandler, s.copy.activity, "delete")})
 	if o.Remover != nil {
 		s.free.remover = o.Remover
 	}
