@@ -227,13 +227,17 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// another program's.
 			ServingPorts []uint16 `json:"serving_ports"`
 			// ServingAddress is the bind address of those ports, "" when
-			// there are none.
+			// there are none, and ServingSerial the serial of the
+			// telescope they reach, "" until the run selects one: the
+			// file commands' --profile copies through another profile's
+			// window only when it is the telescope that profile saved.
 			ServingAddress string `json:"serving_address"`
+			ServingSerial  string `json:"serving_serial"`
 			// Profile is the run's profile, absent for a run of a
 			// --state-dir folder.
 			Profile *profileView `json:"profile,omitempty"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
-			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports), view.serving, s.profileStatus(r)})
+			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports), view.serving, view.servingSerial, s.profileStatus(r)})
 		return
 	}
 	if r.Method != "POST" {

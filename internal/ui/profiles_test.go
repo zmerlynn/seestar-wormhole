@@ -14,6 +14,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 )
@@ -192,6 +193,7 @@ func TestStatusServingPorts(t *testing.T) {
 	status := func() (got struct {
 		ServingPorts   []uint16      `json:"serving_ports"`
 		ServingAddress string        `json:"serving_address"`
+		ServingSerial  string        `json:"serving_serial"`
 		CopyOnly       *proxy.Holder `json:"copy_only"`
 	}) {
 		w := httptest.NewRecorder()
@@ -208,12 +210,13 @@ func TestStatusServingPorts(t *testing.T) {
 	if got := status(); !slices.Contains(got.ServingPorts, 1445) || !slices.Contains(got.ServingPorts, 4700) || got.ServingAddress != "127.0.0.1" || got.CopyOnly != nil {
 		t.Errorf("bound, before arming: %+v", got)
 	}
+	s.controller.status.SetSelectedDevice(cloudhttp.Device{Model: "Seestar S50", Serial: "TEST0002"})
 	s.controller.status.MarkArmed()
-	if got := status(); !slices.Contains(got.ServingPorts, 1445) || got.CopyOnly != nil {
+	if got := status(); !slices.Contains(got.ServingPorts, 1445) || got.ServingSerial != "TEST0002" || got.CopyOnly != nil {
 		t.Errorf("armed: %+v", got)
 	}
 	s.controller.status.ClearServing()
-	if got := status(); len(got.ServingPorts) != 0 || got.ServingAddress != "" {
+	if got := status(); len(got.ServingPorts) != 0 || got.ServingAddress != "" || got.ServingSerial != "" {
 		t.Errorf("closed: %+v", got)
 	}
 	s.controller.status = proxy.NewStatus()

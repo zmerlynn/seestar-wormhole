@@ -391,9 +391,11 @@ type runView struct {
 	// CopyOnly is the window holding the local ports when the run serves
 	// none of them; serving is the bind address of the run's own
 	// listeners while they are bound, from before its session starts, and
-	// "" otherwise.
-	CopyOnly *proxy.Holder `json:"copy_only,omitempty"`
-	serving  string
+	// "" otherwise, and servingSerial the serial of the telescope they
+	// reach, "" until the session selects it.
+	CopyOnly      *proxy.Holder `json:"copy_only,omitempty"`
+	serving       string
+	servingSerial string
 }
 
 func (c *controller) view() runView {
@@ -411,6 +413,9 @@ func (c *controller) view() runView {
 			v.CopyOnly = &h
 		} else {
 			v.serving, _ = c.status.Serving()
+			if v.serving != "" {
+				v.servingSerial = c.status.SelectedSerial()
+			}
 		}
 	}
 	if c.failure != nil {
