@@ -572,7 +572,8 @@ includes your telescopes' full serial numbers in connection and
 account-catalog events, your copy folder and history folder, your patterns,
 the private log's path, and each event's and current failure's error text,
 which can name folders, files and addresses. It leaves out your password, the account email
-and tokens. Remove what you don't want to share before you post it.
+and tokens; an account email inside an event's or failure's text shows as
+`[account]`. Remove what you don't want to share before you post it.
 
 <a id="what-logs-show"></a>
 seestar-wormhole hides only access secrets: passwords and their hashes,

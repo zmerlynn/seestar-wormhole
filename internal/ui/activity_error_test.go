@@ -3,8 +3,12 @@ package ui
 import (
 	"encoding/json/v2"
 	"errors"
+	"fmt"
+	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
@@ -18,6 +22,17 @@ func trailJSON(t *testing.T, l *eventLog) string {
 		t.Fatal(err)
 	}
 	return string(encoded)
+}
+
+// The summary takes an unauthorized error's text with the account email,
+// in any case, replaced; the page's Activity keeps it.
+func TestSummaryMasksAccount(t *testing.T) {
+	email := testSettings().Email
+	l := &eventLog{storage: testStorage(t)}
+	l.addFailure(errorCopy("signin"), fmt.Errorf("authentication for %s: %w", email, cloud.ErrUnauthorized))
+	l.addOutcome(copyapp.Outcome{Source: diagnostic.SourceBrowse, Op: diagnostic.OpConnect, Seq: 1,
+		Err: fmt.Errorf("authentication for %s: %w", strings.ToUpper(email), cloud.ErrUnauthorized)})
+	runPageRegression(t, "activity-error-test.js", "checkSummaryAccount("+trailJSON(t, l)+","+strconv.Quote(email)+")")
 }
 
 // Activity shows each event's error text after its message, markup as

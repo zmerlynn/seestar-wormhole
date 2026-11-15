@@ -1752,7 +1752,8 @@ function renderEvents() {
 // settings documents, the failing operations, the trail newest first and
 // the log path. Without a connection error, the error code is the newest
 // failure's. It is meant to be shared, so it never takes the account email:
-// state.settings and state.devices_email stay out.
+// state.settings and state.devices_email stay out, and each account email
+// the page knows becomes [account] in the events' and failures' text.
 let shownErrorCode = '';
 // trailNewestFirst is the trail, newest first; a stable sort keeps the
 // newer of two lines with one timestamp first.
@@ -1760,12 +1761,25 @@ function trailNewestFirst() {
   return (state?.events || []).map(event => ({...event, source: event.source || 'connection'})).reverse()
     .sort((a, b) => (Date.parse(b.time) || 0) - (Date.parse(a.time) || 0));
 }
+// withoutAccount copies records with each account email in their message
+// and error replaced, whatever its case; the page and gui.log keep the text.
+function withoutAccount(records) {
+  const emails = [state?.settings?.email, state?.devices_email].filter(Boolean)
+    .map(email => new RegExp(email.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'));
+  if (!emails.length) return records;
+  const mask = text => emails.reduce((t, email) => t.replace(email, '[account]'), text);
+  return records.map(record => {
+    const masked = {...record};
+    for (const key of ['message', 'error']) if (typeof masked[key] === 'string') masked[key] = mask(masked[key]);
+    return masked;
+  });
+}
 function copyDiagnostic() {
   const failures = state?.failures || [];
   const newest = failures.reduce((a, b) => !a || (Date.parse(b.last) || 0) >= (Date.parse(a.last) || 0) ? b : a, null);
   diagnostic = JSON.stringify({
     app: 'seestar-wormhole', version: state?.version || '', error_code: shownErrorCode || newest?.code || '', settings: state?.effective || null,
-    copy_settings: copyStatus?.settings || null, failures, events: trailNewestFirst(), log_path: state?.log_path || ''
+    copy_settings: copyStatus?.settings || null, failures: withoutAccount(failures), events: withoutAccount(trailNewestFirst()), log_path: state?.log_path || ''
   }, null, 2);
 }
 let pickerKey = '', receivedDevices = [], savedDevice = null;
