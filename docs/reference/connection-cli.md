@@ -91,6 +91,9 @@ that telescope port. `SEESTAR_EMAIL` overrides the saved email. The password
 comes from `SEESTAR_PASSWORD` when set, otherwise the OS keychain entry for that
 email under service `seestar-wormhole`. A missing or unavailable password exits
 with code 2 and a fixed message; keychain reads have the three-second bound.
+A state root or `config.json` it can't use exits 2 with `option=--config`
+and the real error in `error`, such as
+`Settings storage unavailable: /Users/me/Library/Application Support/seestar-wormhole/config.json: <parse error>. Use a private state directory.`
 This command never writes settings or takes or writes `ui.lock`. GUI and
 headless runs still follow the account's one-session rule.
 

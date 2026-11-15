@@ -15,11 +15,11 @@ const savedPasswordRule = "Password unavailable: set SEESTAR_PASSWORD or save a 
 func loadProxySettings(o *options, flags *pflag.FlagSet) error {
 	root, err := ui.StateRoot(o.stateDir)
 	if err != nil {
-		return &argumentError{Option: "--config", Rule: "use the UI's private state directory with saved config.json"}
+		return &argumentError{Option: "--config", Rule: "use the UI's private state directory with saved config.json", Err: err}
 	}
 	s, fallbacks, err := ui.LoadSettings(root)
 	if err != nil {
-		return &argumentError{Option: "--config", Rule: "use a valid saved config.json in the UI's private state directory"}
+		return &argumentError{Option: "--config", Rule: "use a valid saved config.json in the UI's private state directory", Err: err}
 	}
 	o.stateDir, o.savedEmail, o.settingsFallbacks = root, s.Email, fallbacks
 	if !flags.Changed("bind") {

@@ -166,22 +166,26 @@ func TestNamedProfileLoad(t *testing.T) {
 	}
 }
 
-// Each refusal is exit 2 for --profile with its rule and no path, and
-// writes nothing.
+// Each refusal is exit 2 for --profile with its rule and, where one
+// failed, the real error, path included, and writes nothing.
 func TestDefaultProfileRefusals(t *testing.T) {
 	root := savedConfigRoot(t)
+	const invalid = "use a valid saved copy.json in the app's state folder"
 	for _, tc := range []struct {
 		name, copyJSON string
 		root           string
 		rootErr        error
 		rule           string
+		err            string // the record's error, or its start
 	}{
-		{"no config folder", "", "", errors.New("no config folder"), "no per-user config folder for the app's profiles; give the flags"},
-		{"no state folder", "", filepath.Join(t.TempDir(), "missing"), nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags"},
-		{"no copy.json", "", root, nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags"},
-		{"another version", `{"version":2,"folder":"/synthetic/Seestar"}`, root, nil, "use a valid saved copy.json in the app's state folder"},
-		{"not JSON", `{`, root, nil, "use a valid saved copy.json in the app's state folder"},
-		{"relative history", `{"version":1,"history_dir":"synthetic/history"}`, root, nil, "use a valid saved copy.json in the app's state folder"},
+		{"no config folder", "", "", errors.New("no config folder"), "no per-user config folder for the app's profiles; give the flags", "no config folder"},
+		{"no state folder", "", filepath.Join(t.TempDir(), "missing"), nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags", ""},
+		{"no copy.json", "", root, nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags", ""},
+		{"another version", `{"version":2,"folder":"/synthetic/Seestar"}`, root, nil, invalid,
+			"Settings storage unavailable: copy.json is version 2; this app reads version 1. Use a private state directory."},
+		{"not JSON", `{`, root, nil, invalid, "Settings storage unavailable: " + filepath.Join(root, "copy.json") + ": "},
+		{"relative history", `{"version":1,"history_dir":"synthetic/history"}`, root, nil, invalid,
+			`Settings storage unavailable: copy.json history_dir "synthetic/history" is not an absolute path. Use a private state directory.`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_ = os.Remove(filepath.Join(root, "copy.json"))
@@ -192,7 +196,7 @@ func TestDefaultProfileRefusals(t *testing.T) {
 			before := profileFiles(t, root)
 			for _, cmd := range copyCommandNames {
 				code, record, logs := usageExit(t, cmd, "--profile", "default")
-				if code != 2 || record.Option != "--profile" || record.Value != "default" || record.Rule != tc.rule || strings.Contains(logs, root) || strings.Contains(logs, "synthetic") {
+				if code != 2 || record.Option != "--profile" || record.Value != "default" || record.Rule != tc.rule || !strings.HasPrefix(record.Error, tc.err) || tc.err == "" && record.Error != "" {
 					t.Errorf("%s: exit %d %+v\n%s", cmd, code, record, logs)
 				}
 			}

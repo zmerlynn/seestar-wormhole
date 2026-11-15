@@ -214,7 +214,9 @@ The saved settings hold no password, token or key. The record goes only to
 the command's stderr.
 Neither file is written or locked, and both are read with the app's own
 checks. Each refusal exits 2 with `option=--profile` and the name given in
-`value`:
+`value`. Where a read or check failed, `error` has its text, such as
+`error="Settings storage unavailable: copy.json is version 2; this app reads version 1. Use a private state directory."`
+or the path of a file that couldn't be opened or parsed:
 
 | Case | rule |
 | --- | --- |
