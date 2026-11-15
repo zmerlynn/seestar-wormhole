@@ -36,7 +36,7 @@ folder, or one made with **New profile**, in
 [`profiles/NAME/`](app-settings.md#where-settings-live) there, matched
 without regard to case. Without it, the app opens Default. A profile
 already open in a window is brought forward, as opening the app again
-does. These exit 2 with `option=--profile`:
+does. These exit 2 with `option=--profile` and the name given in `value`:
 
 | Case | rule |
 | --- | --- |

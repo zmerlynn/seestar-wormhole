@@ -160,7 +160,7 @@ func TestNamedProfileLoad(t *testing.T) {
 	}
 	for _, cmd := range copyCommandNames {
 		code, record, _ := usageExit(t, cmd, "--profile", "TEST0002")
-		if code != 2 || record.Option != "--profile" || record.Rule != "no profile named TEST0002; profiles: default, Garden" {
+		if code != 2 || record.Option != "--profile" || record.Value != "TEST0002" || record.Rule != "no profile named TEST0002; profiles: default, Garden" {
 			t.Errorf("%s: exit %d %+v", cmd, code, record)
 		}
 	}
@@ -192,7 +192,7 @@ func TestDefaultProfileRefusals(t *testing.T) {
 			before := profileFiles(t, root)
 			for _, cmd := range copyCommandNames {
 				code, record, logs := usageExit(t, cmd, "--profile", "default")
-				if code != 2 || record.Option != "--profile" || record.Rule != tc.rule || strings.Contains(logs, root) || strings.Contains(logs, "synthetic") {
+				if code != 2 || record.Option != "--profile" || record.Value != "default" || record.Rule != tc.rule || strings.Contains(logs, root) || strings.Contains(logs, "synthetic") {
 					t.Errorf("%s: exit %d %+v\n%s", cmd, code, record, logs)
 				}
 			}
@@ -324,7 +324,7 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 			continue
 		}
 		code, record, logs := usageExit(t, cmd, "--profile", "default")
-		if code != 2 || record.Option != "--profile" || !strings.Contains(record.Rule, "has no folder yet") || !strings.Contains(record.Rule, "--dest") ||
+		if code != 2 || record.Option != "--profile" || record.Value != "default" || !strings.Contains(record.Rule, "has no folder yet") || !strings.Contains(record.Rule, "--dest") ||
 			strings.Contains(logs, "synthetic") || strings.Contains(logs, "192.0.2") || strings.Contains(logs, "SYNTH-") {
 			t.Errorf("%s: exit %d %+v\n%s", cmd, code, record, logs)
 		}
@@ -444,15 +444,15 @@ func TestUIProfileFlag(t *testing.T) {
 		t.Errorf("no flag: %q %q, %v", o.stateDir, o.profile, err)
 	}
 	for _, tc := range []struct {
-		args []string
-		rule string
+		args        []string
+		value, rule string
 	}{
-		{[]string{"ui", "--profile", "TEST0002"}, "no profile named TEST0002; profiles: default, Garden"},
-		{[]string{"ui", "--profile", "Garden", "--state-dir", root}, "give --profile or --state-dir, not both"},
-		{[]string{"ui", "--state-dir", root, "--profile", "default"}, "give --profile or --state-dir, not both"},
+		{[]string{"ui", "--profile", "TEST0002"}, "TEST0002", "no profile named TEST0002; profiles: default, Garden"},
+		{[]string{"ui", "--profile", "Garden", "--state-dir", root}, "Garden", "give --profile or --state-dir, not both"},
+		{[]string{"ui", "--state-dir", root, "--profile", "default"}, "default", "give --profile or --state-dir, not both"},
 	} {
 		code, record, _ := usageExit(t, tc.args...)
-		if code != 2 || record.Msg != "ui failed" || record.Option != "--profile" || record.Rule != tc.rule {
+		if code != 2 || record.Msg != "ui failed" || record.Option != "--profile" || record.Value != tc.value || record.Rule != tc.rule {
 			t.Errorf("%q: exit %d %+v", tc.args, code, record)
 		}
 	}
@@ -491,7 +491,7 @@ func TestProfileEndpointOwnership(t *testing.T) {
 		t.Errorf("no window open: %v", err)
 	}
 	code, record, _ := usageExit(t, "find", "--profile", "Garden")
-	if code != 2 || record.Option != "--profile" || !strings.HasPrefix(record.Rule, unknown) ||
+	if code != 2 || record.Option != "--profile" || record.Value != "Garden" || !strings.HasPrefix(record.Rule, unknown) ||
 		!strings.HasSuffix(record.Rule, "give --endpoint to copy through another proxy deliberately") {
 		t.Errorf("find: exit %d %+v", code, record)
 	}

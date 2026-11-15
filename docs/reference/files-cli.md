@@ -213,8 +213,8 @@ such as
 The saved settings hold no password, token or key. The record goes only to
 the command's stderr.
 Neither file is written or locked, and both are read with the app's own
-checks. Each refusal exits 2 with `option=--profile`, and the name given in
-`value` when it isn't `default`:
+checks. Each refusal exits 2 with `option=--profile` and the name given in
+`value`:
 
 | Case | rule |
 | --- | --- |

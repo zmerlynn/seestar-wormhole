@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-type usageRecord struct{ Msg, Phase, Reason, Option, Rule, Help string }
+type usageRecord struct{ Msg, Phase, Reason, Option, Rule, Help, Value string }
 
 // usageExit runs args through the main exit path and decodes its one record:
 // text for a file command, JSON for any other.
@@ -30,7 +30,7 @@ func usageExit(t *testing.T, args ...string) (int, usageRecord, string) {
 			t.Fatalf("%q: want one text record, got %q: %v", args, &logs, err)
 		}
 		get := func(k string) string { s, _ := fields[k].(string); return s }
-		record = usageRecord{get("msg"), get("phase"), get("reason"), get("option"), get("rule"), get("help")}
+		record = usageRecord{get("msg"), get("phase"), get("reason"), get("option"), get("rule"), get("help"), get("value")}
 	} else if err := json.Unmarshal(bytes.TrimSpace(logs.Bytes()), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
 		t.Fatalf("%q: want one JSON record, got %q: %v", args, &logs, err)
 	}

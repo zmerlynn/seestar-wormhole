@@ -82,7 +82,7 @@ func (p *profileFlag) load(flags *pflag.FlagSet, load LoadProfile) (Saved, bool,
 		return Saved{}, false, nil
 	}
 	if load == nil {
-		return Saved{}, false, &diagnostic.OptionError{Option: "--profile", Rule: "no per-user config folder for the app's profiles; give the flags"}
+		return Saved{}, false, &diagnostic.OptionError{Option: "--profile", Rule: "no per-user config folder for the app's profiles; give the flags", Value: p.name}
 	}
 	s, err := load(p.name)
 	return s, err == nil, err
@@ -96,11 +96,11 @@ func (p *profileFlag) fill(ctx context.Context, flags *pflag.FlagSet, load LoadP
 		return err
 	}
 	if s.NoFolder && !flags.Changed("dest") && !p.statuses && takesDest(flags) {
-		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder}
+		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder, Value: p.name}
 	}
 	if s.CheckEndpoint != nil && s.Endpoint != "" && !flags.Changed("endpoint") {
 		if err := s.CheckEndpoint(ctx); err != nil {
-			return &diagnostic.OptionError{Option: "--profile", Rule: err.Error()}
+			return &diagnostic.OptionError{Option: "--profile", Rule: err.Error(), Value: p.name}
 		}
 	}
 	p.filled = fillSaved(s, flags.Changed)

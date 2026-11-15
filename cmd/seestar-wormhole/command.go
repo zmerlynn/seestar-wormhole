@@ -47,7 +47,7 @@ func newUICommand(o *options) *cobra.Command {
 			return nil
 		}
 		if cmd.Flags().Changed("state-dir") {
-			return &argumentError{Option: "--profile", Rule: "give --profile or --state-dir, not both"}
+			return &argumentError{Option: "--profile", Rule: "give --profile or --state-dir, not both", Value: o.profile}
 		}
 		var err error
 		o.stateDir, o.profile, err = profileDir(o.profile)
