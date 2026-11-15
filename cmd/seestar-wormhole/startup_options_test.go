@@ -53,8 +53,14 @@ func TestAttackStateDirectoryReturnedError(t *testing.T) {
 		t.Fatal("invalid credential state directory accepted")
 	}
 	assertStartupOptionFailure(t, err, &out, &logs, "--state-dir", "use a private writable state directory and installation identity file", "PRIVATE_PASSWORD", "14387", "file blocks directory")
+	// Compare the decoded value: JSON escapes a Windows path's backslashes.
+	var record struct{ Value string }
+	lines := bytes.Split(bytes.TrimSpace(logs.Bytes()), []byte("\n"))
+	if e := json.Unmarshal(lines[len(lines)-1], &record, json.MatchCaseInsensitiveNames(true)); e != nil {
+		t.Fatal(e)
+	}
 	var option *argumentError
-	if !strings.Contains(logs.String(), `"value":"`+privatePath+`"`) || !errors.As(err, &option) || option.Value != privatePath {
+	if record.Value != privatePath || !errors.As(err, &option) || option.Value != privatePath {
 		t.Errorf("state directory not named: err=%v log=%s", err, &logs)
 	}
 	if !errors.Is(err, cloud.ErrConfig) {

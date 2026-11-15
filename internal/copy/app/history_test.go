@@ -286,7 +286,10 @@ func TestOldHistoryMoveInActivity(t *testing.T) {
 			moves = append(moves, l.Text)
 		}
 	}
-	if len(moves) != 1 || !strings.Contains(moves[0], "from="+filepath.Join(base, "seestar-copy")) || !strings.Contains(moves[0], " to=") {
+	// Rendered as Activity renders it: macOS's "Application Support" is quoted.
+	var from strings.Builder
+	writeAttr(&from, "", slog.String("from", filepath.Join(base, "seestar-copy")))
+	if len(moves) != 1 || !strings.Contains(moves[0], from.String()) || !strings.Contains(moves[0], " to=") {
 		t.Errorf("Activity's moves = %q, want one, naming the folders", moves)
 	}
 }
