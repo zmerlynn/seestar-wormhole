@@ -242,3 +242,25 @@ func TestAppLogsFallbacks(t *testing.T) {
 		t.Fatalf("log names a saved value: %s", logs.String())
 	}
 }
+
+// An oversized invalid saved email is logged clipped, with its prefix and a
+// marker, in a record a log sink takes.
+func TestSettingsFallbackClipsEmail(t *testing.T) {
+	st := testStorage(t)
+	email := "synthetic-" + strings.Repeat("<", 20000)
+	if err := st.writeBytes("config.json", []byte(`{"version":1,"email":"`+email+`"}`)); err != nil {
+		t.Fatal(err)
+	}
+	s, fallbacks, err := loadSettings(st)
+	if err != nil || s.Email != "" || len(fallbacks) != 1 {
+		t.Fatalf("load = %+v, %v, %v", s, fallbacks, err)
+	}
+	log := fallbackLog(t, fallbacks)
+	var record struct{ Value string }
+	if err := json.Unmarshal([]byte(log), &record, json.MatchCaseInsensitiveNames(true)); err != nil {
+		t.Fatal(err)
+	}
+	if len(log) >= 16<<10 || !strings.HasPrefix(record.Value, "synthetic-<<<") || !strings.HasSuffix(record.Value, "…(truncated, 20010 bytes)") {
+		t.Fatalf("record of %d bytes: %.300s", len(log), log)
+	}
+}

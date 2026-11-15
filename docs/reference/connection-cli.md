@@ -284,7 +284,7 @@ The only application-specific runtime environment variables are
 `SEESTAR_EMAIL` and `SEESTAR_PASSWORD`. Without `--config`, `proxy` requires
 both and loads no config file. With `--config`, they override the saved email
 and keychain password. Credentials are kept in memory and never accepted in argv.
-Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning naming it in `value`; an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
+Serials must be 1-64 printable ASCII bytes (0x21-0x7E; no spaces, controls, or non-ASCII). This applies to CLI input, manual entry, saved settings, and received picker choices. An invalid saved serial or email loads as none saved and logs a `settings_fallback` warning naming it in `value` (cut at 512 bytes); an invalid saved model refuses loading without rewriting the file. See [config.json](app-settings.md#configjson-version-1). Model inputs must be nonblank, at most 4096 bytes, without NUL, CR, or LF. Email must
 be valid UTF-8, at most 4096 bytes, and match
 `^\w+([-+.]\w+)*@\w+([-.]\w+)*\.\w+([-.]\w+)*$`.
 Password must be valid UTF-8 and 8–32 UTF-16 units.
@@ -306,6 +306,8 @@ is reported as `option=arguments`. Startup bind and
 identity-storage errors identify `--bind` and `--state-dir` and give the
 value that failed, as in
 `option=--bind value=192.0.2.7 rule="use an OS-supported bind address with available local ports"`.
+An option or value longer than 512 bytes is cut there and ends
+`…(truncated, N bytes)`.
 
 ### Exit codes
 
@@ -438,9 +440,11 @@ Device replies stay byte-transparent and are never decoded for this check.
 
 One WARN `site_protected` record is emitted for each dropped setter. It contains
 `method`, the request `id` as sent (`unavailable` when it is missing or not a
-string or number), `params` with the coordinates, zone and clock values the
+string or number), `params` (the coordinates, zone and clock values the
 client tried to set, plus unknown parameter names; access-secret fields and
-unknown value subtrees are excluded. It ends with `reason=site_protected`. Invalid frames use WARN
+unknown value subtrees are excluded) and `reason=site_protected`. An `id` or
+`params` longer than 512 bytes is cut there and ends `…(truncated, N bytes)`,
+where N is its full length. Invalid frames use WARN
 `site_reject` with the method, any recovered `id` and the refusal rule. There is no startup
 site record. If device EOF prevents a local error from being delivered, WARN
 `site_reply_failed` names the refusal rule in `reason` with `cause=device_closed`.
@@ -681,7 +685,7 @@ In trail entries:
 | `proxy failed` | ERROR, always JSON | One final classified failure, after cleanup; `reason` and `cleanup_reason` are stable keys; startup TCP-state checks add `rule=SIO_TCP_INFO_required` and `requirement`, with `phase=tcp_state_query` or `tcp_state_loopback` |
 | `console control failed` | ERROR, JSON | Windows console event wait failed or returned an unexpected result; `phase=console_control`, `reason=operation_failed`. Cancels the command so release and cleanup proceed. |
 | `ui failed` | ERROR, JSON | UI command argument refusal; fixed `option`, `rule`, help hint, `phase=arguments`, `reason=invalid_option`. UI startup/storage failures use fixed stderr messages; browser actions report sanitized errors in the page. |
-| `internal error recovered` | ERROR | The copier recovered a panic and failed only that work, leaving the proxy running; `where` names the recovery site, `panic` the panic value and `stack` the stack trace |
+| `internal error recovered` | ERROR | The copier recovered a panic and failed only that work, leaving the proxy running; `where` names the recovery site, `panic` the panic value and `stack` the stack trace, cut at 512 bytes and 4 KiB with a `…(truncated, N bytes)` marker |
 | `licenses failed` | ERROR | Final/configuration diagnostics; option/rule or phase/reason/cleanup details |
 | `phase_transition`, `rendezvous_path` | DEBUG | Layer transitions, with the account email in `account` for `login` and `renewal`; direct/relay and UDP/TCP path |
 | `cloud_catalog_pagination_oddities`, `cloud_receive_oddity`, `cloud_response_rejected` | DEBUG | Bounded cloud parsing/catalog diagnostics |

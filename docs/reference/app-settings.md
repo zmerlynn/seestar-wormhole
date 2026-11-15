@@ -74,7 +74,7 @@ fallback, and the next save writes the fallback:
 
 Each fallback logs one warning, `settings_fallback`, naming the file, the
 setting, the fallback and, for `serial` or `email`, the saved value in
-`value`: the app's in `gui.log`, `proxy --config`'s in its log. Entering a bad value in the app is still an
+`value`, cut at 512 bytes: the app's in `gui.log`, `proxy --config`'s in its log. Entering a bad value in the app is still an
 error on that field.
 
 Unknown members survive a save. Reads are limited to 64 KiB and never rewrite

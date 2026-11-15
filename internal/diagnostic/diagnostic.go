@@ -26,18 +26,19 @@ type OptionError struct{ Option, Rule, Value string }
 
 func (e *OptionError) Error() string {
 	if e.Value != "" {
-		return e.Option + " " + strconv.Quote(e.Value) + ": " + e.Rule
+		return Clip(e.Option, MaxValue) + " " + strconv.Quote(Clip(e.Value, MaxValue)) + ": " + e.Rule
 	}
-	return e.Option + ": " + e.Rule
+	return Clip(e.Option, MaxValue) + ": " + e.Rule
 }
 
 // Attrs returns the option, the value when set, and the rule as log
-// key-value pairs.
+// key-value pairs. The option, which may be an unknown name as typed, and
+// the value are clipped.
 func (e *OptionError) Attrs() []any {
 	if e.Value != "" {
-		return []any{"option", e.Option, "value", e.Value, "rule", e.Rule}
+		return []any{"option", Clip(e.Option, MaxValue), "value", Clip(e.Value, MaxValue), "rule", e.Rule}
 	}
-	return []any{"option", e.Option, "rule", e.Rule}
+	return []any{"option", Clip(e.Option, MaxValue), "rule", e.Rule}
 }
 
 type failure struct {

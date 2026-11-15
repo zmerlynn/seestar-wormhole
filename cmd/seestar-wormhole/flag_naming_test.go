@@ -106,3 +106,15 @@ func TestRetiredStateDir(t *testing.T) {
 		t.Errorf("proxy --state-dir s: %+v %v", o, err)
 	}
 }
+
+// An oversized unknown flag is named clipped, with its prefix and a marker,
+// in a record a log sink takes, in the JSON and the text format.
+func TestFlagNamingClips(t *testing.T) {
+	long := "--zzz" + strings.Repeat("<", 20000)
+	for _, command := range []string{"proxy", "sync"} {
+		code, record, logs := usageExit(t, command, long+"=PRIVATE_VALUE")
+		if code != 2 || len(logs) >= 16<<10 || !strings.HasPrefix(record.Option, "--zzz<<<") || !strings.HasSuffix(record.Option, "…(truncated, 20005 bytes)") || strings.Contains(logs, "PRIVATE_VALUE") {
+			t.Errorf("%s: exit %d, record of %d bytes: %.300s", command, code, len(logs), logs)
+		}
+	}
+}

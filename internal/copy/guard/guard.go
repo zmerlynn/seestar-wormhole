@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"log/slog"
 	"runtime/debug"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // Run calls f and returns its error. If f panics, Run logs where the panic
@@ -68,12 +70,14 @@ func (p *Panic) Report(log *slog.Logger, where string) error {
 	return report(log, where, p.Value, p.Stack)
 }
 
-// report logs the recovery site, the panic value and the stack. The returned
+// report logs the recovery site, the panic value and the stack, each clipped
+// to keep the record within a log sink's limit. The returned
 // error names only where, since callers show it as a failure's title.
 func report(log *slog.Logger, where string, value any, stack []byte) error {
 	if log == nil {
 		log = slog.Default()
 	}
-	log.Error("internal error recovered", "where", where, "panic", fmt.Sprint(value), "stack", string(stack))
+	log.Error("internal error recovered", "where", where, "panic", diagnostic.Clip(fmt.Sprint(value), diagnostic.MaxValue),
+		"stack", diagnostic.Clip(string(stack), diagnostic.MaxStack))
 	return fmt.Errorf("internal error while %s", where)
 }

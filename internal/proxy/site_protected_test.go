@@ -190,3 +190,36 @@ func TestSiteJSONPortsTCP(t *testing.T) {
 		})
 	}
 }
+
+// An oversized string ID and params are clipped, each with its prefix and a
+// marker, so even an escape-heavy setter at the frame limit logs a record a
+// log sink takes, in either format and with the client's attributes.
+func TestSiteProtectedClips(t *testing.T) {
+	request := `{"id":"id-` + strings.Repeat(`\u0001`, 1300) + `","method":"pi_set_time","params":{"time_zone":"zone-` + strings.Repeat("<", 7000) + `"}}` + "\r\n"
+	if len(request) > MaxSiteLine {
+		t.Fatalf("request of %d bytes exceeds the frame limit", len(request))
+	}
+	for _, format := range []string{"json", "text"} {
+		var out, reply, logs bytes.Buffer
+		options := &slog.HandlerOptions{}
+		var handler slog.Handler = slog.NewJSONHandler(&logs, options)
+		if format == "text" {
+			handler = slog.NewTextHandler(&logs, options)
+		}
+		logger := slog.New(handler).With("client", "192.0.2.10:50000", "port", 4700)
+		if err := copySite(&out, strings.NewReader(request), logger, &reply); err != nil {
+			t.Fatal(err)
+		}
+		if out.Len() != 0 || !strings.Contains(reply.String(), "site_protected") {
+			t.Fatalf("forwarded=%q reply=%q", out.Bytes(), reply.Bytes())
+		}
+		id, params := `"id":"id-\u0001\u0001`, `"params":"{\"time_zone\":\"zone-<<<`
+		if format == "text" {
+			id, params = `id="id-\x01\x01`, `params="{\"time_zone\":\"zone-<<<`
+		}
+		s := logs.String()
+		if logs.Len() >= 16<<10 || strings.Count(s, "\n") != 1 || !strings.Contains(s, id) || !strings.Contains(s, params) || strings.Count(s, "…(truncated, ") != 2 {
+			t.Errorf("%s record of %d bytes: %.400s", format, logs.Len(), s)
+		}
+	}
+}

@@ -7,6 +7,8 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
 // MaxSiteLine bounds inspected CRLF frames, including the terminator. Larger
@@ -156,7 +158,8 @@ var siteParamFields = map[string]bool{
 // coordinate, clock and zone members with their scalar values, positional
 // scalars, and only the names of other members, listed under "unknown".
 // Unknown values, and nested arrays, are never copied: they could carry an
-// access secret.
+// access secret. The result is clipped to keep the record within a log
+// sink's limit.
 func siteParams(raw jsontext.Value) string {
 	if !raw.IsValid() {
 		return ""
@@ -175,7 +178,7 @@ func siteParams(raw jsontext.Value) string {
 		projected = positional
 	}
 	b, _ := json.Marshal(projected, json.Deterministic(true))
-	return string(b)
+	return diagnostic.Clip(string(b), diagnostic.MaxValue)
 }
 
 // siteParamObject projects an object's members; any other value is a scalar
@@ -203,7 +206,8 @@ func siteParamObject(raw jsontext.Value) any {
 }
 
 // siteLogID logs an integer or string ID as its value and any other number as
-// its literal, so an ID too large for int64 is not rounded.
+// its literal, so an ID too large for int64 is not rounded. A string or
+// literal is clipped.
 func siteLogID(envelope map[string]jsontext.Value) any {
 	raw := envelope["id"]
 	var id int64
@@ -212,9 +216,9 @@ func siteLogID(envelope map[string]jsontext.Value) any {
 	case raw.Kind() == '0' && json.Unmarshal(raw, &id) == nil:
 		return id
 	case raw.Kind() == '0':
-		return string(raw)
+		return diagnostic.Clip(string(raw), diagnostic.MaxValue)
 	case raw.Kind() == '"' && json.Unmarshal(raw, &text) == nil:
-		return text
+		return diagnostic.Clip(text, diagnostic.MaxValue)
 	}
 	return "unavailable"
 }
