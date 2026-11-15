@@ -1749,7 +1749,8 @@ function renderEvents() {
 // The diagnostic summary is one paste: the version, the error code, both
 // settings documents, the failing operations, the trail newest first and
 // the log path. Without a connection error, the error code is the newest
-// failure's.
+// failure's. It is meant to be shared, so it never takes the account email:
+// state.settings and state.devices_email stay out.
 let shownErrorCode = '';
 // trailNewestFirst is the trail, newest first; a stable sort keeps the
 // newer of two lines with one timestamp first.

@@ -563,8 +563,9 @@ settings files, `config.json` and `copy.json`.
 **Copy diagnostic summary** copies one JSON object with the program name,
 version, error code, connection and copy settings, the events, the current
 failures, and the log's path. It names your telescope: the connection
-settings include the route, the account telescope's serial and model, and
-the address and serial saved on this network, and the events name each
+settings include the route, the account telescope's serial and model, the
+address and serial saved on this network, and the address the app listens
+on, and the events name each
 telescope a scan found, with its name, model, serial and address. It also
 includes your telescopes' full serial numbers in connection and
 account-catalog events, your copy folder and history folder, your patterns,
