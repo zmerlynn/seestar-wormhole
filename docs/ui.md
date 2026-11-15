@@ -7,32 +7,32 @@ They share one connection to the telescope.
 
 ## Tabs
 
-The header shows a dot and a line with the connection's state: **Not
-connected**, the status while connecting, or **Connected to** your Seestar. The
-dot is green only while connected; while connecting, reconnecting, waiting for
-a busy telescope or releasing an idle session it shows busy. On
-this network it names the saved telescope, or its address, then adds
-**reachable**, or says **Can't reach** the address, once **Test** has run.
-While copying is on, a
-chip after the line says how it stands: **Copying**, **Up to date**, how many
-files were not copied, or **Copying is on**. A copy once shows **Copying**
-while its check runs. With copying off, there is no chip.
-While a run is busy, a chip of its own follows: **Previewing copy**, **Checking
-what to delete**, **Checking N files again** or **Deleting 3 of 12**. It goes
-away when the run ends. Each chip opens its tab, Copy or Free up space. A run's
-start is announced once when another tab is open, each time it starts.
-
-A line under it names the telescope and where its files go, for example
-**On this network: Seestar S50 Pro &lt;serial&gt; at 192.168.4.85:4445 →
-~/Seestar**. Through Telescope Network it names the saved telescope as
-**(saved), not connected** until you connect; while connecting, its folder is
-known once the telescope is. On this network it shows the address in use,
-which can differ from the saved one, or the saved address marked **(saved)**
-before the first connection. The folder is the telescope's own, with your home
-folder shown as `~` except on Windows, or **no folder yet**; select it to open
-Copy settings, or, while copying runs, to see that copying must stop first.
-When the Copy tab is unavailable, only the telescope shows, as it does just
-after you change the route until Copy has read the new telescope.
+The header shows one line: a dot, a sentence naming the telescope and how it
+stands, and the folder its files go to. Through Telescope Network the
+sentence is **Not connected. No telescope chosen yet.** until a telescope is
+saved, then **Not connected to** it, **Could not connect to** it after a
+failed attempt, the status while connecting, or **Connected to** it
+**through Telescope Network**. On this network it names the saved telescope,
+for example **Seestar S50 Pro &lt;serial&gt; on this network**, or its
+address when it has no name, then adds **reachable**, or says **Can't
+reach** it at the saved address, once **Test** has run; with nothing saved it
+says **On this network: no telescope saved yet.** The dot is green only while
+connected or reachable and red when Test can't reach the telescope; while
+connecting, reconnecting, waiting for a busy telescope or releasing an idle
+session it shows busy. After the sentence, an arrow points to the
+telescope's own folder, with your home folder shown as `~` except on
+Windows, or to **no folder yet**; select it to open Copy settings, or, while
+copying runs, to see that copying must stop first. The folder shows once
+Copy has read the telescope: not while the Copy tab is unavailable, nor just
+after you change the route until Copy has read the new telescope. While
+copying is on, a chip follows and says how it stands: **Copying**, **Up to
+date**, how many files were not copied, or **Copying is on**. A copy once
+shows **Copying** while its check runs. With copying off, there is no chip.
+While a run is busy, a chip of its own follows: **Previewing copy**,
+**Checking what to delete**, **Checking N files again** or **Deleting 3 of
+12**. It goes away when the run ends. Each chip opens its tab, Copy or Free
+up space. A run's start is announced once when another tab is open, each
+time it starts.
 
 Below it are the tabs **Connection**, **Copy**, **Browse**, **Free up space**
 and **Activity**. Use the Left and Right arrow keys, Home and End to move
@@ -93,7 +93,9 @@ only the telescope's files, for Copy, Browse and Free up space.
   telescope, its model and serial, and both addresses. An address another
   telescope answers at, the saved one or any other, is never used. When the scan doesn't see
   the telescope, the saved address is tried, and Activity says it wasn't
-  seen. Free up space deletes only at
+  seen. When they last reached the saved telescope at an address other
+  than the saved one, a line under the address says so, such as **Copy last
+  reached Seestar S50 Pro &lt;serial&gt; at 192.0.2.85:4445.** Free up space deletes only at
   the address its preview connected to; if that changes or stops
   answering, preview again.
   **Scan for the saved telescope** chooses when they scan, and is saved as
