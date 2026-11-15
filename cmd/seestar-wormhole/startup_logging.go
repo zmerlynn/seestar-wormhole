@@ -2,13 +2,12 @@ package main
 
 import (
 	"context"
-	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"io"
 	"log/slog"
 )
 
-// startupLogging holds dependency output until configuration is accepted.
+// startupLogging holds dependency output until configuration is decided.
 type startupLogging struct {
 	output *startupLogOutput
 	logger *slog.Logger
@@ -22,14 +21,13 @@ func newStartupLogging(o options, logs io.Writer) *startupLogging {
 
 // finish runs after owned resources close and before the final failure record.
 func (s *startupLogging) finish(result error) error {
-	var detail *argumentError
-	loss := s.output.resolve(!errors.As(result, &detail))
+	loss := s.output.resolve()
 	s.output.report(true)
 	return loss
 }
 
-// The account list is requested evidence even when catalog selection refuses
-// startup. Route only this fixed record around the pending dependency buffer.
+// The account list is requested evidence even when the startup buffer is
+// full. Route only this fixed record around the pending dependency buffer.
 type catalogLogHandler struct {
 	slog.Handler
 	catalog slog.Handler

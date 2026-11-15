@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"testing/synctest"
 
@@ -21,17 +22,12 @@ import (
 )
 
 // Compare the complete record, allowing only slog's timestamp to vary.
-// assertConfigRecord checks that logs hold the configuration refusal alone,
-// and returns the value it names, if any.
+// assertConfigRecord checks that the last line of logs is the configuration
+// refusal, and returns the value it names, if any. Lines before it are the
+// startup's own records, which a refusal does not suppress.
 func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string) string {
 	t.Helper()
 	lines := bytes.Split(bytes.TrimSpace(logs), []byte("\n"))
-	for _, line := range lines[:len(lines)-1] {
-		var warning map[string]any
-		if err := json.Unmarshal(line, &warning); err != nil || warning["level"] != "WARN" || (warning["rule"] != "startup_diagnostics_lost") {
-			t.Fatalf("unexpected startup diagnostic: %s", line)
-		}
-	}
 	var got map[string]any
 	if fileCommand(command) { // a file command's record is text
 		var err error
@@ -90,7 +86,7 @@ func TestCLIConfigAttribution(t *testing.T) {
 						var out, logs bytes.Buffer
 						factory := func(ctx context.Context, cfg proxy.Config) (commandSession, error) {
 							if problem == "selection" {
-								// A preliminary dependency record must not survive a typed refusal.
+								// A preliminary dependency record survives a typed refusal.
 								cfg.Logger.Debug("dependency_startup", "count", 1)
 								return nil, diagnostic.Wrap("device_selection", "invalid_configuration", errors.Join(cloud.ErrConfig, &argumentError{Option: option, Rule: rule}))
 							}
@@ -104,6 +100,9 @@ func TestCLIConfigAttribution(t *testing.T) {
 						}
 						if value := assertConfigRecord(t, logs.Bytes(), command, option, rule); value != state {
 							t.Errorf("value=%q want %q", value, state)
+						}
+						if problem == "selection" && !strings.Contains(logs.String(), "dependency_startup") {
+							t.Errorf("dependency record suppressed: %s", &logs)
 						}
 						assertNoSensitiveErrorDetails(t, err, "PRIVATE_PASSWORD", "PRIVATE_PAYLOAD")
 						if out.Len() != 0 {

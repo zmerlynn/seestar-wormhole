@@ -91,7 +91,7 @@ func runDiscovery(ctx context.Context, o options, logs io.Writer, listen func(st
 		return &argumentError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available", Value: o.bind}
 	}
 	defer s.Close()
-	startup.output.resolve(true)
+	startup.output.resolve()
 	startup.logger.Warn("lan_discovery_synthesized", "fields", synthesized, "envelope_fields", []string{"Timestamp"})
 	startup.logger.Info("lan_discovery_started", "port", landiscovery.Port, "all_interfaces", o.lanDiscoveryAllInterfaces, "serial", o.serial, "model", o.model, "name", o.name)
 	return diagnostic.Wrap("lan_discovery", "", s.Serve(ctx, m))

@@ -7,17 +7,19 @@ import (
 )
 
 // startupLogOutput holds dependency output through the final configuration
-// decision. Encoding remains owned by slog, and storage is capped even while
-// cloud selection retries. Once resolved it never retains another record.
+// decision, so a refusal's own record is not interleaved with it, and then
+// writes it whichever way the decision went. Encoding remains owned by slog,
+// and storage is capped even while cloud selection retries; what the cap
+// drops is counted. Once resolved it never retains another record.
 type startupLogOutput struct {
-	output                        io.Writer
-	mu                            sync.Mutex
-	resolved, resolving, accepted bool
-	pending                       []byte
-	lost                          uint64
-	lostBytes                     uint64
-	err                           error
-	nextWarn                      time.Time
+	output              io.Writer
+	mu                  sync.Mutex
+	resolved, resolving bool
+	pending             []byte
+	lost                uint64
+	lostBytes           uint64
+	err                 error
+	nextWarn            time.Time
 }
 
 const startupLogLimit = 64 << 10
@@ -35,13 +37,6 @@ func (w *startupLogOutput) Write(p []byte) (int, error) {
 		w.report(false)
 		return 0, io.ErrShortWrite
 	}
-	accepted := w.accepted
-	if !accepted {
-		w.lose(len(p))
-		w.mu.Unlock()
-		w.report(false)
-		return 0, io.ErrClosedPipe
-	}
 	w.mu.Unlock()
 	n, err := w.output.Write(p)
 	if n != len(p) || err != nil {
@@ -55,7 +50,7 @@ func (w *startupLogOutput) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// lose is called with mu held. Only counts cross the startup privacy boundary.
+// lose is called with mu held.
 func (w *startupLogOutput) lose(n int) { w.lost++; w.lostBytes += uint64(n); w.err = io.ErrShortWrite }
 func (w *startupLogOutput) report(final bool) {
 	w.mu.Lock()
@@ -70,21 +65,18 @@ func (w *startupLogOutput) report(final bool) {
 	newLogger("json", w.output).Warn("diagnostics_lost", "rule", "startup_diagnostics_lost", "count", count, "bytes", bytes)
 }
 
-func (w *startupLogOutput) resolve(accepted bool) error {
+func (w *startupLogOutput) resolve() error {
 	w.mu.Lock()
 	if w.resolved || w.resolving {
 		err := w.err
 		w.mu.Unlock()
 		return err
 	}
-	w.resolving, w.accepted = true, accepted
+	w.resolving = true
 	for {
 		pending := w.pending
 		w.pending = nil
-		if !accepted || len(pending) == 0 {
-			if len(pending) > 0 {
-				w.lose(len(pending))
-			}
+		if len(pending) == 0 {
 			w.resolved = true
 			err := w.err
 			w.mu.Unlock()

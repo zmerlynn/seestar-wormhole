@@ -71,8 +71,8 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 		if c.logger != nil {
 			c.logger.WarnContext(ctx, "device_selection_refused", "rule", "model_mismatch", "requested_model", displayModel(d.Model), "catalog_model", displayModel(v.Model()))
 		}
-		// Keep this catalog refusal outside OptionError: startup discards its
-		// pending dependency logs for option-validation errors.
+		// This catalog refusal is a classified failure, not an OptionError:
+		// its error names both models.
 		return Device{}, fmt.Errorf("model_mismatch: --model %q differs from catalog model %q: %w", displayModel(d.Model), displayModel(v.Model()), cloud.ErrConfig)
 	}
 	if len(matches) > 1 || (!complete && len(matches) == 1) {
