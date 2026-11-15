@@ -47,10 +47,10 @@ type failure struct {
 	reported      *atomic.Bool
 }
 
-func (e *failure) Error() string { return e.phase + ": " + e.reason }
+func (e *failure) Error() string { return e.phase + ": " + e.reason + ": " + e.err.Error() }
 func (e *failure) Unwrap() error { return e.err }
 
-// Wrap attaches trusted operation/reason labels, never raw input values.
+// Wrap attaches trusted operation/reason labels to err, whose text it keeps.
 // Reasons are constants.
 // An empty reason selects the fixed error vocabulary.
 func Wrap(phase, reason string, err error) error {

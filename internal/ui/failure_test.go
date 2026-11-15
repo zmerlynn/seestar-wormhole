@@ -16,7 +16,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/session"
 )
 
-func TestFailureEventsRetainSafeCause(t *testing.T) {
+func TestFailureEventsKeepErrorText(t *testing.T) {
 	log := &eventLog{storage: testStorage(t)}
 	cause := diagnostic.Wrap("rdt", "timeout", errors.New("PRIVATE_DEPENDENCY_TEXT"))
 	log.addFailure(errorCopy("connection"), cause)
@@ -25,7 +25,7 @@ func TestFailureEventsRetainSafeCause(t *testing.T) {
 		t.Fatalf("events: %+v", events)
 	}
 	b, err := os.ReadFile(filepath.Join(log.storage.root, "gui.log"))
-	if err != nil || !strings.Contains(string(b), `"reason":"timeout"`) || strings.Contains(string(b), "PRIVATE_DEPENDENCY_TEXT") {
+	if err != nil || !strings.Contains(string(b), `"reason":"timeout"`) || !strings.Contains(string(b), `"error":"rdt: timeout: PRIVATE_DEPENDENCY_TEXT"`) {
 		t.Fatalf("log: %s %v", b, err)
 	}
 }
@@ -80,7 +80,7 @@ func TestControllerFailureEventReachesStatus(t *testing.T) {
 	if last.Phase != "rdt" || last.Reason != "timeout" || last.Code != "connection" {
 		t.Fatalf("status failure: %+v", last)
 	}
-	if strings.Contains(w.Body.String(), "PRIVATE_DEPENDENCY_TEXT") {
-		t.Fatal("dependency text escaped to page")
+	if last.Error != "rdt: timeout: PRIVATE_DEPENDENCY_TEXT" {
+		t.Fatalf("status lost the error text: %+v", last)
 	}
 }

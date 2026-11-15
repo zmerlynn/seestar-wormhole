@@ -1230,11 +1230,10 @@ func TestRefusalLineSurvivesTrail(t *testing.T) {
 	}
 }
 
-// No file-tool line, event or failure carries an error's text: sentinels
-// in the fakes' errors, a file's name and the folder's path appear in
-// none of gui.log, /api/status events and failures. A catalog's serial
-// does appear, in its line and in device_catalog, as documented.
-func TestTrailPrivacySentinels(t *testing.T) {
+// A file-tool failure line carries its error's text, in gui.log and in
+// /api/status events; the failing operations stay classes. A catalog's
+// serial appears in its line and in device_catalog, as documented.
+func TestTrailErrorText(t *testing.T) {
 	e := newTrailEnv(t)
 	e.ready()
 	sentinel := errors.New("PATH-SENTINEL FILE-SENTINEL HOST-SENTINEL")
@@ -1290,13 +1289,13 @@ func TestTrailPrivacySentinels(t *testing.T) {
 	if err := json.Unmarshal([]byte(reply), &status); err != nil {
 		t.Fatal(err)
 	}
-	escaped, _ := json.Marshal(e.folder)
-	for where, text := range map[string]string{"gui.log": string(data), "events": string(status.Events), "failures": string(status.Failures)} {
-		for _, s := range []string{"PATH-SENTINEL", "FILE-SENTINEL", "HOST-SENTINEL", "at_192.0.2.10", filepath.ToSlash(e.folder), string(escaped[1 : len(escaped)-1])} {
-			if strings.Contains(text, s) {
-				t.Errorf("%s holds %q", where, s)
-			}
+	for where, text := range map[string]string{"gui.log": string(data), "events": string(status.Events)} {
+		if !strings.Contains(text, `"error":"`) || !strings.Contains(text, "PATH-SENTINEL FILE-SENTINEL HOST-SENTINEL") {
+			t.Errorf("%s lacks the error's text: %s", where, text)
 		}
+	}
+	if strings.Contains(string(status.Failures), "SENTINEL") {
+		t.Errorf("failures hold an error's text: %s", status.Failures)
 	}
 	if n := strings.Count(string(data), "SERIAL-SENTINEL"); n < 2 {
 		t.Errorf("gui.log has the serial %d times; want the catalog line and device_catalog", n)

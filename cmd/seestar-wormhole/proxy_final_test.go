@@ -129,8 +129,8 @@ func TestProxyFinalFailureRecord(t *testing.T) {
 				if count != wantCount {
 					t.Errorf("final records=%d want %d: %s", count, wantCount, &logs)
 				}
-				if strings.Contains(logs.String(), "PRIVATE_") {
-					t.Errorf("private error leaked: %s", &logs)
+				if (path == "bind" || path == "accept") && !strings.Contains(logs.String(), "PRIVATE_") {
+					t.Errorf("final record lost the error text: %s", &logs)
 				}
 			})
 		}

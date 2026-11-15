@@ -17,7 +17,7 @@ type opKey struct{ source, op string }
 type opMessages struct{ failed, failedFiles, recovered string }
 
 // fileMessages is every file-tool operation the trail records. An outcome
-// of any other (source, op) is dropped, as eventCode drops unknown text.
+// of any other (source, op) has no line to write and is dropped.
 var fileMessages = map[opKey]opMessages{
 	{diagnostic.SourceCopy, diagnostic.OpStart}:          {"Copying couldn't start.", "", "Copying started."},
 	{diagnostic.SourceCopy, diagnostic.OpOpen}:           {"Copying stopped: it couldn't open its folder or history.", "", "Copying opened its folder and history again."},
@@ -118,6 +118,9 @@ func (l *eventLog) outcomeLocked(key opKey, msgs opMessages, o copyapp.Outcome) 
 		entry.Message = msgs.failedFiles
 	}
 	entry.Code, entry.Phase, entry.Reason, entry.Count = diagnostic.Code(key.source, key.op, true), phase, reason, o.Count
+	if o.Err != nil {
+		entry.Error = diagnostic.Clip(o.Err.Error(), diagnostic.MaxValue)
+	}
 	l.appendLocked(entry)
 	return &entry
 }

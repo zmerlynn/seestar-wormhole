@@ -155,9 +155,10 @@ func TestSettingsSaveBoundarySnapshotAndRetry(t *testing.T) {
 func TestLogsSanitizedBoundedAndRotated(t *testing.T) {
 	st := testStorage(t)
 	log := &eventLog{storage: st}
-	log.add("private token http://example.invalid/account device payload")
-	if lines, _, _ := log.snapshot(); len(lines) != 0 {
-		t.Fatal("untrusted event retained")
+	// Unknown text is kept with no code, clipped.
+	log.add("unknown " + strings.Repeat("x", 64<<10))
+	if lines, _, _ := log.snapshot(); len(lines) != 1 || lines[0].Code != "" || len(lines[0].Message) > 600 {
+		t.Fatal("unknown event not kept and clipped")
 	}
 	for i := 0; i < 1500; i++ {
 		log.add("Connecting to your Seestar…")
@@ -180,10 +181,6 @@ func TestLogsSanitizedBoundedAndRotated(t *testing.T) {
 			t.Fatal("unsafe private log", err)
 		}
 		private.Close()
-		b, _ := os.ReadFile(filepath.Join(st.root, name))
-		if strings.Contains(string(b), "private") {
-			t.Fatal("private text leaked")
-		}
 	}
 }
 func TestRemoveTimeoutDoesNotConfirmDeletion(t *testing.T) {

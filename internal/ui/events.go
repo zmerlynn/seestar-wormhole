@@ -16,11 +16,10 @@ import (
 const logLimit = 64 << 10
 const eventLimit = 80
 
-// Only fixed lifecycle messages, including the selected display label, and
-// the fixed file-tool lines enter either log. No dependency error, account,
-// control capability, path, file name or payload is accepted. Source is
-// "connection" for a connection line; a file-tool line also has its op, and
-// its count of failed files when there are any.
+// An event is a line of the trail and of gui.log. A known message has its
+// code; any other has none, and is clipped. A failure carries its error's
+// text, clipped. Source is "connection" for a connection line; a file-tool
+// line also has its op, and its count of failed files when there are any.
 type event struct {
 	Time    time.Time `json:"time"`
 	Source  string    `json:"source"`
@@ -29,6 +28,7 @@ type event struct {
 	Code    string    `json:"code"`
 	Phase   string    `json:"phase"`
 	Reason  string    `json:"reason"`
+	Error   string    `json:"error,omitempty"`
 	Count   int       `json:"count,omitzero"`
 }
 
@@ -121,7 +121,7 @@ const (
 func (l *eventLog) publishLocked(text string, err error, telescope string, catalogs ...cloudhttp.Catalog) *event {
 	code := eventCode(text, telescope, catalogs...)
 	if code == "" {
-		return nil
+		text = diagnostic.Clip(text, diagnostic.MaxValue)
 	}
 	return l.publishCodedLocked(text, err, code, len(catalogs) == 0)
 }
@@ -132,12 +132,13 @@ func (l *eventLog) publishCodedLocked(text string, err error, code string, colla
 	entry := event{Time: time.Now().UTC(), Source: diagnostic.SourceConnection, Message: text, Code: code}
 	if err != nil {
 		entry.Phase, entry.Reason = diagnostic.Fields(err, "connect")
+		entry.Error = diagnostic.Clip(err.Error(), diagnostic.MaxValue)
 	}
 	// A repeat collapses into the last connection line, whatever file-tool
 	// lines came between.
 	if collapse && l.hasConnection {
 		last := l.lastConnection
-		if last.Message == entry.Message && last.Phase == entry.Phase && last.Reason == entry.Reason {
+		if last.Message == entry.Message && last.Phase == entry.Phase && last.Reason == entry.Reason && last.Error == entry.Error {
 			return nil
 		}
 	}
