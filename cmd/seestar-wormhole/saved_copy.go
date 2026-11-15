@@ -35,10 +35,12 @@ func profileDir(name string) (dir, found string, err error) {
 // endpointCheck checks the endpoint config saves for the account route,
 // which is this computer's port, for the profile self: whichever app
 // window connected first serves it, and the copier checks no serial
-// there. It passes only while the window serving the port at config's
-// bind address is self's own, or another profile's whose run reached the
-// telescope config saves. It is nil on this network, which dials the
-// telescope's own address.
+// there. While the root has no named profile it always passes, as a
+// headless proxy may serve the port for the one telescope there is.
+// Once one exists it passes only while the window serving the port at
+// config's bind address is self's own, or another profile's whose run
+// reached the telescope config saves. It is nil on this network, which
+// dials the telescope's own address.
 func endpointCheck(config ui.Settings, endpoint, self string) func(context.Context) error {
 	if endpoint == "" || !ui.SavedThroughAccount(config) {
 		return nil
@@ -53,6 +55,9 @@ func endpointCheck(config ui.Settings, endpoint, self string) func(context.Conte
 	}
 	telescope := ui.SavedTelescope(config)
 	return func(ctx context.Context) error {
+		if names, err := ui.Profiles(root); err == nil && len(names) == 0 {
+			return nil
+		}
 		w, ok, err := ui.EndpointHolder(ctx, root, self, config.Bind, addr.Port())
 		switch {
 		case ok && (w.Own || w.Telescope != "" && w.Telescope == telescope):

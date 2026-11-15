@@ -553,3 +553,36 @@ func TestProfileEndpointOwnership(t *testing.T) {
 		t.Errorf("find from Garden's own window: %v", err)
 	}
 }
+
+// With Default alone, a profile's account-route endpoint is filled as it
+// always was, whatever holds the port, as for a headless proxy's: the
+// check passes without asking any window. Once a named profile exists the
+// same check, asked again as every pass asks it, refuses a holder no
+// window owns.
+func TestProfileEndpointDefaultAlone(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/default"}`)
+	useProfileRoot(t, root, nil)
+	got, err := loadProfile("default")
+	if err != nil || got.CheckEndpoint == nil || got.Endpoint != "127.0.0.2:1445" {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	if err := got.CheckEndpoint(t.Context()); err != nil {
+		t.Errorf("Default alone: %v", err)
+	}
+	if o, err := parse([]string{"find", "--profile", "default"}, io.Discard); err != nil || o.file == nil {
+		t.Errorf("find with Default alone: %v", err)
+	}
+
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	const unknown = "no profile's app window serves the saved endpoint"
+	if err := got.CheckEndpoint(t.Context()); err == nil || !strings.HasPrefix(err.Error(), unknown) {
+		t.Errorf("the next pass, with Garden: %v", err)
+	}
+	code, record, _ := usageExit(t, "find", "--profile", "default")
+	if code != 2 || record.Option != "--profile" || !strings.HasPrefix(record.Rule, unknown) {
+		t.Errorf("find with Garden: exit %d %+v", code, record)
+	}
+}
