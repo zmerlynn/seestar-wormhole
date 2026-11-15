@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
@@ -109,6 +110,35 @@ func TestCreateAndFindProfile(t *testing.T) {
 	_, _, err = FindProfile(root, "Orchard")
 	if missing, ok := errors.AsType[*NoProfileError](err); !ok || missing.Error() != "no profile named Orchard; profiles: default, Garden, TEST0002" {
 		t.Errorf("Orchard: %v", err)
+	}
+}
+
+// Of requests for one new name at once, one creates it; the others are
+// told it exists.
+func TestCreateProfileAtOnce(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "state")
+	const n = 8
+	errs := make([]error, n)
+	var start, wg sync.WaitGroup
+	start.Add(1)
+	for i := range errs {
+		wg.Go(func() {
+			start.Wait()
+			_, errs[i] = CreateProfile(root, "Garden")
+		})
+	}
+	start.Done()
+	wg.Wait()
+	created := 0
+	for _, err := range errs {
+		if err == nil {
+			created++
+		} else if err.Error() != "There's already a profile named Garden." {
+			t.Errorf("= %v", err)
+		}
+	}
+	if created != 1 {
+		t.Errorf("%d created it", created)
 	}
 }
 

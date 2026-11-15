@@ -149,16 +149,22 @@ func CreateProfile(root, typed string) (string, error) {
 	} else if _, ok := errors.AsType[*NoProfileError](err); !ok {
 		return "", &ProfileNameError{"Couldn't create the profile: " + err.Error() + "."}
 	}
+	// The folder is created exclusively, so of two requests for one
+	// name only one creates it.
 	dir := ProfileDir(root, name)
-	if _, err := os.Lstat(dir); err == nil {
-		return "", &ProfileNameError{"There's already a profile named " + name + "."}
-	}
-	for _, d := range []string{root, filepath.Dir(dir), dir} {
+	for _, d := range []string{root, filepath.Dir(dir)} {
 		f, err := privatefile.Directory(d)
 		if err != nil {
 			return "", &ProfileNameError{"Couldn't create the profile: " + err.Error() + "."}
 		}
 		f.Close()
 	}
+	f, err := privatefile.NewDirectory(dir)
+	if os.IsExist(err) {
+		return "", &ProfileNameError{"There's already a profile named " + name + "."}
+	} else if err != nil {
+		return "", &ProfileNameError{"Couldn't create the profile: " + err.Error() + "."}
+	}
+	f.Close()
 	return name, nil
 }

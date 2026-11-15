@@ -56,8 +56,14 @@ func create(path string, _ Policy) (*os.File, error) {
 	}
 	return f, nil
 }
-func Directory(path string) (*os.File, error) {
-	if err := os.Mkdir(path, 0700); err != nil && !os.IsExist(err) {
+func Directory(path string) (*os.File, error) { return directory(path, false) }
+
+// NewDirectory is Directory for a directory it must create: an existing
+// entry is an error that is os.ErrExist.
+func NewDirectory(path string) (*os.File, error) { return directory(path, true) }
+
+func directory(path string, exclusive bool) (*os.File, error) {
+	if err := os.Mkdir(path, 0700); err != nil && (exclusive || !os.IsExist(err)) {
 		return nil, err
 	}
 	return ReadDirectory(path)

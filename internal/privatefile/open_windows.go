@@ -176,7 +176,13 @@ func Open(path string, flags int) (*os.File, error) {
 // Directory creates or pins the private state directory without sharing delete
 // access, so it cannot be substituted while the identity file is in use. Parents
 // must be trusted, as with the Unix path-based open. It never repairs unsafe ACLs.
-func Directory(path string) (*os.File, error) {
+func Directory(path string) (*os.File, error) { return directory(path, false) }
+
+// NewDirectory is Directory for a directory it must create: an existing
+// entry is an error that is os.ErrExist.
+func NewDirectory(path string) (*os.File, error) { return directory(path, true) }
+
+func directory(path string, exclusive bool) (*os.File, error) {
 	if err := ValidatePath(path); err != nil {
 		return nil, err
 	}
@@ -190,7 +196,7 @@ func Directory(path string) (*os.File, error) {
 	}
 	err = windows.CreateDirectory(name, sa)
 	created := err == nil
-	if err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
+	if err != nil && (exclusive || !errors.Is(err, windows.ERROR_ALREADY_EXISTS)) {
 		return nil, err
 	}
 	h, err := windows.CreateFile(name, windows.GENERIC_READ|windows.READ_CONTROL|windows.WRITE_DAC, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS|windows.FILE_FLAG_OPEN_REPARSE_POINT, 0)
