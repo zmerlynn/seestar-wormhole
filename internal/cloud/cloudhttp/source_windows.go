@@ -36,11 +36,12 @@ func persistentSource(stateDir string) (string, error) {
 		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	defer f.Close()
-	return persistentIdentity(f)
+	return persistentIdentity(stateDir, f)
 }
 
-// persistentIdentity locks before reading or repairing an already validated handle.
-func persistentIdentity(f *os.File) (string, error) {
+// persistentIdentity locks before reading or repairing an already validated
+// handle. Its errors name stateDir.
+func persistentIdentity(stateDir string, f *os.File) (string, error) {
 	// Every cooperating process locks byte zero, including an empty file. Native
 	// locks exclude reads/writes by other processes too, unlike advisory flock.
 	switch err := filelock.Lock(f, time.Second); {
@@ -50,11 +51,11 @@ func persistentIdentity(f *os.File) (string, error) {
 		return "", stateError(stateDir, "state_identity", diagnostic.Class(err), err)
 	}
 	defer filelock.Unlock(f)
-	return readOrRepairIdentity(f)
+	return readOrRepairIdentity(stateDir, f)
 }
 
 // readOrRepairIdentity requires the caller to hold the native identity lock.
-func readOrRepairIdentity(f *os.File) (string, error) {
+func readOrRepairIdentity(stateDir string, f *os.File) (string, error) {
 	b, err := io.ReadAll(io.LimitReader(f, 4097))
 	if len(b) > 4096 {
 		return "", stateError(stateDir, "state_identity", "invalid_content", nil)
