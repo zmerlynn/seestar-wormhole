@@ -261,7 +261,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			if o.command == commandUI {
 				return uiListenerError(p.Device, p.Local, err)
 			}
-			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports"}
+			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports", Value: o.bind}
 		}
 		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.Device})
 	}
@@ -273,7 +273,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			if o.command == commandUI {
 				return &ui.ActionError{Code: "discovery", Field: "discovery"}
 			}
-			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available"}
+			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available", Value: o.bind}
 		}
 		defer discovery.Close()
 	}

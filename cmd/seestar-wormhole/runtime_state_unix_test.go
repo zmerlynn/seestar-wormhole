@@ -19,7 +19,7 @@ func TestStatePaths(t *testing.T) {
 			setValidCommandEnvironment(t)
 			t.Setenv("SEESTAR_EMAIL", "test@example.invalid")
 			t.Setenv("SEESTAR_PASSWORD", "PRIVATE_PASSWORD")
-			root := filepath.Join(t.TempDir(), "PRIVATE_STATE_PATH")
+			root := filepath.Join(t.TempDir(), "state")
 			state := root
 			t.Setenv("XDG_CONFIG_HOME", "")
 			t.Setenv("HOME", "")
@@ -65,10 +65,10 @@ func TestStatePaths(t *testing.T) {
 				t.Fatalf("want safe ErrConfig got %v", err)
 			}
 			var option *diagnostic.OptionError
-			if !errors.As(err, &option) || option.Option != "--state-dir" || option.Rule == "" {
+			if !errors.As(err, &option) || option.Option != "--state-dir" || option.Value != state || option.Rule == "" {
 				t.Errorf("missing state option/rule: %v", err)
 			}
-			assertNoSensitiveErrorDetails(t, err, "PRIVATE_STATE_PATH", "PRIVATE_IDENTITY", "PRIVATE_PASSWORD", "PRIVATE_SYMLINK_TARGET")
+			assertNoSensitiveErrorDetails(t, err, "PRIVATE_IDENTITY", "PRIVATE_PASSWORD", "PRIVATE_SYMLINK_TARGET")
 			t.Logf("safe returned failure: %v", err)
 		})
 	}

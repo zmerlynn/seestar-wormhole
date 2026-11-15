@@ -11,8 +11,9 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// argumentError contains only registered option names and fixed rules. Supplied
-// values and the parser's formatted errors never cross this boundary.
+// argumentError contains registered option names, fixed rules and, for a
+// runtime refusal such as --bind, the value that failed. The parser's
+// formatted errors never cross this boundary.
 type argumentError = diagnostic.OptionError
 
 // flagParseError maps a parse error of cmd to an argumentError. cmd is nil
@@ -71,16 +72,16 @@ const historyDirRenamed = "renamed; use --history-dir for the copy history folde
 // the rest of the tree follows in its own order.
 var flagHomeOrder = []string{"sync", "find", "browse", "delete", "proxy"}
 
-// unknownFlagError names a flag only when this program defines that name
-// somewhere in its tree, or once did. Any other name may be a typed secret,
-// so it is reported as arguments.
+// unknownFlagError names the flag, without any value given after "=", and,
+// when this program defines that name somewhere else in its tree, or once
+// did, says where it belongs.
 func unknownFlagError(cmd *cobra.Command, e *pflag.NotExistError) error {
 	name, short := e.GetSpecifiedName(), e.GetSpecifiedShortnames() != ""
 	option := "--" + name
 	if short {
 		option = "-" + name
 	}
-	unknown := &argumentError{Option: "arguments", Rule: "unknown flag"}
+	unknown := &argumentError{Option: option, Rule: "unknown flag"}
 	if cmd == nil {
 		return unknown
 	}
@@ -116,11 +117,11 @@ func flagHome(root, cmd *cobra.Command, name string, short bool) *cobra.Command 
 	return nil
 }
 
-// configurationLogger projects only the typed setting and fixed rule. It is
-// shared by parser and runtime configuration failures, regardless of log options.
+// configurationLogger projects the typed setting, the failed value when it
+// has one, and the fixed rule. It is shared by parser and runtime
+// configuration failures, regardless of log options.
 func configurationLogger(out io.Writer, command string, detail *argumentError) *slog.Logger {
-	return newLogger("json", out).With("option", detail.Option, "rule", detail.Rule,
-		"help", programName+" "+command+" --help")
+	return newLogger("json", out).With(append(detail.Attrs(), "help", programName+" "+command+" --help")...)
 }
 
 func logConfigurationError(out io.Writer, command string, err error) {
@@ -130,8 +131,7 @@ func logConfigurationError(out io.Writer, command string, err error) {
 		if fileCommand(command) {
 			// A file command's default format is text, and the record keeps it
 			// whatever --log-format says, since that may be the flag at fault.
-			logger = newLogger("text", out).With("option", detail.Option, "rule", detail.Rule,
-				"help", programName+" "+command+" --help")
+			logger = newLogger("text", out).With(append(detail.Attrs(), "help", programName+" "+command+" --help")...)
 		}
 		if command == "proxy" || command == "discovery" {
 			logger.Error(command+" failed", "phase", "arguments", "reason", "invalid_option", "cleanup_reason", "none")
@@ -145,7 +145,7 @@ func logConfigurationError(out io.Writer, command string, err error) {
 func logRootError(out io.Writer, err error) {
 	var detail *argumentError
 	if errors.As(err, &detail) {
-		newLogger("json", out).Error(programName+" failed", "phase", "arguments", "reason", "invalid_option",
-			"option", detail.Option, "rule", detail.Rule, "help", programName+" --help")
+		newLogger("json", out).Error(programName+" failed", append([]any{"phase", "arguments", "reason", "invalid_option"},
+			append(detail.Attrs(), "help", programName+" --help")...)...)
 	}
 }

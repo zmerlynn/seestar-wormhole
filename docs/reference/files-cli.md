@@ -579,8 +579,8 @@ time=2026-11-02T03:00:00.000Z level=ERROR msg="sync failed" option=--workers rul
 ```
 
 Flag values are never echoed in it. A flag that belongs to another command is
-named, with that command's help; any other unknown flag is reported as
-`option=arguments rule="unknown flag"`.
+named, with that command's help; any other unknown flag is named, without
+what follows its `=`, as in `option=--zzz rule="unknown flag"`.
 
 Stderr never holds a command up: a stalled terminal or log reader loses lines
 instead, so Ctrl+C still stops sync. The file commands never write log lines

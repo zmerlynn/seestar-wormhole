@@ -102,7 +102,8 @@ func TestLicensesHelpAndArguments(t *testing.T) {
 			t.Fatalf("root help lacks final license notice: %s", &out)
 		}
 	}
-	for _, args := range [][]string{{"licenses", "PRIVATE_ARGUMENT"}, {"licenses", "--PRIVATE_FLAG"}, {"licenses", "--version"}} {
+	// An unknown flag is named; the text after its = is not.
+	for _, args := range [][]string{{"licenses", "PRIVATE_ARGUMENT"}, {"licenses", "--zzz=PRIVATE_VALUE"}, {"licenses", "--version"}} {
 		var out, logs bytes.Buffer
 		err := run(context.Background(), args, &out, &logs)
 		if err == nil || commandExitCode(options{command: commandLicenses}, err) != 2 || out.Len() != 0 ||

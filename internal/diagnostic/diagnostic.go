@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strconv"
 	"sync/atomic"
 	"syscall"
 
@@ -17,12 +18,27 @@ import (
 
 const licenseMissingHint = "the cloud allocation carried no SDK license key, so the connection cannot be set up; this is a service-side change, not your configuration; report the failure"
 
-// OptionError identifies a configuration setting using only a registered name
-// and a fixed validation rule. Supplied values and dependency errors must never
-// be stored in it.
-type OptionError struct{ Option, Rule string }
+// OptionError identifies a configuration setting by its registered name and a
+// fixed validation rule. Value, when set, is the value that failed; it is
+// never set for a setting that holds an access secret. Dependency errors are
+// not stored in it.
+type OptionError struct{ Option, Rule, Value string }
 
-func (e *OptionError) Error() string { return e.Option + ": " + e.Rule }
+func (e *OptionError) Error() string {
+	if e.Value != "" {
+		return e.Option + " " + strconv.Quote(e.Value) + ": " + e.Rule
+	}
+	return e.Option + ": " + e.Rule
+}
+
+// Attrs returns the option, the value when set, and the rule as log
+// key-value pairs.
+func (e *OptionError) Attrs() []any {
+	if e.Value != "" {
+		return []any{"option", e.Option, "value", e.Value, "rule", e.Rule}
+	}
+	return []any{"option", e.Option, "rule", e.Rule}
+}
 
 type failure struct {
 	phase, reason string

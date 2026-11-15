@@ -130,6 +130,9 @@ func TestDeviceSelection(t *testing.T) {
 					if !errors.As(err, &option) || option.Option != wantOption || option.Rule != wantRule {
 						t.Fatalf("want fixed catalog option/rule, got %v", err)
 					}
+					if tc.name == "serial not found" && option.Value != tc.input.Serial {
+						t.Fatalf("unknown serial not named: %v", err)
+					}
 					if tc.reason == "multiple devices on account" {
 						assertCloudSecretSafe(t, err, logs.String())
 						for _, s := range []string{"S50 Pro serial-sentinel-secret-1234", "S30 other-serial-sentinel-5678"} {

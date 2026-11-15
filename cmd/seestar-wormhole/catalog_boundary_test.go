@@ -111,7 +111,7 @@ func TestCatalogBoundary(t *testing.T) {
 	defer func() { srv.Close(); <-done }()
 
 	for _, tc := range []struct{ name, serial, body string }{
-		{"wrong-serial", "PRIVATE_WRONG_SERIAL", `{"code":200,"data":{"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"synthetic-wifi"}],"total":1}}`},
+		{"wrong-serial", "SYNTHETIC_WRONG_SERIAL", `{"code":200,"data":{"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"synthetic-wifi"}],"total":1}}`},
 		{"ambiguous-catalog", "", `{"code":200,"data":{"items":[{"deviceSn":"SYNTHETIC_SN_A","deviceModel":"S50 Pro","deviceStatus":1,"ssid":"synthetic-wifi"},{"deviceSn":"SYNTHETIC_SN_B","deviceModel":"S30","deviceStatus":1,"ssid":"synthetic-wifi"}],"total":2}}`},
 		{"ambiguous-serial", "SYNTHETIC_SN", `{"data":{"total":2,"items":[{"deviceSn":"SYNTHETIC_SN","deviceModel":"S50 Pro","deviceStatus":2,"ssid":"first"},{"deviceSn":"SYNTHETIC_SN","deviceModel":"S30","deviceStatus":1,"ssid":"second"}]}}`},
 		{"empty-catalog", "", `{"code":200,"data":{"items":[],"total":0}}`},
@@ -137,15 +137,20 @@ func TestCatalogBoundary(t *testing.T) {
 					if !errors.Is(err, cloud.ErrConfig) {
 						t.Fatalf("want config error, got %v", err)
 					}
-					assertNoSensitiveErrorDetails(t, err, "PRIVATE_WRONG_SERIAL", "SYNTHETIC_TOKEN", "SYNTHETIC_SOURCE")
+					assertNoSensitiveErrorDetails(t, err, "SYNTHETIC_TOKEN", "SYNTHETIC_SOURCE")
+					// A serial typed on the command line is echoed back.
+					wantValue := ""
+					if tc.name == "wrong-serial" {
+						wantValue = tc.serial
+					}
 					var detail *diagnostic.OptionError
-					if !errors.As(err, &detail) || detail.Option != wantOption || detail.Rule != wantRule {
-						t.Errorf("catalog-dependent configuration failure lacks option/rule: %v", err)
+					if !errors.As(err, &detail) || detail.Option != wantOption || detail.Rule != wantRule || detail.Value != wantValue {
+						t.Errorf("catalog-dependent configuration failure lacks option/rule/value: %v", err)
 					}
 					var rec map[string]any
 					if e := json.Unmarshal(logs.Bytes(), &rec, json.MatchCaseInsensitiveNames(true)); e != nil {
 						t.Errorf("want exactly one attributed JSON error before dependencies: %v", e)
-					} else if rec["option"] != wantOption || rec["rule"] != wantRule || rec["level"] != "ERROR" || rec["reason"] != "invalid_option" || rec["phase"] != "arguments" || rec["help"] != programName+" proxy --help" || out.Len() != 0 {
+					} else if rec["option"] != wantOption || rec["rule"] != wantRule || wantValue != "" && rec["value"] != wantValue || rec["level"] != "ERROR" || rec["reason"] != "invalid_option" || rec["phase"] != "arguments" || rec["help"] != programName+" proxy --help" || out.Len() != 0 {
 						t.Errorf("wrong final diagnostic: %v", rec)
 					}
 				})

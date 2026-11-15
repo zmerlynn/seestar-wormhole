@@ -97,7 +97,7 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 	if len(matches) == 1 {
 		return c.selectedDevice(matches[0]), nil
 	}
-	return Device{}, diagnostic.Wrap("device_selection", "--serial not found on account; check --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog"}))
+	return Device{}, diagnostic.Wrap("device_selection", "--serial not found on account; check --serial", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--serial", Rule: "select an existing device from the account catalog", Value: d.Serial}))
 }
 
 func (c *Client) selectedDevice(v cloud.Detail) Device {

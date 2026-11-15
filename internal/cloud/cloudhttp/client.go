@@ -148,6 +148,9 @@ func NewWithCredentials(cfg Config, credentials cloud.Credentials) (*Client, err
 	}
 	c.source, err = persistentSource(cfg.StateDir)
 	if err != nil {
+		if option, ok := errors.AsType[*diagnostic.OptionError](err); ok {
+			option.Value = cfg.StateDir
+		}
 		return nil, err
 	}
 	if cfg.StateDir == "" && cfg.Logger != nil {

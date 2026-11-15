@@ -295,14 +295,17 @@ for the root) with fixed
 `option`, `rule`, command-help hint, `phase=arguments` and
 `reason=invalid_option` (and, for `proxy` and `discovery`, `cleanup_reason=none`),
 regardless of requested log settings: JSON for the root, `proxy`, `discovery`,
-`licenses` and `ui`, and a text line for the file commands. Supplied values,
-paths and coordinates are omitted. A flag that another command of this program
+`licenses` and `ui`, and a text line for the file commands. A parse refusal
+does not echo the value it refused. A flag that another command of this program
 defines, or a retired name such as a file command's `--state-dir`, is named,
 and the rule says where it belongs, such as
 `option=--dest rule="not a flag of proxy; see seestar-wormhole-cli sync --help"`.
-Any other unknown flag is reported as `option=arguments rule="unknown flag"`,
-and a positional argument as `option=arguments`. Startup bind and
-identity-storage errors identify `--bind` and `--state-dir`.
+Any other unknown flag is named without what follows its `=`: `--password=…`
+is reported as `option=--password rule="unknown flag"`. A positional argument
+is reported as `option=arguments`. Startup bind and
+identity-storage errors identify `--bind` and `--state-dir` and give the
+value that failed, as in
+`option=--bind value=192.0.2.7 rule="use an OS-supported bind address with available local ports"`.
 
 ### Exit codes
 
@@ -489,7 +492,8 @@ All detail requests, including the pre-allocation check, send
 `onlyQueryOwner=false`, as the app's connect workflow does in the
 [spec](https://github.com/zmerlynn/seestar-spec/blob/main/spec/auth/cloud-auth/http-api.md#device-selection).
 Unmatched serials or multiple pairs without a serial identify `--serial` in
-classified diagnostics. For multiple devices without a serial, the CLI prints
+classified diagnostics; an unmatched serial is echoed in `value`, as in
+`option=--serial value=SYNTHETIC0001`. For multiple devices without a serial, the CLI prints
 an error to standard output listing every received distinct pair, one per line:
 model then **full serial**. Pass `--serial` with one of them. Incomplete-catalog, duplicate, and ambiguous
 serial refusals also list the received pairs. The returned error, and any log
