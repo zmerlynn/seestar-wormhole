@@ -21,6 +21,7 @@ type Status struct {
 	serial    atomic.Pointer[string]
 	ready     atomic.Bool
 	armed     atomic.Bool
+	copyOnly  atomic.Pointer[Holder]
 	updates   chan string
 	rejected  chan struct{}
 	reason    string
@@ -129,6 +130,32 @@ func (s *Status) MarkArmed() {
 
 // Armed reports whether the run's listeners and channels are serving.
 func (s *Status) Armed() bool { return s != nil && s.armed.Load() }
+
+// Holder is another app window that holds the local ports a copy-only run
+// went without: its profile and its telescope, each "" when it couldn't
+// be named.
+type Holder struct {
+	Profile   string `json:"profile"`
+	Telescope string `json:"telescope"`
+}
+
+// MarkCopyOnly records that the run serves no local ports, because h holds
+// them. It is called before MarkArmed.
+func (s *Status) MarkCopyOnly(h Holder) {
+	if s != nil {
+		s.copyOnly.Store(&h)
+	}
+}
+
+// CopyOnly is the holder of the ports when the run serves none.
+func (s *Status) CopyOnly() (Holder, bool) {
+	if s != nil {
+		if h := s.copyOnly.Load(); h != nil {
+			return *h, true
+		}
+	}
+	return Holder{}, false
+}
 func (s *Status) SaveBoundary(lazy bool) bool {
 	return s != nil && s.armed.Load() && (lazy || s.ready.Load())
 }

@@ -23,6 +23,11 @@ type Saved struct {
 	NoFolder   bool
 	HistoryDir string
 	Endpoint   string
+	// EndpointHolder names another profile's app window when it, not this
+	// profile's, serves Endpoint, this computer's port for the telescope
+	// reached through the account: the filled endpoint would reach that
+	// window's telescope, so a command that would fill it fails.
+	EndpointHolder string
 	// LANSerial is the serial the app saved with Endpoint on this
 	// network, or "". A run that dials the filled Endpoint follows the
 	// telescope by it when it moved.
@@ -90,6 +95,9 @@ func (p *profileFlag) fill(flags *pflag.FlagSet, load LoadProfile, fillSaved fun
 	}
 	if s.NoFolder && !flags.Changed("dest") && !p.statuses && takesDest(flags) {
 		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder}
+	}
+	if s.EndpointHolder != "" && s.Endpoint != "" && !flags.Changed("endpoint") {
+		return &diagnostic.OptionError{Option: "--profile", Rule: "the " + s.EndpointHolder + " window serves this computer's Telescope Network ports, so the saved endpoint would reach its telescope; copy with that window's profile, or give --endpoint"}
 	}
 	p.filled = fillSaved(s, flags.Changed)
 	for _, name := range p.filled {

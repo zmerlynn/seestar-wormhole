@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"errors"
+	"net/netip"
 	"time"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
@@ -30,6 +32,26 @@ func profileDir(name string) (dir, found string, err error) {
 	return dir, found, nil
 }
 
+// endpointHolder names the open window of another profile serving the
+// endpoint config saves for the account route, which is this computer's
+// port: copying from it would reach that window's telescope. It is ""
+// on this network, and when no other window serves the port.
+func endpointHolder(config ui.Settings, endpoint, self string) string {
+	if endpoint == "" || !ui.SavedThroughAccount(config) {
+		return ""
+	}
+	addr, err := netip.ParseAddrPort(endpoint)
+	root, rootErr := profileRoot()
+	if err != nil || rootErr != nil {
+		return ""
+	}
+	holder, ok := ui.ServingWindow(context.Background(), root, self, addr.Port())
+	if !ok {
+		return ""
+	}
+	return holder.Profile
+}
+
 // loadProfile reads the profile named name for --profile: the history
 // and Copy options from its copy.json, the endpoint from its config.json,
 // with the serial saved with it on this network, and the folder of the
@@ -40,7 +62,7 @@ func profileDir(name string) (dir, found string, err error) {
 // has a folder of its own: after that, none is filled, and NoFolder is
 // set.
 func loadProfile(name string) (cli.Saved, error) {
-	root, _, err := profileDir(name)
+	root, found, err := profileDir(name)
 	if err != nil {
 		return cli.Saved{}, err
 	}
@@ -64,6 +86,7 @@ func loadProfile(name string) (cli.Saved, error) {
 		saved.LANSerial = ui.SavedLANSerial(config)
 		saved.LANScan = ui.SavedLANScan(config)
 		key = ui.SavedTelescope(config)
+		saved.EndpointHolder = endpointHolder(config, saved.Endpoint, found)
 	}
 	// Until a telescope has a folder of its own, every telescope's folder
 	// is copy.json's folder; after, "" while that is set means the saved

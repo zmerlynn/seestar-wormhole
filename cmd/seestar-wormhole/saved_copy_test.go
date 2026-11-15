@@ -446,3 +446,40 @@ func TestUIProfileFlag(t *testing.T) {
 		}
 	}
 }
+
+// A profile's saved account-route endpoint is this computer's port: while
+// another profile's window serves it, filling it would reach that
+// window's telescope, so it is refused. A given --endpoint, the serving
+// profile itself and a port no window serves are not.
+func TestProfileEndpointOfAnotherWindow(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/default"}`)
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	garden := ui.ProfileDir(root, "Garden")
+	b, err := os.ReadFile(filepath.Join(root, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSavedConfig(t, garden, b)
+	writeSavedCopy(t, garden, `{"version":1,"folder":"/synthetic/Garden"}`)
+	useProfileRoot(t, root, nil)
+	if got, err := loadProfile("Garden"); err != nil || got.EndpointHolder != "" || got.Endpoint != "127.0.0.2:1445" {
+		t.Errorf("no window open: %+v, %v", got, err)
+	}
+	fakeWindow(t, root, "[1445]")
+	if got, err := loadProfile("Garden"); err != nil || got.EndpointHolder != "Default" {
+		t.Errorf("Default serving: %+v, %v", got, err)
+	}
+	if got, err := loadProfile("default"); err != nil || got.EndpointHolder != "" {
+		t.Errorf("default itself: %+v, %v", got, err)
+	}
+	code, record, _ := usageExit(t, "find", "--profile", "Garden")
+	if code != 2 || record.Option != "--profile" || !strings.HasPrefix(record.Rule, "the Default window serves this computer's Telescope Network ports") {
+		t.Errorf("find: exit %d %+v", code, record)
+	}
+	if o, err := parse([]string{"find", "--profile", "Garden", "--endpoint", "192.0.2.7:445"}, io.Discard); err != nil || o.file == nil {
+		t.Errorf("a given --endpoint: %v", err)
+	}
+}

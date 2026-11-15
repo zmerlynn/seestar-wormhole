@@ -26,6 +26,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/licenses"
+	"github.com/zmerlynn/seestar-wormhole/internal/oserror"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 	"github.com/zmerlynn/seestar-wormhole/internal/ui"
 )
@@ -76,6 +77,10 @@ type options struct {
 	// profile's when it runs.
 	settingsFallbacks []diagnostic.Fallback
 	name              string
+	// uiHolder is the other app window holding a local port the UI's
+	// run can't listen on, which makes the run copy-only; nil outside
+	// the UI.
+	uiHolder func(port uint16) (proxy.Holder, bool)
 	// fileName is the file command parsed, and file that command once it
 	// validated.
 	fileName string
@@ -257,18 +262,35 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			f.Listener.Close()
 		}
 	}()
+	// A UI run whose port another app window holds serves none of its
+	// ports, and no discovery: the phone app reaches that window's
+	// telescope, and this one's file tools dial through the session.
+	copyOnly := false
 	for _, p := range o.ports {
 		l, err := listen("tcp", net.JoinHostPort(o.bind, strconv.Itoa(int(p.Local))))
 		if err != nil {
 			if o.command == commandUI {
-				return uiListenerError(p.Device, p.Local, err)
+				holder, held := proxy.Holder{}, false
+				if oserror.Is(err, syscall.EADDRINUSE) && o.uiHolder != nil {
+					holder, held = o.uiHolder(p.Local)
+				}
+				if !held {
+					return uiListenerError(p.Device, p.Local, err)
+				}
+				for _, f := range forwards {
+					f.Listener.Close()
+				}
+				forwards, copyOnly = nil, true
+				o.uiStatus.MarkCopyOnly(holder)
+				logger.Warn("copy_only", "local_port", p.Local, "port", p.Device, "error", err.Error(), "holder_profile", holder.Profile, "holder_telescope", holder.Telescope)
+				break
 			}
 			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports"}
 		}
 		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.Device})
 	}
 	var discovery commandDiscovery
-	if o.lanDiscovery {
+	if o.lanDiscovery && !copyOnly {
 		phase = "lan_discovery"
 		discovery, err = listenDiscovery(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces}, logger)
 		if err != nil {
@@ -314,7 +336,18 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	startup.output.resolve(true)
 	warnWildcardBind(logger, forwards, systemInterfaces())
 	done := make(chan error, 1)
-	go func() { done <- proxy.Serve(ctx, s, forwards, 128, logger) }()
+	if copyOnly {
+		// No listeners to serve: the run ends with the session or ctx.
+		go func() {
+			select {
+			case <-ctx.Done():
+			case <-s.Done():
+			}
+			done <- nil
+		}()
+	} else {
+		go func() { done <- proxy.Serve(ctx, s, forwards, 128, logger) }()
+	}
 	// The UI's file tools dial through the session; they get it before the
 	// run is armed, and lose it before the session closes.
 	if o.uiAttach != nil {

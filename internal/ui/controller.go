@@ -388,6 +388,10 @@ type runView struct {
 	conn           runConn // the run's session, for the copier's target
 	SaveFailed     bool    `json:"save_failed"`
 	Discovery      bool    `json:"discovery_started"`
+	// CopyOnly is the window holding the local ports when the run serves
+	// none of them; serving is true while the run's own listeners serve.
+	CopyOnly *proxy.Holder `json:"copy_only,omitempty"`
+	serving  bool
 }
 
 func (c *controller) view() runView {
@@ -401,6 +405,11 @@ func (c *controller) view() runView {
 		v.Cancel = !c.status.WasReady() && !c.runSettings.lazy()
 		v.Ready = !c.stopping && c.isReady(c.status)
 		v.Discovery = c.runSettings.Discovery && c.status.SaveBoundary(true)
+		if h, ok := c.status.CopyOnly(); ok {
+			v.CopyOnly = &h
+		} else {
+			v.serving = c.status.Armed()
+		}
 	}
 	if c.failure != nil {
 		v.FailureMessage = errorCopy(c.failure.Code)

@@ -1,12 +1,20 @@
 package ui
 
 import (
+	"encoding/json/v2"
 	"errors"
+	"io"
+	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
+	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
 )
 
 // A name is refused only for what can't safely be one folder's name, and
@@ -96,5 +104,86 @@ func TestCreateAndFindProfile(t *testing.T) {
 	_, _, err = FindProfile(root, "Orchard")
 	if missing, ok := errors.AsType[*NoProfileError](err); !ok || missing.Error() != "no profile named Orchard; profiles: default, Garden, TEST0002" {
 		t.Errorf("Orchard: %v", err)
+	}
+}
+
+// Status says which local ports the run serves, none before it arms or
+// while it is copy-only, and names the holder then.
+func TestStatusServingPorts(t *testing.T) {
+	s := testServer(t)
+	s.controller.done = make(chan struct{})
+	s.controller.status = proxy.NewStatus()
+	run := testSettings()
+	run.Ports = []proxyrun.Port{{Device: 445, Local: 1445}, {Device: 4700, Local: 4700}}
+	s.controller.runSettings = run
+	status := func() (got struct {
+		ServingPorts []uint16      `json:"serving_ports"`
+		CopyOnly     *proxy.Holder `json:"copy_only"`
+	}) {
+		w := httptest.NewRecorder()
+		s.ServeHTTP(w, request(s, "GET", "/api/status", ""))
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	if got := status(); got.ServingPorts == nil || len(got.ServingPorts) != 0 || got.CopyOnly != nil {
+		t.Errorf("before arming: %+v", got)
+	}
+	s.controller.status.MarkArmed()
+	if got := status(); !slices.Contains(got.ServingPorts, 1445) || !slices.Contains(got.ServingPorts, 4700) || got.CopyOnly != nil {
+		t.Errorf("armed: %+v", got)
+	}
+	s.controller.status = proxy.NewStatus()
+	s.controller.status.MarkCopyOnly(proxy.Holder{Profile: "Garden", Telescope: "Seestar S50 TEST0002"})
+	s.controller.status.MarkArmed()
+	if got := status(); len(got.ServingPorts) != 0 || got.CopyOnly == nil || *got.CopyOnly != (proxy.Holder{Profile: "Garden", Telescope: "Seestar S50 TEST0002"}) {
+		t.Errorf("copy-only: %+v", got)
+	}
+}
+
+// ServingWindow asks every open window of the root's profiles but self,
+// and only a window serving the port holds it; default shows as Default.
+func TestServingWindow(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "state")
+	if _, err := CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	answer := func(dir, body string) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Path != "/api/status" || r.Header.Get("X-Seestar-Token") != strings.Repeat("ab", 32) {
+				http.Error(w, "Request rejected", http.StatusForbidden)
+				return
+			}
+			io.WriteString(w, body)
+		}))
+		t.Cleanup(server.Close)
+		st, err := openStorage(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer st.directory.Close()
+		if err := st.write("ui-runtime.json", runtimeRecord{Port: server.Listener.Addr().(*net.TCPAddr).Port, Token: strings.Repeat("ab", 32)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	answer(root, `{"serving_ports":[1445,4700],"telescope_name":"Seestar S30 TEST0001"}`)
+	answer(ProfileDir(root, "Garden"), `{"serving_ports":[],"telescope_name":"Seestar S50 TEST0002","unknown":{}}`)
+	if h, ok := ServingWindow(t.Context(), root, "Garden", 1445); !ok || h != (proxy.Holder{Profile: "Default", Telescope: "Seestar S30 TEST0001"}) {
+		t.Errorf("1445 from Garden = %+v, %t", h, ok)
+	}
+	for _, tc := range []struct {
+		self string
+		port uint16
+	}{{"Garden", 445}, {"default", 1445}, {"DEFAULT", 4700}} {
+		if h, ok := ServingWindow(t.Context(), root, tc.self, tc.port); ok {
+			t.Errorf("%d from %s = %+v", tc.port, tc.self, h)
+		}
+	}
+	if _, ok := PortHolder(t.Context(), 1445); ok {
+		t.Error("a run of no profile found a holder")
+	}
+	if _, ok := PortHolder(WithProfile(t.Context(), root, "Garden"), 1445); !ok {
+		t.Error("Garden's run found no holder")
 	}
 }
