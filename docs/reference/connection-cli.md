@@ -666,7 +666,7 @@ In trail entries:
 | `site_protected` | WARN | Dropped setter; method, request ID or `unavailable`, params as sent, reason |
 | `site_reject` | WARN | Invalid frame; method, recovered request ID or `unavailable`, reason |
 | `site_reply_failed` | WARN | Local refusal could not be delivered; method, refusal reason, and cause |
-| `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode |
+| `lan_discovery_started` | INFO | UDP port, `all_interfaces` mode and the advertised telescope's serial, model and name (the cloud `ssid`); `proxy` groups them under `telescope` |
 | `lan_discovery_refused` | WARN | Nonzero refusal counts per fixed `rule`, at most once per rule per five seconds, plus pending counts at shutdown; `sender` is the address and port of the rule's last refused datagram, empty when a truncated read gave none |
 | `lan_discovery_delivery_failed` | WARN | Local deadline/write failure or short write; fixed `rule`. Reply failures drop one reply; read-deadline failures end discovery. |
 | `lan_discovery_synthesized`, `lan_http_port` | WARN | Synthesized field names; missing HTTP 80 mapping |

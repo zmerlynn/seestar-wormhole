@@ -32,13 +32,13 @@ func assertCloudSecretSafe(t *testing.T, err error, logs string) {
 	}
 }
 
-// cloudSecrets are the password, token, key, license, session, Wi-Fi and
-// profile sentinels of the cloud fixtures. Telescope models and serials
-// ("synthetic-serial-sentinel") and the account email may appear in errors
-// and logs.
+// cloudSecrets are the password, token, key, license, session and profile
+// sentinels of the cloud fixtures. Telescope models, serials
+// ("synthetic-serial-sentinel") and names (the ssid), and the account email
+// may appear in errors and logs.
 var cloudSecrets = []string{
 	"token-sentinel", "password-sentinel", "profile-sentinel", "conid-sentinel",
-	"license-sentinel", "user-sentinel", "ssid-sentinel", "SYNTHETICUID",
+	"license-sentinel", "user-sentinel", "SYNTHETICUID",
 	"Example-Only", "fixture-password",
 }
 
