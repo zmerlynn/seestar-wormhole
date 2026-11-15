@@ -124,7 +124,7 @@ func (s *Settings) fallBack() []diagnostic.Fallback {
 	}
 	if s.Discovery && !landiscovery.ValidBind(s.Bind) {
 		s.Discovery = false
-		replace("discovery", "off")
+		replace("discovery", "off", s.Bind)
 	}
 	if s.Serial != "" && !cloudhttp.ValidSerial(s.Serial) {
 		replace("serial", "none", s.Serial)

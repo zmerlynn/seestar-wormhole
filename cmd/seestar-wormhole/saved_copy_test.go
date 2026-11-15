@@ -319,7 +319,7 @@ func TestDefaultProfileFallbacks(t *testing.T) {
 	before := profileFiles(t, root)
 	got, err := loadDefaultProfile()
 	want := []diagnostic.Fallback{
-		{File: "copy.json", Setting: "files_at_once", Fallback: "4"},
+		{File: "copy.json", Setting: "files_at_once", Fallback: "4", Value: "57"},
 		{File: "config.json", Setting: "serial", Fallback: "none", Value: "INVALID serial"},
 	}
 	if err != nil || got.Workers != 4 || got.Endpoint != "127.0.0.1:1445" || !reflect.DeepEqual(got.Fallbacks, want) {
