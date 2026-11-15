@@ -104,22 +104,22 @@ internal/ui server (page, token, config.json, gui.log)
   and writes or locks nothing. Each copying pass (`sync` or the app's) and Browse's Save into the images folder hold its folder
   lock, `.seestar-wormhole.lock` at its top. A real `delete` takes it too, except when the folder is missing or on a
   read-only file system; a dry run or an `--ignore-state` delete takes none.
-- **Profiles.** A profile is one full state folder, so one app process with its own `ui.lock`, telescope, account
-  run, `config.json`, `copy.json`, `gui.log` and installation identity. `default` (**Default**) is the state root
-  itself; a named profile is `<root>/profiles/<name>/`, matched without regard to case. `ui --profile NAME` and the
-  file commands' `--profile NAME` find it the same way; a `--state-dir` run is of no profile. Profiles share only
-  the copy history (kept per images folder) and this computer's ports. They know of each other only through each
-  other's `ui-runtime.json` and token: the Profiles dialog lists the folders and asks each open window's
-  `/api/status`, and brings one forward with `/api/activate`. The first account run to bind the local ports serves
-  them, and reports them in `serving_ports` with its bind address in `serving_address` from when they are bound
-  until they close, before its session starts. A later run whose bind fails on a port another profile's open window
-  reports there, at the same bind address once parsed, runs copy-only, all ports or none: it serves no port and no
-  discovery, and still attaches its session for the file tools. A port held by anything else, or at another
-  address, is the usual port error. Through the account the file commands' endpoint is
+- **Profiles.** A profile is one full state folder, so one app process with its own `ui.lock`, telescope, account run,
+  `config.json`, `copy.json`, `gui.log` and installation identity. `default` (**Default**) is the state root itself; a
+  named profile is `<root>/profiles/<name>/`, matched without regard to case. `ui --profile NAME` and the file
+  commands' `--profile NAME` find it the same way; a `--state-dir` run is of no profile. Profiles share the copy
+  history (kept per images folder), this computer's ports, and the system keychain's saved password when they use the
+  same account. They know of each other only through each other's `ui-runtime.json` and token: the Profiles dialog
+  lists the folders and asks each open window's `/api/status`, and brings one forward with `/api/activate`. The first
+  account run to bind the local ports serves them, and reports them in `serving_ports` with its bind address in
+  `serving_address` from when they are bound until they close, before its session starts. A later run whose bind fails
+  on a port another profile's open window reports there, at the same bind address once parsed, runs copy-only, all
+  ports or none: it serves no port and no discovery, and still attaches its session for the file tools. A port held by
+  anything else, or at another address, is the usual port error. Through the account the file commands' endpoint is
   that local port and the copier checks no serial, so `--profile` fills it only while the window serving it at the
-  saved bind address is the profile's own, or another profile's whose run reports (`serving_serial`) the telescope
-  the profile saved; anything else, a window that can't be asked or none, refuses, and every connect checks again. A
-  given `--endpoint` is never checked.
+  saved bind address is the profile's own, or another profile's whose run reports (`serving_serial`) the telescope the
+  profile saved; anything else, a window that can't be asked or none, refuses, and every connect checks again. A given
+  `--endpoint` is never checked.
 - **Shutdown.** On quit the app first stops the Mount: it closes Browse's pool, then stops and joins copying, the
   preview and Free up space. Only then does it stop the run, whose detach closes and joins every channel the file
   tools still hold before the proxy session is closed and released. The file tools reach the telescope through that
