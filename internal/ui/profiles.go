@@ -6,8 +6,11 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"unicode"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/unicode/norm"
 )
 
 // DefaultProfile is the profile that is the state root itself. A named
@@ -29,7 +32,8 @@ func (e *ProfileNameError) Error() string { return e.Message }
 
 // CheckProfileName checks a new profile's name: one folder name a person
 // typed, already trimmed. It refuses only what can't safely be a folder's
-// name, and default, which always exists.
+// name, and default, which always exists. Windows drops a trailing dot or
+// space from a folder's name, which would make the folder another name's.
 func CheckProfileName(name string) error {
 	refuse := func(message string) error { return &ProfileNameError{message} }
 	switch {
@@ -37,20 +41,33 @@ func CheckProfileName(name string) error {
 		return refuse("Enter a name.")
 	case len(name) > maxProfileName:
 		return refuse("This name is too long. Use a shorter one.")
-	case strings.EqualFold(name, DefaultProfile):
+	case sameProfile(name, DefaultProfile):
 		return refuse("Default already exists. Choose another name.")
 	case strings.HasPrefix(name, "."):
 		return refuse("A name can't start with a dot.")
+	case strings.HasSuffix(name, ".") || strings.HasSuffix(name, " "):
+		return refuse("A profile name can't end with a dot or a space.")
 	case strings.ContainsAny(name, `/\`):
 		return refuse(`A name can't contain / or \.`)
-	case strings.ContainsFunc(name, func(r rune) bool { return r < 0x20 || r == 0x7f }):
+	case strings.ContainsFunc(name, unicode.IsControl):
 		return refuse("A name can't contain control characters.")
 	}
 	return nil
 }
 
+// profileNameKey is what profile names are compared by, as macOS and
+// Windows compare folder names: NFC, then Unicode case folding, then NFC
+// again, as Copy compares the names of files. A name is kept as typed;
+// the key is only for comparing.
+func profileNameKey(name string) string {
+	return norm.NFC.String(cases.Fold().String(norm.NFC.String(name)))
+}
+
+// sameProfile reports whether the names a and b are one profile's.
+func sameProfile(a, b string) bool { return profileNameKey(a) == profileNameKey(b) }
+
 // Profiles lists the root's named profiles as their folders are named,
-// sorted without regard to case. A folder whose name isn't one a profile
+// sorted by profileNameKey. A folder whose name isn't one a profile
 // could have is not one. A root without profiles has none.
 func Profiles(root string) ([]string, error) {
 	entries, err := os.ReadDir(filepath.Join(root, profilesDir))
@@ -66,7 +83,7 @@ func Profiles(root string) ([]string, error) {
 		}
 	}
 	slices.SortFunc(names, func(a, b string) int {
-		if c := strings.Compare(strings.ToLower(a), strings.ToLower(b)); c != 0 {
+		if c := strings.Compare(profileNameKey(a), profileNameKey(b)); c != 0 {
 			return c
 		}
 		return strings.Compare(a, b)
@@ -86,10 +103,10 @@ func (e *NoProfileError) Error() string {
 
 // FindProfile is the state folder of the root's profile with that name,
 // and its name as its folder is named: the root itself for default, else
-// the named profile's folder, matched without regard to case as macOS and
-// Windows folders are. A name with no folder is a *NoProfileError.
+// the named profile's folder, matched as macOS and Windows match folder
+// names (see profileNameKey). A name with no folder is a *NoProfileError.
 func FindProfile(root, name string) (dir, found string, err error) {
-	if strings.EqualFold(name, DefaultProfile) {
+	if sameProfile(name, DefaultProfile) {
 		return root, DefaultProfile, nil
 	}
 	names, err := Profiles(root)
@@ -102,7 +119,7 @@ func FindProfile(root, name string) (dir, found string, err error) {
 		}
 	}
 	for _, n := range names {
-		if strings.EqualFold(n, name) {
+		if sameProfile(n, name) {
 			return ProfileDir(root, n), n, nil
 		}
 	}
@@ -120,8 +137,8 @@ func ProfileDir(root, name string) string {
 // CreateProfile creates the private state folder of a new profile named
 // as typed, without leading or trailing spaces (Windows drops trailing
 // ones, which would quietly make a second profile of the same name), and
-// returns that name. A name that differs from an existing one only by
-// case is that one's. A refusal is a *ProfileNameError.
+// returns that name. A name that profileNameKey matches to an existing one
+// is that one's. A refusal is a *ProfileNameError.
 func CreateProfile(root, typed string) (string, error) {
 	name := strings.TrimSpace(typed)
 	if err := CheckProfileName(name); err != nil {

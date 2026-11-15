@@ -85,7 +85,7 @@ func ServingWindow(ctx context.Context, root, self string, port uint16) (proxy.H
 	client := probeClient()
 	defer client.CloseIdleConnections()
 	for _, name := range append([]string{DefaultProfile}, names...) {
-		if strings.EqualFold(name, self) {
+		if sameProfile(name, self) {
 			continue
 		}
 		if status, ok := probeStatus(ctx, client, ProfileDir(root, name)); ok && slices.Contains(status.ServingPorts, port) {

@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"strings"
 	"sync"
 
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
@@ -150,7 +149,7 @@ func (s *server) profiles(ctx context.Context) ([]profileEntry, error) {
 	}
 	entries := make([]profileEntry, 0, len(names)+1)
 	for _, name := range append([]string{DefaultProfile}, names...) {
-		entries = append(entries, profileEntry{Name: name, Label: ProfileLabel(name), Self: strings.EqualFold(name, s.profile.name)})
+		entries = append(entries, profileEntry{Name: name, Label: ProfileLabel(name), Self: sameProfile(name, s.profile.name)})
 	}
 	client := probeClient()
 	defer client.CloseIdleConnections()
@@ -174,7 +173,7 @@ func (s *server) openProfile(ctx context.Context, name string) error {
 	if err != nil {
 		return err
 	}
-	if strings.EqualFold(found, s.profile.name) {
+	if sameProfile(found, s.profile.name) {
 		return nil
 	}
 	client := probeClient()

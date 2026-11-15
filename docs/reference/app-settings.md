@@ -21,8 +21,9 @@ The state directory is also the **Default** profile. Each other
 [profile](../ui.md#profiles-two-telescopes-at-once) is a full state
 directory of its own, `profiles/<name>/` inside it, named as typed in
 **New profile**, with the files below. A name is matched
-without regard to case, can't be `default`, start with a dot, contain `/`,
-`\` or a control character, or be longer than 64 bytes. Run
+without regard to case or Unicode normalization, can't be `default`, start
+with a dot, end with a dot or a space, contain `/`, `\` or a control
+character, or be longer than 64 bytes. Run
 `seestar-wormhole ui --profile NAME` to open one. A window opened with
 `--state-dir` is of no profile: it has no **Profiles…**, and never copies
 only. To remove a profile, quit its window and delete its folder,

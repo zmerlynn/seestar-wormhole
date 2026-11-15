@@ -33,13 +33,18 @@ func TestCheckProfileName(t *testing.T) {
 		{"Gar\x00den", "A name can't contain control characters."},
 		{"Gar\nden", "A name can't contain control characters."},
 		{"Gar\x7fden", "A name can't contain control characters."},
+		{"Gar\u0085den", "A name can't contain control characters."},
+		{"Gar\u009bden", "A name can't contain control characters."},
+		{"Garden.", "A profile name can't end with a dot or a space."},
+		{"Garden...", "A profile name can't end with a dot or a space."},
+		{"Garden ", "A profile name can't end with a dot or a space."},
 	} {
 		err := CheckProfileName(tc.name)
 		if refused, ok := errors.AsType[*ProfileNameError](err); !ok || refused.Message != tc.message {
 			t.Errorf("%q: %v, want %q", tc.name, err, tc.message)
 		}
 	}
-	for _, name := range []string{"Garden", "TEST0002", "Back yard S50", "Garten (Süd)", "a.b", strings.Repeat("x", 64), "défault"} {
+	for _, name := range []string{"Garden", "TEST0002", "Back yard S50", "Garten (Süd)", "a.b", strings.Repeat("x", 64), "défault", "De\u0301fault", "Garden\u00a0x"} {
 		if err := CheckProfileName(name); err != nil {
 			t.Errorf("%q: %v", name, err)
 		}
@@ -104,6 +109,44 @@ func TestCreateAndFindProfile(t *testing.T) {
 	_, _, err = FindProfile(root, "Orchard")
 	if missing, ok := errors.AsType[*NoProfileError](err); !ok || missing.Error() != "no profile named Orchard; profiles: default, Garden, TEST0002" {
 		t.Errorf("Orchard: %v", err)
+	}
+}
+
+// Names are one profile's when they are canonically equivalent and equal
+// ignoring case, as macOS and Windows folder names are: lookup, a new
+// name, a run's own name and the order all go by that, and the folder
+// keeps the spelling it was created with.
+func TestProfileNamesCompareCanonically(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "state")
+	const nfc, nfd = "Garten (S\u00fcd)", "Garten (Su\u0308d)"
+	if name, err := CreateProfile(root, nfd); err != nil || name != nfd {
+		t.Fatalf("= %q, %v", name, err)
+	}
+	for _, name := range []string{nfc, nfd, "GARTEN (S\u00dcD)", "garten (su\u0308d)"} {
+		if dir, found, err := FindProfile(root, name); err != nil || found != nfd || dir != filepath.Join(root, "profiles", nfd) {
+			t.Errorf("find %q = %q %q, %v", name, dir, found, err)
+		}
+		if _, err := CreateProfile(root, name); err == nil || err.Error() != "There's already a profile named "+nfd+"." {
+			t.Errorf("create %q: %v", name, err)
+		}
+	}
+	// ß folds to ss, which simple case folding doesn't do.
+	if _, err := CreateProfile(root, "Stra\u00dfe"); err != nil {
+		t.Fatal(err)
+	}
+	if _, found, err := FindProfile(root, "STRASSE"); err != nil || found != "Stra\u00dfe" {
+		t.Errorf("STRASSE = %q, %v", found, err)
+	}
+	for _, name := range []string{"alpha", "\u00c9cole"} {
+		if _, err := CreateProfile(root, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if names, err := Profiles(root); err != nil || !slices.Equal(names, []string{"alpha", nfd, "Stra\u00dfe", "\u00c9cole"}) {
+		t.Errorf("Profiles = %q, %v", names, err)
+	}
+	if !sameProfile("DEFAULT", DefaultProfile) || !sameProfile(nfc, "garten (su\u0308d)") || sameProfile("Garten", "Garten.") {
+		t.Error("sameProfile")
 	}
 }
 
