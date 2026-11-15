@@ -794,6 +794,17 @@ test('the header names the telescope on this network and its folder, which opens
   // One line: the folder follows the sentence, and the arrow isn't read out.
   await expect(page.locator('#connection-line')).toContainText(`${shareName} on this network→ no folder yet`);
   await expect(page.locator('#telescope-to [aria-hidden=true]')).toHaveText('→ ');
+  // In a narrow window the dot stays on the sentence's first line, and the
+  // arrow on the folder's.
+  await page.setViewportSize({ width: 320, height: 640 });
+  const onFirstLine = async (locator, of) => {
+    const box = await locator.boundingBox(), line = await of.boundingBox(), middle = box.y + box.height / 2;
+    expect(middle).toBeGreaterThan(line.y);
+    expect(middle).toBeLessThan(line.y + 24);
+  };
+  await onFirstLine(page.locator('#connection-dot'), page.locator('#connection-text'));
+  await onFirstLine(page.locator('#telescope-to [aria-hidden=true]'), folder);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await folder.click();
   await expect(tab(page, 'Copy')).toHaveAttribute('aria-selected', 'true');
   await expect(field(page, 'Folder for your images')).toBeFocused();

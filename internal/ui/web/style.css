@@ -262,24 +262,32 @@ header {
   gap:0 1rem
 }
 #connection-line {
+  position:relative;
   display:flex;
   flex-wrap:wrap;
   align-items:center;
   gap:.3rem .45rem;
   margin:0;
+  padding-inline-start:1.2rem;
   font-weight:600;
   overflow-wrap:anywhere
 }
 #telescope-to {
+  display:flex;
+  align-items:baseline;
+  gap:.25rem;
   min-width:0;
   font-weight:400
 }
 #telescope-folder {
+  min-width:0;
   text-align:start;
   overflow-wrap:anywhere
 }
 #connection-dot {
-  flex:none;
+  position:absolute;
+  inset-inline-start:0;
+  top:calc(.75em - .375rem);
   width:.75rem;
   height:.75rem;
   border-radius:50%;
