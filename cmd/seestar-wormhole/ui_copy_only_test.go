@@ -44,12 +44,19 @@ const syntheticToken = "00112233445566778899aabbccddeeff00112233445566778899aabb
 // serving the local ports serving, a JSON array.
 func fakeWindow(t *testing.T, dir string, serving string) {
 	t.Helper()
+	fakeWindowFunc(t, dir, func() string { return `"serving_ports":` + serving })
+}
+
+// fakeWindowFunc is fakeWindow with the status's serving fields as fields
+// says each time it is asked.
+func fakeWindowFunc(t *testing.T, dir string, fields func() string) {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/status" || r.Header.Get("X-Seestar-Token") != syntheticToken {
 			http.Error(w, "Request rejected", http.StatusForbidden)
 			return
 		}
-		io.WriteString(w, `{"future":true,"serving_ports":`+serving+`,"telescope_name":"Seestar S50 TEST0002"}`)
+		io.WriteString(w, `{"future":true,`+fields()+`,"telescope_name":"Seestar S50 TEST0002"}`)
 	}))
 	t.Cleanup(server.Close)
 	port := server.Listener.Addr().(*net.TCPAddr).Port
@@ -157,5 +164,94 @@ func TestUIRunCopyOnly(t *testing.T) {
 				t.Errorf("= %v", err)
 			}
 		})
+	}
+}
+
+// A run's listeners are its window's from when they are bound: while the
+// first run waits for its session, it already serves its ports, and a
+// second profile's run whose port it holds is copy-only.
+func TestUIRunServingBeforeSession(t *testing.T) {
+	var ports []proxyrun.Port
+	var served []string
+	var free []net.Listener
+	for _, device := range []uint16{4700, 445} {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		free = append(free, l)
+		port := l.Addr().(*net.TCPAddr).Port
+		ports = append(ports, proxyrun.Port{Local: uint16(port), Device: device})
+		served = append(served, strconv.Itoa(port))
+	}
+	for _, l := range free {
+		l.Close()
+	}
+	settings := ui.Settings{Version: 1, Bind: "127.0.0.1", Idle: "2m", Ports: ports}
+	root := filepath.Join(t.TempDir(), "state")
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	noDiscovery := func(string, int, landiscovery.Options, *slog.Logger) (commandDiscovery, error) {
+		return &fakeUIDiscovery{}, nil
+	}
+	noTCPState := func(context.Context) error { return nil }
+
+	// Default's window says what its run's status says.
+	first := proxy.NewStatus()
+	fakeWindowFunc(t, root, func() string {
+		if first.Serving() {
+			return `"serving_ports":[` + strings.Join(served, ",") + `]`
+		}
+		return `"serving_ports":[]`
+	})
+	inSession := make(chan struct{})
+	var firstLogs syncBuffer
+	firstRun := newUIRunnerWithDiscovery(root, &firstLogs,
+		func(ctx context.Context, _ proxy.Config, _ cloud.Credentials) (commandSession, error) {
+			close(inSession)
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}, net.Listen, noDiscovery, noTCPState)
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- firstRun(ui.WithProfile(ctx, root, ui.DefaultProfile), settings, cloud.Credentials{}, first, func(proxy.Dialer) (func(), bool) { return func() {}, true })
+	}()
+	select {
+	case <-inSession:
+	case err := <-firstDone:
+		t.Fatalf("the first run ended: %v\n%s", err, firstLogs.String())
+	}
+	if !first.Serving() || first.Armed() {
+		t.Fatalf("waiting for its session: serving %t, armed %t", first.Serving(), first.Armed())
+	}
+
+	second := proxy.NewStatus()
+	var secondLogs syncBuffer
+	secondRun := newUIRunnerWithDiscovery(ui.ProfileDir(root, "Garden"), &secondLogs,
+		func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error) {
+			return &idleCommandSession{done: make(chan struct{})}, nil
+		}, net.Listen, noDiscovery, noTCPState)
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- secondRun(ui.WithProfile(ctx, root, "Garden"), settings, cloud.Credentials{}, second, func(proxy.Dialer) (func(), bool) { return func() {}, true })
+	}()
+	select {
+	case <-second.Updates():
+	case err := <-secondDone:
+		t.Fatalf("the second run ended: %v\n%s", err, secondLogs.String())
+	case <-time.After(5 * time.Second):
+		t.Fatal("the second run never armed")
+	}
+	if h, ok := second.CopyOnly(); !ok || h.Profile != "Default" {
+		t.Errorf("second: holder %+v %t\n%s", h, ok, secondLogs.String())
+	}
+	cancel()
+	<-secondDone
+	<-firstDone
+	if first.Serving() {
+		t.Error("the first run still serves after it ended")
 	}
 }

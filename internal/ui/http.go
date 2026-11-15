@@ -222,8 +222,9 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			TelescopeKey string        `json:"telescope_key"`
 			Files        settingsFiles `json:"files"`
 			// ServingPorts are the local ports this app's run listens on
-			// now, which another window of the same state root reads to
-			// tell its own port conflict from another program's.
+			// now, from when they are bound, which another window of the
+			// same state root reads to tell its own port conflict from
+			// another program's.
 			ServingPorts []uint16 `json:"serving_ports"`
 			// Profile is the run's profile, absent for a run of a
 			// --state-dir folder.

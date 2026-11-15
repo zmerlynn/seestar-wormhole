@@ -180,8 +180,8 @@ func TestProfileNamesCompareCanonically(t *testing.T) {
 	}
 }
 
-// Status says which local ports the run serves, none before it arms or
-// while it is copy-only, and names the holder then.
+// Status says which local ports the run serves, from when they are bound
+// until they close, none while it is copy-only, and names the holder then.
 func TestStatusServingPorts(t *testing.T) {
 	s := testServer(t)
 	s.controller.done = make(chan struct{})
@@ -201,11 +201,19 @@ func TestStatusServingPorts(t *testing.T) {
 		return got
 	}
 	if got := status(); got.ServingPorts == nil || len(got.ServingPorts) != 0 || got.CopyOnly != nil {
-		t.Errorf("before arming: %+v", got)
+		t.Errorf("before binding: %+v", got)
+	}
+	s.controller.status.MarkServing()
+	if got := status(); !slices.Contains(got.ServingPorts, 1445) || !slices.Contains(got.ServingPorts, 4700) || got.CopyOnly != nil {
+		t.Errorf("bound, before arming: %+v", got)
 	}
 	s.controller.status.MarkArmed()
-	if got := status(); !slices.Contains(got.ServingPorts, 1445) || !slices.Contains(got.ServingPorts, 4700) || got.CopyOnly != nil {
+	if got := status(); !slices.Contains(got.ServingPorts, 1445) || got.CopyOnly != nil {
 		t.Errorf("armed: %+v", got)
+	}
+	s.controller.status.ClearServing()
+	if got := status(); len(got.ServingPorts) != 0 {
+		t.Errorf("closed: %+v", got)
 	}
 	s.controller.status = proxy.NewStatus()
 	s.controller.status.MarkCopyOnly(proxy.Holder{Profile: "Garden", Telescope: "Seestar S50 TEST0002"})

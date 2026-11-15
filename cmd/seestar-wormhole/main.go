@@ -258,6 +258,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	defer cancel()
 	var forwards []proxy.Forward
 	defer func() {
+		o.uiStatus.ClearServing()
 		for _, f := range forwards {
 			f.Listener.Close()
 		}
@@ -288,6 +289,12 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports"}
 		}
 		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.Device})
+	}
+	// Another app window tells its port conflict with this run's listeners
+	// from another program's as soon as they are bound, though the session
+	// may take a while to start.
+	if !copyOnly {
+		o.uiStatus.MarkServing()
 	}
 	var discovery commandDiscovery
 	if o.lanDiscovery && !copyOnly {
