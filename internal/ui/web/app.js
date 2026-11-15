@@ -644,8 +644,8 @@ function connectionLine() {
   }
   text('connection-text', line);
   if ($('connection-dot').getAttribute('data-tone') !== tone) $('connection-dot').setAttribute('data-tone', tone);
-  // The folder shows once the telescope is named and Copy's status of it
-  // is read: not for a telescope saved by its address only, or none.
+  // The folder shows once the telescope is named and Copy's matching
+  // status has been read; without a name, it stays hidden.
   const telescope = name ? copyTelescopeNow() : null;
   const setUp = !!telescope?.set_up && !!telescope.folder;
   $('telescope-to').hidden = !telescope;
