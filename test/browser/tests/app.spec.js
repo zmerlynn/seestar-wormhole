@@ -1727,7 +1727,7 @@ for (const off of [false, true]) {
 for (const os of ['linux', 'darwin', 'windows']) {
   test(`a local port below 1024 shows the permissions guide by its row ${os === 'linux' ? 'on Linux' : 'not on ' + os}`, async ({ page, startApp }) => {
     if (os !== 'linux') {
-      await page.route('**/api/status', async (route) => {
+      await page.route(/\/api\/status(\?first=1)?$/, async (route) => {
         const response = await route.fetch();
         route.fulfill({ response, json: { ...(await response.json()), os } });
       });
