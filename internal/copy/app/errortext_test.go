@@ -91,3 +91,22 @@ func TestReasonClipped(t *testing.T) {
 		}
 	}
 }
+
+// An error whose text holds a control character, alone or wrapped, shows
+// in Activity quoted and escaped, never as the raw character.
+func TestActivityQuotesControls(t *testing.T) {
+	e := newAppEnv(t, nil)
+	for _, text := range []string{"bad:123\rFORGED", "bad:123\x00FORGED", "bad\x1b[2JFORGED", "bad\nFORGED"} {
+		e.s.copy.log.Warn("synthetic failure", "err", errors.New(text))
+		e.s.copy.log.Warn("synthetic failure", "err", fmt.Errorf("open a.fit: %w", errors.New(text)))
+	}
+	lines, _ := e.s.copy.activity.lines()
+	if len(lines) != 8 {
+		t.Fatalf("Activity has %d lines", len(lines))
+	}
+	for _, l := range lines {
+		if strings.ContainsAny(l.Text, "\r\x00\x1b\n") || !strings.Contains(l.Text, `FORGED"`) {
+			t.Errorf("Activity line %q", l.Text)
+		}
+	}
+}
