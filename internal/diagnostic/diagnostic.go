@@ -20,25 +20,38 @@ const licenseMissingHint = "the cloud allocation carried no SDK license key, so 
 
 // OptionError identifies a configuration setting by its registered name and a
 // fixed validation rule. Value, when set, is the value that failed; it is
-// never set for a setting that holds an access secret. Dependency errors are
-// not stored in it.
-type OptionError struct{ Option, Rule, Value string }
-
-func (e *OptionError) Error() string {
-	if e.Value != "" {
-		return Clip(e.Option, MaxValue) + " " + strconv.Quote(Clip(e.Value, MaxValue)) + ": " + e.Rule
-	}
-	return Clip(e.Option, MaxValue) + ": " + e.Rule
+// never set for a setting that holds an access secret. Err, when set, is the
+// dependency error the value met, kept for its text only: it is not unwrapped,
+// so it never changes the classification.
+type OptionError struct {
+	Option, Rule, Value string
+	Err                 error
 }
 
-// Attrs returns the option, the value when set, and the rule as log
-// key-value pairs. The option, which may be an unknown name as typed, and
-// the value are clipped.
-func (e *OptionError) Attrs() []any {
+func (e *OptionError) Error() string {
+	text := Clip(e.Option, MaxValue) + ": " + e.Rule
 	if e.Value != "" {
-		return []any{"option", Clip(e.Option, MaxValue), "value", Clip(e.Value, MaxValue), "rule", e.Rule}
+		text = Clip(e.Option, MaxValue) + " " + strconv.Quote(Clip(e.Value, MaxValue)) + ": " + e.Rule
 	}
-	return []any{"option", Clip(e.Option, MaxValue), "rule", e.Rule}
+	if e.Err != nil {
+		text += ": " + Clip(e.Err.Error(), MaxValue)
+	}
+	return text
+}
+
+// Attrs returns the option, the value when set, the rule and the dependency
+// error when set as log key-value pairs. The option, which may be an unknown
+// name as typed, the value and the error are clipped.
+func (e *OptionError) Attrs() []any {
+	attrs := []any{"option", Clip(e.Option, MaxValue)}
+	if e.Value != "" {
+		attrs = append(attrs, "value", Clip(e.Value, MaxValue))
+	}
+	attrs = append(attrs, "rule", e.Rule)
+	if e.Err != nil {
+		attrs = append(attrs, "error", Clip(e.Err.Error(), MaxValue))
+	}
+	return attrs
 }
 
 type failure struct {

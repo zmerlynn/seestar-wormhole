@@ -15,8 +15,10 @@ const (
 	ModelRule = "use a nonblank device model of at most 4096 bytes without NUL, CR or LF"
 )
 
-func environmentInputError(setting, rule string) error {
-	return diagnostic.Wrap("config", "invalid_configuration", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: setting, Rule: rule}))
+// environmentInputError names the setting and, unless it is the password,
+// the value that failed.
+func environmentInputError(setting, rule, value string) error {
+	return diagnostic.Wrap("config", "invalid_configuration", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: setting, Rule: rule, Value: value}))
 }
 
 // ValidSerial accepts 1-64 printable ASCII bytes, excluding space.

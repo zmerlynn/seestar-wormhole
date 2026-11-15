@@ -96,8 +96,8 @@ func TestProxyStderrDescriptors(t *testing.T) {
 			if sink != "full socket" && !bytes.Contains(data, []byte(`"reason":"invalid_option"`)) {
 				t.Fatalf("stderr = %q; want sanitized fatal diagnostic", data)
 			}
-			if strings.Contains(string(data), "password-path-sentinel") {
-				t.Fatal("argument leaked")
+			if sink != "full socket" && !strings.Contains(string(data), "password-path-sentinel") {
+				t.Fatal("diagnostic lost the value that failed")
 			}
 		})
 	}

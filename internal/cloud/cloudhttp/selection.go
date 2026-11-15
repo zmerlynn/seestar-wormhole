@@ -21,7 +21,7 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 	finish := diagnostic.Operation(c.logger, "device_selection")
 	defer func() { finish(err) }()
 	if d.Serial != "" && !ValidSerial(d.Serial) {
-		return Device{}, environmentInputError("--serial", SerialRule)
+		return Device{}, environmentInputError("--serial", SerialRule, d.Serial)
 	}
 	devices, complete, duplicates, err := c.devices(ctx)
 	if err != nil {
@@ -91,7 +91,7 @@ func (c *Client) SelectDevice(ctx context.Context, d Device) (selected Device, e
 			}
 		}
 		if !matched {
-			return Device{}, diagnostic.Wrap("device_selection", "device pair not found on account; name --model from the catalog", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "device pair not found on account; name --model from the catalog"}))
+			return Device{}, diagnostic.Wrap("device_selection", "device pair not found on account; name --model from the catalog", errors.Join(cloud.ErrConfig, &diagnostic.OptionError{Option: "--model", Rule: "device pair not found on account; name --model from the catalog", Value: d.Model}))
 		}
 	}
 	if len(matches) == 1 {

@@ -145,7 +145,7 @@ func (o *deleteOptions) validate() error {
 		return &diagnostic.OptionError{Option: "--history-dir", Rule: "must not be empty; omit it for the default"}
 	}
 	if o.olderThan < 0 {
-		return &diagnostic.OptionError{Option: "--older-than", Rule: "must not be negative"}
+		return &diagnostic.OptionError{Option: "--older-than", Rule: "must not be negative", Value: o.olderThan.String()}
 	}
 	if !o.force {
 		o.dryRun = true

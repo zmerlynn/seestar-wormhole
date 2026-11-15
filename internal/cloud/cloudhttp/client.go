@@ -103,18 +103,18 @@ func (*Client) Format(s fmt.State, verb rune) { io.WriteString(s, "[cloud HTTPS 
 func NewFromEnvironment(cfg Config) (*Client, error) {
 	email, password := os.Getenv("SEESTAR_EMAIL"), os.Getenv("SEESTAR_PASSWORD")
 	if email == "" {
-		return nil, environmentInputError("SEESTAR_EMAIL", emailRule)
+		return nil, environmentInputError("SEESTAR_EMAIL", emailRule, email)
 	}
 	if password == "" {
-		return nil, environmentInputError("SEESTAR_PASSWORD", passwordRule)
+		return nil, environmentInputError("SEESTAR_PASSWORD", passwordRule, "")
 	}
 	credentials, err := cloud.EmailCredentials(email, password)
 	if err != nil {
 		var validation *cloud.ValidationError
 		if errors.As(err, &validation) && validation.Field == "email" {
-			return nil, environmentInputError("SEESTAR_EMAIL", emailRule)
+			return nil, environmentInputError("SEESTAR_EMAIL", emailRule, email)
 		}
-		return nil, environmentInputError("SEESTAR_PASSWORD", passwordRule)
+		return nil, environmentInputError("SEESTAR_PASSWORD", passwordRule, "")
 	}
 	return NewWithCredentials(cfg, credentials)
 }
@@ -402,7 +402,7 @@ func (c *Client) detail(ctx context.Context, d Device, parse func([]byte) (cloud
 	finish := diagnostic.Operation(c.logger, "device_detail")
 	defer func() { finish(err) }()
 	if !ValidSerial(d.Serial) {
-		return cloud.Detail{}, environmentInputError("--serial", SerialRule)
+		return cloud.Detail{}, environmentInputError("--serial", SerialRule, d.Serial)
 	}
 	if !validInput(d.Model) {
 		return cloud.Detail{}, cloud.ErrInvalid

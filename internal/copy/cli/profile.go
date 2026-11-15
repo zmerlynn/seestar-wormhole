@@ -75,7 +75,7 @@ func (p *profileFlag) load(flags *pflag.FlagSet, load LoadProfile) (Saved, bool,
 		return Saved{}, false, nil
 	}
 	if p.name != DefaultProfile {
-		return Saved{}, false, &diagnostic.OptionError{Option: "--profile", Rule: "only default exists in this version"}
+		return Saved{}, false, &diagnostic.OptionError{Option: "--profile", Rule: "only default exists in this version", Value: p.name}
 	}
 	if load == nil {
 		return Saved{}, false, &diagnostic.OptionError{Option: "--profile", Rule: "no per-user config folder for the default profile; give the flags"}

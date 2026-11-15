@@ -102,7 +102,10 @@ func TestShellRefusalsWithoutResources(t *testing.T) {
 				t.Fatal("invalid invocation opened listeners")
 				return nil, nil
 			})
-			if err == nil || out.Len() != 0 || logs.Len() == 0 || strings.Contains(logs.String(), "PRIVATE_") || strings.Contains(err.Error(), "PRIVATE_") {
+			// A typed option names its bad value; a command name or positional
+			// argument is not repeated.
+			named := args[len(args)-1] == "--version=PRIVATE_VALUE"
+			if err == nil || out.Len() != 0 || logs.Len() == 0 || strings.Contains(logs.String(), "PRIVATE_") != named || strings.Contains(err.Error(), "PRIVATE_") != named {
 				t.Fatalf("refusal: err=%v stdout=%q stderr=%q", err, &out, &logs)
 			}
 		})

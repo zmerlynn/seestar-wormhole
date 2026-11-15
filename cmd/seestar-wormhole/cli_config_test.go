@@ -43,6 +43,7 @@ func assertConfigRecord(t *testing.T, logs []byte, command, option, rule string)
 	delete(got, "time")
 	value, _ := got["value"].(string)
 	delete(got, "value")
+	delete(got, "error") // a dependency's own text, checked where it is set
 	want := map[string]any{"level": "ERROR", "msg": command + " failed", "option": option, "rule": rule, "help": programName + " " + command + " --help", "phase": "arguments", "reason": "invalid_option"}
 	if command == "proxy" || command == "discovery" {
 		want["cleanup_reason"] = "none"
@@ -100,6 +101,9 @@ func TestCLIConfigAttribution(t *testing.T) {
 						}
 						if value := assertConfigRecord(t, logs.Bytes(), command, option, rule); value != state {
 							t.Errorf("value=%q want %q", value, state)
+						}
+						if problem == "state" && !strings.Contains(logs.String(), `"error":"`) && !strings.Contains(logs.String(), "error=") {
+							t.Errorf("state failure lost the OS error: %s", &logs)
 						}
 						if problem == "selection" && !strings.Contains(logs.String(), "dependency_startup") {
 							t.Errorf("dependency record suppressed: %s", &logs)
@@ -165,8 +169,9 @@ func TestCLIParserRules(t *testing.T) {
 					t.Fatalf("exit=%d stdout=%s", commandExitCode(options{command: commandProxy}, err), &out)
 				}
 				name := cmd.Name()
-				assertConfigRecord(t, logs.Bytes(), name, "--"+flag.Name, rule)
-				assertNoSecrets(t, err, "PRIVATE_VALUE")
+				if value := assertConfigRecord(t, logs.Bytes(), name, "--"+flag.Name, rule); value != "PRIVATE_VALUE" || !strings.Contains(err.Error(), "PRIVATE_VALUE") {
+					t.Fatalf("value not named: value=%q err=%v", value, err)
+				}
 			})
 		})
 	}

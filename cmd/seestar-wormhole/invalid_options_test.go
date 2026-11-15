@@ -64,6 +64,14 @@ func TestInvalidOptions(t *testing.T) {
 			if out.Len() != 0 {
 				t.Errorf("unexpected stdout %q", out.String())
 			}
+			// A typed option names the value that failed; an unknown option, a
+			// malformed name and a positional argument are not repeated.
+			if tc.option != "arguments" && tc.rule != "unknown flag" {
+				if v, _ := record["value"].(string); v == "" && tc.secrets != nil {
+					t.Errorf("value not named: %v", record)
+				}
+				return
+			}
 			var chain func(error)
 			chain = func(e error) {
 				if e == nil {
@@ -133,8 +141,19 @@ func FuzzConfiguration(f *testing.F) {
 			if json.Unmarshal(logs.Bytes(), &record, json.MatchCaseInsensitiveNames(true)) != nil || record["option"] == nil || record["rule"] == nil {
 				t.Fatalf("missing safe diagnostic: %q", logs.String())
 			}
-			if strings.Contains(logs.String(), "FUZZ_SECRET_MARKER") || out.Len() != 0 {
-				t.Fatalf("leaked private input: %q %q", out.String(), logs.String())
+			if out.Len() != 0 {
+				t.Fatalf("unexpected stdout %q", out.String())
+			}
+			// A typed option names the value that failed; an unknown option's is
+			// not repeated.
+			if name != "unknown" {
+				if v, _ := record["value"].(string); !strings.HasPrefix(v, "FUZZ_SECRET_MARKER") {
+					t.Fatalf("value not named: %q", logs.String())
+				}
+				continue
+			}
+			if strings.Contains(logs.String(), "FUZZ_SECRET_MARKER") {
+				t.Fatalf("leaked unknown option value: %q", logs.String())
 			}
 			for e := err; e != nil; e = errors.Unwrap(e) {
 				if strings.Contains(e.Error(), "FUZZ_SECRET_MARKER") {

@@ -30,7 +30,7 @@ func TestArgumentDiagnostic(t *testing.T) {
 	}
 }
 
-func TestArgumentRulesAndRedaction(t *testing.T) {
+func TestArgumentRulesAndValues(t *testing.T) {
 	for _, tt := range []struct {
 		name, option, rule string
 		args, private      []string
@@ -70,8 +70,14 @@ func TestArgumentRulesAndRedaction(t *testing.T) {
 				t.Fatalf("unexpected argument output %q", out.String())
 			}
 			for _, private := range tt.private {
-				if strings.Contains(logs.String(), private) {
-					t.Fatalf("diagnostic leaked %q", private)
+				// A typed option's bad value is named; an unknown option's value
+				// and a positional argument are not, since either may be a
+				// mistyped secret.
+				if hidden := tt.option == "arguments" || tt.rule == "unknown flag"; hidden != !strings.Contains(logs.String(), private) {
+					t.Fatalf("diagnostic hidden=%t for %q: %s", hidden, private, &logs)
+				}
+				if tt.option != "arguments" && tt.rule != "unknown flag" {
+					continue
 				}
 				for cause := err; cause != nil; cause = errors.Unwrap(cause) {
 					if strings.Contains(cause.Error(), private) {

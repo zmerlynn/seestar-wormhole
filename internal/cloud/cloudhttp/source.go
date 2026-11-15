@@ -9,12 +9,14 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// Classify before discarding OS errors: PathError and joined causes can reveal
-// the supplied state directory even when their outer diagnostic is sanitized.
-func stateError(phase, reason string) error {
+// stateError names the state directory and keeps the OS error's text, after
+// the caller has classified it.
+func stateError(dir, phase, reason string, err error) error {
 	return diagnostic.Wrap(phase, reason, errors.Join(cloud.ErrConfig, &diagnostic.OptionError{
 		Option: "--state-dir",
 		Rule:   "use a private writable state directory and installation identity file",
+		Value:  dir,
+		Err:    err,
 	}))
 }
 
@@ -22,7 +24,7 @@ func stateError(phase, reason string) error {
 func randomSource() (string, error) {
 	var raw [16]byte
 	if _, err := rand.Read(raw[:]); err != nil {
-		return "", stateError("state_identity", diagnostic.Class(err))
+		return "", stateError("", "state_identity", diagnostic.Class(err), err)
 	}
 	raw[6] = raw[6]&0x0f | 0x40
 	raw[8] = raw[8]&0x3f | 0x80

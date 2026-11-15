@@ -38,7 +38,7 @@ func flagParseError(cmd *cobra.Command, err error) error {
 			if r, ok := cli.ValueRule(invalid.GetFlag().Value.Type()); ok {
 				rule = r
 			}
-			return &argumentError{Option: "--" + invalid.GetFlag().Name, Rule: rule}
+			return &argumentError{Option: "--" + invalid.GetFlag().Name, Rule: rule, Value: invalid.GetValue()}
 		}
 		switch invalid.GetFlag().Value.Type() {
 		case "duration":
@@ -48,7 +48,7 @@ func flagParseError(cmd *cobra.Command, err error) error {
 		case "bool":
 			rule = "use a boolean value"
 		}
-		return &argumentError{Option: "--" + invalid.GetFlag().Name, Rule: rule}
+		return &argumentError{Option: "--" + invalid.GetFlag().Name, Rule: rule, Value: invalid.GetValue()}
 	}
 	return &argumentError{Option: "arguments", Rule: "use only supported options"}
 }

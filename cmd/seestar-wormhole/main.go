@@ -82,10 +82,10 @@ type options struct {
 
 func validateOptions(o *options) error {
 	if o.idle < 0 {
-		return &argumentError{Option: "--idle", Rule: "duration must be nonnegative"}
+		return &argumentError{Option: "--idle", Rule: "duration must be nonnegative", Value: o.idle.String()}
 	}
 	if o.pauseThreshold < 2 || o.pauseThreshold > proxy.MaxPauseThreshold {
-		return &argumentError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608"}
+		return &argumentError{Option: "--pause-threshold", Rule: "byte count must be 2..8388608", Value: strconv.Itoa(o.pauseThreshold)}
 	}
 	if err := validateSharedOptions(o); err != nil {
 		return err
@@ -94,7 +94,7 @@ func validateOptions(o *options) error {
 		return &argumentError{Option: "--lan-discovery-all-interfaces", Rule: "requires --lan-discovery"}
 	}
 	if o.lanDiscovery && !landiscovery.ValidBind(o.bind) {
-		return &argumentError{Option: "--bind", Rule: "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0"}
+		return &argumentError{Option: "--bind", Rule: "LAN discovery requires a literal LAN IPv4 address or 0.0.0.0", Value: o.bind}
 	}
 	ports, err := proxyrun.MergePorts(o.ports)
 	if err != nil {
@@ -235,6 +235,15 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 				logger.Error("proxy failed", "phase", "arguments", "reason", "invalid_option", "cleanup_reason", diagnostic.CleanupClass(cleanupErr))
 				return
 			}
+			// A refused login names the account it tried. The command line
+			// only: the app's summary stays free of the email.
+			if p, reason := diagnostic.Fields(result, phase); o.command != commandUI && p == "cloud" && (reason == "unauthorized" || reason == "reauthentication_required") {
+				account := o.savedEmail
+				if value, ok := os.LookupEnv("SEESTAR_EMAIL"); ok {
+					account = value
+				}
+				logger = logger.With("account", account)
+			}
 			diagnostic.LogOutcome(logger, "proxy failed", phase, result, cleanupErr)
 		}
 	}()
@@ -261,7 +270,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			if o.command == commandUI {
 				return uiListenerError(p.Device, p.Local, err)
 			}
-			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports", Value: o.bind}
+			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported bind address with available local ports", Value: o.bind, Err: err}
 		}
 		forwards = append(forwards, proxy.Forward{Listener: l, Port: p.Device})
 	}
@@ -271,9 +280,9 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		discovery, err = listenDiscovery(o.bind, landiscovery.Port, landiscovery.Options{AllInterfaces: o.lanDiscoveryAllInterfaces}, logger)
 		if err != nil {
 			if o.command == commandUI {
-				return &ui.ActionError{Code: "discovery", Field: "discovery"}
+				return &ui.ActionError{Code: "discovery", Field: "discovery", Err: err}
 			}
-			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available", Value: o.bind}
+			return &diagnostic.OptionError{Option: "--bind", Rule: "use an OS-supported LAN bind address with UDP discovery available", Value: o.bind, Err: err}
 		}
 		defer discovery.Close()
 	}

@@ -121,8 +121,9 @@ func TestMainExitCodeBeforeBootstrap(t *testing.T) {
 			if code != 2 || out.Len() != 0 || record.Phase != "arguments" || record.Reason != "invalid_option" || record.Option != tc.option || record.Rule != tc.rule || record.Help != programName+" proxy --help" {
 				t.Fatalf("refusal: code=%d out=%q diagnostic=%+v; want arguments/invalid_option, option=%q rule=%q and help hint", code, &out, record, tc.option, tc.rule)
 			}
-			if strings.Contains(logs.String(), "PRIVATE_MARKER") {
-				t.Fatalf("diagnostic leaked option value: %q", &logs)
+			// A typed option names its value; a positional argument is not repeated.
+			if marked := strings.Contains(strings.Join(tc.args, " "), "PRIVATE_MARKER"); marked && strings.Contains(logs.String(), "PRIVATE_MARKER") != (tc.option != "arguments") {
+				t.Fatalf("diagnostic value: %q", &logs)
 			}
 		})
 	}

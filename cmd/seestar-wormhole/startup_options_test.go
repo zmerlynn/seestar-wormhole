@@ -29,9 +29,10 @@ func TestAttackRuntimeOptions(t *testing.T) {
 				if err == nil {
 					t.Fatal("invalid runtime configuration accepted")
 				}
-				assertStartupOptionFailure(t, err, &out, &logs, tc.option, tc.rule, "12347", "13459")
-				// The value that failed is named, in the log and the error.
-				if !strings.Contains(logs.String(), `"value":"`+tc.value+`"`) || !strings.Contains(err.Error(), tc.value) {
+				assertStartupOptionFailure(t, err, &out, &logs, tc.option, tc.rule)
+				// The value that failed is named, in the log and the error, with
+				// the OS error's text.
+				if !strings.Contains(logs.String(), `"value":"`+tc.value+`"`) || !strings.Contains(err.Error(), tc.value) || !strings.Contains(logs.String(), `"error":"`) {
 					t.Errorf("value not named: err=%v log=%s", err, &logs)
 				}
 			}
@@ -89,7 +90,7 @@ func assertStartupOptionFailure(t *testing.T, err error, out, logs *bytes.Buffer
 	}
 	for key := range record {
 		switch key {
-		case "time", "level", "msg", "option", "value", "rule", "phase", "reason", "help", "cleanup_reason":
+		case "time", "level", "msg", "option", "value", "rule", "error", "phase", "reason", "help", "cleanup_reason":
 		default:
 			t.Errorf("configuration diagnostic carries incidental attribute %q", key)
 		}
