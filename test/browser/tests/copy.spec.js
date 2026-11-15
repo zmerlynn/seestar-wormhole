@@ -433,11 +433,13 @@ test('Preview shows what Start would copy by folder and copies nothing; Start di
   await expect(page.locator('#c-preview')).toBeHidden();
   await expect(page.locator('#c-pnote')).toHaveText('Nothing is copied until you start.');
   // The three buttons share one row, in order, and the hint is its own
-  // line under them.
+  // line under them. Start's thicker border makes it taller, so the row
+  // is compared at the buttons' middles.
   const row = [];
   for (const name of ['Start copying', 'Preview', 'Copy settings…']) row.push(await button(page, name).boundingBox());
+  const middle = (b) => b.y + b.height / 2;
   for (let i = 1; i < row.length; i++) {
-    expect(row[i].y).toBe(row[0].y);
+    expect(middle(row[i])).toBeCloseTo(middle(row[0]), 0);
     expect(row[i].x).toBeGreaterThan(row[i - 1].x + row[i - 1].width);
   }
   const note = await page.locator('#c-pnote').boundingBox();
