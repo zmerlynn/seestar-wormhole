@@ -21,7 +21,7 @@ func checkUnix(f *os.File, directory bool) error {
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || stat.Uid != uint32(os.Geteuid()) || info.IsDir() != directory || (!directory && !info.Mode().IsRegular()) || info.Mode().Perm() != mode {
-		return errors.New("private file: unsafe permissions or type")
+		return &os.PathError{Op: "open", Path: f.Name(), Err: errors.New("private file: unsafe permissions or type")}
 	}
 	return nil
 }

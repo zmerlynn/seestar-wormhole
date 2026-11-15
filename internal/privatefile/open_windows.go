@@ -168,9 +168,15 @@ func Open(path string, flags int) (*os.File, error) {
 
 	if err := Check(h, false); err != nil {
 		windows.CloseHandle(h)
-		return nil, err
+		return nil, refused(path, err)
 	}
 	return os.NewFile(uintptr(h), path), nil
+}
+
+// refused names the path whose handle Check refused, as os.OpenFile names
+// the path of a failed open.
+func refused(path string, err error) error {
+	return &os.PathError{Op: "open", Path: path, Err: err}
 }
 
 // Directory creates or pins the private state directory without sharing delete
@@ -212,7 +218,7 @@ func directory(path string, exclusive bool) (*os.File, error) {
 
 	if err := Check(h, true); err != nil {
 		windows.CloseHandle(h)
-		return nil, err
+		return nil, refused(path, err)
 	}
 	return os.NewFile(uintptr(h), path), nil
 }

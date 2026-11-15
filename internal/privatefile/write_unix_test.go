@@ -51,3 +51,17 @@ func TestWriteFileRestrictiveUmask(t *testing.T) {
 		}
 	}
 }
+
+// A refusal names the path, as a failed open does.
+func TestRefusalNamesThePath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(path, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if f, err := Directory(path); err == nil {
+		f.Close()
+		t.Fatal("a file accepted as a directory")
+	} else if want := "open " + path + ": private file: unsafe permissions or type"; err.Error() != want {
+		t.Fatalf("refusal = %v; want %q", err, want)
+	}
+}
