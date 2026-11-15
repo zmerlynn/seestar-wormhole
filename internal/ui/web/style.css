@@ -719,3 +719,21 @@ dialog {
 #events li[data-warn=true] {
   color:var(--busy)
 }
+/* The header names the window's profile after the title, muted, once
+   there is more than one. */
+#profile-name {
+  font-weight:400
+}
+/* The Profiles dialog's rows: a button per profile. */
+ul.profiles {
+  list-style:none;
+  padding:0;
+  margin:.5rem 0
+}
+ul.profiles button {
+  display:block;
+  width:100%;
+  text-align:left;
+  margin:.3rem 0;
+  overflow-wrap:anywhere
+}

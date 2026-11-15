@@ -15,6 +15,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"testing/fstest"
 	"testing/synctest"
@@ -599,4 +600,83 @@ func TestSyncStopEndsSession(t *testing.T) {
 			t.Errorf("state records after a stop: %v", got)
 		}
 	})
+}
+
+// A profile's endpoint with a check is checked when it is filled and
+// again before every pass's connect: a pass while it refuses fails
+// without dialing and logs why, and the next pass connects once it
+// passes.
+func TestSyncChecksTheProfileEndpointEachPass(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		t0 := time.Now()
+		dest, stateDir := t.TempDir(), t.TempDir()
+		dev := newDevice()
+		dev.set("MyWorks/a.fit", "abc", t0.Add(-time.Hour))
+		dev.use(t)
+		var owned atomic.Bool
+		owned.Store(true)
+		var checks atomic.Int32
+		useProfile(t, Saved{Dest: dest, HistoryDir: stateDir, Endpoint: "127.0.0.2:1445", Interval: time.Minute,
+			CheckEndpoint: func(context.Context) error {
+				checks.Add(1)
+				if !owned.Load() {
+					return errors.New("the Garden window serves this computer's Telescope Network ports for another telescope")
+				}
+				return nil
+			}})
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		logs := &testlog.Buffer{}
+		code := make(chan int, 1)
+		go func() { code <- run(ctx, []string{"sync", "--profile", "Garden"}, io.Discard, logs) }()
+		synctest.Wait()
+		// The fill and the first pass's connect each check.
+		if got := logs.Take(); !strings.Contains(got, `msg="file copied" path=MyWorks/a.fit`) || checks.Load() != 2 {
+			t.Fatalf("first pass, %d checks: %s", checks.Load(), got)
+		}
+		owned.Store(false)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got := logs.Take(); !strings.Contains(got, `msg="pass failed"`) || !strings.Contains(got, "for another telescope") || strings.Contains(got, "listing the share") {
+			t.Fatalf("second pass: %s", got)
+		}
+		if dials, _ := dev.counts(); dials != 1 {
+			t.Errorf("%d dials, want the first pass's only", dials)
+		}
+		owned.Store(true)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if got := logs.Take(); !strings.Contains(got, `msg="pass done"`) || strings.Contains(got, "pass failed") {
+			t.Fatalf("third pass: %s", got)
+		}
+		if dials, _ := dev.counts(); dials != 2 {
+			t.Errorf("%d dials, want the third pass's too", dials)
+		}
+		cancel()
+		if c := <-code; c != exitOK {
+			t.Errorf("exit %d after a stop, want 0", c)
+		}
+	})
+}
+
+// A refused check stops a command that would fill the endpoint, exit 2,
+// and a given --endpoint is never checked.
+func TestProfileEndpointCheckRefusal(t *testing.T) {
+	var checks atomic.Int32
+	useProfile(t, Saved{Dest: t.TempDir(), HistoryDir: t.TempDir(), Endpoint: "127.0.0.2:1445",
+		CheckEndpoint: func(context.Context) error {
+			checks.Add(1)
+			return errors.New("no profile's app window serves the saved endpoint")
+		}})
+	var stderr bytes.Buffer
+	if code := run(t.Context(), []string{"find", "--profile", "Garden"}, io.Discard, &stderr); code != exitUsage ||
+		!strings.Contains(stderr.String(), `option=--profile rule="no profile's app window serves the saved endpoint"`) || checks.Load() != 1 {
+		t.Errorf("exit %d, %d checks: %s", code, checks.Load(), stderr.String())
+	}
+	dev := newDevice()
+	dev.use(t)
+	stderr.Reset()
+	if code := run(t.Context(), []string{"find", "--profile", "Garden", "--endpoint", "192.0.2.7:445"}, io.Discard, &stderr); code != exitOK || checks.Load() != 1 {
+		t.Errorf("a given --endpoint: exit %d, %d checks: %s", code, checks.Load(), stderr.String())
+	}
 }

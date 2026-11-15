@@ -6,13 +6,17 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/spf13/cobra"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/cli"
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
@@ -22,9 +26,9 @@ import (
 
 // useProfileRoot makes root the default profile's folder for the test.
 func useProfileRoot(t *testing.T, root string, err error) {
-	old := defaultProfileRoot
-	t.Cleanup(func() { defaultProfileRoot = old })
-	defaultProfileRoot = func() (string, error) { return root, err }
+	old := profileRoot
+	t.Cleanup(func() { profileRoot = old })
+	profileRoot = func() (string, error) { return root, err }
 }
 
 // writeSavedCopy writes copy.json as the app creates it.
@@ -89,12 +93,18 @@ func TestDefaultProfileLoad(t *testing.T) {
 	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
 	before := profileFiles(t, root)
-	got, err := loadDefaultProfile()
+	got, err := loadProfile("default")
 	want := cli.Saved{
 		Dest: "/synthetic/Seestar", HistoryDir: history, Endpoint: "127.0.0.2:1445",
 		Excludes: []string{"copy-exclude"}, Includes: []string{"copy-include"}, NoDefaultExcludes: true,
 		Interval: 9 * time.Minute, Once: true, Workers: 3,
 	}
+	// The saved endpoint is through the account, so it comes with its
+	// check.
+	if got.CheckEndpoint == nil {
+		t.Error("no check of the account route's endpoint")
+	}
+	got.CheckEndpoint = nil
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("= %+v, %v; want %+v", got, err, want)
 	}
@@ -107,25 +117,52 @@ func TestDefaultProfileLoad(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/Seestar"}`)
-	got, err = loadDefaultProfile()
+	got, err = loadProfile("default")
 	if err != nil || got.HistoryDir != "" || got.NoDefaultExcludes || got.Dest != "/synthetic/Seestar" || got.Workers != 4 || got.Interval != 5*time.Minute {
 		t.Errorf("a short copy.json = %+v, %v", got, err)
 	}
 
 	// Without a usable config.json, only the endpoint is left unfilled.
 	writeSavedConfig(t, root, []byte(`{"version":99}`))
-	if got, err = loadDefaultProfile(); err != nil || got.Endpoint != "" || got.Dest == "" {
+	if got, err = loadProfile("default"); err != nil || got.Endpoint != "" || got.Dest == "" {
 		t.Errorf("a refused config.json = %+v, %v", got, err)
 	}
 	if err := os.Remove(filepath.Join(root, "config.json")); err != nil {
 		t.Fatal(err)
 	}
-	if got, err = loadDefaultProfile(); err != nil || got.Endpoint != "" || got.Dest == "" {
+	if got, err = loadProfile("default"); err != nil || got.Endpoint != "" || got.Dest == "" {
 		t.Errorf("no config.json = %+v, %v", got, err)
 	}
 	code, record, _ := usageExit(t, "sync", "--profile", "default")
 	if code != 2 || record.Option != "--endpoint" || record.Rule != "required; give the SMB host:port" {
 		t.Errorf("sync without a saved endpoint: exit %d %+v", code, record)
+	}
+}
+
+// A named profile is read from its own folder under the root, matched
+// without regard to case, and the root's own files aren't its. A name
+// with no folder is exit 2 naming the profiles there are.
+func TestNamedProfileLoad(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/default"}`)
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	writeSavedCopy(t, ui.ProfileDir(root, "Garden"), `{"version":1,"folder":"/synthetic/Garden"}`)
+	useProfileRoot(t, root, nil)
+	for _, name := range []string{"Garden", "garden"} {
+		if got, err := loadProfile(name); err != nil || got.Dest != "/synthetic/Garden" || got.Endpoint != "" {
+			t.Errorf("%s = %+v, %v", name, got, err)
+		}
+	}
+	if got, err := loadProfile("default"); err != nil || got.Dest != "/synthetic/default" {
+		t.Errorf("default = %+v, %v", got, err)
+	}
+	for _, cmd := range copyCommandNames {
+		code, record, _ := usageExit(t, cmd, "--profile", "TEST0002")
+		if code != 2 || record.Option != "--profile" || record.Rule != "no profile named TEST0002; profiles: default, Garden" {
+			t.Errorf("%s: exit %d %+v", cmd, code, record)
+		}
 	}
 }
 
@@ -139,7 +176,7 @@ func TestDefaultProfileRefusals(t *testing.T) {
 		rootErr        error
 		rule           string
 	}{
-		{"no config folder", "", "", errors.New("no config folder"), "no per-user config folder for the default profile; give the flags"},
+		{"no config folder", "", "", errors.New("no config folder"), "no per-user config folder for the app's profiles; give the flags"},
 		{"no state folder", "", filepath.Join(t.TempDir(), "missing"), nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags"},
 		{"no copy.json", "", root, nil, "no saved Copy settings; save them on the app's Copy tab, or give the flags"},
 		{"another version", `{"version":2,"folder":"/synthetic/Seestar"}`, root, nil, "use a valid saved copy.json in the app's state folder"},
@@ -171,9 +208,9 @@ func TestDefaultProfileRefusals(t *testing.T) {
 func TestNoProfileReadsNothing(t *testing.T) {
 	root := savedConfigRoot(t)
 	writeSavedCopy(t, root, `{"version":2}`)
-	old := defaultProfileRoot
-	t.Cleanup(func() { defaultProfileRoot = old })
-	defaultProfileRoot = func() (string, error) { t.Error("read the default profile without --profile"); return root, nil }
+	old := profileRoot
+	t.Cleanup(func() { profileRoot = old })
+	profileRoot = func() (string, error) { t.Error("read the default profile without --profile"); return root, nil }
 	for name, args := range fileArgs(t) {
 		if o, err := parse(args, io.Discard); err != nil || o.file == nil {
 			t.Errorf("%s: %v", name, err)
@@ -188,7 +225,7 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 	body, _ := fullCopyJSON(t)
 	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
-	if got, err := loadDefaultProfile(); err != nil || got.LANSerial != "" {
+	if got, err := loadProfile("default"); err != nil || got.LANSerial != "" {
 		t.Errorf("the proxy route = %+v, %v", got, err)
 	}
 	s := ui.Settings{Version: 1, Bind: "127.0.0.2", Idle: "2m", Ports: []proxyrun.Port{{Local: 1445, Device: 445}},
@@ -198,7 +235,7 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSavedConfig(t, root, b)
-	got, err := loadDefaultProfile()
+	got, err := loadProfile("default")
 	if err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "SYNTHETIC_LAN_SERIAL" || got.LANScan != "" {
 		t.Errorf("this network = %+v, %v", got, err)
 	}
@@ -210,7 +247,7 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeSavedConfig(t, root, b)
-		if got, err = loadDefaultProfile(); err != nil || got.LANScan != scan {
+		if got, err = loadProfile("default"); err != nil || got.LANScan != scan {
 			t.Errorf("lan_scan %q = %+v, %v", scan, got, err)
 		}
 	}
@@ -220,17 +257,19 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSavedConfig(t, root, b)
-	if got, err = loadDefaultProfile(); err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "" {
+	if got, err = loadProfile("default"); err != nil || got.Endpoint != "192.0.2.7:445" || got.LANSerial != "" {
 		t.Errorf("no saved serial = %+v, %v", got, err)
 	}
 }
 
-// With a saved profile, a file command parses with no flag but --profile.
+// With a saved profile, a file command parses with no flag but --profile,
+// while the profile's window serves its saved endpoint.
 func TestDefaultProfileFillsFlags(t *testing.T) {
 	root := savedConfigRoot(t)
 	body, _ := fullCopyJSON(t)
 	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
+	fakeWindow(t, root, "127.0.0.2", "[1445]")
 	for _, cmd := range copyCommandNames {
 		if o, err := parse([]string{cmd, "--profile", "default"}, io.Discard); err != nil || o.file == nil {
 			t.Errorf("%s --profile default: %v", cmd, err)
@@ -269,7 +308,7 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 			t.Fatal(err)
 		}
 		writeSavedConfig(t, root, b)
-		if got, err := loadDefaultProfile(); err != nil || got.Dest != tc.dest || got.NoFolder != tc.noFolder {
+		if got, err := loadProfile("default"); err != nil || got.Dest != tc.dest || got.NoFolder != tc.noFolder {
 			t.Errorf("%s = %+v, %v", tc.name, got, err)
 		}
 	}
@@ -304,7 +343,7 @@ func TestDefaultProfileTelescopeFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/A"}`)
-	if got, err := loadDefaultProfile(); err != nil || got.Dest != "/synthetic/A" || got.NoFolder {
+	if got, err := loadProfile("default"); err != nil || got.Dest != "/synthetic/A" || got.NoFolder {
 		t.Errorf("an older copy.json = %+v, %v", got, err)
 	}
 }
@@ -317,7 +356,7 @@ func TestDefaultProfileFallbacks(t *testing.T) {
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/Seestar","files_at_once":57}`)
 	useProfileRoot(t, root, nil)
 	before := profileFiles(t, root)
-	got, err := loadDefaultProfile()
+	got, err := loadProfile("default")
 	want := []diagnostic.Fallback{
 		{File: "copy.json", Setting: "files_at_once", Fallback: "4", Value: "57"},
 		{File: "config.json", Setting: "serial", Fallback: "none", Value: "INVALID serial"},
@@ -379,4 +418,171 @@ func TestProfileFallbackWarningsOnceOnRunFailure(t *testing.T) {
 		t.Fatalf("expected a run failure, got %v", err)
 	}
 	checkProfileWarnings(t, err, &logs)
+}
+
+// ui --profile runs the app on that profile's folder, found as the file
+// commands find it; an unknown name, or --state-dir too, is exit 2.
+func TestUIProfileFlag(t *testing.T) {
+	saved := registerUICommand
+	t.Cleanup(func() { registerUICommand = saved })
+	registerUICommand = func(root *cobra.Command, o *options) { root.AddCommand(newUICommand(o)) }
+	root := savedConfigRoot(t)
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	useProfileRoot(t, root, nil)
+	for _, name := range []string{"Garden", "GARDEN"} {
+		o, err := parse([]string{"ui", "--profile", name}, io.Discard)
+		if err != nil || o.command != commandUI || o.stateDir != ui.ProfileDir(root, "Garden") || o.profile != "Garden" {
+			t.Errorf("%s: %+v, %v", name, o, err)
+		}
+	}
+	if o, err := parse([]string{"ui", "--profile", "default"}, io.Discard); err != nil || o.stateDir != root || o.profile != "default" {
+		t.Errorf("default: %q %q, %v", o.stateDir, o.profile, err)
+	}
+	if o, err := parse([]string{"ui"}, io.Discard); err != nil || o.stateDir != "" || o.profile != "" {
+		t.Errorf("no flag: %q %q, %v", o.stateDir, o.profile, err)
+	}
+	for _, tc := range []struct {
+		args []string
+		rule string
+	}{
+		{[]string{"ui", "--profile", "TEST0002"}, "no profile named TEST0002; profiles: default, Garden"},
+		{[]string{"ui", "--profile", "Garden", "--state-dir", root}, "give --profile or --state-dir, not both"},
+		{[]string{"ui", "--state-dir", root, "--profile", "default"}, "give --profile or --state-dir, not both"},
+	} {
+		code, record, _ := usageExit(t, tc.args...)
+		if code != 2 || record.Msg != "ui failed" || record.Option != "--profile" || record.Rule != tc.rule {
+			t.Errorf("%q: exit %d %+v", tc.args, code, record)
+		}
+	}
+}
+
+// A profile's saved account-route endpoint is this computer's port, and
+// the copier checks no serial there: --profile fills it only while the
+// window serving it at the saved bind address is the profile's own, or
+// another profile's whose run reached the telescope it saved. Any other
+// holder, none, one still starting or one that can't be asked is refused;
+// a given --endpoint is not checked.
+func TestProfileEndpointOwnership(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/default"}`)
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	garden := ui.ProfileDir(root, "Garden")
+	b, err := os.ReadFile(filepath.Join(root, "config.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeSavedConfig(t, garden, b)
+	writeSavedCopy(t, garden, `{"version":1,"folder":"/synthetic/Garden"}`)
+	useProfileRoot(t, root, nil)
+	check := func(name string) error {
+		t.Helper()
+		got, err := loadProfile(name)
+		if err != nil || got.CheckEndpoint == nil || got.Endpoint != "127.0.0.2:1445" {
+			t.Fatalf("%s: %+v, %v", name, got, err)
+		}
+		return got.CheckEndpoint(t.Context())
+	}
+	const unknown = "no profile's app window serves the saved endpoint"
+	if err := check("Garden"); err == nil || !strings.HasPrefix(err.Error(), unknown) {
+		t.Errorf("no window open: %v", err)
+	}
+	code, record, _ := usageExit(t, "find", "--profile", "Garden")
+	if code != 2 || record.Option != "--profile" || !strings.HasPrefix(record.Rule, unknown) ||
+		!strings.HasSuffix(record.Rule, "give --endpoint to copy through another proxy deliberately") {
+		t.Errorf("find: exit %d %+v", code, record)
+	}
+	if o, err := parse([]string{"find", "--profile", "Garden", "--endpoint", "192.0.2.7:445"}, io.Discard); err != nil || o.file == nil {
+		t.Errorf("a given --endpoint: %v", err)
+	}
+
+	var fields atomic.Pointer[string]
+	set := func(s string) { fields.Store(&s) }
+	set(`"serving_address":"","serving_ports":[]`)
+	fakeWindowFunc(t, root, func() string { return *fields.Load() })
+	for _, tc := range []struct {
+		name, fields, want string
+	}{
+		{"Default serves nothing", `"serving_address":"","serving_ports":[]`, unknown},
+		{"Default serves another address", `"serving_address":"127.0.0.1","serving_ports":[1445]`, unknown},
+		{"Default still starting", `"serving_address":"127.0.0.2","serving_ports":[1445],"serving_serial":""`,
+			"the Default window serves this computer's Telescope Network ports but hasn't reached its telescope yet"},
+		{"Default reached another telescope", `"serving_address":"127.0.0.2","serving_ports":[1445],"serving_serial":"OTHER_SERIAL"`,
+			"the Default window serves this computer's Telescope Network ports for another telescope than this profile saved"},
+		{"Default reached the saved telescope", `"serving_address":"::ffff:127.0.0.2","serving_ports":[1445],"serving_serial":"SYNTHETIC_SERIAL"`, ""},
+	} {
+		set(tc.fields)
+		if err := check("Garden"); tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.HasPrefix(err.Error(), tc.want)) {
+			t.Errorf("%s: %v", tc.name, err)
+		}
+	}
+	set(`"serving_address":"127.0.0.2","serving_ports":[1445],"serving_serial":""`)
+	if err := check("default"); err != nil {
+		t.Errorf("default's own window, starting: %v", err)
+	}
+
+	// A window recorded that doesn't answer can't be asked.
+	set(`"serving_address":"","serving_ports":[]`)
+	gone, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone.Close()
+	f, err := privatefile.Open(filepath.Join(garden, "ui-runtime.json"), os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = io.WriteString(f, `{"port":`+strconv.Itoa(gone.Addr().(*net.TCPAddr).Port)+`,"token":"`+syntheticToken+`"}`)
+	if err = errors.Join(err, f.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if err := check("Garden"); err == nil || !strings.HasPrefix(err.Error(), "which app window serves the saved endpoint couldn't be checked: couldn't ask the Garden window: ") {
+		t.Errorf("Garden can't be asked: %v", err)
+	}
+	if err := os.Remove(filepath.Join(garden, "ui-runtime.json")); err != nil {
+		t.Fatal(err)
+	}
+	fakeWindow(t, garden, "127.0.0.2", "[1445]")
+	if err := check("Garden"); err != nil {
+		t.Errorf("Garden's own window: %v", err)
+	}
+	if o, err := parse([]string{"find", "--profile", "Garden"}, io.Discard); err != nil || o.file == nil {
+		t.Errorf("find from Garden's own window: %v", err)
+	}
+}
+
+// With Default alone, a profile's account-route endpoint is filled as it
+// always was, whatever holds the port, as for a headless proxy's: the
+// check passes without asking any window. Once a named profile exists the
+// same check, asked again as every pass asks it, refuses a holder no
+// window owns.
+func TestProfileEndpointDefaultAlone(t *testing.T) {
+	root := savedConfigRoot(t)
+	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/default"}`)
+	useProfileRoot(t, root, nil)
+	got, err := loadProfile("default")
+	if err != nil || got.CheckEndpoint == nil || got.Endpoint != "127.0.0.2:1445" {
+		t.Fatalf("%+v, %v", got, err)
+	}
+	if err := got.CheckEndpoint(t.Context()); err != nil {
+		t.Errorf("Default alone: %v", err)
+	}
+	if o, err := parse([]string{"find", "--profile", "default"}, io.Discard); err != nil || o.file == nil {
+		t.Errorf("find with Default alone: %v", err)
+	}
+
+	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	const unknown = "no profile's app window serves the saved endpoint"
+	if err := got.CheckEndpoint(t.Context()); err == nil || !strings.HasPrefix(err.Error(), unknown) {
+		t.Errorf("the next pass, with Garden: %v", err)
+	}
+	code, record, _ := usageExit(t, "find", "--profile", "default")
+	if code != 2 || record.Option != "--profile" || !strings.HasPrefix(record.Rule, unknown) {
+		t.Errorf("find with Garden: exit %d %+v", code, record)
+	}
 }

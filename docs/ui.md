@@ -452,8 +452,66 @@ time. Closing the window does the same and waits for the release. Logging out or
 connection first, as far as your system allows.
 
 Opening seestar-wormhole again with the same state directory brings the
-existing window forward. If `seestar-wormhole-cli proxy` is already using the
+existing window forward; with more than one profile, see
+[Profiles](#profiles-two-telescopes-at-once). If `seestar-wormhole-cli proxy` is already using the
 same ports, stop it first.
+
+## Profiles: two telescopes at once
+
+A profile is its own window with its own telescope, connection and copy
+folder. Use one for each telescope to copy from several at once. The
+window you have always used is **Default**; each profile you add keeps its
+own settings, log and Activity.
+
+Open **Profiles…** at the bottom of the window, beside **Quit**, or
+**Open Profile…** in the menu beside **About**. The dialog lists Default
+and every profile you made, such as **Default — this window**,
+**Garden — open** and **Backyard**. Choose an open one to bring its window
+forward, or a closed one to open it. **New profile…** asks only for a name,
+such as `Backyard S30`, and **Create and open** opens the new profile's
+window on the Connection tab, where you choose its telescope as you did
+the first time. **Cancel** or Escape closes the dialog.
+
+Once a profile other than Default exists, the header shows the profile's
+name after the title, `seestar‑wormhole · Garden`, and the window's title
+names it too, as `seestar-wormhole — Garden` or `seestar-wormhole — Default`.
+On Windows and Linux, opening seestar-wormhole again while it is open then
+shows the Profiles dialog over the open window, with **Show this window**
+to just bring it forward; with Default alone, it brings the window forward
+as before. On macOS, opening it again or clicking its Dock icon always
+just shows the window.
+
+To open a profile directly, run `seestar-wormhole ui --profile Garden`; see
+[`ui`](reference/connection-cli.md#ui).
+
+### Sharing this computer's ports
+
+The first profile to Connect through Telescope Network serves the Seestar
+app. A telescope reached On this network uses no ports, so use that route
+for any telescope on your network and there's nothing to share.
+
+A second profile that connects through Telescope Network while another
+profile's window serves the ports runs **for copying only**. Its header
+reads, for example, **Connected to Seestar S50 TEST0002 through Telescope
+Network, for copying only**, with the dot still green, and the Connection
+tab says which window serves the Seestar app and how to switch: Stop the
+connection in that window, then Stop and Connect here. Copy, Browse and
+Free up space work as usual. **Using the Seestar app**, the SMB port note
+and **Ports forwarded to your Seestar** are hidden, since those ports
+belong to the other window's telescope. Copying only applies only when
+another seestar-wormhole window holds the ports, and to all of them: a
+port another program holds, or `seestar-wormhole-cli proxy`, still stops
+the connection with the port error.
+
+The same telescope in two profiles connects in only one of them through
+Telescope Network: the telescope allows one remote session, so the second
+window says the telescope is occupied and retries. Two profiles that copy
+into the same folder share its copy history, so the second says **Another
+copy or delete is using this folder.**, as for any other copy there.
+
+To remove a profile, quit its window and delete its folder,
+`<state>/profiles/<name>`; see
+[where settings live](reference/app-settings.md#where-settings-live).
 
 ## Telescope selection
 

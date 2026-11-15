@@ -14,14 +14,14 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
 )
 
-// testProfile is the program's --profile default reader in these tests:
+// testProfile is the program's --profile reader in these tests:
 // nil, as for a program without one, unless a test sets it.
 var testProfile LoadProfile
 
-// useProfile makes --profile default read s for the rest of the test.
+// useProfile makes --profile read s for the rest of the test.
 func useProfile(t *testing.T, s Saved) {
 	t.Cleanup(func() { testProfile = nil })
-	testProfile = func() (Saved, error) { return s, nil }
+	testProfile = func(string) (Saved, error) { return s, nil }
 }
 
 // fullSaved sets every member.
@@ -226,20 +226,24 @@ func TestProfileRecord(t *testing.T) {
 	}
 }
 
-// Another name is refused before anything is read; a reader's refusal is
-// the command's; a program without a reader refuses --profile.
+// The reader gets the name as given; a reader's refusal is the command's;
+// a program without a reader refuses --profile.
 func TestProfileRefusals(t *testing.T) {
 	t.Cleanup(func() { testProfile = nil })
-	testProfile = func() (Saved, error) { t.Error("read a profile for another name"); return Saved{}, nil }
 	for _, cmd := range []string{"sync", "find", "browse", "delete"} {
-		for _, name := range []string{"scope2", "", "Default"} {
+		for _, name := range []string{"Garden", "default"} {
+			var read []string
+			testProfile = func(name string) (Saved, error) {
+				read = append(read, name)
+				return Saved{}, &diagnostic.OptionError{Option: "--profile", Rule: "no profile named " + name}
+			}
 			code, stdout, stderr := invoke(t, cmd, "--profile", name)
-			if code != exitUsage || stdout != "" || !strings.Contains(stderr, `option=--profile rule="only default exists in this version"`) {
-				t.Errorf("%s --profile %q: exit %d:\n%s", cmd, name, code, stderr)
+			if code != exitUsage || stdout != "" || !slices.Equal(read, []string{name}) || !strings.Contains(stderr, `option=--profile rule="no profile named `+name+`"`) {
+				t.Errorf("%s --profile %q: exit %d, read %q:\n%s", cmd, name, code, read, stderr)
 			}
 		}
 	}
-	testProfile = func() (Saved, error) {
+	testProfile = func(string) (Saved, error) {
 		return Saved{}, &diagnostic.OptionError{Option: "--profile", Rule: "synthetic refusal"}
 	}
 	if code, _, stderr := invoke(t, "find", "--profile", "default"); code != exitUsage || !strings.Contains(stderr, `option=--profile rule="synthetic refusal"`) {
@@ -254,7 +258,7 @@ func TestProfileRefusals(t *testing.T) {
 // Without --profile nothing is read, and a saved endpoint fills nothing.
 func TestProfileNotRead(t *testing.T) {
 	t.Cleanup(func() { testProfile = nil })
-	testProfile = func() (Saved, error) { t.Error("read a profile without --profile"); return fullSaved(), nil }
+	testProfile = func(string) (Saved, error) { t.Error("read a profile without --profile"); return fullSaved(), nil }
 	for _, cmd := range []string{"sync", "find", "browse", "delete"} {
 		if code, _, stderr := invoke(t, cmd); code != exitUsage || !strings.Contains(stderr, "option=--endpoint") {
 			t.Errorf("%s: exit %d:\n%s", cmd, code, stderr)
@@ -271,7 +275,7 @@ func TestProfileNotRead(t *testing.T) {
 // fill --dest, unless --dest is given; delete with --ignore-state takes
 // no folder and runs, as does browse, which lists without statuses.
 func TestProfileNoFolder(t *testing.T) {
-	load := func() (Saved, error) { return Saved{NoFolder: true, Endpoint: "h:1"}, nil }
+	load := func(string) (Saved, error) { return Saved{NoFolder: true, Endpoint: "h:1"}, nil }
 	for _, tc := range []struct {
 		args     []string
 		statuses bool
@@ -293,7 +297,7 @@ func TestProfileNoFolder(t *testing.T) {
 		if err := flags.Parse(tc.args); err != nil {
 			t.Fatal(err)
 		}
-		err := p.fill(flags, load, func(Saved, func(string) bool) []string { return nil })
+		err := p.fill(t.Context(), flags, load, func(Saved, func(string) bool) []string { return nil })
 		var oe *diagnostic.OptionError
 		if got := errors.As(err, &oe); got != tc.fail || got && (oe.Option != "--profile" || oe.Rule != errNoFolder) {
 			t.Errorf("%q: %v", tc.args, err)

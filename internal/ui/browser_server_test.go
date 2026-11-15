@@ -3,6 +3,7 @@ package ui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/signal"
 	"testing"
@@ -32,6 +33,9 @@ func TestBrowserServer(t *testing.T) {
 		return ctx.Err()
 	}
 	noBrowser := func(string) error { return errors.New("no browser") }
+	// The page runs as Default; a profile it opens is only printed.
+	ctx = WithProfile(ctx, root, DefaultProfile)
+	startProfile = func(name string) error { fmt.Fprintln(os.Stdout, "open profile", name); return nil }
 	if err := runUIPresented(ctx, root, os.Stdout, os.Stderr, run, noBrowser, &fakeKeychain{}, nil, nil); err != nil {
 		t.Fatal(err)
 	}

@@ -42,8 +42,19 @@ var registerUICommand = addUICommand
 // newUICommand is the GUI executable's ui command. It is defined in every
 // build so that console-build tests can exercise the GUI command path.
 func newUICommand(o *options) *cobra.Command {
-	command := &cobra.Command{Use: "ui", Short: "Open local controls in a native window", Args: noArguments, RunE: func(*cobra.Command, []string) error { return nil }}
+	command := &cobra.Command{Use: "ui", Short: "Open local controls in a native window", Args: noArguments, RunE: func(cmd *cobra.Command, _ []string) error {
+		if !cmd.Flags().Changed("profile") {
+			return nil
+		}
+		if cmd.Flags().Changed("state-dir") {
+			return &argumentError{Option: "--profile", Rule: "give --profile or --state-dir, not both"}
+		}
+		var err error
+		o.stateDir, o.profile, err = profileDir(o.profile)
+		return err
+	}}
 	command.Flags().StringVar(&o.stateDir, "state-dir", "", "private UI settings and shared installation identity directory")
+	command.Flags().StringVar(&o.profile, "profile", "", "open the app on this profile's settings, such as Garden (default: default); not with --state-dir")
 	return command
 }
 

@@ -74,7 +74,7 @@ usage error.`,
 			"  " + program + " find --endpoint 127.0.0.1:4445 --dest ~/Seestar --format jsonl",
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+			if err := o.profile.fill(cmd.Context(), cmd.Flags(), load, o.fillSaved); err != nil {
 				return err
 			}
 			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {

@@ -84,7 +84,7 @@ func openRead(path string, directory bool) (*os.File, error) {
 	}
 	if err := Check(h, directory); err != nil {
 		windows.CloseHandle(h)
-		return nil, err
+		return nil, refused(path, err)
 	}
 	return os.NewFile(uintptr(h), path), nil
 }

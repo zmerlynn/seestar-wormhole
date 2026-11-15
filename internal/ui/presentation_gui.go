@@ -104,11 +104,26 @@ func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, 
 		}
 		app = application.New(appOptions)
 		menu := application.DefaultApplicationMenu()
-		configureProjectMenu(menu, app.Menu.ShowAbout, app.Browser.OpenURL)
+		title := titleOf(ctx)
+		var window *application.WebviewWindow
+		var openProfiles func()
+		if title != nil && title.profiles {
+			openProfiles = func() { window.ExecJS("typeof openProfiles === 'function' && openProfiles(false)") }
+		}
+		configureProjectMenu(menu, app.Menu.ShowAbout, app.Browser.OpenURL, openProfiles)
 		app.Menu.Set(menu)
-		options.Title, options.Width, options.Height, options.URL = "seestar-wormhole", 760, 700, url
+		options.Title, options.Width, options.Height, options.URL = titleFor(""), 760, 700, url
+		if title != nil {
+			options.Title = title.attach(nil)
+		}
 		options.Linux.Icon = icon.PNG
-		window := app.Window.NewWithOptions(options)
+		window = app.Window.NewWithOptions(options)
+		// A title changed while the window was made is set now.
+		if title != nil {
+			if text := title.attach(func(text string) { window.SetTitle(text) }); text != options.Title {
+				window.SetTitle(text)
+			}
+		}
 		if configure != nil {
 			configure(app, window)
 		}

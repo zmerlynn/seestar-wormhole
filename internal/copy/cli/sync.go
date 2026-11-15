@@ -84,7 +84,7 @@ failure or a --once or --dry-run pass with failed files, 2 on a usage error.`,
 			"  " + program + " sync --profile default",
 		Args: noArguments,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := o.profile.fill(cmd.Flags(), load, o.fillSaved); err != nil {
+			if err := o.profile.fill(cmd.Context(), cmd.Flags(), load, o.fillSaved); err != nil {
 				return err
 			}
 			if err := o.scan.apply(cmd.Flags(), o.follow); err != nil {

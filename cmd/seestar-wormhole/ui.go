@@ -26,6 +26,18 @@ var reportUIError = func(error) {}
 
 func runUICommand(ctx context.Context, o options, out, logs io.Writer) error {
 	root, err := ui.StateRoot(o.stateDir)
+	// The app is of a profile, and finds the others, unless --state-dir
+	// gave it a folder of its own.
+	switch {
+	case err != nil:
+	case o.profile != "":
+		var profiles string
+		if profiles, err = profileRoot(); err == nil {
+			ctx = ui.WithProfile(ctx, profiles, o.profile)
+		}
+	case o.stateDir == "":
+		ctx = ui.WithProfile(ctx, root, ui.DefaultProfile)
+	}
 	if err == nil {
 		err = ui.Run(ctx, root, out, logs, newUIRunner(root, logs, func(ctx context.Context, cfg proxy.Config, credentials cloud.Credentials) (commandSession, error) {
 			return proxy.NewWithCredentials(ctx, cfg, credentials)
@@ -51,7 +63,8 @@ func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(conte
 		if err != nil {
 			return err
 		}
-		runOptions := options{command: commandUI, bind: s.Bind, lanDiscovery: s.Discovery, uiStatus: status, uiAttach: attach, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater}
+		runOptions := options{command: commandUI, bind: s.Bind, lanDiscovery: s.Discovery, uiStatus: status, uiAttach: attach, idle: idle, serial: s.Serial, model: s.Model, stateDir: root, format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater,
+			uiHolder: func(port uint16) (proxy.Holder, bool) { return ui.PortHolder(ctx, s.Bind, port) }}
 		runOptions.ports = append(mappings(nil), s.Ports...)
 		if err := validateOptions(&runOptions); err != nil {
 			return err
