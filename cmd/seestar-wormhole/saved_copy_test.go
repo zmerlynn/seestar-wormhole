@@ -6,10 +6,13 @@ import (
 	"errors"
 	"io"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -96,6 +99,12 @@ func TestDefaultProfileLoad(t *testing.T) {
 		Excludes: []string{"copy-exclude"}, Includes: []string{"copy-include"}, NoDefaultExcludes: true,
 		Interval: 9 * time.Minute, Once: true, Workers: 3,
 	}
+	// The saved endpoint is through the account, so it comes with its
+	// check.
+	if got.CheckEndpoint == nil {
+		t.Error("no check of the account route's endpoint")
+	}
+	got.CheckEndpoint = nil
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("= %+v, %v; want %+v", got, err, want)
 	}
@@ -253,12 +262,14 @@ func TestDefaultProfileLANSerial(t *testing.T) {
 	}
 }
 
-// With a saved profile, a file command parses with no flag but --profile.
+// With a saved profile, a file command parses with no flag but --profile,
+// while the profile's window serves its saved endpoint.
 func TestDefaultProfileFillsFlags(t *testing.T) {
 	root := savedConfigRoot(t)
 	body, _ := fullCopyJSON(t)
 	writeSavedCopy(t, root, body)
 	useProfileRoot(t, root, nil)
+	fakeWindow(t, root, "127.0.0.2", "[1445]")
 	for _, cmd := range copyCommandNames {
 		if o, err := parse([]string{cmd, "--profile", "default"}, io.Discard); err != nil || o.file == nil {
 			t.Errorf("%s --profile default: %v", cmd, err)
@@ -447,11 +458,13 @@ func TestUIProfileFlag(t *testing.T) {
 	}
 }
 
-// A profile's saved account-route endpoint is this computer's port: while
-// another profile's window serves it, filling it would reach that
-// window's telescope, so it is refused. A given --endpoint, the serving
-// profile itself and a port no window serves are not.
-func TestProfileEndpointOfAnotherWindow(t *testing.T) {
+// A profile's saved account-route endpoint is this computer's port, and
+// the copier checks no serial there: --profile fills it only while the
+// window serving it at the saved bind address is the profile's own, or
+// another profile's whose run reached the telescope it saved. Any other
+// holder, none, one still starting or one that can't be asked is refused;
+// a given --endpoint is not checked.
+func TestProfileEndpointOwnership(t *testing.T) {
 	root := savedConfigRoot(t)
 	writeSavedCopy(t, root, `{"version":1,"folder":"/synthetic/default"}`)
 	if _, err := ui.CreateProfile(root, "Garden"); err != nil {
@@ -465,21 +478,78 @@ func TestProfileEndpointOfAnotherWindow(t *testing.T) {
 	writeSavedConfig(t, garden, b)
 	writeSavedCopy(t, garden, `{"version":1,"folder":"/synthetic/Garden"}`)
 	useProfileRoot(t, root, nil)
-	if got, err := loadProfile("Garden"); err != nil || got.EndpointHolder != "" || got.Endpoint != "127.0.0.2:1445" {
-		t.Errorf("no window open: %+v, %v", got, err)
+	check := func(name string) error {
+		t.Helper()
+		got, err := loadProfile(name)
+		if err != nil || got.CheckEndpoint == nil || got.Endpoint != "127.0.0.2:1445" {
+			t.Fatalf("%s: %+v, %v", name, got, err)
+		}
+		return got.CheckEndpoint(t.Context())
 	}
-	fakeWindow(t, root, "127.0.0.2", "[1445]")
-	if got, err := loadProfile("Garden"); err != nil || got.EndpointHolder != "Default" {
-		t.Errorf("Default serving: %+v, %v", got, err)
-	}
-	if got, err := loadProfile("default"); err != nil || got.EndpointHolder != "" {
-		t.Errorf("default itself: %+v, %v", got, err)
+	const unknown = "no profile's app window serves the saved endpoint"
+	if err := check("Garden"); err == nil || !strings.HasPrefix(err.Error(), unknown) {
+		t.Errorf("no window open: %v", err)
 	}
 	code, record, _ := usageExit(t, "find", "--profile", "Garden")
-	if code != 2 || record.Option != "--profile" || !strings.HasPrefix(record.Rule, "the Default window serves this computer's Telescope Network ports") {
+	if code != 2 || record.Option != "--profile" || !strings.HasPrefix(record.Rule, unknown) ||
+		!strings.HasSuffix(record.Rule, "give --endpoint to copy through another proxy deliberately") {
 		t.Errorf("find: exit %d %+v", code, record)
 	}
 	if o, err := parse([]string{"find", "--profile", "Garden", "--endpoint", "192.0.2.7:445"}, io.Discard); err != nil || o.file == nil {
 		t.Errorf("a given --endpoint: %v", err)
+	}
+
+	var fields atomic.Pointer[string]
+	set := func(s string) { fields.Store(&s) }
+	set(`"serving_address":"","serving_ports":[]`)
+	fakeWindowFunc(t, root, func() string { return *fields.Load() })
+	for _, tc := range []struct {
+		name, fields, want string
+	}{
+		{"Default serves nothing", `"serving_address":"","serving_ports":[]`, unknown},
+		{"Default serves another address", `"serving_address":"127.0.0.1","serving_ports":[1445]`, unknown},
+		{"Default still starting", `"serving_address":"127.0.0.2","serving_ports":[1445],"serving_serial":""`,
+			"the Default window serves this computer's Telescope Network ports but hasn't reached its telescope yet"},
+		{"Default reached another telescope", `"serving_address":"127.0.0.2","serving_ports":[1445],"serving_serial":"OTHER_SERIAL"`,
+			"the Default window serves this computer's Telescope Network ports for another telescope than this profile saved"},
+		{"Default reached the saved telescope", `"serving_address":"::ffff:127.0.0.2","serving_ports":[1445],"serving_serial":"SYNTHETIC_SERIAL"`, ""},
+	} {
+		set(tc.fields)
+		if err := check("Garden"); tc.want == "" && err != nil || tc.want != "" && (err == nil || !strings.HasPrefix(err.Error(), tc.want)) {
+			t.Errorf("%s: %v", tc.name, err)
+		}
+	}
+	set(`"serving_address":"127.0.0.2","serving_ports":[1445],"serving_serial":""`)
+	if err := check("default"); err != nil {
+		t.Errorf("default's own window, starting: %v", err)
+	}
+
+	// A window recorded that doesn't answer can't be asked.
+	set(`"serving_address":"","serving_ports":[]`)
+	gone, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone.Close()
+	f, err := privatefile.Open(filepath.Join(garden, "ui-runtime.json"), os.O_CREATE|os.O_EXCL|os.O_WRONLY)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = io.WriteString(f, `{"port":`+strconv.Itoa(gone.Addr().(*net.TCPAddr).Port)+`,"token":"`+syntheticToken+`"}`)
+	if err = errors.Join(err, f.Close()); err != nil {
+		t.Fatal(err)
+	}
+	if err := check("Garden"); err == nil || !strings.HasPrefix(err.Error(), "which app window serves the saved endpoint couldn't be checked: couldn't ask the Garden window: ") {
+		t.Errorf("Garden can't be asked: %v", err)
+	}
+	if err := os.Remove(filepath.Join(garden, "ui-runtime.json")); err != nil {
+		t.Fatal(err)
+	}
+	fakeWindow(t, garden, "127.0.0.2", "[1445]")
+	if err := check("Garden"); err != nil {
+		t.Errorf("Garden's own window: %v", err)
+	}
+	if o, err := parse([]string{"find", "--profile", "Garden"}, io.Discard); err != nil || o.file == nil {
+		t.Errorf("find from Garden's own window: %v", err)
 	}
 }

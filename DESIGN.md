@@ -116,8 +116,10 @@ internal/ui server (page, token, config.json, gui.log)
   reports there, at the same bind address once parsed, runs copy-only, all ports or none: it serves no port and no
   discovery, and still attaches its session for the file tools. A port held by anything else, or at another
   address, is the usual port error. Through the account the file commands' endpoint is
-  that local port and the copier checks no serial, so `--profile` refuses to fill it while another profile's window
-  serves it.
+  that local port and the copier checks no serial, so `--profile` fills it only while the window serving it at the
+  saved bind address is the profile's own, or another profile's whose run reports (`serving_serial`) the telescope
+  the profile saved; anything else, a window that can't be asked or none, refuses, and every connect checks again. A
+  given `--endpoint` is never checked.
 - **Shutdown.** On quit the app first stops the Mount: it closes Browse's pool, then stops and joins copying, the
   preview and Free up space. Only then does it stop the run, whose detach closes and joins every channel the file
   tools still hold before the proxy session is closed and released. The file tools reach the telescope through that

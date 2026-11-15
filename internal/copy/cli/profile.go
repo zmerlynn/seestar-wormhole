@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"log/slog"
 	"slices"
 	"strings"
@@ -23,11 +24,12 @@ type Saved struct {
 	NoFolder   bool
 	HistoryDir string
 	Endpoint   string
-	// EndpointHolder names another profile's app window when it, not this
-	// profile's, serves Endpoint, this computer's port for the telescope
-	// reached through the account: the filled endpoint would reach that
-	// window's telescope, so a command that would fill it fails.
-	EndpointHolder string
+	// CheckEndpoint, when set, says whether Endpoint, this computer's port
+	// for the telescope reached through the account, reaches the
+	// telescope the profile saved: the copier checks no serial there. A
+	// command that fills Endpoint fails when it refuses, and every connect
+	// to the filled Endpoint asks it again first.
+	CheckEndpoint func(context.Context) error
 	// LANSerial is the serial the app saved with Endpoint on this
 	// network, or "". A run that dials the filled Endpoint follows the
 	// telescope by it when it moved.
@@ -88,7 +90,7 @@ func (p *profileFlag) load(flags *pflag.FlagSet, load LoadProfile) (Saved, bool,
 
 // fill loads the profile when --profile was given and fills the flags
 // not given with fillSaved.
-func (p *profileFlag) fill(flags *pflag.FlagSet, load LoadProfile, fillSaved func(Saved, func(string) bool) []string) error {
+func (p *profileFlag) fill(ctx context.Context, flags *pflag.FlagSet, load LoadProfile, fillSaved func(Saved, func(string) bool) []string) error {
 	s, ok, err := p.load(flags, load)
 	if !ok {
 		return err
@@ -96,8 +98,10 @@ func (p *profileFlag) fill(flags *pflag.FlagSet, load LoadProfile, fillSaved fun
 	if s.NoFolder && !flags.Changed("dest") && !p.statuses && takesDest(flags) {
 		return &diagnostic.OptionError{Option: "--profile", Rule: errNoFolder}
 	}
-	if s.EndpointHolder != "" && s.Endpoint != "" && !flags.Changed("endpoint") {
-		return &diagnostic.OptionError{Option: "--profile", Rule: "the " + s.EndpointHolder + " window serves this computer's Telescope Network ports, so the saved endpoint would reach its telescope; copy with that window's profile, or give --endpoint"}
+	if s.CheckEndpoint != nil && s.Endpoint != "" && !flags.Changed("endpoint") {
+		if err := s.CheckEndpoint(ctx); err != nil {
+			return &diagnostic.OptionError{Option: "--profile", Rule: err.Error()}
+		}
 	}
 	p.filled = fillSaved(s, flags.Changed)
 	for _, name := range p.filled {

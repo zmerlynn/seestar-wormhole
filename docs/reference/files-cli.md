@@ -144,19 +144,25 @@ The endpoint comes from the saved connection alone. On this network it is
 the saved address. Through the account it is the
 [SMB listener](connection-cli.md#port-mappings) for telescope port 445 on the
 saved bind address, or on `127.0.0.1` for a wildcard bind, `127.0.0.1:4445`
-by default, and something must be serving it: the app connected with
-**File sharing for other apps (SMB)** on, or `proxy --config`. The file
-commands never start a connection. With no usable `config.json`, no saved
-address, or that service off, `--endpoint` is not filled and is required as
-usual; if nothing listens, the run fails with exit 1.
+by default, and an app window must be serving it, connected with
+**File sharing for other apps (SMB)** on. The file commands never start a
+connection. With no usable `config.json`, no saved address, or that service
+off, `--endpoint` is not filled and is required as usual.
 
 That port is served by whichever app window connected through Telescope
-Network first, and the file commands don't check which telescope answers
-there. So when the open window of another profile serves it, `--profile`
-refuses to fill `--endpoint` from it, which would copy that window's
-telescope into this profile's folder and history, and exits 2; copy with
-that window's profile, or give `--endpoint`. A profile saved On this
-network dials the telescope's own address and is never refused this way.
+Network first, and the copier checks no serial there. So `--profile` fills
+`--endpoint` from it only while the window serving it, at the saved bind
+address, is the profile's own, or another profile's whose connection reached
+the telescope this profile saved. Anything else exits 2 and says which: no
+profile's window serves it (a proxy run from the command line, such as
+`proxy --config`, or another program may hold the port), a window couldn't
+be asked, the window serving it hasn't reached its telescope yet, or it
+reached another telescope. Copying would otherwise put that telescope's
+images in this profile's folder and history. The check is made again before
+every connect, so a sync whose port changes hands fails its passes until it
+is back. Give `--endpoint` to copy through another proxy deliberately: a
+given `--endpoint` is never checked. A profile saved On this network dials
+the telescope's own address and is never checked this way.
 
 On this network, an address the app saved from a scan is saved with the
 telescope's serial number, [`lan_serial`](app-settings.md#configjson-version-1).
@@ -213,7 +219,10 @@ checks. Each refusal exits 2 with `option=--profile`:
 | No `copy.json` | `no saved Copy settings; save them on the app's Copy tab, or give the flags` |
 | A `copy.json` the app refuses | `use a valid saved copy.json in the app's state folder` |
 | The saved telescope has no folder yet, and `--dest` is not given, except for browse | `the telescope saved in the app has no folder yet; choose one on the app's Copy tab, or give --dest` |
-| Through the account, the open window of another profile serves the saved endpoint's port, and `--endpoint` is not given | `the Garden window serves this computer's Telescope Network ports, so the saved endpoint would reach its telescope; copy with that window's profile, or give --endpoint` |
+| Through the account, without `--endpoint`: no profile's window serves the saved endpoint at the saved bind address | `no profile's app window serves the saved endpoint, so which telescope it reaches is unknown: a proxy run from the command line or another program may hold the port; open the profile's window, or give --endpoint to copy through another proxy deliberately` |
+| Through the account, without `--endpoint`: a profile's window couldn't be asked, and none serves it | `which app window serves the saved endpoint couldn't be checked: couldn't ask the Garden window: <error>; give --endpoint to copy through another proxy deliberately` |
+| Through the account, without `--endpoint`: another profile's window serves it and hasn't reached its telescope yet | `the Garden window serves this computer's Telescope Network ports but hasn't reached its telescope yet; try again once it has, or give --endpoint to copy through another proxy deliberately` |
+| Through the account, without `--endpoint`: another profile's window serves it for another telescope | `the Garden window serves this computer's Telescope Network ports for another telescope than this profile saved; copy with that window's profile, or give --endpoint to copy through another proxy deliberately` |
 
 ### Performance
 

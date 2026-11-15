@@ -297,7 +297,7 @@ func TestProfileNoFolder(t *testing.T) {
 		if err := flags.Parse(tc.args); err != nil {
 			t.Fatal(err)
 		}
-		err := p.fill(flags, load, func(Saved, func(string) bool) []string { return nil })
+		err := p.fill(t.Context(), flags, load, func(Saved, func(string) bool) []string { return nil })
 		var oe *diagnostic.OptionError
 		if got := errors.As(err, &oe); got != tc.fail || got && (oe.Option != "--profile" || oe.Rule != errNoFolder) {
 			t.Errorf("%q: %v", tc.args, err)

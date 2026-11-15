@@ -159,7 +159,8 @@ func (s *server) profiles(ctx context.Context) ([]profileEntry, error) {
 			continue
 		}
 		wg.Go(func() {
-			_, entries[i].Open = probeStatus(ctx, client, ProfileDir(s.profile.root, entries[i].Name))
+			_, err := probeStatus(ctx, client, ProfileDir(s.profile.root, entries[i].Name))
+			entries[i].Open = err == nil
 		})
 	}
 	wg.Wait()

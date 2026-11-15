@@ -32,24 +32,40 @@ func profileDir(name string) (dir, found string, err error) {
 	return dir, found, nil
 }
 
-// endpointHolder names the open window of another profile serving the
-// endpoint config saves for the account route, which is this computer's
-// port: copying from it would reach that window's telescope. It is ""
-// on this network, and when no other window serves the port.
-func endpointHolder(config ui.Settings, endpoint, self string) string {
+// endpointCheck checks the endpoint config saves for the account route,
+// which is this computer's port, for the profile self: whichever app
+// window connected first serves it, and the copier checks no serial
+// there. It passes only while the window serving the port at config's
+// bind address is self's own, or another profile's whose run reached the
+// telescope config saves. It is nil on this network, which dials the
+// telescope's own address.
+func endpointCheck(config ui.Settings, endpoint, self string) func(context.Context) error {
 	if endpoint == "" || !ui.SavedThroughAccount(config) {
-		return ""
+		return nil
 	}
+	const deliberately = "give --endpoint to copy through another proxy deliberately"
 	addr, err := netip.ParseAddrPort(endpoint)
 	root, rootErr := profileRoot()
-	if err != nil || rootErr != nil {
-		return ""
+	if err = errors.Join(err, rootErr); err != nil {
+		return func(context.Context) error {
+			return errors.New("which app window serves the saved endpoint couldn't be checked: " + err.Error() + "; " + deliberately)
+		}
 	}
-	holder, ok := ui.ServingWindow(context.Background(), root, self, config.Bind, addr.Port())
-	if !ok {
-		return ""
+	telescope := ui.SavedTelescope(config)
+	return func(ctx context.Context) error {
+		w, ok, err := ui.EndpointHolder(ctx, root, self, config.Bind, addr.Port())
+		switch {
+		case ok && (w.Own || w.Telescope != "" && w.Telescope == telescope):
+			return nil
+		case ok && w.Telescope == "":
+			return errors.New("the " + w.Profile + " window serves this computer's Telescope Network ports but hasn't reached its telescope yet; try again once it has, or " + deliberately)
+		case ok:
+			return errors.New("the " + w.Profile + " window serves this computer's Telescope Network ports for another telescope than this profile saved; copy with that window's profile, or " + deliberately)
+		case err != nil:
+			return errors.New("which app window serves the saved endpoint couldn't be checked: " + err.Error() + "; " + deliberately)
+		}
+		return errors.New("no profile's app window serves the saved endpoint, so which telescope it reaches is unknown: a proxy run from the command line or another program may hold the port; open the profile's window, or " + deliberately)
 	}
-	return holder.Profile
 }
 
 // loadProfile reads the profile named name for --profile: the history
@@ -86,7 +102,7 @@ func loadProfile(name string) (cli.Saved, error) {
 		saved.LANSerial = ui.SavedLANSerial(config)
 		saved.LANScan = ui.SavedLANScan(config)
 		key = ui.SavedTelescope(config)
-		saved.EndpointHolder = endpointHolder(config, saved.Endpoint, found)
+		saved.CheckEndpoint = endpointCheck(config, saved.Endpoint, found)
 	}
 	// Until a telescope has a folder of its own, every telescope's folder
 	// is copy.json's folder; after, "" while that is set means the saved
