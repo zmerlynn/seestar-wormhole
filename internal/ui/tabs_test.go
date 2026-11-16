@@ -183,8 +183,9 @@ func TestTabsOpenCloseReopen(t *testing.T) {
 	if _, err := CreateProfile(root, "Backyard"); err != nil {
 		t.Fatal(err)
 	}
-	stopped := make(chan string, 4)
+	started, stopped := make(chan struct{}, 4), make(chan string, 4)
 	run := func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
+		started <- struct{}{}
 		<-ctx.Done()
 		stopped <- RunProfile(ctx)
 		return nil
@@ -227,7 +228,7 @@ func TestTabsOpenCloseReopen(t *testing.T) {
 		// Closing a running tab stops its run and releases its lock, and
 		// answers with the tabs left.
 		c.start("/p/2/")
-		waitFor(t, "Garden active", func() bool { return c.tabs().Tabs[1].Active })
+		<-started
 		var left tabsAnswer
 		if code := c.do("POST", "/api/tabs/close", `{"path":"/p/2/"}`, &left); code != 200 {
 			t.Fatalf("close: %d", code)
@@ -799,5 +800,56 @@ func TestTabsReopenDuringClose(t *testing.T) {
 	<-quit
 	if !lockFree(t, garden.dir) || !lockFree(t, ProfileDir(a.root, DefaultProfile)) {
 		t.Fatal("a lock outlived the quit")
+	}
+}
+
+// blockedKeychain holds a run's start in reading the saved password: it
+// says so on entered, and answers once release is closed.
+type blockedKeychain struct {
+	fakeKeychain
+	entered, release chan struct{}
+}
+
+func (b *blockedKeychain) Get(string, string) (string, error) {
+	close(b.entered)
+	<-b.release
+	return testPassword, nil
+}
+
+// A tab closed while its run starts, before the run is entered, stops
+// starting, releases its lock and reopens.
+func TestTabsCloseWhileStarting(t *testing.T) {
+	a, _ := gateApp(t, func(context.Context, Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
+		t.Error("the run was entered")
+		return nil
+	})
+	chain := &blockedKeychain{entered: make(chan struct{}), release: make(chan struct{})}
+	t.Cleanup(func() { close(chain.release) })
+	a.chain = chain
+	garden, err := a.showCreated("Garden", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := testSettings()
+	s.Remember = true
+	if err := garden.server.controller.start(s, ""); err != nil {
+		t.Fatal(err)
+	}
+	<-chain.entered
+	closed := make(chan struct{})
+	go func() { garden.close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("closing a starting tab didn't finish")
+	}
+	if garden.server.controller.view().Active || !lockFree(t, garden.dir) {
+		t.Fatal("the starting tab outlived its close")
+	}
+	if _, err := os.Stat(filepath.Join(garden.dir, "ui-runtime.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("Garden's record remains", err)
+	}
+	if again, err := a.showCreated("Garden", ""); err != nil || again.path != "/p/3/" {
+		t.Fatalf("reopen: %v", err)
 	}
 }
