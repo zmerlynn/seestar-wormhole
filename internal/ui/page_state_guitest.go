@@ -8,6 +8,6 @@ import _ "embed"
 var pageStateChecks string
 
 func (d *guiTestDriver) pageStateRegressions() error {
-	d.w.ExecJS(pageStateChecks)
+	d.tabJS(pageStateChecks)
 	return d.probe(`check(typeof window.__guitestPageState==='string' && !window.__guitestPageState.includes('FAIL'),{pageState:window.__guitestPageState ?? null})`)
 }

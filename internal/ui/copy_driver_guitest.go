@@ -29,8 +29,11 @@ import (
 //
 //   - copy-close holds that transfer, presses the tab keys, previews Free
 //     up space, opens the confirm dialog and cancels it, then closes the
-//     window (the harness sends WM_CLOSE on Windows).
-//   - copy-quit does the same and waits for the harness's Quit event.
+//     window (the harness sends WM_CLOSE on Windows): the shell asks to
+//     confirm quitting, Cancel keeps the window copying, and a second
+//     close (on Windows, the page's Quit) confirmed quits.
+//   - copy-quit does the same up to closing, waits for the harness's Quit
+//     event and confirms it.
 //   - copy-hold holds it and waits for the harness to stop the app.
 //   - copy-inuse runs beside a copy-hold app on the same folder, checks
 //     that Copy shows the folder in use and Start copying can't take it,
@@ -40,7 +43,7 @@ import (
 //     its output folder, then saves it again and cancels.
 //   - copy-relaunch is the harness's fresh launch after any of them, on
 //     the files they left: the copy tabs open with the saved settings,
-//     copying starts on its own, and Quit stops it.
+//     copying starts on its own, and Quit, confirmed, stops it.
 //
 // Each marks "trigger" once its page has passed. The harness then checks
 // that the held transfer left no temporary file and the folder's state
@@ -176,12 +179,62 @@ func (d *guiTestDriver) driveCopy() error {
 	if err := d.mark("trigger"); err != nil {
 		return err
 	}
-	if d.scenario == "copy-close" || d.scenario == "copy-inuse" || d.scenario == "copy-save" {
+	switch d.scenario {
+	case "copy-close", "copy-save":
+		return d.copyClose()
+	case "copy-inuse":
 		if runtime.GOOS != "windows" {
 			d.w.Close()
 		}
+	case "copy-quit":
+		return d.copyConfirmQuit()
 	}
 	return nil
+}
+
+// copyAskedQuit is the shell's confirmation of quitting while Default
+// copies.
+const copyAskedQuit = `check(el('k-confirm').open && el('k-ctitle').textContent==='Quit seestar-wormhole?' && el('k-cbody').textContent.includes(' is copying.'),{open:el('k-confirm').open,title:el('k-ctitle').textContent,body:el('k-cbody').textContent})`
+
+// copyClose closes the window while copying, cancels the shell's
+// confirmation, which must keep the window and the copy, and closes it
+// again and confirms. On Windows the harness sent the first close; the
+// second is the page's Quit, which asks the same.
+func (d *guiTestDriver) copyClose() error {
+	if runtime.GOOS != "windows" {
+		d.w.Close()
+	}
+	if err := d.shellProbe(copyAskedQuit); err != nil {
+		return fmt.Errorf("closing didn't ask to confirm: %w", err)
+	}
+	if err := d.shellClick("k-ccancel"); err != nil {
+		return err
+	}
+	if err := d.shellProbe(`check(!el('k-confirm').open,{open:el('k-confirm').open})`); err != nil {
+		return fmt.Errorf("Cancel didn't close the confirmation: %w", err)
+	}
+	if err := d.probe(`check(el('c-title').textContent==='Copying 2 of 2 files',{title:el('c-title').textContent})`); err != nil {
+		return fmt.Errorf("Cancel stopped copying: %w", err)
+	}
+	if !d.w.IsVisible() {
+		return errors.New("Cancel closed the window")
+	}
+	if runtime.GOOS == "windows" {
+		if err := d.click("quit"); err != nil {
+			return err
+		}
+	} else {
+		d.w.Close()
+	}
+	return d.copyConfirmQuit()
+}
+
+// copyConfirmQuit confirms the shell's ask to quit while copying.
+func (d *guiTestDriver) copyConfirmQuit() error {
+	if err := d.shellProbe(copyAskedQuit); err != nil {
+		return fmt.Errorf("quitting didn't ask to confirm: %w", err)
+	}
+	return d.shellClick("k-cgo")
 }
 
 // copyRelaunch checks that the settings the first launch saved are read
@@ -199,7 +252,10 @@ func (d *guiTestDriver) copyRelaunch() error {
 	if err := d.probe(`check(el('c-title').textContent.startsWith('Copying ') && el('c-flight').textContent.includes('MyWorks/held.fit'),{title:el('c-title').textContent,flight:el('c-flight').textContent})`); err != nil {
 		return fmt.Errorf("Copy didn't show copying: %w", err)
 	}
-	return d.click("quit")
+	if err := d.click("quit"); err != nil {
+		return err
+	}
+	return d.copyConfirmQuit()
 }
 
 // copyInUse checks that Copy shows the folder in use, and still does

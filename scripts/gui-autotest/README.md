@@ -29,10 +29,13 @@ adapter or proxy listeners; only the existing ephemeral UI listener is used.
 The fixture's keychain and browser opener panic if called. Fake credentials use
 the reserved `.invalid` domain. Nothing is saved to the OS credential store.
 
-The driver's ExecJS sets input values, dispatches input/change events, and clicks
-the page's own buttons. It does not call app.js functions or replace page code.
-The fixture marks the Wails ExecJS queue ready at the native navigation-complete
-event, since this external HTTP page does not load the full Wails JS runtime.
+The fixture loads the app's shell, as the app does, and its driver's ExecJS
+reaches the first tab's page in the shell's frame. It sets input values,
+dispatches input/change events, and clicks the page's own buttons and the
+shell's confirmation. It does not call app.js functions or replace page code.
+The app itself marks the Wails ExecJS queue ready at the native
+navigation-complete event, since this external HTTP page does not load the full
+Wails JS runtime.
 An opt-in Wails native event acknowledges DOM predicates. Each screenshot waits
 for both authenticated server status and matching DOM text/control state.
 Transitions wait for the driver, rather than racing the page's polling interval.

@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-func (d *guiTestDriver) js(script string) { d.w.ExecJS(`(()=>{` + script + `})()`) }
+func (d *guiTestDriver) js(script string) { d.tabJS(`(()=>{` + script + `})()`) }
 func (d *guiTestDriver) uxSetup() error {
 	switch d.scenario {
 	case "computer":
