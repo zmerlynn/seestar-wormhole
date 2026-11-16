@@ -409,8 +409,14 @@ you confirm. Uncheck a folder to keep it. **Only files older than** N days
 copy history (copies moved or drive offline)** checks only the app's record
 of each copy, as `--trust-state` does; and **Nothing: delete what's selected,
 copied or not** checks no copy, as `--ignore-state` does, and warns **Files
-you haven't copied are deleted too, and can't be recovered.** Its preview
-says the files **are selected to delete**, and its confirm adds that they
+you haven't copied are deleted too, and can't be recovered. Only free up needs
+at least one pattern.** As `--ignore-state` needs an `--include`, **Only free
+up** must then name at least one pattern: **Preview what to delete** with it
+empty says **With Nothing checked, enter at least one pattern, such as `*.jpg`:
+whatever is selected is deleted, copied or not.** under it and saves nothing.
+A `copy.json` saved with `ignore_state` and no `free_includes` still loads,
+but neither a preview nor a delete runs until a pattern is entered. With
+Nothing, the preview says the files **are selected to delete**, and its confirm adds that they
 weren't checked against your copies. Above the options, **Copies in:** names
 Copy's saved folder, whose copies the check proves; with only the copy
 history, **Copy history for:** names the folder whose history it uses
