@@ -731,6 +731,31 @@ func TestTabsOpenDuringLastClose(t *testing.T) {
 	}
 }
 
+// A quitting app's shell keeps showing each tab while its run releases,
+// so its page shows the release under way; the tab goes once it closed.
+func TestTabsShownWhileQuitting(t *testing.T) {
+	runs, run := newHeldRuns(t)
+	a, first := gateApp(t, run)
+	if err := first.server.controller.start(testSettings(), testPassword); err != nil {
+		t.Fatal(err)
+	}
+	<-runs.started
+	quit := make(chan struct{})
+	go func() { a.closeAll(); close(quit) }()
+	<-runs.stopping
+	if v := a.tabsView(); len(v.Tabs) != 1 || v.Tabs[0].Path != first.path {
+		t.Fatalf("the releasing tab isn't shown: %+v", v)
+	}
+	if text, active := first.server.controller.snapshot(); !active || text != "Stopping — releasing the Seestar session…" {
+		t.Fatalf("the releasing tab's status: %q, %t", text, active)
+	}
+	runs.release <- struct{}{}
+	<-quit
+	if v := a.tabsView(); len(v.Tabs) != 0 {
+		t.Fatalf("a closed tab is shown: %+v", v)
+	}
+}
+
 // An open under way when the app quits is joined by the quit and never
 // published: its lock is released when the quit returns.
 func TestTabsOpenDuringQuit(t *testing.T) {

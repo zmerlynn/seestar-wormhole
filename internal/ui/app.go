@@ -473,7 +473,19 @@ type profileEntry struct {
 	Label string `json:"label"`
 }
 
-// tabsView answers the shell's poll: the open tabs in opening order,
+// shown is the tabs the shell shows: the open ones, and once the app
+// quits, the closing ones too, so each page shows its release under way
+// until its tab has closed.
+func (a *app) shown() []*tab {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.quitting.Load() {
+		return slices.Clone(a.tabs)
+	}
+	return slices.DeleteFunc(slices.Clone(a.tabs), func(t *tab) bool { return t.closing })
+}
+
+// tabsView answers the shell's poll: the tabs it shows in opening order,
 // the profiles that exist but aren't open, whether + is offered, and the
 // tab an activation asked for.
 func (a *app) tabsView() (v struct {
@@ -483,7 +495,7 @@ func (a *app) tabsView() (v struct {
 	Pick     tabPick        `json:"pick"`
 	Error    string         `json:"error,omitempty"`
 }) {
-	tabs := a.open()
+	tabs := a.shown()
 	v.Tabs, v.Closed, v.Profiles = []tabView{}, []profileEntry{}, a.profiles
 	for _, t := range tabs {
 		view := tabView{Path: t.path, Name: t.name, Label: t.label, Active: t.server.controller.view().Active}
