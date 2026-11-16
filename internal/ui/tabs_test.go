@@ -224,11 +224,16 @@ func TestTabsOpenCloseReopen(t *testing.T) {
 		if code := c.do("GET", "/p/9/api/status", "", nil); code != 404 {
 			t.Fatalf("no tab: %d", code)
 		}
-		// Closing a running tab stops its run and releases its lock.
+		// Closing a running tab stops its run and releases its lock, and
+		// answers with the tabs left.
 		c.start("/p/2/")
 		waitFor(t, "Garden active", func() bool { return c.tabs().Tabs[1].Active })
-		if code := c.do("POST", "/api/tabs/close", `{"path":"/p/2/"}`, nil); code != 200 {
+		var left tabsAnswer
+		if code := c.do("POST", "/api/tabs/close", `{"path":"/p/2/"}`, &left); code != 200 {
 			t.Fatalf("close: %d", code)
+		}
+		if open, closed := left.labels(); !slices.Equal(open, []string{"Default"}) || !slices.Contains(closed, "Garden") {
+			t.Fatalf("close answered: %v %v", open, closed)
 		}
 		select {
 		case p := <-stopped:
@@ -264,9 +269,12 @@ func TestTabsOpenCloseReopen(t *testing.T) {
 		if _, err := os.Stat(ProfileDir(root, "Porch")); err != nil {
 			t.Fatal(err)
 		}
-		// Closing the last tab quits the app.
+		// Closing the last tab quits the app, and answers no tabs.
 		for _, path := range []string{"/p/1/", "/p/3/", "/p/4/"} {
-			c.do("POST", "/api/tabs/close", `{"path":"`+path+`"}`, nil)
+			c.do("POST", "/api/tabs/close", `{"path":"`+path+`"}`, &left)
+		}
+		if len(left.Tabs) != 0 {
+			t.Fatalf("the last close answered %+v", left.Tabs)
 		}
 		close(quitted)
 	})

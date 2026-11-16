@@ -200,6 +200,11 @@ async function refresh() {
     return null;
   }
   if (ended || g !== generation) return v;
+  apply(v);
+  return v;
+}
+// apply shows the app's answer of its tabs.
+function apply(v) {
   note(v.error || '');
   tabs = v.tabs || [];
   closed = v.closed || [];
@@ -210,7 +215,6 @@ async function refresh() {
     if (tabs.some(t => t.path === v.pick.path)) selected = v.pick.path;
   }
   render();
-  return v;
 }
 // The + menu: the profiles that exist but aren't open, each opening its
 // tab, then New profile…, which asks for a name.
@@ -279,28 +283,35 @@ async function askClose(path) {
   const v = await refresh();
   const t = (v?.tabs || tabs).find(t => t.path === path);
   if (!t) return;
-  const last = tabs.length === 1;
   if (!t.copying && !t.active) {
-    closeTab(path, last);
+    closeTab(path);
     return;
   }
-  const stops = t.copying ? 'copying and its connection' : 'its connection';
-  confirmWith('Close ' + t.label + '?', (t.copying ? t.label + ' is copying. ' : t.label + ' is connected. ') + 'Closing its tab stops ' + stops + (last ? ', and quits the app, since it is the last tab.' : '.'), last ? 'Close and quit' : 'Close tab', () => closeTab(path, last));
+  const last = tabs.length === 1, stops = t.copying ? 'copying and its connection' : 'its connection';
+  confirmWith('Close ' + t.label + '?', (t.copying ? t.label + ' is copying. ' : t.label + ' is connected. ') + 'Closing its tab stops ' + stops + (last ? ', and quits the app, since it is the last tab.' : '.'), last ? 'Close and quit' : 'Close tab', () => closeTab(path));
 }
-async function closeTab(path, last) {
-  const i = tabs.findIndex(t => t.path === path);
+// closeTab closes a tab and shows the tabs the app answers are left,
+// which may include one opened meanwhile: none left means the app quit.
+// Closing the selected tab selects its neighbor; focus lost with the
+// tab's row goes to the selected tab.
+async function closeTab(path) {
+  const before = tabs.map(t => t.path), i = before.indexOf(path);
+  let v;
   try {
-    await api('tabs/close', {path});
+    v = await api('tabs/close', {path});
   } catch (e) {
     note(e.message || lostCopy);
     return;
   }
-  if (last) {
+  if (!v.tabs?.length) {
     end();
     return;
   }
-  if (path === selected && tabs.length > 1) select(tabs[i + 1 < tabs.length ? i + 1 : i - 1].path, true);
-  await refresh();
+  generation++;
+  const left = v.tabs.map(t => t.path);
+  if (!left.includes(selected)) selected = [...before.slice(i + 1), ...before.slice(0, i).reverse()].find(p => left.includes(p)) || left[0];
+  apply(v);
+  if (!document.activeElement || document.activeElement === document.body) tabOf(selected)?.focus();
 }
 // confirmQuit quits every tab, confirming once if any is copying. The
 // window's close and each page's Quit come here.

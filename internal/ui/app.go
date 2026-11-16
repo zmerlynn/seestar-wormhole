@@ -616,12 +616,12 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			Path string `json:"path"`
 		}{t.path})
 	case "/api/tabs/close":
+		// The answer is the tabs left once it has closed, which the shell
+		// shows: one opened meanwhile included, none if the app quits.
 		if t := a.find("", in.Path); t != nil {
 			t.close()
 		}
-		ok(struct {
-			OK bool `json:"ok"`
-		}{true})
+		ok(a.tabsView())
 	case "/api/quit":
 		// Every tab's copier and run stop before the answer, as one
 		// page's Quit stops its own.
