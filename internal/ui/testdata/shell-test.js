@@ -1,4 +1,4 @@
-// The shell's tab bar, dots, + menu, closing and Ctrl+Tab, on the DOM
+// The shell's tab bar, dots, + menu, closing, Ctrl+Tab and focus, on the DOM
 // double, against a double of the app's /api/tabs.
 for (const id of testElements.keys()) if (!$(id).parentElement) testBody.append($(id));
 const settle = async () => {for (let i = 0; i < 20; i++) await Promise.resolve();};
@@ -205,7 +205,7 @@ async function checkSwitchKeys() {
   assert(press(testBody, 'Tab', {ctrlKey: true}) && selectedLabel() === 'Garden', 'Ctrl+Tab: ' + selectedLabel());
   press(testBody, 'Tab', {ctrlKey: true});
   press(testBody, 'Tab', {ctrlKey: true});
-  assert(selectedLabel() === 'Default' && document.activeElement === tabsShown()[0], 'Ctrl+Tab did not wrap: ' + selectedLabel());
+  assert(selectedLabel() === 'Default' && document.activeElement === $('frames').children[0], 'Ctrl+Tab did not wrap: ' + selectedLabel());
   press(testBody, 'Tab', {ctrlKey: true, shiftKey: true});
   assert(selectedLabel() === 'Backyard', 'Ctrl+Shift+Tab: ' + selectedLabel());
   assert(!press(testBody, 'Tab') && selectedLabel() === 'Backyard', 'Tab alone switched');
@@ -219,4 +219,42 @@ async function checkSwitchKeys() {
   assert(selectedLabel() === 'Garden', 'ArrowRight: ' + selectedLabel());
   press(tabsShown()[1], 'End');
   assert(selectedLabel() === 'Backyard' && tabsShown()[2].tabIndex === 0 && tabsShown()[0].tabIndex === -1, 'End: ' + selectedLabel());
+}
+
+// The selected tab's page takes focus as it loads and as tabs switch,
+// unless something in the shell has focus.
+async function checkFrameFocus() {
+  app.tabs = [tabEntry(1, 'Default'), tabEntry(2, 'Garden')];
+  await refresh();
+  const [one, two] = $('frames').children;
+  assert(document.activeElement === one, 'the first page was not focused: ' + document.activeElement.tagName);
+  // A page that loads takes focus again, since its frame's went to the
+  // blank page it replaced; a hidden page's load does not.
+  testFocused.length = 0;
+  one.dispatchEvent({type: 'load'});
+  two.dispatchEvent({type: 'load'});
+  assert(JSON.stringify(testFocused) === '["/p/1/"]' && document.activeElement === one, 'loads focused ' + JSON.stringify(testFocused));
+  // A poll leaves a focused page alone.
+  testFocused.length = 0;
+  await refresh();
+  assert(testFocused.length === 0, 'a poll refocused the page');
+  // Ctrl+Tab from a page lands in the next page.
+  press(testWindows['/p/1/'], 'Tab', {ctrlKey: true});
+  assert(selectedLabel() === 'Garden' && document.activeElement === two, 'Ctrl+Tab from a page: ' + document.activeElement.tagName);
+  // Clicking a tab that took focus, or arrowing in the tab list, keeps
+  // focus in the shell; so does a poll meanwhile.
+  tabsShown()[0].focus();
+  tabsShown()[0].dispatchEvent({type: 'click'});
+  assert(selectedLabel() === 'Default' && document.activeElement === tabsShown()[0], 'click took focus from the tab');
+  press(tabsShown()[0], 'ArrowRight');
+  await refresh();
+  assert(selectedLabel() === 'Garden' && document.activeElement === tabsShown()[1], 'arrow left the tab list');
+  // Ctrl+Tab from the shell stays in the tab list.
+  press(testBody, 'Tab', {ctrlKey: true});
+  assert(selectedLabel() === 'Default' && document.activeElement === tabsShown()[0], 'Ctrl+Tab from the shell');
+  // With nothing focused, a click on a tab that didn't take focus hands
+  // it to the page.
+  document.activeElement = testBody;
+  tabsShown()[1].dispatchEvent({type: 'click'});
+  assert(document.activeElement === two, 'nothing focused: ' + document.activeElement.tagName);
 }

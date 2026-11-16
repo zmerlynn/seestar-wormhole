@@ -17,6 +17,7 @@ class TestElement {
     const i = before ? this.children.indexOf(before) : -1;
     if (i < 0) this.children.push(child); else this.children.splice(i, 0, child);
   }
+  contains(e) {for (; e; e = e.parentElement) if (e === this) return true; return false;}
   remove() {if (this.parentElement) this.parentElement.children = this.parentElement.children.filter(e => e !== this); this.parentElement = null;}
   replaceChildren(...children) {for (const c of this.children) c.parentElement = null; this.children = []; this.append(...children);}
   addEventListener(name, callback) {this.listeners ||= {}; (this.listeners[name] ||= []).push(callback);}
@@ -42,9 +43,13 @@ class TestElement {
     const ids = {'connection-dot': {getAttribute: () => page.tone}, 'connection-text': {textContent: page.words}, 'copy-chip': page.chip};
     return {getElementById: id => ids[id] || null};
   }
-  get contentWindow() {return (testWindows[this.dataset.path] ||= new TestElement());}
+  // Focusing it focuses the frame, as a browser's shell sees it.
+  get contentWindow() {
+    const frame = this;
+    return (testWindows[this.dataset.path] ||= Object.assign(new TestElement(), {focus() {document.activeElement = frame; testFocused.push(frame.dataset.path);}}));
+  }
 }
-const testPages = {}, testWindows = {};
+const testPages = {}, testWindows = {}, testFocused = [];
 const testElements = new Map();
 const testBody = new TestElement('body');
 testBody.root = true;

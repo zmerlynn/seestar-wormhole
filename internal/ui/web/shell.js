@@ -117,7 +117,10 @@ function render() {
       frame.setAttribute('role', 'tabpanel');
       frame.setAttribute('aria-labelledby', tab.id);
       frame.src = t.path + '#' + token;
-      frame.addEventListener('load', () => keysFrom(frame.contentWindow));
+      frame.addEventListener('load', () => {
+        keysFrom(frame.contentWindow);
+        if (frame.dataset.path === selected) handOff(true);
+      });
       $('frames').append(frame);
     }
     if (list.children[i] !== row) list.insertBefore(row, list.children[i] || null);
@@ -141,7 +144,9 @@ function dots() {
     if (state.textContent !== said) state.textContent = said;
   }
 }
-// select shows the tab's frame; the others stay loaded, hidden.
+// select shows the tab's frame; the others stay loaded, hidden. With
+// focus it focuses the tab; otherwise the page takes focus unless
+// something in the shell has it.
 function select(path, focus) {
   selected = path;
   for (const tab of $('profile-tabs').querySelectorAll('[role=tab]')) {
@@ -151,12 +156,30 @@ function select(path, focus) {
   }
   for (const frame of $('frames').children) frame.classList.toggle('shown', frame.dataset.path === path);
   if (focus) tabOf(path)?.focus();
+  else handOff(false);
+}
+// shellFocused tells whether focus is on something in the shell rather
+// than nowhere or in a page.
+function shellFocused() {
+  const a = document.activeElement;
+  return !!a && a !== document.body && a.tagName !== 'IFRAME';
+}
+// handOff gives the selected tab's page focus, so keyboard users land in
+// it, unless the shell has focus. A page that just loaded takes it again,
+// since the focus its frame had went to the page it replaced.
+function handOff(loaded) {
+  const frame = frameOf(selected);
+  if (!frame || shellFocused() || (document.activeElement === frame && !loaded)) return;
+  try {
+    frame.contentWindow.focus();
+  } catch (_) {
+  }
 }
 // step selects the next tab, or the previous one, wrapping.
 function step(by) {
   const i = tabs.findIndex(t => t.path === selected), n = tabs.length;
   if (!n) return;
-  select(tabs[((i + by) % n + n) % n].path, true);
+  select(tabs[((i + by) % n + n) % n].path, shellFocused());
 }
 function tabKey(event) {
   const i = tabs.findIndex(t => t.path === selected), n = tabs.length;
@@ -297,7 +320,7 @@ async function askClose(path) {
 }
 // closeTab closes a tab and shows the tabs the app answers are left,
 // which may include one opened meanwhile: none left means the app quit.
-// Closing the selected tab selects its neighbor; focus lost with the
+// Closing the selected tab selects its neighbor; focus on the closing
 // tab's row goes to the selected tab.
 async function closeTab(path) {
   const before = tabs.map(t => t.path), i = before.indexOf(path);
@@ -315,8 +338,9 @@ async function closeTab(path) {
   generation++;
   const left = v.tabs.map(t => t.path);
   if (!left.includes(selected)) selected = [...before.slice(i + 1), ...before.slice(0, i).reverse()].find(p => left.includes(p)) || left[0];
+  // Moved before the row goes, the shell's focus doesn't pass to a page.
+  if (shellFocused() && tabOf(path)?.parentElement.contains(document.activeElement)) tabOf(selected)?.focus();
   apply(v);
-  if (!document.activeElement || document.activeElement === document.body) tabOf(selected)?.focus();
 }
 // confirmQuit quits every tab, confirming once if any is copying. The
 // window's close and each page's Quit come here.

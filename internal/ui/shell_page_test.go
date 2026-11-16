@@ -65,3 +65,7 @@ func TestShellQuit(t *testing.T) { runShellRegression(t, "checkQuit()") }
 // Ctrl+Tab and Ctrl+Shift+Tab switch tabs, from the shell or a page, and
 // the tab list's arrows move within it.
 func TestShellSwitchKeys(t *testing.T) { runShellRegression(t, "checkSwitchKeys()") }
+
+// The selected tab's page takes focus as it loads and as tabs switch,
+// unless something in the shell has focus.
+func TestShellFrameFocus(t *testing.T) { runShellRegression(t, "checkFrameFocus()") }

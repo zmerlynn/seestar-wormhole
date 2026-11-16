@@ -86,6 +86,46 @@ test('Ctrl+Tab switches tabs from inside Browse, both ways', async ({ page, star
   await expect(ptab(page, 'Garden')).toHaveAttribute('aria-selected', 'true');
 });
 
+// The selected tab's page takes focus as it loads and as tabs switch from
+// a page, unless something in the shell has focus.
+test('the selected page takes focus, unless the shell has it', async ({ page, startApp }) => {
+  const app = await startApp();
+  addGarden(app);
+  await openShell(page, app);
+  await expect(frameOf(page, 1).locator('#start')).toBeFocused();
+  // A profile opened from + leaves focus on its tab while its page loads.
+  await page.getByRole('button', { name: 'Open a profile' }).click();
+  await row(page, 'Garden').click();
+  await expect(frameOf(page, 2).locator('#quit')).toBeEnabled();
+  await expect(ptab(page, 'Garden')).toBeFocused();
+  // Ctrl+Tab from the shell stays in the shell, on the tab.
+  await page.keyboard.press('Control+Tab');
+  await expect(ptab(page, 'Default')).toBeFocused();
+  // From a page, it lands in the next one, whose Start takes focus as
+  // its page first does, and back.
+  await frameOf(page, 1).locator('#start').focus();
+  await page.keyboard.press('Control+Tab');
+  await expect(ptab(page, 'Garden')).toHaveAttribute('aria-selected', 'true');
+  await expect(frameOf(page, 2).locator('#start')).toBeFocused();
+  await page.keyboard.press('Control+Tab');
+  await expect(ptab(page, 'Default')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#pframe-1')).toBeFocused();
+});
+
+// The native window's shell can finish loading before its first tab's page
+// does, as on Linux; the page still reads its status and takes focus.
+test('a page that loads after the shell still takes focus', async ({ page, startApp }) => {
+  const app = await startApp();
+  let release;
+  const held = new Promise((r) => { release = r; });
+  await page.route('**/p/1/', async (route) => { await held; await route.continue(); });
+  await page.goto(app.shell);
+  await expect(page.locator('#pframe-1')).toBeAttached();
+  release();
+  await expect(frameOf(page, 1).locator('#status')).toHaveText('Not connected');
+  await expect(frameOf(page, 1).locator('#start')).toBeFocused();
+});
+
 test('New profile shows a refused name under the field and opens what it creates', async ({ page, startApp }) => {
   const app = await startApp();
   addGarden(app);
@@ -150,9 +190,10 @@ test('a profile opened while the last close asks keeps the app and shows it', as
     const v = await response.json();
     for (const t of v.tabs) t.active = true;
     await route.fulfill({ response, json: v });
-  }, { times: 1 });
+  });
   await page.getByRole('button', { name: 'Close Default' }).click();
   await expect(page.locator('#k-confirm')).toBeVisible();
+  await page.unroute('**/api/tabs');
   await expect(page.locator('#k-cgo')).toHaveText('Close and quit');
 
   // A launch of Garden asks the app to open it meanwhile.
