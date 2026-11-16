@@ -3,7 +3,7 @@
 See [known issues and accepted limits](known-issues.md) for the limits that
 remain by choice.
 
-What's been tested and what hasn't, as of November 2026. The short version is
+What's been tested and what hasn't, as of November 16, 2026. The short version is
 in the [README](../README.md#status).
 
 ## Telescopes
@@ -47,6 +47,34 @@ checked:
   on macOS, through Telescope Network and on this network: Copy, Browse and
   Free up space.
 - The proxy, with an iPhone's Seestar app connecting through it.
+
+The November 12-16, 2026 runs, on development builds of 0.8.0 (commits
+766f5672 through ee2069ef), checked the app on macOS:
+
+- [Scanning this network](ui.md#reaching-the-telescope) for the telescope,
+  through a [home relay](phone-app.md#discovery-at-home-with-a-primary-on-another-lan)
+  that answers scans for it and forwards its SMB port as 4445. The scan found
+  it, but the port had to be typed in; a scan now tries 445, then 4445.
+- [A copy folder per telescope](copying.md#more-than-one-telescope), through
+  the same relay answering first as the real telescope and then as a second
+  one: back on the real telescope, Copy used its original folder.
+  `seestar-wormhole-cli sync --profile default --dry-run` filled the right
+  telescope and folder for each.
+- [What to copy](ui.md#copy): an existing setup kept what it copies.
+- [Ports](ui.md#services-and-ports): Alpaca is forwarded by default, and an
+  added port (81 to 81) was opened at Connect.
+- Saved settings are read permissively; when `config.json` can't be loaded
+  safely, the app still stops and names the file.
+- [Free up space](ui.md#free-up-space)'s **Before deleting, check**, and a
+  `seestar-wormhole-cli delete` dry run with `--ignore-state`, `--include`,
+  `--no-default-excludes` and `--older-than`.
+- [Profiles as tabs](ui.md#profiles-two-telescopes-at-once): five checks,
+  with no issues found.
+
+Not tested by hand in this release: **Check now** pressed as a copy pass ends
+(#66), an Alpaca app such as NINA through the proxy, the Windows and Linux
+apps, and Telescope Network: the runs that name a route went through the home
+relay on this network.
 
 Always-on idle release/redial over days has not been tested on 9.75.
 Camera-info reads worked on 9.31; they weren't part of the 9.75 runs.
@@ -109,9 +137,17 @@ telescope on Windows or Linux.
 The same day, `seestar-wormhole-cli` built from an earlier 0.7.0 commit
 (17b25471) for Linux arm64 ran read-only against the same telescope, through
 a running proxy's SMB port. `find`, `sync --dry-run` and `sync --once` into a
-scratch folder all exited 0 with no warnings or errors. `delete` and `browse`
-haven't been run from the command line against a telescope, and the file
-commands haven't been run against one on macOS or Windows.
+scratch folder all exited 0 with no warnings or errors.
+
+From November 12 to 16, 2026, development builds of 0.8.0 (commits 766f5672
+through ee2069ef) ran on macOS against the same telescope; see
+[firmware 9.75](#firmware-975) for what they checked. On this network,
+through a home relay, Copy kept a folder per telescope, and on the same Mac
+`seestar-wormhole-cli sync --profile default --dry-run` filled each
+telescope's folder. Free up space's **Before deleting, check** and a
+`seestar-wormhole-cli delete` dry run were checked too. `browse` hasn't been
+run from the command line against a telescope, `delete` has run as a dry
+run, and the file commands haven't been run against one on Windows.
 
 Two 0.7.0 additions are tested only in CI. The Mac app's Info.plist carries
 the Local Network usage text, and a **Test**, **Save**, copy pass or Preview on
