@@ -7,7 +7,7 @@ if (token) {
     sessionStorage.setItem(tokenKey, token);
   } catch (_) {
   }
-  history.replaceState(null, '', '/');
+  history.replaceState(null, '', location.pathname);
 } else {
   try {
     token = sessionStorage.getItem(tokenKey) || '';
@@ -28,6 +28,9 @@ let routeChoice = 'account', lanPending = '', lanReach = null, currentTab = 'con
 // whether the On this network panel was shown or just opened by the user.
 let lanScanning = false, lanScanned = false, lanFound = [], lanShown = false, lanOpened = false;
 const tabNames = ['connection', 'copy', 'browse', 'free', 'activity'];
+// framed: the page is a profile's tab in the app's shell, which quits
+// every tab and carries the window's link bridge.
+const framed = window.top !== window;
 const lostCopy = 'Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.';
 const copyLostCopy = "Couldn't read the status of Copy and Free up space. They show their last known state until it can be read again.";
 // controlsLost: the controls' status poll or an action found the server
@@ -39,6 +42,8 @@ const fieldCopy = {
   email: 'Enter your Seestar account email.', password: 'Enter a password of 8 to 32 characters, or use a saved password.',
   idle: 'Enter a wait time greater than zero.'
 };
+// api calls the tab's API: base names it from the tab's own path, so
+// the page works under the shell's /p/<n>/ as at /.
 async function api(action, body, base = '/api/') {
   const options = {
     headers: {
@@ -50,7 +55,7 @@ async function api(action, body, base = '/api/') {
     options.headers['Content-Type'] = 'application/json';
     options.body = JSON.stringify(body);
   }
-  const response = await fetch(base + action, options);
+  const response = await fetch(base.slice(1) + action, options);
   if (!response.ok) {
     let detail;
     try {
@@ -937,7 +942,7 @@ function browseFrame() {
   const view = copyStatus?.browse_view;
   if ($('b-frame').src && (view === browseView || currentTab !== 'browse')) return;
   browseView = view;
-  $('b-frame').src = '/browse/';
+  $('b-frame').src = 'browse/';
 }
 // goSetup opens Copy at its folder while the form shows, else at its tab.
 function goSetup() {
@@ -1861,7 +1866,7 @@ function render(s) {
   text('version',s.version);
   active = s.active;
   text('quit', s.native ? 'Quit' : 'Quit service');
-  $('quit-help').textContent = s.native ? 'Closing this window stops the connection and quits the app.' : 'Closing this tab leaves the service running. Choose Quit service to stop it.';
+  $('quit-help').textContent = s.native ? 'Closing this window stops ' + (framed ? "every profile's connection" : 'the connection') + ' and quits the app.' : 'Closing this browser tab leaves the service running. Choose Quit service to stop it.';
   $('retry-storage').hidden = !s.save_failed;
   if (s.save_failed) alertText(s.password.code === 'password_removed' ? 'Password removed from keychain and this app. Settings could not be saved. Keep this window open and choose Retry saving settings.' : s.password.code === 'password_saved' ? 'Password saved to keychain. Settings could not be saved. Keep this window open and choose Retry saving settings.' : 'Settings could not be saved; they may reset next time.');
   if (selectionStep) alertText('');
@@ -1884,14 +1889,16 @@ function render(s) {
   const run = s.effective;
   const listen = {all_networks: 'all networks', this_computer: 'this computer only', other: 'a selected network address'}[run.listen];
   $('run-summary').textContent = 'Listening on ' + listen + ' · Seestar app discovery ' + (s.discovery_started ? 'on' : 'off') + ' · ' + (run.idle.mode === 'keep_connected' ? 'Keep connected' : 'Connect when an app needs Seestar');
-  // Copying only, the window serves no ports: what would point the
-  // Seestar app or an SMB app at them is hidden.
+  // Copying only, the tab serves no ports: what would point the Seestar
+  // app or an SMB app at them is hidden. The holder is another tab of this
+  // app, or another seestar-wormhole window.
   const copyOnly = active ? s.copy_only || null : null;
   $('copy-only').hidden = !copyOnly;
   if (copyOnly) {
-    const holder = copyOnly.profile ? 'The ' + copyOnly.profile + ' window' : 'Another seestar-wormhole window';
-    text('copy-only-text', holder + ' is serving the Seestar app' + (copyOnly.telescope ? ' (' + copyOnly.telescope + ')' : '') + " on this computer's ports, so this window can't. Copy, Browse and Free up space work here as usual.");
-    text('copy-only-how', 'To use the Seestar app with this telescope instead: Stop the connection in ' + (copyOnly.profile ? 'the ' + copyOnly.profile + ' window' : 'the other window') + ', then Stop and Connect here.');
+    const kind = copyOnly.tab ? ' tab' : ' window', here = framed ? 'this tab' : 'this window';
+    const holder = copyOnly.profile ? 'The ' + copyOnly.profile + kind : 'Another seestar-wormhole window';
+    text('copy-only-text', holder + ' is serving the Seestar app' + (copyOnly.telescope ? ' (' + copyOnly.telescope + ')' : '') + " on this computer's ports, so " + here + " can't. Copy, Browse and Free up space work here as usual.");
+    text('copy-only-how', 'To use the Seestar app with this telescope instead: Stop the connection in ' + (copyOnly.profile ? 'the ' + copyOnly.profile + kind : 'the other window') + ', then Stop and Connect here.');
   }
   $('run-summary').hidden = !!copyOnly;
   $('phone-steps').hidden = !(active && s.discovery_started) || !!copyOnly;
@@ -1901,7 +1908,6 @@ function render(s) {
   $('copy-port').textContent = smb || '';
   $('running-ports-box').hidden = !!copyOnly;
   portsTable('running-ports', run.ports);
-  renderProfile(s.profile);
   text('effective-settings', JSON.stringify(s.effective, null, 2));
   text('log-path', s.log_path ? 'Private log: ' + s.log_path : '');
   $('log-error').hidden = !s.log_failed;
@@ -1911,82 +1917,11 @@ function render(s) {
   copyTabs(s);
   controls();
 }
-// The window's profile: its label after the title, in the header and the
-// window's title, once there is more than one profile, and Profiles… for
-// a run of a profile. A relaunch asks which profile to open.
-function renderProfile(p) {
-  const label = p?.label || '';
-  $('profiles-open').hidden = !p;
-  $('profile-name').hidden = !label;
-  text('profile-name', label ? '· ' + label : '');
-  const title = label ? 'seestar-wormhole — ' + label : 'seestar-wormhole';
-  if (document.title !== title) document.title = title;
-  if (p?.ask) openProfiles(true);
-}
-// The Profiles dialog lists Default and the named profiles, each a button
-// that brings its open window forward or opens it, and creates one. From
-// a relaunch, Show this window closes it; from the menu or the footer,
-// Cancel does; Escape does the same. profilesBack is where focus returns.
-let profilesBack = null, profilesGeneration = 0;
-async function openProfiles(relaunch) {
-  const generation = ++profilesGeneration;
-  if (!$('p-dialog').open) {
-    profilesBack = document.activeElement;
-    $('p-dialog').showModal();
-  }
-  $('p-main').hidden = false;
-  $('p-form').hidden = true;
-  $('p-show').hidden = !relaunch;
-  $('p-cancel').hidden = relaunch;
-  profileError('p-err', '');
-  $('p-list').replaceChildren();
-  $(relaunch ? 'p-show' : 'p-cancel').focus();
-  let profiles;
-  try {
-    profiles = (await api('profiles')).profiles || [];
-  } catch (e) {
-    if (generation === profilesGeneration) profileError('p-err', e.message || lostCopy);
-    return;
-  }
-  if (generation !== profilesGeneration) return;
-  for (const p of profiles) {
-    const row = document.createElement('li'), button = document.createElement('button');
-    button.type = 'button';
-    button.textContent = p.label + (p.self ? ' — this window' : p.open ? ' — open' : '');
-    button.addEventListener('click', () => p.self ? $('p-dialog').close() : profileAct('profiles/open', {name: p.name}, 'p-err'));
-    row.append(button);
-    $('p-list').append(row);
-  }
-}
-function profileError(id, message) {
-  text(id, message);
-  $(id).hidden = !message;
-  if (id === 'p-name-err') $('p-name').setAttribute('aria-invalid', message ? 'true' : 'false');
-}
-// profileAct opens a profile, or creates one and opens it; a refusal
-// shows its message under the name or the list.
-async function profileAct(action, body, errorId) {
-  try {
-    await api(action, body);
-    $('p-dialog').close();
-  } catch (e) {
-    profileError(errorId, e.message || lostCopy);
-    if (errorId === 'p-name-err') $('p-name').focus();
-  }
-}
-function newProfile() {
-  $('p-main').hidden = true;
-  $('p-form').hidden = false;
-  $('p-name').value = '';
-  profileError('p-name-err', '');
-  $('p-name').focus();
-}
 async function refresh() {
   const generation = ++statusGeneration;
   let s;
   try {
-    // The page's first status answers a relaunch's question.
-    s = await api(initialized ? 'status' : 'status?first=1');
+    s = await api('status');
   } catch (e) {
     if (ended || generation !== statusGeneration) return;
     throw e;
@@ -2007,7 +1942,7 @@ async function refresh() {
     $('password').value = '';
   }
   render(s);
-  if (first && !selectionStep && !$('p-dialog').open) {
+  if (first && !selectionStep) {
     // WKWebView can finish the status fetch before its native window is key.
     const focusStart = () => requestAnimationFrame(() => $('start').focus());
     if (document.hasFocus()) focusStart();
@@ -2128,9 +2063,11 @@ $('settings').addEventListener('submit', e => {
 $('start').addEventListener('click', () => {
   if (active) act('stop');
 });
-for (const [id,action] of [['save-password','password/save'],['forget','forget'],['quit','quit'],['retry-storage','retry-storage']]) {
+for (const [id,action] of [['save-password','password/save'],['forget','forget'],['retry-storage','retry-storage']]) {
   $(id).addEventListener('click', () => act(action));
 }
+// In the shell, Quit quits every tab, as the shell does.
+$('quit').addEventListener('click', () => framed && typeof window.top.confirmQuit === 'function' ? window.top.confirmQuit() : act('quit'));
 $('email').addEventListener('input', () => {
   $('password').value = '';
   const email = accountEmail();
@@ -2190,11 +2127,12 @@ $('copy').addEventListener('click', async () => {
   }
 });
 // The native page uses Wails' postMessage bridge; browser mode keeps normal links.
+// The window's bridge is the shell's, the top page's, when framed.
 function openExternalLink(event) {
-  const link = event.target.closest('a[href^="https://"]');
-  if (!link || !window._wails?.invoke || event.button > 1) return;
+  const link = event.target.closest('a[href^="https://"]'), wails = window.top._wails;
+  if (!link || !wails?.invoke || event.button > 1) return;
   event.preventDefault();
-  window._wails.invoke('seestar:open:' + link.href);
+  wails.invoke('seestar:open:' + link.href);
 }
 for (const tab of tabNames) $('tab-' + tab).addEventListener('click', () => selectTab(tab));
 // A bubble opens its run's tab.
@@ -2266,21 +2204,6 @@ $('x-confirm').addEventListener('close', () => {
   if (!$('x-go').hidden) $('x-go').focus();
 });
 $('lan-address').addEventListener('input', () => lanError(''));
-$('profiles-open').addEventListener('click', () => openProfiles(false));
-$('p-show').addEventListener('click', () => $('p-dialog').close());
-$('p-cancel').addEventListener('click', () => $('p-dialog').close());
-$('p-back').addEventListener('click', () => $('p-dialog').close());
-$('p-new').addEventListener('click', newProfile);
-$('p-form').addEventListener('submit', e => {
-  e.preventDefault();
-  profileAct('profiles/new', {name: $('p-name').value}, 'p-name-err');
-});
-$('p-name').addEventListener('input', () => profileError('p-name-err', ''));
-$('p-dialog').addEventListener('close', () => {
-  profilesGeneration++;
-  if (profilesBack?.isConnected) profilesBack.focus();
-  profilesBack = null;
-});
 document.addEventListener('click', openExternalLink);
 document.addEventListener('auxclick', openExternalLink);
 portsTable('ports', {}, true);

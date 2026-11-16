@@ -33,6 +33,7 @@ const document = {
 };
 const location = {hash: ''}, sessionStorage = {getItem() {return '';}};
 const window = {}, history = {};
+window.top = window;
 const fetch = () => new Promise(() => {});
 function setTimeout() {}
 

@@ -72,7 +72,7 @@ async function checkCopySetup(st) {
   copyAssert($('c-main').hidden && !$('s-first').hidden && $('s-line').hidden, 'the first visit shows the copy controls');
   copyAssert(!$('copy-form').hidden && $('f-cancel').hidden && $('f-save').textContent === 'Save', 'the first visit lacks the form or Save, or has Cancel');
   copyAssert($('f-builtin').textContent === st.before.default_excludes.join(' · '), 'built-in excludes');
-  copyAssert($('b-frame').src === '/browse/', 'Browse waited for settings');
+  copyAssert($('b-frame').src === 'browse/', 'Browse waited for settings');
   // A first setup starts on FITS files only, with Only copy hidden.
   copyAssert($('f-what').value === 'fits' && $('f-in').value === '*.fit\n*.fits' && $('f-in-box').hidden && !$('f-what-help').hidden, 'the first setup is not on FITS files only: ' + $('f-what').value);
   // A field error goes under its field and takes focus.
@@ -103,7 +103,7 @@ async function checkCopySetup(st) {
   copyAssert($('f-folder-err').hidden && !$('f-folder').getAttribute('aria-invalid'), 'the old error stayed');
   copyAssert(!$('c-main').hidden && $('s-first').hidden && !$('s-line').hidden && $('copy-form').hidden, 'the summary did not replace the form');
   copyAssert($('s-summary').textContent === 'Copying to ' + st.saved.settings.folder + ' every 5 min, skipping logs and system files, leaving out Video.', 'summary: ' + $('s-summary').textContent);
-  copyAssert($('b-frame').src === '/browse/', 'Browse did not load after the first save');
+  copyAssert($('b-frame').src === 'browse/', 'Browse did not load after the first save');
   copyAssert(document.activeElement === $('c-next') && !$('c-next').hidden, 'the first save did not say Start copying is next');
   copyAssert(!$('h-details').hidden && $('h-path').textContent === st.after.history, 'Copy history');
   // Change… opens the form; Cancel puts the saved values back.
@@ -318,13 +318,13 @@ async function checkBrowseSetup(st) {
   render(st.unlocked);
   copyRender(st.before);
   selectTab('browse');
-  copyAssert(!$('panel-browse').hidden && !$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse waited for a folder');
+  copyAssert(!$('panel-browse').hidden && !$('b-frame').hidden && $('b-frame').src === 'browse/', 'Browse waited for a folder');
   copyAssert(st.after.browse_view !== st.before.browse_view, 'server statuses changed shape');
   $('b-frame').src = 'loaded';
   copyRender(st.before);
   copyAssert($('b-frame').src === 'loaded', 'Browse loaded again with nothing changed');
   copyRender(st.after);
-  copyAssert(!$('b-frame').hidden && $('b-frame').src === '/browse/', 'Browse did not load again after setup');
+  copyAssert(!$('b-frame').hidden && $('b-frame').src === 'browse/', 'Browse did not load again after setup');
 }
 
 // The connected page's copying step leads with Copy and Browse, its Go to

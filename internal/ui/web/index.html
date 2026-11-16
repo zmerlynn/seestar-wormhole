@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="icon" type="image/svg+xml" href="/icon.svg"><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script></head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="icon" type="image/svg+xml" href="icon.svg"><link rel="stylesheet" href="style.css"><script src="app.js" defer></script></head>
 <body><main>
 <header id="app-header">
-<h1><img src="/icon.svg" width="40" height="40" alt="">seestar‑wormhole<span id="profile-name" class="muted" hidden></span></h1>
+<h1><img src="icon.svg" width="40" height="40" alt="">seestar‑wormhole</h1>
 <p id="connection-line"><span id="connection-dot" data-tone="off" aria-hidden="true"></span><span id="connection-text">Loading…</span><span id="telescope-to" hidden><span aria-hidden="true">→ </span><button id="telescope-folder" class="linkbtn" type="button"></button></span><button id="copy-chip" class="chip" type="button" hidden></button><button id="preview-chip" class="chip on" type="button" hidden></button><button id="free-chip" class="chip on" type="button" hidden></button><span id="chip-live" class="hide" role="status"></span></p>
 </header>
 <div id="tabs" role="tablist" aria-label="seestar-wormhole">
@@ -249,7 +249,7 @@
 <h2>Connection settings</h2><pre id="effective-settings"></pre><h2>Copy settings</h2><pre id="copy-settings"></pre>
 <h2>Files</h2><p id="log-path"></p><p id="log-error" hidden>Could not write the private log.</p><p id="config-file"></p><p id="copy-file"></p></details>
 </section>
-<footer><div class="actions"><button id="quit" type="button" disabled>Quit</button><button id="profiles-open" type="button" title="A profile is its own window with its own telescope, connection and copy folder. Use one for each telescope to copy from several at once." hidden>Profiles…</button></div><p id="quit-help"></p>
+<footer><button id="quit" type="button" disabled>Quit</button><p id="quit-help"></p>
 <p>seestar-wormhole <span id="version"></span> · <a href="https://unlicense.org/" target="_blank" rel="noreferrer">The Unlicense</a> · <a id="releases-link" href="https://github.com/zmerlynn/seestar-wormhole/releases" target="_blank" rel="noreferrer">Releases</a></p></footer>
 <dialog id="x-confirm" aria-labelledby="x-ctitle" aria-describedby="x-cbody">
 <h2 id="x-ctitle"></h2>
@@ -260,20 +260,5 @@
 <h2 id="h-ctitle">Clear the copy history?</h2>
 <p id="h-cbody">No images will be deleted. The next time you start copying, files still in this folder will be checked and recorded again. Missing files, including files you moved away, will be copied again from the telescope.</p>
 <div class="actions"><button class="danger" type="button" id="h-cgo">Clear history</button><button type="button" id="h-ccancel" autofocus>Cancel</button></div>
-</dialog>
-<dialog id="p-dialog" aria-labelledby="p-title" aria-describedby="p-intro">
-<h2 id="p-title">Profiles</h2>
-<div id="p-main">
-<p id="p-intro">Each profile is its own window with its own telescope, connection and copy folder. Open one for each telescope to copy from several at once.</p>
-<ul id="p-list" class="profiles" aria-labelledby="p-title"></ul>
-<p class="error" id="p-err" role="alert" hidden></p>
-<div class="actions"><button type="button" id="p-show">Show this window</button><button type="button" id="p-cancel">Cancel</button><button type="button" id="p-new">New profile…</button></div>
-</div>
-<form id="p-form" novalidate hidden>
-<label for="p-name">Name</label><input id="p-name" type="text" spellcheck="false" autocomplete="off" maxlength="4096" aria-describedby="p-name-help p-name-err">
-<p class="error" id="p-name-err" role="alert" hidden></p>
-<p class="help" id="p-name-help">For example, the telescope or where it is: Backyard S30.</p>
-<div class="actions"><button class="primary" type="submit" id="p-create">Create and open</button><button type="button" id="p-back">Cancel</button></div>
-</form>
 </dialog>
 </main></body></html>
