@@ -355,7 +355,7 @@ func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run r
 	// copier have stopped.
 	base, baseDone := context.WithCancel(context.WithoutCancel(ctx))
 	defer baseDone()
-	a, listener, err := newApp(ctx, base, root, profiles, out, logs, run, chain, native, window != nil)
+	a, listener, err := newApp(ctx, base, root, profiles, logs, run, chain, native, window != nil)
 	if err != nil {
 		return err
 	}

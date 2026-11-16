@@ -105,7 +105,7 @@ func TestWindowLifetime(t *testing.T) {
 }
 
 func TestActivationRequiresAuthentication(t *testing.T) {
-	a, listener, err := newApp(t.Context(), t.Context(), t.TempDir(), false, io.Discard, io.Discard, nil, &fakeKeychain{}, nil, true)
+	a, listener, err := newApp(t.Context(), t.Context(), t.TempDir(), false, io.Discard, nil, &fakeKeychain{}, nil, true)
 	if err != nil {
 		t.Fatal(err)
 	}

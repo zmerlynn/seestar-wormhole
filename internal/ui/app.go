@@ -44,7 +44,6 @@ type app struct {
 	token    string
 	addr     netip.AddrPort
 	version  string
-	out      io.Writer
 	logs     io.Writer
 	run      runFunc
 	chain    keychain
@@ -132,7 +131,7 @@ func lockedError(label, dir string) error {
 	return errors.New(label + " is open in another seestar-wormhole window: its lock, " + path + ", is held")
 }
 
-func newApp(ctx, base context.Context, root string, profiles bool, out, logs io.Writer, run runFunc, chain keychain, native *copyapp.Native, window bool) (*app, net.Listener, error) {
+func newApp(ctx, base context.Context, root string, profiles bool, logs io.Writer, run runFunc, chain keychain, native *copyapp.Native, window bool) (*app, net.Listener, error) {
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		return nil, nil, errors.New("Could not start the local controls.")
@@ -144,7 +143,7 @@ func newApp(ctx, base context.Context, root string, profiles bool, out, logs io.
 	}
 	listening := listener.Addr().(*net.TCPAddr).AddrPort()
 	a := &app{root: root, profiles: profiles, host: net.JoinHostPort("127.0.0.1", strconv.Itoa(int(listening.Port()))), token: hex.EncodeToString(token[:]),
-		addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), version: uiVersion(ctx), out: out, logs: logs, run: run, chain: chain, native: native, window: window,
+		addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), version: uiVersion(ctx), logs: logs, run: run, chain: chain, native: native, window: window,
 		base: base, quit: make(chan struct{})}
 	return a, listener, nil
 }
