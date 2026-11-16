@@ -27,7 +27,7 @@ testFetch = async (url, options) => {
   }
   case 'tabs/close':
     app.tabs = app.tabs.filter(t => t.path !== body.path);
-    return reply(200, {ok: true});
+    return reply(200, {tabs: app.tabs, closed: app.closed, profiles: app.profiles, pick: app.pick});
   case 'quit':
     app.tabs = [];
     return reply(200, {ok: true});
