@@ -131,20 +131,30 @@ func guiTestWindowOptions(scenario string) application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{AllowSimpleEventEmit: true, Mac: application.MacWindow{Appearance: appearance}, JS: `(() => {
 // Fixture captures use a stable display path. The Go driver independently
 // verifies the actual status path against its disposable state root. The
-// first tab's page fetches its status in the shell's frame, as each loads.
-const stablePath=win => {
- if(win.__guitestFetch) return;
- const fixtureFetch=win.__guitestFetch=win.fetch;
+// first tab's page fetches its status in the shell's frame: wrap each page
+// the frame loads, not its first blank page. The wrapper is the shell's
+// function, so it calls the page's fetch on the page's window: called on
+// the shell's, it resolves the page's relative paths against the shell's.
+// Each page records its own focus for the probes' diagnostics.
+const framePage=win => {
+ if(!win.location.pathname.startsWith('/p/') || win.document.__guitestPage) return;
+ win.document.__guitestPage=true;
+ const fixtureFetch=win.fetch;
  win.fetch=async function(...args) {
-  const response=await fixtureFetch.apply(this,args);
+  const response=await fixtureFetch.apply(win,args);
   if(!response.ok || new URL(args[0],win.location.href).pathname!=='/p/1/api/status') return response;
   const status=await response.json();
   return new win.Response(JSON.stringify({...status,log_path:'state/gui.log'}),{status:response.status,headers:response.headers});
  };
+ const trace=win.__guitestFocus=[];
+ const record=via => {if(trace.length<16) trace.push({via,focused:win.document.activeElement?.id,documentFocused:win.document.hasFocus(),ready:win.document.readyState})};
+ record('page-loaded');
+ win.addEventListener('focus', () => record('window-focus'));
+ win.document.addEventListener('focusin', () => record('focusin'));
 };
-const framePath=frame => {try {stablePath(frame.contentWindow)} catch(_) {}};
-document.querySelectorAll('iframe').forEach(framePath);
-document.addEventListener('load',e => {if(e.target.tagName==='IFRAME') framePath(e.target)},true);
+const framed=frame => {try {framePage(frame.contentWindow)} catch(_) {}};
+document.querySelectorAll('iframe').forEach(framed);
+document.addEventListener('load',e => {if(e.target.tagName==='IFRAME') framed(e.target)},true);
 window.__guitestFocus = [];
 const recordFocus = via => {
  if(window.__guitestFocus.length<16) window.__guitestFocus.push({via,focused:document.activeElement?.id,documentFocused:document.hasFocus(),ready:document.readyState});
