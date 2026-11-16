@@ -397,15 +397,16 @@ func TestUIRunPortsOneTabAtATime(t *testing.T) {
 		t.Errorf("the second tab bound %d ports while the first was binding", n)
 	}
 	close(bind)
+	// Its session reports before it returns.
+	err := <-secondDone
 	select {
 	case ok := <-copyOnly:
 		if !ok {
 			t.Error("the second tab isn't copy-only")
 		}
-	case err := <-secondDone:
+	default:
 		t.Fatalf("the second tab = %v before its session, not copy-only", err)
 	}
-	<-secondDone
 	cancel()
 	<-firstDone
 }
