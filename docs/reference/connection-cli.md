@@ -34,9 +34,10 @@ Open the UI; see [Using the UI](../ui.md) for setup and controls.
 [profile](../ui.md#profiles-two-telescopes-at-once): `default`, the state
 folder, or one made with **New profile**, in
 [`profiles/NAME/`](app-settings.md#where-settings-live) there, matched
-without regard to case. Without it, the app opens Default. A profile
-already open in a window is brought forward, as opening the app again
-does. These exit 2 with `option=--profile` and the name given in `value`:
+without regard to case. Without it, the app opens Default. If the app is
+already open, it opens that profile's tab there, or selects it, and brings
+the window forward. A profile that another process holds is refused with
+the lock it holds. These exit 2 with `option=--profile` and the name given in `value`:
 
 | Case | rule |
 | --- | --- |
@@ -45,8 +46,8 @@ does. These exit 2 with `option=--profile` and the name given in `value`:
 | No per-user config folder | `no per-user config folder for the app's profiles; give the flags` |
 | The profiles folder can't be read | `the app's profiles folder couldn't be read: <error>` |
 
-A window opened with `--state-dir` is of no profile: it has no
-**Profiles…** and never runs for copying only.
+An app opened with `--state-dir` has that one folder as its only tab, of
+no profile: it has no **+** and never runs for copying only.
 
 ## proxy
 

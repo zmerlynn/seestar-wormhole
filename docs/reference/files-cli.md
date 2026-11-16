@@ -150,17 +150,17 @@ commands never start a connection. With no usable `config.json`, no saved
 address, or that service off, `--endpoint` is not filled and is required as
 usual; if nothing listens, the run fails with exit 1.
 
-That port is served by whichever app window or proxy connected through
+That port is served by whichever app tab or proxy connected through
 Telescope Network first, and the copier checks no serial there. With only
 the default profile, `--profile` fills `--endpoint` from it whatever serves
 it, such as a headless proxy. Once a named profile exists, the profile must
-be served by its own window or `--endpoint` must be given: `--profile`, for
+be served by its own tab or `--endpoint` must be given: `--profile`, for
 every profile, default included, fills `--endpoint` from it only while the
-window serving it, at the saved bind address, is the profile's own, or
+tab serving it, at the saved bind address, is the profile's own, or
 another profile's whose connection reached the telescope this profile saved.
-Anything else exits 2 and says which: no profile's window serves it (a proxy
+Anything else exits 2 and says which: no profile's tab serves it (a proxy
 run from the command line, such as `proxy --config`, or another program may
-hold the port), a window couldn't be asked, the window serving it hasn't
+hold the port), a tab couldn't be asked, the tab serving it hasn't
 reached its telescope yet, or it reached another telescope. Copying would
 otherwise put that telescope's images in this profile's folder and history.
 The check is made again before every connect, so a sync whose port changes
