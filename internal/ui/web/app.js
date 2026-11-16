@@ -1943,8 +1943,12 @@ async function refresh() {
   }
   render(s);
   if (first && !selectionStep) {
-    // WKWebView can finish the status fetch before its native window is key.
-    const focusStart = () => requestAnimationFrame(() => $('start').focus());
+    // WKWebView can finish the status fetch before its native window is key,
+    // and a tab's page loads unfocused. Focus that comes with a click into a
+    // field stays there.
+    const focusStart = () => requestAnimationFrame(() => {
+      if (!document.activeElement || document.activeElement === document.body) $('start').focus();
+    });
     if (document.hasFocus()) focusStart();
     else window.addEventListener('focus', focusStart, {once: true});
   }
