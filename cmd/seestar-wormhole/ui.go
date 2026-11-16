@@ -48,6 +48,13 @@ func runUICommand(ctx context.Context, o options, out, logs io.Writer) error {
 	return err
 }
 
+// uiRunDir and uiPortGate give a UI run its tab's folder and its app's
+// port gate. Tests give runs their own without an app.
+var (
+	uiRunDir   = ui.RunDir
+	uiPortGate = ui.PortGate
+)
+
 // newUIRunner is the adapter used by the UI controller. Its I/O boundaries can
 // be replaced without opening a browser, consulting a keychain or signing in.
 func newUIRunner(root string, logs io.Writer, newSession func(context.Context, proxy.Config, cloud.Credentials) (commandSession, error), listen func(string, string) (net.Listener, error), checkTCPState func(context.Context) error) func(context.Context, ui.Settings, cloud.Credentials, *proxy.Status, func(proxy.Dialer) (func(), bool)) error {
@@ -62,9 +69,9 @@ func newUIRunnerWithDiscovery(root string, logs io.Writer, newSession func(conte
 		if err != nil {
 			return err
 		}
-		runOptions := options{command: commandUI, bind: s.Bind, lanDiscovery: s.Discovery, uiStatus: status, uiAttach: attach, idle: idle, serial: s.Serial, model: s.Model, stateDir: ui.RunDir(ctx, root), uiProfile: ui.RunProfile(ctx), format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater,
+		runOptions := options{command: commandUI, bind: s.Bind, lanDiscovery: s.Discovery, uiStatus: status, uiAttach: attach, idle: idle, serial: s.Serial, model: s.Model, stateDir: uiRunDir(ctx, root), uiProfile: ui.RunProfile(ctx), format: "json", level: "info", pauseThreshold: p2ptunnel.DefaultConfig().HighWater,
 			uiHolder: func(port uint16) (proxy.Holder, bool) { return ui.PortHolder(ctx, s.Bind, port) },
-			uiPorts:  func() func() { return ui.PortGate(ctx) }}
+			uiPorts:  func() func() { return uiPortGate(ctx) }}
 		runOptions.ports = append(mappings(nil), s.Ports...)
 		if err := validateOptions(&runOptions); err != nil {
 			return err
