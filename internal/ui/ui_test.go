@@ -207,7 +207,7 @@ func TestHTTPRejections(t *testing.T) {
 }
 func TestHTTPNoSecretsAndHeaders(t *testing.T) {
 	s := testServer(t)
-	for _, path := range []string{"/", "/app.js", "/style.css", "/icon.svg", "/api/status", "/api/instance"} {
+	for _, path := range []string{"/", "/app.js", "/style.css", "/icon.svg", "/api/status"} {
 		w := httptest.NewRecorder()
 		s.ServeHTTP(w, request(s, "GET", path, ""))
 		if w.Code != 200 {
@@ -271,7 +271,7 @@ func TestDoubleLaunchAndStaleRecord(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.write("ui-runtime.json", runtimeRecord{12345, strings.Repeat("b", 64)}); err != nil {
+	if err := st.write("ui-runtime.json", runtimeRecord{12345, strings.Repeat("b", 64), ""}); err != nil {
 		t.Fatal(err)
 	}
 	st.directory.Close()

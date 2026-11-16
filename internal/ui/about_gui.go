@@ -13,24 +13,19 @@ func aboutDescription(version string) string {
 	return "Version " + version + "\nThe Unlicense (public domain)\n" + releasesURL
 }
 
-// configureProjectMenu puts About, and Open Profile… beside it when
-// openProfiles is set, in the app menu, or in Help where there is none.
-func configureProjectMenu(menu *application.Menu, showAbout func(), openURL func(string) error, openProfiles func()) {
-	items := []*application.MenuItem{application.NewMenuItem("About seestar-wormhole").OnClick(func(*application.Context) { showAbout() })}
-	if openProfiles != nil {
-		items = append(items, application.NewMenuItem("Open Profile…").OnClick(func(*application.Context) { openProfiles() }))
-	}
+func configureProjectMenu(menu *application.Menu, showAbout func(), openURL func(string) error) {
+	about := application.NewMenuItem("About seestar-wormhole").OnClick(func(*application.Context) { showAbout() })
 	if appMenu := menu.FindByRole(application.AppMenu); appMenu != nil {
 		submenu := appMenu.GetSubmenu()
 		submenu.RemoveMenuItem(submenu.FindByRole(application.About))
-		submenu.Prepend(application.NewMenuFromItems(items[0], items[1:]...))
+		submenu.Prepend(application.NewMenuFromItems(about))
 	}
 	help := menu.FindByRole(application.HelpMenu).GetSubmenu()
 	help.Clear()
 	help.Add("Project releases").OnClick(func(*application.Context) { _ = openURL(releasesURL) })
 	if menu.FindByRole(application.AppMenu) == nil {
 		help.AddSeparator()
-		help.Append(application.NewMenuFromItems(items[0], items[1:]...))
+		help.Append(application.NewMenuFromItems(about))
 	}
 }
 

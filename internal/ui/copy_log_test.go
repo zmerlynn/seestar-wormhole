@@ -48,7 +48,7 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 		post := func(path, body string) {
 			t.Helper()
 			body = copyTokenFrom(path, body, func() []byte {
-				req, _ := http.NewRequest("GET", base+"/copy/api/status", nil)
+				req, _ := http.NewRequest("GET", base+"/p/1/copy/api/status", nil)
 				req.Header.Set("Origin", base)
 				req.Header.Set("X-Seestar-Token", token)
 				resp, err := client.Do(req)
@@ -59,7 +59,7 @@ func TestCopyLogsGoToTheSink(t *testing.T) {
 				b, _ := io.ReadAll(resp.Body)
 				return b
 			})
-			req, _ := http.NewRequest("POST", base+path, strings.NewReader(body))
+			req, _ := http.NewRequest("POST", base+"/p/1"+path, strings.NewReader(body))
 			req.Header.Set("Origin", base)
 			req.Header.Set("X-Seestar-Token", token)
 			req.Header.Set("Content-Type", "application/json")
@@ -120,7 +120,7 @@ func TestCopyStateIsShared(t *testing.T) {
 			if method == "POST" {
 				body = copyTokenFrom(path, body, func() []byte { return send("GET", "/copy/api/status", "") })
 			}
-			req, _ := http.NewRequest(method, base+path, strings.NewReader(body))
+			req, _ := http.NewRequest(method, base+"/p/1"+path, strings.NewReader(body))
 			req.Header.Set("Origin", base)
 			req.Header.Set("X-Seestar-Token", token)
 			req.Header.Set("Content-Type", "application/json")

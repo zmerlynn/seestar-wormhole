@@ -46,6 +46,9 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 	started := false
 	err := runUIPresented(ctx, root, out, logs, f.run, func(string) error { panic("guitest: browser opener") }, &guiTestKeychain{root: root, scenario: scenario}, func(windowCtx context.Context, url string, quit func(), activate <-chan struct{}) error {
 		started = true
+		// The fixture drives the first tab's page itself, in the window's
+		// main frame, where its script and ExecJS reach.
+		url = strings.Replace(url, "/#", "/p/1/#", 1)
 		return showWindowConfigured(windowCtx, root, url, out, quit, activate, guiTestWindowOptions(scenario), func(options *application.Options) {
 			options.RawMessageHandler = func(_ application.Window, message string, _ *application.OriginInfo) {
 				if detail, ok := strings.CutPrefix(message, "guitest:diagnostic:"); ok && len(detail) <= 16384 {
@@ -137,7 +140,7 @@ func guiTestWindowOptions(scenario string) application.WebviewWindowOptions {
 const fixtureFetch=window.fetch;
 window.fetch=async function(...args) {
  const response=await fixtureFetch.apply(this,args);
- if(!response.ok || new URL(args[0],location.href).pathname!=='/api/status') return response;
+ if(!response.ok || new URL(args[0],location.href).pathname!=='/p/1/api/status') return response;
  const status=await response.json();
  return new Response(JSON.stringify({...status,log_path:'state/gui.log'}),{status:response.status,headers:response.headers});
 };

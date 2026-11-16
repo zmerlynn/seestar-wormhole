@@ -40,7 +40,7 @@ func TestWindowLifetime(t *testing.T) {
 				defer client.CloseIdleConnections()
 				post := func(path, body string) {
 					t.Helper()
-					req, _ := http.NewRequest("POST", parts[0]+path, strings.NewReader(body))
+					req, _ := http.NewRequest("POST", parts[0]+"/p/1"+path, strings.NewReader(body))
 					req.Header.Set("Origin", parts[0])
 					req.Header.Set("X-Seestar-Token", parts[1])
 					req.Header.Set("Content-Type", "application/json")
@@ -105,11 +105,22 @@ func TestWindowLifetime(t *testing.T) {
 }
 
 func TestActivationRequiresAuthentication(t *testing.T) {
-	s := testServer(t)
+	a, listener, err := newApp(t.Context(), t.Context(), t.TempDir(), false, io.Discard, io.Discard, nil, &fakeKeychain{}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener.Close()
 	activated := false
-	s.activate = func() { activated = true }
+	a.activate = func() { activated = true }
+	request := func() *http.Request {
+		r := httptest.NewRequest("POST", "http://"+a.host+"/api/activate", strings.NewReader("{}"))
+		r.Header.Set("X-Seestar-Token", a.token)
+		r.Header.Set("Origin", "http://"+a.host)
+		r.Header.Set("Content-Type", "application/json")
+		return r
+	}
 	for _, field := range []string{"token", "host", "origin", "method"} {
-		r := request(s, "POST", "/api/activate", "{}")
+		r := request()
 		switch field {
 		case "token":
 			r.Header.Del("X-Seestar-Token")
@@ -121,13 +132,13 @@ func TestActivationRequiresAuthentication(t *testing.T) {
 			r.Method = "GET"
 		}
 		w := httptest.NewRecorder()
-		s.ServeHTTP(w, r)
+		a.ServeHTTP(w, r)
 		if w.Code == 200 || activated {
 			t.Fatal("activation admitted", field)
 		}
 	}
 	w := httptest.NewRecorder()
-	s.ServeHTTP(w, request(s, "POST", "/api/activate", "{}"))
+	a.ServeHTTP(w, request())
 	if w.Code != 200 || !activated {
 		t.Fatal("activation refused")
 	}
@@ -145,7 +156,7 @@ func TestWindowReceivesLaunchVersion(t *testing.T) {
 				t.Errorf("window version %q, want %q", uiVersion(windowCtx), want)
 			}
 			parts := strings.Split(url, "/#")
-			req, _ := http.NewRequest("GET", parts[0]+"/api/status", nil)
+			req, _ := http.NewRequest("GET", parts[0]+"/p/1/api/status", nil)
 			req.Header.Set("X-Seestar-Token", parts[1])
 			client := &http.Client{Transport: &http.Transport{Proxy: nil}, Timeout: time.Second}
 			defer client.CloseIdleConnections()

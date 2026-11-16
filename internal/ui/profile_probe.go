@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/netip"
 	"slices"
-	"strings"
 	"time"
 
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
@@ -29,12 +28,14 @@ func ProfileLabel(name string) string {
 // profileKey carries the profile a UI run is of.
 type profileKey struct{}
 
-// runProfile is the profile a UI run is of: its root's profiles and its
-// own name. A run of a state folder given by --state-dir is of none.
+// runProfile is the profiles a UI run opens as tabs: its root's, the one
+// named first, or Default when name is "". A run of a state folder given
+// by --state-dir is of none.
 type runProfile struct{ root, name string }
 
-// WithProfile marks the UI run under ctx as the profile name of the
-// profiles under root.
+// WithProfile marks the UI run under ctx as an app with tabs of the
+// profiles under root, opening the profile name first, or Default when
+// name is "".
 func WithProfile(ctx context.Context, root, name string) context.Context {
 	return context.WithValue(ctx, profileKey{}, runProfile{root, name})
 }
@@ -44,8 +45,8 @@ func profileOf(ctx context.Context) (runProfile, bool) {
 	return p, ok
 }
 
-// probeClient is how one app asks another of its state root over its
-// local controls: briefly, and never through a proxy.
+// probeClient is how one app or command asks an app of its state root
+// over its local controls: briefly, and never through a proxy.
 func probeClient() *http.Client {
 	return &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, Timeout: 300 * time.Millisecond,
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
@@ -60,7 +61,7 @@ type windowStatus struct {
 	TelescopeName  string   `json:"telescope_name"`
 }
 
-// errNoWindow is no open window's record in a state folder.
+// errNoWindow is no open tab's or window's record in a state folder.
 var errNoWindow = errors.New("no window open")
 
 // probeStatus asks the app of the state folder dir for its status: the
@@ -73,7 +74,7 @@ func probeStatus(ctx context.Context, client *http.Client, dir string) (windowSt
 	} else if err != nil {
 		return windowStatus{}, err
 	}
-	req, err := http.NewRequestWithContext(ctx, "GET", "http://"+record.host()+"/api/status", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", record.api("status"), nil)
 	if err != nil {
 		return windowStatus{}, err
 	}
@@ -109,15 +110,16 @@ func sameBind(a, b string) bool {
 	return x.Unmap() == y.Unmap()
 }
 
-// ServingWindow is the open window of another of root's profiles than
-// self whose run listens on the local port at the bind address: the app
-// holding it. A port held by anything else, or by self, has none.
-func ServingWindow(ctx context.Context, root, self, bind string, port uint16) (proxy.Holder, bool) {
+// ServingWindow is the open tab or window of another of root's profiles
+// than self, in another app, whose run listens on the local port at the
+// bind address: the app holding it. A port held by anything else, or by
+// self, has none, nor does one held by a profile skip says is this app's.
+func ServingWindow(ctx context.Context, root, self, bind string, port uint16, skip func(string) bool) (proxy.Holder, bool) {
 	names, _ := Profiles(root)
 	client := probeClient()
 	defer client.CloseIdleConnections()
 	for _, name := range append([]string{DefaultProfile}, names...) {
-		if sameProfile(name, self) {
+		if sameProfile(name, self) || skip != nil && skip(name) {
 			continue
 		}
 		if status, err := probeStatus(ctx, client, ProfileDir(root, name)); err == nil && status.serves(bind, port) {
@@ -161,37 +163,21 @@ func EndpointHolder(ctx context.Context, root, self, bind string, port uint16) (
 	return EndpointWindow{}, false, err
 }
 
-// PortHolder is the open window of another profile that holds the local
-// port at the bind address, for the UI run under ctx: see ServingWindow.
-// A run of no profile has none.
+// PortHolder is what holds the local port at the bind address, for the
+// UI run under ctx: another tab of its app, known in-process, or else
+// another app's tab or window of another profile (see ServingWindow). A
+// run of a --state-dir folder has only the tabs of its own app, which is
+// none. A run of a profile that isn't a tab asks the other apps only.
 func PortHolder(ctx context.Context, bind string, port uint16) (proxy.Holder, bool) {
-	p, ok := profileOf(ctx)
+	t, ok := tabOf(ctx)
 	if !ok {
+		if p, ok := profileOf(ctx); ok {
+			return ServingWindow(ctx, p.root, p.name, bind, port, nil)
+		}
 		return proxy.Holder{}, false
 	}
-	return ServingWindow(ctx, p.root, p.name, bind, port)
-}
-
-// activateWindow brings forward the open window of the state folder dir,
-// as a relaunch does, but showing it only: the window it asks never asks
-// which profile to open. false is no window answering there.
-func activateWindow(ctx context.Context, client *http.Client, dir string) bool {
-	var record runtimeRecord
-	if err := (&storage{root: dir}).read("ui-runtime.json", &record); err != nil || !record.valid() {
-		return false
+	if h, held := t.app.holder(t, bind, port); held || !t.app.profiles {
+		return h, held
 	}
-	req, err := http.NewRequestWithContext(ctx, "POST", "http://"+record.host()+"/api/activate", strings.NewReader(`{"show":true}`))
-	if err != nil {
-		return false
-	}
-	req.Header.Set("X-Seestar-Token", record.Token)
-	req.Header.Set("Origin", "http://"+record.host())
-	req.Header.Set("Content-Type", "application/json")
-	response, err := client.Do(req)
-	if err != nil {
-		return false
-	}
-	io.Copy(io.Discard, io.LimitReader(response.Body, 128))
-	response.Body.Close()
-	return response.StatusCode == http.StatusOK
+	return ServingWindow(ctx, t.app.root, t.name, bind, port, func(name string) bool { return t.app.find(name, "") != nil })
 }

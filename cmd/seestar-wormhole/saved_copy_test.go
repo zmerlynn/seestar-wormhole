@@ -424,8 +424,9 @@ func TestProfileFallbackWarningsOnceOnRunFailure(t *testing.T) {
 	checkProfileWarnings(t, err, &logs)
 }
 
-// ui --profile runs the app on that profile's folder, found as the file
-// commands find it; an unknown name, or --state-dir too, is exit 2.
+// ui --profile opens the app with that profile's tab, the name found as
+// the file commands find it; an unknown name, or --state-dir too, is
+// exit 2.
 func TestUIProfileFlag(t *testing.T) {
 	saved := registerUICommand
 	t.Cleanup(func() { registerUICommand = saved })
@@ -437,11 +438,11 @@ func TestUIProfileFlag(t *testing.T) {
 	useProfileRoot(t, root, nil)
 	for _, name := range []string{"Garden", "GARDEN"} {
 		o, err := parse([]string{"ui", "--profile", name}, io.Discard)
-		if err != nil || o.command != commandUI || o.stateDir != ui.ProfileDir(root, "Garden") || o.profile != "Garden" {
+		if err != nil || o.command != commandUI || o.stateDir != "" || o.profile != "Garden" {
 			t.Errorf("%s: %+v, %v", name, o, err)
 		}
 	}
-	if o, err := parse([]string{"ui", "--profile", "default"}, io.Discard); err != nil || o.stateDir != root || o.profile != "default" {
+	if o, err := parse([]string{"ui", "--profile", "default"}, io.Discard); err != nil || o.stateDir != "" || o.profile != "default" {
 		t.Errorf("default: %q %q, %v", o.stateDir, o.profile, err)
 	}
 	if o, err := parse([]string{"ui"}, io.Discard); err != nil || o.stateDir != "" || o.profile != "" {

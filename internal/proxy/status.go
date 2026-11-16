@@ -159,12 +159,14 @@ func (s *Status) Serving() (string, bool) {
 	return "", false
 }
 
-// Holder is another app window that holds the local ports a copy-only run
-// went without: its profile and its telescope, each "" when it couldn't
-// be named.
+// Holder is another profile's run that holds the local ports a copy-only
+// run went without: its profile and its telescope, each "" when it
+// couldn't be named, and whether it is a tab of the same app rather than
+// another app's window.
 type Holder struct {
 	Profile   string `json:"profile"`
 	Telescope string `json:"telescope"`
+	Tab       bool   `json:"tab"`
 }
 
 // MarkCopyOnly records that the run serves no local ports, because h holds

@@ -466,7 +466,8 @@ func (d *guiTestDriver) drive() error {
 			return err
 		}
 	case "strand":
-		origin := strings.Split(d.url, "/#")[0]
+		// The window shows the first tab's page, under /p/1/ of the origin.
+		origin := strings.Join(strings.SplitN(d.url, "/", 4)[:3], "/")
 		// about:blank has a different URL origin and requires no network or server.
 		// Use page navigation, not the native SetURL whose recovery we are testing.
 		d.w.ExecJS(`location.href='about:blank'`)

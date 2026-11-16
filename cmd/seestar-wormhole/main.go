@@ -77,10 +77,13 @@ type options struct {
 	// profile's when it runs.
 	settingsFallbacks []diagnostic.Fallback
 	name              string
-	// uiHolder is the other app window holding a local port the UI's
-	// run can't listen on, which makes the run copy-only; nil outside
-	// the UI.
+	// uiHolder is the other tab or app window holding a local port the
+	// UI's run can't listen on, which makes the run copy-only; nil
+	// outside the UI.
 	uiHolder func(port uint16) (proxy.Holder, bool)
+	// uiProfile is the profile of the UI's run, which labels its records
+	// in the process's log; "" outside the UI or for a --state-dir run.
+	uiProfile string
 	// fileName is the file command parsed, and file that command once it
 	// validated.
 	fileName string
@@ -231,6 +234,9 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			// The contracted final record is always JSON, independently of the
 			// lifecycle format, threshold, startup buffering, and receipt history.
 			logger := newLogger("json", logOutput)
+			if o.uiProfile != "" {
+				logger = logger.With("profile", o.uiProfile)
+			}
 			if phase == "tcp_state_query" {
 				logger = logger.With("rule", "SIO_TCP_INFO_required", "requirement", "Windows 10 version 1703 or later, or Windows Server 2016 or later")
 			}
@@ -255,6 +261,9 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		}
 	}()
 	startup := newStartupLogging(o, logOutput)
+	if o.uiProfile != "" {
+		startup.logger = startup.logger.With("profile", o.uiProfile)
+	}
 	logger := startup.logger
 	defer func() { result = errors.Join(result, startup.finish(result)) }()
 	var err error
