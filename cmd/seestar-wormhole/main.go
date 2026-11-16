@@ -277,13 +277,6 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	phase = "listener"
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	var forwards []proxy.Forward
-	defer func() {
-		o.uiStatus.ClearServing()
-		for _, f := range forwards {
-			f.Listener.Close()
-		}
-	}()
 	// Another tab of the app binds, classifies and publishes after this
 	// run has, never between.
 	release := func() {}
@@ -291,6 +284,13 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 		release = sync.OnceFunc(o.uiPorts())
 	}
 	defer release()
+	var forwards []proxy.Forward
+	defer func() {
+		o.uiStatus.ClearServing()
+		for _, f := range forwards {
+			f.Listener.Close()
+		}
+	}()
 	// A UI run whose port another app window holds serves none of its
 	// ports, and no discovery: the phone app reaches that window's
 	// telescope, and this one's file tools dial through the session.
