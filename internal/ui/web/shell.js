@@ -166,10 +166,13 @@ function shellFocused() {
 }
 // handOff gives the selected tab's page focus, so keyboard users land in
 // it, unless the shell has focus. A page that just loaded takes it again,
-// since the focus its frame had went to the page it replaced.
-function handOff(loaded) {
+// since the focus its frame had went to the page it replaced, as does the
+// page when the window gains focus in the shell: a window not yet focused
+// as the page loaded, as WKWebView's can be, gives its first focus to the
+// shell.
+function handOff(again) {
   const frame = frameOf(selected);
-  if (!frame || shellFocused() || (document.activeElement === frame && !loaded)) return;
+  if (!frame || shellFocused() || (document.activeElement === frame && !again)) return;
   try {
     frame.contentWindow.focus();
   } catch (_) {
@@ -392,5 +395,10 @@ $('k-confirm').addEventListener('close', () => {
   confirmed = null;
 });
 document.addEventListener('keydown', switchKey);
-window.addEventListener('focus', refresh);
+// Once the focus that brought the window's focus has landed: a click on
+// a tab keeps it.
+window.addEventListener('focus', () => {
+  setTimeout(() => handOff(true));
+  refresh();
+});
 poll();

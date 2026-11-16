@@ -257,4 +257,20 @@ async function checkFrameFocus() {
   document.activeElement = testBody;
   tabsShown()[1].dispatchEvent({type: 'click'});
   assert(document.activeElement === two, 'nothing focused: ' + document.activeElement.tagName);
+  // The window gaining focus hands it to the page, which may not have had
+  // it when it loaded; a tab focused by the click that brought it does not.
+  const later = [];
+  setTimeout = callback => later.push(callback);
+  try {
+    testFocused.length = 0;
+    testBody.dispatchEvent({type: 'window-focus'});
+    later.splice(0).forEach(f => f());
+    assert(JSON.stringify(testFocused) === '["/p/2/"]' && document.activeElement === two, 'window focus focused ' + JSON.stringify(testFocused));
+    tabsShown()[1].focus();
+    testFocused.length = 0;
+    testBody.dispatchEvent({type: 'window-focus'});
+    later.splice(0).forEach(f => f());
+    assert(testFocused.length === 0 && document.activeElement === tabsShown()[1], 'window focus took focus from the tab');
+  } finally {setTimeout = () => {};}
+  await settle();
 }
