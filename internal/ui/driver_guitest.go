@@ -50,12 +50,22 @@ func (d *guiTestDriver) shellProbe(expression string) error {
 }
 
 // inTab runs js in the first tab's page, the shell's first frame, once it
-// has loaded, or in the window's page when it has no frames, as when it
-// shows a page other than the app's. The window's ExecJS runs in the shell.
+// has loaded, or in the window's page when it is not the shell, as when it
+// shows a page other than the app's. A shell whose first page hasn't loaded
+// yet runs nothing and says where it is, so the caller retries. The
+// window's ExecJS runs in the shell.
 func inTab(js string) string {
-	return `(() => {const js=` + strconv.Quote(js) + `,f=document.querySelector('#frames iframe');
- if(!f) (0,eval)(js);
- else if(f.contentDocument?.readyState==='complete' && f.contentWindow.location.pathname.startsWith('/p/')) f.contentWindow.eval(js);
+	return `(() => {const js=` + strconv.Quote(js) + `,frames=document.getElementById('frames'),f=frames?.querySelector('iframe');
+ if(!frames) {(0,eval)(js);return}
+ const page=f?.contentWindow,ready=f?.contentDocument?.readyState,path=page?.location.pathname;
+ if(ready==='complete' && path?.startsWith('/p/')) {page.eval(js);return}
+ const wait='tab not ready: '+JSON.stringify({shell:location.pathname,frames:frames.children.length,frame:f?.id ?? null,path:path ?? null,ready:ready ?? null});
+ if(window.__guitestTabWait===wait) return;
+ window.__guitestTabWait=wait;
+ const m='guitest:diagnostic:'+wait;
+ if(window.chrome?.webview) window.chrome.webview.postMessage(m);
+ else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
+ else if(window.wails?.invoke) window.wails.invoke(m);
  })()`
 }
 
@@ -126,7 +136,7 @@ func guiTestProbeScript(expression string, sequence int, waitForPaint bool) stri
  const el=id=>document.getElementById(id);
  const check=(ok,detail)=>ok ? true : detail;
  const probe=` + strconv.Itoa(sequence) + `;
- const diagnose=detail=>{detail='probe '+probe+': '+detail;
+ const diagnose=detail=>{detail='probe '+probe+': '+detail+' at '+JSON.stringify({path:typeof location==='object' ? location.pathname : null,inFrame:host!==window,ready:document.readyState ?? null});
  if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
  send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
  try {const result=(` + expression + `);

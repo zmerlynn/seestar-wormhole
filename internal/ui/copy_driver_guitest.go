@@ -123,7 +123,7 @@ func (d *guiTestDriver) driveCopy() error {
 		return d.copyRelaunch()
 	}
 	d.js(`selectTab('copy');document.getElementById('tab-copy').focus();`)
-	if err := d.probe(`check(!el('panel-copy').hidden && document.activeElement===el('tab-copy') && !el('c-main').hidden,{shown:!el('panel-copy').hidden,focused:document.activeElement?.id})`); err != nil {
+	if err := d.probe(`check(!el('panel-copy').hidden && document.activeElement===el('tab-copy') && !el('c-main').hidden,{shown:!el('panel-copy').hidden,focused:document.activeElement?.id,main:!el('c-main').hidden,setUp:copyStatus?.set_up ?? null,copyLost,controlsLost})`); err != nil {
 		return fmt.Errorf("Copy didn't open: %w", err)
 	}
 	if d.scenario == "copy-inuse" {
