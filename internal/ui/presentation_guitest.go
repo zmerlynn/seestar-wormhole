@@ -135,7 +135,24 @@ func guiTestWindowOptions(scenario string) application.WebviewWindowOptions {
 // the frame loads, not its first blank page. The wrapper is the shell's
 // function, so it calls the page's fetch on the page's window: called on
 // the shell's, it resolves the page's relative paths against the shell's.
-// Each page records its own focus for the probes' diagnostics.
+// Each page and the shell record their focus for the probes' diagnostics:
+// each focus call with what it left focused, each focus event, and the
+// page's animation frames asked for and run, since Connect takes focus in
+// one. The shell's handOff focuses the page's window.
+const where=win => {
+ const d=win.document,t=win.top.document,a=d.activeElement,s=t.activeElement;
+ return {focused:a?.id || a?.tagName || '',documentFocused:d.hasFocus(),visibility:d.visibilityState,shell:s?.id || s?.tagName || '',shellFocused:t.hasFocus(),ready:d.readyState,frames:win.__guitestFrames};
+};
+const tracer=(win,trace,cap) => {
+ const record=via => {if(trace.length<cap) trace.push({via,...where(win)})};
+ const focus=win.HTMLElement.prototype.focus;
+ win.HTMLElement.prototype.focus=function(...args) {const r=focus.apply(this,args);record('focus-call:'+(this.id || this.tagName));return r};
+ win.addEventListener('focus',() => record('window-focus'));
+ win.addEventListener('blur',() => record('window-blur'));
+ win.document.addEventListener('focusin',e => record('focusin:'+(e.target.id || e.target.tagName)));
+ win.document.addEventListener('visibilitychange',() => record('visibility'));
+ return record;
+};
 const framePage=win => {
  if(!win.location.pathname.startsWith('/p/') || win.document.__guitestPage) return;
  win.document.__guitestPage=true;
@@ -146,23 +163,16 @@ const framePage=win => {
   const status=await response.json();
   return new win.Response(JSON.stringify({...status,log_path:'state/gui.log'}),{status:response.status,headers:response.headers});
  };
- const trace=win.__guitestFocus=[];
- const record=via => {if(trace.length<16) trace.push({via,focused:win.document.activeElement?.id,documentFocused:win.document.hasFocus(),ready:win.document.readyState})};
+ const frames=win.__guitestFrames={asked:0,ran:0},raf=win.requestAnimationFrame;
+ win.requestAnimationFrame=callback => {frames.asked++;return raf.call(win,t => {frames.ran++;callback(t)})};
+ const record=tracer(win,win.__guitestFocus=[],20);
+ const windowFocus=win.focus;
+ win.focus=function(...args) {const r=windowFocus.apply(this,args);record('window.focus()');return r};
  record('page-loaded');
- win.addEventListener('focus', () => record('window-focus'));
- win.document.addEventListener('focusin', () => record('focusin'));
 };
 const framed=frame => {try {framePage(frame.contentWindow)} catch(_) {}};
 document.querySelectorAll('iframe').forEach(framed);
 document.addEventListener('load',e => {if(e.target.tagName==='IFRAME') framed(e.target)},true);
-window.__guitestFocus = [];
-const recordFocus = via => {
- if(window.__guitestFocus.length<16) window.__guitestFocus.push({via,focused:document.activeElement?.id,documentFocused:document.hasFocus(),ready:document.readyState});
-};
-recordFocus('navigation-finished');
-const originalFocus = HTMLElement.prototype.focus;
-HTMLElement.prototype.focus = function(...args) {recordFocus('focus-call:'+this.id);return originalFocus.apply(this,args)};
-window.addEventListener('focus', () => recordFocus('window-focus'));
-document.addEventListener('focusin', () => recordFocus('focusin'));
+tracer(window,window.__guitestFocus=[],12)('navigation-finished');
 })()`}
 }

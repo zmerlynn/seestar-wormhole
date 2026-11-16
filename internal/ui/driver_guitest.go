@@ -112,7 +112,21 @@ func (d *guiTestDriver) runProbe(js string, shell bool) error {
 	})
 	if err != nil {
 		// Native evidence survives a broken bridge, a parse error, or a hung JS call.
-		fmt.Fprintf(d.out, "DOM diagnostics: {\"probe\":%d,\"started\":%t,\"evaluated\":%t,\"matched\":%t,\"timeout\":true}\n", d.seq, started.Load(), evaluated.Load(), matched.Load())
+		// So does the window's native focus: key, and its web view the
+		// first responder (macOS only). A main thread busy terminating
+		// leaves them null rather than hold the driver.
+		native := `"windowFocused":null,"webViewFocused":null`
+		if d.w != nil {
+			answer := make(chan string, 1)
+			go func() {
+				answer <- fmt.Sprintf(`"windowFocused":%t,"webViewFocused":%t`, d.w.IsFocused(), webViewFocused(d.w))
+			}()
+			select {
+			case native = <-answer:
+			case <-time.After(time.Second):
+			}
+		}
+		fmt.Fprintf(d.out, "DOM diagnostics: {\"probe\":%d,\"started\":%t,\"evaluated\":%t,\"matched\":%t,\"timeout\":true,%s}\n", d.seq, started.Load(), evaluated.Load(), matched.Load(), native)
 	}
 	return err
 }
@@ -213,7 +227,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	}
 	if shot == "setup" {
 		// Check launch visibility before any driver scrolling can conceal a defect.
-		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),focused=document.activeElement?.id;return check(start.top>=0 && start.bottom<innerHeight && document.activeElement===el('start'),{start,innerHeight,focused,documentFocused:document.hasFocus(),focusTrace:window.__guitestFocus ?? null})})()`); err != nil {
+		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),focused=document.activeElement?.id;return check(start.top>=0 && start.bottom<innerHeight && document.activeElement===el('start'),{start,innerHeight,focused,documentFocused:document.hasFocus(),focusTrace:window.__guitestFocus ?? null,shellTrace:window.top.__guitestFocus ?? null})})()`); err != nil {
 			return err
 		}
 	}
