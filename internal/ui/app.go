@@ -55,6 +55,10 @@ type app struct {
 	base context.Context
 	// opening serializes opening tabs, so one profile can't open twice.
 	opening sync.Mutex
+	// ports orders its tabs' runs taking their local ports: each binds,
+	// tells a conflict's holder and publishes what it serves before the
+	// next binds.
+	ports sync.Mutex
 	// mu guards the tabs and each tab's closing, and orders a tab's
 	// publishing against closing the last tab and quitting: once quitting
 	// is set under it, no tab opens.
@@ -112,6 +116,20 @@ func RunDir(ctx context.Context, dir string) string {
 		return t.dir
 	}
 	return dir
+}
+
+// PortGate holds the local ports of the app of the UI run under ctx,
+// if the run is a tab's, until the func it returns is called: while the
+// run binds its listeners, tells a conflict's holder and publishes what
+// it serves, so another tab's run never finds a port held but not yet
+// published.
+func PortGate(ctx context.Context) func() {
+	t, ok := tabOf(ctx)
+	if !ok {
+		return func() {}
+	}
+	t.app.ports.Lock()
+	return t.app.ports.Unlock
 }
 
 // RunProfile is the profile of the UI run under ctx as the app shows it,

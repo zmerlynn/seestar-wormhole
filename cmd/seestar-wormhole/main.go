@@ -81,6 +81,9 @@ type options struct {
 	// UI's run can't listen on, which makes the run copy-only; nil
 	// outside the UI.
 	uiHolder func(port uint16) (proxy.Holder, bool)
+	// uiPorts holds the UI's other runs from their ports until the
+	// func it returns is called; nil outside the UI.
+	uiPorts func() func()
 	// uiProfile is the profile of the UI's run, which labels its records
 	// in the process's log; "" outside the UI or for a --state-dir run.
 	uiProfile string
@@ -281,6 +284,13 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 			f.Listener.Close()
 		}
 	}()
+	// Another tab of the app binds, classifies and publishes after this
+	// run has, never between.
+	release := func() {}
+	if o.uiPorts != nil {
+		release = sync.OnceFunc(o.uiPorts())
+	}
+	defer release()
 	// A UI run whose port another app window holds serves none of its
 	// ports, and no discovery: the phone app reaches that window's
 	// telescope, and this one's file tools dial through the session.
@@ -314,6 +324,7 @@ func runProxy(ctx context.Context, o options, logOutput io.Writer, newSession fu
 	if !copyOnly {
 		o.uiStatus.MarkServing(o.bind)
 	}
+	release()
 	var discovery commandDiscovery
 	if o.lanDiscovery && !copyOnly {
 		phase = "lan_discovery"

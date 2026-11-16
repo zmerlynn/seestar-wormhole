@@ -934,3 +934,37 @@ func TestTabsRunDir(t *testing.T) {
 		t.Errorf("no tab: %q", dir)
 	}
 }
+
+// The tabs of one app take their ports one at a time; a run that isn't
+// a tab's isn't held.
+func TestTabsPortGate(t *testing.T) {
+	ctxs := make(chan context.Context, 2)
+	a, first := gateApp(t, func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
+		ctxs <- ctx
+		<-ctx.Done()
+		return nil
+	})
+	garden, err := a.showCreated("Garden", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tab := range []*tab{first, garden} {
+		if err := tab.server.controller.start(testSettings(), testPassword); err != nil {
+			t.Fatal(err)
+		}
+	}
+	release := PortGate(<-ctxs)
+	PortGate(t.Context())()
+	held := make(chan struct{})
+	go func() {
+		PortGate(<-ctxs)()
+		close(held)
+	}()
+	select {
+	case <-held:
+		t.Fatal("two tabs took their ports at once")
+	case <-time.After(50 * time.Millisecond):
+	}
+	release()
+	<-held
+}
