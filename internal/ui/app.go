@@ -540,11 +540,14 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		// A relaunch shows this app's window, or opens its page when it
-		// has none; one that names a profile asks it for that tab.
+		// has none; one that names a profile asks an app with profile
+		// tabs for that tab.
 		if a.window {
 			w.Header().Set("X-Seestar-Window", "1")
 		}
-		w.Header().Set("X-Seestar-Tabs", "1")
+		if a.profiles {
+			w.Header().Set("X-Seestar-Tabs", "1")
+		}
 		localhttp.Respond(w, http.StatusOK, struct {
 			Instance string `json:"instance"`
 		}{"seestar-wormhole-ui-v1"})
@@ -571,7 +574,10 @@ func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ok := func(v any) { localhttp.Respond(w, http.StatusOK, v) }
 	switch r.URL.Path {
 	case "/api/activate":
-		if in.Profile != "" && a.profiles {
+		if in.Profile != "" && !a.profiles {
+			refuse("profile_open", "Couldn't open "+ProfileLabel(in.Profile)+": this seestar-wormhole window has one folder, "+a.root+", and no profiles.")
+			return
+		} else if in.Profile != "" {
 			if err := a.openNamed(in.Profile); err != nil {
 				refuse("profile_open", err.Error())
 				return

@@ -6,10 +6,13 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -353,8 +356,39 @@ func TestTabsLaunchAsksRunningApp(t *testing.T) {
 	}
 }
 
+// olderApp answers in dir as an app of an older build does: its window
+// shows on an activation, which it counts, and it has no tabs.
+func olderApp(t *testing.T, dir string) *atomic.Int32 {
+	t.Helper()
+	var activated atomic.Int32
+	old := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/instance":
+			w.Header().Set("X-Seestar-Window", "1")
+			io.WriteString(w, `{"instance":"seestar-wormhole-ui-v1"}`)
+		case "/api/activate":
+			activated.Add(1)
+			io.WriteString(w, `{"ok":true}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(old.Close)
+	port, _ := strconv.Atoi(old.URL[strings.LastIndexByte(old.URL, ':')+1:])
+	st, err := openStorage(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer st.directory.Close()
+	if err := st.write("ui-runtime.json", runtimeRecord{Port: port, Token: strings.Repeat("ab", 32)}); err != nil {
+		t.Fatal(err)
+	}
+	return &activated
+}
+
 // A launch of a profile another process holds, with no app of its own
-// to ask, refuses with the real error.
+// to ask, refuses with the real error, even when that process is an
+// older build that answers: it can't open the profile's tab.
 func TestTabsLaunchLockedByAnotherProcess(t *testing.T) {
 	tabsHome(t)
 	root := filepath.Join(t.TempDir(), "state")
@@ -362,6 +396,7 @@ func TestTabsLaunchLockedByAnotherProcess(t *testing.T) {
 		t.Fatal(err)
 	}
 	held := heldLock(t, ProfileDir(root, "Garden"))
+	activated := olderApp(t, ProfileDir(root, "Garden"))
 	ctx, cancel := context.WithTimeout(WithProfile(t.Context(), root, "Garden"), 5*time.Second)
 	defer cancel()
 	err := runUIPresented(ctx, "", io.Discard, io.Discard, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(context.Context, string, func(), <-chan struct{}) error {
@@ -369,6 +404,78 @@ func TestTabsLaunchLockedByAnotherProcess(t *testing.T) {
 		return nil
 	}, &copyapp.Native{})
 	if want := "Couldn't open Garden: Garden is open in another seestar-wormhole window: its lock, " + held + ", is held."; err == nil || err.Error() != want {
+		t.Fatal(err)
+	}
+	if n := activated.Load(); n != 0 {
+		t.Fatalf("the older app was activated %d times", n)
+	}
+}
+
+// A launch that names a profile asks only an app that can open its tab:
+// an older build's app, or an app of one --state-dir folder, answering
+// in a profile's folder is passed over, for another app with tabs or
+// for an app of its own.
+func TestTabsLaunchSkipsAppsWithoutProfiles(t *testing.T) {
+	tabsHome(t)
+	root := filepath.Join(t.TempDir(), "state")
+	for _, name := range []string{"Garden", "Backyard", "Porch"} {
+		if _, err := CreateProfile(root, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	held := heldLock(t, ProfileDir(root, "Porch"))
+	older := olderApp(t, ProfileDir(root, "Porch"))
+	launch := func(profile string, window windowFunc) error {
+		return runUIPresented(WithProfile(t.Context(), root, profile), "", io.Discard, io.Discard, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, window, &copyapp.Native{})
+	}
+	noWindow := func(context.Context, string, func(), <-chan struct{}) error {
+		t.Error("the launch opened a window")
+		return nil
+	}
+	// An app of the root as one --state-dir folder holds Default's folder.
+	err := runUIPresented(t.Context(), root, io.Discard, io.Discard, nil, func(string) error { t.Error("opened browser"); return nil }, &fakeKeychain{}, func(_ context.Context, url string, closeWindow func(), isolated <-chan struct{}) error {
+		defer closeWindow()
+		// It refuses to stand in for a profile asked of it directly.
+		if code, message := newTabsClient(t, url).refusal("/api/activate", `{"profile":"Garden"}`); code != 400 || !strings.HasPrefix(message, "Couldn't open Garden: ") {
+			t.Errorf("isolated activation: %d %q", code, message)
+		}
+		// With no app with tabs running, Garden's launch opens its own.
+		opened := false
+		if err := launch("Garden", func(_ context.Context, url string, closeWindow func(), _ <-chan struct{}) error {
+			opened = true
+			if open, _ := newTabsClient(t, url).tabs().labels(); !slices.Equal(open, []string{"Garden"}) {
+				t.Errorf("Garden's own app: %v", open)
+			}
+			closeWindow()
+			return nil
+		}); err != nil || !opened {
+			t.Errorf("Garden's launch: %v, opened its window: %t", err, opened)
+		}
+		// With an app with tabs running, Garden opens there, and a
+		// profile the older app holds is refused by its lock.
+		return runTabs(t, root, "Backyard", nil, func(c *tabsClient, activate <-chan struct{}) {
+			if err := launch("Garden", noWindow); err != nil {
+				t.Fatal(err)
+			}
+			<-activate
+			if open, _ := c.tabs().labels(); !slices.Equal(open, []string{"Backyard", "Garden"}) {
+				t.Fatalf("Garden: %v", open)
+			}
+			want := "Couldn't open Porch: Porch is open in another seestar-wormhole window: its lock, " + held + ", is held."
+			if err := launch("Porch", noWindow); err == nil || err.Error() != want {
+				t.Fatalf("Porch: %v", err)
+			}
+			select {
+			case <-isolated:
+				t.Error("the --state-dir app was activated")
+			default:
+			}
+			if n := older.Load(); n != 0 {
+				t.Errorf("the older app was activated %d times", n)
+			}
+		})
+	}, &copyapp.Native{})
+	if err != nil {
 		t.Fatal(err)
 	}
 }

@@ -52,8 +52,10 @@ func (r runtimeRecord) api(action string) string {
 
 // askApp asks the app recorded in the folder of s to show itself, and,
 // when profile isn't "", to open or select that profile's tab. An app
-// without tabs is asked only when its folder is the one asked for, own.
-// done is false while no app answers there; err is an app's refusal.
+// without profile tabs, an older one or one of a --state-dir folder, is
+// asked only to show itself, and only when its folder is the one asked
+// for, own. done is false while no app answers there that can; err is an
+// app's refusal.
 func askApp(ctx context.Context, client *http.Client, s *storage, profile string, own bool, open func(string) error, out io.Writer) (done bool, err error) {
 	var record runtimeRecord
 	if err := s.read("ui-runtime.json", &record); err != nil || !record.valid() {
@@ -74,11 +76,11 @@ func askApp(ctx context.Context, client *http.Client, s *storage, profile string
 		return false, nil
 	}
 	tabs := response.Header.Get("X-Seestar-Tabs") == "1"
-	if !tabs && !own {
+	if !tabs && (!own || profile != "") {
 		return false, nil
 	}
 	activation := "{}"
-	if tabs && profile != "" {
+	if profile != "" {
 		b, _ := json.Marshal(tabInput{Profile: profile})
 		activation = string(b)
 	}
