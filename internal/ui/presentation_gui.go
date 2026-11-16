@@ -112,9 +112,14 @@ func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, 
 		window := app.Window.NewWithOptions(options)
 		// The page is served over HTTP and doesn't import the Wails runtime,
 		// which would say it is ready: ExecJS, the shell's quit
-		// confirmation, waits for that, so say it once the page loads.
+		// confirmation, waits for that, so say it once the page loads. Its
+		// web view takes focus within the window then too, so the page has
+		// focus once the window does.
 		loaded := map[string]events.WindowEventType{"darwin": events.Mac.WebViewDidFinishNavigation, "windows": events.Windows.WebViewNavigationCompleted, "linux": events.Linux.WindowLoadFinished}[runtime.GOOS]
-		window.OnWindowEvent(loaded, func(*application.WindowEvent) { window.HandleMessage("wails:runtime:ready") })
+		window.OnWindowEvent(loaded, func(*application.WindowEvent) {
+			window.HandleMessage("wails:runtime:ready")
+			focusWebView(window)
+		})
 		if configure != nil {
 			configure(app, window)
 		}
