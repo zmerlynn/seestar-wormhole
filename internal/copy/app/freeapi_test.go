@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -68,7 +69,7 @@ func TestFreeAPI(t *testing.T) {
 	for e.s.free.running() {
 		time.Sleep(5 * time.Millisecond)
 	}
-	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true,"ignore":true}`); w.Code != 200 {
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","trust":true,"ignore":true,"free_includes":["*.jpg"]}`); w.Code != 200 {
 		t.Errorf("find ignoring state: %d %s", w.Code, w.Body)
 	}
 	if set := last(); set.TrustState || !set.IgnoreState {
@@ -130,6 +131,102 @@ func TestFreeAPI(t *testing.T) {
 	if set := last(); !slices.Equal(set.FreeExcludes, []string{"/MyWorks/M 31"}) || !slices.Equal(set.FreeIncludes, []string{"/MyWorks"}) ||
 		!slices.Equal(set.Excludes, []string{"Video", "/Preview"}) {
 		t.Errorf("a settings save changed the patterns: %+v", set)
+	}
+}
+
+// noPattern is Find's message for checking nothing with no Only free up
+// pattern.
+const noPattern = "With Nothing checked, enter at least one pattern, such as *.jpg: whatever is selected is deleted, copied or not."
+
+// Checking nothing needs an Only free up pattern, as delete --ignore-state
+// needs an --include; refused, Find saves nothing and starts nothing. The
+// other proofs still free up everything not kept.
+func TestFreeNothingNeedsAPattern(t *testing.T) {
+	e := newAppEnv(t, savedAt(abs("/data/Seestar")))
+	idle := func() {
+		for e.s.free.running() {
+			time.Sleep(5 * time.Millisecond)
+		}
+	}
+	for _, body := range []string{
+		`{"action":"find","days":"0","ignore":true}`,
+		`{"action":"find","days":"0","ignore":true,"free_includes":[]}`,
+		`{"action":"find","days":"0","trust":true,"ignore":true,"free_includes":[""," "]}`,
+		`{"action":"find","days":"0","ignore":true,"free_excludes":["*.mp4"]}`,
+	} {
+		w := e.post("/copy/api/delete", body)
+		got := decode[fieldErrors](t, w)
+		if want := map[string]string{"free_includes": noPattern}; w.Code != 400 || !maps.Equal(got.Fields, want) {
+			t.Errorf("%s: %d %+v", body, w.Code, got)
+		}
+		if n := len(e.saves()); n != 0 || e.s.free.running() {
+			t.Fatalf("%s: %d saves, running %v", body, n, e.s.free.running())
+		}
+	}
+	// A bad pattern is named as such, and the days are checked too.
+	w := e.post("/copy/api/delete", `{"action":"find","days":"x","ignore":true,"free_includes":["!x"]}`)
+	got := decode[fieldErrors](t, w)
+	want := map[string]string{
+		"days":          "Enter a whole number of days, 0 or more.",
+		"free_includes": "Line 1: a leading ! is not supported; put the files to keep in Keep on the telescope. Correct this pattern and preview again.",
+	}
+	if w.Code != 400 || !maps.Equal(got.Fields, want) {
+		t.Errorf("bad pattern: %d %+v", w.Code, got)
+	}
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"x","ignore":true}`); w.Code != 400 {
+		t.Errorf("bad days: %d", w.Code)
+	} else if got := decode[fieldErrors](t, w); got.Fields["free_includes"] != noPattern || got.Fields["days"] == "" {
+		t.Errorf("bad days: %+v", got)
+	}
+	if len(e.saves()) != 0 {
+		t.Fatal("a refused Find saved")
+	}
+
+	// One pattern is enough.
+	if w := e.post("/copy/api/delete", `{"action":"find","days":"0","ignore":true,"free_includes":["","*.jpg"]}`); w.Code != 200 {
+		t.Fatalf("find with a pattern: %d %s", w.Code, w.Body)
+	}
+	if saves := e.saves(); len(saves) != 1 || !saves[0].IgnoreState || !slices.Equal(saves[0].FreeIncludes, []string{"*.jpg"}) {
+		t.Errorf("saves: %+v", saves)
+	}
+	// Checking copies or the copy history needs none.
+	for _, body := range []string{`{"action":"find","days":"0"}`, `{"action":"find","days":"0","trust":true,"free_includes":[]}`} {
+		idle()
+		if w := e.post("/copy/api/delete", body); w.Code != 200 {
+			t.Errorf("%s: %d %s", body, w.Code, w.Body)
+		}
+	}
+	if saves := e.saves(); len(saves) != 3 || saves[2].IgnoreState || !saves[2].TrustState || len(saves[2].FreeIncludes) != 0 {
+		t.Errorf("saves: %+v", saves)
+	}
+}
+
+// A copy.json saved before Find refused checking nothing without a
+// pattern still loads as saved, but no preview runs from it.
+func TestFreeSavedNothingWithoutPattern(t *testing.T) {
+	set := DefaultSettings()
+	if err := json.Unmarshal([]byte(`{"version":1,"folder":`+quote(abs("/data/Seestar"))+`,"older_than_days":0,"ignore_state":true}`), &set); err != nil {
+		t.Fatal(err)
+	}
+	e := newAppEnv(t, &set)
+	type status struct {
+		SetUp    bool `json:"set_up"`
+		Settings struct {
+			IgnoreState  bool     `json:"ignore_state"`
+			FreeIncludes []string `json:"free_includes"`
+		} `json:"settings"`
+	}
+	if got := decode[status](t, e.serve("GET", "/copy/api/status", "")); !got.SetUp || !got.Settings.IgnoreState || got.Settings.FreeIncludes == nil || len(got.Settings.FreeIncludes) != 0 {
+		t.Errorf("status: %+v", got)
+	}
+	if err := e.s.free.find(set, Target{Endpoint: testEndpoint}); !errors.Is(err, errNoFreeIncludes) {
+		t.Errorf("find from the saved settings: %v", err)
+	}
+	if v := e.s.free.view(); v.State != frStart || e.s.free.running() {
+		t.Errorf("after the refusal: %+v", v)
+	}
+	if len(e.saves()) != 0 {
+		t.Error("the refusal saved")
 	}
 }
 

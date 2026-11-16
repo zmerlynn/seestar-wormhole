@@ -1294,6 +1294,10 @@ func (s *server) freeAction(w http.ResponseWriter, in input) {
 		includes, msg := checkPatterns(in.FreeIncludes, "preview", "put the files to keep in Keep on the telescope")
 		if msg != "" {
 			errs["free_includes"] = msg
+		} else if in.Ignore && len(includes) == 0 {
+			// As delete --ignore-state needs an --include: checking
+			// nothing deletes whatever is selected.
+			errs["free_includes"] = "With Nothing checked, enter at least one pattern, such as *.jpg: whatever is selected is deleted, copied or not."
 		}
 		if len(errs) > 0 {
 			localhttp.Respond(w, http.StatusBadRequest, fieldErrors{errs})
