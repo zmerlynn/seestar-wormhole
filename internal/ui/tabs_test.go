@@ -853,3 +853,84 @@ func TestTabsCloseWhileStarting(t *testing.T) {
 		t.Fatalf("reopen: %v", err)
 	}
 }
+
+// post sends the shell's action to the app as its page would.
+func post(a *app, path, body string) *httptest.ResponseRecorder {
+	r := httptest.NewRequest("POST", "http://"+a.host+path, strings.NewReader(body))
+	r.Header.Set("X-Seestar-Token", a.token)
+	r.Header.Set("Origin", "http://"+a.host)
+	r.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	a.ServeHTTP(w, r)
+	return w
+}
+
+// Two asks to open one profile at once, by + and by a launch's
+// activation, open it once: the second waits for the first and selects
+// the same tab, with its one controller and lock.
+func TestTabsConcurrentOpens(t *testing.T) {
+	a, _ := gateApp(t, nil)
+	entered, release := make(chan struct{}), make(chan struct{})
+	var mounts atomic.Int32
+	saved := newMount
+	t.Cleanup(func() { newMount = saved })
+	newMount = func(ctx context.Context, o copyapp.MountOptions) *copyapp.Mount {
+		if mounts.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+		return saved(ctx, o)
+	}
+	opened, activated := make(chan *httptest.ResponseRecorder, 1), make(chan *httptest.ResponseRecorder, 1)
+	go func() { opened <- post(a, "/api/tabs/open", `{"name":"Garden"}`) }()
+	<-entered
+	go func() { activated <- post(a, "/api/activate", `{"profile":"garden"}`) }()
+	select {
+	case w := <-activated:
+		t.Fatalf("the activation answered before the open finished: %d %s", w.Code, w.Body)
+	case <-time.After(50 * time.Millisecond):
+	}
+	close(release)
+	o, act := <-opened, <-activated
+	if o.Code != 200 || act.Code != 200 || !strings.Contains(o.Body.String(), `"/p/2/"`) {
+		t.Fatalf("open %d %s, activation %d %s", o.Code, o.Body, act.Code, act.Body)
+	}
+	v := a.tabsView()
+	if open, _ := (tabsAnswer{Tabs: v.Tabs}).labels(); !slices.Equal(open, []string{"Default", "Garden"}) || v.Pick.Path != "/p/2/" || v.Pick.Seq != 3 || mounts.Load() != 1 {
+		t.Fatalf("tabs %v, pick %+v, mounts %d", open, v.Pick, mounts.Load())
+	}
+	if lockFree(t, ProfileDir(a.root, "Garden")) {
+		t.Fatal("Garden's lock isn't held")
+	}
+}
+
+// Each tab's run has its own profile's folder as its state folder, where
+// the proxy keeps its installation's identity, and its label; Default's
+// is the root.
+func TestTabsRunDir(t *testing.T) {
+	type ran struct{ dir, profile string }
+	runs := make(chan ran, 2)
+	a, first := gateApp(t, func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
+		runs <- ran{RunDir(ctx, "fallback"), RunProfile(ctx)}
+		<-ctx.Done()
+		return nil
+	})
+	garden, err := a.showCreated("Garden", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tab := range []*tab{first, garden} {
+		if err := tab.server.controller.start(testSettings(), testPassword); err != nil {
+			t.Fatal(err)
+		}
+		if r := <-runs; r != (ran{tab.dir, tab.label}) {
+			t.Errorf("%s ran with %+v", tab.label, r)
+		}
+	}
+	if first.dir != a.root || garden.dir != ProfileDir(a.root, "Garden") {
+		t.Errorf("folders %q %q", first.dir, garden.dir)
+	}
+	if dir := RunDir(t.Context(), "fallback"); dir != "fallback" || RunProfile(t.Context()) != "" {
+		t.Errorf("no tab: %q", dir)
+	}
+}
