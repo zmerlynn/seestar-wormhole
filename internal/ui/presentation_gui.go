@@ -7,6 +7,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/icon"
 	"io"
 	"log/slog"
+	"runtime"
 	"sync/atomic"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -109,6 +110,11 @@ func showWindowConfigured(ctx context.Context, root, url string, out io.Writer, 
 		options.Title, options.Width, options.Height, options.URL = "seestar-wormhole", 760, 700, url
 		options.Linux.Icon = icon.PNG
 		window := app.Window.NewWithOptions(options)
+		// The page is served over HTTP and doesn't import the Wails runtime,
+		// which would say it is ready: ExecJS, the shell's quit
+		// confirmation, waits for that, so say it once the page loads.
+		loaded := map[string]events.WindowEventType{"darwin": events.Mac.WebViewDidFinishNavigation, "windows": events.Windows.WebViewNavigationCompleted, "linux": events.Linux.WindowLoadFinished}[runtime.GOOS]
+		window.OnWindowEvent(loaded, func(*application.WindowEvent) { window.HandleMessage("wails:runtime:ready") })
 		if configure != nil {
 			configure(app, window)
 		}

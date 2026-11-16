@@ -82,17 +82,10 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 					fmt.Fprintln(out, "GUI fixture FAIL: driver did not join before native termination")
 				}
 			})
-			// An external HTTP page does not import /wails/runtime.js, which normally
-			// sends this readiness message. Release ExecJS only after native navigation
-			// completes; the probes still require the real page and app.js to be ready.
-			loaded := map[string]events.WindowEventType{"darwin": events.Mac.WebViewDidFinishNavigation, "windows": events.Windows.WebViewNavigationCompleted, "linux": events.Linux.WindowLoadFinished}[runtime.GOOS]
-			w.OnWindowEvent(loaded, func(*application.WindowEvent) {
-				w.HandleMessage("wails:runtime:ready")
-				// Wails on Windows injects options.JS only into inline-HTML windows.
-				if runtime.GOOS == "windows" {
-					w.ExecJS(guiTestWindowOptions(scenario).JS)
-				}
-			})
+			// Wails on Windows injects options.JS only into inline-HTML windows.
+			if runtime.GOOS == "windows" {
+				w.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(*application.WindowEvent) { w.ExecJS(guiTestWindowOptions(scenario).JS) })
+			}
 			app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 				go func() {
 					driverCtx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
