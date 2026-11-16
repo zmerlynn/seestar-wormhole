@@ -520,3 +520,169 @@ func TestTabsStateDir(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// gateApp is an app on a fresh root's profiles, with Garden made beside
+// Default and Default open, served by no listener: its tabs open, close
+// and quit as the shell's actions would.
+func gateApp(t *testing.T, run runFunc) (*app, *tab) {
+	t.Helper()
+	tabsHome(t)
+	a, listener, err := newApp(t.Context(), t.Context(), filepath.Join(t.TempDir(), "state"), true, io.Discard, run, &fakeKeychain{}, nil, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener.Close()
+	t.Cleanup(a.closeAll)
+	if _, err := CreateProfile(a.root, "Garden"); err != nil {
+		t.Fatal(err)
+	}
+	first, err := a.showCreated(DefaultProfile, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return a, first
+}
+
+// heldRuns are runs that say on started that they started and, once
+// their context ends, on stopping that they are stopping; each returns
+// only when release sends, or the test ends.
+type heldRuns struct{ started, stopping, release chan struct{} }
+
+func newHeldRuns(t *testing.T) (*heldRuns, runFunc) {
+	h := &heldRuns{make(chan struct{}, 4), make(chan struct{}, 4), make(chan struct{}, 4)}
+	return h, func(ctx context.Context, _ Settings, _ cloud.Credentials, _ *proxy.Status, _ func(proxy.Dialer) (func(), bool)) error {
+		h.started <- struct{}{}
+		<-ctx.Done()
+		h.stopping <- struct{}{}
+		select {
+		case <-h.release:
+		case <-t.Context().Done():
+		}
+		return nil
+	}
+}
+
+// Closing the last tab quits the app: an open asked for while it closes
+// is refused rather than left running in a quitting app.
+func TestTabsOpenDuringLastClose(t *testing.T) {
+	runs, run := newHeldRuns(t)
+	a, first := gateApp(t, run)
+	if err := first.server.controller.start(testSettings(), testPassword); err != nil {
+		t.Fatal(err)
+	}
+	<-runs.started
+	closed := make(chan struct{})
+	go func() { first.close(); close(closed) }()
+	<-runs.stopping
+	_, err := a.showCreated("Garden", "")
+	runs.release <- struct{}{}
+	<-closed
+	if err == nil || !strings.Contains(err.Error(), "quitting") {
+		t.Fatalf("Garden opened as the last tab closed: %v", err)
+	}
+	select {
+	case <-a.quit:
+	default:
+		t.Fatal("closing the last tab didn't quit")
+	}
+	if len(a.open()) != 0 || !lockFree(t, ProfileDir(a.root, "Garden")) {
+		t.Fatalf("Garden is open: %d tabs", len(a.open()))
+	}
+}
+
+// An open under way when the app quits is joined by the quit and never
+// published: its lock is released when the quit returns.
+func TestTabsOpenDuringQuit(t *testing.T) {
+	a, _ := gateApp(t, nil)
+	entered, release := make(chan struct{}), make(chan struct{})
+	saved := newMount
+	t.Cleanup(func() { newMount = saved })
+	newMount = func(ctx context.Context, o copyapp.MountOptions) *copyapp.Mount {
+		close(entered)
+		<-release
+		return saved(ctx, o)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, err := a.showCreated("Garden", "")
+		result <- err
+	}()
+	<-entered
+	quit := make(chan struct{})
+	go func() { a.closeAll(); close(quit) }()
+	waitFor(t, "quitting", a.quitting.Load)
+	close(release)
+	<-quit
+	if !lockFree(t, ProfileDir(a.root, "Garden")) || len(a.open()) != 0 {
+		t.Fatalf("Garden outlived the quit: %d tabs", len(a.open()))
+	}
+	if err := <-result; err == nil || !strings.Contains(err.Error(), "quitting") {
+		t.Fatalf("open during quit: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(ProfileDir(a.root, "Garden"), "ui-runtime.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("Garden's record remains", err)
+	}
+}
+
+// A profile reopened while its tab closes opens again once the close
+// has released its lock, rather than being refused as another
+// process's; a quit meanwhile joins the close under way.
+func TestTabsReopenDuringClose(t *testing.T) {
+	runs, run := newHeldRuns(t)
+	a, _ := gateApp(t, run)
+	garden, err := a.showCreated("Garden", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := garden.server.controller.start(testSettings(), testPassword); err != nil {
+		t.Fatal(err)
+	}
+	<-runs.started
+	closed := make(chan struct{})
+	go func() { garden.close(); close(closed) }()
+	<-runs.stopping
+	if v := a.tabsView(); len(v.Tabs) != 1 || v.Closed[0].Name != "Garden" {
+		t.Fatalf("a closing tab is shown: %+v", v)
+	}
+	type opened struct {
+		t   *tab
+		err error
+	}
+	reopened := make(chan opened, 1)
+	go func() {
+		t, err := a.showCreated("Garden", "")
+		reopened <- opened{t, err}
+	}()
+	select {
+	case r := <-reopened:
+		t.Fatalf("reopened before the close finished: %+v", r)
+	case <-time.After(50 * time.Millisecond):
+	}
+	runs.release <- struct{}{}
+	<-closed
+	r := <-reopened
+	if r.err != nil || r.t == garden || r.t.path != "/p/3/" || lockFree(t, garden.dir) {
+		t.Fatalf("reopen: %+v", r)
+	}
+
+	// A quit joins a close under way: it returns only once that tab's
+	// run has stopped and its lock is released.
+	if err := r.t.server.controller.start(testSettings(), testPassword); err != nil {
+		t.Fatal(err)
+	}
+	<-runs.started
+	go r.t.close()
+	<-runs.stopping
+	quit := make(chan struct{})
+	go func() { a.closeAll(); close(quit) }()
+	select {
+	case <-quit:
+		t.Fatal("the quit left a closing tab behind")
+	case <-time.After(50 * time.Millisecond):
+	}
+	runs.release <- struct{}{}
+	<-quit
+	if !lockFree(t, garden.dir) || !lockFree(t, ProfileDir(a.root, DefaultProfile)) {
+		t.Fatal("a lock outlived the quit")
+	}
+}

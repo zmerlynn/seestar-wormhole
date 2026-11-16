@@ -55,9 +55,12 @@ type app struct {
 	base context.Context
 	// opening serializes opening tabs, so one profile can't open twice.
 	opening sync.Mutex
-	mu      sync.Mutex
-	tabs    []*tab
-	next    int
+	// mu guards the tabs and each tab's closing, and orders a tab's
+	// publishing against closing the last tab and quitting: once quitting
+	// is set under it, no tab opens.
+	mu   sync.Mutex
+	tabs []*tab
+	next int
 	// pick is the tab an activation asked the shell to select, numbered
 	// so the shell selects each ask once.
 	pick     tabPick
@@ -82,8 +85,10 @@ type tab struct {
 	st    *storage
 	lock  *os.File
 	// server serves the page, its API, copy's API and Browse, under path.
-	server  *server
-	closing sync.Once
+	server *server
+	// closing is set, under the app's mu, when the tab starts to close;
+	// the tab stays listed, its profile reserved, until closed is.
+	closing bool
 	closed  chan struct{}
 }
 
@@ -177,7 +182,8 @@ func (a *app) label(name string) string {
 	return ProfileLabel(name)
 }
 
-// find is the open tab of the profile name, or the tab at path.
+// find is the listed tab of the profile name, or the tab at path, which
+// may be closing.
 func (a *app) find(name, path string) *tab {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -189,11 +195,15 @@ func (a *app) find(name, path string) *tab {
 	return nil
 }
 
+// open is the tabs that aren't closing.
 func (a *app) open() []*tab {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	return slices.Clone(a.tabs)
+	return slices.DeleteFunc(slices.Clone(a.tabs), func(t *tab) bool { return t.closing })
 }
+
+// errQuitting is the refusal to open a tab once the app quits.
+var errQuitting = errors.New("the app is quitting")
 
 // openTab opens the profile name as a tab: it takes the folder's lock,
 // loads its settings, starts its controller and copier, and records the
@@ -201,7 +211,7 @@ func (a *app) open() []*tab {
 // errLocked. created, if set, is recorded in the tab's Activity.
 func (a *app) openTab(name, created string) (_ *tab, result error) {
 	if a.quitting.Load() {
-		return nil, errors.New("the app is quitting")
+		return nil, errQuitting
 	}
 	dir := a.dir(name)
 	st, err := openStorage(dir)
@@ -302,7 +312,14 @@ func (a *app) openTab(name, created string) (_ *tab, result error) {
 		quitCopy(handler)
 		return nil, err
 	}
+	// A tab opened once the app quits would escape its shutdown.
 	a.mu.Lock()
+	if a.quitting.Load() {
+		a.mu.Unlock()
+		quitCopy(handler)
+		os.Remove(filepath.Join(dir, "ui-runtime.json"))
+		return nil, errQuitting
+	}
 	a.tabs = append(a.tabs, t)
 	a.mu.Unlock()
 	// Copying may start as the tab opens only once it is published.
@@ -320,44 +337,66 @@ func (a *app) openTab(name, created string) (_ *tab, result error) {
 	return t, nil
 }
 
-// close stops the tab's copier, then its run, and releases its folder.
-// Closing the last tab quits the app.
+// close stops the tab's copier, then its run, and releases its folder,
+// or waits for a close already under way to. Closing the last tab quits
+// the app: no tab opens once it starts to close.
 func (t *tab) close() {
-	t.closing.Do(func() {
-		a := t.app
-		a.mu.Lock()
-		a.tabs = slices.DeleteFunc(a.tabs, func(o *tab) bool { return o == t })
-		last := len(a.tabs) == 0
+	a := t.app
+	a.mu.Lock()
+	if t.closing {
 		a.mu.Unlock()
-		// Browse's sessions and the copier stop before the proxy they
-		// may be reaching the telescope through.
-		quitCopy(t.server)
-		t.server.controller.quit()
-		os.Remove(filepath.Join(t.dir, "ui-runtime.json"))
-		os.Remove(filepath.Join(t.dir, bootstrapName))
-		t.lock.Close()
-		t.st.directory.Close()
-		close(t.closed)
-		if last {
-			a.requestQuit()
-		}
-	})
+		<-t.closed
+		return
+	}
+	t.closing = true
+	last := !slices.ContainsFunc(a.tabs, func(o *tab) bool { return !o.closing })
+	if last {
+		a.quitting.Store(true)
+	}
+	a.mu.Unlock()
+	// Browse's sessions and the copier stop before the proxy they may be
+	// reaching the telescope through.
+	quitCopy(t.server)
+	t.server.controller.quit()
+	os.Remove(filepath.Join(t.dir, "ui-runtime.json"))
+	os.Remove(filepath.Join(t.dir, bootstrapName))
+	t.lock.Close()
+	t.st.directory.Close()
+	a.mu.Lock()
+	a.tabs = slices.DeleteFunc(a.tabs, func(o *tab) bool { return o == t })
+	a.mu.Unlock()
+	close(t.closed)
+	if last {
+		a.requestQuit()
+	}
 }
 
-// closeAll closes every tab, each tab's copier and run stopping as one
-// closed alone does.
+// closeAll quits: no tab opens after it starts, an open already under
+// way finishes first, and every tab closes, each tab's copier and run
+// stopping as one closed alone does, closes under way included.
 func (a *app) closeAll() {
+	a.mu.Lock()
+	a.quitting.Store(true)
+	a.mu.Unlock()
+	a.opening.Lock()
+	a.opening.Unlock()
+	a.mu.Lock()
+	tabs := slices.Clone(a.tabs)
+	a.mu.Unlock()
 	var wg sync.WaitGroup
-	for _, t := range a.open() {
+	for _, t := range tabs {
 		wg.Go(t.close)
 	}
 	wg.Wait()
 }
 
-// holder is the open tab other than self whose run listens on the local
-// port at the bind address.
+// holder is the tab other than self, closing or not, whose run listens
+// on the local port at the bind address.
 func (a *app) holder(self *tab, bind string, port uint16) (proxy.Holder, bool) {
-	for _, t := range a.open() {
+	a.mu.Lock()
+	tabs := slices.Clone(a.tabs)
+	a.mu.Unlock()
+	for _, t := range tabs {
 		if t == self {
 			continue
 		}
@@ -608,10 +647,7 @@ func (a *app) showCreated(name, created string) (*tab, error) {
 		return nil, errors.New("Couldn't open " + ProfileLabel(name) + ": " + err.Error() + ".")
 	}
 	a.opening.Lock()
-	t := a.find(found, "")
-	if t == nil {
-		t, err = a.openTab(found, created)
-	}
+	t, err := a.openOrFind(found, created)
 	a.opening.Unlock()
 	if errors.Is(err, errLocked) {
 		return nil, errors.New("Couldn't open " + ProfileLabel(found) + ": " + lockedError(ProfileLabel(found), a.dir(found)).Error() + ".")
@@ -622,6 +658,28 @@ func (a *app) showCreated(name, created string) (*tab, error) {
 	a.pick = tabPick{Seq: a.pick.Seq + 1, Path: t.path}
 	a.mu.Unlock()
 	return t, nil
+}
+
+// openOrFind is the open tab of the profile name, or the tab it opens:
+// a tab of it that is closing finishes closing first. The caller holds
+// opening.
+func (a *app) openOrFind(name, created string) (*tab, error) {
+	for {
+		t := a.find(name, "")
+		a.mu.Lock()
+		quitting := a.quitting.Load()
+		closing := t != nil && t.closing
+		a.mu.Unlock()
+		switch {
+		case quitting:
+			return nil, errQuitting
+		case t == nil:
+			return a.openTab(name, created)
+		case !closing:
+			return t, nil
+		}
+		<-t.closed
+	}
 }
 
 // serveAsset serves one of the embedded web assets named.
