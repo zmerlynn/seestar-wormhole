@@ -177,6 +177,11 @@ test('Before deleting, check saves each choice, and Nothing previews and deletes
   await expect(field(page, 'Only free up')).toBeFocused();
   await expect(title(page)).toHaveText(/^Nothing to delete yet\./);
   expect(readJSON(app.copyFile)).toMatchObject({ ignore_state: false, free_includes: [] });
+  // Another check needs no pattern, so choosing one drops the error.
+  await proof(page).selectOption('That my copy matches');
+  await expect(inErr).toBeHidden();
+  await expect(field(page, 'Only free up')).not.toHaveAttribute('aria-invalid', 'true');
+  await proof(page).selectOption('Nothing: delete what\'s selected, copied or not');
   await field(page, 'Only free up').fill('*');
   await find(page, /^7 files \(\d.*\) are selected to delete\.$/);
   await expect(inErr).toBeHidden();
