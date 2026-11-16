@@ -3,7 +3,7 @@
 set -euo pipefail
 export GOPROXY=off GOSUMDB=off GOTOOLCHAIN=local GOMAXPROCS=2
 [[ $(uname -s) == Darwin ]] || { echo 'Run on macOS with Xcode Command Line Tools' >&2; exit 1; }
-[[ $(go env GOVERSION) == go1.27.3 ]] || { echo 'Go 1.27.3 required' >&2; exit 1; }
+[[ $(go env GOVERSION) == go1.27.4 ]] || { echo 'Go 1.27.4 required' >&2; exit 1; }
 xcode-select -p >/dev/null
 : "${1:?Usage: scripts/build-gui-mac.sh /absolute/output/directory [version] [revision]}"
 task_version=${2:-development}

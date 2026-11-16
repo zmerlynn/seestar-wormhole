@@ -14,7 +14,7 @@ MOCK
 chmod +x "$task_tmp/bin/curl"
 export PATH="$task_tmp/bin:$PATH" GO_SUPPORT_RELEASES="$task_tmp/releases.json"
 cat > "$GO_SUPPORT_RELEASES" <<'JSON'
-[{"version":"go1.28rc1","stable":false},{"version":"go1.27.3","stable":true},{"version":"go1.26.9","stable":true}]
+[{"version":"go1.28rc1","stable":false},{"version":"go1.27.4","stable":true},{"version":"go1.26.9","stable":true}]
 JSON
 check() {
  local want=$1 code=0
@@ -36,9 +36,9 @@ printf 'module fixture\n\ngo 1.25\n' > "$task_tmp/go.mod"
 check fail
 grep -Fq 'no longer supported upstream' "$task_tmp/output"
 check fail latest
-printf 'module fixture\n\ngo 1.26\ntoolchain go1.27.3\n' > "$task_tmp/go.mod"
+printf 'module fixture\n\ngo 1.26\ntoolchain go1.27.4\n' > "$task_tmp/go.mod"
 check pass latest
-printf 'module fixture\n\ntoolchain go1.27.3\ngo 1.26\n' > "$task_tmp/go.mod"
+printf 'module fixture\n\ntoolchain go1.27.4\ngo 1.26\n' > "$task_tmp/go.mod"
 check pass latest
 printf 'module fixture\n\ngo 1.27\ntoolchain default\n' > "$task_tmp/go.mod"
 check pass latest

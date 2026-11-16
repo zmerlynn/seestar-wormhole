@@ -5,10 +5,10 @@ is the checklist for a whole release, ending in a single owner check of the
 draft. This page has the build mechanics.
 
 Use a clean checkout of the intended commit. CLI and Windows UI builds use the
-official `golang:1.27.3` image (Go 1.27.3); dependencies are vendored. Linux UI
+official `golang:1.27.4` image (Go 1.27.4); dependencies are vendored. Linux UI
 builds use Ubuntu 24.04 native runners with `libgtk-4-dev` and
 `libwebkitgtk-6.0-dev`. Mac UI builds use macos-26, Xcode Command Line Tools,
-and Go 1.27.3. GUI releases use `gui,production` tags.
+and Go 1.27.4. GUI releases use `gui,production` tags.
 
 1. Run `go build ./...`, `go vet ./...`, `go test ./...` with
    `GOFLAGS=-mod=vendor`, then `go test -race scripts/release.go scripts/release_test.go`
