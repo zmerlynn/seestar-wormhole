@@ -128,3 +128,44 @@ test('closing a tab releases its profile, and closing the last quits the app', a
   await expect(page.locator('#tabbar')).toBeHidden();
   expect(await app.exited).toBe(0);
 });
+
+test('closing an unselected tab by its button leaves focus on the selected tab', async ({ page, startApp }) => {
+  const app = await startApp();
+  addGarden(app);
+  await openShell(page, app);
+  await page.getByRole('button', { name: 'Open a profile' }).click();
+  await row(page, 'Garden').click();
+  await expect(frameOf(page, 2).locator('#quit')).toBeEnabled();
+  await page.getByRole('button', { name: 'Close Default' }).click();
+  await expect(page.locator('#profile-tabs').getByRole('tab')).toHaveCount(1);
+  await expect(ptab(page, 'Garden')).toBeFocused();
+});
+
+test('a profile opened while the last close asks keeps the app and shows it', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openShell(page, app);
+  // Default answers as connected, without a telescope to connect to.
+  await page.route('**/api/tabs', async (route) => {
+    const response = await route.fetch();
+    const v = await response.json();
+    for (const t of v.tabs) t.active = true;
+    await route.fulfill({ response, json: v });
+  }, { times: 1 });
+  await page.getByRole('button', { name: 'Close Default' }).click();
+  await expect(page.locator('#k-confirm')).toBeVisible();
+  await expect(page.locator('#k-cgo')).toHaveText('Close and quit');
+
+  // A launch of Garden asks the app to open it meanwhile.
+  addGarden(app);
+  const status = await page.evaluate(async () => (await fetch('api/activate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Seestar-Token': sessionStorage.getItem('seestar-control-token') },
+    body: JSON.stringify({ profile: 'Garden' }),
+  })).status);
+  expect(status).toBe(200);
+  await page.locator('#k-cgo').click();
+  await expect(page.locator('#profile-tabs').getByRole('tab')).toHaveCount(1);
+  await expect(ptab(page, 'Garden')).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#ended')).toBeHidden();
+  await expect(frameOf(page, 2).locator('#quit')).toBeEnabled();
+});
