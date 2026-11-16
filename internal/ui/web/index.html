@@ -215,7 +215,7 @@
 <p class="error" id="x-days-err" role="alert" hidden></p>
 <label for="x-proof">Before deleting, check</label>
 <select id="x-proof"><option value="hash">That my copy matches</option><option value="state">Only the copy history (copies moved or drive offline)</option><option value="none">Nothing: delete what's selected, copied or not</option></select>
-<p class="notice err" id="x-none-warn" hidden>Files you haven't copied are deleted too, and can't be recovered.</p>
+<p class="notice err" id="x-none-warn" hidden>Files you haven't copied are deleted too, and can't be recovered. Only free up needs at least one pattern.</p>
 <p class="help" id="x-patterns-help">These patterns are separate from Copy's Leave out and Only copy, which don't change what is deleted.</p>
 <details class="help" id="x-always"><summary>Always kept</summary><ul>
 <li>The telescope's log and scratch folders: <code>/log</code>, <code>/tmp_stitch</code>, <code>/batch_stack_tmp</code></li>
@@ -230,7 +230,7 @@
 <label for="x-in">Only free up</label>
 <textarea id="x-in" spellcheck="false" aria-describedby="x-in-help x-in-err"></textarea>
 <p class="error" id="x-in-err" role="alert" hidden></p>
-<p class="help" id="x-in-help">Leave empty to free up everything not kept. For example: <code>/MyWorks</code>.</p>
+<p class="help" id="x-in-help">Leave empty to free up everything not kept; with Nothing checked, enter at least one. For example: <code>/MyWorks</code>.</p>
 </div>
 <p class="result err" id="x-err" role="alert"></p>
 <div class="actions">

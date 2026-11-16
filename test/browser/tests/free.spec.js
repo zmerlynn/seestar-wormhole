@@ -163,13 +163,25 @@ test('Before deleting, check saves each choice, and Nothing previews and deletes
   await find(page, /^Nothing to delete yet\./);
 
   await proof(page).selectOption('Nothing: delete what\'s selected, copied or not');
-  await expect(warn).toHaveText("Files you haven't copied are deleted too, and can't be recovered.");
+  await expect(warn).toHaveText("Files you haven't copied are deleted too, and can't be recovered. Only free up needs at least one pattern.");
   await expect(warn).toBeVisible();
   await expect(page.locator('#x-folder-text')).toHaveText("Your copies aren't checked.");
   await expect(page.locator('#x-intro')).toHaveText("Free up space deletes what's selected from the telescope, whether or not it was copied.");
+  // As delete --ignore-state needs an --include, Only free up needs a
+  // pattern: without one, Preview is refused there and saves nothing.
+  await days(page).fill('0');
+  await button(page, 'Preview what to delete').click();
+  const inErr = page.locator('#x-in-err');
+  await expect(inErr).toHaveText('With Nothing checked, enter at least one pattern, such as *.jpg: whatever is selected is deleted, copied or not.');
+  await expect(field(page, 'Only free up')).toHaveAttribute('aria-invalid', 'true');
+  await expect(field(page, 'Only free up')).toBeFocused();
+  await expect(title(page)).toHaveText(/^Nothing to delete yet\./);
+  expect(readJSON(app.copyFile)).toMatchObject({ ignore_state: false, free_includes: [] });
+  await field(page, 'Only free up').fill('*');
   await find(page, /^7 files \(\d.*\) are selected to delete\.$/);
+  await expect(inErr).toBeHidden();
   await expect(page.locator('#x-sub')).toHaveText("Any age · Copies not checked: files you haven't copied are deleted too.");
-  expect(readJSON(app.copyFile)).toMatchObject({ trust_state: false, ignore_state: true });
+  expect(readJSON(app.copyFile)).toMatchObject({ trust_state: false, ignore_state: true, free_includes: ['*'] });
 
   // The confirm says the files weren't checked; the fixture is read-only,
   // so the delete it sends is refused there.
