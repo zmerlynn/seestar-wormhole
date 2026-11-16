@@ -1943,14 +1943,18 @@ async function refresh() {
   }
   render(s);
   if (first && !selectionStep) {
-    // WKWebView can finish the status fetch before its native window is key,
-    // and a tab's page loads unfocused. Focus that comes with a click into a
-    // field stays there.
+    // Connect takes focus now, even before WKWebView's native window is key,
+    // so it has it when the window gets it. Focus that comes with a click
+    // into a field stays there, as does focus on the shell's tabs or menu;
+    // a page held off that way, or hidden, tries again when its window
+    // gains focus.
     const focusStart = () => requestAnimationFrame(() => {
-      if (!document.activeElement || document.activeElement === document.body) $('start').focus();
+      const free = d => !d.activeElement || d.activeElement === d.body;
+      const shell = framed && window.top.document;
+      if (free(document) && (!shell || free(shell) || shell.activeElement === window.frameElement)) $('start').focus();
     });
-    if (document.hasFocus()) focusStart();
-    else window.addEventListener('focus', focusStart, {once: true});
+    focusStart();
+    if (!document.hasFocus()) window.addEventListener('focus', focusStart, {once: true});
   }
   return s;
 }

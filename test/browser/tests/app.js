@@ -118,12 +118,12 @@ async function openApp(page, url) {
 }
 
 // settleStartFocus waits out the page's first focus move. After its first
-// status load the page focuses Connect: in the next frame if the window
-// has focus, otherwise when the window first gets it, which in WebKit can
-// come in the middle of a test's key presses. Connect is enabled by that
-// same load, after which the move is due; a focus event on the window
-// sends a move still waiting for one, and two frames let it land, so a
-// test can then put focus where it wants.
+// status load the page focuses Connect in the next frame and, if nothing
+// took focus meanwhile, again when the window first gets it, which in
+// WebKit can come in the middle of a test's key presses. Connect is
+// enabled by that same load, after which the move is due; a focus event
+// on the window sends a move still waiting for one, and two frames let it
+// land, so a test can then put focus where it wants.
 async function settleStartFocus(page) {
   const start = page.locator('#start');
   await expect(start).toBeEnabled();

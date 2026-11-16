@@ -126,6 +126,21 @@ test('a page that loads after the shell still takes focus', async ({ page, start
   await expect(frameOf(page, 1).locator('#start')).toBeFocused();
 });
 
+// A native window not yet focused as its first tab's page loads, as
+// WKWebView's can be at launch, gives neither the shell nor the page a
+// focus event; Connect takes focus anyway, ready for when the window
+// gets it.
+test('a page that loads in an unfocused window still takes focus', async ({ page, startApp }) => {
+  const app = await startApp();
+  await page.addInitScript(() => {
+    Document.prototype.hasFocus = () => false;
+    window.addEventListener('focus', (event) => event.stopImmediatePropagation(), true);
+  });
+  await page.goto(app.shell);
+  await expect(frameOf(page, 1).locator('#status')).toHaveText('Not connected');
+  await expect(frameOf(page, 1).locator('#start')).toBeFocused();
+});
+
 test('New profile shows a refused name under the field and opens what it creates', async ({ page, startApp }) => {
   const app = await startApp();
   addGarden(app);
