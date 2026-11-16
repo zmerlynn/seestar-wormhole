@@ -2,7 +2,7 @@
 // Default profile is the app's state folder, opened first.
 const fs = require('node:fs');
 const path = require('node:path');
-const { test, expect } = require('./app');
+const { test, expect, lan } = require('./app');
 
 // addGarden makes a named profile beside the app's Default: a private
 // folder of its own, as New profile makes it.
@@ -65,6 +65,25 @@ test('a second tab opens from +, and switching keeps each page as it was', async
   await page.keyboard.press('Escape');
   await expect(menu(page)).toBeHidden();
   await expect(page.getByRole('button', { name: 'Open a profile' })).toBeFocused();
+});
+
+test('Ctrl+Tab switches tabs from inside Browse, both ways', async ({ page, startApp }) => {
+  const app = await startApp({ 'config.json': lan() });
+  addGarden(app);
+  await openShell(page, app);
+  await page.getByRole('button', { name: 'Open a profile' }).click();
+  await row(page, 'Garden').click();
+  await expect(frameOf(page, 2).locator('#quit')).toBeEnabled();
+  await ptab(page, 'Default').click();
+  await frameOf(page, 1).getByRole('tab', { name: 'Browse', exact: true }).click();
+  const crumb = frameOf(page, 1).frameLocator('#b-frame').locator('#crumbs a').first();
+  await crumb.focus();
+  await crumb.press('Control+Tab');
+  await expect(ptab(page, 'Garden')).toHaveAttribute('aria-selected', 'true');
+  await ptab(page, 'Default').click();
+  await crumb.focus();
+  await crumb.press('Control+Shift+Tab');
+  await expect(ptab(page, 'Garden')).toHaveAttribute('aria-selected', 'true');
 });
 
 test('New profile shows a refused name under the field and opens what it creates', async ({ page, startApp }) => {

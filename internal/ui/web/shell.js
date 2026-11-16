@@ -170,7 +170,8 @@ function tabKey(event) {
   event.preventDefault();
   select(tabs[j].path, true);
 }
-// Ctrl+Tab and Ctrl+Shift+Tab switch tabs from the shell or any page.
+// Ctrl+Tab and Ctrl+Shift+Tab switch tabs from the shell or any page,
+// and from a page's own frames, Browse's, as each loads.
 function switchKey(event) {
   if (event.key !== 'Tab' || !event.ctrlKey || event.altKey || event.metaKey) return;
   event.preventDefault();
@@ -179,6 +180,10 @@ function switchKey(event) {
 function keysFrom(win) {
   try {
     win.addEventListener('keydown', switchKey);
+    for (const frame of win.document.querySelectorAll('iframe')) {
+      frame.addEventListener('load', () => keysFrom(frame.contentWindow));
+      if (frame.contentDocument?.readyState === 'complete') keysFrom(frame.contentWindow);
+    }
   } catch (_) {
   }
 }
