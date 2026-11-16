@@ -69,3 +69,7 @@ func TestShellSwitchKeys(t *testing.T) { runShellRegression(t, "checkSwitchKeys(
 // The selected tab's page takes focus as it loads and as tabs switch,
 // unless something in the shell has focus.
 func TestShellFrameFocus(t *testing.T) { runShellRegression(t, "checkFrameFocus()") }
+
+// WKWebView's own focus on the first tab at launch goes to the page, until
+// the user acts in the shell.
+func TestShellLaunchFocus(t *testing.T) { runShellRegression(t, "checkLaunchFocus()") }

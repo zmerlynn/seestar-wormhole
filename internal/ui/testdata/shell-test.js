@@ -274,3 +274,44 @@ async function checkFrameFocus() {
   } finally {setTimeout = () => {};}
   await settle();
 }
+
+// WKWebView focuses the shell's first tab itself as its window first takes
+// focus. Until the user acts, the page takes focus back from it, as it
+// lands, as the page loads and as the window gains focus; once the user
+// acts in the tab list, focus there stays.
+async function checkLaunchFocus() {
+  app.tabs = [tabEntry(1, 'Default'), tabEntry(2, 'Garden')];
+  await refresh();
+  const one = $('frames').children[0], first = tabsShown()[0], later = [];
+  const webKitFocus = () => {
+    first.focus();
+    testBody.dispatchEvent({type: 'focusin', target: first});
+  };
+  setTimeout = callback => later.push(callback);
+  try {
+    webKitFocus();
+    testFocused.length = 0;
+    later.splice(0).forEach(f => f());
+    assert(JSON.stringify(testFocused) === '["/p/1/"]' && document.activeElement === one, 'the launch left focus on the tab: ' + document.activeElement.tagName);
+    webKitFocus();
+    later.length = 0;
+    one.dispatchEvent({type: 'load'});
+    assert(document.activeElement === one, 'the page loaded without focus');
+    webKitFocus();
+    later.length = 0;
+    testBody.dispatchEvent({type: 'window-focus'});
+    later.splice(0).forEach(f => f());
+    assert(document.activeElement === one, 'the window gained focus without the page');
+    await refresh();
+    assert(document.activeElement === one, 'a poll moved focus');
+    // The user's arrow in the tab list keeps focus there.
+    first.focus();
+    press(first, 'ArrowRight');
+    const second = tabsShown()[1];
+    testBody.dispatchEvent({type: 'focusin', target: second});
+    testBody.dispatchEvent({type: 'window-focus'});
+    later.splice(0).forEach(f => f());
+    assert(selectedLabel() === 'Garden' && document.activeElement === second, 'the user\'s focus went to the page: ' + document.activeElement.tagName);
+  } finally {setTimeout = () => {};}
+  await settle();
+}

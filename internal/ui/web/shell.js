@@ -22,6 +22,11 @@ const lostCopy = 'Connection to the app was lost. Reopen the app to reconnect.';
 // picked, the last activation's sequence acted on; ended, that the app
 // quit.
 let tabs = [], selected = '', picked = 0, ended = false, closed = [], offered = false;
+// acted: the user has pressed a key, in the shell or a page, or clicked
+// something in the shell. Focus in the shell before then isn't the
+// user's: WKWebView focuses the shell's first tab itself as its window
+// first takes focus, and the page takes it back.
+let acted = false;
 async function api(action, body) {
   const options = {headers: {'X-Seestar-Token': token}, cache: 'no-store', redirect: 'error'};
   if (body !== undefined) {
@@ -102,14 +107,20 @@ function render() {
       label.className = 'tab-label';
       state.className = 'hide';
       tab.append(dot, label, state);
-      tab.addEventListener('click', () => select(t.path));
+      tab.addEventListener('click', () => {
+        acted = true;
+        select(t.path);
+      });
       tab.addEventListener('keydown', tabKey);
       const close = document.createElement('button');
       close.type = 'button';
       close.className = 'tab-close';
       close.tabIndex = -1;
       close.textContent = '×';
-      close.addEventListener('click', () => askClose(t.path));
+      close.addEventListener('click', () => {
+        acted = true;
+        askClose(t.path);
+      });
       row.append(tab, close);
       const frame = document.createElement('iframe');
       frame.id = 'pframe-' + t.path.split('/')[2];
@@ -158,11 +169,11 @@ function select(path, focus) {
   if (focus) tabOf(path)?.focus();
   else handOff(false);
 }
-// shellFocused tells whether focus is on something in the shell rather
-// than nowhere or in a page.
+// shellFocused tells whether the user's focus is on something in the
+// shell rather than nowhere or in a page.
 function shellFocused() {
   const a = document.activeElement;
-  return !!a && a !== document.body && a.tagName !== 'IFRAME';
+  return acted && !!a && a !== document.body && a.tagName !== 'IFRAME';
 }
 // handOff gives the selected tab's page focus, so keyboard users land in
 // it, unless the shell has focus. A page that just loaded takes it again,
@@ -185,6 +196,7 @@ function step(by) {
   select(tabs[((i + by) % n + n) % n].path, shellFocused());
 }
 function tabKey(event) {
+  acted = true;
   const i = tabs.findIndex(t => t.path === selected), n = tabs.length;
   if (event.key === 'Delete') {
     event.preventDefault();
@@ -197,8 +209,10 @@ function tabKey(event) {
   select(tabs[j].path, true);
 }
 // Ctrl+Tab and Ctrl+Shift+Tab switch tabs from the shell or any page,
-// and from a page's own frames, Browse's, as each loads.
+// and from a page's own frames, Browse's, as each loads. Any key there
+// is the user acting.
 function switchKey(event) {
+  acted = true;
   if (event.key !== 'Tab' || !event.ctrlKey || event.altKey || event.metaKey) return;
   event.preventDefault();
   step(event.shiftKey ? -1 : 1);
@@ -251,6 +265,7 @@ function apply(v) {
 // tab, then New profile…, which asks for a name.
 let menuBack = null;
 function openMenu() {
+  acted = true;
   menuBack = document.activeElement;
   $('a-main').hidden = false;
   $('a-form').hidden = true;
@@ -395,6 +410,10 @@ $('k-confirm').addEventListener('close', () => {
   confirmed = null;
 });
 document.addEventListener('keydown', switchKey);
+// Focus that lands in the shell before the user acts goes to the page.
+document.addEventListener('focusin', event => {
+  if (!acted && event.target.tagName !== 'IFRAME') setTimeout(() => handOff(true));
+});
 // Once the focus that brought the window's focus has landed: a click on
 // a tab keeps it.
 window.addEventListener('focus', () => {

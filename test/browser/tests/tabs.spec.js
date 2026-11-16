@@ -141,6 +141,21 @@ test('a page that loads in an unfocused window still takes focus', async ({ page
   await expect(frameOf(page, 1).locator('#start')).toBeFocused();
 });
 
+// WKWebView focuses the shell's first tab itself as its window first takes
+// focus, which is no user's choice: the page takes focus anyway.
+test('a page takes focus from the tab the web view focused at launch', async ({ page, startApp }) => {
+  const app = await startApp();
+  let release;
+  const held = new Promise((r) => { release = r; });
+  await page.route('**/p/1/', async (route) => { await held; await route.continue(); });
+  await page.goto(app.shell);
+  await expect(page.locator('#pframe-1')).toBeAttached();
+  await page.evaluate(() => document.getElementById('ptab-1').focus());
+  release();
+  await expect(frameOf(page, 1).locator('#status')).toHaveText('Not connected');
+  await expect(frameOf(page, 1).locator('#start')).toBeFocused();
+});
+
 test('New profile shows a refused name under the field and opens what it creates', async ({ page, startApp }) => {
   const app = await startApp();
   addGarden(app);
