@@ -44,7 +44,10 @@ import (
 //     its output folder, then saves it again and cancels.
 //   - copy-relaunch is the harness's fresh launch after any of them, on
 //     the files they left: the copy tabs open with the saved settings,
-//     copying starts on its own, and Quit, confirmed, stops it.
+//     copying starts on its own, and Quit, confirmed, stops it. Nothing
+//     is pressed or clicked in the shell before its confirmation.
+//
+// Each confirmation of quitting must keep focus while it shows.
 //
 // Each marks "trigger" once its page has passed. The harness then checks
 // that the held transfer left no temporary file and the folder's state
@@ -202,6 +205,25 @@ func (d *guiTestDriver) driveCopy() error {
 // copies.
 const copyAskedQuit = `check(el('k-confirm').open && el('k-ctitle').textContent==='Quit seestar-wormhole?' && el('k-cbody').textContent.includes(' is copying.'),{open:el('k-confirm').open,title:el('k-ctitle').textContent,body:el('k-cbody').textContent})`
 
+// copyAsked waits for the shell's confirmation of quitting, then checks
+// that focus is still in it once a tab poll has passed, as it must be
+// for keyboard users, though nothing may have been pressed or clicked in
+// the shell since launch.
+func (d *guiTestDriver) copyAsked() error {
+	if err := d.shellProbe(copyAskedQuit); err != nil {
+		return err
+	}
+	select {
+	case <-time.After(1200 * time.Millisecond):
+	case <-d.ctx.Done():
+		return d.ctx.Err()
+	}
+	if err := d.shellProbe(`check(el('k-confirm').contains(document.activeElement),{focused:document.activeElement?.id || document.activeElement?.tagName})`); err != nil {
+		return fmt.Errorf("the confirmation lost focus: %w", err)
+	}
+	return nil
+}
+
 // copyClose closes the window while copying, cancels the shell's
 // confirmation, which must keep the window and the copy, and closes it
 // again and confirms. On Windows the harness sent the first close; the
@@ -210,7 +232,7 @@ func (d *guiTestDriver) copyClose() error {
 	if runtime.GOOS != "windows" {
 		d.w.Close()
 	}
-	if err := d.shellProbe(copyAskedQuit); err != nil {
+	if err := d.copyAsked(); err != nil {
 		return fmt.Errorf("closing didn't ask to confirm: %w", err)
 	}
 	if err := d.shellClick("k-ccancel"); err != nil {
@@ -237,7 +259,7 @@ func (d *guiTestDriver) copyClose() error {
 
 // copyConfirmQuit confirms the shell's ask to quit while copying.
 func (d *guiTestDriver) copyConfirmQuit() error {
-	if err := d.shellProbe(copyAskedQuit); err != nil {
+	if err := d.copyAsked(); err != nil {
 		return fmt.Errorf("quitting didn't ask to confirm: %w", err)
 	}
 	return d.shellClick("k-cgo")
