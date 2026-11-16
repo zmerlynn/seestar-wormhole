@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -326,5 +328,150 @@ func TestUIRunCopyOnlyMatchesBindAddress(t *testing.T) {
 			cancel()
 			<-done
 		})
+	}
+}
+
+// Two tabs' runs take their ports one after the other: a tab started
+// while another run has bound only its first port waits for it to bind
+// the rest and publish them, then finds the port held by that tab and
+// runs copy-only rather than meeting the port error.
+func TestUIRunPortsOneTabAtATime(t *testing.T) {
+	var ports mappings
+	for _, device := range []uint16{4700, 445} {
+		l, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		ports = append(ports, proxyrun.Port{Local: uint16(l.Addr().(*net.TCPAddr).Port), Device: device})
+		l.Close()
+	}
+	var gate sync.Mutex
+	run := func(status *proxy.Status, holder *proxy.Status, listen func(string, string) (net.Listener, error), session func(context.Context, proxy.Config) (commandSession, error)) error {
+		o, err := parse([]string{"proxy"}, io.Discard)
+		if err != nil {
+			t.Fatal(err)
+		}
+		o.command, o.bind, o.ports, o.uiStatus = commandUI, "127.0.0.1", ports, status
+		o.uiPorts = func() func() { gate.Lock(); return gate.Unlock }
+		// As the app's in-process lookup does, the other tab holds a
+		// port only once its status says it serves.
+		o.uiHolder = func(uint16) (proxy.Holder, bool) {
+			_, ok := holder.Serving()
+			return proxy.Holder{Profile: "Default", Tab: true}, ok
+		}
+		return runProxy(t.Context(), o, io.Discard, session, listen, nil, func(context.Context) error { return nil })
+	}
+
+	first, second := proxy.NewStatus(), proxy.NewStatus()
+	atSecond, bind := make(chan struct{}), make(chan struct{})
+	calls := 0
+	ctx, cancel := context.WithCancel(t.Context())
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- run(first, second, func(network, address string) (net.Listener, error) {
+			if calls++; calls == 2 {
+				close(atSecond)
+				<-bind
+			}
+			return net.Listen(network, address)
+		}, func(context.Context, proxy.Config) (commandSession, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		})
+	}()
+	<-atSecond
+	var listens atomic.Int32
+	copyOnly := make(chan bool, 1)
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- run(second, first, func(network, address string) (net.Listener, error) {
+			listens.Add(1)
+			return net.Listen(network, address)
+		}, func(context.Context, proxy.Config) (commandSession, error) {
+			_, ok := second.CopyOnly()
+			copyOnly <- ok
+			return nil, errors.New("synthetic session boundary")
+		})
+	}()
+	time.Sleep(50 * time.Millisecond)
+	if n := listens.Load(); n != 0 {
+		t.Errorf("the second tab bound %d ports while the first was binding", n)
+	}
+	close(bind)
+	// Its session reports before it returns.
+	err := <-secondDone
+	select {
+	case ok := <-copyOnly:
+		if !ok {
+			t.Error("the second tab isn't copy-only")
+		}
+	default:
+		t.Fatalf("the second tab = %v before its session, not copy-only", err)
+	}
+	cancel()
+	<-firstDone
+}
+
+// closeBlocked is a listener whose first Close waits for the test.
+type closeBlocked struct {
+	net.Listener
+	closing chan struct{}
+	release <-chan struct{}
+	once    sync.Once
+}
+
+func (l *closeBlocked) Close() error {
+	l.once.Do(func() { close(l.closing); <-l.release })
+	return l.Listener.Close()
+}
+
+// A run that fails to bind its second port closes its first before
+// another tab's run may bind: that run then meets no listener of a run
+// that never served, and goes on to its session rather than a port error.
+func TestUIRunPortsClosedBeforeTheNextTab(t *testing.T) {
+	raw, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	closing, release := make(chan struct{}), make(chan struct{})
+	unblock := sync.OnceFunc(func() { close(release) })
+	t.Cleanup(func() { unblock(); raw.Close() })
+	held := &closeBlocked{Listener: raw, closing: closing, release: release}
+	var gate sync.Mutex
+	first := proxy.NewStatus()
+	o, err := parse([]string{"proxy"}, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o.command, o.bind, o.uiStatus = commandUI, "127.0.0.1", first
+	o.ports = mappings{{Local: uint16(raw.Addr().(*net.TCPAddr).Port), Device: 4700}, {Local: 12346, Device: 445}}
+	o.uiPorts = func() func() { gate.Lock(); return gate.Unlock }
+	sessionErr := errors.New("synthetic session boundary")
+	session := func(context.Context, proxy.Config) (commandSession, error) { return nil, sessionErr }
+	calls := 0
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- runProxy(t.Context(), o, io.Discard, session, func(string, string) (net.Listener, error) {
+			if calls++; calls == 1 {
+				return held, nil
+			}
+			return nil, syscall.EACCES
+		}, nil, func(context.Context) error { return nil })
+	}()
+	<-closing
+	if gate.TryLock() {
+		gate.Unlock()
+		t.Error("the gate opened before the failed run closed its listener")
+	}
+	unblock()
+	<-firstDone
+	second := o
+	second.uiStatus, second.ports = proxy.NewStatus(), o.ports[:1]
+	second.uiHolder = func(uint16) (proxy.Holder, bool) {
+		_, ok := first.Serving()
+		return proxy.Holder{Profile: "Default", Tab: true}, ok
+	}
+	if err := runProxy(t.Context(), second, io.Discard, session, net.Listen, nil, func(context.Context) error { return nil }); !errors.Is(err, sessionErr) {
+		t.Errorf("the next tab's run = %v, want its session", err)
 	}
 }

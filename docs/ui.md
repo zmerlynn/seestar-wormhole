@@ -444,45 +444,54 @@ yet. Stop copying first, or keep those files out of the deletion, as with
 
 ## Stopping and quitting
 
-**Stop** releases the telescope and leaves the window ready to connect again.
-**Quit** stops copying and the connection and exits: browsing ends first,
-then copying, a preview or a delete stops and is waited for, then the
-connection, then the control page. A file partly copied is copied again next
-time. Closing the window does the same and waits for the release. Logging out or shutting down also stops the
-connection first, as far as your system allows.
+**Stop** releases the telescope and leaves the tab ready to connect again.
+**Quit** quits the app: in every tab, browsing ends first, then copying, a
+preview or a delete stops and is waited for, then the connection, then the
+control page. A file partly copied is copied again next time. If any tab is
+copying, Quit asks once first. Closing the window does the same and waits for
+the release. Logging out or shutting down also stops each connection first,
+as far as your system allows.
 
-Opening seestar-wormhole again with the same state directory brings the
-existing window forward; with more than one profile, see
-[Profiles](#profiles-two-telescopes-at-once). If `seestar-wormhole-cli proxy` is already using the
-same ports, stop it first.
+Opening seestar-wormhole again while it is open brings the existing window
+forward. If `seestar-wormhole-cli proxy` is already using the same ports,
+stop it first.
 
 ## Profiles: two telescopes at once
 
-A profile is its own window with its own telescope, connection and copy
+A profile is its own tab with its own telescope, connection and copy
 folder. Use one for each telescope to copy from several at once. The
-window you have always used is **Default**; each profile you add keeps its
-own settings, log and Activity.
+profile you have always used is **Default**; each profile you add keeps its
+own settings, log and Activity. Every open profile stays connected and
+copying while you look at another tab.
 
-Open **Profiles…** at the bottom of the window, beside **Quit**, or
-**Open Profile…** in the menu beside **About**. The dialog lists Default
-and every profile you made, such as **Default — this window**,
-**Garden — open** and **Backyard**. Choose an open one to bring its window
-forward, or a closed one to open it. **New profile…** asks only for a name,
-such as `Backyard S30`, and **Create and open** opens the new profile's
-window on the Connection tab, where you choose its telescope as you did
-the first time. **Cancel** or Escape closes the dialog.
+The tab bar at the top of the window shows a tab for each open profile,
+with a dot that matches its header: green while connected or reachable,
+the copying color while copying, busy while connecting, and red when it
+can't reach the telescope or files were not copied. Select a tab, or press
+Ctrl+Tab and Ctrl+Shift+Tab, to switch between them; in the tab bar, the
+Left and Right arrow keys, Home and End move between tabs too. A plain
+launch opens Default only.
 
-Once a profile other than Default exists, the header shows the profile's
-name after the title, `seestar‑wormhole · Garden`, and the window's title
-names it too, as `seestar-wormhole — Garden` or `seestar-wormhole — Default`.
-On Windows and Linux, opening seestar-wormhole again while it is open then
-shows the Profiles dialog over the open window, with **Show this window**
-to just bring it forward; with Default alone, it brings the window forward
-as before. On macOS, opening it again or clicking its Dock icon always
-just shows the window.
+Select **+** at the end of the tab bar to open another profile. The menu
+lists the profiles that aren't open, such as **Garden** and **Backyard**,
+then **New profile…**, which asks only for a name, such as `Backyard S30`.
+**Create and open** opens the new profile's tab on the Connection tab, where
+you choose its telescope as you did the first time. **Cancel** or Escape
+closes the menu. A name that is taken or can't be a folder name is refused
+under the field.
 
-To open a profile directly, run `seestar-wormhole ui --profile Garden`; see
-[`ui`](reference/connection-cli.md#ui).
+Select **×** on a tab, or press Delete on the selected tab, to close it.
+Closing a tab stops its copying and its connection and lets the profile
+open elsewhere. If the profile is copying or connected, it asks first.
+Closing the last tab quits the app.
+
+To open a profile directly, run `seestar-wormhole ui --profile Garden`.
+If seestar-wormhole is already open, it opens Garden's tab there, or selects
+it, and brings the window forward. A profile that another seestar-wormhole
+process holds isn't opened; the error names the lock it holds. See [`ui`](reference/connection-cli.md#ui).
+
+With `--state-dir`, the app opens that one folder as its only tab, named
+after the folder, and has no **+**.
 
 ### Sharing this computer's ports
 
@@ -491,25 +500,26 @@ app. A telescope reached On this network uses no ports, so use that route
 for any telescope on your network and there's nothing to share.
 
 A second profile that connects through Telescope Network while another
-profile's window serves the ports runs **for copying only**. Its header
-reads, for example, **Connected to Seestar S50 TEST0002 through Telescope
-Network, for copying only**, with the dot still green, and the Connection
-tab says which window serves the Seestar app and how to switch: Stop the
-connection in that window, then Stop and Connect here. Copy, Browse and
-Free up space work as usual. **Using the Seestar app**, the SMB port note
-and **Ports forwarded to your Seestar** are hidden, since those ports
-belong to the other window's telescope. Copying only applies only when
-another seestar-wormhole window holds the ports, and to all of them: a
+tab serves the ports runs **for copying only**. Its header reads, for
+example, **Connected to Seestar S50 TEST0002 through Telescope Network, for
+copying only**, with the dot still green, and the Connection tab says which
+tab serves the Seestar app, such as **The Garden tab**, and how to switch:
+Stop the connection in that tab, then Stop and Connect here. Copy, Browse
+and Free up space work as usual. **Using the Seestar app**, the SMB port
+note and **Ports forwarded to your Seestar** are hidden, since those ports
+belong to the other tab's telescope. Closing the tab that serves the ports
+leaves the copying-only tab copying; Stop and Connect there to serve them.
+The same applies when another seestar-wormhole window holds the ports. A
 port another program holds, or `seestar-wormhole-cli proxy`, still stops
 the connection with the port error.
 
 The same telescope in two profiles connects in only one of them through
 Telescope Network: the telescope allows one remote session, so the second
-window says the telescope is occupied and retries. Two profiles that copy
+tab says the telescope is occupied and retries. Two profiles that copy
 into the same folder share its copy history, so the second says **Another
 copy or delete is using this folder.**, as for any other copy there.
 
-To remove a profile, quit its window and delete its folder,
+To remove a profile, close its tab, or quit the app, and delete its folder,
 `<state>/profiles/<name>`; see
 [where settings live](reference/app-settings.md#where-settings-live).
 

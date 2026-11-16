@@ -29,9 +29,13 @@ import (
 //
 //   - copy-close holds that transfer, presses the tab keys, previews Free
 //     up space, opens the confirm dialog and cancels it, then closes the
-//     window (the harness sends WM_CLOSE on Windows).
-//   - copy-quit does the same and waits for the harness's Quit event.
-//   - copy-hold holds it and waits for the harness to stop the app.
+//     window (the harness sends WM_CLOSE on Windows): the shell asks to
+//     confirm quitting, Cancel keeps the window copying, and a second
+//     close (on Windows, the page's Quit) confirmed quits.
+//   - copy-quit does the same up to closing, waits for the harness's Quit
+//     event and confirms it.
+//   - copy-hold holds it and waits for the harness to stop the app, and
+//     on Windows confirms the quit the harness's WM_CLOSE asks.
 //   - copy-inuse runs beside a copy-hold app on the same folder, checks
 //     that Copy shows the folder in use and Start copying can't take it,
 //     then closes as copy-close.
@@ -40,7 +44,10 @@ import (
 //     its output folder, then saves it again and cancels.
 //   - copy-relaunch is the harness's fresh launch after any of them, on
 //     the files they left: the copy tabs open with the saved settings,
-//     copying starts on its own, and Quit stops it.
+//     copying starts on its own, and Quit, confirmed, stops it. Nothing
+//     is pressed or clicked in the shell before its confirmation.
+//
+// Each confirmation of quitting must keep focus while it shows.
 //
 // Each marks "trigger" once its page has passed. The harness then checks
 // that the held transfer left no temporary file and the folder's state
@@ -120,7 +127,7 @@ func (d *guiTestDriver) driveCopy() error {
 		return d.copyRelaunch()
 	}
 	d.js(`selectTab('copy');document.getElementById('tab-copy').focus();`)
-	if err := d.probe(`check(!el('panel-copy').hidden && document.activeElement===el('tab-copy') && !el('c-main').hidden,{shown:!el('panel-copy').hidden,focused:document.activeElement?.id})`); err != nil {
+	if err := d.probe(`check(!el('panel-copy').hidden && document.activeElement===el('tab-copy') && !el('c-main').hidden,{shown:!el('panel-copy').hidden,focused:document.activeElement?.id,main:!el('c-main').hidden,setUp:copyStatus?.set_up ?? null,copyLost,controlsLost})`); err != nil {
 		return fmt.Errorf("Copy didn't open: %w", err)
 	}
 	if d.scenario == "copy-inuse" {
@@ -141,7 +148,12 @@ func (d *guiTestDriver) driveCopy() error {
 		}
 	}
 	if d.scenario == "copy-hold" {
-		return d.mark("trigger")
+		if err := d.mark("trigger"); err != nil || runtime.GOOS != "windows" {
+			return err
+		}
+		// The harness's WM_CLOSE asks to confirm quitting while copying;
+		// SIGTERM elsewhere doesn't.
+		return d.copyConfirmQuit()
 	}
 	if d.scenario != "copy-inuse" {
 		// Browse's frame lists the fake telescope's top folder.
@@ -176,12 +188,81 @@ func (d *guiTestDriver) driveCopy() error {
 	if err := d.mark("trigger"); err != nil {
 		return err
 	}
-	if d.scenario == "copy-close" || d.scenario == "copy-inuse" || d.scenario == "copy-save" {
+	switch d.scenario {
+	case "copy-close", "copy-save":
+		return d.copyClose()
+	case "copy-inuse":
 		if runtime.GOOS != "windows" {
 			d.w.Close()
 		}
+	case "copy-quit":
+		return d.copyConfirmQuit()
 	}
 	return nil
+}
+
+// copyAskedQuit is the shell's confirmation of quitting while Default
+// copies.
+const copyAskedQuit = `check(el('k-confirm').open && el('k-ctitle').textContent==='Quit seestar-wormhole?' && el('k-cbody').textContent.includes(' is copying.'),{open:el('k-confirm').open,title:el('k-ctitle').textContent,body:el('k-cbody').textContent})`
+
+// copyAsked waits for the shell's confirmation of quitting, then checks
+// that focus is still in it once a tab poll has passed, as it must be
+// for keyboard users, though nothing may have been pressed or clicked in
+// the shell since launch.
+func (d *guiTestDriver) copyAsked() error {
+	if err := d.shellProbe(copyAskedQuit); err != nil {
+		return err
+	}
+	select {
+	case <-time.After(1200 * time.Millisecond):
+	case <-d.ctx.Done():
+		return d.ctx.Err()
+	}
+	if err := d.shellProbe(`check(el('k-confirm').contains(document.activeElement),{focused:document.activeElement?.id || document.activeElement?.tagName})`); err != nil {
+		return fmt.Errorf("the confirmation lost focus: %w", err)
+	}
+	return nil
+}
+
+// copyClose closes the window while copying, cancels the shell's
+// confirmation, which must keep the window and the copy, and closes it
+// again and confirms. On Windows the harness sent the first close; the
+// second is the page's Quit, which asks the same.
+func (d *guiTestDriver) copyClose() error {
+	if runtime.GOOS != "windows" {
+		d.w.Close()
+	}
+	if err := d.copyAsked(); err != nil {
+		return fmt.Errorf("closing didn't ask to confirm: %w", err)
+	}
+	if err := d.shellClick("k-ccancel"); err != nil {
+		return err
+	}
+	if err := d.shellProbe(`check(!el('k-confirm').open,{open:el('k-confirm').open})`); err != nil {
+		return fmt.Errorf("Cancel didn't close the confirmation: %w", err)
+	}
+	if err := d.probe(`check(el('c-title').textContent==='Copying 2 of 2 files',{title:el('c-title').textContent})`); err != nil {
+		return fmt.Errorf("Cancel stopped copying: %w", err)
+	}
+	if !d.w.IsVisible() {
+		return errors.New("Cancel closed the window")
+	}
+	if runtime.GOOS == "windows" {
+		if err := d.click("quit"); err != nil {
+			return err
+		}
+	} else {
+		d.w.Close()
+	}
+	return d.copyConfirmQuit()
+}
+
+// copyConfirmQuit confirms the shell's ask to quit while copying.
+func (d *guiTestDriver) copyConfirmQuit() error {
+	if err := d.copyAsked(); err != nil {
+		return fmt.Errorf("quitting didn't ask to confirm: %w", err)
+	}
+	return d.shellClick("k-cgo")
 }
 
 // copyRelaunch checks that the settings the first launch saved are read
@@ -199,7 +280,10 @@ func (d *guiTestDriver) copyRelaunch() error {
 	if err := d.probe(`check(el('c-title').textContent.startsWith('Copying ') && el('c-flight').textContent.includes('MyWorks/held.fit'),{title:el('c-title').textContent,flight:el('c-flight').textContent})`); err != nil {
 		return fmt.Errorf("Copy didn't show copying: %w", err)
 	}
-	return d.click("quit")
+	if err := d.click("quit"); err != nil {
+		return err
+	}
+	return d.copyConfirmQuit()
 }
 
 // copyInUse checks that Copy shows the folder in use, and still does

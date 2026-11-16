@@ -48,10 +48,14 @@ func TestOpenFailurePrintsPrivateURL(t *testing.T) {
 	}
 }
 func TestRuntimeRecordBounds(t *testing.T) {
-	for _, r := range []runtimeRecord{{0, strings.Repeat("a", 64)}, {65536, strings.Repeat("a", 64)}, {12345, ""}, {12345, strings.Repeat("z", 64)}} {
+	token := strings.Repeat("a", 64)
+	for _, r := range []runtimeRecord{{0, token, ""}, {65536, token, ""}, {12345, "", ""}, {12345, strings.Repeat("z", 64), ""}, {12345, token, "/x/"}, {12345, token, "/p/1"}} {
 		if r.valid() {
 			t.Fatal("invalid runtime record accepted")
 		}
+	}
+	if r := (runtimeRecord{12345, token, "/p/2/"}); !r.valid() || r.api("status") != "http://127.0.0.1:12345/p/2/api/status" || r.url() != "http://127.0.0.1:12345/#"+token {
+		t.Fatal("tab's record", r.valid(), r.api("status"), r.url())
 	}
 }
 

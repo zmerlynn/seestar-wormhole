@@ -241,7 +241,7 @@ test('a one-pass Start done before its answer still clears the first-Save notice
     const headers = route.request().headers();
     let view;
     await expect.poll(async () => {
-      view = (await (await page.request.get(new URL('/copy/api/status', app.url).href, { headers })).json()).copy;
+      view = (await (await page.request.get(new URL('copy/api/status', app.url).href, { headers })).json()).copy;
       return view.on ? 'copying' : view.state;
     }, { timeout: 30000 }).toBe('done');
     finished(view);

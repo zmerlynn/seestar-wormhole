@@ -251,7 +251,10 @@ func runScenario(ctx context.Context, bin, dir, scenario string) error {
 			if e := os.WriteFile(filepath.Join(dir, "apple-event.log"), receipt, 0600); e != nil {
 				return e
 			}
-			if quitErr != nil || strings.Contains(string(receipt), "-128") {
+			// Quitting while copying asks the shell to confirm first,
+			// which cancels this quit; the fixture confirms it.
+			canceled := strings.Contains(string(receipt), "-128")
+			if (quitErr != nil || canceled) && (scenario != "copy-quit" || !canceled) {
 				return fmt.Errorf("Apple quit must be accepted, got %v: %s", quitErr, receipt)
 			}
 		default:

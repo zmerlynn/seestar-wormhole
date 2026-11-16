@@ -38,15 +38,47 @@ type guiTestDriver struct {
 }
 
 // Each probe has a distinct acknowledgment, so late JS cannot satisfy the next
-// assertion. The native postMessage bridge needs no HTTP runtime or CSP change.
+// assertion. The native postMessage bridge needs no HTTP runtime; a probe
+// reaches a frame through eval, which only the fixture's pages allow.
+// Probes and scripts run in the first tab's page; shellProbe's in the shell.
 func (d *guiTestDriver) probe(expression string) error {
-	return d.runProbe(guiTestProbeScript(expression, d.seq+1, true))
+	return d.runProbe(guiTestProbeScript(expression, d.seq+1, true), false)
 }
 
-func (d *guiTestDriver) runProbe(js string) error {
+func (d *guiTestDriver) shellProbe(expression string) error {
+	return d.runProbe(guiTestProbeScript(expression, d.seq+1, true), true)
+}
+
+// inTab runs js in the first tab's page, the shell's first frame, once it
+// has loaded, or in the window's page when it is not the shell, as when it
+// shows a page other than the app's. A shell whose first page hasn't loaded
+// yet runs nothing and says where it is, so the caller retries. The
+// window's ExecJS runs in the shell.
+func inTab(js string) string {
+	return `(() => {const js=` + strconv.Quote(js) + `,frames=document.getElementById('frames'),f=frames?.querySelector('iframe');
+ if(!frames) {(0,eval)(js);return}
+ const page=f?.contentWindow,ready=f?.contentDocument?.readyState,path=page?.location.pathname;
+ if(ready==='complete' && path?.startsWith('/p/')) {page.eval(js);return}
+ const wait='tab not ready: '+JSON.stringify({shell:location.pathname,frames:frames.children.length,frame:f?.id ?? null,path:path ?? null,ready:ready ?? null});
+ if(window.__guitestTabWait===wait) return;
+ window.__guitestTabWait=wait;
+ const m='guitest:diagnostic:'+wait;
+ if(window.chrome?.webview) window.chrome.webview.postMessage(m);
+ else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
+ else if(window.wails?.invoke) window.wails.invoke(m);
+ })()`
+}
+
+// tabJS runs script in the first tab's page.
+func (d *guiTestDriver) tabJS(script string) { d.w.ExecJS(inTab(script)) }
+
+func (d *guiTestDriver) runProbe(js string, shell bool) error {
 	execJS, on := d.execJS, d.on
 	if execJS == nil {
 		execJS = d.w.ExecJS
+		if !shell {
+			js = inTab(js)
+		}
 	}
 	if on == nil {
 		on = d.app.Event.On
@@ -80,7 +112,21 @@ func (d *guiTestDriver) runProbe(js string) error {
 	})
 	if err != nil {
 		// Native evidence survives a broken bridge, a parse error, or a hung JS call.
-		fmt.Fprintf(d.out, "DOM diagnostics: {\"probe\":%d,\"started\":%t,\"evaluated\":%t,\"matched\":%t,\"timeout\":true}\n", d.seq, started.Load(), evaluated.Load(), matched.Load())
+		// So does the window's native focus: key, and its web view the
+		// first responder (macOS only). A main thread busy terminating
+		// leaves them null rather than hold the driver.
+		native := `"windowFocused":null,"webViewFocused":null`
+		if d.w != nil {
+			answer := make(chan string, 1)
+			go func() {
+				answer <- fmt.Sprintf(`"windowFocused":%t,"webViewFocused":%t`, d.w.IsFocused(), webViewFocused(d.w))
+			}()
+			select {
+			case native = <-answer:
+			case <-time.After(time.Second):
+			}
+		}
+		fmt.Fprintf(d.out, "DOM diagnostics: {\"probe\":%d,\"started\":%t,\"evaluated\":%t,\"matched\":%t,\"timeout\":true,%s}\n", d.seq, started.Load(), evaluated.Load(), matched.Load(), native)
 	}
 	return err
 }
@@ -94,14 +140,17 @@ func guiTestProbeScript(expression string, sequence int, waitForPaint bool) stri
 		acknowledge = `if(document.hidden) diagnose(JSON.stringify({paintBlocked:'document-hidden',visibility:document.visibilityState,documentFocused:document.hasFocus()}));
  requestAnimationFrame(() => requestAnimationFrame(() => {` + acknowledge + `}));`
 	}
+	// A frame's page sends through the window's own page, whose messages
+	// alone the native side takes.
 	return `(() => {
- const send=m=>{if(window.chrome?.webview) window.chrome.webview.postMessage(m);
- else if(window.webkit?.messageHandlers?.external) window.webkit.messageHandlers.external.postMessage(m);
- else if(window.wails?.invoke) window.wails.invoke(m)};
+ const host=window.top ?? window;
+ const send=m=>{if(host.chrome?.webview) host.chrome.webview.postMessage(m);
+ else if(host.webkit?.messageHandlers?.external) host.webkit.messageHandlers.external.postMessage(m);
+ else if(host.wails?.invoke) host.wails.invoke(m)};
  const el=id=>document.getElementById(id);
  const check=(ok,detail)=>ok ? true : detail;
  const probe=` + strconv.Itoa(sequence) + `;
- const diagnose=detail=>{detail='probe '+probe+': '+detail;
+ const diagnose=detail=>{detail='probe '+probe+': '+detail+' at '+JSON.stringify({path:typeof location==='object' ? location.pathname : null,inFrame:host!==window,ready:document.readyState ?? null});
  if(window.__guitestDiagnostic!==detail){window.__guitestDiagnostic=detail;send('guitest:diagnostic:'+detail)}};
  send(` + strconv.Quote("wails:event:emit:"+name+":started") + `);
  try {const result=(` + expression + `);
@@ -114,7 +163,11 @@ func guiTestProbeScript(expression string, sequence int, waitForPaint bool) stri
 }
 
 func (d *guiTestDriver) click(id string) error {
-	return d.runProbe(guiTestClickProbeScript(id, d.seq+1))
+	return d.runProbe(guiTestClickProbeScript(id, d.seq+1), false)
+}
+
+func (d *guiTestDriver) shellClick(id string) error {
+	return d.runProbe(guiTestClickProbeScript(id, d.seq+1), true)
 }
 
 func guiTestClickProbeScript(id string, sequence int) string {
@@ -174,18 +227,18 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	}
 	if shot == "setup" {
 		// Check launch visibility before any driver scrolling can conceal a defect.
-		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),focused=document.activeElement?.id;return check(start.top>=0 && start.bottom<innerHeight && document.activeElement===el('start'),{start,innerHeight,focused,documentFocused:document.hasFocus(),focusTrace:window.__guitestFocus ?? null})})()`); err != nil {
+		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),focused=document.activeElement?.id;return check(start.top>=0 && start.bottom<innerHeight && document.activeElement===el('start'),{start,innerHeight,focused,documentFocused:document.hasFocus(),focusTrace:window.__guitestFocus ?? null,shellTrace:window.top.__guitestFocus ?? null})})()`); err != nil {
 			return err
 		}
 	}
 	switch shot {
 	case "details-expanded":
-		d.w.ExecJS(`document.getElementById('copy').scrollIntoView({block:'center'})`)
+		d.tabJS(`document.getElementById('copy').scrollIntoView({block:'center'})`)
 		if err := d.probe(`(() => {const events=document.getElementById('events').getBoundingClientRect(),copy=document.getElementById('copy').getBoundingClientRect();return check(events.top<innerHeight && events.bottom>0 && copy.top>=0 && copy.bottom<=innerHeight,{events,copy,innerHeight})})()`); err != nil {
 			return err
 		}
 	case "ready-ports":
-		d.w.ExecJS(`document.getElementById('running-ports-box').scrollIntoView({block:'start'})`)
+		d.tabJS(`document.getElementById('running-ports-box').scrollIntoView({block:'start'})`)
 		if err := d.probe(`(() => {const b=el('running-ports-box'),r=b.getBoundingClientRect();return check(b.open && r.top>=-1 && r.top<innerHeight,{open:b.open,rect:r,innerHeight})})()`); err != nil {
 			return err
 		}
@@ -197,12 +250,12 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 	case "advanced-top", "advanced-network":
 		// Capture the opened Advanced section in two views so its grouping is reviewable.
 		target := map[string]string{"advanced-top": "#advanced", "advanced-network": `label[for="listen"]`}[shot]
-		d.w.ExecJS(`document.querySelector(` + strconv.Quote(target) + `).scrollIntoView({block:'start'})`)
+		d.tabJS(`document.querySelector(` + strconv.Quote(target) + `).scrollIntoView({block:'start'})`)
 		if err := d.probe(`(() => {const r=document.querySelector(` + strconv.Quote(target) + `).getBoundingClientRect();return check(r.top>=-1 && r.top<innerHeight,{rect:r,innerHeight})})()`); err != nil {
 			return err
 		}
 	case "classified-error", "credential-rejected", "discovery-incompatible":
-		d.w.ExecJS(`document.querySelector('p.error[role="alert"]:not([hidden])')?.scrollIntoView({block:'center'})`)
+		d.tabJS(`document.querySelector('p.error[role="alert"]:not([hidden])')?.scrollIntoView({block:'center'})`)
 		if err := d.probe(`(() => {
    const error=document.querySelector('p.error[role="alert"]:not([hidden])'),invalid=document.querySelector('[aria-invalid="true"]');
    const control=invalid?.id==='ports' ? invalid.querySelector('input') : invalid;
@@ -213,7 +266,7 @@ func (d *guiTestDriver) state(want string, active bool, shot string) error {
 			return err
 		}
 	default:
-		d.w.ExecJS(`window.scrollTo(0,0)`)
+		d.tabJS(`window.scrollTo(0,0)`)
 		if err := d.probe(`(() => {const start=el('start').getBoundingClientRect(),status=el('status').getBoundingClientRect();return check(start.bottom<innerHeight && status.top>=0,{start,status,innerHeight})})()`); err != nil {
 			return err
 		}
@@ -361,7 +414,7 @@ func (d *guiTestDriver) drive() error {
 	if err := d.probe(`check(el('email').value==='' && el('goal').value==='phone' && !el('trust').hidden,{emailLength:el('email').value.length,goal:el('goal').value,trustHidden:el('trust').hidden})`); err != nil {
 		return err
 	}
-	d.w.ExecJS(`for(const [id,value] of [['email','gui@example.invalid'],['password','synthetic-password']]) {const e=document.getElementById(id);e.focus();e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}`)
+	d.tabJS(`for(const [id,value] of [['email','gui@example.invalid'],['password','synthetic-password']]) {const e=document.getElementById(id);e.focus();e.value=value;e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));}`)
 	if err := d.uxSetup(); err != nil {
 		return err
 	}
@@ -396,11 +449,11 @@ func (d *guiTestDriver) drive() error {
 			return err
 		}
 		if d.scenario == "fresh" || d.scenario == "dark" {
-			d.w.ExecJS(`document.getElementById('running-ports-box').open=true`)
+			d.tabJS(`document.getElementById('running-ports-box').open=true`)
 			if err := d.state("Connected to your Seestar", true, "ready-ports"); err != nil {
 				return err
 			}
-			d.w.ExecJS(`document.getElementById('running-ports-box').open=false`)
+			d.tabJS(`document.getElementById('running-ports-box').open=false`)
 		}
 	}
 	switch d.scenario {
@@ -466,7 +519,8 @@ func (d *guiTestDriver) drive() error {
 			return err
 		}
 	case "strand":
-		origin := strings.Split(d.url, "/#")[0]
+		// The window shows the shell, its first tab's page in a frame.
+		origin := strings.Join(strings.SplitN(d.url, "/", 4)[:3], "/")
 		// about:blank has a different URL origin and requires no network or server.
 		// Use page navigation, not the native SetURL whose recovery we are testing.
 		d.w.ExecJS(`location.href='about:blank'`)
@@ -545,7 +599,7 @@ func (d *guiTestDriver) serverState(want string, active bool) error {
 	client := &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, Timeout: time.Second}
 	defer client.CloseIdleConnections()
 	if err := guitest.Wait(d.ctx, "server status "+want, func() bool {
-		req, _ := http.NewRequestWithContext(d.ctx, "GET", parts[0]+"/api/status", nil)
+		req, _ := http.NewRequestWithContext(d.ctx, "GET", parts[0]+"/p/1/api/status", nil)
 		req.Header.Set("X-Seestar-Token", parts[1])
 		resp, err := client.Do(req)
 		if err != nil {

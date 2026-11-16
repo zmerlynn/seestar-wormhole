@@ -179,7 +179,8 @@ func (c *runtimeClient) do(method, path, body string) (int, string) {
 	if method == "POST" {
 		body = copyTokenFrom(path, body, func() []byte { _, b := c.do("GET", "/copy/api/status", ""); return []byte(b) })
 	}
-	r, err := http.NewRequest(method, "http://"+c.host+path, strings.NewReader(body))
+	// The first tab's page is under /p/1/.
+	r, err := http.NewRequest(method, "http://"+c.host+"/p/1"+path, strings.NewReader(body))
 	if err != nil {
 		c.t.Error(err)
 		return 0, ""

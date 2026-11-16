@@ -50,11 +50,11 @@ func newUICommand(o *options) *cobra.Command {
 			return &argumentError{Option: "--profile", Rule: "give --profile or --state-dir, not both", Value: o.profile}
 		}
 		var err error
-		o.stateDir, o.profile, err = profileDir(o.profile)
+		_, o.profile, err = profileDir(o.profile)
 		return err
 	}}
 	command.Flags().StringVar(&o.stateDir, "state-dir", "", "private UI settings and shared installation identity directory")
-	command.Flags().StringVar(&o.profile, "profile", "", "open the app on this profile's settings, such as Garden (default: default); not with --state-dir")
+	command.Flags().StringVar(&o.profile, "profile", "", "open the app with this profile's tab, such as Garden (default: default); not with --state-dir")
 	return command
 }
 

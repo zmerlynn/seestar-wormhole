@@ -23,10 +23,11 @@ directory of its own, `profiles/<name>/` inside it, named as typed in
 **New profile**, with the files below. A name is matched
 without regard to case or Unicode normalization, can't be `default`, start
 with a dot, end with a dot or a space, contain `/`, `\` or a control
-character, or be longer than 64 bytes. Run
-`seestar-wormhole ui --profile NAME` to open one. A window opened with
-`--state-dir` is of no profile: it has no **Profiles…**, and never copies
-only. To remove a profile, quit its window and delete its folder,
+character, or be longer than 64 bytes. Each open
+profile is a tab of one app; open one with **+** or
+`seestar-wormhole ui --profile NAME`. An app opened with `--state-dir` has
+that one folder as its only tab, of no profile: it has no **+**, and never
+copies only. To remove a profile, close its tab and delete its folder,
 `<state>/profiles/<name>`.
 
 | File | Purpose |
@@ -34,9 +35,9 @@ only. To remove a profile, quit its window and delete its folder,
 | `config.json` | Settings except the password; see [the format](#configjson-version-1). |
 | `copy.json` | Copy settings; see [the format](#copyjson-version-1). |
 | `InterProcessKV/device_uuid` | Your [installation identity](connection-cli.md#installation-identity), shared with `proxy --state-dir PATH`. |
-| `gui.log`, `gui.log.1` | UI events as JSON lines, up to 64 KiB each, with one rotation. |
-| `ui.lock` | Keeps one UI running per state directory. |
-| `ui-runtime.json` | Private control port and token; removed on normal exit. The windows of other profiles, and the file commands' `--profile`, read it to ask the open window which ports it serves, or to bring it forward. |
+| `gui.log`, `gui.log.1` | This profile's UI events as JSON lines, up to 64 KiB each, with one rotation. |
+| `ui.lock` | Held while the folder is open in a tab, so only one app opens it. |
+| `ui-runtime.json` | Private control port and token, and the path of the folder's tab; removed when the tab closes. Another app, and the file commands' `--profile`, read it to ask the open tab which ports it serves, or to bring its window forward. |
 | `webview-<random>/` | Windows only: a fresh private engine profile for each launch; see [engine data](#engine-data). |
 | `profiles/<name>/` | A named profile's own state directory, with the files of this table. |
 | `ui-open.html` | Private browser page that grants access to the controls; removed on normal exit. |
@@ -168,9 +169,11 @@ request. Treat that private URL as access to the controls.
 
 To keep other websites out, the page uses exact Host checks, Origin checks on
 JSON POST writes, request limits, framing by the same page only, a restrictive
-content policy, and no-store/no-referrer headers. The copy API under
-`/copy/api/` takes the same token and checks; Browse, under `/browse/`, is
-served for a frame on the page. Other programs running as your user
+content policy, and no-store/no-referrer headers. The page at `/` is the
+tab bar; each open profile's page is a frame of it at `/p/<n>/`, with its
+API under `/p/<n>/api/`. Each copy API, under `/p/<n>/copy/api/`, takes the
+same token and checks; Browse, under `/p/<n>/browse/`, is served for a
+frame on its profile's page. Other programs running as your user
 are still trusted.
 
 A browser opener gets only the path to `ui-open.html`, which redirects to the

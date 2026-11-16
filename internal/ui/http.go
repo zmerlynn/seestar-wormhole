@@ -8,7 +8,6 @@ import (
 	"errors"
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud/cloudhttp"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
-	"github.com/zmerlynn/seestar-wormhole/internal/icon"
 	"github.com/zmerlynn/seestar-wormhole/internal/landiscovery"
 	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxyrun"
@@ -21,7 +20,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -40,13 +38,7 @@ type server struct {
 	settings    Settings
 	quit        chan struct{}
 	quitOnce    sync.Once
-	activate    func()
 	native      bool
-	// profile is the profile this run is of, nil for a run of a
-	// --state-dir folder; title is its window's, nil without one.
-	profile     *runProfile
-	title       *windowTitle
-	askProfiles atomic.Bool
 	// copy serves copy's API under /copy/api/ and Browse under /browse/;
 	// nil serves neither.
 	copy *copyapp.Mount
@@ -72,10 +64,12 @@ type scanInput struct {
 	Address string `json:"address"`
 }
 
+// ServeHTTP serves a tab's page, as the app routes it under the tab's
+// path, or, in tests, at /.
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Browse is a same-origin frame of /browse/, so the page may frame
-	// itself and be framed only by itself.
-	localhttp.SetHeaders(w.Header(), false)
+	// Browse is a same-origin frame of browse/, and the page one of the
+	// shell's, so a page may be framed only by its own origin.
+	setPageHeaders(w.Header())
 	fail := func(code int) { http.Error(w, "Request rejected", code) }
 	if r.Host != s.host {
 		fail(http.StatusForbidden)
@@ -103,74 +97,27 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fail(http.StatusForbidden)
 			return
 		}
-		if r.Method == "POST" && !s.allowedPost(w, r) {
+		if r.Method == "POST" && !allowedPost(w, r, s.host) {
 			return
 		}
 		s.copy.ServeHTTP(w, r)
 		return
 	}
 	if !strings.HasPrefix(r.URL.Path, "/api/") {
-		if r.Method != "GET" && r.Method != "HEAD" {
-			fail(http.StatusMethodNotAllowed)
-			return
-		}
 		path := r.URL.Path
 		if path == "/" {
 			path = "/index.html"
 		}
-		if path != "/index.html" && path != "/app.js" && path != "/style.css" && path != "/icon.svg" {
-			fail(http.StatusNotFound)
-			return
-		}
-		b, err := assets.ReadFile("web" + path)
-		if path == "/icon.svg" {
-			b, err = icon.SVG, nil
-		}
-		if err != nil {
-			fail(404)
-			return
-		}
-		contentType := "text/html; charset=utf-8"
-		if path == "/app.js" {
-			contentType = "text/javascript; charset=utf-8"
-		}
-		if path == "/style.css" {
-			contentType = "text/css; charset=utf-8"
-		}
-		if path == "/icon.svg" {
-			contentType = "image/svg+xml"
-		}
-		w.Header().Set("Content-Type", contentType)
-		if r.Method != "HEAD" {
-			w.Write(b)
-		}
+		serveAsset(w, r, path, "/index.html", "/app.js", "/style.css", "/icon.svg")
 		return
 	}
 	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Seestar-Token")), []byte(s.token)) != 1 {
 		fail(http.StatusForbidden)
 		return
 	}
-	if r.URL.Path == "/api/profiles" {
+	if r.URL.Path == "/api/status" {
 		if r.Method != "GET" {
 			fail(http.StatusMethodNotAllowed)
-			return
-		}
-		s.serveProfiles(w, r, profileInput{})
-		return
-	}
-	read := r.URL.Path == "/api/status" || r.URL.Path == "/api/instance"
-	if read {
-		if r.Method != "GET" {
-			fail(http.StatusMethodNotAllowed)
-			return
-		}
-		if r.URL.Path == "/api/instance" {
-			if s.activate != nil {
-				w.Header().Set("X-Seestar-Window", "1")
-			}
-			localhttp.Respond(w, http.StatusOK, struct {
-				Instance string `json:"instance"`
-			}{"seestar-wormhole-ui-v1"})
 			return
 		}
 		s.mu.Lock()
@@ -221,8 +168,8 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// this telescope.
 			TelescopeKey string        `json:"telescope_key"`
 			Files        settingsFiles `json:"files"`
-			// ServingPorts are the local ports this app's run listens on
-			// now, from when they are bound, which another window of the
+			// ServingPorts are the local ports this tab's run listens on
+			// now, from when they are bound, which another app of the
 			// same state root reads to tell its own port conflict from
 			// another program's.
 			ServingPorts []uint16 `json:"serving_ports"`
@@ -230,21 +177,18 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// there are none, and ServingSerial the serial of the
 			// telescope they reach, "" until the run selects one: the
 			// file commands' --profile copies through another profile's
-			// window only when it is the telescope that profile saved.
+			// tab only when it is the telescope that profile saved.
 			ServingAddress string `json:"serving_address"`
 			ServingSerial  string `json:"serving_serial"`
-			// Profile is the run's profile, absent for a run of a
-			// --state-dir folder.
-			Profile *profileView `json:"profile,omitempty"`
 		}{s.copy != nil && s.copy.Busy(), pageSettingsFor(settings), s.version, diagnosticSettingsFor(effective, ports), view, defaults, s.controller.credentials.state(settings.Email), s.native, hostOS, events, failures, path, logFailed,
-			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports), view.serving, view.servingSerial, s.profileStatus(r)})
+			unlocked, reach, s.copyRefused, s.telescopeNameAt(target, settings), copyapp.ViewKey(keyed), s.settingsFiles(), servingPorts(view, ports), view.serving, view.servingSerial})
 		return
 	}
 	if r.Method != "POST" {
 		fail(http.StatusMethodNotAllowed)
 		return
 	}
-	if !s.allowedPost(w, r) {
+	if !allowedPost(w, r, s.host) {
 		return
 	}
 	b, err := io.ReadAll(http.MaxBytesReader(w, r.Body, localhttp.MaxJSON))
@@ -264,25 +208,6 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	in.Settings.Email = strings.TrimSpace(strings.ReplaceAll(in.Settings.Email, " ", ""))
 	switch r.URL.Path {
-	case "/api/activate":
-		var activation profileInput
-		if s.activate == nil {
-			fail(http.StatusNotFound)
-			return
-		}
-		if json.Unmarshal(b, &activation) != nil {
-			fail(http.StatusBadRequest)
-			return
-		}
-		s.relaunched(activation.Show)
-	case "/api/profiles/open", "/api/profiles/new":
-		var profile profileInput
-		if json.Unmarshal(b, &profile) != nil {
-			fail(http.StatusBadRequest)
-			return
-		}
-		s.serveProfiles(w, r, profile)
-		return
 	case "/api/start":
 		// Connect chooses the account route, which moves the copier when
 		// this network was the route.
@@ -388,11 +313,28 @@ func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}{true})
 }
 
+// serving is what the tab's run serves, as its status says: the local
+// ports it listens on, their bind address, the serial of the telescope
+// they reach, and the route's telescope's name.
+func (s *server) serving() windowStatus {
+	s.mu.Lock()
+	settings := s.settings
+	s.mu.Unlock()
+	view := s.controller.view()
+	effective := settings
+	if view.Active {
+		effective = view.settings
+	}
+	ports, _, _ := effective.validate()
+	target, _ := s.copyTargetFor(settings, view.conn)
+	return windowStatus{ServingPorts: servingPorts(view, ports), ServingAddress: view.serving, ServingSerial: view.servingSerial, TelescopeName: s.telescopeNameAt(target, settings)}
+}
+
 // allowedPost checks a POST's Origin, Fetch Metadata and content type, for
-// the wormhole's API and copy's alike, and answers it if they fail.
-func (s *server) allowedPost(w http.ResponseWriter, r *http.Request) bool {
+// the shell's API, a tab's and copy's alike, and answers it if they fail.
+func allowedPost(w http.ResponseWriter, r *http.Request, host string) bool {
 	fail := func(code int) { http.Error(w, "Request rejected", code) }
-	if r.Header.Get("Origin") != "http://"+s.host {
+	if r.Header.Get("Origin") != "http://"+host {
 		fail(http.StatusForbidden)
 		return false
 	}

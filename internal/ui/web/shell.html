@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>seestar-wormhole</title><link rel="icon" type="image/svg+xml" href="icon.svg"><link rel="stylesheet" href="style.css"><script src="shell.js" defer></script></head>
+<body class="shell">
+<nav id="tabbar" aria-label="Profiles">
+<div id="profile-tabs" role="tablist" aria-label="Profiles"></div>
+<button id="add" type="button" aria-label="Open a profile" aria-haspopup="dialog" title="Open a profile: each has its own telescope, connection and copy folder" hidden>+</button>
+</nav>
+<p id="shell-note" class="error" role="alert" hidden></p>
+<div id="frames"></div>
+<p id="ended" hidden>seestar-wormhole has quit. You can close this browser tab.</p>
+<dialog id="a-dialog" aria-labelledby="a-title" aria-describedby="a-intro">
+<h2 id="a-title">Open a profile</h2>
+<div id="a-main">
+<p id="a-intro">Each profile has its own telescope, connection and copy folder, and opens in its own tab. Open one for each telescope to copy from several at once.</p>
+<ul id="a-list" class="profiles" aria-labelledby="a-title"></ul>
+<p class="error" id="a-err" role="alert" hidden></p>
+<div class="actions"><button type="button" id="a-cancel">Cancel</button></div>
+</div>
+<form id="a-form" novalidate hidden>
+<label for="a-name">Name</label><input id="a-name" type="text" spellcheck="false" autocomplete="off" maxlength="4096" aria-describedby="a-name-help a-name-err">
+<p class="error" id="a-name-err" role="alert" hidden></p>
+<p class="help" id="a-name-help">For example, the telescope or where it is: Backyard S30.</p>
+<div class="actions"><button class="primary" type="submit" id="a-create">Create and open</button><button type="button" id="a-back">Cancel</button></div>
+</form>
+</dialog>
+<dialog id="k-confirm" aria-labelledby="k-ctitle" aria-describedby="k-cbody">
+<h2 id="k-ctitle"></h2>
+<p id="k-cbody"></p>
+<div class="actions"><button class="danger" type="button" id="k-cgo"></button><button type="button" id="k-ccancel" autofocus>Cancel</button></div>
+</dialog>
+</body></html>

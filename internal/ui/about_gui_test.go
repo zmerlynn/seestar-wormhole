@@ -16,8 +16,7 @@ func TestNativeAboutContent(t *testing.T) {
 }
 
 func TestNativeProjectMenuPreservesRoles(t *testing.T) {
-	for _, tc := range []struct{ withAppMenu, profiles bool }{{false, false}, {true, false}, {false, true}, {true, true}} {
-		withAppMenu := tc.withAppMenu
+	for _, withAppMenu := range []bool{false, true} {
 		menu := application.NewMenu()
 		menu.AddRole(application.HelpMenu)
 		for _, role := range []application.Role{application.Quit, application.CloseWindow, application.Copy, application.Paste} {
@@ -27,11 +26,7 @@ func TestNativeProjectMenuPreservesRoles(t *testing.T) {
 			submenu := application.NewMenuFromItems(application.NewMenuItem("system About").SetRole(application.About))
 			menu.Prepend(application.NewMenuFromItems(application.NewSubmenu("seestar-wormhole", submenu).SetRole(application.AppMenu)))
 		}
-		var openProfiles func()
-		if tc.profiles {
-			openProfiles = func() { t.Error("Profiles opened during setup") }
-		}
-		configureProjectMenu(menu, func() { t.Error("About opened during setup") }, func(string) error { t.Error("browser opened during setup"); return nil }, openProfiles)
+		configureProjectMenu(menu, func() { t.Error("About opened during setup") }, func(string) error { t.Error("browser opened during setup"); return nil })
 		if menu.FindByRole(application.About) != nil || menu.FindByLabel("About seestar-wormhole") == nil || menu.FindByLabel("Project releases") == nil || menu.FindByLabel("Learn More") != nil {
 			t.Fatal("project menu missing or still uses the system About role")
 		}
@@ -46,10 +41,6 @@ func TestNativeProjectMenuPreservesRoles(t *testing.T) {
 		}
 		if parent.GetSubmenu().FindByLabel("About seestar-wormhole") == nil {
 			t.Fatal("About is in the wrong menu")
-		}
-		// Open Profile… is beside About, for a run of a profile only.
-		if (parent.GetSubmenu().FindByLabel("Open Profile…") != nil) != tc.profiles || (menu.FindByLabel("Open Profile…") != nil) != tc.profiles {
-			t.Fatalf("Open Profile… shown %t, want %t", menu.FindByLabel("Open Profile…") != nil, tc.profiles)
 		}
 	}
 }

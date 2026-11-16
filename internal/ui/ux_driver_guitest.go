@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-func (d *guiTestDriver) js(script string) { d.w.ExecJS(`(()=>{` + script + `})()`) }
+func (d *guiTestDriver) js(script string) { d.tabJS(`(()=>{` + script + `})()`) }
 func (d *guiTestDriver) uxSetup() error {
 	switch d.scenario {
 	case "computer":
@@ -32,7 +32,7 @@ func (d *guiTestDriver) uxSetup() error {
 		}
 		d.js(`document.getElementById('listen').value='0.0.0.0';document.getElementById('listen').dispatchEvent(new Event('change'));`)
 	case "browser-copy":
-		if err := d.probe(`check(el('quit').textContent==='Quit service' && el('quit-help').textContent.startsWith('Closing this tab leaves the service running.'),{quit:el('quit').textContent,help:el('quit-help').textContent})`); err != nil {
+		if err := d.probe(`check(el('quit').textContent==='Quit service' && el('quit-help').textContent.startsWith('Closing this browser tab leaves the service running.'),{quit:el('quit').textContent,help:el('quit-help').textContent})`); err != nil {
 			return err
 		}
 	case "settings-failure":

@@ -16,6 +16,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 )
 
 // Ignore the real runner entirely. Missing fixture configuration fails closed.
@@ -24,6 +25,9 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 	if dir == "" || scenario == "" {
 		return errors.New("guitest requires its Go harness")
 	}
+	// The driver runs its probes and scripts in the first tab's frame through
+	// eval, which the pages' script-src must allow. Only this build does.
+	pagePolicy = strings.Replace(localhttp.Policy, "script-src 'self'", "script-src 'self' 'unsafe-eval'", 1)
 	// copy-relaunch reads what the launch before it left.
 	if copyScenario(scenario) && scenario != "copy-relaunch" {
 		if err := prepareCopyScenario(root); err != nil {
@@ -79,17 +83,10 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 					fmt.Fprintln(out, "GUI fixture FAIL: driver did not join before native termination")
 				}
 			})
-			// An external HTTP page does not import /wails/runtime.js, which normally
-			// sends this readiness message. Release ExecJS only after native navigation
-			// completes; the probes still require the real page and app.js to be ready.
-			loaded := map[string]events.WindowEventType{"darwin": events.Mac.WebViewDidFinishNavigation, "windows": events.Windows.WebViewNavigationCompleted, "linux": events.Linux.WindowLoadFinished}[runtime.GOOS]
-			w.OnWindowEvent(loaded, func(*application.WindowEvent) {
-				w.HandleMessage("wails:runtime:ready")
-				// Wails on Windows injects options.JS only into inline-HTML windows.
-				if runtime.GOOS == "windows" {
-					w.ExecJS(guiTestWindowOptions(scenario).JS)
-				}
-			})
+			// Wails on Windows injects options.JS only into inline-HTML windows.
+			if runtime.GOOS == "windows" {
+				w.OnWindowEvent(events.Windows.WebViewNavigationCompleted, func(*application.WindowEvent) { w.ExecJS(guiTestWindowOptions(scenario).JS) })
+			}
 			app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 				go func() {
 					driverCtx, cancel := context.WithTimeout(context.Background(), 65*time.Second)
@@ -133,22 +130,49 @@ func guiTestWindowOptions(scenario string) application.WebviewWindowOptions {
 	}
 	return application.WebviewWindowOptions{AllowSimpleEventEmit: true, Mac: application.MacWindow{Appearance: appearance}, JS: `(() => {
 // Fixture captures use a stable display path. The Go driver independently
-// verifies the actual status path against its disposable state root.
-const fixtureFetch=window.fetch;
-window.fetch=async function(...args) {
- const response=await fixtureFetch.apply(this,args);
- if(!response.ok || new URL(args[0],location.href).pathname!=='/api/status') return response;
- const status=await response.json();
- return new Response(JSON.stringify({...status,log_path:'state/gui.log'}),{status:response.status,headers:response.headers});
+// verifies the actual status path against its disposable state root. The
+// first tab's page fetches its status in the shell's frame: wrap each page
+// the frame loads, not its first blank page. The wrapper is the shell's
+// function, so it calls the page's fetch on the page's window: called on
+// the shell's, it resolves the page's relative paths against the shell's.
+// Each page and the shell record their focus for the probes' diagnostics:
+// each focus call with what it left focused, each focus event, and the
+// page's animation frames asked for and run, since Connect takes focus in
+// one. The shell's handOff focuses the page's window.
+const where=win => {
+ const d=win.document,t=win.top.document,a=d.activeElement,s=t.activeElement;
+ return {focused:a?.id || a?.tagName || '',documentFocused:d.hasFocus(),visibility:d.visibilityState,shell:s?.id || s?.tagName || '',shellFocused:t.hasFocus(),ready:d.readyState,frames:win.__guitestFrames};
 };
-window.__guitestFocus = [];
-const recordFocus = via => {
- if(window.__guitestFocus.length<16) window.__guitestFocus.push({via,focused:document.activeElement?.id,documentFocused:document.hasFocus(),ready:document.readyState});
+const tracer=(win,trace,cap) => {
+ const record=via => {if(trace.length<cap) trace.push({via,...where(win)})};
+ const focus=win.HTMLElement.prototype.focus;
+ win.HTMLElement.prototype.focus=function(...args) {const r=focus.apply(this,args);record('focus-call:'+(this.id || this.tagName));return r};
+ win.addEventListener('focus',() => record('window-focus'));
+ win.addEventListener('blur',() => record('window-blur'));
+ win.document.addEventListener('focusin',e => record('focusin:'+(e.target.id || e.target.tagName)));
+ win.document.addEventListener('visibilitychange',() => record('visibility'));
+ return record;
 };
-recordFocus('navigation-finished');
-const originalFocus = HTMLElement.prototype.focus;
-HTMLElement.prototype.focus = function(...args) {recordFocus('focus-call:'+this.id);return originalFocus.apply(this,args)};
-window.addEventListener('focus', () => recordFocus('window-focus'));
-document.addEventListener('focusin', () => recordFocus('focusin'));
+const framePage=win => {
+ if(!win.location.pathname.startsWith('/p/') || win.document.__guitestPage) return;
+ win.document.__guitestPage=true;
+ const fixtureFetch=win.fetch;
+ win.fetch=async function(...args) {
+  const response=await fixtureFetch.apply(win,args);
+  if(!response.ok || new URL(args[0],win.location.href).pathname!=='/p/1/api/status') return response;
+  const status=await response.json();
+  return new win.Response(JSON.stringify({...status,log_path:'state/gui.log'}),{status:response.status,headers:response.headers});
+ };
+ const frames=win.__guitestFrames={asked:0,ran:0},raf=win.requestAnimationFrame;
+ win.requestAnimationFrame=callback => {frames.asked++;return raf.call(win,t => {frames.ran++;callback(t)})};
+ const record=tracer(win,win.__guitestFocus=[],20);
+ const windowFocus=win.focus;
+ win.focus=function(...args) {const r=windowFocus.apply(this,args);record('window.focus()');return r};
+ record('page-loaded');
+};
+const framed=frame => {try {framePage(frame.contentWindow)} catch(_) {}};
+document.querySelectorAll('iframe').forEach(framed);
+document.addEventListener('load',e => {if(e.target.tagName==='IFRAME') framed(e.target)},true);
+tracer(window,window.__guitestFocus=[],12)('navigation-finished');
 })()`}
 }

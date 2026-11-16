@@ -2,7 +2,6 @@ package ui
 
 import (
 	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"encoding/json/v2"
 	"errors"
@@ -11,7 +10,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -21,74 +19,149 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/buildinfo"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/copy/remote"
-	"github.com/zmerlynn/seestar-wormhole/internal/copy/state"
-	"github.com/zmerlynn/seestar-wormhole/internal/diagnostic"
-	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
-	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
 
+// runtimeRecord is how a launch or a file command reaches the app that
+// has a folder open: its local controls' port and token, and the path of
+// the folder's tab, "" for an app of one folder at /.
 type runtimeRecord struct {
 	Port  int    `json:"port"`
 	Token string `json:"token"`
+	Path  string `json:"path,omitzero"`
 }
 
 func (r runtimeRecord) valid() bool {
 	b, err := hex.DecodeString(r.Token)
-	return err == nil && len(b) == 32 && r.Port > 0 && r.Port <= 65535
+	return err == nil && len(b) == 32 && r.Port > 0 && r.Port <= 65535 && (r.Path == "" || strings.HasPrefix(r.Path, "/p/") && strings.HasSuffix(r.Path, "/"))
 }
 func (r runtimeRecord) host() string { return net.JoinHostPort("127.0.0.1", strconv.Itoa(r.Port)) }
-func (r runtimeRecord) url() string  { return "http://" + r.host() + "/#" + r.Token }
-func reopen(ctx context.Context, s *storage, open func(string) error, out io.Writer) error {
-	client := &http.Client{Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, Timeout: 300 * time.Millisecond, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
+// url is the app's private URL: its shell, or an older app's page.
+func (r runtimeRecord) url() string { return "http://" + r.host() + "/#" + r.Token }
+
+// api is the URL of the folder's own API action.
+func (r runtimeRecord) api(action string) string {
+	path := r.Path
+	if path == "" {
+		path = "/"
+	}
+	return "http://" + r.host() + path + "api/" + action
+}
+
+// askApp asks the app recorded in the folder of s to show itself, and,
+// when profile isn't "", to open or select that profile's tab. An app
+// without profile tabs, an older one or one of a --state-dir folder, is
+// asked only to show itself, and only when its folder is the one asked
+// for, own. done is false while no app answers there that can; err is an
+// app's refusal.
+func askApp(ctx context.Context, client *http.Client, s *storage, profile string, own bool, open func(string) error, out io.Writer) (done bool, err error) {
+	var record runtimeRecord
+	if err := s.read("ui-runtime.json", &record); err != nil || !record.valid() {
+		return false, nil
+	}
+	req, err := http.NewRequestWithContext(ctx, "GET", "http://"+record.host()+"/api/instance", nil)
+	if err != nil {
+		return true, errors.New("Could not check the running app.")
+	}
+	req.Header.Set("X-Seestar-Token", record.Token)
+	response, err := client.Do(req)
+	if err != nil {
+		return false, nil
+	}
+	body, readErr := io.ReadAll(io.LimitReader(response.Body, 128))
+	response.Body.Close()
+	if readErr != nil || response.StatusCode != 200 || string(body) != `{"instance":"seestar-wormhole-ui-v1"}` {
+		return false, nil
+	}
+	tabs := response.Header.Get("X-Seestar-Tabs") == "1"
+	if !tabs && (!own || profile != "") {
+		return false, nil
+	}
+	activation := "{}"
+	if profile != "" {
+		b, _ := json.Marshal(tabInput{Profile: profile})
+		activation = string(b)
+	}
+	window := response.Header.Get("X-Seestar-Window") == "1"
+	if !window && !tabs {
+		openPage(s, record.url(), open, out)
+		return true, nil
+	}
+	req, err = http.NewRequestWithContext(ctx, "POST", "http://"+record.host()+"/api/activate", strings.NewReader(activation))
+	if err != nil {
+		return true, errors.New("Could not reopen the running app.")
+	}
+	req.Header.Set("X-Seestar-Token", record.Token)
+	req.Header.Set("Origin", "http://"+record.host())
+	req.Header.Set("Content-Type", "application/json")
+	activated, err := client.Do(req)
+	if err != nil {
+		return false, nil
+	}
+	defer activated.Body.Close()
+	var refusal struct {
+		Message string `json:"message"`
+	}
+	switch {
+	case activated.StatusCode == http.StatusOK:
+	case activated.StatusCode == http.StatusBadRequest && json.UnmarshalRead(io.LimitReader(activated.Body, localhttp.MaxJSON), &refusal) == nil && refusal.Message != "":
+		return true, errors.New(refusal.Message)
+	default:
+		return false, nil
+	}
+	if !window {
+		openPage(s, record.url(), open, out)
+	}
+	return true, nil
+}
+
+// reopen asks the app starting or running on the folder of s, which
+// holds its lock, to show itself and the profile's tab, as askApp does,
+// for as long as it takes to start. held, if set, is the refusal when
+// no app answers in time.
+func reopen(ctx context.Context, s *storage, profile string, open func(string) error, out io.Writer, held error) error {
+	client := probeClient()
 	defer client.CloseIdleConnections()
 	deadline := time.NewTimer(2 * time.Second)
 	defer deadline.Stop()
 	tick := time.NewTicker(50 * time.Millisecond)
 	defer tick.Stop()
 	for {
-		var record runtimeRecord
-		if err := s.read("ui-runtime.json", &record); err == nil && record.valid() {
-			req, err := http.NewRequestWithContext(ctx, "GET", "http://"+record.host()+"/api/instance", nil)
-			if err != nil {
-				return errors.New("Could not check the running app.")
-			}
-			req.Header.Set("X-Seestar-Token", record.Token)
-			response, err := client.Do(req)
-			if err == nil {
-				body, readErr := io.ReadAll(io.LimitReader(response.Body, 128))
-				response.Body.Close()
-				if readErr == nil && response.StatusCode == 200 && string(body) == `{"instance":"seestar-wormhole-ui-v1"}` {
-					if response.Header.Get("X-Seestar-Window") != "1" {
-						openPage(s, record.url(), open, out)
-						return nil
-					}
-					req, err := http.NewRequestWithContext(ctx, "POST", "http://"+record.host()+"/api/activate", strings.NewReader("{}"))
-					if err != nil {
-						return errors.New("Could not reopen the running app.")
-					}
-					req.Header.Set("X-Seestar-Token", record.Token)
-					req.Header.Set("Origin", "http://"+record.host())
-					req.Header.Set("Content-Type", "application/json")
-					activated, err := client.Do(req)
-					if err == nil {
-						io.Copy(io.Discard, io.LimitReader(activated.Body, 128))
-						activated.Body.Close()
-						if activated.StatusCode == http.StatusOK {
-							return nil
-						}
-					}
-				}
-			}
+		if done, err := askApp(ctx, client, s, profile, true, open, out); done {
+			return err
 		}
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-deadline.C:
+			if held != nil {
+				return held
+			}
 			return errors.New("App is already running or starting. Try again shortly.")
 		case <-tick.C:
 		}
 	}
+}
+
+// askRunning asks an app already running with one of root's profiles open
+// to show itself, and the profile's tab when the launch named one:
+// first the app of that profile's folder, then any app with tabs.
+func askRunning(ctx context.Context, root, name, profile string, open func(string) error, out io.Writer) (bool, error) {
+	names, _ := Profiles(root)
+	client := probeClient()
+	defer client.CloseIdleConnections()
+	for i, n := range append([]string{name, DefaultProfile}, names...) {
+		if i > 0 && sameProfile(n, name) {
+			continue
+		}
+		st := &storage{root: ProfileDir(root, n)}
+		if done, err := askApp(ctx, client, st, profile, i == 0, open, out); done {
+			return true, err
+		}
+	}
+	return false, nil
 }
 
 const bootstrapName = "ui-open.html"
@@ -264,163 +337,91 @@ var runText func(*proxy.Status) string
 // snapshots, after they were taken. Only tests set it, to hold a lookup.
 var copyTargetHook func()
 
+// runUIPresented runs the app: on one folder, or, when ctx is of a
+// profile, with tabs of root's profiles, the asked one open first. A
+// launch while an app has that folder open, or has tabs of these
+// profiles, asks it instead.
 func runUIPresented(ctx context.Context, root string, out, logs io.Writer, run runFunc, open func(string) error, chain keychain, window windowFunc, native *copyapp.Native) (result error) {
-	st, err := openStorage(root)
+	name, asked, profiles := DefaultProfile, "", false
+	if p, ok := profileOf(ctx); ok {
+		root, asked, profiles = p.root, p.name, true
+		if asked != "" {
+			name = asked
+		}
+		if done, err := askRunning(ctx, root, name, asked, open, out); done {
+			return err
+		}
+	}
+	// The proxies and the copiers stop only by the cleanup below, in its
+	// order, so the end of ctx can't reach a proxy before Browse and its
+	// copier have stopped.
+	base, baseDone := context.WithCancel(context.WithoutCancel(ctx))
+	defer baseDone()
+	a, listener, err := newApp(ctx, base, root, profiles, logs, run, chain, native, window != nil)
 	if err != nil {
 		return err
 	}
-	defer st.directory.Close()
-	lock, err := privatefile.Open(filepath.Join(root, "ui.lock"), os.O_CREATE|os.O_RDWR)
-	if err != nil {
-		return storageFailed(err)
-	}
-	defer lock.Close()
-	acquired, err := filelock.TryLock(lock)
-	if err != nil {
-		return storageFailed(err)
-	}
-	if !acquired {
-		return reopen(ctx, st, open, out)
-	}
-	eventHistory := &eventLog{storage: st}
-	eventHistory.add("App opened.")
-	defer func() {
-		if result != nil {
-			eventHistory.add("App could not start.")
-		}
-	}()
-	unsafeSettings := func(name string) error {
-		settingsPath := filepath.Join(root, name)
-		if absolute, err := filepath.Abs(settingsPath); err == nil {
-			settingsPath = absolute
-		}
-		return errors.New("Could not load saved settings safely.\n\n" + settingsPath + "\n\nCheck this file, then reopen seestar-wormhole.")
-	}
-	// A saved value a load replaced is logged, and the serial's value too.
-	logFallbacks := func(fallbacks []diagnostic.Fallback) {
-		diagnostic.LogFallbacks(diagnostic.Logger("json", logs, slog.LevelWarn), fallbacks)
-	}
-	settings, fallbacks, err := loadSettings(st)
-	logFallbacks(fallbacks)
-	routeSaved := err == nil && routeSavedIn(settings)
-	if os.IsNotExist(err) {
-		settings = defaultSettings()
-	} else if err != nil {
-		return unsafeSettings("config.json")
-	}
-	// A copy.json this version can't read leaves Copy, Browse and Free
-	// up space off for this run and is never written; the proxy needs
-	// none of it.
-	copyFile, copySaved, fallbacks, err := loadCopySettings(st)
-	logFallbacks(fallbacks)
-	copyRefused := err != nil
-	listener, err := net.Listen("tcp4", "127.0.0.1:0")
-	if err != nil {
-		return errors.New("Could not start the local controls.")
-	}
 	defer listener.Close()
-	var token [32]byte
-	if _, err = rand.Read(token[:]); err != nil {
-		return errors.New("Could not secure the local controls.")
-	}
-	record := runtimeRecord{Port: listener.Addr().(*net.TCPAddr).Port, Token: hex.EncodeToString(token[:])}
-	// The proxy and the copier stop only by the cleanup below, in its
-	// order, so the end of ctx can't reach the proxy before Browse and
-	// the copier have stopped.
-	appCtx, appDone := context.WithCancel(context.WithoutCancel(ctx))
-	defer appDone()
-	c := &controller{parent: appCtx, run: run, text: runText, credentials: &credentialStore{chain: chain, savedEmail: func() string {
-		if settings.Remember {
-			return settings.Email
+	first, err := a.openTab(name, "")
+	if errors.Is(err, errLocked) {
+		st, err := openStorage(a.dir(name))
+		if err != nil {
+			return err
 		}
-		return ""
-	}()}}
-	version := uiVersion(ctx)
-	handler := &server{version: version, host: record.host(), token: record.Token, controller: c, storage: st, settings: settings, quit: make(chan struct{})}
-	handler.native = native != nil
-	handler.routeSaved = routeSaved
-	// The window's title names the run's profile once there is more than
-	// one; a run of a --state-dir folder is of none.
-	title := &windowTitle{text: titleFor("")}
-	if p, ok := profileOf(ctx); ok {
-		handler.profile = &p
-		title.text, title.profiles = titleFor(handler.profileLabel()), true
+		defer st.directory.Close()
+		// A profile's folder that no app answers for is held by another
+		// process: its lock says so.
+		var held error
+		if profiles {
+			held = errors.New("Couldn't open " + a.label(name) + ": " + lockedError(a.label(name), a.dir(name)).Error() + ".")
+		}
+		return reopen(ctx, st, asked, open, out, held)
+	} else if err != nil {
+		return err
 	}
-	if window != nil {
-		handler.title = title
-	}
-	handler.copyRefused = copyRefused
-	c.save = handler.saveSettings
-	c.lastSaved = settings
-	c.log = eventHistory
-	// The copier shares the file commands' default history folder, so the
-	// two share one history and lock per folder. Its warnings and errors go
-	// to the command's bounded log sink, as the proxy's do.
-	if copyRefused {
-		eventHistory.add(copyRefusedEvent)
-	} else {
-		copyState, _ := state.DefaultDir()
-		listening := listener.Addr().(*net.TCPAddr).AddrPort()
-		handler.copy = newMount(appCtx, copyMountOptions(handler, copyapp.MountOptions{
-			Addr: netip.AddrPortFrom(listening.Addr().Unmap(), listening.Port()), StateDir: copyState, Version: version,
-			Log: diagnostic.Logger("json", logs, slog.LevelWarn), Settings: copySaved, Save: copyFile.save, Native: native,
-		}))
-	}
-	// Every return stops the copier and joins it before ui.lock is
-	// released; the cleanup below has usually done so already.
-	defer quitCopy(handler)
+	// Every return stops each tab's copier and joins it before its lock
+	// is released; the cleanup below has usually done so already.
+	defer a.closeAll()
 	activate := make(chan struct{}, 1)
 	if window != nil {
-		handler.activate = func() {
+		a.activate = func() {
 			select {
 			case activate <- struct{}{}:
 			default:
 			}
 		}
 	}
-	requestQuit := func() { handler.quitOnce.Do(func() { close(handler.quit) }) }
-	httpServer := newHTTPServer(handler)
-	if err = st.write("ui-runtime.json", record); err != nil {
-		return err
-	}
-	defer os.Remove(filepath.Join(root, "ui-runtime.json"))
-	defer os.Remove(filepath.Join(root, bootstrapName))
-	// Copying may start as the app opens only once it is published.
-	if handler.copy != nil {
-		handler.copy.Start()
-	}
+	httpServer := newHTTPServer(a)
 	done := make(chan error, 1)
 	go func() { done <- httpServer.Serve(listener) }()
-	windowCtx, windowDone := context.WithCancel(context.WithValue(context.WithValue(context.Background(), versionKey{}, version), windowTitleKey{}, handler.title))
+	shell := &windowShell{live: func(mark time.Time) bool { return a.live(mark, 2*time.Second) }, confirm: a.confirmQuit}
+	windowCtx, windowDone := context.WithCancel(context.WithValue(context.WithValue(context.Background(), versionKey{}, a.version), windowShellKey{}, shell))
 	defer windowDone()
 	cleanupDone := make(chan struct{})
 	go func() {
 		defer close(cleanupDone)
 		select {
 		case <-ctx.Done():
-		case <-handler.quit:
+		case <-a.quit:
 		case <-done:
 		}
-		// Browse's sessions and the copier stop before the proxy they
-		// may be reaching the telescope through.
-		quitCopy(handler)
-		c.quit()
+		a.quitting.Store(true)
+		// Native termination (notably AppKit) may exit without returning
+		// Run. Each tab removes its capability files as it closes, before
+		// OnShutdown may complete.
+		a.closeAll()
 		shutdown, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 		if err := httpServer.Shutdown(shutdown); err != nil {
 			httpServer.Close()
 		}
-		// Native termination (notably AppKit) may exit without returning Run.
-		// Remove capability files before allowing OnShutdown to complete.
-		os.Remove(filepath.Join(root, "ui-runtime.json"))
-		os.Remove(filepath.Join(root, bootstrapName))
 		windowDone()
 	}()
 	if window == nil {
-		openPage(st, record.url(), open, out)
+		openPage(first.st, a.url(), open, out)
 	} else {
-		err = window(windowCtx, record.url(), requestQuit, activate)
-		requestQuit() // Also joins cleanup if native startup fails.
+		err = window(windowCtx, a.url(), a.requestQuit, activate)
+		a.requestQuit() // Also joins cleanup if native startup fails.
 	}
 	<-cleanupDone
 	return err

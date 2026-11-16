@@ -256,7 +256,7 @@ func TestServingWindow(t *testing.T) {
 	answer(root, `{"serving_ports":[1445,4700],"serving_address":"0.0.0.0","telescope_name":"Seestar S30 TEST0001"}`)
 	answer(ProfileDir(root, "Garden"), `{"serving_ports":[],"serving_address":"","telescope_name":"Seestar S50 TEST0002","unknown":{}}`)
 	for _, bind := range []string{"0.0.0.0", "::ffff:0.0.0.0"} {
-		if h, ok := ServingWindow(t.Context(), root, "Garden", bind, 1445); !ok || h != (proxy.Holder{Profile: "Default", Telescope: "Seestar S30 TEST0001"}) {
+		if h, ok := ServingWindow(t.Context(), root, "Garden", bind, 1445, nil); !ok || h != (proxy.Holder{Profile: "Default", Telescope: "Seestar S30 TEST0001"}) {
 			t.Errorf("1445 at %s from Garden = %+v, %t", bind, h, ok)
 		}
 	}
@@ -265,7 +265,7 @@ func TestServingWindow(t *testing.T) {
 		port       uint16
 	}{{"Garden", "0.0.0.0", 445}, {"default", "0.0.0.0", 1445}, {"DEFAULT", "0.0.0.0", 4700},
 		{"Garden", "127.0.0.1", 1445}, {"Garden", "::", 1445}, {"Garden", "", 1445}} {
-		if h, ok := ServingWindow(t.Context(), root, tc.self, tc.bind, tc.port); ok {
+		if h, ok := ServingWindow(t.Context(), root, tc.self, tc.bind, tc.port, nil); ok {
 			t.Errorf("%d at %q from %s = %+v", tc.port, tc.bind, tc.self, h)
 		}
 	}
