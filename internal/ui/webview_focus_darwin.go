@@ -35,20 +35,31 @@ import "github.com/wailsapp/wails/v3/pkg/application"
 // else does that for a WKWebView that is a subview of the window's content,
 // and without it a page's focus calls and events wait for a click. It
 // neither activates the app nor orders the window.
+//
+// The window is looked up on the main thread, where Wails destroys it, so
+// it cannot be freed between the lookup and its use.
 func focusWebView(w *application.WebviewWindow) {
-	if p := w.NativeWindow(); p != nil {
-		application.InvokeAsync(func() { C.focusWebView(p) })
+	if w == nil {
+		return
 	}
+	application.InvokeAsync(func() {
+		if p := w.NativeWindow(); p != nil {
+			C.focusWebView(p)
+		}
+	})
 }
 
 // webViewFocused tells whether the window's web view is its first
 // responder, for the GUI fixture's diagnostics.
 func webViewFocused(w *application.WebviewWindow) bool {
-	p := w.NativeWindow()
-	if p == nil {
+	if w == nil {
 		return false
 	}
 	var focused bool
-	application.InvokeSync(func() { focused = bool(C.webViewFocused(p)) })
+	application.InvokeSync(func() {
+		if p := w.NativeWindow(); p != nil {
+			focused = bool(C.webViewFocused(p))
+		}
+	})
 	return focused
 }
