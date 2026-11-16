@@ -92,19 +92,20 @@
       const s = status();
       render(s);
       assert($('version').textContent === s.version, 'footer lost the launch version');
-      const bridge = window._wails;
+      // The bridge is the window's own page's: the shell's, when framed.
+      const host = window.top, bridge = host._wails;
       let opened = '', prevented = false;
       const link = $('releases-link');
       const click = {target: link, button: 0, preventDefault() {prevented = true;}};
       try {
-        window._wails = {invoke(message) {opened = message;}};
+        host._wails = {invoke(message) {opened = message;}};
         openExternalLink(click);
         assert(prevented && opened === 'seestar:open:'+link.href, 'native link did not use the browser bridge');
-        window._wails = undefined;
+        host._wails = undefined;
         prevented = false;
         openExternalLink(click);
         assert(!prevented, 'browser link lost normal navigation');
-      } finally {window._wails = bridge;}
+      } finally {host._wails = bridge;}
       render({...s, failure: {code: 'http_permission', field: 'ports'}, failure_message: 'See the port permissions guide.'});
       assert(!$('port-permissions').hidden, 'permission error lacks a guide link');
       render(s);
@@ -178,11 +179,20 @@
       assert(!$('password-error').hidden, 'accepted run with the same failure lost its field error');
     });
     await check('R9 render focus', async () => {
+      // A page loads with nothing focused. An unfocused one, as a tab's can
+      // load, focuses Connect when it gains focus.
+      document.activeElement?.blur();
       initialized = false;
       api = async () => status();
       await refresh();
+      if (!document.hasFocus()) window.dispatchEvent(new FocusEvent('focus'));
       await new Promise(requestAnimationFrame);
       assert(document.activeElement === $('start'), 'initial status did not focus Connect');
+      $('goal').focus();
+      initialized = false;
+      await refresh();
+      await new Promise(requestAnimationFrame);
+      assert(document.activeElement === $('goal'), 'initial status took focus from a clicked field');
       $('goal').focus();
       await refresh();
       await new Promise(requestAnimationFrame);
