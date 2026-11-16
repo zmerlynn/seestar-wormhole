@@ -156,6 +156,36 @@ test('a page takes focus from the tab the web view focused at launch', async ({ 
   await expect(frameOf(page, 1).locator('#start')).toBeFocused();
 });
 
+// Once the page has had focus, a tab focused without a key or click, as
+// a screen reader focuses it, keeps focus through polls.
+test('a tab focused after launch keeps focus', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openShell(page, app);
+  await expect(frameOf(page, 1).locator('#start')).toBeFocused();
+  await page.evaluate(() => document.getElementById('ptab-1').focus());
+  await page.waitForTimeout(1200);
+  await expect(ptab(page, 'Default')).toBeFocused();
+});
+
+// The window's close while a saved copy runs asks before any key or
+// click in the window, and its dialog keeps focus through polls.
+test('the quit dialog keeps focus before the user acts', async ({ page, startApp }) => {
+  const app = await startApp();
+  await openShell(page, app);
+  await expect(frameOf(page, 1).locator('#start')).toBeFocused();
+  // Default answers as copying, without a telescope to copy from.
+  await page.route('**/api/tabs', async (route) => {
+    const response = await route.fetch();
+    const v = await response.json();
+    v.tabs[0].copying = true;
+    await route.fulfill({ response, json: v });
+  });
+  await page.evaluate(() => window.confirmQuit());
+  await expect(page.locator('#k-confirm')).toBeVisible();
+  await page.waitForTimeout(1200);
+  expect(await page.evaluate(() => document.getElementById('k-confirm').contains(document.activeElement))).toBe(true);
+});
+
 test('New profile shows a refused name under the field and opens what it creates', async ({ page, startApp }) => {
   const app = await startApp();
   addGarden(app);

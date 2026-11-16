@@ -43,18 +43,22 @@ class TestElement {
     const ids = {'connection-dot': {getAttribute: () => page.tone}, 'connection-text': {textContent: page.words}, 'copy-chip': page.chip};
     return {getElementById: id => ids[id] || null};
   }
-  // Focusing it focuses the frame, as a browser's shell sees it.
+  // Its page, loaded: focusing it focuses the frame, as a browser's shell
+  // sees it.
   get contentWindow() {
     const frame = this;
-    return (testWindows[this.dataset.path] ||= Object.assign(new TestElement(), {focus() {document.activeElement = frame; testFocused.push(frame.dataset.path);}}));
+    return (testWindows[this.dataset.path] ||= Object.assign(new TestElement(), {location: {pathname: frame.dataset.path}, focus() {document.activeElement = frame; testFocused.push(frame.dataset.path);}}));
   }
 }
 const testPages = {}, testWindows = {}, testFocused = [];
 const testElements = new Map();
 const testBody = new TestElement('body');
 testBody.root = true;
+// testWindowFocused is whether the window has focus, as hasFocus tells.
+let testWindowFocused = true;
 const document = {
   activeElement: testBody, body: testBody,
+  hasFocus() {return testWindowFocused;},
   getElementById(id) {if (!testElements.has(id)) testElements.set(id, new TestElement()); return testElements.get(id);},
   createElement(tag) {return new TestElement(tag);},
   addEventListener(name, callback) {testBody.addEventListener(name, callback);}

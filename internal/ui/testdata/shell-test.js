@@ -276,10 +276,12 @@ async function checkFrameFocus() {
 }
 
 // WKWebView focuses the shell's first tab itself as its window first takes
-// focus. Until the user acts, the page takes focus back from it, as it
-// lands, as the page loads and as the window gains focus; once the user
-// acts in the tab list, focus there stays.
+// focus, which may be after the page loads. Until the page has had focus
+// in a focused window, the page takes focus back from a tab, as it lands,
+// as the page loads and as the window gains focus; after, a tab focused
+// without a key or click, as a screen reader focuses it, keeps focus.
 async function checkLaunchFocus() {
+  testWindowFocused = false;
   app.tabs = [tabEntry(1, 'Default'), tabEntry(2, 'Garden')];
   await refresh();
   const one = $('frames').children[0], first = tabsShown()[0], later = [];
@@ -287,11 +289,13 @@ async function checkLaunchFocus() {
     first.focus();
     testBody.dispatchEvent({type: 'focusin', target: first});
   };
+  const run = () => later.splice(0).forEach(f => f());
   setTimeout = callback => later.push(callback);
   try {
+    assert(document.activeElement === one, 'the page was not focused as it loaded');
     webKitFocus();
     testFocused.length = 0;
-    later.splice(0).forEach(f => f());
+    run();
     assert(JSON.stringify(testFocused) === '["/p/1/"]' && document.activeElement === one, 'the launch left focus on the tab: ' + document.activeElement.tagName);
     webKitFocus();
     later.length = 0;
@@ -299,12 +303,35 @@ async function checkLaunchFocus() {
     assert(document.activeElement === one, 'the page loaded without focus');
     webKitFocus();
     later.length = 0;
-    testBody.dispatchEvent({type: 'window-focus'});
-    later.splice(0).forEach(f => f());
-    assert(document.activeElement === one, 'the window gained focus without the page');
     await refresh();
-    assert(document.activeElement === one, 'a poll moved focus');
-    // The user's arrow in the tab list keeps focus there.
+    assert(document.activeElement === one, 'a poll left focus on the tab');
+    // The window takes focus, and the page has it: that ends the launch.
+    webKitFocus();
+    testWindowFocused = true;
+    testBody.dispatchEvent({type: 'window-focus'});
+    run();
+    assert(document.activeElement === one, 'the window gained focus without the page');
+    // A tab focused by no key or click now keeps focus, through its
+    // focusin, polls and the window's focus.
+    webKitFocus();
+    run();
+    await refresh();
+    testBody.dispatchEvent({type: 'window-focus'});
+    run();
+    assert(document.activeElement === first, 'a tab focused after launch lost focus: ' + document.activeElement.tagName);
+  } finally {setTimeout = () => {};}
+  await settle();
+}
+
+// While launching, the user's arrow in the tab list keeps focus there.
+async function checkLaunchKeys() {
+  testWindowFocused = false;
+  app.tabs = [tabEntry(1, 'Default'), tabEntry(2, 'Garden')];
+  await refresh();
+  const later = [];
+  setTimeout = callback => later.push(callback);
+  try {
+    const first = tabsShown()[0];
     first.focus();
     press(first, 'ArrowRight');
     const second = tabsShown()[1];
@@ -312,6 +339,29 @@ async function checkLaunchFocus() {
     testBody.dispatchEvent({type: 'window-focus'});
     later.splice(0).forEach(f => f());
     assert(selectedLabel() === 'Garden' && document.activeElement === second, 'the user\'s focus went to the page: ' + document.activeElement.tagName);
+  } finally {setTimeout = () => {};}
+  await settle();
+}
+
+// A quit asked while the shell launches, before any key or click, as the
+// window's close asks it while a saved copy runs, keeps focus in its
+// dialog, through polls and the window's focus.
+async function checkLaunchQuit() {
+  testWindowFocused = false;
+  app.tabs = [tabEntry(1, 'Default', {copying: true})];
+  await refresh();
+  const later = [];
+  setTimeout = callback => later.push(callback);
+  try {
+    await window.confirmQuit();
+    assert($('k-confirm').open, 'quit did not ask');
+    $('k-ccancel').focus();
+    testBody.dispatchEvent({type: 'focusin', target: $('k-ccancel')});
+    testWindowFocused = true;
+    testBody.dispatchEvent({type: 'window-focus'});
+    later.splice(0).forEach(f => f());
+    await refresh();
+    assert(document.activeElement === $('k-ccancel'), 'the quit dialog lost focus: ' + document.activeElement.tagName);
   } finally {setTimeout = () => {};}
   await settle();
 }

@@ -71,5 +71,11 @@ func TestShellSwitchKeys(t *testing.T) { runShellRegression(t, "checkSwitchKeys(
 func TestShellFrameFocus(t *testing.T) { runShellRegression(t, "checkFrameFocus()") }
 
 // WKWebView's own focus on the first tab at launch goes to the page, until
-// the user acts in the shell.
+// the page has had focus in a focused window; after, a tab keeps focus.
 func TestShellLaunchFocus(t *testing.T) { runShellRegression(t, "checkLaunchFocus()") }
+
+// The user's keys in the tab list while launching keep focus there.
+func TestShellLaunchKeys(t *testing.T) { runShellRegression(t, "checkLaunchKeys()") }
+
+// The quit dialog keeps focus while the shell launches.
+func TestShellLaunchQuit(t *testing.T) { runShellRegression(t, "checkLaunchQuit()") }
