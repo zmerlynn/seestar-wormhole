@@ -121,7 +121,7 @@ alone never writes the file.
 | `files_at_once` | `4`; **Files at once**, from `1` to `4`. A value outside that range loads as the nearest of them, and a `settings_fallback` warning names the setting, the fallback and the saved value, in `gui.log` or the `--profile` command's log. |
 | `older_than_days` | `7` |
 | `trust_state` | `false`; **Only the copy history** under **Before deleting, check**. |
-| `ignore_state` | `false`; **Nothing** under **Before deleting, check**. A save writes at most one of it and `trust_state` true; on load, `ignore_state` wins. |
+| `ignore_state` | `false`; **Nothing** under **Before deleting, check**. A save writes at most one of it and `trust_state` true; on load, `ignore_state` wins. With it, Free up space needs at least one `free_includes` pattern: a file without one loads, but nothing is previewed or deleted until one is entered. |
 | `free_excludes`, `free_includes` | `[]`; **Keep on the telescope** and **Only free up**, one pattern each. |
 
 Older versions keep `history_dir` when saving but use the default history

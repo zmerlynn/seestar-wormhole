@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"path"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -20,6 +21,10 @@ import (
 var (
 	errFreeBusy = errors.New("a check or a delete is already running")
 	errStale    = errors.New("preview again before deleting")
+	// errNoFreeIncludes refuses checking nothing without an Only free up
+	// pattern, which would delete everything not kept, as a copy.json
+	// saved before Find refused it can still ask.
+	errNoFreeIncludes = errors.New("with Nothing checked, enter at least one pattern in Only free up")
 )
 
 // freer runs Free up space: at most one preview or delete at a time. Its
@@ -72,6 +77,9 @@ func newFreer(parent context.Context, stateDir string, log *slog.Logger, dial fu
 // selection is Free up space's own patterns, after the built-in excludes,
 // as `delete --exclude --include` selects; Copy's patterns play no part.
 func (f *freer) options(set Settings, t Target) (engine.DeleteOptions, error) {
+	if set.IgnoreState && !slices.ContainsFunc(set.FreeIncludes, func(p string) bool { return strings.TrimSpace(p) != "" }) {
+		return engine.DeleteOptions{}, errNoFreeIncludes
+	}
 	sel, err := selector(Settings{Excludes: set.FreeExcludes, Includes: set.FreeIncludes, SkipBuiltIn: true})
 	return engine.DeleteOptions{
 		Endpoint: t.Endpoint, Dest: set.Folder, StateDir: set.historyDir(f.stateDir),

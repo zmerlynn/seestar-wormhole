@@ -1423,6 +1423,17 @@ function freeIntro() {
   $('x-none-warn').hidden = proof !== 'none';
   $('x-restack').hidden = !(Number($('x-days').value) > 0);
 }
+// freeProof rewords the options for the chosen check. Leaving Nothing
+// with Only free up empty drops the error it got there, which the other
+// checks don't have.
+function freeProof() {
+  if ($('x-proof').value !== 'none' && !$('x-in').value.trim()) {
+    put('x-in-err', '');
+    $('x-in-err').hidden = true;
+    $('x-in').removeAttribute('aria-invalid');
+  }
+  freeIntro();
+}
 // freeErrors puts each message under its option, as showErrors does for
 // Copy's, and returns the first option in error.
 const freeFields = {days: 'x-days', free_excludes: 'x-ex', free_includes: 'x-in'};
@@ -2198,7 +2209,7 @@ $('h-confirm').addEventListener('close', () => $('h-clear').focus());
 $('x-find').addEventListener('click', freeFind);
 $('x-days').addEventListener('keydown', e => e.key === 'Enter' && freeFind(e));
 $('x-days').addEventListener('input', freeIntro);
-$('x-proof').addEventListener('change', freeIntro);
+$('x-proof').addEventListener('change', freeProof);
 $('x-cancel').addEventListener('click', e => freePress(e, {action: 'cancel'}));
 $('x-stop').addEventListener('click', e => freePress(e, {action: 'stop'}));
 $('x-change').addEventListener('click', e => freePress(e, {action: 'reset'}));

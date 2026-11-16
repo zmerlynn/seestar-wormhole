@@ -264,6 +264,37 @@ func TestFreeIgnoreState(t *testing.T) {
 	}
 }
 
+// Checking nothing without an Only free up pattern neither previews nor
+// deletes, whatever settings the run is given.
+func TestFreeIgnoreStateNeedsAPattern(t *testing.T) {
+	e := newFreeEnv(t, "MyWorks/M 31/a.jpg", "MyWorks/M 42/b.jpg")
+	e.set.IgnoreState = true
+	for _, includes := range [][]string{nil, {}, {"", " "}} {
+		e.set.FreeIncludes = includes
+		if err := e.f.find(e.set, Target{Endpoint: e.set.Address}); !errors.Is(err, errNoFreeIncludes) {
+			t.Errorf("find with %q: %v", includes, err)
+		}
+		if v := e.f.view(); v.State != frStart {
+			t.Errorf("after find with %q: %+v", includes, v)
+		}
+	}
+	e.set.FreeIncludes = []string{"/MyWorks"}
+	v := e.preview()
+	if v.State != frPreview {
+		t.Fatalf("preview: %+v", v)
+	}
+	// A preview whose settings lost the pattern is refused at the delete.
+	e.f.mu.Lock()
+	e.f.st.set.FreeIncludes = []string{}
+	e.f.mu.Unlock()
+	if err := e.f.confirm(v.ID, []string{"MyWorks/M 31", "MyWorks/M 42"}, Target{Endpoint: e.set.Address}); !errors.Is(err, errNoFreeIncludes) {
+		t.Errorf("confirm: %v", err)
+	}
+	if !e.has("MyWorks/M 31/a.jpg") || !e.has("MyWorks/M 42/b.jpg") {
+		t.Error("a file was deleted")
+	}
+}
+
 // watcher is a share that calls seen after each folder its walk decides on.
 type watcher struct {
 	*remote.FakeDir
