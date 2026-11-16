@@ -1,8 +1,10 @@
 // Starting the app's page for a test, without a window. UI_TEST_BIN is
 // internal/ui's test binary (go test -c ./internal/ui); its
-// TestBrowserServer serves the real page and runtime from the state
-// folder SEESTAR_WORMHOLE_BROWSER_STATE names, with no account and no
-// proxy, and prints the page's private URL. Each app gets its own home and
+// TestBrowserServer serves the real app from the state folder
+// SEESTAR_WORMHOLE_BROWSER_STATE names, as its Default profile, with no
+// account and no proxy, and prints the shell's private URL. app.shell is
+// that URL, with the tab bar; app.url is Default's page, its first tab,
+// alone. Each app gets its own home and
 // config folder in the test's output folder, so copy's state folder,
 // home/config/seestar-wormhole/copy-history, is fresh unless two apps share a home.
 const fs = require('node:fs');
@@ -60,7 +62,10 @@ async function launch(dir, files = {}, home = dir) {
     child.stdout.on('data', (b) => {
       app.log += b;
       const m = app.log.match(urlPattern);
-      if (m) resolve(m[0]);
+      if (m) {
+        app.shell = m[0];
+        resolve(m[0].replace('/#', '/p/1/#'));
+      }
     });
     app.exited.then((code) => reject(new Error('the app exited ' + code + ': ' + app.log)));
   });

@@ -1426,7 +1426,7 @@ test('the app page refuses a request without its token', async ({ page, startApp
   await page.goto(base);
   const codes = await page.evaluate(async () => {
     const post = (url) => fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-    return Promise.all([fetch('/api/status'), fetch('/copy/api/status'), post('/copy/api/settings'), post('/api/route')]).then((rs) => rs.map((r) => r.status));
+    return Promise.all([fetch('api/status'), fetch('copy/api/status'), post('copy/api/settings'), post('api/route')]).then((rs) => rs.map((r) => r.status));
   });
   expect(codes).toEqual([403, 403, 403, 403]);
   await expect(page.locator('#lost-text')).toHaveText('Connection to the controls was lost. The proxy may still be running. Reopen the app to reconnect.');

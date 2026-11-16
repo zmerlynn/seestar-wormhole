@@ -13,7 +13,8 @@ import (
 )
 
 // Execute the complete production script without a browser, HTTP, or keychain.
-func runPageRegression(t *testing.T, file, call string) {
+// prelude runs before the script, as a page's surroundings would.
+func runPageRegression(t *testing.T, file, call string, prelude ...string) {
 	t.Helper()
 	shell, err := exec.LookPath("jsc")
 	if err != nil {
@@ -31,7 +32,7 @@ func runPageRegression(t *testing.T, file, call string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	script := string(dom) + "\n" + pageDOM(t) + "\n" + string(app) + "\n" + string(check) + "\n" +
+	script := string(dom) + "\n" + pageDOM(t) + "\n" + strings.Join(prelude, "\n") + "\n" + string(app) + "\n" + string(check) + "\n" +
 		call + `.then(() => print('PAGE REGRESSION PASS')).catch(e => {print(String(e)); quit(1);});`
 	path := filepath.Join(t.TempDir(), "page.js")
 	if err := os.WriteFile(path, []byte(script), 0600); err != nil {
@@ -54,7 +55,13 @@ func TestPickerInitialStep(t *testing.T) {
 // Seed the DOM double from actual HTML to test bindings and control order.
 func pageDOM(t *testing.T) string {
 	t.Helper()
-	b, err := assets.ReadFile("web/index.html")
+	return pageDOMOf(t, "web/index.html")
+}
+
+// pageDOMOf seeds the DOM double from the embedded page name.
+func pageDOMOf(t *testing.T, name string) string {
+	t.Helper()
+	b, err := assets.ReadFile(name)
 	if err != nil {
 		t.Fatal(err)
 	}
