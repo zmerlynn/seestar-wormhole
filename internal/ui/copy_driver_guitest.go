@@ -34,7 +34,8 @@ import (
 //     close (on Windows, the page's Quit) confirmed quits.
 //   - copy-quit does the same up to closing, waits for the harness's Quit
 //     event and confirms it.
-//   - copy-hold holds it and waits for the harness to stop the app.
+//   - copy-hold holds it and waits for the harness to stop the app, and
+//     on Windows confirms the quit the harness's WM_CLOSE asks.
 //   - copy-inuse runs beside a copy-hold app on the same folder, checks
 //     that Copy shows the folder in use and Start copying can't take it,
 //     then closes as copy-close.
@@ -144,7 +145,12 @@ func (d *guiTestDriver) driveCopy() error {
 		}
 	}
 	if d.scenario == "copy-hold" {
-		return d.mark("trigger")
+		if err := d.mark("trigger"); err != nil || runtime.GOOS != "windows" {
+			return err
+		}
+		// The harness's WM_CLOSE asks to confirm quitting while copying;
+		// SIGTERM elsewhere doesn't.
+		return d.copyConfirmQuit()
 	}
 	if d.scenario != "copy-inuse" {
 		// Browse's frame lists the fake telescope's top folder.
