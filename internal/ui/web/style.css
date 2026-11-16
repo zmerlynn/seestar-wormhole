@@ -719,12 +719,7 @@ dialog {
 #events li[data-warn=true] {
   color:var(--busy)
 }
-/* The header names the window's profile after the title, muted, once
-   there is more than one. */
-#profile-name {
-  font-weight:400
-}
-/* The Profiles dialog's rows: a button per profile. */
+/* The shell's + menu's rows: a button per profile. */
 ul.profiles {
   list-style:none;
   padding:0;
@@ -736,4 +731,94 @@ ul.profiles button {
   text-align:left;
   margin:.3rem 0;
   overflow-wrap:anywhere
+}
+/* The shell: the tab bar over the open profiles' pages, each a frame
+   filling the rest of the window. A hidden frame stays laid out, so its
+   page keeps its scroll and state. */
+body.shell {
+  height:100vh;
+  display:flex;
+  flex-direction:column
+}
+#tabbar {
+  display:flex;
+  align-items:flex-end;
+  gap:.2rem;
+  padding:.3rem .5rem 0;
+  border-bottom:1px solid var(--border);
+  overflow-x:auto;
+  flex:none
+}
+#profile-tabs {
+  display:flex;
+  gap:.2rem;
+  min-width:0
+}
+.ptab {
+  display:flex;
+  align-items:center;
+  border-bottom:3px solid transparent
+}
+.ptab:has([aria-selected=true]) {
+  border-bottom-color:var(--focus)
+}
+.ptab [role=tab] {
+  display:flex;
+  align-items:center;
+  gap:.45rem;
+  padding:.4rem .2rem .4rem .7rem;
+  border-bottom:0;
+  white-space:nowrap
+}
+.tab-dot {
+  flex:none;
+  width:.65rem;
+  height:.65rem;
+  border-radius:50%;
+  border:1px solid var(--border)
+}
+.tab-dot[data-tone=on] {
+  background:var(--ok);
+  border-color:var(--ok)
+}
+.tab-dot[data-tone=copy] {
+  background:var(--focus);
+  border-color:var(--focus)
+}
+.tab-dot[data-tone=busy] {
+  background:var(--busy);
+  border-color:var(--busy)
+}
+.tab-dot[data-tone=error] {
+  background:var(--error);
+  border-color:var(--error)
+}
+.tab-close,#add {
+  border:0;
+  background:none;
+  padding:.2rem .5rem;
+  line-height:1;
+  color:var(--muted)
+}
+#add {
+  font-size:1.3rem;
+  align-self:center
+}
+#frames {
+  position:relative;
+  flex:1
+}
+#frames iframe {
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  border:0;
+  visibility:hidden
+}
+#frames iframe.shown {
+  visibility:visible
+}
+#shell-note,#ended {
+  margin:1rem
 }
