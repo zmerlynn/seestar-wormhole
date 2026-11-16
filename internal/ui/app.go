@@ -516,10 +516,20 @@ type tabInput struct {
 	Profile string `json:"profile"`
 }
 
+// pagePolicy is the CSP of the shell and of each tab's page. Only the GUI
+// fixture's build changes it, as its driver starts.
+var pagePolicy = localhttp.Policy
+
+// setPageHeaders sets the headers of the shell's and a tab's responses.
+func setPageHeaders(h http.Header) {
+	localhttp.SetHeaders(h, false)
+	h.Set("Content-Security-Policy", pagePolicy)
+}
+
 func (a *app) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Each tab's page is a same-origin frame of the shell, and Browse one
 	// of the page's, so a page may be framed only by its own origin.
-	localhttp.SetHeaders(w.Header(), false)
+	setPageHeaders(w.Header())
 	fail := func(code int) { http.Error(w, "Request rejected", code) }
 	if r.Host != a.host {
 		fail(http.StatusForbidden)

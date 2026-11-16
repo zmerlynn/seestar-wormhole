@@ -16,6 +16,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 )
 
 // Ignore the real runner entirely. Missing fixture configuration fails closed.
@@ -24,6 +25,9 @@ func runPlatformUI(ctx context.Context, root string, out, logs io.Writer, _ runF
 	if dir == "" || scenario == "" {
 		return errors.New("guitest requires its Go harness")
 	}
+	// The driver runs its probes and scripts in the first tab's frame through
+	// eval, which the pages' script-src must allow. Only this build does.
+	pagePolicy = strings.Replace(localhttp.Policy, "script-src 'self'", "script-src 'self' 'unsafe-eval'", 1)
 	// copy-relaunch reads what the launch before it left.
 	if copyScenario(scenario) && scenario != "copy-relaunch" {
 		if err := prepareCopyScenario(root); err != nil {

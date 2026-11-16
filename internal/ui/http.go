@@ -69,7 +69,7 @@ type scanInput struct {
 func (s *server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Browse is a same-origin frame of browse/, and the page one of the
 	// shell's, so a page may be framed only by its own origin.
-	localhttp.SetHeaders(w.Header(), false)
+	setPageHeaders(w.Header())
 	fail := func(code int) { http.Error(w, "Request rejected", code) }
 	if r.Host != s.host {
 		fail(http.StatusForbidden)

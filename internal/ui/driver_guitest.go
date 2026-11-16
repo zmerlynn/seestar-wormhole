@@ -38,7 +38,8 @@ type guiTestDriver struct {
 }
 
 // Each probe has a distinct acknowledgment, so late JS cannot satisfy the next
-// assertion. The native postMessage bridge needs no HTTP runtime or CSP change.
+// assertion. The native postMessage bridge needs no HTTP runtime; a probe
+// reaches a frame through eval, which only the fixture's pages allow.
 // Probes and scripts run in the first tab's page; shellProbe's in the shell.
 func (d *guiTestDriver) probe(expression string) error {
 	return d.runProbe(guiTestProbeScript(expression, d.seq+1, true), false)

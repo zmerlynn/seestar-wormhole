@@ -19,6 +19,7 @@ import (
 	"github.com/zmerlynn/seestar-wormhole/internal/cloud"
 	copyapp "github.com/zmerlynn/seestar-wormhole/internal/copy/app"
 	"github.com/zmerlynn/seestar-wormhole/internal/filelock"
+	"github.com/zmerlynn/seestar-wormhole/internal/localhttp"
 	"github.com/zmerlynn/seestar-wormhole/internal/privatefile"
 	"github.com/zmerlynn/seestar-wormhole/internal/proxy"
 )
@@ -609,6 +610,30 @@ func TestTabsShellHeadersAndChecks(t *testing.T) {
 		}
 		if code := c.do("GET", "/api/tabs/new", "", nil); code != 405 {
 			t.Errorf("GET of an action: %d", code)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// The shell and each tab's page serve the shared policy, which refuses
+// eval; only the GUI fixture's build allows it.
+func TestTabsPagesRefuseEval(t *testing.T) {
+	tabsHome(t)
+	root := filepath.Join(t.TempDir(), "state")
+	err := runTabs(t, root, "", nil, func(c *tabsClient, _ <-chan struct{}) {
+		for _, path := range []string{"/", "/shell.js", "/p/1/", "/p/1/app.js"} {
+			req, _ := http.NewRequest("GET", c.origin+path, nil)
+			req.Header.Set("X-Seestar-Token", c.token)
+			resp, err := c.client.Do(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resp.Body.Close()
+			if csp := resp.Header.Values("Content-Security-Policy"); len(csp) != 1 || csp[0] != localhttp.Policy || strings.Contains(csp[0], "unsafe-eval") {
+				t.Errorf("%s: CSP %q", path, csp)
+			}
 		}
 	})
 	if err != nil {
